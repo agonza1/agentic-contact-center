@@ -1,0 +1,23 @@
+{
+  "demoName": "cluecon-2026-cancellation-rescue",
+  "mode": "mocked_telephony",
+  "provider": {
+    "name": "signalwire",
+    "callId": "mock-sw-call-001"
+  },
+  "policy": {
+    "profile": "retention_safe_mode",
+    "toolScope": "deny_by_default",
+    "defaultSupervisorSteer": "approve_offer",
+    "fallbackMode": "tool_timeout"
+  },
+  "operator": {
+    "channel": "demo-operator-console"
+  },
+  "latencyBudgetsMs": {
+    "asrPartial": 500,
+    "policyGate": 1500,
+    "operatorNotification": 2000,
+    "ttsFirstAudio": 1200
+  }
+}
