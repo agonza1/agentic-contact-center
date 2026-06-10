@@ -28,7 +28,16 @@ This repo currently contains:
 - an example config contract in [`config/poc.config.example.json`](./config/poc.config.example.json)
 - a small implementation outline in [`docs/poc-outline.md`](./docs/poc-outline.md)
 
-The runnable Node/TypeScript scaffold is the next step.
+## Runnable scaffold
+
+The first runnable scaffold now includes:
+
+- a minimal Node/TypeScript project setup
+- config loading from [`config/poc.config.example.json`](./config/poc.config.example.json)
+- core POC domain types and runtime seam interfaces
+- `GET /health` for demo metadata and runtime seam visibility
+
+Run it locally with `npm install`, `npm test`, and `npm start`.
 
 ## Planned first scaffold
 
