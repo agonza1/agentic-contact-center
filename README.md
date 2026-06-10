@@ -1,50 +1,30 @@
 # Agentic Contact Center
 
-Runnable local ClueCon 2026 POC scaffold for the presentation lane:
+Current GitHub implementation track for the ClueCon 2026 POC lane.
 
-`SignalWire -> FastAPI session state -> Pipecat Flow prototype -> OpenClaw -> Slack human steer -> Demo fallback`
+The active scaffold is the TypeScript HTTP server under `src/`. It now covers:
 
-## What is implemented
-
-- In-memory FastAPI presentation sessions for the local demo
-- POC subsystem envelope under `session.poc`
-- Telephony ingress evidence capture
-- Pipecat prototype readiness and tool coverage reporting
-- OpenClaw per-call session attach
-- Slack-style human steer actions: `pause`, `resume`, `goto-slide`, `ask`
-- Manual demo fallback arm/disarm
-- Minimal live-ops page for local QA and demo operation
+- config-backed `GET /health`
+- mocked telephony ingress bootstrap at `POST /api/demo/start`
+- in-memory caller transcript append at `POST /api/calls/:callId/caller-turn`
+- current call snapshot lookup at `GET /api/calls/:callId`
 
 ## Run locally
 
 ```bash
-cd apps/api
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+npm install
+npm test
+npm start
 ```
 
-Then open `http://127.0.0.1:8000/`.
+The server listens on `http://localhost:8026` by default.
 
-## Test
+## Current slice status
 
-```bash
-cd apps/api
-pytest
-```
+- CUE-001: scaffold and architecture baseline merged in PR `#9`
+- CUE-002 / issue `#3`: implemented on the current branch with mocked telephony ingress and in-memory call session bootstrap
+- CUE-003 through CUE-006: not yet implemented in the TypeScript scaffold
 
-## Key routes
+## Note on legacy prototype
 
-- `POST /api/poc/sessions`
-- `GET /api/poc/sessions/{session_id}`
-- `POST /api/poc/sessions/{session_id}/presentation/start`
-- `POST /api/poc/sessions/{session_id}/telephony-ingress`
-- `POST /api/poc/sessions/{session_id}/openclaw-session`
-- `POST /api/poc/sessions/{session_id}/slack-steer`
-- `POST /api/poc/sessions/{session_id}/fallback`
-- `POST /api/poc/sessions/{session_id}/question`
-
-## Canonical backlog
-
-Detailed acceptance criteria and QA handoff remain in [`BACKLOG.md`](./BACKLOG.md) until GitHub issue tracking exists.
+`apps/api/` and `apps/web/` contain an older local FastAPI demo prototype. They are useful reference material, but they are not the authoritative implementation status for the current GitHub issue sequence.
