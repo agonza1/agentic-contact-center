@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
+import { getPipecatPrototypeHealth } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
 import type { PocConfig, TranscriptTurn } from "../core/types";
 
@@ -51,6 +52,7 @@ async function routeRequest(
       provider: config.provider.name,
       operatorChannel: config.operator.channel,
       runtimeSeams,
+      pipecatFlow: getPipecatPrototypeHealth(),
     });
     return;
   }
@@ -78,7 +80,7 @@ async function routeRequest(
     };
 
     try {
-      const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn);
+      const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config);
       writeJson(response, 200, snapshot);
     } catch {
       writeNotFound(response);

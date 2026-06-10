@@ -1,0 +1,196 @@
+import type {
+  CallSnapshot,
+  EventTrailEntry,
+  FlowState,
+  PipecatFlowPrototypeStatus,
+  PocConfig,
+  ScriptProgress,
+  TranscriptTurn,
+} from "./types";
+
+export const SCRIPTED_CALLER_TURNS = [
+  "I want to cancel my policy today.",
+  "The renewal increase is too high.",
+  "Okay, what safe options can you review for me?",
+  "Thanks, please note that follow-up and close the call.",
+] as const;
+
+export const PIPECAT_TOOL_COVERAGE = [
+  "get_current_slide",
+  "goto_slide",
+  "pause_presentation",
+  "ask_operator",
+] as const;
+
+function normalizeText(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function recordEvent(
+  snapshot: CallSnapshot,
+  type: string,
+  at: string,
+  detail: EventTrailEntry["detail"],
+): void {
+  snapshot.events.push({ type, at, detail });
+}
+
+function transitionFlowState(
+  snapshot: CallSnapshot,
+  nextState: FlowState,
+  at: string,
+  reason: string,
+): void {
+  if (snapshot.flowState === nextState) {
+    return;
+  }
+
+  recordEvent(snapshot, "flow_state_transition", at, {
+    from: snapshot.flowState,
+    to: nextState,
+    reason,
+  });
+  snapshot.flowState = nextState;
+}
+
+function appendAgentTurn(snapshot: CallSnapshot, text: string, timestamp: string): void {
+  const turn: TranscriptTurn = {
+    speaker: "agent",
+    text,
+    timestamp,
+  };
+
+  snapshot.transcript.push(turn);
+  recordEvent(snapshot, "agent_turn_appended", timestamp, {
+    flowState: snapshot.flowState,
+    text,
+    transcriptLength: snapshot.transcript.length,
+  });
+}
+
+function computeScriptProgress(snapshot: CallSnapshot): ScriptProgress {
+  const callerTurns = snapshot.transcript.filter((turn) => turn.speaker === "caller");
+  let matchedCallerTurns = 0;
+
+  for (const [index, expectedTurn] of SCRIPTED_CALLER_TURNS.entries()) {
+    const actualTurn = callerTurns[index];
+    if (!actualTurn) {
+      break;
+    }
+
+    if (normalizeText(actualTurn.text) !== normalizeText(expectedTurn)) {
+      break;
+    }
+
+    matchedCallerTurns += 1;
+  }
+
+  return {
+    name: "cancellation_rescue_seeded_script",
+    expectedCallerTurns: [...SCRIPTED_CALLER_TURNS],
+    matchedCallerTurns,
+    completed: matchedCallerTurns === SCRIPTED_CALLER_TURNS.length,
+  };
+}
+
+function buildApprovedOfferResponse(config: PocConfig): string {
+  if (config.policy.defaultSupervisorSteer === "escalate_to_human") {
+    return "Thanks for waiting. I am escalating this to a licensed retention specialist because I cannot make an offer without human review, and I will not promise any billing credit on this call.";
+  }
+
+  return "Thanks for waiting. I can review approved next steps like a coverage fit check or a retention specialist follow-up, and I will not promise any billing credit on this call.";
+}
+
+export function buildPipecatFlowPrototypeStatus(): PipecatFlowPrototypeStatus {
+  return {
+    ready: true,
+    prototypeMode: "deterministic_templates",
+    transport: "adapter_ready",
+    activeTool: "get_current_slide",
+    toolCoverage: [...PIPECAT_TOOL_COVERAGE],
+    script: {
+      name: "cancellation_rescue_seeded_script",
+      expectedCallerTurns: [...SCRIPTED_CALLER_TURNS],
+      matchedCallerTurns: 0,
+      completed: false,
+    },
+  };
+}
+
+export function getPipecatPrototypeHealth(): Pick<
+  PipecatFlowPrototypeStatus,
+  "ready" | "prototypeMode" | "transport" | "toolCoverage"
+> {
+  const status = buildPipecatFlowPrototypeStatus();
+  return {
+    ready: status.ready,
+    prototypeMode: status.prototypeMode,
+    transport: status.transport,
+    toolCoverage: status.toolCoverage,
+  };
+}
+
+export function applyDeterministicPipecatFlow(
+  snapshot: CallSnapshot,
+  config: PocConfig,
+  turn: TranscriptTurn,
+): void {
+  const callerTurns = snapshot.transcript.filter((entry) => entry.speaker === "caller");
+  const callerTurnCount = callerTurns.length;
+
+  snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
+
+  if (callerTurnCount === 1) {
+    snapshot.pipecatFlow.activeTool = "get_current_slide";
+    transitionFlowState(snapshot, "greet", turn.timestamp, "caller_connected");
+    appendAgentTurn(
+      snapshot,
+      "I can help with that. Before I review options, what is pushing you to cancel today?",
+      turn.timestamp,
+    );
+    transitionFlowState(snapshot, "diagnose", turn.timestamp, "cancellation_intent_captured");
+    return;
+  }
+
+  if (callerTurnCount === 2) {
+    snapshot.pipecatFlow.activeTool = "goto_slide";
+    transitionFlowState(snapshot, "policy_hold", turn.timestamp, "risky_retention_boundary");
+    recordEvent(snapshot, "policy_hold_entered", turn.timestamp, {
+      reason: "renewal_increase_requires_safe_offer_review",
+      toolScope: config.policy.toolScope,
+    });
+    appendAgentTurn(
+      snapshot,
+      "I heard the renewal increase concern. I am pausing before I discuss any retention offer so I stay within approved options.",
+      turn.timestamp,
+    );
+    return;
+  }
+
+  if (callerTurnCount === 3) {
+    snapshot.pipecatFlow.activeTool = "ask_operator";
+    transitionFlowState(snapshot, "operator_steer", turn.timestamp, "safe_offer_review_requested");
+    recordEvent(snapshot, "operator_steer_requested", turn.timestamp, {
+      recommendation: config.policy.defaultSupervisorSteer,
+      operatorChannel: snapshot.scenario.operatorChannel,
+    });
+    recordEvent(snapshot, "operator_steer_applied", turn.timestamp, {
+      action: config.policy.defaultSupervisorSteer,
+      source: "deterministic_default",
+    });
+    transitionFlowState(snapshot, "steered_response", turn.timestamp, "operator_guidance_available");
+    appendAgentTurn(snapshot, buildApprovedOfferResponse(config), turn.timestamp);
+    return;
+  }
+
+  if (callerTurnCount === 4) {
+    snapshot.pipecatFlow.activeTool = "pause_presentation";
+    transitionFlowState(snapshot, "wrap", turn.timestamp, "caller_confirmed_next_step");
+    appendAgentTurn(
+      snapshot,
+      "I have documented the follow-up request and closed the demo call safely. Thank you for calling today.",
+      turn.timestamp,
+    );
+    snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
+  }
+}
