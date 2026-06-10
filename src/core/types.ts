@@ -1,0 +1,68 @@
+export type FlowState =
+  | "call_started"
+  | "greet"
+  | "diagnose"
+  | "policy_hold"
+  | "operator_steer"
+  | "steered_response"
+  | "wrap";
+
+export type Speaker = "caller" | "agent" | "operator" | "system";
+
+export type OperatorSteerAction = "approve_offer" | "escalate_to_human";
+
+export type FallbackMode = "tool_timeout";
+
+export interface TranscriptTurn {
+  speaker: Speaker;
+  text: string;
+  timestamp: string;
+}
+
+export interface LatencyBudgetsMs {
+  asrPartial: number;
+  policyGate: number;
+  operatorNotification: number;
+  ttsFirstAudio: number;
+}
+
+export interface PocConfig {
+  demoName: string;
+  mode: "mocked_telephony";
+  provider: {
+    name: string;
+    callId: string;
+  };
+  policy: {
+    profile: string;
+    toolScope: string;
+    defaultSupervisorSteer: OperatorSteerAction;
+    fallbackMode: FallbackMode;
+  };
+  operator: {
+    channel: string;
+  };
+  latencyBudgetsMs: LatencyBudgetsMs;
+}
+
+export interface SessionMetadata {
+  callId: string;
+  demoName: string;
+  providerName: string;
+  providerCallId: string;
+  startedAt: string;
+}
+
+export interface EventTrailEntry {
+  type: string;
+  at: string;
+  detail: Record<string, string | number | boolean | null>;
+}
+
+export interface CallSnapshot {
+  session: SessionMetadata;
+  flowState: FlowState;
+  transcript: TranscriptTurn[];
+  events: EventTrailEntry[];
+  latencyBudgetsMs: LatencyBudgetsMs;
+}
