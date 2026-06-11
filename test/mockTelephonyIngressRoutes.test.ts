@@ -27,7 +27,7 @@ interface SnapshotPayload {
     activeTool: string | null;
     script: { matchedCallerTurns: number; completed: boolean };
   };
-  events: Array<{ type: string }>;
+  events: Array<{ type: string; detail: Record<string, string | number | boolean | null> }>;
   latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
 }
 
@@ -285,6 +285,9 @@ test("an escalation steer triggers the human handoff path", async () => {
     assert.equal(steered.statusCode, 200);
     assert.equal(steeredPayload.flowState, "wrap");
     assert.equal(steeredPayload.events.some((event) => event.type === "human_handoff_started"), true);
+    const steerHandoff = steeredPayload.events.find((event) => event.type === "human_handoff_started");
+    assert.ok(steerHandoff);
+    assert.equal(steerHandoff.detail.source, "operator_steer");
 
     const lastAgentTurn = [...steeredPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
     assert.ok(lastAgentTurn);
@@ -357,6 +360,10 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.equal(fallbackPayload.demoFallback.reason, "pipecat tool exceeded latency budget");
     assert.equal(fallbackPayload.events.some((event) => event.type === "demo_fallback_triggered"), true);
     assert.equal(fallbackPayload.events.some((event) => event.type === "human_handoff_started"), true);
+    const fallbackHandoff = fallbackPayload.events.find((event) => event.type === "human_handoff_started");
+    assert.ok(fallbackHandoff);
+    assert.equal(fallbackHandoff.detail.source, "tool_timeout_fail_closed");
+    assert.equal(fallbackHandoff.detail.reason, "pipecat tool exceeded latency budget");
 
     const lastAgentTurn = [...fallbackPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
     assert.ok(lastAgentTurn);

@@ -209,6 +209,7 @@ export function triggerFailClosedFallback(
     operatorChannel: snapshot.scenario.operatorChannel,
     reason: fallbackReason,
     mode,
+    source: "tool_timeout_fail_closed",
   });
   appendAgentTurn(
     snapshot,
@@ -384,6 +385,7 @@ export function applyOperatorSteer(
   if (action === "escalate_to_human") {
     recordEvent(snapshot, "human_handoff_started", timestamp, {
       operatorChannel: snapshot.scenario.operatorChannel,
+      source: "operator_steer",
     });
     transitionFlowState(snapshot, "wrap", timestamp, "operator_escalated_to_human");
     appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
