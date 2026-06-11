@@ -1,9 +1,18 @@
 import { applyDeterministicPipecatFlow, buildPipecatFlowPrototypeStatus } from "./pipecatFlowPrototype";
-import type { CallSnapshot, PocConfig, TranscriptTurn } from "./types";
+import type {
+  CallSnapshot,
+  LatencyBudgetStage,
+  PocConfig,
+  StartCallOptions,
+  TranscriptTurn,
+} from "./types";
 
 function cloneSnapshot(snapshot: CallSnapshot): CallSnapshot {
   return {
-    session: { ...snapshot.session },
+    session: {
+      ...snapshot.session,
+      openclawSession: { ...snapshot.session.openclawSession },
+    },
     scenario: { ...snapshot.scenario },
     pipecatFlow: {
       ...snapshot.pipecatFlow,
@@ -17,7 +26,26 @@ function cloneSnapshot(snapshot: CallSnapshot): CallSnapshot {
     transcript: snapshot.transcript.map((turn) => ({ ...turn })),
     events: snapshot.events.map((event) => ({ ...event, detail: { ...event.detail } })),
     latencyBudgetsMs: { ...snapshot.latencyBudgetsMs },
+    latencyMarks: snapshot.latencyMarks.map((mark) => ({ ...mark })),
   };
+}
+
+function recordLatencyMark(
+  snapshot: CallSnapshot,
+  stage: string,
+  recordedAt: string,
+  budgetStage?: LatencyBudgetStage,
+): void {
+  const startedAt = new Date(snapshot.session.startedAt).getTime();
+  const recordedAtMs = new Date(recordedAt).getTime();
+  const elapsedMs = Math.max(0, recordedAtMs - startedAt);
+
+  snapshot.latencyMarks.push({
+    stage,
+    recordedAt,
+    elapsedMs,
+    budgetMs: budgetStage ? snapshot.latencyBudgetsMs[budgetStage] : null,
+  });
 }
 
 export class InMemoryTelephonyIngress {
@@ -25,7 +53,7 @@ export class InMemoryTelephonyIngress {
 
   private nextCallSequence = 1;
 
-  async startCall(config: PocConfig): Promise<CallSnapshot> {
+  async startCall(config: PocConfig, options: StartCallOptions = {}): Promise<CallSnapshot> {
     const sequence = this.nextCallSequence;
     this.nextCallSequence += 1;
 
@@ -33,6 +61,8 @@ export class InMemoryTelephonyIngress {
     const callId = `demo-call-${paddedSequence}`;
     const providerCallId = `${config.provider.callId}-${paddedSequence}`;
     const startedAt = new Date().toISOString();
+    const openclawSessionId = options.openclawSessionId ?? `openclaw-call-${paddedSequence}`;
+    const openclawSessionLabel = options.openclawSessionLabel ?? `${config.demoName}:${callId}`;
 
     const snapshot: CallSnapshot = {
       session: {
@@ -41,6 +71,12 @@ export class InMemoryTelephonyIngress {
         providerName: config.provider.name,
         providerCallId,
         startedAt,
+        openclawSession: {
+          sessionId: openclawSessionId,
+          label: openclawSessionLabel,
+          status: "attached_mock",
+          eventTrailVersion: 1,
+        },
       },
       scenario: {
         name: config.demoName,
@@ -61,10 +97,21 @@ export class InMemoryTelephonyIngress {
             mode: config.mode,
           },
         },
+        {
+          type: "openclaw_session_attached",
+          at: startedAt,
+          detail: {
+            sessionId: openclawSessionId,
+            sessionLabel: openclawSessionLabel,
+            status: "attached_mock",
+          },
+        },
       ],
       latencyBudgetsMs: { ...config.latencyBudgetsMs },
+      latencyMarks: [],
     };
 
+    recordLatencyMark(snapshot, "call_bootstrapped", startedAt);
     this.calls.set(callId, snapshot);
     return cloneSnapshot(snapshot);
   }
@@ -86,8 +133,21 @@ export class InMemoryTelephonyIngress {
         transcriptLength: snapshot.transcript.length,
       },
     });
+    recordLatencyMark(snapshot, "caller_turn_received", turn.timestamp, "asrPartial");
 
     applyDeterministicPipecatFlow(snapshot, config, turn);
+
+    if (snapshot.flowState === "policy_hold") {
+      recordLatencyMark(snapshot, "policy_hold_entered", turn.timestamp, "policyGate");
+    }
+
+    if (snapshot.flowState === "operator_steer" || snapshot.flowState === "steered_response") {
+      recordLatencyMark(snapshot, "operator_notified", turn.timestamp, "operatorNotification");
+    }
+
+    if (snapshot.transcript.at(-1)?.speaker === "agent") {
+      recordLatencyMark(snapshot, "agent_response_ready", turn.timestamp, "ttsFirstAudio");
+    }
 
     return cloneSnapshot(snapshot);
   }

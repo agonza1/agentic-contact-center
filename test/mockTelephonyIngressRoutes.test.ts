@@ -79,21 +79,44 @@ async function requestJson(
 
 test("mocked telephony ingress bootstraps and returns seeded scenario metadata", async () => {
   await withServer(async (port) => {
-    const started = await requestJson(port, "POST", "/api/demo/start");
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "heartbeat-session-42",
+      openclawSessionLabel: "cluecon-demo/live-call",
+    });
     const startedPayload = started.payload as {
-      session: { callId: string };
+      session: {
+        callId: string;
+        openclawSession: { sessionId: string; label: string; status: string; eventTrailVersion: number };
+      };
       scenario: { mode: string; policyProfile: string };
       pipecatFlow: { ready: boolean; toolCoverage: string[] };
       events: Array<{ type: string }>;
+      latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
     };
 
     assert.equal(started.statusCode, 201);
     assert.equal(startedPayload.session.callId, "demo-call-0001");
+    assert.equal(startedPayload.session.openclawSession.sessionId, "heartbeat-session-42");
+    assert.equal(startedPayload.session.openclawSession.label, "cluecon-demo/live-call");
+    assert.equal(startedPayload.session.openclawSession.status, "attached_mock");
+    assert.equal(startedPayload.session.openclawSession.eventTrailVersion, 1);
     assert.equal(startedPayload.scenario.mode, "mocked_telephony");
     assert.equal(startedPayload.scenario.policyProfile, "retention_safe_mode");
     assert.equal(startedPayload.pipecatFlow.ready, true);
     assert.equal(startedPayload.pipecatFlow.toolCoverage.includes("ask_operator"), true);
-    assert.equal(startedPayload.events[0].type, "call_bootstrapped");
+    assert.deepEqual(startedPayload.events.map((event) => event.type).slice(0, 2), [
+      "call_bootstrapped",
+      "openclaw_session_attached",
+    ]);
+    assert.deepEqual(
+      startedPayload.latencyMarks.map((mark) => ({ stage: mark.stage, budgetMs: mark.budgetMs })),
+      [
+        {
+          stage: "call_bootstrapped",
+          budgetMs: null,
+        },
+      ],
+    );
 
     const fetched = await requestJson(port, "GET", `/api/calls/${startedPayload.session.callId}`);
     assert.equal(fetched.statusCode, 200);
@@ -126,10 +149,12 @@ test("the risky offer boundary parks the flow in policy hold without promising a
       flowState: string;
       transcript: Array<{ speaker: string; text: string }>;
       events: Array<{ type: string }>;
+      latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
     };
     assert.equal(secondTurn.statusCode, 200);
     assert.equal(secondPayload.flowState, "policy_hold");
     assert.equal(secondPayload.events.some((event) => event.type === "policy_hold_entered"), true);
+    assert.equal(secondPayload.latencyMarks.some((mark) => mark.stage === "policy_hold_entered" && mark.budgetMs === 1500), true);
 
     const lastAgentTurn = [...secondPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
     assert.ok(lastAgentTurn);
