@@ -107,7 +107,7 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
         callId: string;
         openclawSession: { sessionId: string; label: string; status: string; eventTrailVersion: number };
       };
-      scenario: { mode: string; policyProfile: string };
+      scenario: { mode: string; policyProfile: string; fallbackMode: string };
       demoFallback: { armed: boolean; reason: string | null; mode: string | null; armedAt: string | null; disarmedAt: string | null };
       operatorSteer: {
         pending: boolean;
@@ -130,6 +130,7 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
     assert.equal(startedPayload.session.openclawSession.eventTrailVersion, 1);
     assert.equal(startedPayload.scenario.mode, "mocked_telephony");
     assert.equal(startedPayload.scenario.policyProfile, "retention_safe_mode");
+    assert.equal(startedPayload.scenario.fallbackMode, "tool_timeout");
     assert.equal(startedPayload.pipecatFlow.ready, true);
     assert.equal(startedPayload.pipecatFlow.toolCoverage.includes("ask_operator"), true);
     assert.deepEqual(startedPayload.events.map((event) => event.type).slice(0, 2), [

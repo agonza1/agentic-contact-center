@@ -104,6 +104,7 @@ export interface ScenarioMetadata {
   mode: PocConfig["mode"];
   policyProfile: string;
   defaultSupervisorSteer: OperatorSteerAction;
+  fallbackMode: FallbackMode;
   operatorChannel: string;
 }
 

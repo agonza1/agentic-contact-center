@@ -43,12 +43,18 @@ test("GET /health returns config-backed demo metadata", async () => {
   const payload = JSON.parse(responseBody) as {
     ok: boolean;
     demoName: string;
+    operatorChannel: string;
+    fallbackMode: string;
+    latencyBudgetsMs: { asrPartial: number; policyGate: number; operatorNotification: number; ttsFirstAudio: number };
     runtimeSeams: string[];
     pipecatFlow: { ready: boolean; toolCoverage: string[] };
   };
 
   assert.equal(payload.ok, true);
   assert.equal(payload.demoName, config.demoName);
+  assert.equal(payload.operatorChannel, config.operator.channel);
+  assert.equal(payload.fallbackMode, config.policy.fallbackMode);
+  assert.deepEqual(payload.latencyBudgetsMs, config.latencyBudgetsMs);
   assert.equal(payload.runtimeSeams.includes("flow engine"), true);
   assert.equal(payload.pipecatFlow.ready, true);
   assert.equal(payload.pipecatFlow.toolCoverage.includes("goto_slide"), true);

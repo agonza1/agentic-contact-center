@@ -51,6 +51,8 @@ async function routeRequest(
       mode: config.mode,
       provider: config.provider.name,
       operatorChannel: config.operator.channel,
+      fallbackMode: config.policy.fallbackMode,
+      latencyBudgetsMs: config.latencyBudgetsMs,
       runtimeSeams,
       pipecatFlow: getPipecatPrototypeHealth(),
     });

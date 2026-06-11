@@ -92,6 +92,7 @@ export class InMemoryTelephonyIngress {
         mode: config.mode,
         policyProfile: config.policy.profile,
         defaultSupervisorSteer: config.policy.defaultSupervisorSteer,
+        fallbackMode: config.policy.fallbackMode,
         operatorChannel: config.operator.channel,
       },
       demoFallback: {
