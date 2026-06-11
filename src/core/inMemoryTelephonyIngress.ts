@@ -160,7 +160,8 @@ export class InMemoryTelephonyIngress {
       throw new Error(`Unknown call id: ${callId}`);
     }
 
-    if (snapshot.flowState !== "policy_hold" && snapshot.flowState !== "operator_steer") {
+    const requiresPendingState = action === "approve_offer" || action === "escalate_to_human" || action === "resume";
+    if (requiresPendingState && snapshot.flowState !== "policy_hold" && snapshot.flowState !== "operator_steer") {
       throw new Error(`Call is not awaiting operator steer: ${callId}`);
     }
 

@@ -236,6 +236,57 @@ test("an escalation steer triggers the human handoff path", async () => {
   });
 });
 
+
+test("slack-style operator commands pause, redirect, and resume the scripted flow", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const paused = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "pause",
+      timestamp: "2026-06-10T14:00:01.000Z",
+    });
+    const pausedPayload = paused.payload as SnapshotPayload;
+    assert.equal(paused.statusCode, 200);
+    assert.equal(pausedPayload.flowState, "policy_hold");
+    assert.equal(pausedPayload.events.some((event) => event.type === "operator_demo_paused"), true);
+    assert.equal(pausedPayload.pipecatFlow.activeTool, "pause_presentation");
+
+    const redirected = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "goto_slide",
+      timestamp: "2026-06-10T14:00:02.000Z",
+    });
+    const redirectedPayload = redirected.payload as SnapshotPayload;
+    assert.equal(redirected.statusCode, 200);
+    assert.equal(redirectedPayload.flowState, "operator_steer");
+    assert.equal(redirectedPayload.events.some((event) => event.type === "operator_slide_redirect_requested"), true);
+    assert.equal(redirectedPayload.pipecatFlow.activeTool, "goto_slide");
+
+    const reRequested = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "ask_operator",
+      timestamp: "2026-06-10T14:00:02.500Z",
+    });
+    const reRequestedPayload = reRequested.payload as SnapshotPayload;
+    assert.equal(reRequested.statusCode, 200);
+    assert.equal(reRequestedPayload.flowState, "operator_steer");
+    assert.equal(reRequestedPayload.events.some((event) => event.type === "operator_guidance_re_requested"), true);
+    assert.equal(reRequestedPayload.pipecatFlow.activeTool, "ask_operator");
+
+    const resumed = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "resume",
+      timestamp: "2026-06-10T14:00:03.000Z",
+    });
+    const resumedPayload = resumed.payload as SnapshotPayload;
+    assert.equal(resumed.statusCode, 200);
+    assert.equal(resumedPayload.flowState, "steered_response");
+    assert.equal(resumedPayload.events.some((event) => event.type === "operator_steer_applied"), true);
+
+    const lastAgentTurn = [...resumedPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
+    assert.ok(lastAgentTurn);
+    assert.equal(lastAgentTurn.text.toLowerCase().includes("resume the approved script"), true);
+  });
+});
+
 test("unknown calls and invalid operator steer requests are rejected", async () => {
   await withServer(async (port) => {
     const missing = await requestJson(port, "GET", "/api/calls/does-not-exist");

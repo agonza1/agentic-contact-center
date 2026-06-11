@@ -9,7 +9,13 @@ export type FlowState =
 
 export type Speaker = "caller" | "agent" | "operator" | "system";
 
-export type OperatorSteerAction = "approve_offer" | "escalate_to_human";
+export type OperatorSteerAction =
+  | "approve_offer"
+  | "escalate_to_human"
+  | "pause"
+  | "resume"
+  | "goto_slide"
+  | "ask_operator";
 
 export type FallbackMode = "tool_timeout";
 

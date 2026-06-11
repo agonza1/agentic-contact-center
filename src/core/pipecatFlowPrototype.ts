@@ -109,6 +109,10 @@ function buildSteeredResponse(action: OperatorSteerAction): string {
     return "Thanks for waiting. I am connecting you to a licensed retention specialist because I cannot make an offer without human review, and I will not promise any billing credit on this call.";
   }
 
+  if (action === "resume") {
+    return "Thanks for waiting. I can resume the approved script and review safe next steps without promising any billing credit on this call.";
+  }
+
   return "Thanks for waiting. I can review approved next steps like a coverage fit check or a retention specialist follow-up, and I will not promise any billing credit on this call.";
 }
 
@@ -235,6 +239,48 @@ export function applyOperatorSteer(
     source: "mock_http_route",
   });
 
+  if (action === "pause") {
+    transitionFlowState(snapshot, "policy_hold", timestamp, "operator_paused_demo_flow");
+    recordEvent(snapshot, "operator_demo_paused", timestamp, {
+      operatorChannel: snapshot.scenario.operatorChannel,
+    });
+    appendAgentTurn(
+      snapshot,
+      "I am pausing the scripted demo flow here until an operator resumes or redirects the session.",
+      timestamp,
+    );
+    snapshot.pipecatFlow.activeTool = "pause_presentation";
+    return;
+  }
+
+  if (action === "goto_slide") {
+    transitionFlowState(snapshot, "operator_steer", timestamp, "operator_requested_slide_redirect");
+    recordEvent(snapshot, "operator_slide_redirect_requested", timestamp, {
+      operatorChannel: snapshot.scenario.operatorChannel,
+    });
+    appendAgentTurn(
+      snapshot,
+      "I have the slide redirect request and I am holding for the operator-approved talking track before I continue.",
+      timestamp,
+    );
+    snapshot.pipecatFlow.activeTool = "goto_slide";
+    return;
+  }
+
+  if (action === "ask_operator") {
+    transitionFlowState(snapshot, "operator_steer", timestamp, "operator_guidance_requested_explicitly");
+    recordEvent(snapshot, "operator_guidance_re_requested", timestamp, {
+      operatorChannel: snapshot.scenario.operatorChannel,
+    });
+    appendAgentTurn(
+      snapshot,
+      "I am explicitly asking the operator for guidance before I continue this demo call.",
+      timestamp,
+    );
+    snapshot.pipecatFlow.activeTool = "ask_operator";
+    return;
+  }
+
   if (action === "escalate_to_human") {
     recordEvent(snapshot, "human_handoff_started", timestamp, {
       operatorChannel: snapshot.scenario.operatorChannel,
@@ -245,6 +291,11 @@ export function applyOperatorSteer(
     return;
   }
 
-  transitionFlowState(snapshot, "steered_response", timestamp, "operator_guidance_available");
+  transitionFlowState(
+    snapshot,
+    "steered_response",
+    timestamp,
+    action === "resume" ? "operator_resumed_demo_flow" : "operator_guidance_available",
+  );
   appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
 }

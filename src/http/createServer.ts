@@ -92,7 +92,15 @@ async function routeRequest(
   const operatorSteerMatch = request.method === "POST" ? url.match(/^\/api\/calls\/([^/]+)\/operator-steer$/) : null;
   if (operatorSteerMatch) {
     const body = await readJsonBody<{ action?: OperatorSteerAction; timestamp?: string }>(request);
-    if (body.action !== "approve_offer" && body.action !== "escalate_to_human") {
+    const allowedActions: OperatorSteerAction[] = [
+      "approve_offer",
+      "escalate_to_human",
+      "pause",
+      "resume",
+      "goto_slide",
+      "ask_operator",
+    ];
+    if (!body.action || !allowedActions.includes(body.action)) {
       writeBadRequest(response, "operator_steer_action_required");
       return;
     }

@@ -34,7 +34,7 @@ Status: implemented in merged PR `#13` with mock OpenClaw session metadata, orde
 Acceptance criteria:
 - Provide a human-steer endpoint that records a Slack-style command and can trigger a lightweight action.
 - Support at least pause, resume, goto-slide, and ask operations.
-Status: in progress on branch `issue-6-operator-steer-path` with a mocked HTTP steer endpoint, explicit approve/escalate actions, and deterministic resume coverage.
+Status: in progress on branch `issue-6-operator-steer-path` with a mocked HTTP steer endpoint, Slack-style pause/resume/goto-slide/ask actions, and deterministic approve/escalate coverage.
 
 ### CUE-006 Demo fallback
 Acceptance criteria:
