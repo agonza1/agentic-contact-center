@@ -11,6 +11,7 @@ interface SnapshotPayload {
   demoFallback: {
     armed: boolean;
     reason: string | null;
+    mode: string | null;
     armedAt: string | null;
     disarmedAt: string | null;
   };
@@ -107,7 +108,7 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
         openclawSession: { sessionId: string; label: string; status: string; eventTrailVersion: number };
       };
       scenario: { mode: string; policyProfile: string };
-      demoFallback: { armed: boolean; reason: string | null; armedAt: string | null; disarmedAt: string | null };
+      demoFallback: { armed: boolean; reason: string | null; mode: string | null; armedAt: string | null; disarmedAt: string | null };
       operatorSteer: {
         pending: boolean;
         lastAction: string | null;
@@ -138,6 +139,7 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
     assert.deepEqual(startedPayload.demoFallback, {
       armed: false,
       reason: null,
+      mode: null,
       armedAt: null,
       disarmedAt: null,
       source: null,
@@ -312,6 +314,7 @@ test("operators can arm and disarm demo fallback with visible rationale", async 
     assert.equal(armed.statusCode, 200);
     assert.equal(armedPayload.demoFallback.armed, true);
     assert.equal(armedPayload.demoFallback.reason, "audio degraded during live demo");
+    assert.equal(armedPayload.demoFallback.mode, null);
     assert.equal(armedPayload.events.some((event) => event.type === "demo_fallback_armed"), true);
     assert.equal(armedPayload.pipecatFlow.activeTool, "pause_presentation");
 
@@ -323,9 +326,48 @@ test("operators can arm and disarm demo fallback with visible rationale", async 
     assert.equal(disarmed.statusCode, 200);
     assert.equal(disarmedPayload.demoFallback.armed, false);
     assert.equal(disarmedPayload.demoFallback.reason, null);
+    assert.equal(disarmedPayload.demoFallback.mode, null);
     assert.equal(disarmedPayload.demoFallback.disarmedAt, "2026-06-10T14:00:03.000Z");
     assert.equal(disarmedPayload.events.some((event) => event.type === "demo_fallback_disarmed"), true);
     assert.equal(disarmedPayload.pipecatFlow.activeTool, "ask_operator");
+  });
+});
+
+test("tool timeout fallback fails closed and records the fallback reason", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const invalidMode = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {});
+    const invalidModePayload = invalidMode.payload as { error: string };
+    assert.equal(invalidMode.statusCode, 400);
+    assert.equal(invalidModePayload.error, "fallback_mode_required");
+
+    const fallback = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {
+      mode: "tool_timeout",
+      reason: "pipecat tool exceeded latency budget",
+      timestamp: "2026-06-10T14:00:02.000Z",
+    });
+    const fallbackPayload = fallback.payload as SnapshotPayload;
+
+    assert.equal(fallback.statusCode, 200);
+    assert.equal(fallbackPayload.flowState, "wrap");
+    assert.equal(fallbackPayload.demoFallback.armed, true);
+    assert.equal(fallbackPayload.demoFallback.mode, "tool_timeout");
+    assert.equal(fallbackPayload.demoFallback.reason, "pipecat tool exceeded latency budget");
+    assert.equal(fallbackPayload.events.some((event) => event.type === "demo_fallback_triggered"), true);
+    assert.equal(fallbackPayload.events.some((event) => event.type === "human_handoff_started"), true);
+
+    const lastAgentTurn = [...fallbackPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
+    assert.ok(lastAgentTurn);
+    assert.equal(lastAgentTurn.text.toLowerCase().includes("billing credit"), true);
+    assert.equal(lastAgentTurn.text.toLowerCase().includes("tool timed out"), true);
+
+    const fetched = await requestJson(port, "GET", `/api/calls/${callId}`);
+    const fetchedPayload = fetched.payload as SnapshotPayload;
+    assert.equal(fetched.statusCode, 200);
+    assert.equal(fetchedPayload.demoFallback.reason, "pipecat tool exceeded latency budget");
+    assert.equal(fetchedPayload.demoFallback.mode, "tool_timeout");
   });
 });
 

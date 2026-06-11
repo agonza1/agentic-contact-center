@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { getPipecatPrototypeHealth } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
-import type { OperatorSteerAction, PocConfig, StartCallOptions, TranscriptTurn } from "../core/types";
+import type { FallbackMode, OperatorSteerAction, PocConfig, StartCallOptions, TranscriptTurn } from "../core/types";
 
 function writeJson(response: ServerResponse, statusCode: number, payload: object): void {
   response.statusCode = statusCode;
@@ -82,6 +82,29 @@ async function routeRequest(
 
     try {
       const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config);
+      writeJson(response, 200, snapshot);
+    } catch {
+      writeNotFound(response);
+    }
+    return;
+  }
+
+  const fallbackMatch = request.method === "POST" ? url.match(/^\/api\/calls\/([^/]+)\/fallback$/) : null;
+  if (fallbackMatch) {
+    const body = await readJsonBody<{ mode?: FallbackMode; reason?: string; timestamp?: string }>(request);
+
+    if (body.mode !== "tool_timeout") {
+      writeBadRequest(response, "fallback_mode_required");
+      return;
+    }
+
+    try {
+      const snapshot = await ingress.triggerFallback(
+        fallbackMatch[1],
+        body.mode,
+        body.timestamp ?? new Date().toISOString(),
+        body.reason,
+      );
       writeJson(response, 200, snapshot);
     } catch {
       writeNotFound(response);
