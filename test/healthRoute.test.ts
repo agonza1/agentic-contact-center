@@ -44,9 +44,12 @@ test("GET /health returns config-backed demo metadata", async () => {
     ok: boolean;
     demoName: string;
     runtimeSeams: string[];
+    pipecatFlow: { ready: boolean; toolCoverage: string[] };
   };
 
   assert.equal(payload.ok, true);
   assert.equal(payload.demoName, config.demoName);
   assert.equal(payload.runtimeSeams.includes("flow engine"), true);
+  assert.equal(payload.pipecatFlow.ready, true);
+  assert.equal(payload.pipecatFlow.toolCoverage.includes("goto_slide"), true);
 });

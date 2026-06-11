@@ -26,6 +26,22 @@ export interface LatencyBudgetsMs {
   ttsFirstAudio: number;
 }
 
+export interface ScriptProgress {
+  name: string;
+  expectedCallerTurns: string[];
+  matchedCallerTurns: number;
+  completed: boolean;
+}
+
+export interface PipecatFlowPrototypeStatus {
+  ready: boolean;
+  prototypeMode: "deterministic_templates";
+  transport: "adapter_ready";
+  activeTool: string | null;
+  toolCoverage: string[];
+  script: ScriptProgress;
+}
+
 export interface PocConfig {
   demoName: string;
   mode: "mocked_telephony";
@@ -70,6 +86,7 @@ export interface EventTrailEntry {
 export interface CallSnapshot {
   session: SessionMetadata;
   scenario: ScenarioMetadata;
+  pipecatFlow: PipecatFlowPrototypeStatus;
   flowState: FlowState;
   transcript: TranscriptTurn[];
   events: EventTrailEntry[];

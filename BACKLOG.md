@@ -22,7 +22,7 @@ Status: implemented on issue `#3` via `POST /api/demo/start`, `POST /api/calls/:
 Acceptance criteria:
 - Keep the slide-aware Pipecat tool contract active for the demo session.
 - Expose Pipecat prototype readiness and tool coverage through live status.
-Status: pending in the TypeScript scaffold.
+Status: implemented on issue `#4` via deterministic flow state transitions, policy-hold gating, scripted caller turns, and Pipecat readiness/tool coverage in `GET /health` plus call snapshots.
 
 ### CUE-004 OpenClaw per-call session integration
 Acceptance criteria:
@@ -42,11 +42,11 @@ Acceptance criteria:
 - Keep fallback state and rationale visible in operator state.
 Status: pending in the TypeScript scaffold.
 
-## QA handoff for issue #3
+## QA handoff for issue #4
 
 - Run `npm test` from the repo root.
 - Start the server with `npm start`.
-- `POST /api/demo/start` should return `201` with a stable `demo-call-0001` style id and seeded scenario metadata.
-- `POST /api/calls/:callId/caller-turn` should append ordered caller transcript turns.
-- `GET /api/calls/:callId` should return the current snapshot, flow state, transcript, event trail, and latency budgets.
-- `GET /api/calls/does-not-exist` should return `404` and blank caller-turn text should return `400`.
+- `POST /api/demo/start` should return `201` with Pipecat readiness metadata and `demo-call-0001` style ids.
+- Post the four seeded caller turns from `README.md` to `POST /api/calls/:callId/caller-turn` in order.
+- After the second turn, the call snapshot should be in `policy_hold` and the latest agent turn should not promise a billing credit.
+- After the fourth turn, `GET /api/calls/:callId` should show `wrap`, full transcript history, script completion, and the operator-steer events.

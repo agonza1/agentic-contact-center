@@ -8,7 +8,7 @@ import type {
 
 export interface TelephonyIngress {
   startCall(config: PocConfig): Promise<CallSnapshot>;
-  appendCallerTurn(callId: string, turn: TranscriptTurn): Promise<CallSnapshot>;
+  appendCallerTurn(callId: string, turn: TranscriptTurn, config: PocConfig): Promise<CallSnapshot>;
 }
 
 export interface FlowEngine {

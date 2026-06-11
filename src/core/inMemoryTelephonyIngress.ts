@@ -1,9 +1,18 @@
+import { applyDeterministicPipecatFlow, buildPipecatFlowPrototypeStatus } from "./pipecatFlowPrototype";
 import type { CallSnapshot, PocConfig, TranscriptTurn } from "./types";
 
 function cloneSnapshot(snapshot: CallSnapshot): CallSnapshot {
   return {
     session: { ...snapshot.session },
     scenario: { ...snapshot.scenario },
+    pipecatFlow: {
+      ...snapshot.pipecatFlow,
+      toolCoverage: [...snapshot.pipecatFlow.toolCoverage],
+      script: {
+        ...snapshot.pipecatFlow.script,
+        expectedCallerTurns: [...snapshot.pipecatFlow.script.expectedCallerTurns],
+      },
+    },
     flowState: snapshot.flowState,
     transcript: snapshot.transcript.map((turn) => ({ ...turn })),
     events: snapshot.events.map((event) => ({ ...event, detail: { ...event.detail } })),
@@ -40,6 +49,7 @@ export class InMemoryTelephonyIngress {
         defaultSupervisorSteer: config.policy.defaultSupervisorSteer,
         operatorChannel: config.operator.channel,
       },
+      pipecatFlow: buildPipecatFlowPrototypeStatus(),
       flowState: "call_started",
       transcript: [],
       events: [
@@ -59,7 +69,7 @@ export class InMemoryTelephonyIngress {
     return cloneSnapshot(snapshot);
   }
 
-  async appendCallerTurn(callId: string, turn: TranscriptTurn): Promise<CallSnapshot> {
+  async appendCallerTurn(callId: string, turn: TranscriptTurn, config: PocConfig): Promise<CallSnapshot> {
     const snapshot = this.calls.get(callId);
 
     if (!snapshot) {
@@ -76,7 +86,8 @@ export class InMemoryTelephonyIngress {
         transcriptLength: snapshot.transcript.length,
       },
     });
-    snapshot.flowState = "diagnose";
+
+    applyDeterministicPipecatFlow(snapshot, config, turn);
 
     return cloneSnapshot(snapshot);
   }
