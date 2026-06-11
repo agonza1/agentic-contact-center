@@ -134,6 +134,23 @@ function setDemoFallback(snapshot: CallSnapshot, armed: boolean, timestamp: stri
   };
 }
 
+function setOperatorSteerState(
+  snapshot: CallSnapshot,
+  pending: boolean,
+  timestamp: string,
+  action: OperatorSteerAction | null,
+  reason: string | null,
+): void {
+  snapshot.operatorSteer = {
+    pending,
+    lastAction: action,
+    lastReason: reason,
+    requestedAt: pending ? timestamp : snapshot.operatorSteer.requestedAt,
+    respondedAt: pending ? snapshot.operatorSteer.respondedAt : timestamp,
+    source: action ? "mock_http_route" : snapshot.operatorSteer.source,
+  };
+}
+
 export function buildPipecatFlowPrototypeStatus(): PipecatFlowPrototypeStatus {
   return {
     ready: true,
@@ -177,6 +194,7 @@ export function applyDeterministicPipecatFlow(
     const expectedTurn = SCRIPTED_CALLER_TURNS[snapshot.pipecatFlow.script.matchedCallerTurns] ?? null;
 
     snapshot.pipecatFlow.activeTool = "ask_operator";
+    setOperatorSteerState(snapshot, true, turn.timestamp, "ask_operator", "script_diverged");
     transitionFlowState(snapshot, "policy_hold", turn.timestamp, "script_diverged");
     recordEvent(snapshot, "script_diverged", turn.timestamp, {
       matchedCallerTurns: snapshot.pipecatFlow.script.matchedCallerTurns,
@@ -220,6 +238,7 @@ export function applyDeterministicPipecatFlow(
 
   if (callerTurnCount === 3) {
     snapshot.pipecatFlow.activeTool = "ask_operator";
+    setOperatorSteerState(snapshot, true, turn.timestamp, config.policy.defaultSupervisorSteer, "safe_offer_review_requested");
     transitionFlowState(snapshot, "operator_steer", turn.timestamp, "safe_offer_review_requested");
     recordEvent(snapshot, "operator_steer_requested", turn.timestamp, {
       recommendation: config.policy.defaultSupervisorSteer,
@@ -252,6 +271,7 @@ export function applyOperatorSteer(
   reason?: string,
 ): void {
   snapshot.pipecatFlow.activeTool = "ask_operator";
+  setOperatorSteerState(snapshot, false, timestamp, action, reason ?? null);
   appendOperatorTurn(snapshot, `operator steer: ${action}`, timestamp);
   recordEvent(snapshot, "operator_steer_applied", timestamp, {
     action,

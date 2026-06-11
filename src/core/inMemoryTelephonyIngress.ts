@@ -16,6 +16,7 @@ function cloneSnapshot(snapshot: CallSnapshot): CallSnapshot {
     },
     scenario: { ...snapshot.scenario },
     demoFallback: { ...snapshot.demoFallback },
+    operatorSteer: { ...snapshot.operatorSteer },
     pipecatFlow: {
       ...snapshot.pipecatFlow,
       toolCoverage: [...snapshot.pipecatFlow.toolCoverage],
@@ -92,6 +93,14 @@ export class InMemoryTelephonyIngress {
         reason: null,
         armedAt: null,
         disarmedAt: null,
+        source: null,
+      },
+      operatorSteer: {
+        pending: false,
+        lastAction: null,
+        lastReason: null,
+        requestedAt: null,
+        respondedAt: null,
         source: null,
       },
       pipecatFlow: buildPipecatFlowPrototypeStatus(),

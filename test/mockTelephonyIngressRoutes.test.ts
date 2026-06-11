@@ -14,6 +14,14 @@ interface SnapshotPayload {
     armedAt: string | null;
     disarmedAt: string | null;
   };
+  operatorSteer: {
+    pending: boolean;
+    lastAction: string | null;
+    lastReason: string | null;
+    requestedAt: string | null;
+    respondedAt: string | null;
+    source: string | null;
+  };
   pipecatFlow: {
     activeTool: string | null;
     script: { matchedCallerTurns: number; completed: boolean };
@@ -100,6 +108,14 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
       };
       scenario: { mode: string; policyProfile: string };
       demoFallback: { armed: boolean; reason: string | null; armedAt: string | null; disarmedAt: string | null };
+      operatorSteer: {
+        pending: boolean;
+        lastAction: string | null;
+        lastReason: string | null;
+        requestedAt: string | null;
+        respondedAt: string | null;
+        source: string | null;
+      };
       pipecatFlow: { ready: boolean; toolCoverage: string[] };
       events: Array<{ type: string }>;
       latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
@@ -124,6 +140,14 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
       reason: null,
       armedAt: null,
       disarmedAt: null,
+      source: null,
+    });
+    assert.deepEqual(startedPayload.operatorSteer, {
+      pending: false,
+      lastAction: null,
+      lastReason: null,
+      requestedAt: null,
+      respondedAt: null,
       source: null,
     });
     assert.deepEqual(
@@ -194,6 +218,14 @@ test("the scripted flow pauses for operator steer and resumes with an approved s
     assert.equal(pending.statusCode, 200);
     assert.equal(pendingPayload.flowState, "operator_steer");
     assert.equal(pendingPayload.events.some((event) => event.type === "operator_steer_requested"), true);
+    assert.deepEqual(pendingPayload.operatorSteer, {
+      pending: true,
+      lastAction: "approve_offer",
+      lastReason: "safe_offer_review_requested",
+      requestedAt: "2026-06-10T14:00:10.000Z",
+      respondedAt: null,
+      source: "mock_http_route",
+    });
 
     const steered = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
       action: "approve_offer",
@@ -204,6 +236,14 @@ test("the scripted flow pauses for operator steer and resumes with an approved s
     assert.equal(steeredPayload.flowState, "steered_response");
     assert.equal(steeredPayload.events.some((event) => event.type === "operator_steer_applied"), true);
     assert.equal(steeredPayload.transcript.some((turn) => turn.speaker === "operator"), true);
+    assert.deepEqual(steeredPayload.operatorSteer, {
+      pending: false,
+      lastAction: "approve_offer",
+      lastReason: null,
+      requestedAt: "2026-06-10T14:00:10.000Z",
+      respondedAt: "2026-06-10T14:00:11.000Z",
+      source: "mock_http_route",
+    });
 
     const safeAgentTurn = [...steeredPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
     assert.ok(safeAgentTurn);

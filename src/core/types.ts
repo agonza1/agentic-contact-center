@@ -115,6 +115,15 @@ export interface DemoFallbackState {
   source: "mock_http_route" | null;
 }
 
+export interface OperatorSteerState {
+  pending: boolean;
+  lastAction: OperatorSteerAction | null;
+  lastReason: string | null;
+  requestedAt: string | null;
+  respondedAt: string | null;
+  source: "mock_http_route" | null;
+}
+
 export interface EventTrailEntry {
   type: string;
   at: string;
@@ -125,6 +134,7 @@ export interface CallSnapshot {
   session: SessionMetadata;
   scenario: ScenarioMetadata;
   demoFallback: DemoFallbackState;
+  operatorSteer: OperatorSteerState;
   pipecatFlow: PipecatFlowPrototypeStatus;
   flowState: FlowState;
   transcript: TranscriptTurn[];
