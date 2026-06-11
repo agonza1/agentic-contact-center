@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { getPipecatPrototypeHealth } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
-import type { PocConfig, TranscriptTurn } from "../core/types";
+import type { PocConfig, StartCallOptions, TranscriptTurn } from "../core/types";
 
 function writeJson(response: ServerResponse, statusCode: number, payload: object): void {
   response.statusCode = statusCode;
@@ -58,7 +58,8 @@ async function routeRequest(
   }
 
   if (request.method === "POST" && url === "/api/demo/start") {
-    const snapshot = await ingress.startCall(config);
+    const body = await readJsonBody<StartCallOptions>(request);
+    const snapshot = await ingress.startCall(config, body);
     writeJson(response, 201, snapshot);
     return;
   }

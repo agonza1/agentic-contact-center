@@ -9,6 +9,7 @@ The active scaffold is the TypeScript HTTP server under `src/`. It now covers:
 - in-memory caller transcript append at `POST /api/calls/:callId/caller-turn`
 - current call snapshot lookup at `GET /api/calls/:callId`
 - deterministic Pipecat-style flow state, policy hold behavior, and tool coverage in the live call snapshot
+- OpenClaw-style per-call session envelope plus seeded latency/event trail visibility in the live call snapshot
 
 ## Run locally
 
@@ -36,7 +37,8 @@ The prototype will pause at `policy_hold` before any risky retention offer and t
 - CUE-001: scaffold and architecture baseline merged in PR `#9`
 - CUE-002 / issue `#3`: implemented on PR `#10` with mocked telephony ingress and in-memory call session bootstrap
 - CUE-003 / issue `#4`: implemented on the current branch with deterministic Pipecat-style flow state, safe policy hold behavior, and live tool coverage
-- CUE-004 through CUE-006: not yet implemented in the TypeScript scaffold
+- CUE-004 / issue `#5`: in progress on the current branch with mock OpenClaw session metadata, ordered event trail visibility, and seeded latency marks
+- CUE-005 through CUE-006: not yet implemented in the TypeScript scaffold
 
 ## Note on legacy prototype
 

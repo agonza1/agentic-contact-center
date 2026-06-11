@@ -26,6 +26,15 @@ export interface LatencyBudgetsMs {
   ttsFirstAudio: number;
 }
 
+export type LatencyBudgetStage = keyof LatencyBudgetsMs;
+
+export interface LatencyMark {
+  stage: string;
+  recordedAt: string;
+  elapsedMs: number;
+  budgetMs: number | null;
+}
+
 export interface ScriptProgress {
   name: string;
   expectedCallerTurns: string[];
@@ -61,12 +70,25 @@ export interface PocConfig {
   latencyBudgetsMs: LatencyBudgetsMs;
 }
 
+export interface StartCallOptions {
+  openclawSessionId?: string;
+  openclawSessionLabel?: string;
+}
+
+export interface OpenClawSessionEnvelope {
+  sessionId: string;
+  label: string;
+  status: "attached_mock";
+  eventTrailVersion: number;
+}
+
 export interface SessionMetadata {
   callId: string;
   demoName: string;
   providerName: string;
   providerCallId: string;
   startedAt: string;
+  openclawSession: OpenClawSessionEnvelope;
 }
 
 export interface ScenarioMetadata {
@@ -91,4 +113,5 @@ export interface CallSnapshot {
   transcript: TranscriptTurn[];
   events: EventTrailEntry[];
   latencyBudgetsMs: LatencyBudgetsMs;
+  latencyMarks: LatencyMark[];
 }
