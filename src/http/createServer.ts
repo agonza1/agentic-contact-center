@@ -1,7 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
+import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { runtimeSeams } from "../core/seams";
-import type { PocConfig } from "../core/types";
+import type { PocConfig, TranscriptTurn } from "../core/types";
 
 function writeJson(response: ServerResponse, statusCode: number, payload: object): void {
   response.statusCode = statusCode;
@@ -9,11 +10,37 @@ function writeJson(response: ServerResponse, statusCode: number, payload: object
   response.end(JSON.stringify(payload, null, 2));
 }
 
-function routeRequest(
+function writeNotFound(response: ServerResponse): void {
+  writeJson(response, 404, {
+    ok: false,
+    error: "not_found",
+  });
+}
+
+function writeBadRequest(response: ServerResponse, error: string): void {
+  writeJson(response, 400, {
+    ok: false,
+    error,
+  });
+}
+
+async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of request) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+
+  const rawBody = Buffer.concat(chunks).toString("utf8");
+  return rawBody ? (JSON.parse(rawBody) as T) : ({} as T);
+}
+
+async function routeRequest(
   request: IncomingMessage,
   response: ServerResponse,
   config: PocConfig,
-): void {
+  ingress: InMemoryTelephonyIngress,
+): Promise<void> {
   const url = request.url ?? "/";
 
   if (request.method === "GET" && url === "/health") {
@@ -28,12 +55,59 @@ function routeRequest(
     return;
   }
 
-  writeJson(response, 404, {
-    ok: false,
-    error: "not_found",
-  });
+  if (request.method === "POST" && url === "/api/demo/start") {
+    const snapshot = await ingress.startCall(config);
+    writeJson(response, 201, snapshot);
+    return;
+  }
+
+  const callerTurnMatch = request.method === "POST" ? url.match(/^\/api\/calls\/([^/]+)\/caller-turn$/) : null;
+  if (callerTurnMatch) {
+    const body = await readJsonBody<{ text?: string; timestamp?: string }>(request);
+    const text = body.text?.trim();
+
+    if (!text) {
+      writeBadRequest(response, "caller_turn_text_required");
+      return;
+    }
+
+    const turn: TranscriptTurn = {
+      speaker: "caller",
+      text,
+      timestamp: body.timestamp ?? new Date().toISOString(),
+    };
+
+    try {
+      const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn);
+      writeJson(response, 200, snapshot);
+    } catch {
+      writeNotFound(response);
+    }
+    return;
+  }
+
+  const callSnapshotMatch = request.method === "GET" ? url.match(/^\/api\/calls\/([^/]+)$/) : null;
+  if (callSnapshotMatch) {
+    const snapshot = await ingress.getSnapshot(callSnapshotMatch[1]);
+    if (!snapshot) {
+      writeNotFound(response);
+      return;
+    }
+
+    writeJson(response, 200, snapshot);
+    return;
+  }
+
+  writeNotFound(response);
 }
 
 export function buildHttpServer(config: PocConfig) {
-  return createServer((request, response) => routeRequest(request, response, config));
+  const ingress = new InMemoryTelephonyIngress();
+
+  return createServer((request, response) => {
+    void routeRequest(request, response, config, ingress).catch((error: unknown) => {
+      console.error(error);
+      writeJson(response, 500, { ok: false, error: "internal_error" });
+    });
+  });
 }

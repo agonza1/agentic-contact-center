@@ -53,6 +53,14 @@ export interface SessionMetadata {
   startedAt: string;
 }
 
+export interface ScenarioMetadata {
+  name: string;
+  mode: PocConfig["mode"];
+  policyProfile: string;
+  defaultSupervisorSteer: OperatorSteerAction;
+  operatorChannel: string;
+}
+
 export interface EventTrailEntry {
   type: string;
   at: string;
@@ -61,6 +69,7 @@ export interface EventTrailEntry {
 
 export interface CallSnapshot {
   session: SessionMetadata;
+  scenario: ScenarioMetadata;
   flowState: FlowState;
   transcript: TranscriptTurn[];
   events: EventTrailEntry[];
