@@ -1,7 +1,8 @@
-import { applyDeterministicPipecatFlow, buildPipecatFlowPrototypeStatus } from "./pipecatFlowPrototype";
+import { applyDeterministicPipecatFlow, applyOperatorSteer, buildPipecatFlowPrototypeStatus } from "./pipecatFlowPrototype";
 import type {
   CallSnapshot,
   LatencyBudgetStage,
+  OperatorSteerAction,
   PocConfig,
   StartCallOptions,
   TranscriptTurn,
@@ -14,6 +15,8 @@ function cloneSnapshot(snapshot: CallSnapshot): CallSnapshot {
       openclawSession: { ...snapshot.session.openclawSession },
     },
     scenario: { ...snapshot.scenario },
+    demoFallback: { ...snapshot.demoFallback },
+    operatorSteer: { ...snapshot.operatorSteer },
     pipecatFlow: {
       ...snapshot.pipecatFlow,
       toolCoverage: [...snapshot.pipecatFlow.toolCoverage],
@@ -85,6 +88,21 @@ export class InMemoryTelephonyIngress {
         defaultSupervisorSteer: config.policy.defaultSupervisorSteer,
         operatorChannel: config.operator.channel,
       },
+      demoFallback: {
+        armed: false,
+        reason: null,
+        armedAt: null,
+        disarmedAt: null,
+        source: null,
+      },
+      operatorSteer: {
+        pending: false,
+        lastAction: null,
+        lastReason: null,
+        requestedAt: null,
+        respondedAt: null,
+        source: null,
+      },
       pipecatFlow: buildPipecatFlowPrototypeStatus(),
       flowState: "call_started",
       transcript: [],
@@ -148,6 +166,30 @@ export class InMemoryTelephonyIngress {
     if (snapshot.transcript.at(-1)?.speaker === "agent") {
       recordLatencyMark(snapshot, "agent_response_ready", turn.timestamp, "ttsFirstAudio");
     }
+
+    return cloneSnapshot(snapshot);
+  }
+
+  async applyOperatorSteer(
+    callId: string,
+    action: OperatorSteerAction,
+    timestamp: string,
+    reason?: string,
+  ): Promise<CallSnapshot> {
+    const snapshot = this.calls.get(callId);
+
+    if (!snapshot) {
+      throw new Error(`Unknown call id: ${callId}`);
+    }
+
+    const requiresPendingState = action === "approve_offer" || action === "escalate_to_human" || action === "resume";
+    if (requiresPendingState && snapshot.flowState !== "policy_hold" && snapshot.flowState !== "operator_steer") {
+      throw new Error(`Call is not awaiting operator steer: ${callId}`);
+    }
+
+    applyOperatorSteer(snapshot, action, timestamp, reason);
+    recordLatencyMark(snapshot, "operator_notified", timestamp, "operatorNotification");
+    recordLatencyMark(snapshot, "agent_response_ready", timestamp, "ttsFirstAudio");
 
     return cloneSnapshot(snapshot);
   }

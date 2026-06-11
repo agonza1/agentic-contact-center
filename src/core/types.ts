@@ -9,7 +9,15 @@ export type FlowState =
 
 export type Speaker = "caller" | "agent" | "operator" | "system";
 
-export type OperatorSteerAction = "approve_offer" | "escalate_to_human";
+export type OperatorSteerAction =
+  | "approve_offer"
+  | "escalate_to_human"
+  | "pause"
+  | "resume"
+  | "goto_slide"
+  | "ask_operator"
+  | "arm_fallback"
+  | "disarm_fallback";
 
 export type FallbackMode = "tool_timeout";
 
@@ -99,6 +107,23 @@ export interface ScenarioMetadata {
   operatorChannel: string;
 }
 
+export interface DemoFallbackState {
+  armed: boolean;
+  reason: string | null;
+  armedAt: string | null;
+  disarmedAt: string | null;
+  source: "mock_http_route" | null;
+}
+
+export interface OperatorSteerState {
+  pending: boolean;
+  lastAction: OperatorSteerAction | null;
+  lastReason: string | null;
+  requestedAt: string | null;
+  respondedAt: string | null;
+  source: "mock_http_route" | null;
+}
+
 export interface EventTrailEntry {
   type: string;
   at: string;
@@ -108,6 +133,8 @@ export interface EventTrailEntry {
 export interface CallSnapshot {
   session: SessionMetadata;
   scenario: ScenarioMetadata;
+  demoFallback: DemoFallbackState;
+  operatorSteer: OperatorSteerState;
   pipecatFlow: PipecatFlowPrototypeStatus;
   flowState: FlowState;
   transcript: TranscriptTurn[];
