@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { getPipecatPrototypeHealth } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
-import type { PocConfig, StartCallOptions, TranscriptTurn } from "../core/types";
+import type { OperatorSteerAction, PocConfig, StartCallOptions, TranscriptTurn } from "../core/types";
 
 function writeJson(response: ServerResponse, statusCode: number, payload: object): void {
   response.statusCode = statusCode;
@@ -84,6 +84,31 @@ async function routeRequest(
       const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config);
       writeJson(response, 200, snapshot);
     } catch {
+      writeNotFound(response);
+    }
+    return;
+  }
+
+  const operatorSteerMatch = request.method === "POST" ? url.match(/^\/api\/calls\/([^/]+)\/operator-steer$/) : null;
+  if (operatorSteerMatch) {
+    const body = await readJsonBody<{ action?: OperatorSteerAction; timestamp?: string }>(request);
+    if (body.action !== "approve_offer" && body.action !== "escalate_to_human") {
+      writeBadRequest(response, "operator_steer_action_required");
+      return;
+    }
+
+    try {
+      const snapshot = await ingress.applyOperatorSteer(
+        operatorSteerMatch[1],
+        body.action,
+        body.timestamp ?? new Date().toISOString(),
+      );
+      writeJson(response, 200, snapshot);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Call is not awaiting operator steer")) {
+        writeBadRequest(response, "operator_steer_not_pending");
+        return;
+      }
       writeNotFound(response);
     }
     return;

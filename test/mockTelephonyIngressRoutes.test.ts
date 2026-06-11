@@ -5,11 +5,15 @@ import { request } from "node:http";
 import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildHttpServer } from "../src/http/createServer";
 
-interface ScriptedWrapPayload {
+interface SnapshotPayload {
   flowState: string;
   transcript: Array<{ speaker: string; text: string }>;
-  pipecatFlow: { script: { matchedCallerTurns: number; completed: boolean } };
+  pipecatFlow: {
+    activeTool: string | null;
+    script: { matchedCallerTurns: number; completed: boolean };
+  };
   events: Array<{ type: string }>;
+  latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
 }
 
 async function withServer<T>(run: (port: number) => Promise<T>): Promise<T> {
@@ -133,10 +137,7 @@ test("the risky offer boundary parks the flow in policy hold without promising a
       text: "I want to cancel my policy today.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
-    const firstPayload = firstTurn.payload as {
-      flowState: string;
-      transcript: Array<{ speaker: string; text: string }>;
-    };
+    const firstPayload = firstTurn.payload as SnapshotPayload;
     assert.equal(firstTurn.statusCode, 200);
     assert.equal(firstPayload.flowState, "diagnose");
     assert.deepEqual(firstPayload.transcript.map((turn) => turn.speaker), ["caller", "agent"]);
@@ -145,12 +146,7 @@ test("the risky offer boundary parks the flow in policy hold without promising a
       text: "The renewal increase is too high.",
       timestamp: "2026-06-10T14:00:05.000Z",
     });
-    const secondPayload = secondTurn.payload as {
-      flowState: string;
-      transcript: Array<{ speaker: string; text: string }>;
-      events: Array<{ type: string }>;
-      latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
-    };
+    const secondPayload = secondTurn.payload as SnapshotPayload;
     assert.equal(secondTurn.statusCode, 200);
     assert.equal(secondPayload.flowState, "policy_hold");
     assert.equal(secondPayload.events.some((event) => event.type === "policy_hold_entered"), true);
@@ -162,51 +158,109 @@ test("the risky offer boundary parks the flow in policy hold without promising a
   });
 });
 
-test("the seeded scripted conversation progresses to a safe deterministic wrap", async () => {
+test("the scripted flow pauses for operator steer and resumes with an approved safe response", async () => {
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start");
     const callId = (started.payload as { session: { callId: string } }).session.callId;
 
-    const scriptedTurns = [
-      ["I want to cancel my policy today.", "2026-06-10T14:00:00.000Z"],
-      ["The renewal increase is too high.", "2026-06-10T14:00:05.000Z"],
-      ["Okay, what safe options can you review for me?", "2026-06-10T14:00:10.000Z"],
-      ["Thanks, please note that follow-up and close the call.", "2026-06-10T14:00:15.000Z"],
-    ] as const;
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
 
-    let latestPayload: ScriptedWrapPayload | null = null;
+    const pending = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+    const pendingPayload = pending.payload as SnapshotPayload;
+    assert.equal(pending.statusCode, 200);
+    assert.equal(pendingPayload.flowState, "operator_steer");
+    assert.equal(pendingPayload.events.some((event) => event.type === "operator_steer_requested"), true);
 
-    for (const [text, timestamp] of scriptedTurns) {
-      const response = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, { text, timestamp });
-      assert.equal(response.statusCode, 200);
-      latestPayload = response.payload as ScriptedWrapPayload;
-    }
+    const steered = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "approve_offer",
+      timestamp: "2026-06-10T14:00:11.000Z",
+    });
+    const steeredPayload = steered.payload as SnapshotPayload;
+    assert.equal(steered.statusCode, 200);
+    assert.equal(steeredPayload.flowState, "steered_response");
+    assert.equal(steeredPayload.events.some((event) => event.type === "operator_steer_applied"), true);
+    assert.equal(steeredPayload.transcript.some((turn) => turn.speaker === "operator"), true);
 
-    assert.ok(latestPayload);
-    assert.equal(latestPayload.flowState, "wrap");
-    assert.equal(latestPayload.pipecatFlow.script.matchedCallerTurns, 4);
-    assert.equal(latestPayload.pipecatFlow.script.completed, true);
-    assert.equal(latestPayload.events.some((event) => event.type === "operator_steer_requested"), true);
+    const safeAgentTurn = [...steeredPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
+    assert.ok(safeAgentTurn);
+    assert.equal(safeAgentTurn.text.includes("will not promise any billing credit"), true);
 
-    const agentTurns = latestPayload.transcript.filter((turn) => turn.speaker === "agent");
-    const steeredResponse = agentTurns.find((turn) => turn.text.includes("will not promise any billing credit"));
-    assert.ok(steeredResponse);
+    const wrapped = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Thanks, please note that follow-up and close the call.",
+      timestamp: "2026-06-10T14:00:15.000Z",
+    });
+    const wrappedPayload = wrapped.payload as SnapshotPayload;
+    assert.equal(wrapped.statusCode, 200);
+    assert.equal(wrappedPayload.flowState, "wrap");
+    assert.equal(wrappedPayload.pipecatFlow.script.matchedCallerTurns, 4);
+    assert.equal(wrappedPayload.pipecatFlow.script.completed, true);
   });
 });
 
-test("unknown calls and invalid caller turns are rejected", async () => {
+test("an escalation steer triggers the human handoff path", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+
+    const steered = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "escalate_to_human",
+      timestamp: "2026-06-10T14:00:06.000Z",
+    });
+    const steeredPayload = steered.payload as SnapshotPayload;
+    assert.equal(steered.statusCode, 200);
+    assert.equal(steeredPayload.flowState, "wrap");
+    assert.equal(steeredPayload.events.some((event) => event.type === "human_handoff_started"), true);
+
+    const lastAgentTurn = [...steeredPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
+    assert.ok(lastAgentTurn);
+    assert.equal(lastAgentTurn.text.toLowerCase().includes("licensed retention specialist"), true);
+  });
+});
+
+test("unknown calls and invalid operator steer requests are rejected", async () => {
   await withServer(async (port) => {
     const missing = await requestJson(port, "GET", "/api/calls/does-not-exist");
     assert.equal(missing.statusCode, 404);
 
     const started = await requestJson(port, "POST", "/api/demo/start");
     const callId = (started.payload as { session: { callId: string } }).session.callId;
-    const invalid = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+    const invalidTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
       text: "   ",
     });
-    const invalidPayload = invalid.payload as { error: string };
-    assert.equal(invalid.statusCode, 400);
-    assert.equal(invalidPayload.error, "caller_turn_text_required");
+    const invalidTurnPayload = invalidTurn.payload as { error: string };
+    assert.equal(invalidTurn.statusCode, 400);
+    assert.equal(invalidTurnPayload.error, "caller_turn_text_required");
+
+    const invalidSteer = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {});
+    const invalidSteerPayload = invalidSteer.payload as { error: string };
+    assert.equal(invalidSteer.statusCode, 400);
+    assert.equal(invalidSteerPayload.error, "operator_steer_action_required");
+
+    const notPending = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "approve_offer",
+    });
+    const notPendingPayload = notPending.payload as { error: string };
+    assert.equal(notPending.statusCode, 400);
+    assert.equal(notPendingPayload.error, "operator_steer_not_pending");
   });
 });
 
@@ -224,12 +278,7 @@ test("off-script caller turns pause the prototype for operator guidance", async 
       text: "Actually I just need to update my address.",
       timestamp: "2026-06-10T14:00:05.000Z",
     });
-    const divergentPayload = divergentTurn.payload as {
-      flowState: string;
-      pipecatFlow: { activeTool: string | null; script: { matchedCallerTurns: number; completed: boolean } };
-      transcript: Array<{ speaker: string; text: string }>;
-      events: Array<{ type: string }>;
-    };
+    const divergentPayload = divergentTurn.payload as SnapshotPayload;
 
     assert.equal(divergentTurn.statusCode, 200);
     assert.equal(divergentPayload.flowState, "policy_hold");

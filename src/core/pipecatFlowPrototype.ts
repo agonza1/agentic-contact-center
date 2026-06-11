@@ -2,6 +2,7 @@ import type {
   CallSnapshot,
   EventTrailEntry,
   FlowState,
+  OperatorSteerAction,
   PipecatFlowPrototypeStatus,
   PocConfig,
   ScriptProgress,
@@ -53,18 +54,28 @@ function transitionFlowState(
   snapshot.flowState = nextState;
 }
 
+function appendTranscriptTurn(snapshot: CallSnapshot, turn: TranscriptTurn): void {
+  snapshot.transcript.push(turn);
+  recordEvent(snapshot, `${turn.speaker}_turn_appended`, turn.timestamp, {
+    flowState: snapshot.flowState,
+    text: turn.text,
+    transcriptLength: snapshot.transcript.length,
+  });
+}
+
 function appendAgentTurn(snapshot: CallSnapshot, text: string, timestamp: string): void {
-  const turn: TranscriptTurn = {
+  appendTranscriptTurn(snapshot, {
     speaker: "agent",
     text,
     timestamp,
-  };
+  });
+}
 
-  snapshot.transcript.push(turn);
-  recordEvent(snapshot, "agent_turn_appended", timestamp, {
-    flowState: snapshot.flowState,
+function appendOperatorTurn(snapshot: CallSnapshot, text: string, timestamp: string): void {
+  appendTranscriptTurn(snapshot, {
+    speaker: "operator",
     text,
-    transcriptLength: snapshot.transcript.length,
+    timestamp,
   });
 }
 
@@ -93,9 +104,9 @@ function computeScriptProgress(snapshot: CallSnapshot): ScriptProgress {
   };
 }
 
-function buildApprovedOfferResponse(config: PocConfig): string {
-  if (config.policy.defaultSupervisorSteer === "escalate_to_human") {
-    return "Thanks for waiting. I am escalating this to a licensed retention specialist because I cannot make an offer without human review, and I will not promise any billing credit on this call.";
+function buildSteeredResponse(action: OperatorSteerAction): string {
+  if (action === "escalate_to_human") {
+    return "Thanks for waiting. I am connecting you to a licensed retention specialist because I cannot make an offer without human review, and I will not promise any billing credit on this call.";
   }
 
   return "Thanks for waiting. I can review approved next steps like a coverage fit check or a retention specialist follow-up, and I will not promise any billing credit on this call.";
@@ -192,12 +203,11 @@ export function applyDeterministicPipecatFlow(
       recommendation: config.policy.defaultSupervisorSteer,
       operatorChannel: snapshot.scenario.operatorChannel,
     });
-    recordEvent(snapshot, "operator_steer_applied", turn.timestamp, {
-      action: config.policy.defaultSupervisorSteer,
-      source: "deterministic_default",
-    });
-    transitionFlowState(snapshot, "steered_response", turn.timestamp, "operator_guidance_available");
-    appendAgentTurn(snapshot, buildApprovedOfferResponse(config), turn.timestamp);
+    appendAgentTurn(
+      snapshot,
+      "I can review safe next steps once an operator approves the guidance path. I am holding here for supervisor steer.",
+      turn.timestamp,
+    );
     return;
   }
 
@@ -211,4 +221,30 @@ export function applyDeterministicPipecatFlow(
     );
     snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
   }
+}
+
+export function applyOperatorSteer(
+  snapshot: CallSnapshot,
+  action: OperatorSteerAction,
+  timestamp: string,
+): void {
+  snapshot.pipecatFlow.activeTool = "ask_operator";
+  appendOperatorTurn(snapshot, `operator steer: ${action}`, timestamp);
+  recordEvent(snapshot, "operator_steer_applied", timestamp, {
+    action,
+    source: "mock_http_route",
+  });
+
+  if (action === "escalate_to_human") {
+    recordEvent(snapshot, "human_handoff_started", timestamp, {
+      operatorChannel: snapshot.scenario.operatorChannel,
+    });
+    transitionFlowState(snapshot, "wrap", timestamp, "operator_escalated_to_human");
+    appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
+    snapshot.pipecatFlow.activeTool = "pause_presentation";
+    return;
+  }
+
+  transitionFlowState(snapshot, "steered_response", timestamp, "operator_guidance_available");
+  appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
 }

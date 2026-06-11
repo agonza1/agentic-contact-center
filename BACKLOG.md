@@ -28,13 +28,13 @@ Status: implemented on issue `#4` via deterministic flow state transitions, poli
 Acceptance criteria:
 - Attach an OpenClaw session id/label to a live demo call.
 - Surface the attached per-call session in operator-visible state.
-Status: in progress on branch `issue-5-openclaw-session-envelope` with mock OpenClaw session metadata, ordered event trail visibility, and seeded latency marks exposed in call snapshots.
+Status: implemented in merged PR `#13` with mock OpenClaw session metadata, ordered event trail visibility, and seeded latency marks exposed in call snapshots.
 
 ### CUE-005 Slack human-steer path
 Acceptance criteria:
 - Provide a human-steer endpoint that records a Slack-style command and can trigger a lightweight action.
 - Support at least pause, resume, goto-slide, and ask operations.
-Status: pending in the TypeScript scaffold.
+Status: in progress on branch `issue-6-operator-steer-path` with a mocked HTTP steer endpoint, explicit approve/escalate actions, and deterministic resume coverage.
 
 ### CUE-006 Demo fallback
 Acceptance criteria:
