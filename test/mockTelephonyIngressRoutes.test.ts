@@ -8,6 +8,12 @@ import { buildHttpServer } from "../src/http/createServer";
 interface SnapshotPayload {
   flowState: string;
   transcript: Array<{ speaker: string; text: string }>;
+  demoFallback: {
+    armed: boolean;
+    reason: string | null;
+    armedAt: string | null;
+    disarmedAt: string | null;
+  };
   pipecatFlow: {
     activeTool: string | null;
     script: { matchedCallerTurns: number; completed: boolean };
@@ -93,6 +99,7 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
         openclawSession: { sessionId: string; label: string; status: string; eventTrailVersion: number };
       };
       scenario: { mode: string; policyProfile: string };
+      demoFallback: { armed: boolean; reason: string | null; armedAt: string | null; disarmedAt: string | null };
       pipecatFlow: { ready: boolean; toolCoverage: string[] };
       events: Array<{ type: string }>;
       latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
@@ -112,6 +119,13 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
       "call_bootstrapped",
       "openclaw_session_attached",
     ]);
+    assert.deepEqual(startedPayload.demoFallback, {
+      armed: false,
+      reason: null,
+      armedAt: null,
+      disarmedAt: null,
+      source: null,
+    });
     assert.deepEqual(
       startedPayload.latencyMarks.map((mark) => ({ stage: mark.stage, budgetMs: mark.budgetMs })),
       [
@@ -236,6 +250,44 @@ test("an escalation steer triggers the human handoff path", async () => {
   });
 });
 
+
+test("operators can arm and disarm demo fallback with visible rationale", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const missingReason = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "arm_fallback",
+    });
+    const missingReasonPayload = missingReason.payload as { error: string };
+    assert.equal(missingReason.statusCode, 400);
+    assert.equal(missingReasonPayload.error, "operator_fallback_reason_required");
+
+    const armed = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "arm_fallback",
+      reason: "audio degraded during live demo",
+      timestamp: "2026-06-10T14:00:01.000Z",
+    });
+    const armedPayload = armed.payload as SnapshotPayload;
+    assert.equal(armed.statusCode, 200);
+    assert.equal(armedPayload.demoFallback.armed, true);
+    assert.equal(armedPayload.demoFallback.reason, "audio degraded during live demo");
+    assert.equal(armedPayload.events.some((event) => event.type === "demo_fallback_armed"), true);
+    assert.equal(armedPayload.pipecatFlow.activeTool, "pause_presentation");
+
+    const disarmed = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "disarm_fallback",
+      timestamp: "2026-06-10T14:00:03.000Z",
+    });
+    const disarmedPayload = disarmed.payload as SnapshotPayload;
+    assert.equal(disarmed.statusCode, 200);
+    assert.equal(disarmedPayload.demoFallback.armed, false);
+    assert.equal(disarmedPayload.demoFallback.reason, null);
+    assert.equal(disarmedPayload.demoFallback.disarmedAt, "2026-06-10T14:00:03.000Z");
+    assert.equal(disarmedPayload.events.some((event) => event.type === "demo_fallback_disarmed"), true);
+    assert.equal(disarmedPayload.pipecatFlow.activeTool, "ask_operator");
+  });
+});
 
 test("slack-style operator commands pause, redirect, and resume the scripted flow", async () => {
   await withServer(async (port) => {

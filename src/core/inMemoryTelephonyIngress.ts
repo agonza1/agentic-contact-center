@@ -15,6 +15,7 @@ function cloneSnapshot(snapshot: CallSnapshot): CallSnapshot {
       openclawSession: { ...snapshot.session.openclawSession },
     },
     scenario: { ...snapshot.scenario },
+    demoFallback: { ...snapshot.demoFallback },
     pipecatFlow: {
       ...snapshot.pipecatFlow,
       toolCoverage: [...snapshot.pipecatFlow.toolCoverage],
@@ -86,6 +87,13 @@ export class InMemoryTelephonyIngress {
         defaultSupervisorSteer: config.policy.defaultSupervisorSteer,
         operatorChannel: config.operator.channel,
       },
+      demoFallback: {
+        armed: false,
+        reason: null,
+        armedAt: null,
+        disarmedAt: null,
+        source: null,
+      },
       pipecatFlow: buildPipecatFlowPrototypeStatus(),
       flowState: "call_started",
       transcript: [],
@@ -153,7 +161,12 @@ export class InMemoryTelephonyIngress {
     return cloneSnapshot(snapshot);
   }
 
-  async applyOperatorSteer(callId: string, action: OperatorSteerAction, timestamp: string): Promise<CallSnapshot> {
+  async applyOperatorSteer(
+    callId: string,
+    action: OperatorSteerAction,
+    timestamp: string,
+    reason?: string,
+  ): Promise<CallSnapshot> {
     const snapshot = this.calls.get(callId);
 
     if (!snapshot) {
@@ -165,7 +178,7 @@ export class InMemoryTelephonyIngress {
       throw new Error(`Call is not awaiting operator steer: ${callId}`);
     }
 
-    applyOperatorSteer(snapshot, action, timestamp);
+    applyOperatorSteer(snapshot, action, timestamp, reason);
     recordLatencyMark(snapshot, "operator_notified", timestamp, "operatorNotification");
     recordLatencyMark(snapshot, "agent_response_ready", timestamp, "ttsFirstAudio");
 

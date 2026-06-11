@@ -113,7 +113,25 @@ function buildSteeredResponse(action: OperatorSteerAction): string {
     return "Thanks for waiting. I can resume the approved script and review safe next steps without promising any billing credit on this call.";
   }
 
+  if (action === "arm_fallback") {
+    return "Manual fallback is now armed. I will hold the scripted path until the operator decides whether to continue the live demo manually.";
+  }
+
+  if (action === "disarm_fallback") {
+    return "Manual fallback is now disarmed. I can return to the scripted demo path when the operator is ready.";
+  }
+
   return "Thanks for waiting. I can review approved next steps like a coverage fit check or a retention specialist follow-up, and I will not promise any billing credit on this call.";
+}
+
+function setDemoFallback(snapshot: CallSnapshot, armed: boolean, timestamp: string, reason: string | null): void {
+  snapshot.demoFallback = {
+    armed,
+    reason,
+    armedAt: armed ? timestamp : snapshot.demoFallback.armedAt,
+    disarmedAt: armed ? snapshot.demoFallback.disarmedAt : timestamp,
+    source: "mock_http_route",
+  };
 }
 
 export function buildPipecatFlowPrototypeStatus(): PipecatFlowPrototypeStatus {
@@ -231,6 +249,7 @@ export function applyOperatorSteer(
   snapshot: CallSnapshot,
   action: OperatorSteerAction,
   timestamp: string,
+  reason?: string,
 ): void {
   snapshot.pipecatFlow.activeTool = "ask_operator";
   appendOperatorTurn(snapshot, `operator steer: ${action}`, timestamp);
@@ -250,6 +269,29 @@ export function applyOperatorSteer(
       timestamp,
     );
     snapshot.pipecatFlow.activeTool = "pause_presentation";
+    return;
+  }
+
+  if (action === "arm_fallback") {
+    setDemoFallback(snapshot, true, timestamp, reason ?? "operator_requested_manual_takeover");
+    transitionFlowState(snapshot, "policy_hold", timestamp, "operator_armed_manual_fallback");
+    recordEvent(snapshot, "demo_fallback_armed", timestamp, {
+      operatorChannel: snapshot.scenario.operatorChannel,
+      reason: snapshot.demoFallback.reason,
+    });
+    appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
+    snapshot.pipecatFlow.activeTool = "pause_presentation";
+    return;
+  }
+
+  if (action === "disarm_fallback") {
+    setDemoFallback(snapshot, false, timestamp, null);
+    transitionFlowState(snapshot, "operator_steer", timestamp, "operator_disarmed_manual_fallback");
+    recordEvent(snapshot, "demo_fallback_disarmed", timestamp, {
+      operatorChannel: snapshot.scenario.operatorChannel,
+    });
+    appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
+    snapshot.pipecatFlow.activeTool = "ask_operator";
     return;
   }
 

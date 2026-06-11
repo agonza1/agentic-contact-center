@@ -40,7 +40,7 @@ Status: in progress on branch `issue-6-operator-steer-path` with a mocked HTTP s
 Acceptance criteria:
 - Allow operators to explicitly arm/disarm manual fallback for the demo.
 - Keep fallback state and rationale visible in operator state.
-Status: pending in the TypeScript scaffold.
+Status: in progress on branch `issue-6-operator-steer-path` with explicit fallback arm/disarm state and rationale exposed in call snapshots.
 
 ## QA handoff for issue #4
 

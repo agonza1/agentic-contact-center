@@ -91,7 +91,7 @@ async function routeRequest(
 
   const operatorSteerMatch = request.method === "POST" ? url.match(/^\/api\/calls\/([^/]+)\/operator-steer$/) : null;
   if (operatorSteerMatch) {
-    const body = await readJsonBody<{ action?: OperatorSteerAction; timestamp?: string }>(request);
+    const body = await readJsonBody<{ action?: OperatorSteerAction; reason?: string; timestamp?: string }>(request);
     const allowedActions: OperatorSteerAction[] = [
       "approve_offer",
       "escalate_to_human",
@@ -99,9 +99,17 @@ async function routeRequest(
       "resume",
       "goto_slide",
       "ask_operator",
+      "arm_fallback",
+      "disarm_fallback",
     ];
     if (!body.action || !allowedActions.includes(body.action)) {
       writeBadRequest(response, "operator_steer_action_required");
+      return;
+    }
+
+    const reason = body.reason?.trim();
+    if (body.action === "arm_fallback" && !reason) {
+      writeBadRequest(response, "operator_fallback_reason_required");
       return;
     }
 
@@ -110,6 +118,7 @@ async function routeRequest(
         operatorSteerMatch[1],
         body.action,
         body.timestamp ?? new Date().toISOString(),
+        reason,
       );
       writeJson(response, 200, snapshot);
     } catch (error) {
