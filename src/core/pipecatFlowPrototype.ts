@@ -140,6 +140,24 @@ export function applyDeterministicPipecatFlow(
 
   snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
 
+  if (snapshot.pipecatFlow.script.matchedCallerTurns !== callerTurnCount) {
+    const expectedTurn = SCRIPTED_CALLER_TURNS[snapshot.pipecatFlow.script.matchedCallerTurns] ?? null;
+
+    snapshot.pipecatFlow.activeTool = "ask_operator";
+    transitionFlowState(snapshot, "policy_hold", turn.timestamp, "script_diverged");
+    recordEvent(snapshot, "script_diverged", turn.timestamp, {
+      matchedCallerTurns: snapshot.pipecatFlow.script.matchedCallerTurns,
+      expectedTurn,
+      actualTurn: turn.text,
+    });
+    appendAgentTurn(
+      snapshot,
+      "This demo is tuned to the approved cancellation-rescue script. I am pausing here and requesting operator guidance before continuing.",
+      turn.timestamp,
+    );
+    return;
+  }
+
   if (callerTurnCount === 1) {
     snapshot.pipecatFlow.activeTool = "get_current_slide";
     transitionFlowState(snapshot, "greet", turn.timestamp, "caller_connected");

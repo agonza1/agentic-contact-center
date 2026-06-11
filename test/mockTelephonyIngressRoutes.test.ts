@@ -184,3 +184,37 @@ test("unknown calls and invalid caller turns are rejected", async () => {
     assert.equal(invalidPayload.error, "caller_turn_text_required");
   });
 });
+
+test("off-script caller turns pause the prototype for operator guidance", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+
+    const divergentTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Actually I just need to update my address.",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    const divergentPayload = divergentTurn.payload as {
+      flowState: string;
+      pipecatFlow: { activeTool: string | null; script: { matchedCallerTurns: number; completed: boolean } };
+      transcript: Array<{ speaker: string; text: string }>;
+      events: Array<{ type: string }>;
+    };
+
+    assert.equal(divergentTurn.statusCode, 200);
+    assert.equal(divergentPayload.flowState, "policy_hold");
+    assert.equal(divergentPayload.pipecatFlow.activeTool, "ask_operator");
+    assert.equal(divergentPayload.pipecatFlow.script.matchedCallerTurns, 1);
+    assert.equal(divergentPayload.pipecatFlow.script.completed, false);
+    assert.equal(divergentPayload.events.some((event) => event.type === "script_diverged"), true);
+
+    const lastAgentTurn = [...divergentPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
+    assert.ok(lastAgentTurn);
+    assert.equal(lastAgentTurn.text.toLowerCase().includes("requesting operator guidance"), true);
+  });
+});
