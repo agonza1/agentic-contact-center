@@ -31,6 +31,10 @@ class InvalidJsonBodyError extends Error {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
   const chunks: Buffer[] = [];
 
@@ -75,8 +79,32 @@ async function routeRequest(
   }
 
   if (request.method === "POST" && url === "/api/demo/start") {
-    const body = await readJsonBody<StartCallOptions>(request);
-    const snapshot = await ingress.startCall(config, body);
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const openclawSessionId = body.openclawSessionId;
+    if (openclawSessionId !== undefined && (typeof openclawSessionId !== "string" || !openclawSessionId.trim())) {
+      writeBadRequest(response, "openclaw_session_id_invalid");
+      return;
+    }
+
+    const openclawSessionLabel = body.openclawSessionLabel;
+    if (
+      openclawSessionLabel !== undefined &&
+      (typeof openclawSessionLabel !== "string" || !openclawSessionLabel.trim())
+    ) {
+      writeBadRequest(response, "openclaw_session_label_invalid");
+      return;
+    }
+
+    const snapshot = await ingress.startCall(config, {
+      openclawSessionId: openclawSessionId?.trim(),
+      openclawSessionLabel: openclawSessionLabel?.trim(),
+    } satisfies StartCallOptions);
     writeJson(response, 201, snapshot);
     return;
   }

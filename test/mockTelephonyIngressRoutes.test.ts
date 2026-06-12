@@ -354,6 +354,40 @@ test("malformed JSON requests fail with a client error instead of an internal er
   });
 });
 
+test("demo start rejects non-object JSON payloads and invalid session envelope fields", async () => {
+  await withServer(async (port) => {
+    const scalarPayload = await requestRaw(port, "POST", "/api/demo/start", '"not-an-object"');
+    const scalarError = scalarPayload.payload as { error: string };
+
+    assert.equal(scalarPayload.statusCode, 400);
+    assert.equal(scalarError.error, "json_object_required");
+
+    const invalidSessionId = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: 42,
+    });
+    const invalidSessionIdPayload = invalidSessionId.payload as { error: string };
+
+    assert.equal(invalidSessionId.statusCode, 400);
+    assert.equal(invalidSessionIdPayload.error, "openclaw_session_id_invalid");
+
+    const invalidSessionLabel = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "   ",
+    });
+    const invalidSessionLabelPayload = invalidSessionLabel.payload as { error: string };
+
+    assert.equal(invalidSessionLabel.statusCode, 400);
+    assert.equal(invalidSessionLabelPayload.error, "openclaw_session_label_invalid");
+
+    const trimmed = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "  heartbeat-session-99  ",
+      openclawSessionLabel: "  cluecon-demo/validated-start  ",
+    });
+    const trimmedPayload = trimmed.payload as { session: { openclawSession: { sessionId: string; label: string } } };
+    assert.equal(trimmedPayload.session.openclawSession.sessionId, "heartbeat-session-99");
+    assert.equal(trimmedPayload.session.openclawSession.label, "cluecon-demo/validated-start");
+  });
+});
+
 test("tool timeout fallback fails closed and records the fallback reason", async () => {
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start");
