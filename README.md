@@ -46,6 +46,7 @@ The command:
 - runs the seeded scripted path through policy hold, operator steer, and wrap
 - runs the fail-closed `tool_timeout` fallback path
 - writes JSON proof output with transcript, event trail, and latency marks for both scenarios
+- adds a top-level `summary` block so reviewers can inspect outcomes, event types, and latency stages quickly
 - optionally refreshes a stable latest artifact path for QA handoff or PR review attachments
 
 If `--out` is omitted, the proof file is written to `artifacts/demo-proof-<timestamp>.json`. Add `--latest-out artifacts/demo-proof-latest.json` to keep a deterministic handoff file updated alongside timestamped runs.

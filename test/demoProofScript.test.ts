@@ -29,6 +29,19 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       health: { ok: boolean };
+      summary: {
+        healthOk: boolean;
+        scripted: {
+          flowState: string;
+          transcriptTurns: number;
+          latencyStages: string[];
+        };
+        fallback: {
+          mode: string | null;
+          flowState: string;
+          eventTypes: string[];
+        };
+      };
       scripted: { outcome: string; checkpoints: { wrapped: { pipecatFlow: { script: { completed: boolean } } } } };
       fallback: { outcome: string; checkpoint: { demoFallback: { mode: string | null } } };
     };
@@ -36,10 +49,17 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     const latestArtifact = JSON.parse(await readFile(latestOutputPath, "utf8")) as typeof artifact;
 
     assert.equal(artifact.health.ok, true);
+    assert.equal(artifact.summary.healthOk, true);
     assert.equal(artifact.scripted.outcome, "scripted_wrap_complete");
     assert.equal(artifact.scripted.checkpoints.wrapped.pipecatFlow.script.completed, true);
+    assert.equal(artifact.summary.scripted.flowState, "wrap");
+    assert.equal(artifact.summary.scripted.transcriptTurns > 0, true);
+    assert.equal(artifact.summary.scripted.latencyStages.includes("policy_hold_entered"), true);
     assert.equal(artifact.fallback.outcome, "fail_closed_handoff");
     assert.equal(artifact.fallback.checkpoint.demoFallback.mode, "tool_timeout");
+    assert.equal(artifact.summary.fallback.mode, "tool_timeout");
+    assert.equal(artifact.summary.fallback.flowState, "wrap");
+    assert.equal(artifact.summary.fallback.eventTypes.includes("human_handoff_started"), true);
     assert.deepEqual(latestArtifact, artifact);
   } finally {
     await rm(tempDir, { recursive: true, force: true });

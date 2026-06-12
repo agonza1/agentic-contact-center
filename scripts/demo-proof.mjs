@@ -200,6 +200,33 @@ async function runFallbackScenario(port) {
   };
 }
 
+function summarizeArtifact(artifact) {
+  const scriptedWrapped = artifact.scripted.checkpoints.wrapped;
+  const fallbackCheckpoint = artifact.fallback.checkpoint;
+
+  return {
+    healthOk: artifact.health.ok,
+    runtimeSeams: artifact.health.runtimeSeams,
+    scripted: {
+      outcome: artifact.scripted.outcome,
+      callId: artifact.scripted.callId,
+      flowState: scriptedWrapped.flowState,
+      transcriptTurns: scriptedWrapped.transcript.length,
+      eventTypes: [...new Set(scriptedWrapped.events.map((event) => event.type))],
+      latencyStages: scriptedWrapped.latencyMarks.map((mark) => mark.stage),
+    },
+    fallback: {
+      outcome: artifact.fallback.outcome,
+      callId: artifact.fallback.callId,
+      flowState: fallbackCheckpoint.flowState,
+      mode: fallbackCheckpoint.demoFallback.mode,
+      transcriptTurns: fallbackCheckpoint.transcript.length,
+      eventTypes: [...new Set(fallbackCheckpoint.events.map((event) => event.type))],
+      latencyStages: fallbackCheckpoint.latencyMarks.map((mark) => mark.stage),
+    },
+  };
+}
+
 async function main() {
   const { outputPath, latestOutputPath } = resolveOutputPaths();
 
@@ -219,6 +246,8 @@ async function main() {
       fallback,
     };
   });
+
+  artifact.summary = summarizeArtifact(artifact);
 
   const serializedArtifact = `${JSON.stringify(artifact, null, 2)}\n`;
 
