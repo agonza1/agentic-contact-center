@@ -39,6 +39,10 @@ function getOptionalTrimmedString(value: unknown): string | undefined {
   return typeof value === "string" ? value.trim() : undefined;
 }
 
+function hasInvalidOptionalString(value: unknown): boolean {
+  return value !== undefined && typeof value !== "string";
+}
+
 function normalizeTimestamp(timestamp: unknown, error: string): string | { error: string } {
   if (timestamp === undefined) {
     return new Date().toISOString();
@@ -182,6 +186,11 @@ async function routeRequest(
       return;
     }
 
+    if (hasInvalidOptionalString(body.reason)) {
+      writeBadRequest(response, "fallback_reason_invalid");
+      return;
+    }
+
     const timestamp = normalizeTimestamp(body.timestamp, "fallback_timestamp_invalid");
     if (typeof timestamp !== "string") {
       writeBadRequest(response, timestamp.error);
@@ -189,7 +198,7 @@ async function routeRequest(
     }
 
     try {
-      const reason = typeof body.reason === "string" ? body.reason : undefined;
+      const reason = getOptionalTrimmedString(body.reason);
       const snapshot = await ingress.triggerFallback(fallbackMatch[1], mode, timestamp, reason);
       writeJson(response, 200, snapshot);
     } catch {
@@ -220,6 +229,11 @@ async function routeRequest(
     const action = body.action;
     if (!action || !allowedActions.includes(action as OperatorSteerAction)) {
       writeBadRequest(response, "operator_steer_action_required");
+      return;
+    }
+
+    if (hasInvalidOptionalString(body.reason)) {
+      writeBadRequest(response, "operator_steer_reason_invalid");
       return;
     }
 

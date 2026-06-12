@@ -521,6 +521,22 @@ test("unknown calls and invalid operator steer requests are rejected", async () 
     assert.equal(invalidSteer.statusCode, 400);
     assert.equal(invalidSteerPayload.error, "operator_steer_action_required");
 
+    const invalidFallbackReason = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {
+      mode: "tool_timeout",
+      reason: 7,
+    });
+    const invalidFallbackReasonPayload = invalidFallbackReason.payload as { error: string };
+    assert.equal(invalidFallbackReason.statusCode, 400);
+    assert.equal(invalidFallbackReasonPayload.error, "fallback_reason_invalid");
+
+    const invalidSteerReason = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "pause",
+      reason: 7,
+    });
+    const invalidSteerReasonPayload = invalidSteerReason.payload as { error: string };
+    assert.equal(invalidSteerReason.statusCode, 400);
+    assert.equal(invalidSteerReasonPayload.error, "operator_steer_reason_invalid");
+
     const notPending = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
       action: "approve_offer",
     });
