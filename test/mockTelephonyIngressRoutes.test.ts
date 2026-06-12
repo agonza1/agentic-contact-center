@@ -347,6 +347,13 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.equal(invalidMode.statusCode, 400);
     assert.equal(invalidModePayload.error, "fallback_mode_required");
 
+    const unsupportedMode = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {
+      mode: "operator_override",
+    });
+    const unsupportedModePayload = unsupportedMode.payload as { error: string };
+    assert.equal(unsupportedMode.statusCode, 400);
+    assert.equal(unsupportedModePayload.error, "fallback_mode_invalid");
+
     const fallback = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {
       mode: "tool_timeout",
       reason: "pipecat tool exceeded latency budget",

@@ -95,8 +95,13 @@ async function routeRequest(
   if (fallbackMatch) {
     const body = await readJsonBody<{ mode?: FallbackMode; reason?: string; timestamp?: string }>(request);
 
-    if (body.mode !== "tool_timeout") {
+    if (!body.mode) {
       writeBadRequest(response, "fallback_mode_required");
+      return;
+    }
+
+    if (body.mode !== "tool_timeout") {
+      writeBadRequest(response, "fallback_mode_invalid");
       return;
     }
 
