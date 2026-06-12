@@ -31,14 +31,29 @@ const SCRIPTED_CALLER_TURNS = [
   },
 ];
 
-function resolveOutputPath() {
-  const outIndex = process.argv.indexOf("--out");
-  if (outIndex >= 0 && process.argv[outIndex + 1]) {
-    return path.resolve(process.cwd(), process.argv[outIndex + 1]);
+function resolveArgPath(flag) {
+  const flagIndex = process.argv.indexOf(flag);
+  if (flagIndex >= 0 && process.argv[flagIndex + 1]) {
+    return path.resolve(process.cwd(), process.argv[flagIndex + 1]);
+  }
+
+  return undefined;
+}
+
+function resolveOutputPaths() {
+  const explicitOutputPath = resolveArgPath("--out");
+  if (explicitOutputPath) {
+    return {
+      outputPath: explicitOutputPath,
+      latestOutputPath: resolveArgPath("--latest-out"),
+    };
   }
 
   const timestamp = new Date().toISOString().replace(/[:]/g, "-");
-  return path.resolve(process.cwd(), "artifacts", `demo-proof-${timestamp}.json`);
+  return {
+    outputPath: path.resolve(process.cwd(), "artifacts", `demo-proof-${timestamp}.json`),
+    latestOutputPath: resolveArgPath("--latest-out"),
+  };
 }
 
 async function withServer(run) {
@@ -186,7 +201,7 @@ async function runFallbackScenario(port) {
 }
 
 async function main() {
-  const outputPath = resolveOutputPath();
+  const { outputPath, latestOutputPath } = resolveOutputPaths();
 
   const artifact = await withServer(async (port, config) => {
     const health = await requestJson(port, "GET", "/health");
@@ -205,10 +220,20 @@ async function main() {
     };
   });
 
+  const serializedArtifact = `${JSON.stringify(artifact, null, 2)}\n`;
+
   await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, `${JSON.stringify(artifact, null, 2)}\n`, "utf8");
+  await writeFile(outputPath, serializedArtifact, "utf8");
+
+  if (latestOutputPath && latestOutputPath !== outputPath) {
+    await mkdir(path.dirname(latestOutputPath), { recursive: true });
+    await writeFile(latestOutputPath, serializedArtifact, "utf8");
+  }
 
   console.log(`Saved proof artifact to ${path.relative(process.cwd(), outputPath)}`);
+  if (latestOutputPath && latestOutputPath !== outputPath) {
+    console.log(`Updated latest proof artifact at ${path.relative(process.cwd(), latestOutputPath)}`);
+  }
   console.log(
     JSON.stringify(
       {
