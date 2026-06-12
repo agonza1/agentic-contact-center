@@ -393,6 +393,11 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     const started = await requestJson(port, "POST", "/api/demo/start");
     const callId = (started.payload as { session: { callId: string } }).session.callId;
 
+    const scalarFallback = await requestRaw(port, "POST", `/api/calls/${callId}/fallback`, '"not-an-object"');
+    const scalarFallbackPayload = scalarFallback.payload as { error: string };
+    assert.equal(scalarFallback.statusCode, 400);
+    assert.equal(scalarFallbackPayload.error, "json_object_required");
+
     const invalidMode = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {});
     const invalidModePayload = invalidMode.payload as { error: string };
     assert.equal(invalidMode.statusCode, 400);
@@ -494,12 +499,22 @@ test("unknown calls and invalid operator steer requests are rejected", async () 
 
     const started = await requestJson(port, "POST", "/api/demo/start");
     const callId = (started.payload as { session: { callId: string } }).session.callId;
+    const scalarTurn = await requestRaw(port, "POST", `/api/calls/${callId}/caller-turn`, '"not-an-object"');
+    const scalarTurnPayload = scalarTurn.payload as { error: string };
+    assert.equal(scalarTurn.statusCode, 400);
+    assert.equal(scalarTurnPayload.error, "json_object_required");
+
     const invalidTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
       text: "   ",
     });
     const invalidTurnPayload = invalidTurn.payload as { error: string };
     assert.equal(invalidTurn.statusCode, 400);
     assert.equal(invalidTurnPayload.error, "caller_turn_text_required");
+
+    const scalarSteer = await requestRaw(port, "POST", `/api/calls/${callId}/operator-steer`, '"not-an-object"');
+    const scalarSteerPayload = scalarSteer.payload as { error: string };
+    assert.equal(scalarSteer.statusCode, 400);
+    assert.equal(scalarSteerPayload.error, "json_object_required");
 
     const invalidSteer = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {});
     const invalidSteerPayload = invalidSteer.payload as { error: string };
