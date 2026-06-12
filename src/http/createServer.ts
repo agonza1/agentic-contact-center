@@ -25,6 +25,36 @@ function writeBadRequest(response: ServerResponse, error: string): void {
   });
 }
 
+class InvalidJsonBodyError extends Error {
+  constructor() {
+    super("invalid_json_body");
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getOptionalTrimmedString(value: unknown): string | undefined {
+  return typeof value === "string" ? value.trim() : undefined;
+}
+
+function hasInvalidOptionalString(value: unknown): boolean {
+  return value !== undefined && typeof value !== "string";
+}
+
+function normalizeTimestamp(timestamp: unknown, error: string): string | { error: string } {
+  if (timestamp === undefined) {
+    return new Date().toISOString();
+  }
+
+  if (typeof timestamp !== "string" || !timestamp.trim() || Number.isNaN(Date.parse(timestamp))) {
+    return { error };
+  }
+
+  return timestamp;
+}
+
 async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
   const chunks: Buffer[] = [];
 
@@ -33,7 +63,16 @@ async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
   }
 
   const rawBody = Buffer.concat(chunks).toString("utf8");
-  return rawBody ? (JSON.parse(rawBody) as T) : ({} as T);
+
+  if (!rawBody) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(rawBody) as T;
+  } catch {
+    throw new InvalidJsonBodyError();
+  }
 }
 
 async function routeRequest(
@@ -60,26 +99,62 @@ async function routeRequest(
   }
 
   if (request.method === "POST" && url === "/api/demo/start") {
-    const body = await readJsonBody<StartCallOptions>(request);
-    const snapshot = await ingress.startCall(config, body);
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const openclawSessionId = body.openclawSessionId;
+    if (openclawSessionId !== undefined && (typeof openclawSessionId !== "string" || !openclawSessionId.trim())) {
+      writeBadRequest(response, "openclaw_session_id_invalid");
+      return;
+    }
+
+    const openclawSessionLabel = body.openclawSessionLabel;
+    if (
+      openclawSessionLabel !== undefined &&
+      (typeof openclawSessionLabel !== "string" || !openclawSessionLabel.trim())
+    ) {
+      writeBadRequest(response, "openclaw_session_label_invalid");
+      return;
+    }
+
+    const snapshot = await ingress.startCall(config, {
+      openclawSessionId: openclawSessionId?.trim(),
+      openclawSessionLabel: openclawSessionLabel?.trim(),
+    } satisfies StartCallOptions);
     writeJson(response, 201, snapshot);
     return;
   }
 
   const callerTurnMatch = request.method === "POST" ? url.match(/^\/api\/calls\/([^/]+)\/caller-turn$/) : null;
   if (callerTurnMatch) {
-    const body = await readJsonBody<{ text?: string; timestamp?: string }>(request);
-    const text = body.text?.trim();
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const text = getOptionalTrimmedString(body.text);
 
     if (!text) {
       writeBadRequest(response, "caller_turn_text_required");
       return;
     }
 
+    const timestamp = normalizeTimestamp(body.timestamp, "caller_turn_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+
     const turn: TranscriptTurn = {
       speaker: "caller",
       text,
-      timestamp: body.timestamp ?? new Date().toISOString(),
+      timestamp,
     };
 
     try {
@@ -93,20 +168,38 @@ async function routeRequest(
 
   const fallbackMatch = request.method === "POST" ? url.match(/^\/api\/calls\/([^/]+)\/fallback$/) : null;
   if (fallbackMatch) {
-    const body = await readJsonBody<{ mode?: FallbackMode; reason?: string; timestamp?: string }>(request);
+    const body = await readJsonBody<unknown>(request);
 
-    if (body.mode !== "tool_timeout") {
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const mode = body.mode;
+    if (!mode) {
       writeBadRequest(response, "fallback_mode_required");
       return;
     }
 
+    if (mode !== "tool_timeout") {
+      writeBadRequest(response, "fallback_mode_invalid");
+      return;
+    }
+
+    if (hasInvalidOptionalString(body.reason)) {
+      writeBadRequest(response, "fallback_reason_invalid");
+      return;
+    }
+
+    const timestamp = normalizeTimestamp(body.timestamp, "fallback_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+
     try {
-      const snapshot = await ingress.triggerFallback(
-        fallbackMatch[1],
-        body.mode,
-        body.timestamp ?? new Date().toISOString(),
-        body.reason,
-      );
+      const reason = getOptionalTrimmedString(body.reason);
+      const snapshot = await ingress.triggerFallback(fallbackMatch[1], mode, timestamp, reason);
       writeJson(response, 200, snapshot);
     } catch {
       writeNotFound(response);
@@ -116,7 +209,13 @@ async function routeRequest(
 
   const operatorSteerMatch = request.method === "POST" ? url.match(/^\/api\/calls\/([^/]+)\/operator-steer$/) : null;
   if (operatorSteerMatch) {
-    const body = await readJsonBody<{ action?: OperatorSteerAction; reason?: string; timestamp?: string }>(request);
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
     const allowedActions: OperatorSteerAction[] = [
       "approve_offer",
       "escalate_to_human",
@@ -127,24 +226,31 @@ async function routeRequest(
       "arm_fallback",
       "disarm_fallback",
     ];
-    if (!body.action || !allowedActions.includes(body.action)) {
+    const action = body.action;
+    if (!action || !allowedActions.includes(action as OperatorSteerAction)) {
       writeBadRequest(response, "operator_steer_action_required");
       return;
     }
 
-    const reason = body.reason?.trim();
-    if (body.action === "arm_fallback" && !reason) {
+    if (hasInvalidOptionalString(body.reason)) {
+      writeBadRequest(response, "operator_steer_reason_invalid");
+      return;
+    }
+
+    const reason = getOptionalTrimmedString(body.reason);
+    if (action === "arm_fallback" && !reason) {
       writeBadRequest(response, "operator_fallback_reason_required");
       return;
     }
 
+    const timestamp = normalizeTimestamp(body.timestamp, "operator_steer_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+
     try {
-      const snapshot = await ingress.applyOperatorSteer(
-        operatorSteerMatch[1],
-        body.action,
-        body.timestamp ?? new Date().toISOString(),
-        reason,
-      );
+      const snapshot = await ingress.applyOperatorSteer(operatorSteerMatch[1], action as OperatorSteerAction, timestamp, reason);
       writeJson(response, 200, snapshot);
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Call is not awaiting operator steer")) {
@@ -176,6 +282,11 @@ export function buildHttpServer(config: PocConfig) {
 
   return createServer((request, response) => {
     void routeRequest(request, response, config, ingress).catch((error: unknown) => {
+      if (error instanceof InvalidJsonBodyError) {
+        writeBadRequest(response, "invalid_json");
+        return;
+      }
+
       console.error(error);
       writeJson(response, 500, { ok: false, error: "internal_error" });
     });

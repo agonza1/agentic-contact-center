@@ -13,13 +13,19 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
   const scriptPath = path.join(repoRoot, "scripts", "demo-proof.mjs");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-proof-"));
   const outputPath = path.join(tempDir, "demo-proof.json");
+  const latestOutputPath = path.join(tempDir, "demo-proof-latest.json");
 
   try {
-    const { stdout } = await execFileAsync(process.execPath, [scriptPath, "--out", outputPath], {
-      cwd: repoRoot,
-    });
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [scriptPath, "--out", outputPath, "--latest-out", latestOutputPath],
+      {
+        cwd: repoRoot,
+      },
+    );
 
     assert.match(stdout, /Saved proof artifact/);
+    assert.match(stdout, /Updated latest proof artifact/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       health: { ok: boolean };
@@ -27,11 +33,14 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
       fallback: { outcome: string; checkpoint: { demoFallback: { mode: string | null } } };
     };
 
+    const latestArtifact = JSON.parse(await readFile(latestOutputPath, "utf8")) as typeof artifact;
+
     assert.equal(artifact.health.ok, true);
     assert.equal(artifact.scripted.outcome, "scripted_wrap_complete");
     assert.equal(artifact.scripted.checkpoints.wrapped.pipecatFlow.script.completed, true);
     assert.equal(artifact.fallback.outcome, "fail_closed_handoff");
     assert.equal(artifact.fallback.checkpoint.demoFallback.mode, "tool_timeout");
+    assert.deepEqual(latestArtifact, artifact);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

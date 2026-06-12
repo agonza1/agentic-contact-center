@@ -49,14 +49,12 @@ async function withServer<T>(run: (port: number) => Promise<T>): Promise<T> {
   }
 }
 
-async function requestJson(
+async function requestRaw(
   port: number,
   method: string,
   path: string,
-  body?: Record<string, unknown>,
+  rawBody?: string,
 ): Promise<{ statusCode: number; payload: unknown }> {
-  const rawBody = body ? JSON.stringify(body) : undefined;
-
   const responseBody = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
     const req = request(
       {
@@ -94,6 +92,15 @@ async function requestJson(
     statusCode: responseBody.statusCode,
     payload: JSON.parse(responseBody.body),
   };
+}
+
+async function requestJson(
+  port: number,
+  method: string,
+  path: string,
+  body?: Record<string, unknown>,
+): Promise<{ statusCode: number; payload: unknown }> {
+  return requestRaw(port, method, path, body ? JSON.stringify(body) : undefined);
 }
 
 test("mocked telephony ingress bootstraps and returns seeded scenario metadata", async () => {
@@ -337,15 +344,71 @@ test("operators can arm and disarm demo fallback with visible rationale", async 
   });
 });
 
+test("malformed JSON requests fail with a client error instead of an internal error", async () => {
+  await withServer(async (port) => {
+    const invalid = await requestRaw(port, "POST", "/api/demo/start", '{"openclawSessionId":');
+    const invalidPayload = invalid.payload as { error: string };
+
+    assert.equal(invalid.statusCode, 400);
+    assert.equal(invalidPayload.error, "invalid_json");
+  });
+});
+
+test("demo start rejects non-object JSON payloads and invalid session envelope fields", async () => {
+  await withServer(async (port) => {
+    const scalarPayload = await requestRaw(port, "POST", "/api/demo/start", '"not-an-object"');
+    const scalarError = scalarPayload.payload as { error: string };
+
+    assert.equal(scalarPayload.statusCode, 400);
+    assert.equal(scalarError.error, "json_object_required");
+
+    const invalidSessionId = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: 42,
+    });
+    const invalidSessionIdPayload = invalidSessionId.payload as { error: string };
+
+    assert.equal(invalidSessionId.statusCode, 400);
+    assert.equal(invalidSessionIdPayload.error, "openclaw_session_id_invalid");
+
+    const invalidSessionLabel = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "   ",
+    });
+    const invalidSessionLabelPayload = invalidSessionLabel.payload as { error: string };
+
+    assert.equal(invalidSessionLabel.statusCode, 400);
+    assert.equal(invalidSessionLabelPayload.error, "openclaw_session_label_invalid");
+
+    const trimmed = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "  heartbeat-session-99  ",
+      openclawSessionLabel: "  cluecon-demo/validated-start  ",
+    });
+    const trimmedPayload = trimmed.payload as { session: { openclawSession: { sessionId: string; label: string } } };
+    assert.equal(trimmedPayload.session.openclawSession.sessionId, "heartbeat-session-99");
+    assert.equal(trimmedPayload.session.openclawSession.label, "cluecon-demo/validated-start");
+  });
+});
+
 test("tool timeout fallback fails closed and records the fallback reason", async () => {
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start");
     const callId = (started.payload as { session: { callId: string } }).session.callId;
 
+    const scalarFallback = await requestRaw(port, "POST", `/api/calls/${callId}/fallback`, '"not-an-object"');
+    const scalarFallbackPayload = scalarFallback.payload as { error: string };
+    assert.equal(scalarFallback.statusCode, 400);
+    assert.equal(scalarFallbackPayload.error, "json_object_required");
+
     const invalidMode = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {});
     const invalidModePayload = invalidMode.payload as { error: string };
     assert.equal(invalidMode.statusCode, 400);
     assert.equal(invalidModePayload.error, "fallback_mode_required");
+
+    const unsupportedMode = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {
+      mode: "operator_override",
+    });
+    const unsupportedModePayload = unsupportedMode.payload as { error: string };
+    assert.equal(unsupportedMode.statusCode, 400);
+    assert.equal(unsupportedModePayload.error, "fallback_mode_invalid");
 
     const fallback = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {
       mode: "tool_timeout",
@@ -436,6 +499,11 @@ test("unknown calls and invalid operator steer requests are rejected", async () 
 
     const started = await requestJson(port, "POST", "/api/demo/start");
     const callId = (started.payload as { session: { callId: string } }).session.callId;
+    const scalarTurn = await requestRaw(port, "POST", `/api/calls/${callId}/caller-turn`, '"not-an-object"');
+    const scalarTurnPayload = scalarTurn.payload as { error: string };
+    assert.equal(scalarTurn.statusCode, 400);
+    assert.equal(scalarTurnPayload.error, "json_object_required");
+
     const invalidTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
       text: "   ",
     });
@@ -443,10 +511,31 @@ test("unknown calls and invalid operator steer requests are rejected", async () 
     assert.equal(invalidTurn.statusCode, 400);
     assert.equal(invalidTurnPayload.error, "caller_turn_text_required");
 
+    const scalarSteer = await requestRaw(port, "POST", `/api/calls/${callId}/operator-steer`, '"not-an-object"');
+    const scalarSteerPayload = scalarSteer.payload as { error: string };
+    assert.equal(scalarSteer.statusCode, 400);
+    assert.equal(scalarSteerPayload.error, "json_object_required");
+
     const invalidSteer = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {});
     const invalidSteerPayload = invalidSteer.payload as { error: string };
     assert.equal(invalidSteer.statusCode, 400);
     assert.equal(invalidSteerPayload.error, "operator_steer_action_required");
+
+    const invalidFallbackReason = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {
+      mode: "tool_timeout",
+      reason: 7,
+    });
+    const invalidFallbackReasonPayload = invalidFallbackReason.payload as { error: string };
+    assert.equal(invalidFallbackReason.statusCode, 400);
+    assert.equal(invalidFallbackReasonPayload.error, "fallback_reason_invalid");
+
+    const invalidSteerReason = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "pause",
+      reason: 7,
+    });
+    const invalidSteerReasonPayload = invalidSteerReason.payload as { error: string };
+    assert.equal(invalidSteerReason.statusCode, 400);
+    assert.equal(invalidSteerReasonPayload.error, "operator_steer_reason_invalid");
 
     const notPending = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
       action: "approve_offer",
@@ -454,6 +543,45 @@ test("unknown calls and invalid operator steer requests are rejected", async () 
     const notPendingPayload = notPending.payload as { error: string };
     assert.equal(notPending.statusCode, 400);
     assert.equal(notPendingPayload.error, "operator_steer_not_pending");
+  });
+});
+
+
+test("invalid route timestamps are rejected before mutating call state", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const invalidTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "not-a-timestamp",
+    });
+    const invalidTurnPayload = invalidTurn.payload as { error: string };
+    assert.equal(invalidTurn.statusCode, 400);
+    assert.equal(invalidTurnPayload.error, "caller_turn_timestamp_invalid");
+
+    const invalidFallback = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {
+      mode: "tool_timeout",
+      timestamp: "not-a-timestamp",
+    });
+    const invalidFallbackPayload = invalidFallback.payload as { error: string };
+    assert.equal(invalidFallback.statusCode, 400);
+    assert.equal(invalidFallbackPayload.error, "fallback_timestamp_invalid");
+
+    const invalidSteer = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "pause",
+      timestamp: "not-a-timestamp",
+    });
+    const invalidSteerPayload = invalidSteer.payload as { error: string };
+    assert.equal(invalidSteer.statusCode, 400);
+    assert.equal(invalidSteerPayload.error, "operator_steer_timestamp_invalid");
+
+    const fetched = await requestJson(port, "GET", `/api/calls/${callId}`);
+    const fetchedPayload = fetched.payload as SnapshotPayload;
+    assert.equal(fetched.statusCode, 200);
+    assert.deepEqual(fetchedPayload.transcript, []);
+    assert.equal(fetchedPayload.demoFallback.armed, false);
+    assert.equal(fetchedPayload.operatorSteer.pending, false);
   });
 });
 
