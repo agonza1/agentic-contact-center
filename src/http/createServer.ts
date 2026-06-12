@@ -25,6 +25,12 @@ function writeBadRequest(response: ServerResponse, error: string): void {
   });
 }
 
+class InvalidJsonBodyError extends Error {
+  constructor() {
+    super("invalid_json_body");
+  }
+}
+
 async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
   const chunks: Buffer[] = [];
 
@@ -33,7 +39,16 @@ async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
   }
 
   const rawBody = Buffer.concat(chunks).toString("utf8");
-  return rawBody ? (JSON.parse(rawBody) as T) : ({} as T);
+
+  if (!rawBody) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(rawBody) as T;
+  } catch {
+    throw new InvalidJsonBodyError();
+  }
 }
 
 async function routeRequest(
@@ -181,6 +196,11 @@ export function buildHttpServer(config: PocConfig) {
 
   return createServer((request, response) => {
     void routeRequest(request, response, config, ingress).catch((error: unknown) => {
+      if (error instanceof InvalidJsonBodyError) {
+        writeBadRequest(response, "invalid_json");
+        return;
+      }
+
       console.error(error);
       writeJson(response, 500, { ok: false, error: "internal_error" });
     });

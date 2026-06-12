@@ -49,14 +49,12 @@ async function withServer<T>(run: (port: number) => Promise<T>): Promise<T> {
   }
 }
 
-async function requestJson(
+async function requestRaw(
   port: number,
   method: string,
   path: string,
-  body?: Record<string, unknown>,
+  rawBody?: string,
 ): Promise<{ statusCode: number; payload: unknown }> {
-  const rawBody = body ? JSON.stringify(body) : undefined;
-
   const responseBody = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
     const req = request(
       {
@@ -94,6 +92,15 @@ async function requestJson(
     statusCode: responseBody.statusCode,
     payload: JSON.parse(responseBody.body),
   };
+}
+
+async function requestJson(
+  port: number,
+  method: string,
+  path: string,
+  body?: Record<string, unknown>,
+): Promise<{ statusCode: number; payload: unknown }> {
+  return requestRaw(port, method, path, body ? JSON.stringify(body) : undefined);
 }
 
 test("mocked telephony ingress bootstraps and returns seeded scenario metadata", async () => {
@@ -334,6 +341,16 @@ test("operators can arm and disarm demo fallback with visible rationale", async 
     assert.equal(disarmedPayload.demoFallback.disarmedAt, "2026-06-10T14:00:03.000Z");
     assert.equal(disarmedPayload.events.some((event) => event.type === "demo_fallback_disarmed"), true);
     assert.equal(disarmedPayload.pipecatFlow.activeTool, "ask_operator");
+  });
+});
+
+test("malformed JSON requests fail with a client error instead of an internal error", async () => {
+  await withServer(async (port) => {
+    const invalid = await requestRaw(port, "POST", "/api/demo/start", '{"openclawSessionId":');
+    const invalidPayload = invalid.payload as { error: string };
+
+    assert.equal(invalid.statusCode, 400);
+    assert.equal(invalidPayload.error, "invalid_json");
   });
 });
 
