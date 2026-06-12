@@ -32,12 +32,18 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
       summary: {
         healthOk: boolean;
         scripted: {
+          agentTurns: number;
+          callerTurns: number;
+          eventCount: number;
           flowState: string;
+          latencyMarkCount: number;
           transcriptTurns: number;
           latencyStages: string[];
         };
         fallback: {
+          eventCount: number;
           mode: string | null;
+          reason: string | null;
           flowState: string;
           eventTypes: string[];
         };
@@ -54,11 +60,17 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.scripted.checkpoints.wrapped.pipecatFlow.script.completed, true);
     assert.equal(artifact.summary.scripted.flowState, "wrap");
     assert.equal(artifact.summary.scripted.transcriptTurns > 0, true);
+    assert.equal(artifact.summary.scripted.agentTurns > 0, true);
+    assert.equal(artifact.summary.scripted.callerTurns, 4);
+    assert.equal(artifact.summary.scripted.eventCount > 0, true);
+    assert.equal(artifact.summary.scripted.latencyMarkCount > 0, true);
     assert.equal(artifact.summary.scripted.latencyStages.includes("policy_hold_entered"), true);
     assert.equal(artifact.fallback.outcome, "fail_closed_handoff");
     assert.equal(artifact.fallback.checkpoint.demoFallback.mode, "tool_timeout");
     assert.equal(artifact.summary.fallback.mode, "tool_timeout");
+    assert.equal(artifact.summary.fallback.reason, "pipecat tool exceeded latency budget");
     assert.equal(artifact.summary.fallback.flowState, "wrap");
+    assert.equal(artifact.summary.fallback.eventCount > 0, true);
     assert.equal(artifact.summary.fallback.eventTypes.includes("human_handoff_started"), true);
     assert.deepEqual(latestArtifact, artifact);
   } finally {
