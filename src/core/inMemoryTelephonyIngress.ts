@@ -1,7 +1,13 @@
-import { applyDeterministicPipecatFlow, applyOperatorSteer, buildPipecatFlowPrototypeStatus } from "./pipecatFlowPrototype";
+import {
+  applyDeterministicPipecatFlow,
+  applyOperatorSteer,
+  buildPipecatFlowPrototypeStatus,
+  triggerFailClosedFallback,
+} from "./pipecatFlowPrototype";
 import type {
   CallSnapshot,
   LatencyBudgetStage,
+  FallbackMode,
   OperatorSteerAction,
   PocConfig,
   StartCallOptions,
@@ -86,11 +92,13 @@ export class InMemoryTelephonyIngress {
         mode: config.mode,
         policyProfile: config.policy.profile,
         defaultSupervisorSteer: config.policy.defaultSupervisorSteer,
+        fallbackMode: config.policy.fallbackMode,
         operatorChannel: config.operator.channel,
       },
       demoFallback: {
         armed: false,
         reason: null,
+        mode: null,
         armedAt: null,
         disarmedAt: null,
         source: null,
@@ -166,6 +174,26 @@ export class InMemoryTelephonyIngress {
     if (snapshot.transcript.at(-1)?.speaker === "agent") {
       recordLatencyMark(snapshot, "agent_response_ready", turn.timestamp, "ttsFirstAudio");
     }
+
+    return cloneSnapshot(snapshot);
+  }
+
+  async triggerFallback(
+    callId: string,
+    mode: FallbackMode,
+    timestamp: string,
+    reason?: string,
+  ): Promise<CallSnapshot> {
+    const snapshot = this.calls.get(callId);
+
+    if (!snapshot) {
+      throw new Error(`Unknown call id: ${callId}`);
+    }
+
+    triggerFailClosedFallback(snapshot, mode, timestamp, reason);
+    recordLatencyMark(snapshot, "policy_hold_entered", timestamp, "policyGate");
+    recordLatencyMark(snapshot, "operator_notified", timestamp, "operatorNotification");
+    recordLatencyMark(snapshot, "agent_response_ready", timestamp, "ttsFirstAudio");
 
     return cloneSnapshot(snapshot);
   }

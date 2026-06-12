@@ -104,12 +104,14 @@ export interface ScenarioMetadata {
   mode: PocConfig["mode"];
   policyProfile: string;
   defaultSupervisorSteer: OperatorSteerAction;
+  fallbackMode: FallbackMode;
   operatorChannel: string;
 }
 
 export interface DemoFallbackState {
   armed: boolean;
   reason: string | null;
+  mode: FallbackMode | null;
   armedAt: string | null;
   disarmedAt: string | null;
   source: "mock_http_route" | null;

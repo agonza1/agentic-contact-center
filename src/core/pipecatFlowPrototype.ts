@@ -2,6 +2,7 @@ import type {
   CallSnapshot,
   EventTrailEntry,
   FlowState,
+  FallbackMode,
   OperatorSteerAction,
   PipecatFlowPrototypeStatus,
   PocConfig,
@@ -124,10 +125,17 @@ function buildSteeredResponse(action: OperatorSteerAction): string {
   return "Thanks for waiting. I can review approved next steps like a coverage fit check or a retention specialist follow-up, and I will not promise any billing credit on this call.";
 }
 
-function setDemoFallback(snapshot: CallSnapshot, armed: boolean, timestamp: string, reason: string | null): void {
+function setDemoFallback(
+  snapshot: CallSnapshot,
+  armed: boolean,
+  timestamp: string,
+  reason: string | null,
+  mode: FallbackMode | null,
+): void {
   snapshot.demoFallback = {
     armed,
     reason,
+    mode,
     armedAt: armed ? timestamp : snapshot.demoFallback.armedAt,
     disarmedAt: armed ? snapshot.demoFallback.disarmedAt : timestamp,
     source: "mock_http_route",
@@ -178,6 +186,37 @@ export function getPipecatPrototypeHealth(): Pick<
     transport: status.transport,
     toolCoverage: status.toolCoverage,
   };
+}
+
+export function triggerFailClosedFallback(
+  snapshot: CallSnapshot,
+  mode: FallbackMode,
+  timestamp: string,
+  reason?: string,
+): void {
+  const fallbackReason = reason?.trim() || mode;
+
+  snapshot.pipecatFlow.activeTool = "pause_presentation";
+  setDemoFallback(snapshot, true, timestamp, fallbackReason, mode);
+  setOperatorSteerState(snapshot, false, timestamp, "escalate_to_human", `${mode}_fallback`);
+  recordEvent(snapshot, "demo_fallback_triggered", timestamp, {
+    mode,
+    reason: fallbackReason,
+    source: "mock_http_route",
+  });
+  transitionFlowState(snapshot, "policy_hold", timestamp, `${mode}_fallback_triggered`);
+  recordEvent(snapshot, "human_handoff_started", timestamp, {
+    operatorChannel: snapshot.scenario.operatorChannel,
+    reason: fallbackReason,
+    mode,
+    source: "tool_timeout_fail_closed",
+  });
+  appendAgentTurn(
+    snapshot,
+    "A required tool timed out, so I am failing closed and connecting you to a licensed retention specialist instead of improvising an offer or promising any billing credit.",
+    timestamp,
+  );
+  transitionFlowState(snapshot, "wrap", timestamp, `${mode}_fallback_escalated`);
 }
 
 export function applyDeterministicPipecatFlow(
@@ -293,7 +332,7 @@ export function applyOperatorSteer(
   }
 
   if (action === "arm_fallback") {
-    setDemoFallback(snapshot, true, timestamp, reason ?? "operator_requested_manual_takeover");
+    setDemoFallback(snapshot, true, timestamp, reason ?? "operator_requested_manual_takeover", null);
     transitionFlowState(snapshot, "policy_hold", timestamp, "operator_armed_manual_fallback");
     recordEvent(snapshot, "demo_fallback_armed", timestamp, {
       operatorChannel: snapshot.scenario.operatorChannel,
@@ -305,7 +344,7 @@ export function applyOperatorSteer(
   }
 
   if (action === "disarm_fallback") {
-    setDemoFallback(snapshot, false, timestamp, null);
+    setDemoFallback(snapshot, false, timestamp, null, snapshot.demoFallback.mode);
     transitionFlowState(snapshot, "operator_steer", timestamp, "operator_disarmed_manual_fallback");
     recordEvent(snapshot, "demo_fallback_disarmed", timestamp, {
       operatorChannel: snapshot.scenario.operatorChannel,
@@ -346,6 +385,7 @@ export function applyOperatorSteer(
   if (action === "escalate_to_human") {
     recordEvent(snapshot, "human_handoff_started", timestamp, {
       operatorChannel: snapshot.scenario.operatorChannel,
+      source: "operator_steer",
     });
     transitionFlowState(snapshot, "wrap", timestamp, "operator_escalated_to_human");
     appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);

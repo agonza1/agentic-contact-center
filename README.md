@@ -16,6 +16,7 @@ The active scaffold is the TypeScript HTTP server under `src/`. It now covers:
 ```bash
 npm install
 npm test
+npm run proof -- --out artifacts/demo-proof.json
 npm start
 ```
 
@@ -31,6 +32,22 @@ Post these caller turns in order to exercise the deterministic issue `#4` protot
 4. `Thanks, please note that follow-up and close the call.`
 
 The prototype will pause at `policy_hold` before any risky retention offer and then resume with a safe deterministic response that never promises a billing credit by default.
+
+## Proof Runner
+
+Run the text-first proof harness to execute the critical demo flows and save a reviewable artifact:
+
+```bash
+npm run proof -- --out artifacts/demo-proof.json
+```
+
+The command:
+
+- runs the seeded scripted path through policy hold, operator steer, and wrap
+- runs the fail-closed `tool_timeout` fallback path
+- writes JSON proof output with transcript, event trail, and latency marks for both scenarios
+
+If `--out` is omitted, the proof file is written to `artifacts/demo-proof-<timestamp>.json`.
 
 ## Current slice status
 
