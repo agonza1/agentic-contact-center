@@ -515,6 +515,45 @@ test("unknown calls and invalid operator steer requests are rejected", async () 
   });
 });
 
+
+test("invalid route timestamps are rejected before mutating call state", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const invalidTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "not-a-timestamp",
+    });
+    const invalidTurnPayload = invalidTurn.payload as { error: string };
+    assert.equal(invalidTurn.statusCode, 400);
+    assert.equal(invalidTurnPayload.error, "caller_turn_timestamp_invalid");
+
+    const invalidFallback = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {
+      mode: "tool_timeout",
+      timestamp: "not-a-timestamp",
+    });
+    const invalidFallbackPayload = invalidFallback.payload as { error: string };
+    assert.equal(invalidFallback.statusCode, 400);
+    assert.equal(invalidFallbackPayload.error, "fallback_timestamp_invalid");
+
+    const invalidSteer = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "pause",
+      timestamp: "not-a-timestamp",
+    });
+    const invalidSteerPayload = invalidSteer.payload as { error: string };
+    assert.equal(invalidSteer.statusCode, 400);
+    assert.equal(invalidSteerPayload.error, "operator_steer_timestamp_invalid");
+
+    const fetched = await requestJson(port, "GET", `/api/calls/${callId}`);
+    const fetchedPayload = fetched.payload as SnapshotPayload;
+    assert.equal(fetched.statusCode, 200);
+    assert.deepEqual(fetchedPayload.transcript, []);
+    assert.equal(fetchedPayload.demoFallback.armed, false);
+    assert.equal(fetchedPayload.operatorSteer.pending, false);
+  });
+});
+
 test("off-script caller turns pause the prototype for operator guidance", async () => {
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start");

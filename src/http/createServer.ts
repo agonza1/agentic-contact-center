@@ -35,6 +35,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function normalizeTimestamp(timestamp: unknown, error: string): string | { error: string } {
+  if (timestamp === undefined) {
+    return new Date().toISOString();
+  }
+
+  if (typeof timestamp !== "string" || !timestamp.trim() || Number.isNaN(Date.parse(timestamp))) {
+    return { error };
+  }
+
+  return timestamp;
+}
+
 async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
   const chunks: Buffer[] = [];
 
@@ -119,10 +131,16 @@ async function routeRequest(
       return;
     }
 
+    const timestamp = normalizeTimestamp(body.timestamp, "caller_turn_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+
     const turn: TranscriptTurn = {
       speaker: "caller",
       text,
-      timestamp: body.timestamp ?? new Date().toISOString(),
+      timestamp,
     };
 
     try {
@@ -148,13 +166,14 @@ async function routeRequest(
       return;
     }
 
+    const timestamp = normalizeTimestamp(body.timestamp, "fallback_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+
     try {
-      const snapshot = await ingress.triggerFallback(
-        fallbackMatch[1],
-        body.mode,
-        body.timestamp ?? new Date().toISOString(),
-        body.reason,
-      );
+      const snapshot = await ingress.triggerFallback(fallbackMatch[1], body.mode, timestamp, body.reason);
       writeJson(response, 200, snapshot);
     } catch {
       writeNotFound(response);
@@ -186,13 +205,14 @@ async function routeRequest(
       return;
     }
 
+    const timestamp = normalizeTimestamp(body.timestamp, "operator_steer_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+
     try {
-      const snapshot = await ingress.applyOperatorSteer(
-        operatorSteerMatch[1],
-        body.action,
-        body.timestamp ?? new Date().toISOString(),
-        reason,
-      );
+      const snapshot = await ingress.applyOperatorSteer(operatorSteerMatch[1], body.action, timestamp, reason);
       writeJson(response, 200, snapshot);
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Call is not awaiting operator steer")) {
