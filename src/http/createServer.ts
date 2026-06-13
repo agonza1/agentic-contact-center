@@ -55,6 +55,76 @@ function normalizeTimestamp(timestamp: unknown, error: string): string | { error
   return timestamp;
 }
 
+function parseOperatorSteerCommand(
+  value: unknown,
+): { action: OperatorSteerAction; reason?: string } | { error: string } | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    return { error: "operator_steer_command_invalid" };
+  }
+
+  const command = value.trim();
+  if (!command) {
+    return { error: "operator_steer_command_invalid" };
+  }
+
+  const lowerCommand = command.toLowerCase();
+
+  if (lowerCommand === "pause") {
+    return { action: "pause" };
+  }
+
+  if (lowerCommand === "resume") {
+    return { action: "resume" };
+  }
+
+  if (lowerCommand === "approve-offer" || lowerCommand === "approve offer") {
+    return { action: "approve_offer" };
+  }
+
+  if (lowerCommand === "escalate" || lowerCommand === "escalate-to-human") {
+    return { action: "escalate_to_human" };
+  }
+
+  if (lowerCommand === "disarm-fallback" || lowerCommand === "disarm fallback") {
+    return { action: "disarm_fallback" };
+  }
+
+  const commandPrefixes: Array<{
+    prefix: string;
+    action: OperatorSteerAction;
+    requireArgument?: boolean;
+  }> = [
+    { prefix: "goto-slide", action: "goto_slide", requireArgument: true },
+    { prefix: "goto slide", action: "goto_slide", requireArgument: true },
+    { prefix: "ask", action: "ask_operator", requireArgument: true },
+    { prefix: "arm-fallback", action: "arm_fallback", requireArgument: true },
+    { prefix: "arm fallback", action: "arm_fallback", requireArgument: true },
+  ];
+
+  for (const entry of commandPrefixes) {
+    if (lowerCommand === entry.prefix) {
+      return entry.requireArgument ? { error: "operator_steer_command_invalid" } : { action: entry.action };
+    }
+
+    if (!lowerCommand.startsWith(`${entry.prefix} `)) {
+      continue;
+    }
+
+    const reason = command.slice(entry.prefix.length).trim();
+    if (!reason) {
+      return { error: "operator_steer_command_invalid" };
+    }
+
+    return { action: entry.action, reason };
+  }
+
+  return { error: "operator_steer_command_invalid" };
+}
+
 async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
   const chunks: Buffer[] = [];
 
@@ -226,8 +296,25 @@ async function routeRequest(
       "arm_fallback",
       "disarm_fallback",
     ];
+    const parsedCommand = parseOperatorSteerCommand(body.command);
+    if (parsedCommand && "error" in parsedCommand) {
+      writeBadRequest(response, parsedCommand.error);
+      return;
+    }
+
     const action = body.action;
-    if (!action || !allowedActions.includes(action as OperatorSteerAction)) {
+    if (action !== undefined && !allowedActions.includes(action as OperatorSteerAction)) {
+      writeBadRequest(response, "operator_steer_action_required");
+      return;
+    }
+
+    if (action !== undefined && parsedCommand && action !== parsedCommand.action) {
+      writeBadRequest(response, "operator_steer_command_conflict");
+      return;
+    }
+
+    const resolvedAction = (action as OperatorSteerAction | undefined) ?? parsedCommand?.action;
+    if (!resolvedAction) {
       writeBadRequest(response, "operator_steer_action_required");
       return;
     }
@@ -237,8 +324,8 @@ async function routeRequest(
       return;
     }
 
-    const reason = getOptionalTrimmedString(body.reason);
-    if (action === "arm_fallback" && !reason) {
+    const reason = getOptionalTrimmedString(body.reason) ?? parsedCommand?.reason;
+    if (resolvedAction === "arm_fallback" && !reason) {
       writeBadRequest(response, "operator_fallback_reason_required");
       return;
     }
@@ -250,7 +337,7 @@ async function routeRequest(
     }
 
     try {
-      const snapshot = await ingress.applyOperatorSteer(operatorSteerMatch[1], action as OperatorSteerAction, timestamp, reason);
+      const snapshot = await ingress.applyOperatorSteer(operatorSteerMatch[1], resolvedAction, timestamp, reason);
       writeJson(response, 200, snapshot);
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Call is not awaiting operator steer")) {
