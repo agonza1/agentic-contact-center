@@ -534,6 +534,16 @@ test("slash-command style steer text is parsed into operator actions", async () 
     assert.equal(resumed.statusCode, 200);
     assert.equal(resumedPayload.flowState, "steered_response");
     assert.equal(resumedPayload.operatorSteer.lastAction, "resume");
+
+    const slashPrefixed = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-steer", {
+      command: "/goto-slide pricing-proof",
+      timestamp: "2026-06-10T14:00:03.500Z",
+    });
+    const slashPrefixedPayload = slashPrefixed.payload as SnapshotPayload;
+    assert.equal(slashPrefixed.statusCode, 200);
+    assert.equal(slashPrefixedPayload.flowState, "operator_steer");
+    assert.equal(slashPrefixedPayload.operatorSteer.lastAction, "goto_slide");
+    assert.equal(slashPrefixedPayload.operatorSteer.lastReason, "pricing-proof");
   });
 });
 

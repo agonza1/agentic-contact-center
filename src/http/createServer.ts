@@ -71,7 +71,12 @@ function parseOperatorSteerCommand(
     return { error: "operator_steer_command_invalid" };
   }
 
-  const lowerCommand = command.toLowerCase();
+  const normalizedCommand = command.startsWith("/") ? command.slice(1).trimStart() : command;
+  if (!normalizedCommand) {
+    return { error: "operator_steer_command_invalid" };
+  }
+
+  const lowerCommand = normalizedCommand.toLowerCase();
 
   if (lowerCommand === "pause") {
     return { action: "pause" };
@@ -114,7 +119,7 @@ function parseOperatorSteerCommand(
       continue;
     }
 
-    const reason = command.slice(entry.prefix.length).trim();
+    const reason = normalizedCommand.slice(entry.prefix.length).trim();
     if (!reason) {
       return { error: "operator_steer_command_invalid" };
     }
