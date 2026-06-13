@@ -4,27 +4,29 @@ This repo now carries a runnable local proof of concept for the `cluecon-present
 
 ## End-to-end shape
 
-1. Telephony ingress enters through `POST /api/poc/sessions/{session_id}/telephony-ingress` and records canonical caller evidence on the presentation session.
-2. FastAPI owns the live session state and returns one operator-visible object through `GET /api/poc/sessions/{session_id}`.
-3. Pipecat Flow is represented as an always-on prototype contract in `poc.pipecat_flow`, including readiness and tool coverage for slide-aware actions.
-4. OpenClaw per-call session integration enters through `POST /api/poc/sessions/{session_id}/openclaw-session` and attaches operator session metadata.
-5. Slack human steer enters through `POST /api/poc/sessions/{session_id}/slack-steer` and can pause, resume, jump slides, or ask a question.
-6. Demo fallback enters through `POST /api/poc/sessions/{session_id}/fallback` and visibly arms or disarms manual operator control.
+1. Telephony ingress enters through `POST /api/demo/start` and `POST /api/calls/:callId/caller-turn`, recording canonical caller evidence on the in-memory call session.
+2. The TypeScript HTTP server owns the live call state and returns one operator-visible object through `GET /api/calls/:callId`.
+3. Pipecat Flow is represented as an always-on prototype contract in `pipecatFlow`, including readiness and tool coverage for slide-aware actions.
+4. OpenClaw per-call session integration is attached during `POST /api/demo/start` and stored on `session.openclawSession`.
+5. Slack-style human steer enters through `POST /api/calls/:callId/operator-steer` and can pause, resume, jump slides, ask for guidance, approve a safe response, or escalate to a human.
+6. Demo fallback enters through `POST /api/calls/:callId/fallback` and triggers a fail-closed human handoff for `tool_timeout`, while `operator-steer` can also arm or disarm manual fallback visibility.
 
 ## Live session envelope
 
-The API keeps all POC subsystem visibility in one `poc` object:
+The API keeps all POC subsystem visibility in one top-level call snapshot:
 
-- `architecture`: subsystem status summary for QA and operators
-- `telephony`: provider, caller, call id, and operator notes
-- `pipecat_flow`: readiness, prototype mode, and tool coverage
-- `openclaw`: attached per-call session id/label
-- `slack_steer`: last command, supported actions, and operator identity
-- `fallback`: enabled state, rationale, and actor
+- `session`: call id, provider ids, and attached OpenClaw session id/label
+- `scenario`: demo mode, policy profile, fallback mode, and operator channel
+- `pipecatFlow`: readiness, prototype mode, script progress, and tool coverage
+- `operatorSteer`: last command state, rationale, and timestamps
+- `demoFallback`: enabled state, rationale, mode, and source
+- `events` plus `latencyMarks`: ordered evidence for QA and operator review
 
 ## Supporting routes
 
-- `POST /api/poc/sessions`
-- `POST /api/poc/sessions/{session_id}/presentation/start`
-- `POST /api/poc/sessions/{session_id}/question`
+- `POST /api/demo/start`
+- `POST /api/calls/:callId/caller-turn`
+- `POST /api/calls/:callId/operator-steer`
+- `POST /api/calls/:callId/fallback`
+- `GET /api/calls/:callId`
 - `GET /health`

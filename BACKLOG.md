@@ -34,15 +34,15 @@ Status: implemented in merged PR `#13` with mock OpenClaw session metadata, orde
 Acceptance criteria:
 - Provide a human-steer endpoint that records a Slack-style command and can trigger a lightweight action.
 - Support at least pause, resume, goto-slide, and ask operations.
-Status: in progress on branch `issue-6-operator-steer-path` with a mocked HTTP steer endpoint, Slack-style pause/resume/goto-slide/ask actions, and deterministic approve/escalate coverage.
+Status: implemented on issue `#6` with `POST /api/calls/:callId/operator-steer`, Slack-style pause/resume/goto-slide/ask actions, and deterministic approve/escalate coverage.
 
 ### CUE-006 Demo fallback
 Acceptance criteria:
 - Allow operators to explicitly arm/disarm manual fallback for the demo.
 - Keep fallback state and rationale visible in operator state.
-Status: in progress on branch `issue-6-operator-steer-path` with explicit fallback arm/disarm state and rationale exposed in call snapshots.
+Status: implemented on issue `#7` with `POST /api/calls/:callId/fallback`, `tool_timeout` fail-closed handling, visible fallback rationale in call snapshots, and human-handoff event trail coverage.
 
-## QA handoff for issue #4
+## QA handoff for issue #7
 
 - Run `npm test` from the repo root.
 - Start the server with `npm start`.
@@ -50,3 +50,4 @@ Status: in progress on branch `issue-6-operator-steer-path` with explicit fallba
 - Post the four seeded caller turns from `README.md` to `POST /api/calls/:callId/caller-turn` in order.
 - After the second turn, the call snapshot should be in `policy_hold` and the latest agent turn should not promise a billing credit.
 - After the fourth turn, `GET /api/calls/:callId` should show `wrap`, full transcript history, script completion, and the operator-steer events.
+- `POST /api/calls/:callId/fallback` with `{ "mode": "tool_timeout", "reason": "pipecat tool exceeded latency budget" }` should move the call to `wrap`, record `demo_fallback_triggered` plus `human_handoff_started`, and preserve the fallback reason on `GET /api/calls/:callId`.
