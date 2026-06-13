@@ -51,14 +51,17 @@ The command:
 
 If `--out` is omitted, the proof file is written to `artifacts/demo-proof-<timestamp>.json`. Add `--latest-out artifacts/demo-proof-latest.json` to keep a deterministic handoff file updated alongside timestamped runs.
 
+For a step-by-step QA handoff flow, artifact inspection checklist, and example commands, use [docs/demo-proof-runbook.md](docs/demo-proof-runbook.md).
+
 ## Current slice status
 
 - CUE-001: scaffold and architecture baseline merged in PR `#9`
 - CUE-002 / issue `#3`: implemented on PR `#10` with mocked telephony ingress and in-memory call session bootstrap
-- CUE-003 / issue `#4`: implemented on the current branch with deterministic Pipecat-style flow state, safe policy hold behavior, and live tool coverage
+- CUE-003 / issue `#4`: implemented in merged PR `#12` with deterministic Pipecat-style flow state, safe policy hold behavior, and live tool coverage
 - CUE-004 / issue `#5`: implemented in merged PR `#13` with mock OpenClaw session metadata, ordered event trail visibility, and seeded latency marks
-- CUE-005 / issue `#6`: in progress on the current branch with a mocked `POST /api/calls/:callId/operator-steer` path with Slack-style pause/resume/goto-slide/ask operations plus safe approve/escalate outcomes
-- CUE-006: in progress with explicit demo fallback arm/disarm visibility on the mocked operator steer path
+- CUE-005 / issue `#6`: implemented with a mocked `POST /api/calls/:callId/operator-steer` path with Slack-style pause/resume/goto-slide/ask operations plus safe approve/escalate outcomes
+- CUE-006 / issue `#7`: implemented with `POST /api/calls/:callId/fallback`, `tool_timeout` fail-closed handling, explicit fallback rationale in `GET /api/calls/:callId`, and proof/test coverage for safe human escalation
+- CUE-007 / issue `#8`: implemented with `npm run proof`, serializable JSON evidence for scripted and fallback paths, and a repo-local QA runbook for reproducible handoff
 
 ## Note on legacy prototype
 
