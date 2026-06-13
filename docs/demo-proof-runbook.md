@@ -1,0 +1,39 @@
+# Demo proof runbook
+
+Use this runbook when you need a lightweight QA handoff artifact for the ClueCon cancellation-rescue demo.
+
+## Generate proof
+
+From the repo root:
+
+```bash
+npm install
+npm test
+npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json
+```
+
+The proof command boots the local server on an ephemeral port, runs both the seeded scripted flow and the fail-closed fallback flow, then writes reviewable JSON artifacts under `artifacts/`.
+
+## What to inspect
+
+Open `artifacts/demo-proof.json` or `artifacts/demo-proof-latest.json` and confirm:
+
+- `summary.healthOk` is `true`
+- `summary.scripted.outcome` is `scripted_wrap_complete`
+- `summary.scripted.flowState` is `wrap`
+- `summary.scripted.latencyStages` includes `policy_hold_entered`
+- `summary.fallback.outcome` is `fail_closed_handoff`
+- `summary.fallback.mode` is `tool_timeout`
+- `summary.fallback.reason` is `pipecat tool exceeded latency budget`
+- `summary.fallback.eventTypes` includes `human_handoff_started`
+
+For deeper review, the full artifact also contains:
+
+- transcript history for each scenario
+- ordered event trail entries
+- seeded latency marks
+- final call snapshots for scripted wrap and fallback handoff
+
+## QA handoff notes
+
+Attach the stable `artifacts/demo-proof-latest.json` file to PR review or demo notes when you want a deterministic pointer. Keep timestamped artifacts when you need a point-in-time audit trail for multiple runs.

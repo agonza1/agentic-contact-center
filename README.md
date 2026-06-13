@@ -51,6 +51,8 @@ The command:
 
 If `--out` is omitted, the proof file is written to `artifacts/demo-proof-<timestamp>.json`. Add `--latest-out artifacts/demo-proof-latest.json` to keep a deterministic handoff file updated alongside timestamped runs.
 
+For a step-by-step QA handoff flow, artifact inspection checklist, and example commands, use [docs/demo-proof-runbook.md](docs/demo-proof-runbook.md).
+
 ## Current slice status
 
 - CUE-001: scaffold and architecture baseline merged in PR `#9`
@@ -59,6 +61,7 @@ If `--out` is omitted, the proof file is written to `artifacts/demo-proof-<times
 - CUE-004 / issue `#5`: implemented in merged PR `#13` with mock OpenClaw session metadata, ordered event trail visibility, and seeded latency marks
 - CUE-005 / issue `#6`: implemented with a mocked `POST /api/calls/:callId/operator-steer` path with Slack-style pause/resume/goto-slide/ask operations plus safe approve/escalate outcomes
 - CUE-006 / issue `#7`: implemented with `POST /api/calls/:callId/fallback`, `tool_timeout` fail-closed handling, explicit fallback rationale in `GET /api/calls/:callId`, and proof/test coverage for safe human escalation
+- CUE-007 / issue `#8`: implemented with `npm run proof`, serializable JSON evidence for scripted and fallback paths, and a repo-local QA runbook for reproducible handoff
 
 ## Note on legacy prototype
 

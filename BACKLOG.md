@@ -42,6 +42,13 @@ Acceptance criteria:
 - Keep fallback state and rationale visible in operator state.
 Status: implemented on issue `#7` with `POST /api/calls/:callId/fallback`, `tool_timeout` fail-closed handling, visible fallback rationale in call snapshots, and human-handoff event trail coverage.
 
+### CUE-007 QA harness and proof artifacts
+Acceptance criteria:
+- A single local command can run the seeded scripted and fallback demo paths.
+- Proof artifacts remain text-first, serializable, and easy to inspect in GitHub.
+- Repo-local docs explain how QA or reviewers can reproduce and inspect the evidence.
+Status: implemented on issue `#8` with `npm run proof`, deterministic JSON proof artifacts, `test/demoProofScript.test.ts`, and `docs/demo-proof-runbook.md`.
+
 ## QA handoff for issue #7
 
 - Run `npm test` from the repo root.
