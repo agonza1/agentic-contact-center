@@ -278,6 +278,69 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
   });
 });
 
+test("GET /api/calls can filter operator attention queues", async () => {
+  await withServer(async (port) => {
+    const pendingStarted = await requestJson(port, "POST", "/api/demo/start");
+    const pendingCallId = (pendingStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${pendingCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${pendingCallId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${pendingCallId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+
+    const fallbackStarted = await requestJson(port, "POST", "/api/demo/start");
+    const fallbackCallId = (fallbackStarted.payload as SnapshotPayload).session.callId;
+    await requestJson(port, "POST", `/api/calls/${fallbackCallId}/operator-steer`, {
+      action: "arm_fallback",
+      reason: "audio degraded during live demo",
+      timestamp: "2026-06-10T14:00:11.000Z",
+    });
+
+    await requestJson(port, "POST", "/api/demo/start");
+
+    const pendingOnly = await requestJson(port, "GET", "/api/calls?pendingOperatorSteer=true");
+    const pendingPayload = pendingOnly.payload as { calls: SnapshotPayload[] };
+    assert.equal(pendingOnly.statusCode, 200);
+    assert.deepEqual(pendingPayload.calls.map((call) => call.session.callId), [pendingCallId]);
+
+    const fallbackOnly = await requestJson(port, "GET", "/api/calls?fallbackArmed=true");
+    const fallbackPayload = fallbackOnly.payload as { calls: SnapshotPayload[] };
+    assert.equal(fallbackOnly.statusCode, 200);
+    assert.deepEqual(fallbackPayload.calls.map((call) => call.session.callId), [fallbackCallId]);
+
+    const combined = await requestJson(
+      port,
+      "GET",
+      "/api/calls?flowState=policy_hold&pendingOperatorSteer=false&fallbackArmed=true",
+    );
+    const combinedPayload = combined.payload as { calls: SnapshotPayload[] };
+    assert.equal(combined.statusCode, 200);
+    assert.deepEqual(combinedPayload.calls.map((call) => call.session.callId), [fallbackCallId]);
+
+    const invalidPending = await requestJson(port, "GET", "/api/calls?pendingOperatorSteer=maybe");
+    assert.equal(invalidPending.statusCode, 400);
+    assert.deepEqual(invalidPending.payload, {
+      ok: false,
+      error: "call_list_pending_operator_steer_invalid",
+    });
+
+    const invalidFallback = await requestJson(port, "GET", "/api/calls?fallbackArmed=sometimes");
+    assert.equal(invalidFallback.statusCode, 400);
+    assert.deepEqual(invalidFallback.payload, {
+      ok: false,
+      error: "call_list_fallback_armed_invalid",
+    });
+  });
+});
+
 test("the scripted flow pauses for operator steer and resumes with an approved safe response", async () => {
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start");

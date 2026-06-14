@@ -73,6 +73,25 @@ function isFlowState(value: string): value is FlowState {
   return flowStates.has(value as FlowState);
 }
 
+function parseOptionalBooleanFilter(
+  value: string | null,
+  error: string,
+): boolean | { error: string } | undefined {
+  if (value === null) {
+    return undefined;
+  }
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  return { error };
+}
+
 function parseOperatorSteerCommand(
   value: unknown,
 ): { action: OperatorSteerAction; reason?: string } | { error: string } | undefined {
@@ -402,7 +421,31 @@ async function routeRequest(
       return;
     }
 
-    writeJson(response, 200, { calls: await ingress.listSnapshots(flowState ?? undefined) });
+    const pendingOperatorSteer = parseOptionalBooleanFilter(
+      requestUrl.searchParams.get("pendingOperatorSteer"),
+      "call_list_pending_operator_steer_invalid",
+    );
+    if (typeof pendingOperatorSteer !== "boolean" && pendingOperatorSteer !== undefined) {
+      writeBadRequest(response, pendingOperatorSteer.error);
+      return;
+    }
+
+    const fallbackArmed = parseOptionalBooleanFilter(
+      requestUrl.searchParams.get("fallbackArmed"),
+      "call_list_fallback_armed_invalid",
+    );
+    if (typeof fallbackArmed !== "boolean" && fallbackArmed !== undefined) {
+      writeBadRequest(response, fallbackArmed.error);
+      return;
+    }
+
+    writeJson(response, 200, {
+      calls: await ingress.listSnapshots({
+        flowState: flowState ?? undefined,
+        pendingOperatorSteer,
+        fallbackArmed,
+      }),
+    });
     return;
   }
 

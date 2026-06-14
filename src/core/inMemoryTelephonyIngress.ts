@@ -228,9 +228,19 @@ export class InMemoryTelephonyIngress {
     return snapshot ? cloneSnapshot(snapshot) : null;
   }
 
-  async listSnapshots(flowState?: FlowState): Promise<CallSnapshot[]> {
+  async listSnapshots(filters: {
+    flowState?: FlowState;
+    pendingOperatorSteer?: boolean;
+    fallbackArmed?: boolean;
+  } = {}): Promise<CallSnapshot[]> {
     return [...this.calls.values()]
-      .filter((snapshot) => (flowState ? snapshot.flowState === flowState : true))
+      .filter((snapshot) => (filters.flowState ? snapshot.flowState === filters.flowState : true))
+      .filter((snapshot) =>
+        filters.pendingOperatorSteer === undefined ? true : snapshot.operatorSteer.pending === filters.pendingOperatorSteer,
+      )
+      .filter((snapshot) =>
+        filters.fallbackArmed === undefined ? true : snapshot.demoFallback.armed === filters.fallbackArmed,
+      )
       .map((snapshot) => cloneSnapshot(snapshot))
       .sort((left, right) => left.session.startedAt.localeCompare(right.session.startedAt));
   }
