@@ -41,6 +41,8 @@ interface CallListPayload {
     fallbackArmed: number;
     attentionRequired: number;
     oldestAttentionCallId: string | null;
+    oldestAttentionProviderCallId: string | null;
+    oldestAttentionOpenclawSessionId: string | null;
     oldestAttentionStartedAt: string | null;
     byFlowState: Record<string, number>;
   };
@@ -235,6 +237,8 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       fallbackArmed: 0,
       attentionRequired: 0,
       oldestAttentionCallId: null,
+      oldestAttentionProviderCallId: null,
+      oldestAttentionOpenclawSessionId: null,
       oldestAttentionStartedAt: null,
       byFlowState: {
         call_started: 0,
@@ -281,6 +285,8 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       fallbackArmed: 0,
       attentionRequired: 0,
       oldestAttentionCallId: null,
+      oldestAttentionProviderCallId: null,
+      oldestAttentionOpenclawSessionId: null,
       oldestAttentionStartedAt: null,
       byFlowState: {
         call_started: 1,
@@ -367,6 +373,8 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(pendingPayload.summary.filteredCalls, 1);
     assert.equal(pendingPayload.summary.pendingOperatorSteer, 1);
     assert.equal(pendingPayload.summary.oldestAttentionCallId, pendingCallId);
+    assert.equal(pendingPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
+    assert.equal(pendingPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
     assert.equal(typeof pendingPayload.summary.oldestAttentionStartedAt, "string");
 
     const fallbackOnly = await requestJson(port, "GET", "/api/calls?fallbackArmed=true");
@@ -376,6 +384,8 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(fallbackPayload.summary.fallbackArmed, 1);
     assert.equal(fallbackPayload.summary.attentionRequired, 2);
     assert.equal(fallbackPayload.summary.oldestAttentionCallId, pendingCallId);
+    assert.equal(fallbackPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
+    assert.equal(fallbackPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
 
     const attentionOnly = await requestJson(port, "GET", "/api/calls?attentionRequired=true");
     const attentionPayload = attentionOnly.payload as CallListPayload;
@@ -384,6 +394,8 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(attentionPayload.summary.filteredCalls, 2);
     assert.equal(attentionPayload.summary.attentionRequired, 2);
     assert.equal(attentionPayload.summary.oldestAttentionCallId, pendingCallId);
+    assert.equal(attentionPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
+    assert.equal(attentionPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
 
     const notAttention = await requestJson(port, "GET", "/api/calls?attentionRequired=false");
     const notAttentionPayload = notAttention.payload as CallListPayload;

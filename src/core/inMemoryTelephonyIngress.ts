@@ -260,6 +260,8 @@ export class InMemoryTelephonyIngress {
     fallbackArmed: number;
     attentionRequired: number;
     oldestAttentionCallId: string | null;
+    oldestAttentionProviderCallId: string | null;
+    oldestAttentionOpenclawSessionId: string | null;
     oldestAttentionStartedAt: string | null;
     byFlowState: Record<FlowState, number>;
   }> {
@@ -277,6 +279,8 @@ export class InMemoryTelephonyIngress {
     let fallbackArmed = 0;
     let attentionRequired = 0;
     let oldestAttentionCallId: string | null = null;
+    let oldestAttentionProviderCallId: string | null = null;
+    let oldestAttentionOpenclawSessionId: string | null = null;
     let oldestAttentionStartedAt: string | null = null;
 
     for (const snapshot of this.calls.values()) {
@@ -298,6 +302,8 @@ export class InMemoryTelephonyIngress {
           snapshot.session.startedAt.localeCompare(oldestAttentionStartedAt) < 0
         ) {
           oldestAttentionCallId = snapshot.session.callId;
+          oldestAttentionProviderCallId = snapshot.session.providerCallId;
+          oldestAttentionOpenclawSessionId = snapshot.session.openclawSession.sessionId;
           oldestAttentionStartedAt = snapshot.session.startedAt;
         }
       }
@@ -309,6 +315,8 @@ export class InMemoryTelephonyIngress {
       fallbackArmed,
       attentionRequired,
       oldestAttentionCallId,
+      oldestAttentionProviderCallId,
+      oldestAttentionOpenclawSessionId,
       oldestAttentionStartedAt,
       byFlowState,
     };
