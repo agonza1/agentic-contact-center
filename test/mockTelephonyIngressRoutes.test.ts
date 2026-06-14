@@ -492,6 +492,81 @@ test("slack-style operator commands pause, redirect, and resume the scripted flo
   });
 });
 
+
+test("slash-command style steer text is parsed into operator actions", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const paused = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      command: "pause",
+      timestamp: "2026-06-10T14:00:01.000Z",
+    });
+    const pausedPayload = paused.payload as SnapshotPayload;
+    assert.equal(paused.statusCode, 200);
+    assert.equal(pausedPayload.flowState, "policy_hold");
+
+    const redirected = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      command: "goto-slide pricing-proof",
+      timestamp: "2026-06-10T14:00:02.000Z",
+    });
+    const redirectedPayload = redirected.payload as SnapshotPayload;
+    assert.equal(redirected.statusCode, 200);
+    assert.equal(redirectedPayload.flowState, "operator_steer");
+    assert.equal(redirectedPayload.operatorSteer.lastAction, "goto_slide");
+    assert.equal(redirectedPayload.operatorSteer.lastReason, "pricing-proof");
+
+    const reRequested = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      command: "ask verify latency budget",
+      timestamp: "2026-06-10T14:00:02.500Z",
+    });
+    const reRequestedPayload = reRequested.payload as SnapshotPayload;
+    assert.equal(reRequested.statusCode, 200);
+    assert.equal(reRequestedPayload.flowState, "operator_steer");
+    assert.equal(reRequestedPayload.operatorSteer.lastAction, "ask_operator");
+    assert.equal(reRequestedPayload.operatorSteer.lastReason, "verify latency budget");
+
+    const resumed = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      command: "resume",
+      timestamp: "2026-06-10T14:00:03.000Z",
+    });
+    const resumedPayload = resumed.payload as SnapshotPayload;
+    assert.equal(resumed.statusCode, 200);
+    assert.equal(resumedPayload.flowState, "steered_response");
+    assert.equal(resumedPayload.operatorSteer.lastAction, "resume");
+
+    const slashPrefixed = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-steer", {
+      command: "/goto-slide pricing-proof",
+      timestamp: "2026-06-10T14:00:03.500Z",
+    });
+    const slashPrefixedPayload = slashPrefixed.payload as SnapshotPayload;
+    assert.equal(slashPrefixed.statusCode, 200);
+    assert.equal(slashPrefixedPayload.flowState, "operator_steer");
+    assert.equal(slashPrefixedPayload.operatorSteer.lastAction, "goto_slide");
+    assert.equal(slashPrefixedPayload.operatorSteer.lastReason, "pricing-proof");
+
+    const wrappedSlashCommand = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-steer", {
+      command: "/operator ask verify latency budget",
+      timestamp: "2026-06-10T14:00:06.000Z",
+    });
+    const wrappedSlashCommandPayload = wrappedSlashCommand.payload as SnapshotPayload;
+    assert.equal(wrappedSlashCommand.statusCode, 200);
+    assert.equal(wrappedSlashCommandPayload.flowState, "operator_steer");
+    assert.equal(wrappedSlashCommandPayload.operatorSteer.lastAction, "ask_operator");
+    assert.equal(wrappedSlashCommandPayload.operatorSteer.lastReason, "verify latency budget");
+
+    const slackPayload = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-steer", {
+      command: "/operator-steer",
+      text: "resume",
+      timestamp: "2026-06-10T14:00:16.000Z",
+    });
+    const slackPayloadBody = slackPayload.payload as SnapshotPayload;
+    assert.equal(slackPayload.statusCode, 200);
+    assert.equal(slackPayloadBody.flowState, "steered_response");
+    assert.equal(slackPayloadBody.operatorSteer.lastAction, "resume");
+  });
+});
+
 test("unknown calls and invalid operator steer requests are rejected", async () => {
   await withServer(async (port) => {
     const missing = await requestJson(port, "GET", "/api/calls/does-not-exist");
@@ -520,6 +595,21 @@ test("unknown calls and invalid operator steer requests are rejected", async () 
     const invalidSteerPayload = invalidSteer.payload as { error: string };
     assert.equal(invalidSteer.statusCode, 400);
     assert.equal(invalidSteerPayload.error, "operator_steer_action_required");
+
+    const invalidCommand = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      command: "goto-slide",
+    });
+    const invalidCommandPayload = invalidCommand.payload as { error: string };
+    assert.equal(invalidCommand.statusCode, 400);
+    assert.equal(invalidCommandPayload.error, "operator_steer_command_invalid");
+
+    const conflictingCommand = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "pause",
+      command: "resume",
+    });
+    const conflictingCommandPayload = conflictingCommand.payload as { error: string };
+    assert.equal(conflictingCommand.statusCode, 400);
+    assert.equal(conflictingCommandPayload.error, "operator_steer_command_conflict");
 
     const invalidFallbackReason = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {
       mode: "tool_timeout",
