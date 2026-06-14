@@ -6,6 +6,7 @@ import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildHttpServer } from "../src/http/createServer";
 
 interface SnapshotPayload {
+  session: { callId: string };
   flowState: string;
   transcript: Array<{ speaker: string; text: string }>;
   demoFallback: {
@@ -203,6 +204,77 @@ test("the risky offer boundary parks the flow in policy hold without promising a
     const lastAgentTurn = [...secondPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
     assert.ok(lastAgentTurn);
     assert.equal(lastAgentTurn.text.toLowerCase().includes("credit"), false);
+  });
+});
+
+test("GET /api/calls lists active demo calls in start order", async () => {
+  await withServer(async (port) => {
+    const emptyList = await requestJson(port, "GET", "/api/calls");
+    const emptyPayload = emptyList.payload as { calls: SnapshotPayload[] };
+
+    assert.equal(emptyList.statusCode, 200);
+    assert.deepEqual(emptyPayload.calls, []);
+
+    const firstStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "hb-session-01",
+      openclawSessionLabel: "cluecon-demo/first",
+    });
+    const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+
+    const secondStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "hb-session-02",
+      openclawSessionLabel: "cluecon-demo/second",
+    });
+    const secondCallId = (secondStarted.payload as SnapshotPayload).session.callId;
+
+    const listed = await requestJson(port, "GET", "/api/calls");
+    const listedPayload = listed.payload as { calls: SnapshotPayload[] };
+
+    assert.equal(listed.statusCode, 200);
+    assert.equal(listedPayload.calls.length, 2);
+    assert.deepEqual(listedPayload.calls.map((call) => call.session.callId), [firstCallId, secondCallId]);
+    assert.equal(listedPayload.calls[0]?.transcript.length, 2);
+    assert.equal(listedPayload.calls[0]?.flowState, "diagnose");
+    assert.equal(listedPayload.calls[1]?.transcript.length, 0);
+    assert.equal(listedPayload.calls[1]?.flowState, "call_started");
+  });
+});
+
+
+test("GET /api/calls can filter the active demo call list by flow state", async () => {
+  await withServer(async (port) => {
+    const firstStarted = await requestJson(port, "POST", "/api/demo/start");
+    const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+
+    await requestJson(port, "POST", "/api/demo/start");
+
+    const filtered = await requestJson(port, "GET", "/api/calls?flowState=policy_hold");
+    const filteredPayload = filtered.payload as { calls: SnapshotPayload[] };
+
+    assert.equal(filtered.statusCode, 200);
+    assert.deepEqual(filteredPayload.calls.map((call) => call.session.callId), [firstCallId]);
+    assert.deepEqual(filteredPayload.calls.map((call) => call.flowState), ["policy_hold"]);
+
+    const invalidFilter = await requestJson(port, "GET", "/api/calls?flowState=paused_forever");
+    assert.equal(invalidFilter.statusCode, 400);
+    assert.deepEqual(invalidFilter.payload, {
+      ok: false,
+      error: "call_list_flow_state_invalid",
+    });
   });
 });
 

@@ -8,6 +8,7 @@ The active scaffold is the TypeScript HTTP server under `src/`. It now covers:
 - mocked telephony ingress bootstrap at `POST /api/demo/start`
 - in-memory caller transcript append at `POST /api/calls/:callId/caller-turn`
 - current call snapshot lookup at `GET /api/calls/:callId`
+- active call index lookup at `GET /api/calls` with optional `?flowState=policy_hold` filtering
 - deterministic Pipecat-style flow state, policy hold behavior, operator-steer control, and tool coverage in the live call snapshot
 - OpenClaw-style per-call session envelope plus seeded latency/event trail visibility in the live call snapshot
 
