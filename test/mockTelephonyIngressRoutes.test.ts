@@ -40,6 +40,8 @@ interface CallListPayload {
     pendingOperatorSteer: number;
     fallbackArmed: number;
     attentionRequired: number;
+    oldestAttentionCallId: string | null;
+    oldestAttentionStartedAt: string | null;
     byFlowState: Record<string, number>;
   };
 }
@@ -232,6 +234,8 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       pendingOperatorSteer: 0,
       fallbackArmed: 0,
       attentionRequired: 0,
+      oldestAttentionCallId: null,
+      oldestAttentionStartedAt: null,
       byFlowState: {
         call_started: 0,
         greet: 0,
@@ -276,6 +280,8 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       pendingOperatorSteer: 0,
       fallbackArmed: 0,
       attentionRequired: 0,
+      oldestAttentionCallId: null,
+      oldestAttentionStartedAt: null,
       byFlowState: {
         call_started: 1,
         greet: 0,
@@ -360,6 +366,8 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(pendingPayload.summary.totalCalls, 3);
     assert.equal(pendingPayload.summary.filteredCalls, 1);
     assert.equal(pendingPayload.summary.pendingOperatorSteer, 1);
+    assert.equal(pendingPayload.summary.oldestAttentionCallId, pendingCallId);
+    assert.equal(typeof pendingPayload.summary.oldestAttentionStartedAt, "string");
 
     const fallbackOnly = await requestJson(port, "GET", "/api/calls?fallbackArmed=true");
     const fallbackPayload = fallbackOnly.payload as CallListPayload;
@@ -367,6 +375,7 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.deepEqual(fallbackPayload.calls.map((call) => call.session.callId), [fallbackCallId]);
     assert.equal(fallbackPayload.summary.fallbackArmed, 1);
     assert.equal(fallbackPayload.summary.attentionRequired, 2);
+    assert.equal(fallbackPayload.summary.oldestAttentionCallId, pendingCallId);
 
     const attentionOnly = await requestJson(port, "GET", "/api/calls?attentionRequired=true");
     const attentionPayload = attentionOnly.payload as CallListPayload;
@@ -374,6 +383,7 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.deepEqual(attentionPayload.calls.map((call) => call.session.callId), [pendingCallId, fallbackCallId]);
     assert.equal(attentionPayload.summary.filteredCalls, 2);
     assert.equal(attentionPayload.summary.attentionRequired, 2);
+    assert.equal(attentionPayload.summary.oldestAttentionCallId, pendingCallId);
 
     const notAttention = await requestJson(port, "GET", "/api/calls?attentionRequired=false");
     const notAttentionPayload = notAttention.payload as CallListPayload;
