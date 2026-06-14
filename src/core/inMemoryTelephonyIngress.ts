@@ -232,6 +232,7 @@ export class InMemoryTelephonyIngress {
     flowState?: FlowState;
     pendingOperatorSteer?: boolean;
     fallbackArmed?: boolean;
+    attentionRequired?: boolean;
   } = {}): Promise<CallSnapshot[]> {
     return [...this.calls.values()]
       .filter((snapshot) => (filters.flowState ? snapshot.flowState === filters.flowState : true))
@@ -241,6 +242,14 @@ export class InMemoryTelephonyIngress {
       .filter((snapshot) =>
         filters.fallbackArmed === undefined ? true : snapshot.demoFallback.armed === filters.fallbackArmed,
       )
+      .filter((snapshot) => {
+        if (filters.attentionRequired === undefined) {
+          return true;
+        }
+
+        const attentionRequired = snapshot.operatorSteer.pending || snapshot.demoFallback.armed;
+        return attentionRequired === filters.attentionRequired;
+      })
       .map((snapshot) => cloneSnapshot(snapshot))
       .sort((left, right) => left.session.startedAt.localeCompare(right.session.startedAt));
   }
@@ -249,6 +258,7 @@ export class InMemoryTelephonyIngress {
     totalCalls: number;
     pendingOperatorSteer: number;
     fallbackArmed: number;
+    attentionRequired: number;
     byFlowState: Record<FlowState, number>;
   }> {
     const byFlowState: Record<FlowState, number> = {
@@ -263,6 +273,7 @@ export class InMemoryTelephonyIngress {
 
     let pendingOperatorSteer = 0;
     let fallbackArmed = 0;
+    let attentionRequired = 0;
 
     for (const snapshot of this.calls.values()) {
       byFlowState[snapshot.flowState] += 1;
@@ -274,12 +285,17 @@ export class InMemoryTelephonyIngress {
       if (snapshot.demoFallback.armed) {
         fallbackArmed += 1;
       }
+
+      if (snapshot.operatorSteer.pending || snapshot.demoFallback.armed) {
+        attentionRequired += 1;
+      }
     }
 
     return {
       totalCalls: this.calls.size,
       pendingOperatorSteer,
       fallbackArmed,
+      attentionRequired,
       byFlowState,
     };
   }

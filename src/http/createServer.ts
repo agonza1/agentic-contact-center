@@ -439,10 +439,20 @@ async function routeRequest(
       return;
     }
 
+    const attentionRequired = parseOptionalBooleanFilter(
+      requestUrl.searchParams.get("attentionRequired"),
+      "call_list_attention_required_invalid",
+    );
+    if (typeof attentionRequired !== "boolean" && attentionRequired !== undefined) {
+      writeBadRequest(response, attentionRequired.error);
+      return;
+    }
+
     const calls = await ingress.listSnapshots({
       flowState: flowState ?? undefined,
       pendingOperatorSteer,
       fallbackArmed,
+      attentionRequired,
     });
     const summary = await ingress.getQueueSummary();
 

@@ -39,6 +39,7 @@ interface CallListPayload {
     filteredCalls: number;
     pendingOperatorSteer: number;
     fallbackArmed: number;
+    attentionRequired: number;
     byFlowState: Record<string, number>;
   };
 }
@@ -230,6 +231,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       filteredCalls: 0,
       pendingOperatorSteer: 0,
       fallbackArmed: 0,
+      attentionRequired: 0,
       byFlowState: {
         call_started: 0,
         greet: 0,
@@ -273,6 +275,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       filteredCalls: 2,
       pendingOperatorSteer: 0,
       fallbackArmed: 0,
+      attentionRequired: 0,
       byFlowState: {
         call_started: 1,
         greet: 0,
@@ -363,6 +366,19 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(fallbackOnly.statusCode, 200);
     assert.deepEqual(fallbackPayload.calls.map((call) => call.session.callId), [fallbackCallId]);
     assert.equal(fallbackPayload.summary.fallbackArmed, 1);
+    assert.equal(fallbackPayload.summary.attentionRequired, 2);
+
+    const attentionOnly = await requestJson(port, "GET", "/api/calls?attentionRequired=true");
+    const attentionPayload = attentionOnly.payload as CallListPayload;
+    assert.equal(attentionOnly.statusCode, 200);
+    assert.deepEqual(attentionPayload.calls.map((call) => call.session.callId), [pendingCallId, fallbackCallId]);
+    assert.equal(attentionPayload.summary.filteredCalls, 2);
+    assert.equal(attentionPayload.summary.attentionRequired, 2);
+
+    const notAttention = await requestJson(port, "GET", "/api/calls?attentionRequired=false");
+    const notAttentionPayload = notAttention.payload as CallListPayload;
+    assert.equal(notAttention.statusCode, 200);
+    assert.deepEqual(notAttentionPayload.calls.map((call) => call.session.callId), ["demo-call-0003"]);
 
     const combined = await requestJson(
       port,
@@ -394,6 +410,13 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.deepEqual(invalidFallback.payload, {
       ok: false,
       error: "call_list_fallback_armed_invalid",
+    });
+
+    const invalidAttention = await requestJson(port, "GET", "/api/calls?attentionRequired=loudly");
+    assert.equal(invalidAttention.statusCode, 400);
+    assert.deepEqual(invalidAttention.payload, {
+      ok: false,
+      error: "call_list_attention_required_invalid",
     });
   });
 });
