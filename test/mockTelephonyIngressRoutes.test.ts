@@ -554,6 +554,16 @@ test("slash-command style steer text is parsed into operator actions", async () 
     assert.equal(wrappedSlashCommandPayload.flowState, "operator_steer");
     assert.equal(wrappedSlashCommandPayload.operatorSteer.lastAction, "ask_operator");
     assert.equal(wrappedSlashCommandPayload.operatorSteer.lastReason, "verify latency budget");
+
+    const slackPayload = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-steer", {
+      command: "/operator-steer",
+      text: "resume",
+      timestamp: "2026-06-10T14:00:16.000Z",
+    });
+    const slackPayloadBody = slackPayload.payload as SnapshotPayload;
+    assert.equal(slackPayload.statusCode, 200);
+    assert.equal(slackPayloadBody.flowState, "steered_response");
+    assert.equal(slackPayloadBody.operatorSteer.lastAction, "resume");
   });
 });
 

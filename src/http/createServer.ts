@@ -43,6 +43,10 @@ function hasInvalidOptionalString(value: unknown): boolean {
   return value !== undefined && typeof value !== "string";
 }
 
+function isSlackSlashCommandName(value: string): boolean {
+  return /^\/[a-z0-9._-]+$/i.test(value.trim());
+}
+
 function normalizeTimestamp(timestamp: unknown, error: string): string | { error: string } {
   if (timestamp === undefined) {
     return new Date().toISOString();
@@ -307,9 +311,22 @@ async function routeRequest(
       "arm_fallback",
       "disarm_fallback",
     ];
-    const parsedCommand = parseOperatorSteerCommand(body.command);
+    const commandInput = getOptionalTrimmedString(body.command);
+    const textInput = getOptionalTrimmedString(body.text);
+
+    let parsedCommand = parseOperatorSteerCommand(commandInput);
+    if (parsedCommand && "error" in parsedCommand && commandInput && textInput && isSlackSlashCommandName(commandInput)) {
+      parsedCommand = undefined;
+    }
+
     if (parsedCommand && "error" in parsedCommand) {
       writeBadRequest(response, parsedCommand.error);
+      return;
+    }
+
+    const parsedText = parsedCommand ? undefined : parseOperatorSteerCommand(textInput);
+    if (parsedText && "error" in parsedText) {
+      writeBadRequest(response, parsedText.error);
       return;
     }
 
@@ -319,12 +336,14 @@ async function routeRequest(
       return;
     }
 
-    if (action !== undefined && parsedCommand && action !== parsedCommand.action) {
+    const parsedSteer = parsedCommand ?? parsedText;
+
+    if (action !== undefined && parsedSteer && action !== parsedSteer.action) {
       writeBadRequest(response, "operator_steer_command_conflict");
       return;
     }
 
-    const resolvedAction = (action as OperatorSteerAction | undefined) ?? parsedCommand?.action;
+    const resolvedAction = (action as OperatorSteerAction | undefined) ?? parsedSteer?.action;
     if (!resolvedAction) {
       writeBadRequest(response, "operator_steer_action_required");
       return;
@@ -335,7 +354,7 @@ async function routeRequest(
       return;
     }
 
-    const reason = getOptionalTrimmedString(body.reason) ?? parsedCommand?.reason;
+    const reason = getOptionalTrimmedString(body.reason) ?? parsedSteer?.reason;
     if (resolvedAction === "arm_fallback" && !reason) {
       writeBadRequest(response, "operator_fallback_reason_required");
       return;
