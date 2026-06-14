@@ -379,6 +379,11 @@ async function routeRequest(
     return;
   }
 
+  if (request.method === "GET" && url === "/api/calls") {
+    writeJson(response, 200, { calls: await ingress.listSnapshots() });
+    return;
+  }
+
   const callSnapshotMatch = request.method === "GET" ? url.match(/^\/api\/calls\/([^/]+)$/) : null;
   if (callSnapshotMatch) {
     const snapshot = await ingress.getSnapshot(callSnapshotMatch[1]);

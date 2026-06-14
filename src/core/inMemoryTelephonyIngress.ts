@@ -226,4 +226,10 @@ export class InMemoryTelephonyIngress {
     const snapshot = this.calls.get(callId);
     return snapshot ? cloneSnapshot(snapshot) : null;
   }
+
+  async listSnapshots(): Promise<CallSnapshot[]> {
+    return [...this.calls.values()]
+      .map((snapshot) => cloneSnapshot(snapshot))
+      .sort((left, right) => left.session.startedAt.localeCompare(right.session.startedAt));
+  }
 }
