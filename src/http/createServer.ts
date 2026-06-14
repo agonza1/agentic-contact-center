@@ -76,7 +76,13 @@ function parseOperatorSteerCommand(
     return { error: "operator_steer_command_invalid" };
   }
 
-  const lowerCommand = normalizedCommand.toLowerCase();
+  // Accept Slack-style wrappers like `/operator pause` and `/steer ask verify latency budget`.
+  const unwrappedCommand = normalizedCommand.replace(/^(?:operator|steer)\s+/i, "");
+  if (!unwrappedCommand) {
+    return { error: "operator_steer_command_invalid" };
+  }
+
+  const lowerCommand = unwrappedCommand.toLowerCase();
 
   if (lowerCommand === "pause") {
     return { action: "pause" };
@@ -119,7 +125,7 @@ function parseOperatorSteerCommand(
       continue;
     }
 
-    const reason = normalizedCommand.slice(entry.prefix.length).trim();
+    const reason = unwrappedCommand.slice(entry.prefix.length).trim();
     if (!reason) {
       return { error: "operator_steer_command_invalid" };
     }
