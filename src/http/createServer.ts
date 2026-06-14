@@ -3,7 +3,17 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { getPipecatPrototypeHealth } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
-import type { FallbackMode, OperatorSteerAction, PocConfig, StartCallOptions, TranscriptTurn } from "../core/types";
+import type { FallbackMode, FlowState, OperatorSteerAction, PocConfig, StartCallOptions, TranscriptTurn } from "../core/types";
+
+const flowStates = new Set<FlowState>([
+  "call_started",
+  "greet",
+  "diagnose",
+  "policy_hold",
+  "operator_steer",
+  "steered_response",
+  "wrap",
+]);
 
 function writeJson(response: ServerResponse, statusCode: number, payload: object): void {
   response.statusCode = statusCode;
@@ -57,6 +67,10 @@ function normalizeTimestamp(timestamp: unknown, error: string): string | { error
   }
 
   return timestamp;
+}
+
+function isFlowState(value: string): value is FlowState {
+  return flowStates.has(value as FlowState);
 }
 
 function parseOperatorSteerCommand(
@@ -167,8 +181,10 @@ async function routeRequest(
   ingress: InMemoryTelephonyIngress,
 ): Promise<void> {
   const url = request.url ?? "/";
+  const requestUrl = new URL(url, "http://localhost");
+  const pathname = requestUrl.pathname;
 
-  if (request.method === "GET" && url === "/health") {
+  if (request.method === "GET" && pathname === "/health") {
     writeJson(response, 200, {
       ok: true,
       demoName: config.demoName,
@@ -183,7 +199,7 @@ async function routeRequest(
     return;
   }
 
-  if (request.method === "POST" && url === "/api/demo/start") {
+  if (request.method === "POST" && pathname === "/api/demo/start") {
     const body = await readJsonBody<unknown>(request);
 
     if (!isRecord(body)) {
@@ -214,7 +230,7 @@ async function routeRequest(
     return;
   }
 
-  const callerTurnMatch = request.method === "POST" ? url.match(/^\/api\/calls\/([^/]+)\/caller-turn$/) : null;
+  const callerTurnMatch = request.method === "POST" ? pathname.match(/^\/api\/calls\/([^/]+)\/caller-turn$/) : null;
   if (callerTurnMatch) {
     const body = await readJsonBody<unknown>(request);
 
@@ -251,7 +267,7 @@ async function routeRequest(
     return;
   }
 
-  const fallbackMatch = request.method === "POST" ? url.match(/^\/api\/calls\/([^/]+)\/fallback$/) : null;
+  const fallbackMatch = request.method === "POST" ? pathname.match(/^\/api\/calls\/([^/]+)\/fallback$/) : null;
   if (fallbackMatch) {
     const body = await readJsonBody<unknown>(request);
 
@@ -292,7 +308,7 @@ async function routeRequest(
     return;
   }
 
-  const operatorSteerMatch = request.method === "POST" ? url.match(/^\/api\/calls\/([^/]+)\/operator-steer$/) : null;
+  const operatorSteerMatch = request.method === "POST" ? pathname.match(/^\/api\/calls\/([^/]+)\/operator-steer$/) : null;
   if (operatorSteerMatch) {
     const body = await readJsonBody<unknown>(request);
 
@@ -379,12 +395,18 @@ async function routeRequest(
     return;
   }
 
-  if (request.method === "GET" && url === "/api/calls") {
-    writeJson(response, 200, { calls: await ingress.listSnapshots() });
+  if (request.method === "GET" && pathname === "/api/calls") {
+    const flowState = requestUrl.searchParams.get("flowState");
+    if (flowState !== null && !isFlowState(flowState)) {
+      writeBadRequest(response, "call_list_flow_state_invalid");
+      return;
+    }
+
+    writeJson(response, 200, { calls: await ingress.listSnapshots(flowState ?? undefined) });
     return;
   }
 
-  const callSnapshotMatch = request.method === "GET" ? url.match(/^\/api\/calls\/([^/]+)$/) : null;
+  const callSnapshotMatch = request.method === "GET" ? pathname.match(/^\/api\/calls\/([^/]+)$/) : null;
   if (callSnapshotMatch) {
     const snapshot = await ingress.getSnapshot(callSnapshotMatch[1]);
     if (!snapshot) {

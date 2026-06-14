@@ -245,6 +245,39 @@ test("GET /api/calls lists active demo calls in start order", async () => {
   });
 });
 
+
+test("GET /api/calls can filter the active demo call list by flow state", async () => {
+  await withServer(async (port) => {
+    const firstStarted = await requestJson(port, "POST", "/api/demo/start");
+    const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+
+    await requestJson(port, "POST", "/api/demo/start");
+
+    const filtered = await requestJson(port, "GET", "/api/calls?flowState=policy_hold");
+    const filteredPayload = filtered.payload as { calls: SnapshotPayload[] };
+
+    assert.equal(filtered.statusCode, 200);
+    assert.deepEqual(filteredPayload.calls.map((call) => call.session.callId), [firstCallId]);
+    assert.deepEqual(filteredPayload.calls.map((call) => call.flowState), ["policy_hold"]);
+
+    const invalidFilter = await requestJson(port, "GET", "/api/calls?flowState=paused_forever");
+    assert.equal(invalidFilter.statusCode, 400);
+    assert.deepEqual(invalidFilter.payload, {
+      ok: false,
+      error: "call_list_flow_state_invalid",
+    });
+  });
+});
+
 test("the scripted flow pauses for operator steer and resumes with an approved safe response", async () => {
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start");

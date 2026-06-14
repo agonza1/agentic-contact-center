@@ -6,6 +6,7 @@ import {
 } from "./pipecatFlowPrototype";
 import type {
   CallSnapshot,
+  FlowState,
   LatencyBudgetStage,
   FallbackMode,
   OperatorSteerAction,
@@ -227,8 +228,9 @@ export class InMemoryTelephonyIngress {
     return snapshot ? cloneSnapshot(snapshot) : null;
   }
 
-  async listSnapshots(): Promise<CallSnapshot[]> {
+  async listSnapshots(flowState?: FlowState): Promise<CallSnapshot[]> {
     return [...this.calls.values()]
+      .filter((snapshot) => (flowState ? snapshot.flowState === flowState : true))
       .map((snapshot) => cloneSnapshot(snapshot))
       .sort((left, right) => left.session.startedAt.localeCompare(right.session.startedAt));
   }
