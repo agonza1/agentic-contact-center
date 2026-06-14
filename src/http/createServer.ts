@@ -439,12 +439,19 @@ async function routeRequest(
       return;
     }
 
+    const calls = await ingress.listSnapshots({
+      flowState: flowState ?? undefined,
+      pendingOperatorSteer,
+      fallbackArmed,
+    });
+    const summary = await ingress.getQueueSummary();
+
     writeJson(response, 200, {
-      calls: await ingress.listSnapshots({
-        flowState: flowState ?? undefined,
-        pendingOperatorSteer,
-        fallbackArmed,
-      }),
+      calls,
+      summary: {
+        ...summary,
+        filteredCalls: calls.length,
+      },
     });
     return;
   }

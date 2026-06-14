@@ -32,6 +32,17 @@ interface SnapshotPayload {
   latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
 }
 
+interface CallListPayload {
+  calls: SnapshotPayload[];
+  summary: {
+    totalCalls: number;
+    filteredCalls: number;
+    pendingOperatorSteer: number;
+    fallbackArmed: number;
+    byFlowState: Record<string, number>;
+  };
+}
+
 async function withServer<T>(run: (port: number) => Promise<T>): Promise<T> {
   const config = loadPocConfig();
   const server = buildHttpServer(config);
@@ -210,10 +221,25 @@ test("the risky offer boundary parks the flow in policy hold without promising a
 test("GET /api/calls lists active demo calls in start order", async () => {
   await withServer(async (port) => {
     const emptyList = await requestJson(port, "GET", "/api/calls");
-    const emptyPayload = emptyList.payload as { calls: SnapshotPayload[] };
+    const emptyPayload = emptyList.payload as CallListPayload;
 
     assert.equal(emptyList.statusCode, 200);
     assert.deepEqual(emptyPayload.calls, []);
+    assert.deepEqual(emptyPayload.summary, {
+      totalCalls: 0,
+      filteredCalls: 0,
+      pendingOperatorSteer: 0,
+      fallbackArmed: 0,
+      byFlowState: {
+        call_started: 0,
+        greet: 0,
+        diagnose: 0,
+        policy_hold: 0,
+        operator_steer: 0,
+        steered_response: 0,
+        wrap: 0,
+      },
+    });
 
     const firstStarted = await requestJson(port, "POST", "/api/demo/start", {
       openclawSessionId: "hb-session-01",
@@ -233,7 +259,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
     const secondCallId = (secondStarted.payload as SnapshotPayload).session.callId;
 
     const listed = await requestJson(port, "GET", "/api/calls");
-    const listedPayload = listed.payload as { calls: SnapshotPayload[] };
+    const listedPayload = listed.payload as CallListPayload;
 
     assert.equal(listed.statusCode, 200);
     assert.equal(listedPayload.calls.length, 2);
@@ -242,6 +268,21 @@ test("GET /api/calls lists active demo calls in start order", async () => {
     assert.equal(listedPayload.calls[0]?.flowState, "diagnose");
     assert.equal(listedPayload.calls[1]?.transcript.length, 0);
     assert.equal(listedPayload.calls[1]?.flowState, "call_started");
+    assert.deepEqual(listedPayload.summary, {
+      totalCalls: 2,
+      filteredCalls: 2,
+      pendingOperatorSteer: 0,
+      fallbackArmed: 0,
+      byFlowState: {
+        call_started: 1,
+        greet: 0,
+        diagnose: 1,
+        policy_hold: 0,
+        operator_steer: 0,
+        steered_response: 0,
+        wrap: 0,
+      },
+    });
   });
 });
 
@@ -263,11 +304,14 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     await requestJson(port, "POST", "/api/demo/start");
 
     const filtered = await requestJson(port, "GET", "/api/calls?flowState=policy_hold");
-    const filteredPayload = filtered.payload as { calls: SnapshotPayload[] };
+    const filteredPayload = filtered.payload as CallListPayload;
 
     assert.equal(filtered.statusCode, 200);
     assert.deepEqual(filteredPayload.calls.map((call) => call.session.callId), [firstCallId]);
     assert.deepEqual(filteredPayload.calls.map((call) => call.flowState), ["policy_hold"]);
+    assert.equal(filteredPayload.summary.totalCalls, 2);
+    assert.equal(filteredPayload.summary.filteredCalls, 1);
+    assert.equal(filteredPayload.summary.byFlowState.policy_hold, 1);
 
     const invalidFilter = await requestJson(port, "GET", "/api/calls?flowState=paused_forever");
     assert.equal(invalidFilter.statusCode, 400);
@@ -307,23 +351,36 @@ test("GET /api/calls can filter operator attention queues", async () => {
     await requestJson(port, "POST", "/api/demo/start");
 
     const pendingOnly = await requestJson(port, "GET", "/api/calls?pendingOperatorSteer=true");
-    const pendingPayload = pendingOnly.payload as { calls: SnapshotPayload[] };
+    const pendingPayload = pendingOnly.payload as CallListPayload;
     assert.equal(pendingOnly.statusCode, 200);
     assert.deepEqual(pendingPayload.calls.map((call) => call.session.callId), [pendingCallId]);
+    assert.equal(pendingPayload.summary.totalCalls, 3);
+    assert.equal(pendingPayload.summary.filteredCalls, 1);
+    assert.equal(pendingPayload.summary.pendingOperatorSteer, 1);
 
     const fallbackOnly = await requestJson(port, "GET", "/api/calls?fallbackArmed=true");
-    const fallbackPayload = fallbackOnly.payload as { calls: SnapshotPayload[] };
+    const fallbackPayload = fallbackOnly.payload as CallListPayload;
     assert.equal(fallbackOnly.statusCode, 200);
     assert.deepEqual(fallbackPayload.calls.map((call) => call.session.callId), [fallbackCallId]);
+    assert.equal(fallbackPayload.summary.fallbackArmed, 1);
 
     const combined = await requestJson(
       port,
       "GET",
       "/api/calls?flowState=policy_hold&pendingOperatorSteer=false&fallbackArmed=true",
     );
-    const combinedPayload = combined.payload as { calls: SnapshotPayload[] };
+    const combinedPayload = combined.payload as CallListPayload;
     assert.equal(combined.statusCode, 200);
     assert.deepEqual(combinedPayload.calls.map((call) => call.session.callId), [fallbackCallId]);
+    assert.deepEqual(combinedPayload.summary.byFlowState, {
+      call_started: 1,
+      greet: 0,
+      diagnose: 0,
+      policy_hold: 1,
+      operator_steer: 1,
+      steered_response: 0,
+      wrap: 0,
+    });
 
     const invalidPending = await requestJson(port, "GET", "/api/calls?pendingOperatorSteer=maybe");
     assert.equal(invalidPending.statusCode, 400);

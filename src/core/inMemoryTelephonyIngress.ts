@@ -244,4 +244,43 @@ export class InMemoryTelephonyIngress {
       .map((snapshot) => cloneSnapshot(snapshot))
       .sort((left, right) => left.session.startedAt.localeCompare(right.session.startedAt));
   }
+
+  async getQueueSummary(): Promise<{
+    totalCalls: number;
+    pendingOperatorSteer: number;
+    fallbackArmed: number;
+    byFlowState: Record<FlowState, number>;
+  }> {
+    const byFlowState: Record<FlowState, number> = {
+      call_started: 0,
+      greet: 0,
+      diagnose: 0,
+      policy_hold: 0,
+      operator_steer: 0,
+      steered_response: 0,
+      wrap: 0,
+    };
+
+    let pendingOperatorSteer = 0;
+    let fallbackArmed = 0;
+
+    for (const snapshot of this.calls.values()) {
+      byFlowState[snapshot.flowState] += 1;
+
+      if (snapshot.operatorSteer.pending) {
+        pendingOperatorSteer += 1;
+      }
+
+      if (snapshot.demoFallback.armed) {
+        fallbackArmed += 1;
+      }
+    }
+
+    return {
+      totalCalls: this.calls.size,
+      pendingOperatorSteer,
+      fallbackArmed,
+      byFlowState,
+    };
+  }
 }
