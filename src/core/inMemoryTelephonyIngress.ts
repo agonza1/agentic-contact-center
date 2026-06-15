@@ -234,6 +234,7 @@ export class InMemoryTelephonyIngress {
     fallbackArmed?: boolean;
     attentionRequired?: boolean;
     openclawSessionId?: string;
+    providerCallId?: string;
   } = {}): Promise<CallSnapshot[]> {
     return [...this.calls.values()]
       .filter((snapshot) => (filters.flowState ? snapshot.flowState === filters.flowState : true))
@@ -251,6 +252,9 @@ export class InMemoryTelephonyIngress {
         const attentionRequired = snapshot.operatorSteer.pending || snapshot.demoFallback.armed;
         return attentionRequired === filters.attentionRequired;
       })
+      .filter((snapshot) =>
+        filters.providerCallId === undefined ? true : snapshot.session.providerCallId === filters.providerCallId,
+      )
       .filter((snapshot) =>
         filters.openclawSessionId === undefined
           ? true

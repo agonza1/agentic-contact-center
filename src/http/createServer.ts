@@ -454,12 +454,19 @@ async function routeRequest(
       return;
     }
 
+    const providerCallId = requestUrl.searchParams.get("providerCallId");
+    if (providerCallId !== null && !providerCallId.trim()) {
+      writeBadRequest(response, "call_list_provider_call_id_invalid");
+      return;
+    }
+
     const calls = await ingress.listSnapshots({
       flowState: flowState ?? undefined,
       pendingOperatorSteer,
       fallbackArmed,
       attentionRequired,
       openclawSessionId: openclawSessionId?.trim() || undefined,
+      providerCallId: providerCallId?.trim() || undefined,
     });
     const summary = await ingress.getQueueSummary();
 
