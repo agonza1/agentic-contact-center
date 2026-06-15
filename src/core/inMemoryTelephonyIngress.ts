@@ -235,6 +235,7 @@ export class InMemoryTelephonyIngress {
     attentionRequired?: boolean;
     openclawSessionId?: string;
     openclawSessionLabel?: string;
+    openclawSessionRef?: string;
     providerCallId?: string;
   } = {}): Promise<CallSnapshot[]> {
     return [...this.calls.values()]
@@ -266,6 +267,16 @@ export class InMemoryTelephonyIngress {
           ? true
           : snapshot.session.openclawSession.label === filters.openclawSessionLabel,
       )
+      .filter((snapshot) => {
+        if (filters.openclawSessionRef === undefined) {
+          return true;
+        }
+
+        return (
+          snapshot.session.openclawSession.sessionId === filters.openclawSessionRef ||
+          snapshot.session.openclawSession.label === filters.openclawSessionRef
+        );
+      })
       .map((snapshot) => cloneSnapshot(snapshot))
       .sort((left, right) => left.session.startedAt.localeCompare(right.session.startedAt));
   }
