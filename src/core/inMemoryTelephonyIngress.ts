@@ -263,6 +263,9 @@ export class InMemoryTelephonyIngress {
     oldestAttentionProviderCallId: string | null;
     oldestAttentionOpenclawSessionId: string | null;
     oldestAttentionStartedAt: string | null;
+    oldestAttentionFlowState: FlowState | null;
+    oldestAttentionReason: string | null;
+    oldestAttentionSource: "operator_steer" | "fallback" | "operator_steer+fallback" | null;
     byFlowState: Record<FlowState, number>;
   }> {
     const byFlowState: Record<FlowState, number> = {
@@ -282,6 +285,9 @@ export class InMemoryTelephonyIngress {
     let oldestAttentionProviderCallId: string | null = null;
     let oldestAttentionOpenclawSessionId: string | null = null;
     let oldestAttentionStartedAt: string | null = null;
+    let oldestAttentionFlowState: FlowState | null = null;
+    let oldestAttentionReason: string | null = null;
+    let oldestAttentionSource: "operator_steer" | "fallback" | "operator_steer+fallback" | null = null;
 
     for (const snapshot of this.calls.values()) {
       byFlowState[snapshot.flowState] += 1;
@@ -301,10 +307,20 @@ export class InMemoryTelephonyIngress {
           oldestAttentionStartedAt === null ||
           snapshot.session.startedAt.localeCompare(oldestAttentionStartedAt) < 0
         ) {
+          const attentionSource =
+            snapshot.operatorSteer.pending && snapshot.demoFallback.armed
+              ? "operator_steer+fallback"
+              : snapshot.demoFallback.armed
+                ? "fallback"
+                : "operator_steer";
+
           oldestAttentionCallId = snapshot.session.callId;
           oldestAttentionProviderCallId = snapshot.session.providerCallId;
           oldestAttentionOpenclawSessionId = snapshot.session.openclawSession.sessionId;
           oldestAttentionStartedAt = snapshot.session.startedAt;
+          oldestAttentionFlowState = snapshot.flowState;
+          oldestAttentionReason = snapshot.demoFallback.reason ?? snapshot.operatorSteer.lastReason;
+          oldestAttentionSource = attentionSource;
         }
       }
     }
@@ -318,6 +334,9 @@ export class InMemoryTelephonyIngress {
       oldestAttentionProviderCallId,
       oldestAttentionOpenclawSessionId,
       oldestAttentionStartedAt,
+      oldestAttentionFlowState,
+      oldestAttentionReason,
+      oldestAttentionSource,
       byFlowState,
     };
   }

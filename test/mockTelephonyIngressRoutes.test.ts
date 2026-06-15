@@ -44,6 +44,9 @@ interface CallListPayload {
     oldestAttentionProviderCallId: string | null;
     oldestAttentionOpenclawSessionId: string | null;
     oldestAttentionStartedAt: string | null;
+    oldestAttentionFlowState: string | null;
+    oldestAttentionReason: string | null;
+    oldestAttentionSource: string | null;
     byFlowState: Record<string, number>;
   };
 }
@@ -240,6 +243,9 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       oldestAttentionProviderCallId: null,
       oldestAttentionOpenclawSessionId: null,
       oldestAttentionStartedAt: null,
+      oldestAttentionFlowState: null,
+      oldestAttentionReason: null,
+      oldestAttentionSource: null,
       byFlowState: {
         call_started: 0,
         greet: 0,
@@ -288,6 +294,9 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       oldestAttentionProviderCallId: null,
       oldestAttentionOpenclawSessionId: null,
       oldestAttentionStartedAt: null,
+      oldestAttentionFlowState: null,
+      oldestAttentionReason: null,
+      oldestAttentionSource: null,
       byFlowState: {
         call_started: 1,
         greet: 0,
@@ -376,6 +385,9 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(pendingPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
     assert.equal(pendingPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
     assert.equal(typeof pendingPayload.summary.oldestAttentionStartedAt, "string");
+    assert.equal(pendingPayload.summary.oldestAttentionFlowState, "operator_steer");
+    assert.equal(pendingPayload.summary.oldestAttentionReason, "safe_offer_review_requested");
+    assert.equal(pendingPayload.summary.oldestAttentionSource, "operator_steer");
 
     const fallbackOnly = await requestJson(port, "GET", "/api/calls?fallbackArmed=true");
     const fallbackPayload = fallbackOnly.payload as CallListPayload;
@@ -386,6 +398,9 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(fallbackPayload.summary.oldestAttentionCallId, pendingCallId);
     assert.equal(fallbackPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
     assert.equal(fallbackPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
+    assert.equal(fallbackPayload.summary.oldestAttentionFlowState, "operator_steer");
+    assert.equal(fallbackPayload.summary.oldestAttentionReason, "safe_offer_review_requested");
+    assert.equal(fallbackPayload.summary.oldestAttentionSource, "operator_steer");
 
     const attentionOnly = await requestJson(port, "GET", "/api/calls?attentionRequired=true");
     const attentionPayload = attentionOnly.payload as CallListPayload;
@@ -396,6 +411,9 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(attentionPayload.summary.oldestAttentionCallId, pendingCallId);
     assert.equal(attentionPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
     assert.equal(attentionPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
+    assert.equal(attentionPayload.summary.oldestAttentionFlowState, "operator_steer");
+    assert.equal(attentionPayload.summary.oldestAttentionReason, "safe_offer_review_requested");
+    assert.equal(attentionPayload.summary.oldestAttentionSource, "operator_steer");
 
     const notAttention = await requestJson(port, "GET", "/api/calls?attentionRequired=false");
     const notAttentionPayload = notAttention.payload as CallListPayload;
