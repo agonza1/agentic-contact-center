@@ -460,6 +460,12 @@ async function routeRequest(
       return;
     }
 
+    const openclawSessionRef = requestUrl.searchParams.get("openclawSessionRef");
+    if (openclawSessionRef !== null && !openclawSessionRef.trim()) {
+      writeBadRequest(response, "call_list_openclaw_session_ref_invalid");
+      return;
+    }
+
     const providerCallId = requestUrl.searchParams.get("providerCallId");
     if (providerCallId !== null && !providerCallId.trim()) {
       writeBadRequest(response, "call_list_provider_call_id_invalid");
@@ -473,6 +479,7 @@ async function routeRequest(
       attentionRequired,
       openclawSessionId: openclawSessionId?.trim() || undefined,
       openclawSessionLabel: openclawSessionLabel?.trim() || undefined,
+      openclawSessionRef: openclawSessionRef?.trim() || undefined,
       providerCallId: providerCallId?.trim() || undefined,
     });
     const summary = await ingress.getQueueSummary();

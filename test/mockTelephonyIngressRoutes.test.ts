@@ -496,6 +496,19 @@ test("GET /api/calls can filter by provider and attached OpenClaw session metada
     assert.equal(filteredPayload.summary.totalCalls, 2);
     assert.equal(filteredPayload.summary.filteredCalls, 1);
 
+    const filteredByRefId = await requestJson(port, "GET", "/api/calls?openclawSessionRef=hb-session-02");
+    const filteredByRefIdPayload = filteredByRefId.payload as CallListPayload;
+    assert.equal(filteredByRefId.statusCode, 200);
+    assert.deepEqual(filteredByRefIdPayload.calls.map((call) => call.session.callId), [secondCallId]);
+    assert.equal(filteredByRefIdPayload.summary.totalCalls, 2);
+    assert.equal(filteredByRefIdPayload.summary.filteredCalls, 1);
+
+    const filteredByRefLabel = await requestJson(port, "GET", "/api/calls?openclawSessionRef=cluecon-demo/second");
+    const filteredByRefLabelPayload = filteredByRefLabel.payload as CallListPayload;
+    assert.equal(filteredByRefLabel.statusCode, 200);
+    assert.deepEqual(filteredByRefLabelPayload.calls.map((call) => call.session.callId), [secondCallId]);
+    assert.equal(filteredByRefLabelPayload.summary.filteredCalls, 1);
+
     const filteredByLabel = await requestJson(port, "GET", "/api/calls?openclawSessionLabel=cluecon-demo/second");
     const filteredByLabelPayload = filteredByLabel.payload as CallListPayload;
 
@@ -518,6 +531,12 @@ test("GET /api/calls can filter by provider and attached OpenClaw session metada
     assert.equal(missingProviderPayload.summary.totalCalls, 2);
     assert.equal(missingProviderPayload.summary.filteredCalls, 0);
 
+    const missingRef = await requestJson(port, "GET", "/api/calls?openclawSessionRef=hb-session-03");
+    const missingRefPayload = missingRef.payload as CallListPayload;
+    assert.equal(missingRef.statusCode, 200);
+    assert.deepEqual(missingRefPayload.calls, []);
+    assert.equal(missingRefPayload.summary.filteredCalls, 0);
+
     const missingLabel = await requestJson(port, "GET", "/api/calls?openclawSessionLabel=cluecon-demo/missing");
     const missingLabelPayload = missingLabel.payload as CallListPayload;
     assert.equal(missingLabel.statusCode, 200);
@@ -537,6 +556,13 @@ test("GET /api/calls can filter by provider and attached OpenClaw session metada
     assert.deepEqual(invalidLabel.payload, {
       ok: false,
       error: "call_list_openclaw_session_label_invalid",
+    });
+
+    const invalidRef = await requestJson(port, "GET", "/api/calls?openclawSessionRef=%20%20%20");
+    assert.equal(invalidRef.statusCode, 400);
+    assert.deepEqual(invalidRef.payload, {
+      ok: false,
+      error: "call_list_openclaw_session_ref_invalid",
     });
 
     const invalid = await requestJson(port, "GET", "/api/calls?openclawSessionId=%20%20%20");
