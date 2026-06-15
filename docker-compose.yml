@@ -25,6 +25,7 @@ services:
       target: runtime
     image: agentic-contact-center:local
     profiles: ["proof"]
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     command:
       - node
       - scripts/demo-proof.mjs

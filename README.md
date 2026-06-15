@@ -87,10 +87,10 @@ If `--out` is omitted, the proof file is written to `artifacts/demo-proof-<times
 To generate the proof artifact through Compose instead of the host Node toolchain:
 
 ```bash
-docker compose run --rm proof
+LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose run --rm proof
 ```
 
-That writes `artifacts/demo-proof-docker.json` plus a refreshed `artifacts/demo-proof-latest.json` on the host.
+That writes `artifacts/demo-proof-docker.json` plus a refreshed `artifacts/demo-proof-latest.json` on the host. Passing the caller UID/GID keeps the bind-mounted artifact files owned by the invoking developer on Linux instead of root.
 
 For a step-by-step QA handoff flow, artifact inspection checklist, and example commands, use [docs/demo-proof-runbook.md](docs/demo-proof-runbook.md).
 
