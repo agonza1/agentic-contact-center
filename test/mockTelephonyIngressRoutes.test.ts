@@ -461,7 +461,7 @@ test("GET /api/calls can filter operator attention queues", async () => {
   });
 });
 
-test("GET /api/calls can filter by provider and attached OpenClaw session ids", async () => {
+test("GET /api/calls can filter by provider and attached OpenClaw session metadata", async () => {
   await withServer(async (port) => {
     await requestJson(port, "POST", "/api/demo/start", {
       openclawSessionId: "hb-session-01",
@@ -490,6 +490,14 @@ test("GET /api/calls can filter by provider and attached OpenClaw session ids", 
     assert.equal(filteredPayload.summary.totalCalls, 2);
     assert.equal(filteredPayload.summary.filteredCalls, 1);
 
+    const filteredByLabel = await requestJson(port, "GET", "/api/calls?openclawSessionLabel=cluecon-demo/second");
+    const filteredByLabelPayload = filteredByLabel.payload as CallListPayload;
+
+    assert.equal(filteredByLabel.statusCode, 200);
+    assert.deepEqual(filteredByLabelPayload.calls.map((call) => call.session.callId), [secondCallId]);
+    assert.equal(filteredByLabelPayload.summary.totalCalls, 2);
+    assert.equal(filteredByLabelPayload.summary.filteredCalls, 1);
+
     const missing = await requestJson(port, "GET", "/api/calls?openclawSessionId=hb-session-03");
     const missingPayload = missing.payload as CallListPayload;
     assert.equal(missing.statusCode, 200);
@@ -504,11 +512,25 @@ test("GET /api/calls can filter by provider and attached OpenClaw session ids", 
     assert.equal(missingProviderPayload.summary.totalCalls, 2);
     assert.equal(missingProviderPayload.summary.filteredCalls, 0);
 
+    const missingLabel = await requestJson(port, "GET", "/api/calls?openclawSessionLabel=cluecon-demo/missing");
+    const missingLabelPayload = missingLabel.payload as CallListPayload;
+    assert.equal(missingLabel.statusCode, 200);
+    assert.deepEqual(missingLabelPayload.calls, []);
+    assert.equal(missingLabelPayload.summary.totalCalls, 2);
+    assert.equal(missingLabelPayload.summary.filteredCalls, 0);
+
     const invalidProvider = await requestJson(port, "GET", "/api/calls?providerCallId=%20%20%20");
     assert.equal(invalidProvider.statusCode, 400);
     assert.deepEqual(invalidProvider.payload, {
       ok: false,
       error: "call_list_provider_call_id_invalid",
+    });
+
+    const invalidLabel = await requestJson(port, "GET", "/api/calls?openclawSessionLabel=%20%20%20");
+    assert.equal(invalidLabel.statusCode, 400);
+    assert.deepEqual(invalidLabel.payload, {
+      ok: false,
+      error: "call_list_openclaw_session_label_invalid",
     });
 
     const invalid = await requestJson(port, "GET", "/api/calls?openclawSessionId=%20%20%20");
