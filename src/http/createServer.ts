@@ -448,11 +448,32 @@ async function routeRequest(
       return;
     }
 
+    const openclawSessionId = requestUrl.searchParams.get("openclawSessionId");
+    if (openclawSessionId !== null && !openclawSessionId.trim()) {
+      writeBadRequest(response, "call_list_openclaw_session_id_invalid");
+      return;
+    }
+
+    const openclawSessionLabel = requestUrl.searchParams.get("openclawSessionLabel");
+    if (openclawSessionLabel !== null && !openclawSessionLabel.trim()) {
+      writeBadRequest(response, "call_list_openclaw_session_label_invalid");
+      return;
+    }
+
+    const providerCallId = requestUrl.searchParams.get("providerCallId");
+    if (providerCallId !== null && !providerCallId.trim()) {
+      writeBadRequest(response, "call_list_provider_call_id_invalid");
+      return;
+    }
+
     const calls = await ingress.listSnapshots({
       flowState: flowState ?? undefined,
       pendingOperatorSteer,
       fallbackArmed,
       attentionRequired,
+      openclawSessionId: openclawSessionId?.trim() || undefined,
+      openclawSessionLabel: openclawSessionLabel?.trim() || undefined,
+      providerCallId: providerCallId?.trim() || undefined,
     });
     const summary = await ingress.getQueueSummary();
 

@@ -43,6 +43,7 @@ interface CallListPayload {
     oldestAttentionCallId: string | null;
     oldestAttentionProviderCallId: string | null;
     oldestAttentionOpenclawSessionId: string | null;
+    oldestAttentionOpenclawSessionLabel: string | null;
     oldestAttentionStartedAt: string | null;
     oldestAttentionFlowState: string | null;
     oldestAttentionReason: string | null;
@@ -242,6 +243,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       oldestAttentionCallId: null,
       oldestAttentionProviderCallId: null,
       oldestAttentionOpenclawSessionId: null,
+      oldestAttentionOpenclawSessionLabel: null,
       oldestAttentionStartedAt: null,
       oldestAttentionFlowState: null,
       oldestAttentionReason: null,
@@ -293,6 +295,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       oldestAttentionCallId: null,
       oldestAttentionProviderCallId: null,
       oldestAttentionOpenclawSessionId: null,
+      oldestAttentionOpenclawSessionLabel: null,
       oldestAttentionStartedAt: null,
       oldestAttentionFlowState: null,
       oldestAttentionReason: null,
@@ -384,6 +387,7 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(pendingPayload.summary.oldestAttentionCallId, pendingCallId);
     assert.equal(pendingPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
     assert.equal(pendingPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
+    assert.equal(pendingPayload.summary.oldestAttentionOpenclawSessionLabel, "cluecon-2026-cancellation-rescue:demo-call-0001");
     assert.equal(typeof pendingPayload.summary.oldestAttentionStartedAt, "string");
     assert.equal(pendingPayload.summary.oldestAttentionFlowState, "operator_steer");
     assert.equal(pendingPayload.summary.oldestAttentionReason, "safe_offer_review_requested");
@@ -398,6 +402,7 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(fallbackPayload.summary.oldestAttentionCallId, pendingCallId);
     assert.equal(fallbackPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
     assert.equal(fallbackPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
+    assert.equal(fallbackPayload.summary.oldestAttentionOpenclawSessionLabel, "cluecon-2026-cancellation-rescue:demo-call-0001");
     assert.equal(fallbackPayload.summary.oldestAttentionFlowState, "operator_steer");
     assert.equal(fallbackPayload.summary.oldestAttentionReason, "safe_offer_review_requested");
     assert.equal(fallbackPayload.summary.oldestAttentionSource, "operator_steer");
@@ -411,6 +416,7 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(attentionPayload.summary.oldestAttentionCallId, pendingCallId);
     assert.equal(attentionPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
     assert.equal(attentionPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
+    assert.equal(attentionPayload.summary.oldestAttentionOpenclawSessionLabel, "cluecon-2026-cancellation-rescue:demo-call-0001");
     assert.equal(attentionPayload.summary.oldestAttentionFlowState, "operator_steer");
     assert.equal(attentionPayload.summary.oldestAttentionReason, "safe_offer_review_requested");
     assert.equal(attentionPayload.summary.oldestAttentionSource, "operator_steer");
@@ -457,6 +463,87 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.deepEqual(invalidAttention.payload, {
       ok: false,
       error: "call_list_attention_required_invalid",
+    });
+  });
+});
+
+test("GET /api/calls can filter by provider and attached OpenClaw session metadata", async () => {
+  await withServer(async (port) => {
+    await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "hb-session-01",
+      openclawSessionLabel: "cluecon-demo/first",
+    });
+
+    const secondStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "hb-session-02",
+      openclawSessionLabel: "cluecon-demo/second",
+    });
+    const secondCallId = (secondStarted.payload as SnapshotPayload).session.callId;
+
+    const filteredByProvider = await requestJson(port, "GET", "/api/calls?providerCallId=mock-sw-call-001-0002");
+    const filteredByProviderPayload = filteredByProvider.payload as CallListPayload;
+
+    assert.equal(filteredByProvider.statusCode, 200);
+    assert.deepEqual(filteredByProviderPayload.calls.map((call) => call.session.callId), [secondCallId]);
+    assert.equal(filteredByProviderPayload.summary.totalCalls, 2);
+    assert.equal(filteredByProviderPayload.summary.filteredCalls, 1);
+
+    const filtered = await requestJson(port, "GET", "/api/calls?openclawSessionId=hb-session-02");
+    const filteredPayload = filtered.payload as CallListPayload;
+
+    assert.equal(filtered.statusCode, 200);
+    assert.deepEqual(filteredPayload.calls.map((call) => call.session.callId), [secondCallId]);
+    assert.equal(filteredPayload.summary.totalCalls, 2);
+    assert.equal(filteredPayload.summary.filteredCalls, 1);
+
+    const filteredByLabel = await requestJson(port, "GET", "/api/calls?openclawSessionLabel=cluecon-demo/second");
+    const filteredByLabelPayload = filteredByLabel.payload as CallListPayload;
+
+    assert.equal(filteredByLabel.statusCode, 200);
+    assert.deepEqual(filteredByLabelPayload.calls.map((call) => call.session.callId), [secondCallId]);
+    assert.equal(filteredByLabelPayload.summary.totalCalls, 2);
+    assert.equal(filteredByLabelPayload.summary.filteredCalls, 1);
+
+    const missing = await requestJson(port, "GET", "/api/calls?openclawSessionId=hb-session-03");
+    const missingPayload = missing.payload as CallListPayload;
+    assert.equal(missing.statusCode, 200);
+    assert.deepEqual(missingPayload.calls, []);
+    assert.equal(missingPayload.summary.totalCalls, 2);
+    assert.equal(missingPayload.summary.filteredCalls, 0);
+
+    const missingProvider = await requestJson(port, "GET", "/api/calls?providerCallId=mock-sw-call-001-9999");
+    const missingProviderPayload = missingProvider.payload as CallListPayload;
+    assert.equal(missingProvider.statusCode, 200);
+    assert.deepEqual(missingProviderPayload.calls, []);
+    assert.equal(missingProviderPayload.summary.totalCalls, 2);
+    assert.equal(missingProviderPayload.summary.filteredCalls, 0);
+
+    const missingLabel = await requestJson(port, "GET", "/api/calls?openclawSessionLabel=cluecon-demo/missing");
+    const missingLabelPayload = missingLabel.payload as CallListPayload;
+    assert.equal(missingLabel.statusCode, 200);
+    assert.deepEqual(missingLabelPayload.calls, []);
+    assert.equal(missingLabelPayload.summary.totalCalls, 2);
+    assert.equal(missingLabelPayload.summary.filteredCalls, 0);
+
+    const invalidProvider = await requestJson(port, "GET", "/api/calls?providerCallId=%20%20%20");
+    assert.equal(invalidProvider.statusCode, 400);
+    assert.deepEqual(invalidProvider.payload, {
+      ok: false,
+      error: "call_list_provider_call_id_invalid",
+    });
+
+    const invalidLabel = await requestJson(port, "GET", "/api/calls?openclawSessionLabel=%20%20%20");
+    assert.equal(invalidLabel.statusCode, 400);
+    assert.deepEqual(invalidLabel.payload, {
+      ok: false,
+      error: "call_list_openclaw_session_label_invalid",
+    });
+
+    const invalid = await requestJson(port, "GET", "/api/calls?openclawSessionId=%20%20%20");
+    assert.equal(invalid.statusCode, 400);
+    assert.deepEqual(invalid.payload, {
+      ok: false,
+      error: "call_list_openclaw_session_id_invalid",
     });
   });
 });
