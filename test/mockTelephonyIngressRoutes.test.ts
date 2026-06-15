@@ -461,6 +461,43 @@ test("GET /api/calls can filter operator attention queues", async () => {
   });
 });
 
+test("GET /api/calls can filter by attached OpenClaw session id", async () => {
+  await withServer(async (port) => {
+    await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "hb-session-01",
+      openclawSessionLabel: "cluecon-demo/first",
+    });
+
+    const secondStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "hb-session-02",
+      openclawSessionLabel: "cluecon-demo/second",
+    });
+    const secondCallId = (secondStarted.payload as SnapshotPayload).session.callId;
+
+    const filtered = await requestJson(port, "GET", "/api/calls?openclawSessionId=hb-session-02");
+    const filteredPayload = filtered.payload as CallListPayload;
+
+    assert.equal(filtered.statusCode, 200);
+    assert.deepEqual(filteredPayload.calls.map((call) => call.session.callId), [secondCallId]);
+    assert.equal(filteredPayload.summary.totalCalls, 2);
+    assert.equal(filteredPayload.summary.filteredCalls, 1);
+
+    const missing = await requestJson(port, "GET", "/api/calls?openclawSessionId=hb-session-03");
+    const missingPayload = missing.payload as CallListPayload;
+    assert.equal(missing.statusCode, 200);
+    assert.deepEqual(missingPayload.calls, []);
+    assert.equal(missingPayload.summary.totalCalls, 2);
+    assert.equal(missingPayload.summary.filteredCalls, 0);
+
+    const invalid = await requestJson(port, "GET", "/api/calls?openclawSessionId=%20%20%20");
+    assert.equal(invalid.statusCode, 400);
+    assert.deepEqual(invalid.payload, {
+      ok: false,
+      error: "call_list_openclaw_session_id_invalid",
+    });
+  });
+});
+
 test("the scripted flow pauses for operator steer and resumes with an approved safe response", async () => {
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start");

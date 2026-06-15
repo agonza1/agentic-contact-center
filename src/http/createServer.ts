@@ -448,11 +448,18 @@ async function routeRequest(
       return;
     }
 
+    const openclawSessionId = requestUrl.searchParams.get("openclawSessionId");
+    if (openclawSessionId !== null && !openclawSessionId.trim()) {
+      writeBadRequest(response, "call_list_openclaw_session_id_invalid");
+      return;
+    }
+
     const calls = await ingress.listSnapshots({
       flowState: flowState ?? undefined,
       pendingOperatorSteer,
       fallbackArmed,
       attentionRequired,
+      openclawSessionId: openclawSessionId?.trim() || undefined,
     });
     const summary = await ingress.getQueueSummary();
 

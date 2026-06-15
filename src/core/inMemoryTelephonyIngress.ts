@@ -233,6 +233,7 @@ export class InMemoryTelephonyIngress {
     pendingOperatorSteer?: boolean;
     fallbackArmed?: boolean;
     attentionRequired?: boolean;
+    openclawSessionId?: string;
   } = {}): Promise<CallSnapshot[]> {
     return [...this.calls.values()]
       .filter((snapshot) => (filters.flowState ? snapshot.flowState === filters.flowState : true))
@@ -250,6 +251,11 @@ export class InMemoryTelephonyIngress {
         const attentionRequired = snapshot.operatorSteer.pending || snapshot.demoFallback.armed;
         return attentionRequired === filters.attentionRequired;
       })
+      .filter((snapshot) =>
+        filters.openclawSessionId === undefined
+          ? true
+          : snapshot.session.openclawSession.sessionId === filters.openclawSessionId,
+      )
       .map((snapshot) => cloneSnapshot(snapshot))
       .sort((left, right) => left.session.startedAt.localeCompare(right.session.startedAt));
   }
