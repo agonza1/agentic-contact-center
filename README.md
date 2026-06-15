@@ -23,6 +23,38 @@ npm start
 
 The server listens on `http://localhost:8026` by default.
 
+## High-level flow
+
+```mermaid
+flowchart LR
+    caller[Caller / Demo driver] -->|POST /api/demo/start| server[TypeScript HTTP server]
+    caller -->|POST /api/calls/:callId/caller-turn| server
+    server --> state[(In-memory call snapshot)]
+    state --> snapshot[GET /api/calls and /api/calls/:callId]
+    state --> hold{Policy hold needed?}
+    hold -->|No| wrap[Safe scripted response and wrap]
+    hold -->|Yes| steer[POST /api/calls/:callId/operator-steer]
+    steer --> approved{Approved safe action?}
+    approved -->|approve_offer / resume| wrap
+    approved -->|escalate_to_human| handoff[Fail-closed human handoff]
+    state --> fallback[POST /api/calls/:callId/fallback]
+    fallback --> handoff
+    proof[Proof runner] -->|GET /health + scripted scenarios| server
+    proof --> artifacts[(JSON proof artifacts)]
+```
+
+The mock runtime keeps one operator-visible call snapshot with session ids, transcript turns, flow-state transitions, operator steer status, fallback rationale, and latency marks for QA handoff.
+
+## Run with Docker Compose
+
+Start the local API container:
+
+```bash
+docker compose up --build app
+```
+
+Then check the health endpoint at `http://localhost:8026/health`.
+
 ## Seeded cancellation-rescue script
 
 Post these caller turns in order to exercise the deterministic issue `#4` prototype:
@@ -51,6 +83,14 @@ The command:
 - optionally refreshes a stable latest artifact path for QA handoff or PR review attachments
 
 If `--out` is omitted, the proof file is written to `artifacts/demo-proof-<timestamp>.json`. Add `--latest-out artifacts/demo-proof-latest.json` to keep a deterministic handoff file updated alongside timestamped runs.
+
+To generate the proof artifact through Compose instead of the host Node toolchain:
+
+```bash
+docker compose run --rm proof
+```
+
+That writes `artifacts/demo-proof-docker.json` plus a refreshed `artifacts/demo-proof-latest.json` on the host.
 
 For a step-by-step QA handoff flow, artifact inspection checklist, and example commands, use [docs/demo-proof-runbook.md](docs/demo-proof-runbook.md).
 
