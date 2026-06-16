@@ -22,5 +22,5 @@ COPY --from=build /app/config ./config
 COPY --from=build /app/scripts ./scripts
 
 EXPOSE 8026
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '8026') + '/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '8026') + '/health').then(async (response) => { if (!response.ok) process.exit(1); const contentType = response.headers.get('content-type') || ''; if (!contentType.toLowerCase().includes('application/json')) return; const payload = await response.json().catch(() => null); if (payload && typeof payload === 'object' && 'ok' in payload && payload.ok !== true) process.exit(1); }).catch(() => process.exit(1))"
 CMD ["node", "dist/src/index.js"]
