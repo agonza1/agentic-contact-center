@@ -609,6 +609,87 @@ test("GET /api/queue can filter operator summary slices", async () => {
     assert.equal(bySessionPayload.summary.totalCalls, 1);
     assert.equal(bySessionPayload.summary.oldestAttentionCallId, fallbackCallId);
 
+    const byFlowState = await requestJson(port, "GET", "/api/queue?flowState=call_started");
+    const byFlowStatePayload = byFlowState.payload as QueueSummaryPayload;
+    assert.equal(byFlowState.statusCode, 200);
+    assert.equal(byFlowStatePayload.summary.totalCalls, 1);
+    assert.deepEqual(byFlowStatePayload.summary.byFlowState, {
+      call_started: 1,
+      greet: 0,
+      diagnose: 0,
+      policy_hold: 0,
+      operator_steer: 0,
+      steered_response: 0,
+      wrap: 0,
+    });
+
+    const bySessionId = await requestJson(port, "GET", "/api/queue?openclawSessionId=hb-session-01");
+    const bySessionIdPayload = bySessionId.payload as QueueSummaryPayload;
+    assert.equal(bySessionId.statusCode, 200);
+    assert.equal(bySessionIdPayload.summary.totalCalls, 1);
+    assert.equal(bySessionIdPayload.summary.oldestAttentionCallId, firstCallId);
+
+    const byLabel = await requestJson(port, "GET", "/api/queue?openclawSessionLabel=cluecon-demo/third");
+    const byLabelPayload = byLabel.payload as QueueSummaryPayload;
+    assert.equal(byLabel.statusCode, 200);
+    assert.equal(byLabelPayload.summary.totalCalls, 1);
+    assert.equal(byLabelPayload.summary.oldestAttentionCallId, fallbackCallId);
+
+    const byProvider = await requestJson(port, "GET", "/api/queue?providerCallId=mock-sw-call-001-0003");
+    const byProviderPayload = byProvider.payload as QueueSummaryPayload;
+    assert.equal(byProvider.statusCode, 200);
+    assert.equal(byProviderPayload.summary.totalCalls, 1);
+    assert.equal(byProviderPayload.summary.oldestAttentionCallId, fallbackCallId);
+
+    const invalidFlowState = await requestJson(port, "GET", "/api/queue?flowState=paused_forever");
+    assert.equal(invalidFlowState.statusCode, 400);
+    assert.deepEqual(invalidFlowState.payload, {
+      ok: false,
+      error: "queue_flow_state_invalid",
+    });
+
+    const invalidPending = await requestJson(port, "GET", "/api/queue?pendingOperatorSteer=maybe");
+    assert.equal(invalidPending.statusCode, 400);
+    assert.deepEqual(invalidPending.payload, {
+      ok: false,
+      error: "queue_pending_operator_steer_invalid",
+    });
+
+    const invalidFallback = await requestJson(port, "GET", "/api/queue?fallbackArmed=sometimes");
+    assert.equal(invalidFallback.statusCode, 400);
+    assert.deepEqual(invalidFallback.payload, {
+      ok: false,
+      error: "queue_fallback_armed_invalid",
+    });
+
+    const invalidAttention = await requestJson(port, "GET", "/api/queue?attentionRequired=loudly");
+    assert.equal(invalidAttention.statusCode, 400);
+    assert.deepEqual(invalidAttention.payload, {
+      ok: false,
+      error: "queue_attention_required_invalid",
+    });
+
+    const invalidProvider = await requestJson(port, "GET", "/api/queue?providerCallId=%20%20%20");
+    assert.equal(invalidProvider.statusCode, 400);
+    assert.deepEqual(invalidProvider.payload, {
+      ok: false,
+      error: "queue_provider_call_id_invalid",
+    });
+
+    const invalidLabel = await requestJson(port, "GET", "/api/queue?openclawSessionLabel=%20%20%20");
+    assert.equal(invalidLabel.statusCode, 400);
+    assert.deepEqual(invalidLabel.payload, {
+      ok: false,
+      error: "queue_openclaw_session_label_invalid",
+    });
+
+    const invalidSessionId = await requestJson(port, "GET", "/api/queue?openclawSessionId=%20%20%20");
+    assert.equal(invalidSessionId.statusCode, 400);
+    assert.deepEqual(invalidSessionId.payload, {
+      ok: false,
+      error: "queue_openclaw_session_id_invalid",
+    });
+
     const invalidRef = await requestJson(port, "GET", "/api/queue?openclawSessionRef=%20%20%20");
     assert.equal(invalidRef.statusCode, 400);
     assert.deepEqual(invalidRef.payload, {
