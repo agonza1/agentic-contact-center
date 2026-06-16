@@ -547,6 +547,77 @@ test("GET /api/calls can filter operator attention queues", async () => {
   });
 });
 
+test("GET /api/queue can filter operator summary slices", async () => {
+  await withServer(async (port) => {
+    const firstStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "hb-session-01",
+      openclawSessionLabel: "cluecon-demo/first",
+    });
+    const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+
+    await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "hb-session-02",
+      openclawSessionLabel: "cluecon-demo/second",
+    });
+
+    const fallbackStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "hb-session-03",
+      openclawSessionLabel: "cluecon-demo/third",
+    });
+    const fallbackCallId = (fallbackStarted.payload as SnapshotPayload).session.callId;
+    await requestJson(port, "POST", `/api/calls/${fallbackCallId}/operator-steer`, {
+      action: "arm_fallback",
+      reason: "audio degraded during live demo",
+      timestamp: "2026-06-10T14:00:11.000Z",
+    });
+
+    const pendingOnly = await requestJson(port, "GET", "/api/queue?pendingOperatorSteer=true");
+    const pendingPayload = pendingOnly.payload as QueueSummaryPayload;
+    assert.equal(pendingOnly.statusCode, 200);
+    assert.equal(pendingPayload.summary.totalCalls, 1);
+    assert.equal(pendingPayload.summary.pendingOperatorSteer, 1);
+    assert.equal(pendingPayload.summary.fallbackArmed, 0);
+    assert.equal(pendingPayload.summary.attentionRequired, 1);
+    assert.equal(pendingPayload.summary.oldestAttentionCallId, firstCallId);
+
+    const fallbackOnly = await requestJson(port, "GET", "/api/queue?fallbackArmed=true");
+    const fallbackPayload = fallbackOnly.payload as QueueSummaryPayload;
+    assert.equal(fallbackOnly.statusCode, 200);
+    assert.equal(fallbackPayload.summary.totalCalls, 1);
+    assert.equal(fallbackPayload.summary.pendingOperatorSteer, 0);
+    assert.equal(fallbackPayload.summary.fallbackArmed, 1);
+    assert.equal(fallbackPayload.summary.attentionRequired, 1);
+    assert.equal(fallbackPayload.summary.oldestAttentionCallId, fallbackCallId);
+    assert.equal(fallbackPayload.summary.oldestAttentionSource, "fallback");
+
+    const bySession = await requestJson(port, "GET", "/api/queue?openclawSessionRef=hb-session-03");
+    const bySessionPayload = bySession.payload as QueueSummaryPayload;
+    assert.equal(bySession.statusCode, 200);
+    assert.equal(bySessionPayload.summary.totalCalls, 1);
+    assert.equal(bySessionPayload.summary.oldestAttentionCallId, fallbackCallId);
+
+    const invalidRef = await requestJson(port, "GET", "/api/queue?openclawSessionRef=%20%20%20");
+    assert.equal(invalidRef.statusCode, 400);
+    assert.deepEqual(invalidRef.payload, {
+      ok: false,
+      error: "queue_openclaw_session_ref_invalid",
+    });
+  });
+});
+
 test("GET /api/calls can filter by provider and attached OpenClaw session metadata", async () => {
   await withServer(async (port) => {
     await requestJson(port, "POST", "/api/demo/start", {

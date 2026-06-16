@@ -238,6 +238,19 @@ export class InMemoryTelephonyIngress {
     openclawSessionRef?: string;
     providerCallId?: string;
   } = {}): Promise<CallSnapshot[]> {
+    return this.getSnapshots(filters).map((snapshot) => cloneSnapshot(snapshot));
+  }
+
+  private getSnapshots(filters: {
+    flowState?: FlowState;
+    pendingOperatorSteer?: boolean;
+    fallbackArmed?: boolean;
+    attentionRequired?: boolean;
+    openclawSessionId?: string;
+    openclawSessionLabel?: string;
+    openclawSessionRef?: string;
+    providerCallId?: string;
+  } = {}): CallSnapshot[] {
     return [...this.calls.values()]
       .filter((snapshot) => (filters.flowState ? snapshot.flowState === filters.flowState : true))
       .filter((snapshot) =>
@@ -277,11 +290,19 @@ export class InMemoryTelephonyIngress {
           snapshot.session.openclawSession.label === filters.openclawSessionRef
         );
       })
-      .map((snapshot) => cloneSnapshot(snapshot))
       .sort((left, right) => left.session.startedAt.localeCompare(right.session.startedAt));
   }
 
-  async getQueueSummary(): Promise<{
+  async getQueueSummary(filters: {
+    flowState?: FlowState;
+    pendingOperatorSteer?: boolean;
+    fallbackArmed?: boolean;
+    attentionRequired?: boolean;
+    openclawSessionId?: string;
+    openclawSessionLabel?: string;
+    openclawSessionRef?: string;
+    providerCallId?: string;
+  } = {}): Promise<{
     totalCalls: number;
     pendingOperatorSteer: number;
     fallbackArmed: number;
@@ -318,7 +339,9 @@ export class InMemoryTelephonyIngress {
     let oldestAttentionReason: string | null = null;
     let oldestAttentionSource: "operator_steer" | "fallback" | "operator_steer+fallback" | null = null;
 
-    for (const snapshot of this.calls.values()) {
+    const snapshots = this.getSnapshots(filters);
+
+    for (const snapshot of snapshots) {
       byFlowState[snapshot.flowState] += 1;
 
       if (snapshot.operatorSteer.pending) {
@@ -356,7 +379,7 @@ export class InMemoryTelephonyIngress {
     }
 
     return {
-      totalCalls: this.calls.size,
+      totalCalls: snapshots.length,
       pendingOperatorSteer,
       fallbackArmed,
       attentionRequired,

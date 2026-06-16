@@ -92,6 +92,82 @@ function parseOptionalBooleanFilter(
   return { error };
 }
 
+interface CallListFilters {
+  flowState?: FlowState;
+  pendingOperatorSteer?: boolean;
+  fallbackArmed?: boolean;
+  attentionRequired?: boolean;
+  openclawSessionId?: string;
+  openclawSessionLabel?: string;
+  openclawSessionRef?: string;
+  providerCallId?: string;
+}
+
+function parseCallListFilters(
+  requestUrl: URL,
+  invalidPrefix: "call_list" | "queue",
+): CallListFilters | { error: string } {
+  const flowState = requestUrl.searchParams.get("flowState");
+  if (flowState !== null && !isFlowState(flowState)) {
+    return { error: `${invalidPrefix}_flow_state_invalid` };
+  }
+
+  const pendingOperatorSteer = parseOptionalBooleanFilter(
+    requestUrl.searchParams.get("pendingOperatorSteer"),
+    `${invalidPrefix}_pending_operator_steer_invalid`,
+  );
+  if (typeof pendingOperatorSteer !== "boolean" && pendingOperatorSteer !== undefined) {
+    return pendingOperatorSteer;
+  }
+
+  const fallbackArmed = parseOptionalBooleanFilter(
+    requestUrl.searchParams.get("fallbackArmed"),
+    `${invalidPrefix}_fallback_armed_invalid`,
+  );
+  if (typeof fallbackArmed !== "boolean" && fallbackArmed !== undefined) {
+    return fallbackArmed;
+  }
+
+  const attentionRequired = parseOptionalBooleanFilter(
+    requestUrl.searchParams.get("attentionRequired"),
+    `${invalidPrefix}_attention_required_invalid`,
+  );
+  if (typeof attentionRequired !== "boolean" && attentionRequired !== undefined) {
+    return attentionRequired;
+  }
+
+  const openclawSessionId = requestUrl.searchParams.get("openclawSessionId");
+  if (openclawSessionId !== null && !openclawSessionId.trim()) {
+    return { error: `${invalidPrefix}_openclaw_session_id_invalid` };
+  }
+
+  const openclawSessionLabel = requestUrl.searchParams.get("openclawSessionLabel");
+  if (openclawSessionLabel !== null && !openclawSessionLabel.trim()) {
+    return { error: `${invalidPrefix}_openclaw_session_label_invalid` };
+  }
+
+  const openclawSessionRef = requestUrl.searchParams.get("openclawSessionRef");
+  if (openclawSessionRef !== null && !openclawSessionRef.trim()) {
+    return { error: `${invalidPrefix}_openclaw_session_ref_invalid` };
+  }
+
+  const providerCallId = requestUrl.searchParams.get("providerCallId");
+  if (providerCallId !== null && !providerCallId.trim()) {
+    return { error: `${invalidPrefix}_provider_call_id_invalid` };
+  }
+
+  return {
+    flowState: flowState ?? undefined,
+    pendingOperatorSteer,
+    fallbackArmed,
+    attentionRequired,
+    openclawSessionId: openclawSessionId?.trim() || undefined,
+    openclawSessionLabel: openclawSessionLabel?.trim() || undefined,
+    openclawSessionRef: openclawSessionRef?.trim() || undefined,
+    providerCallId: providerCallId?.trim() || undefined,
+  };
+}
+
 function parseOperatorSteerCommand(
   value: unknown,
 ): { action: OperatorSteerAction; reason?: string } | { error: string } | undefined {
@@ -219,7 +295,13 @@ async function routeRequest(
   }
 
   if (request.method === "GET" && pathname === "/api/queue") {
-    const summary = await ingress.getQueueSummary();
+    const filters = parseCallListFilters(requestUrl, "queue");
+    if ("error" in filters) {
+      writeBadRequest(response, filters.error);
+      return;
+    }
+
+    const summary = await ingress.getQueueSummary(filters);
 
     writeJson(response, 200, {
       summary,
@@ -424,73 +506,13 @@ async function routeRequest(
   }
 
   if (request.method === "GET" && pathname === "/api/calls") {
-    const flowState = requestUrl.searchParams.get("flowState");
-    if (flowState !== null && !isFlowState(flowState)) {
-      writeBadRequest(response, "call_list_flow_state_invalid");
+    const filters = parseCallListFilters(requestUrl, "call_list");
+    if ("error" in filters) {
+      writeBadRequest(response, filters.error);
       return;
     }
 
-    const pendingOperatorSteer = parseOptionalBooleanFilter(
-      requestUrl.searchParams.get("pendingOperatorSteer"),
-      "call_list_pending_operator_steer_invalid",
-    );
-    if (typeof pendingOperatorSteer !== "boolean" && pendingOperatorSteer !== undefined) {
-      writeBadRequest(response, pendingOperatorSteer.error);
-      return;
-    }
-
-    const fallbackArmed = parseOptionalBooleanFilter(
-      requestUrl.searchParams.get("fallbackArmed"),
-      "call_list_fallback_armed_invalid",
-    );
-    if (typeof fallbackArmed !== "boolean" && fallbackArmed !== undefined) {
-      writeBadRequest(response, fallbackArmed.error);
-      return;
-    }
-
-    const attentionRequired = parseOptionalBooleanFilter(
-      requestUrl.searchParams.get("attentionRequired"),
-      "call_list_attention_required_invalid",
-    );
-    if (typeof attentionRequired !== "boolean" && attentionRequired !== undefined) {
-      writeBadRequest(response, attentionRequired.error);
-      return;
-    }
-
-    const openclawSessionId = requestUrl.searchParams.get("openclawSessionId");
-    if (openclawSessionId !== null && !openclawSessionId.trim()) {
-      writeBadRequest(response, "call_list_openclaw_session_id_invalid");
-      return;
-    }
-
-    const openclawSessionLabel = requestUrl.searchParams.get("openclawSessionLabel");
-    if (openclawSessionLabel !== null && !openclawSessionLabel.trim()) {
-      writeBadRequest(response, "call_list_openclaw_session_label_invalid");
-      return;
-    }
-
-    const openclawSessionRef = requestUrl.searchParams.get("openclawSessionRef");
-    if (openclawSessionRef !== null && !openclawSessionRef.trim()) {
-      writeBadRequest(response, "call_list_openclaw_session_ref_invalid");
-      return;
-    }
-
-    const providerCallId = requestUrl.searchParams.get("providerCallId");
-    if (providerCallId !== null && !providerCallId.trim()) {
-      writeBadRequest(response, "call_list_provider_call_id_invalid");
-      return;
-    }
-
-    const calls = await ingress.listSnapshots({
-      flowState: flowState ?? undefined,
-      pendingOperatorSteer,
-      fallbackArmed,
-      attentionRequired,
-      openclawSessionId: openclawSessionId?.trim() || undefined,
-      openclawSessionLabel: openclawSessionLabel?.trim() || undefined,
-      openclawSessionRef: openclawSessionRef?.trim() || undefined,
-      providerCallId: providerCallId?.trim() || undefined,
-    });
+    const calls = await ingress.listSnapshots(filters);
     const summary = await ingress.getQueueSummary();
 
     writeJson(response, 200, {
