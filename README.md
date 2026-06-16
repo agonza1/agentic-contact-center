@@ -50,7 +50,7 @@ The mock runtime keeps one operator-visible call snapshot with session ids, tran
 Start the local API container:
 
 ```bash
-docker compose up --build app
+npm run docker:app
 ```
 
 Then check the health endpoint at `http://localhost:8026/health`. The runtime image also carries a built-in Docker `HEALTHCHECK` so `docker run` and Compose both expose the same `/health` readiness signal.
@@ -87,10 +87,10 @@ If `--out` is omitted, the proof file is written to `artifacts/demo-proof-<times
 To generate the proof artifact through Compose instead of the host Node toolchain:
 
 ```bash
-LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose run --rm proof
+npm run docker:proof
 ```
 
-That writes `artifacts/demo-proof-docker.json` plus a refreshed `artifacts/demo-proof-latest.json` on the host. Passing the caller UID/GID keeps the bind-mounted artifact files owned by the invoking developer on Linux instead of root.
+That writes `artifacts/demo-proof-docker.json` plus a refreshed `artifacts/demo-proof-latest.json` on the host. The script passes the caller UID/GID through to Compose by default so the bind-mounted artifact files stay owned by the invoking developer on Linux instead of root.
 
 For a step-by-step QA handoff flow, artifact inspection checklist, and example commands, use [docs/demo-proof-runbook.md](docs/demo-proof-runbook.md).
 

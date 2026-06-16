@@ -8,6 +8,10 @@ const repoRoot = join(__dirname, "..", "..");
 test("Docker runtime assets keep the documented health and proof contract", () => {
   const dockerfile = readFileSync(join(repoRoot, "Dockerfile"), "utf8");
   const compose = readFileSync(join(repoRoot, "docker-compose.yml"), "utf8");
+  const readme = readFileSync(join(repoRoot, "README.md"), "utf8");
+  const packageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as {
+    scripts?: Record<string, string>;
+  };
 
   assert.match(dockerfile, /FROM node:20-bookworm-slim AS runtime/);
   assert.match(dockerfile, /ENV PORT=8026/);
@@ -22,4 +26,12 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /proof:\n[\s\S]*scripts\/demo-proof\.mjs/);
   assert.match(compose, /proof:\n[\s\S]*artifacts\/demo-proof-docker\.json/);
   assert.match(compose, /proof:\n[\s\S]*\.\/artifacts:\/app\/artifacts/);
+
+  assert.equal(packageJson.scripts?.["docker:app"], "docker compose up --build app");
+  assert.equal(
+    packageJson.scripts?.["docker:proof"],
+    "sh -c 'LOCAL_UID=${LOCAL_UID:-$(id -u)} LOCAL_GID=${LOCAL_GID:-$(id -g)} docker compose run --rm proof'",
+  );
+  assert.match(readme, /npm run docker:app/);
+  assert.match(readme, /npm run docker:proof/);
 });
