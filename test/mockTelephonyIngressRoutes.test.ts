@@ -652,6 +652,42 @@ test("GET /api/queue can filter operator summary slices", async () => {
     assert.equal(fallbackPayload.summary.oldestAttentionCallId, fallbackCallId);
     assert.equal(fallbackPayload.summary.oldestAttentionSource, "fallback");
 
+    const attentionRequiredOnly = await requestJson(port, "GET", "/api/queue?attentionRequired=true");
+    const attentionRequiredPayload = attentionRequiredOnly.payload as QueueSummaryPayload;
+    assert.equal(attentionRequiredOnly.statusCode, 200);
+    assert.equal(attentionRequiredPayload.summary.totalCalls, 2);
+    assert.equal(attentionRequiredPayload.summary.pendingOperatorSteer, 1);
+    assert.equal(attentionRequiredPayload.summary.fallbackArmed, 1);
+    assert.equal(attentionRequiredPayload.summary.attentionRequired, 2);
+    assert.equal(attentionRequiredPayload.summary.oldestAttentionCallId, firstCallId);
+    assert.deepEqual(attentionRequiredPayload.summary.byFlowState, {
+      call_started: 0,
+      greet: 0,
+      diagnose: 0,
+      policy_hold: 1,
+      operator_steer: 1,
+      steered_response: 0,
+      wrap: 0,
+    });
+
+    const noAttentionRequired = await requestJson(port, "GET", "/api/queue?attentionRequired=false");
+    const noAttentionRequiredPayload = noAttentionRequired.payload as QueueSummaryPayload;
+    assert.equal(noAttentionRequired.statusCode, 200);
+    assert.equal(noAttentionRequiredPayload.summary.totalCalls, 1);
+    assert.equal(noAttentionRequiredPayload.summary.pendingOperatorSteer, 0);
+    assert.equal(noAttentionRequiredPayload.summary.fallbackArmed, 0);
+    assert.equal(noAttentionRequiredPayload.summary.attentionRequired, 0);
+    assert.equal(noAttentionRequiredPayload.summary.oldestAttentionCallId, null);
+    assert.deepEqual(noAttentionRequiredPayload.summary.byFlowState, {
+      call_started: 1,
+      greet: 0,
+      diagnose: 0,
+      policy_hold: 0,
+      operator_steer: 0,
+      steered_response: 0,
+      wrap: 0,
+    });
+
     const bySession = await requestJson(port, "GET", "/api/queue?openclawSessionRef=hb-session-03");
     const bySessionPayload = bySession.payload as QueueSummaryPayload;
     assert.equal(bySession.statusCode, 200);
