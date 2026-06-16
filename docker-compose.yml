@@ -1,0 +1,37 @@
+services:
+  app:
+    build:
+      context: .
+      target: runtime
+    image: agentic-contact-center:local
+    ports:
+      - "8026:8026"
+    environment:
+      PORT: "8026"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8026/health').then((response)=>{if(!response.ok)process.exit(1);}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  proof:
+    build:
+      context: .
+      target: runtime
+    image: agentic-contact-center:local
+    profiles: ["proof"]
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    command:
+      - node
+      - scripts/demo-proof.mjs
+      - --out
+      - artifacts/demo-proof-docker.json
+      - --latest-out
+      - artifacts/demo-proof-latest.json
+    volumes:
+      - ./artifacts:/app/artifacts
