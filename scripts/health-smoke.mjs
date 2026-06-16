@@ -34,6 +34,30 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function getFailureReason(response) {
+  const contentType = response.headers.get('content-type') || '';
+
+  if (!response.ok) {
+    return `http_${response.status}`;
+  }
+
+  if (!contentType.toLowerCase().includes('application/json')) {
+    return null;
+  }
+
+  try {
+    const payload = await response.json();
+
+    if (payload && typeof payload === 'object' && 'ok' in payload && payload.ok !== true) {
+      return 'json_ok_false';
+    }
+
+    return null;
+  } catch {
+    return 'invalid_json';
+  }
+}
+
 async function main() {
   const { url, timeoutMs, intervalMs } = parseArgs(process.argv.slice(2));
 
@@ -54,12 +78,14 @@ async function main() {
 
     try {
       const response = await fetch(url);
-      if (response.ok) {
+      const failureReason = await getFailureReason(response);
+
+      if (!failureReason) {
         console.log(`Health probe succeeded for ${url} after ${attempts} attempt(s) in ${Date.now() - startedAt}ms.`);
         return;
       }
 
-      lastFailure = `http_${response.status}`;
+      lastFailure = failureReason;
     } catch (error) {
       lastFailure = error instanceof Error ? error.message : String(error);
     }

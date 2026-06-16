@@ -93,3 +93,25 @@ test("health smoke script fails fast with a timeout summary when the endpoint st
     assert.match(result.stderr, /Last failure: http_503/);
   });
 });
+
+
+test("health smoke script rejects 200 responses that still report ok false", async () => {
+  let attempts = 0;
+
+  await withServer((request, response) => {
+    attempts += 1;
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: false }));
+  }, async (port) => {
+    const result = await runProbe(["--url", `http://127.0.0.1:${port}/health`, "--timeout-ms", "200", "--interval-ms", "25"]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_ok_false/);
+    assert.ok(attempts >= 2);
+  });
+});
