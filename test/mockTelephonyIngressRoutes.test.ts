@@ -32,11 +32,9 @@ interface SnapshotPayload {
   latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
 }
 
-interface CallListPayload {
-  calls: SnapshotPayload[];
+interface QueueSummaryPayload {
   summary: {
     totalCalls: number;
-    filteredCalls: number;
     pendingOperatorSteer: number;
     fallbackArmed: number;
     attentionRequired: number;
@@ -49,6 +47,13 @@ interface CallListPayload {
     oldestAttentionReason: string | null;
     oldestAttentionSource: string | null;
     byFlowState: Record<string, number>;
+  };
+}
+
+interface CallListPayload extends QueueSummaryPayload {
+  calls: SnapshotPayload[];
+  summary: QueueSummaryPayload["summary"] & {
+    filteredCalls: number;
   };
 }
 
@@ -224,6 +229,81 @@ test("the risky offer boundary parks the flow in policy hold without promising a
     const lastAgentTurn = [...secondPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
     assert.ok(lastAgentTurn);
     assert.equal(lastAgentTurn.text.toLowerCase().includes("credit"), false);
+  });
+});
+
+test("GET /api/queue returns queue summary without call payloads", async () => {
+  await withServer(async (port) => {
+    const emptyQueue = await requestJson(port, "GET", "/api/queue");
+    const emptyPayload = emptyQueue.payload as QueueSummaryPayload;
+
+    assert.equal(emptyQueue.statusCode, 200);
+    assert.deepEqual(emptyPayload, {
+      summary: {
+        totalCalls: 0,
+        pendingOperatorSteer: 0,
+        fallbackArmed: 0,
+        attentionRequired: 0,
+        oldestAttentionCallId: null,
+        oldestAttentionProviderCallId: null,
+        oldestAttentionOpenclawSessionId: null,
+        oldestAttentionOpenclawSessionLabel: null,
+        oldestAttentionStartedAt: null,
+        oldestAttentionFlowState: null,
+        oldestAttentionReason: null,
+        oldestAttentionSource: null,
+        byFlowState: {
+          call_started: 0,
+          greet: 0,
+          diagnose: 0,
+          policy_hold: 0,
+          operator_steer: 0,
+          steered_response: 0,
+          wrap: 0,
+        },
+      },
+    });
+
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+
+    const queue = await requestJson(port, "GET", "/api/queue");
+    const queuePayload = queue.payload as QueueSummaryPayload;
+
+    assert.equal(queue.statusCode, 200);
+    assert.equal(queuePayload.summary.totalCalls, 1);
+    assert.equal(queuePayload.summary.pendingOperatorSteer, 1);
+    assert.equal(queuePayload.summary.fallbackArmed, 0);
+    assert.equal(queuePayload.summary.attentionRequired, 1);
+    assert.equal(queuePayload.summary.oldestAttentionCallId, callId);
+    assert.equal(queuePayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
+    assert.equal(queuePayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
+    assert.equal(queuePayload.summary.oldestAttentionOpenclawSessionLabel, "cluecon-2026-cancellation-rescue:demo-call-0001");
+    assert.equal(queuePayload.summary.oldestAttentionFlowState, "operator_steer");
+    assert.equal(queuePayload.summary.oldestAttentionReason, "safe_offer_review_requested");
+    assert.equal(queuePayload.summary.oldestAttentionSource, "operator_steer");
+    assert.deepEqual(queuePayload.summary.byFlowState, {
+      call_started: 0,
+      greet: 0,
+      diagnose: 0,
+      policy_hold: 0,
+      operator_steer: 1,
+      steered_response: 0,
+      wrap: 0,
+    });
   });
 });
 

@@ -218,6 +218,15 @@ async function routeRequest(
     return;
   }
 
+  if (request.method === "GET" && pathname === "/api/queue") {
+    const summary = await ingress.getQueueSummary();
+
+    writeJson(response, 200, {
+      summary,
+    });
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/api/demo/start") {
     const body = await readJsonBody<unknown>(request);
 
