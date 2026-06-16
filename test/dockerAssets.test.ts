@@ -28,10 +28,17 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /proof:\n[\s\S]*\.\/artifacts:\/app\/artifacts/);
 
   assert.equal(packageJson.scripts?.["docker:app"], "docker compose up --build app");
+  assert.equal(packageJson.scripts?.["health:smoke"], "node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health");
+  assert.equal(
+    packageJson.scripts?.["docker:smoke"],
+    "sh -c 'cleanup(){ docker compose down --remove-orphans; }; trap cleanup EXIT; docker compose up --build -d app; node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health'",
+  );
   assert.equal(
     packageJson.scripts?.["docker:proof"],
     "sh -c 'LOCAL_UID=${LOCAL_UID:-$(id -u)} LOCAL_GID=${LOCAL_GID:-$(id -g)} docker compose run --rm proof'",
   );
   assert.match(readme, /npm run docker:app/);
+  assert.match(readme, /npm run docker:smoke/);
+  assert.match(readme, /npm run health:smoke/);
   assert.match(readme, /npm run docker:proof/);
 });
