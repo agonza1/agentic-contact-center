@@ -54,6 +54,7 @@ interface CallListPayload extends QueueSummaryPayload {
   calls: SnapshotPayload[];
   summary: QueueSummaryPayload["summary"] & {
     filteredCalls: number;
+    filteredSummary: QueueSummaryPayload["summary"];
   };
 }
 
@@ -337,6 +338,29 @@ test("GET /api/calls lists active demo calls in start order", async () => {
         steered_response: 0,
         wrap: 0,
       },
+      filteredSummary: {
+        totalCalls: 0,
+        pendingOperatorSteer: 0,
+        fallbackArmed: 0,
+        attentionRequired: 0,
+        oldestAttentionCallId: null,
+        oldestAttentionProviderCallId: null,
+        oldestAttentionOpenclawSessionId: null,
+        oldestAttentionOpenclawSessionLabel: null,
+        oldestAttentionStartedAt: null,
+        oldestAttentionFlowState: null,
+        oldestAttentionReason: null,
+        oldestAttentionSource: null,
+        byFlowState: {
+          call_started: 0,
+          greet: 0,
+          diagnose: 0,
+          policy_hold: 0,
+          operator_steer: 0,
+          steered_response: 0,
+          wrap: 0,
+        },
+      },
     });
 
     const firstStarted = await requestJson(port, "POST", "/api/demo/start", {
@@ -389,6 +413,29 @@ test("GET /api/calls lists active demo calls in start order", async () => {
         steered_response: 0,
         wrap: 0,
       },
+      filteredSummary: {
+        totalCalls: 2,
+        pendingOperatorSteer: 0,
+        fallbackArmed: 0,
+        attentionRequired: 0,
+        oldestAttentionCallId: null,
+        oldestAttentionProviderCallId: null,
+        oldestAttentionOpenclawSessionId: null,
+        oldestAttentionOpenclawSessionLabel: null,
+        oldestAttentionStartedAt: null,
+        oldestAttentionFlowState: null,
+        oldestAttentionReason: null,
+        oldestAttentionSource: null,
+        byFlowState: {
+          call_started: 1,
+          greet: 0,
+          diagnose: 1,
+          policy_hold: 0,
+          operator_steer: 0,
+          steered_response: 0,
+          wrap: 0,
+        },
+      },
     });
   });
 });
@@ -418,6 +465,8 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     assert.deepEqual(filteredPayload.calls.map((call) => call.flowState), ["policy_hold"]);
     assert.equal(filteredPayload.summary.totalCalls, 2);
     assert.equal(filteredPayload.summary.filteredCalls, 1);
+    assert.equal(filteredPayload.summary.filteredSummary.totalCalls, 1);
+    assert.equal(filteredPayload.summary.filteredSummary.oldestAttentionOpenclawSessionId, null);
     assert.equal(filteredPayload.summary.byFlowState.policy_hold, 1);
 
     const invalidFilter = await requestJson(port, "GET", "/api/calls?flowState=paused_forever");
@@ -719,6 +768,8 @@ test("GET /api/calls can filter by provider and attached OpenClaw session metada
     assert.deepEqual(filteredByProviderPayload.calls.map((call) => call.session.callId), [secondCallId]);
     assert.equal(filteredByProviderPayload.summary.totalCalls, 2);
     assert.equal(filteredByProviderPayload.summary.filteredCalls, 1);
+    assert.equal(filteredByProviderPayload.summary.filteredSummary.totalCalls, 1);
+    assert.equal(filteredByProviderPayload.summary.filteredSummary.oldestAttentionCallId, null);
 
     const filtered = await requestJson(port, "GET", "/api/calls?openclawSessionId=hb-session-02");
     const filteredPayload = filtered.payload as CallListPayload;
@@ -734,12 +785,14 @@ test("GET /api/calls can filter by provider and attached OpenClaw session metada
     assert.deepEqual(filteredByRefIdPayload.calls.map((call) => call.session.callId), [secondCallId]);
     assert.equal(filteredByRefIdPayload.summary.totalCalls, 2);
     assert.equal(filteredByRefIdPayload.summary.filteredCalls, 1);
+    assert.equal(filteredByRefIdPayload.summary.filteredSummary.totalCalls, 1);
 
     const filteredByRefLabel = await requestJson(port, "GET", "/api/calls?openclawSessionRef=cluecon-demo/second");
     const filteredByRefLabelPayload = filteredByRefLabel.payload as CallListPayload;
     assert.equal(filteredByRefLabel.statusCode, 200);
     assert.deepEqual(filteredByRefLabelPayload.calls.map((call) => call.session.callId), [secondCallId]);
     assert.equal(filteredByRefLabelPayload.summary.filteredCalls, 1);
+    assert.equal(filteredByRefLabelPayload.summary.filteredSummary.totalCalls, 1);
 
     const filteredByLabel = await requestJson(port, "GET", "/api/calls?openclawSessionLabel=cluecon-demo/second");
     const filteredByLabelPayload = filteredByLabel.payload as CallListPayload;
@@ -748,6 +801,7 @@ test("GET /api/calls can filter by provider and attached OpenClaw session metada
     assert.deepEqual(filteredByLabelPayload.calls.map((call) => call.session.callId), [secondCallId]);
     assert.equal(filteredByLabelPayload.summary.totalCalls, 2);
     assert.equal(filteredByLabelPayload.summary.filteredCalls, 1);
+    assert.equal(filteredByLabelPayload.summary.filteredSummary.totalCalls, 1);
 
     const missing = await requestJson(port, "GET", "/api/calls?openclawSessionId=hb-session-03");
     const missingPayload = missing.payload as CallListPayload;
@@ -755,6 +809,7 @@ test("GET /api/calls can filter by provider and attached OpenClaw session metada
     assert.deepEqual(missingPayload.calls, []);
     assert.equal(missingPayload.summary.totalCalls, 2);
     assert.equal(missingPayload.summary.filteredCalls, 0);
+    assert.equal(missingPayload.summary.filteredSummary.totalCalls, 0);
 
     const missingProvider = await requestJson(port, "GET", "/api/calls?providerCallId=mock-sw-call-001-9999");
     const missingProviderPayload = missingProvider.payload as CallListPayload;
@@ -762,6 +817,7 @@ test("GET /api/calls can filter by provider and attached OpenClaw session metada
     assert.deepEqual(missingProviderPayload.calls, []);
     assert.equal(missingProviderPayload.summary.totalCalls, 2);
     assert.equal(missingProviderPayload.summary.filteredCalls, 0);
+    assert.equal(missingProviderPayload.summary.filteredSummary.totalCalls, 0);
 
     const missingRef = await requestJson(port, "GET", "/api/calls?openclawSessionRef=hb-session-03");
     const missingRefPayload = missingRef.payload as CallListPayload;

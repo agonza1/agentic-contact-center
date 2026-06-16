@@ -514,12 +514,14 @@ async function routeRequest(
 
     const calls = await ingress.listSnapshots(filters);
     const summary = await ingress.getQueueSummary();
+    const filteredSummary = await ingress.getQueueSummary(filters);
 
     writeJson(response, 200, {
       calls,
       summary: {
         ...summary,
         filteredCalls: calls.length,
+        filteredSummary,
       },
     });
     return;
