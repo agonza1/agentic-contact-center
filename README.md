@@ -53,7 +53,7 @@ Start the local API container:
 docker compose up --build app
 ```
 
-Then check the health endpoint at `http://localhost:8026/health`.
+Then check the health endpoint at `http://localhost:8026/health`. The runtime image also carries a built-in Docker `HEALTHCHECK` so `docker run` and Compose both expose the same `/health` readiness signal.
 
 ## Seeded cancellation-rescue script
 
