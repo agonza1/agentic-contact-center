@@ -34,6 +34,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           attentionRequired: number;
           oldestAttentionAgeMs: number | null;
           oldestAttentionCallId: string | null;
+          oldestAttentionStartedAt: string | null;
           oldestAttentionFlowState: string | null;
           oldestAttentionOpenclawSessionLabel: string | null;
           oldestAttentionReason: string | null;
@@ -71,6 +72,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(typeof artifact.summary.queueAttention.oldestAttentionCallId, "string");
     assert.equal(typeof artifact.summary.queueAttention.oldestAttentionOpenclawSessionLabel, "string");
     assert.equal(typeof artifact.summary.queueAttention.oldestAttentionAgeMs, "number");
+    assert.equal(typeof artifact.summary.queueAttention.oldestAttentionStartedAt, "string");
     assert.equal(artifact.summary.queueAttention.oldestAttentionFlowState, "wrap");
     assert.equal(artifact.summary.queueAttention.oldestAttentionReason, "pipecat tool exceeded latency budget");
     assert.equal(artifact.summary.queueAttention.oldestAttentionSource, "fallback");
