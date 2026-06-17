@@ -22,7 +22,7 @@ npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-pro
 npm start
 ```
 
-The server listens on `http://localhost:8026` by default. With the server running in a managed background process, use `npm run health:smoke` for a bounded `/health` probe instead of treating the attached start command as the verification result.
+The server listens on `http://localhost:8026` by default. With the server running in a managed background process, use `npm run health:smoke` for a bounded `/health` probe instead of treating the attached start command as the verification result. The probe retries until the outer timeout expires and aborts hanging `/health` responses instead of waiting on a stuck socket forever.
 
 ## High-level flow
 
@@ -55,7 +55,7 @@ npm run docker:app
 npm run docker:smoke
 ```
 
-`npm run docker:smoke` starts the container in the background, polls `http://localhost:8026/health` with a bounded retry loop, and always tears the Compose app back down after the probe. The runtime image also carries a built-in Docker `HEALTHCHECK` so `docker run` and Compose both expose the same `/health` readiness signal.
+`npm run docker:smoke` starts the container in the background, only runs the probe after `docker compose up --build -d app` succeeds, polls `http://localhost:8026/health` with a bounded retry loop, and always tears the Compose app back down after the probe. The runtime image also carries a built-in Docker `HEALTHCHECK` so `docker run` and Compose both expose the same `/health` readiness signal.
 
 ## Seeded cancellation-rescue script
 
