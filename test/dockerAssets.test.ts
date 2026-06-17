@@ -33,7 +33,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.equal(packageJson.scripts?.["health:smoke"], "node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health");
   assert.equal(
     packageJson.scripts?.["docker:smoke"],
-    "sh -c 'cleanup(){ docker compose down --remove-orphans; }; trap cleanup EXIT; docker compose up --build -d app; node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health'",
+    "sh -c 'cleanup(){ docker compose down --remove-orphans; }; trap cleanup EXIT; docker compose up --build -d app && node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health'",
   );
   assert.equal(
     packageJson.scripts?.["docker:proof"],

@@ -75,9 +75,12 @@ async function main() {
 
   while (Date.now() - startedAt <= timeoutMs) {
     attempts += 1;
+    const remainingMs = timeoutMs - (Date.now() - startedAt);
 
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(Math.max(1, remainingMs)),
+      });
       const failureReason = await getFailureReason(response);
 
       if (!failureReason) {
