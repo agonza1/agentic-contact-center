@@ -21,6 +21,8 @@ export type OperatorSteerAction =
 
 export type FallbackMode = "tool_timeout";
 
+export type AttentionSource = "operator_steer" | "fallback" | "operator_steer+fallback";
+
 export interface TranscriptTurn {
   speaker: Speaker;
   text: string;

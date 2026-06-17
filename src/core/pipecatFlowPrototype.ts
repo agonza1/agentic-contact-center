@@ -310,6 +310,7 @@ export function applyOperatorSteer(
   reason?: string,
 ): void {
   snapshot.pipecatFlow.activeTool = "ask_operator";
+  const wasPending = snapshot.operatorSteer.pending;
   setOperatorSteerState(snapshot, false, timestamp, action, reason ?? null);
   appendOperatorTurn(snapshot, `operator steer: ${action}`, timestamp);
   recordEvent(snapshot, "operator_steer_applied", timestamp, {
@@ -333,10 +334,12 @@ export function applyOperatorSteer(
 
   if (action === "arm_fallback") {
     setDemoFallback(snapshot, true, timestamp, reason ?? "operator_requested_manual_takeover", null);
+    setOperatorSteerState(snapshot, wasPending, timestamp, action, reason ?? null);
     transitionFlowState(snapshot, "policy_hold", timestamp, "operator_armed_manual_fallback");
     recordEvent(snapshot, "demo_fallback_armed", timestamp, {
       operatorChannel: snapshot.scenario.operatorChannel,
       reason: snapshot.demoFallback.reason,
+      pendingOperatorSteer: wasPending,
     });
     appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
     snapshot.pipecatFlow.activeTool = "pause_presentation";
