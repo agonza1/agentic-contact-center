@@ -42,6 +42,7 @@ interface QueueSummaryPayload {
     oldestAttentionProviderCallId: string | null;
     oldestAttentionOpenclawSessionId: string | null;
     oldestAttentionOpenclawSessionLabel: string | null;
+    oldestAttentionAgeMs: number | null;
     oldestAttentionStartedAt: string | null;
     oldestAttentionFlowState: string | null;
     oldestAttentionReason: string | null;
@@ -249,6 +250,7 @@ test("GET /api/queue returns queue summary without call payloads", async () => {
         oldestAttentionProviderCallId: null,
         oldestAttentionOpenclawSessionId: null,
         oldestAttentionOpenclawSessionLabel: null,
+        oldestAttentionAgeMs: null,
         oldestAttentionStartedAt: null,
         oldestAttentionFlowState: null,
         oldestAttentionReason: null,
@@ -293,6 +295,7 @@ test("GET /api/queue returns queue summary without call payloads", async () => {
     assert.equal(queuePayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
     assert.equal(queuePayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
     assert.equal(queuePayload.summary.oldestAttentionOpenclawSessionLabel, "cluecon-2026-cancellation-rescue:demo-call-0001");
+    assert.equal(typeof queuePayload.summary.oldestAttentionAgeMs, "number");
     assert.equal(queuePayload.summary.oldestAttentionFlowState, "operator_steer");
     assert.equal(queuePayload.summary.oldestAttentionReason, "safe_offer_review_requested");
     assert.equal(queuePayload.summary.oldestAttentionSource, "operator_steer");
@@ -325,6 +328,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       oldestAttentionProviderCallId: null,
       oldestAttentionOpenclawSessionId: null,
       oldestAttentionOpenclawSessionLabel: null,
+      oldestAttentionAgeMs: null,
       oldestAttentionStartedAt: null,
       oldestAttentionFlowState: null,
       oldestAttentionReason: null,
@@ -347,6 +351,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
         oldestAttentionProviderCallId: null,
         oldestAttentionOpenclawSessionId: null,
         oldestAttentionOpenclawSessionLabel: null,
+        oldestAttentionAgeMs: null,
         oldestAttentionStartedAt: null,
         oldestAttentionFlowState: null,
         oldestAttentionReason: null,
@@ -400,6 +405,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       oldestAttentionProviderCallId: null,
       oldestAttentionOpenclawSessionId: null,
       oldestAttentionOpenclawSessionLabel: null,
+      oldestAttentionAgeMs: null,
       oldestAttentionStartedAt: null,
       oldestAttentionFlowState: null,
       oldestAttentionReason: null,
@@ -422,6 +428,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
         oldestAttentionProviderCallId: null,
         oldestAttentionOpenclawSessionId: null,
         oldestAttentionOpenclawSessionLabel: null,
+        oldestAttentionAgeMs: null,
         oldestAttentionStartedAt: null,
         oldestAttentionFlowState: null,
         oldestAttentionReason: null,
@@ -465,6 +472,7 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     assert.deepEqual(filteredPayload.calls.map((call) => call.flowState), ["policy_hold"]);
     assert.equal(filteredPayload.summary.totalCalls, 2);
     assert.equal(filteredPayload.summary.filteredCalls, 1);
+    assert.equal(filteredPayload.summary.filteredSummary.oldestAttentionAgeMs, null);
     assert.equal(filteredPayload.summary.filteredSummary.totalCalls, 1);
     assert.equal(filteredPayload.summary.filteredSummary.oldestAttentionOpenclawSessionId, null);
     assert.equal(filteredPayload.summary.byFlowState.policy_hold, 1);
@@ -517,6 +525,7 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(pendingPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
     assert.equal(pendingPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
     assert.equal(pendingPayload.summary.oldestAttentionOpenclawSessionLabel, "cluecon-2026-cancellation-rescue:demo-call-0001");
+    assert.equal(typeof pendingPayload.summary.oldestAttentionAgeMs, "number");
     assert.equal(typeof pendingPayload.summary.oldestAttentionStartedAt, "string");
     assert.equal(pendingPayload.summary.oldestAttentionFlowState, "operator_steer");
     assert.equal(pendingPayload.summary.oldestAttentionReason, "safe_offer_review_requested");
@@ -532,6 +541,7 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(fallbackPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
     assert.equal(fallbackPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
     assert.equal(fallbackPayload.summary.oldestAttentionOpenclawSessionLabel, "cluecon-2026-cancellation-rescue:demo-call-0001");
+    assert.equal(typeof fallbackPayload.summary.oldestAttentionAgeMs, "number");
     assert.equal(fallbackPayload.summary.oldestAttentionFlowState, "operator_steer");
     assert.equal(fallbackPayload.summary.oldestAttentionReason, "safe_offer_review_requested");
     assert.equal(fallbackPayload.summary.oldestAttentionSource, "operator_steer");
@@ -546,6 +556,7 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(attentionPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
     assert.equal(attentionPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
     assert.equal(attentionPayload.summary.oldestAttentionOpenclawSessionLabel, "cluecon-2026-cancellation-rescue:demo-call-0001");
+    assert.equal(typeof attentionPayload.summary.oldestAttentionAgeMs, "number");
     assert.equal(attentionPayload.summary.oldestAttentionFlowState, "operator_steer");
     assert.equal(attentionPayload.summary.oldestAttentionReason, "safe_offer_review_requested");
     assert.equal(attentionPayload.summary.oldestAttentionSource, "operator_steer");

@@ -331,6 +331,7 @@ export class InMemoryTelephonyIngress {
     oldestAttentionProviderCallId: string | null;
     oldestAttentionOpenclawSessionId: string | null;
     oldestAttentionOpenclawSessionLabel: string | null;
+    oldestAttentionAgeMs: number | null;
     oldestAttentionStartedAt: string | null;
     oldestAttentionFlowState: FlowState | null;
     oldestAttentionReason: string | null;
@@ -354,6 +355,7 @@ export class InMemoryTelephonyIngress {
     let oldestAttentionProviderCallId: string | null = null;
     let oldestAttentionOpenclawSessionId: string | null = null;
     let oldestAttentionOpenclawSessionLabel: string | null = null;
+    let oldestAttentionAgeMs: number | null = null;
     let oldestAttentionStartedAt: string | null = null;
     let oldestAttentionFlowState: FlowState | null = null;
     let oldestAttentionReason: string | null = null;
@@ -390,6 +392,7 @@ export class InMemoryTelephonyIngress {
           oldestAttentionProviderCallId = snapshot.session.providerCallId;
           oldestAttentionOpenclawSessionId = snapshot.session.openclawSession.sessionId;
           oldestAttentionOpenclawSessionLabel = snapshot.session.openclawSession.label;
+          oldestAttentionAgeMs = Math.max(0, Date.now() - new Date(snapshot.session.startedAt).getTime());
           oldestAttentionStartedAt = snapshot.session.startedAt;
           oldestAttentionFlowState = snapshot.flowState;
           oldestAttentionReason = snapshot.demoFallback.reason ?? snapshot.operatorSteer.lastReason;
@@ -407,6 +410,7 @@ export class InMemoryTelephonyIngress {
       oldestAttentionProviderCallId,
       oldestAttentionOpenclawSessionId,
       oldestAttentionOpenclawSessionLabel,
+      oldestAttentionAgeMs,
       oldestAttentionStartedAt,
       oldestAttentionFlowState,
       oldestAttentionReason,
