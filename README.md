@@ -22,7 +22,7 @@ npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-pro
 npm start
 ```
 
-The server listens on `http://localhost:8026` by default.
+The server listens on `http://localhost:8026` by default. With the server running in a managed background process, use `npm run health:smoke` for a bounded `/health` probe instead of treating the attached start command as the verification result.
 
 ## High-level flow
 
@@ -51,10 +51,11 @@ The mock runtime keeps one operator-visible call snapshot with session ids, tran
 Start the local API container:
 
 ```bash
-docker compose up --build app
+npm run docker:app
+npm run docker:smoke
 ```
 
-Then check the health endpoint at `http://localhost:8026/health`. The runtime image also carries a built-in Docker `HEALTHCHECK` so `docker run` and Compose both expose the same `/health` readiness signal.
+`npm run docker:smoke` starts the container in the background, polls `http://localhost:8026/health` with a bounded retry loop, and always tears the Compose app back down after the probe. The runtime image also carries a built-in Docker `HEALTHCHECK` so `docker run` and Compose both expose the same `/health` readiness signal.
 
 ## Seeded cancellation-rescue script
 
@@ -88,10 +89,10 @@ If `--out` is omitted, the proof file is written to `artifacts/demo-proof-<times
 To generate the proof artifact through Compose instead of the host Node toolchain:
 
 ```bash
-LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose run --rm proof
+npm run docker:proof
 ```
 
-That writes `artifacts/demo-proof-docker.json` plus a refreshed `artifacts/demo-proof-latest.json` on the host. Passing the caller UID/GID keeps the bind-mounted artifact files owned by the invoking developer on Linux instead of root.
+That writes `artifacts/demo-proof-docker.json` plus a refreshed `artifacts/demo-proof-latest.json` on the host. The script passes the caller UID/GID through to Compose by default so the bind-mounted artifact files stay owned by the invoking developer on Linux instead of root.
 
 For a step-by-step QA handoff flow, artifact inspection checklist, and example commands, use [docs/demo-proof-runbook.md](docs/demo-proof-runbook.md).
 

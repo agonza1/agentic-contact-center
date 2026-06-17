@@ -7,7 +7,11 @@
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "proof": "npm run build && node scripts/demo-proof.mjs",
     "start": "node dist/src/index.js",
-    "test": "npm run build && node --test dist/test/*.test.js"
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "docker:app": "docker compose up --build app",
+    "docker:proof": "sh -c 'LOCAL_UID=${LOCAL_UID:-$(id -u)} LOCAL_GID=${LOCAL_GID:-$(id -g)} docker compose run --rm proof'",
+    "health:smoke": "node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health",
+    "docker:smoke": "sh -c 'cleanup(){ docker compose down --remove-orphans; }; trap cleanup EXIT; docker compose up --build -d app && node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health'"
   },
   "engines": {
     "node": ">=20"
