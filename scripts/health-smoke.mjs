@@ -34,6 +34,10 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isAbortError(error) {
+  return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError');
+}
+
 async function getFailureReason(response) {
   const contentType = response.headers.get('content-type') || '';
 
@@ -90,7 +94,13 @@ async function main() {
 
       lastFailure = failureReason;
     } catch (error) {
-      lastFailure = error instanceof Error ? error.message : String(error);
+      const nextFailure = error instanceof Error ? error.message : String(error);
+
+      // Preserve the last explicit health status when the overall probe budget expires
+      // during a follow-up request; the timeout is transport noise, not a newer app state.
+      if (!isAbortError(error) || lastFailure === 'probe_not_started') {
+        lastFailure = nextFailure;
+      }
     }
 
     await sleep(intervalMs);
