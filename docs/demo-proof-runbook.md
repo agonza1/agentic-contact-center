@@ -12,7 +12,7 @@ npm test
 npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json
 ```
 
-The proof command boots the local server on an ephemeral port, runs both the seeded scripted flow and the fail-closed fallback flow, then writes reviewable JSON artifacts under `artifacts/`.
+The proof command boots the local server on an ephemeral port, verifies a healthy `/health` response, runs both the seeded scripted flow and the fail-closed fallback flow, then writes reviewable JSON artifacts under `artifacts/`.
 
 ## What to inspect
 
