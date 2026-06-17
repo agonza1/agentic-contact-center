@@ -88,11 +88,9 @@ function isAttentionSource(value: string): value is AttentionSource {
 }
 
 function buildCallPayload(snapshot: CallSnapshot) {
-  const { startedAt, ...attention } = getAttentionMetadata(snapshot);
-
   return {
     ...snapshot,
-    attention,
+    attention: getAttentionMetadata(snapshot),
   };
 }
 

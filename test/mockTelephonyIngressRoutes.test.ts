@@ -12,6 +12,7 @@ interface SnapshotPayload {
     required: boolean;
     source: string | null;
     reason: string | null;
+    startedAt: string | null;
     ageMs: number | null;
   };
   transcript: Array<{ speaker: string; text: string }>;
@@ -161,7 +162,7 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
       pipecatFlow: { ready: boolean; toolCoverage: string[] };
       events: Array<{ type: string }>;
       latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
-      attention: { required: boolean; source: string | null; reason: string | null; ageMs: number | null };
+      attention: { required: boolean; source: string | null; reason: string | null; startedAt: string | null; ageMs: number | null };
     };
 
     assert.equal(started.statusCode, 201);
@@ -199,6 +200,7 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
       required: false,
       source: null,
       reason: null,
+      startedAt: null,
       ageMs: null,
     });
     assert.deepEqual(
@@ -242,6 +244,7 @@ test("the risky offer boundary parks the flow in policy hold without promising a
       required: false,
       source: null,
       reason: null,
+      startedAt: null,
       ageMs: null,
     });
     assert.equal(secondPayload.events.some((event) => event.type === "policy_hold_entered"), true);
@@ -416,6 +419,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       required: false,
       source: null,
       reason: null,
+      startedAt: null,
       ageMs: null,
     });
     assert.equal(listedPayload.calls[1]?.transcript.length, 0);
@@ -424,6 +428,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       required: false,
       source: null,
       reason: null,
+      startedAt: null,
       ageMs: null,
     });
     assert.deepEqual(listedPayload.summary, {
@@ -552,6 +557,7 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(pendingPayload.calls[0]?.attention?.required, true);
     assert.equal(pendingPayload.calls[0]?.attention?.source, "operator_steer");
     assert.equal(pendingPayload.calls[0]?.attention?.reason, "safe_offer_review_requested");
+    assert.equal(pendingPayload.calls[0]?.attention?.startedAt, "2026-06-10T14:00:10.000Z");
     assert.equal(typeof pendingPayload.calls[0]?.attention?.ageMs, "number");
     assert.equal(pendingPayload.summary.totalCalls, 3);
     assert.equal(pendingPayload.summary.filteredCalls, 1);
@@ -573,6 +579,7 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(fallbackPayload.calls[0]?.attention?.required, true);
     assert.equal(fallbackPayload.calls[0]?.attention?.source, "fallback");
     assert.equal(fallbackPayload.calls[0]?.attention?.reason, "audio degraded during live demo");
+    assert.equal(fallbackPayload.calls[0]?.attention?.startedAt, "2026-06-10T14:00:11.000Z");
     assert.equal(typeof fallbackPayload.calls[0]?.attention?.ageMs, "number");
     assert.equal(fallbackPayload.summary.fallbackArmed, 1);
     assert.equal(fallbackPayload.summary.attentionRequired, 2);
@@ -904,6 +911,7 @@ test("GET /api/calls and /api/queue can filter by attention source", async () =>
       required: true,
       source: "operator_steer+fallback",
       reason: "supervisor asked for dual-track demo",
+      startedAt: "2026-06-10T14:00:15.000Z",
       ageMs: combinedCallsPayload.calls[0]?.attention?.ageMs,
     });
     assert.equal(typeof combinedCallsPayload.calls[0]?.attention?.ageMs, "number");
@@ -1283,6 +1291,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
       required: true,
       source: "fallback",
       reason: "pipecat tool exceeded latency budget",
+      startedAt: "2026-06-10T14:00:02.000Z",
       ageMs: fetchedPayload.attention?.ageMs ?? null,
     });
     assert.equal(typeof fetchedPayload.attention?.ageMs, "number");
