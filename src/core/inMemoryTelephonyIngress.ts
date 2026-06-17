@@ -4,6 +4,7 @@ import {
   buildPipecatFlowPrototypeStatus,
   triggerFailClosedFallback,
 } from "./pipecatFlowPrototype";
+import { compareTimestamps, getAttentionMetadata } from "./attention";
 import type {
   AttentionSource,
   CallSnapshot,
@@ -331,6 +332,7 @@ export class InMemoryTelephonyIngress {
     oldestAttentionProviderCallId: string | null;
     oldestAttentionOpenclawSessionId: string | null;
     oldestAttentionOpenclawSessionLabel: string | null;
+    oldestAttentionAgeMs: number | null;
     oldestAttentionStartedAt: string | null;
     oldestAttentionFlowState: FlowState | null;
     oldestAttentionReason: string | null;
@@ -354,6 +356,7 @@ export class InMemoryTelephonyIngress {
     let oldestAttentionProviderCallId: string | null = null;
     let oldestAttentionOpenclawSessionId: string | null = null;
     let oldestAttentionOpenclawSessionLabel: string | null = null;
+    let oldestAttentionAgeMs: number | null = null;
     let oldestAttentionStartedAt: string | null = null;
     let oldestAttentionFlowState: FlowState | null = null;
     let oldestAttentionReason: string | null = null;
@@ -362,6 +365,8 @@ export class InMemoryTelephonyIngress {
     const snapshots = this.getSnapshots(filters);
 
     for (const snapshot of snapshots) {
+      const attention = getAttentionMetadata(snapshot);
+
       byFlowState[snapshot.flowState] += 1;
 
       if (snapshot.operatorSteer.pending) {
@@ -372,28 +377,22 @@ export class InMemoryTelephonyIngress {
         fallbackArmed += 1;
       }
 
-      if (snapshot.operatorSteer.pending || snapshot.demoFallback.armed) {
+      if (attention.required) {
         attentionRequired += 1;
 
         if (
           oldestAttentionStartedAt === null ||
-          snapshot.session.startedAt.localeCompare(oldestAttentionStartedAt) < 0
+          (attention.startedAt !== null && compareTimestamps(attention.startedAt, oldestAttentionStartedAt) < 0)
         ) {
-          const attentionSource =
-            snapshot.operatorSteer.pending && snapshot.demoFallback.armed
-              ? "operator_steer+fallback"
-              : snapshot.demoFallback.armed
-                ? "fallback"
-                : "operator_steer";
-
           oldestAttentionCallId = snapshot.session.callId;
           oldestAttentionProviderCallId = snapshot.session.providerCallId;
           oldestAttentionOpenclawSessionId = snapshot.session.openclawSession.sessionId;
           oldestAttentionOpenclawSessionLabel = snapshot.session.openclawSession.label;
-          oldestAttentionStartedAt = snapshot.session.startedAt;
+          oldestAttentionAgeMs = attention.ageMs;
+          oldestAttentionStartedAt = attention.startedAt;
           oldestAttentionFlowState = snapshot.flowState;
-          oldestAttentionReason = snapshot.demoFallback.reason ?? snapshot.operatorSteer.lastReason;
-          oldestAttentionSource = attentionSource;
+          oldestAttentionReason = attention.reason;
+          oldestAttentionSource = attention.source;
         }
       }
     }
@@ -407,6 +406,7 @@ export class InMemoryTelephonyIngress {
       oldestAttentionProviderCallId,
       oldestAttentionOpenclawSessionId,
       oldestAttentionOpenclawSessionLabel,
+      oldestAttentionAgeMs,
       oldestAttentionStartedAt,
       oldestAttentionFlowState,
       oldestAttentionReason,

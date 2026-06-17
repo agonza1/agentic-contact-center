@@ -8,6 +8,13 @@ import { buildHttpServer } from "../src/http/createServer";
 interface SnapshotPayload {
   session: { callId: string };
   flowState: string;
+  attention?: {
+    required: boolean;
+    source: string | null;
+    reason: string | null;
+    startedAt: string | null;
+    ageMs: number | null;
+  };
   transcript: Array<{ speaker: string; text: string }>;
   demoFallback: {
     armed: boolean;
@@ -42,6 +49,7 @@ interface QueueSummaryPayload {
     oldestAttentionProviderCallId: string | null;
     oldestAttentionOpenclawSessionId: string | null;
     oldestAttentionOpenclawSessionLabel: string | null;
+    oldestAttentionAgeMs: number | null;
     oldestAttentionStartedAt: string | null;
     oldestAttentionFlowState: string | null;
     oldestAttentionReason: string | null;
@@ -154,6 +162,7 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
       pipecatFlow: { ready: boolean; toolCoverage: string[] };
       events: Array<{ type: string }>;
       latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
+      attention: { required: boolean; source: string | null; reason: string | null; startedAt: string | null; ageMs: number | null };
     };
 
     assert.equal(started.statusCode, 201);
@@ -186,6 +195,13 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
       requestedAt: null,
       respondedAt: null,
       source: null,
+    });
+    assert.deepEqual(startedPayload.attention, {
+      required: false,
+      source: null,
+      reason: null,
+      startedAt: null,
+      ageMs: null,
     });
     assert.deepEqual(
       startedPayload.latencyMarks.map((mark) => ({ stage: mark.stage, budgetMs: mark.budgetMs })),
@@ -224,6 +240,13 @@ test("the risky offer boundary parks the flow in policy hold without promising a
     const secondPayload = secondTurn.payload as SnapshotPayload;
     assert.equal(secondTurn.statusCode, 200);
     assert.equal(secondPayload.flowState, "policy_hold");
+    assert.deepEqual(secondPayload.attention, {
+      required: false,
+      source: null,
+      reason: null,
+      startedAt: null,
+      ageMs: null,
+    });
     assert.equal(secondPayload.events.some((event) => event.type === "policy_hold_entered"), true);
     assert.equal(secondPayload.latencyMarks.some((mark) => mark.stage === "policy_hold_entered" && mark.budgetMs === 1500), true);
 
@@ -249,6 +272,7 @@ test("GET /api/queue returns queue summary without call payloads", async () => {
         oldestAttentionProviderCallId: null,
         oldestAttentionOpenclawSessionId: null,
         oldestAttentionOpenclawSessionLabel: null,
+        oldestAttentionAgeMs: null,
         oldestAttentionStartedAt: null,
         oldestAttentionFlowState: null,
         oldestAttentionReason: null,
@@ -293,6 +317,7 @@ test("GET /api/queue returns queue summary without call payloads", async () => {
     assert.equal(queuePayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
     assert.equal(queuePayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
     assert.equal(queuePayload.summary.oldestAttentionOpenclawSessionLabel, "cluecon-2026-cancellation-rescue:demo-call-0001");
+    assert.equal(typeof queuePayload.summary.oldestAttentionAgeMs, "number");
     assert.equal(queuePayload.summary.oldestAttentionFlowState, "operator_steer");
     assert.equal(queuePayload.summary.oldestAttentionReason, "safe_offer_review_requested");
     assert.equal(queuePayload.summary.oldestAttentionSource, "operator_steer");
@@ -305,6 +330,58 @@ test("GET /api/queue returns queue summary without call payloads", async () => {
       steered_response: 0,
       wrap: 0,
     });
+  });
+});
+
+test("GET /api/queue orders oldest attention by timestamp value, not string format", async () => {
+  await withServer(async (port) => {
+    const firstStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "mixed-ts-1",
+      openclawSessionLabel: "cluecon-demo/mixed-ts-1",
+    });
+    const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+
+    const secondStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "mixed-ts-2",
+      openclawSessionLabel: "cluecon-demo/mixed-ts-2",
+    });
+    const secondCallId = (secondStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${secondCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "Wed, 10 Jun 2026 14:00:01 GMT",
+    });
+    await requestJson(port, "POST", `/api/calls/${secondCallId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "Wed, 10 Jun 2026 14:00:03 GMT",
+    });
+    await requestJson(port, "POST", `/api/calls/${secondCallId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "Wed, 10 Jun 2026 14:00:06 GMT",
+    });
+
+    const queue = await requestJson(port, "GET", "/api/queue");
+    const queuePayload = queue.payload as QueueSummaryPayload;
+
+    assert.equal(queue.statusCode, 200);
+    assert.equal(queuePayload.summary.attentionRequired, 2);
+    assert.equal(queuePayload.summary.oldestAttentionCallId, secondCallId);
+    assert.equal(queuePayload.summary.oldestAttentionOpenclawSessionId, "mixed-ts-2");
+    assert.equal(queuePayload.summary.oldestAttentionStartedAt, "Wed, 10 Jun 2026 14:00:06 GMT");
+    assert.notEqual(queuePayload.summary.oldestAttentionCallId, firstCallId);
   });
 });
 
@@ -325,6 +402,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       oldestAttentionProviderCallId: null,
       oldestAttentionOpenclawSessionId: null,
       oldestAttentionOpenclawSessionLabel: null,
+      oldestAttentionAgeMs: null,
       oldestAttentionStartedAt: null,
       oldestAttentionFlowState: null,
       oldestAttentionReason: null,
@@ -347,6 +425,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
         oldestAttentionProviderCallId: null,
         oldestAttentionOpenclawSessionId: null,
         oldestAttentionOpenclawSessionLabel: null,
+        oldestAttentionAgeMs: null,
         oldestAttentionStartedAt: null,
         oldestAttentionFlowState: null,
         oldestAttentionReason: null,
@@ -388,8 +467,22 @@ test("GET /api/calls lists active demo calls in start order", async () => {
     assert.deepEqual(listedPayload.calls.map((call) => call.session.callId), [firstCallId, secondCallId]);
     assert.equal(listedPayload.calls[0]?.transcript.length, 2);
     assert.equal(listedPayload.calls[0]?.flowState, "diagnose");
+    assert.deepEqual(listedPayload.calls[0]?.attention, {
+      required: false,
+      source: null,
+      reason: null,
+      startedAt: null,
+      ageMs: null,
+    });
     assert.equal(listedPayload.calls[1]?.transcript.length, 0);
     assert.equal(listedPayload.calls[1]?.flowState, "call_started");
+    assert.deepEqual(listedPayload.calls[1]?.attention, {
+      required: false,
+      source: null,
+      reason: null,
+      startedAt: null,
+      ageMs: null,
+    });
     assert.deepEqual(listedPayload.summary, {
       totalCalls: 2,
       filteredCalls: 2,
@@ -400,6 +493,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       oldestAttentionProviderCallId: null,
       oldestAttentionOpenclawSessionId: null,
       oldestAttentionOpenclawSessionLabel: null,
+      oldestAttentionAgeMs: null,
       oldestAttentionStartedAt: null,
       oldestAttentionFlowState: null,
       oldestAttentionReason: null,
@@ -422,6 +516,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
         oldestAttentionProviderCallId: null,
         oldestAttentionOpenclawSessionId: null,
         oldestAttentionOpenclawSessionLabel: null,
+        oldestAttentionAgeMs: null,
         oldestAttentionStartedAt: null,
         oldestAttentionFlowState: null,
         oldestAttentionReason: null,
@@ -465,6 +560,7 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     assert.deepEqual(filteredPayload.calls.map((call) => call.flowState), ["policy_hold"]);
     assert.equal(filteredPayload.summary.totalCalls, 2);
     assert.equal(filteredPayload.summary.filteredCalls, 1);
+    assert.equal(filteredPayload.summary.filteredSummary.oldestAttentionAgeMs, null);
     assert.equal(filteredPayload.summary.filteredSummary.totalCalls, 1);
     assert.equal(filteredPayload.summary.filteredSummary.oldestAttentionOpenclawSessionId, null);
     assert.equal(filteredPayload.summary.byFlowState.policy_hold, 1);
@@ -510,6 +606,11 @@ test("GET /api/calls can filter operator attention queues", async () => {
     const pendingPayload = pendingOnly.payload as CallListPayload;
     assert.equal(pendingOnly.statusCode, 200);
     assert.deepEqual(pendingPayload.calls.map((call) => call.session.callId), [pendingCallId]);
+    assert.equal(pendingPayload.calls[0]?.attention?.required, true);
+    assert.equal(pendingPayload.calls[0]?.attention?.source, "operator_steer");
+    assert.equal(pendingPayload.calls[0]?.attention?.reason, "safe_offer_review_requested");
+    assert.equal(pendingPayload.calls[0]?.attention?.startedAt, "2026-06-10T14:00:10.000Z");
+    assert.equal(typeof pendingPayload.calls[0]?.attention?.ageMs, "number");
     assert.equal(pendingPayload.summary.totalCalls, 3);
     assert.equal(pendingPayload.summary.filteredCalls, 1);
     assert.equal(pendingPayload.summary.pendingOperatorSteer, 1);
@@ -517,6 +618,7 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(pendingPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
     assert.equal(pendingPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
     assert.equal(pendingPayload.summary.oldestAttentionOpenclawSessionLabel, "cluecon-2026-cancellation-rescue:demo-call-0001");
+    assert.equal(typeof pendingPayload.summary.oldestAttentionAgeMs, "number");
     assert.equal(typeof pendingPayload.summary.oldestAttentionStartedAt, "string");
     assert.equal(pendingPayload.summary.oldestAttentionFlowState, "operator_steer");
     assert.equal(pendingPayload.summary.oldestAttentionReason, "safe_offer_review_requested");
@@ -526,12 +628,18 @@ test("GET /api/calls can filter operator attention queues", async () => {
     const fallbackPayload = fallbackOnly.payload as CallListPayload;
     assert.equal(fallbackOnly.statusCode, 200);
     assert.deepEqual(fallbackPayload.calls.map((call) => call.session.callId), [fallbackCallId]);
+    assert.equal(fallbackPayload.calls[0]?.attention?.required, true);
+    assert.equal(fallbackPayload.calls[0]?.attention?.source, "fallback");
+    assert.equal(fallbackPayload.calls[0]?.attention?.reason, "audio degraded during live demo");
+    assert.equal(fallbackPayload.calls[0]?.attention?.startedAt, "2026-06-10T14:00:11.000Z");
+    assert.equal(typeof fallbackPayload.calls[0]?.attention?.ageMs, "number");
     assert.equal(fallbackPayload.summary.fallbackArmed, 1);
     assert.equal(fallbackPayload.summary.attentionRequired, 2);
     assert.equal(fallbackPayload.summary.oldestAttentionCallId, pendingCallId);
     assert.equal(fallbackPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
     assert.equal(fallbackPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
     assert.equal(fallbackPayload.summary.oldestAttentionOpenclawSessionLabel, "cluecon-2026-cancellation-rescue:demo-call-0001");
+    assert.equal(typeof fallbackPayload.summary.oldestAttentionAgeMs, "number");
     assert.equal(fallbackPayload.summary.oldestAttentionFlowState, "operator_steer");
     assert.equal(fallbackPayload.summary.oldestAttentionReason, "safe_offer_review_requested");
     assert.equal(fallbackPayload.summary.oldestAttentionSource, "operator_steer");
@@ -540,12 +648,14 @@ test("GET /api/calls can filter operator attention queues", async () => {
     const attentionPayload = attentionOnly.payload as CallListPayload;
     assert.equal(attentionOnly.statusCode, 200);
     assert.deepEqual(attentionPayload.calls.map((call) => call.session.callId), [pendingCallId, fallbackCallId]);
+    assert.equal(attentionPayload.calls.every((call) => call.attention?.required === true), true);
     assert.equal(attentionPayload.summary.filteredCalls, 2);
     assert.equal(attentionPayload.summary.attentionRequired, 2);
     assert.equal(attentionPayload.summary.oldestAttentionCallId, pendingCallId);
     assert.equal(attentionPayload.summary.oldestAttentionProviderCallId, "mock-sw-call-001-0001");
     assert.equal(attentionPayload.summary.oldestAttentionOpenclawSessionId, "openclaw-call-0001");
     assert.equal(attentionPayload.summary.oldestAttentionOpenclawSessionLabel, "cluecon-2026-cancellation-rescue:demo-call-0001");
+    assert.equal(typeof attentionPayload.summary.oldestAttentionAgeMs, "number");
     assert.equal(attentionPayload.summary.oldestAttentionFlowState, "operator_steer");
     assert.equal(attentionPayload.summary.oldestAttentionReason, "safe_offer_review_requested");
     assert.equal(attentionPayload.summary.oldestAttentionSource, "operator_steer");
@@ -849,6 +959,14 @@ test("GET /api/calls and /api/queue can filter by attention source", async () =>
     const combinedCallsPayload = combinedCalls.payload as CallListPayload;
     assert.equal(combinedCalls.statusCode, 200);
     assert.deepEqual(combinedCallsPayload.calls.map((call) => call.session.callId), [combinedCallId]);
+    assert.deepEqual(combinedCallsPayload.calls[0]?.attention, {
+      required: true,
+      source: "operator_steer+fallback",
+      reason: "supervisor asked for dual-track demo",
+      startedAt: "2026-06-10T14:00:15.000Z",
+      ageMs: combinedCallsPayload.calls[0]?.attention?.ageMs,
+    });
+    assert.equal(typeof combinedCallsPayload.calls[0]?.attention?.ageMs, "number");
     assert.equal(combinedCallsPayload.summary.filteredSummary.totalCalls, 1);
     assert.equal(combinedCallsPayload.summary.filteredSummary.oldestAttentionSource, "operator_steer+fallback");
 
@@ -1221,6 +1339,14 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     const fetched = await requestJson(port, "GET", `/api/calls/${callId}`);
     const fetchedPayload = fetched.payload as SnapshotPayload;
     assert.equal(fetched.statusCode, 200);
+    assert.deepEqual(fetchedPayload.attention, {
+      required: true,
+      source: "fallback",
+      reason: "pipecat tool exceeded latency budget",
+      startedAt: "2026-06-10T14:00:02.000Z",
+      ageMs: fetchedPayload.attention?.ageMs ?? null,
+    });
+    assert.equal(typeof fetchedPayload.attention?.ageMs, "number");
     assert.equal(fetchedPayload.demoFallback.reason, "pipecat tool exceeded latency budget");
     assert.equal(fetchedPayload.demoFallback.mode, "tool_timeout");
   });
@@ -1485,5 +1611,52 @@ test("off-script caller turns pause the prototype for operator guidance", async 
     const lastAgentTurn = [...divergentPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
     assert.ok(lastAgentTurn);
     assert.equal(lastAgentTurn.text.toLowerCase().includes("requesting operator guidance"), true);
+  });
+});
+
+test("attention age metadata tracks when operator attention actually started", async () => {
+  await withServer(async (port) => {
+    const now = Date.now();
+    const firstAttentionAt = new Date(now - 90_000).toISOString();
+    const secondAttentionAt = new Date(now - 150_000).toISOString();
+
+    const firstStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "age-session-01",
+      openclawSessionLabel: "attention-age/first",
+    });
+    const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
+
+    const secondStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "age-session-02",
+      openclawSessionLabel: "attention-age/second",
+    });
+    const secondCallId = (secondStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${secondCallId}/fallback`, {
+      mode: "tool_timeout",
+      timestamp: secondAttentionAt,
+      reason: "tool_timeout",
+    });
+
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "unexpected script deviation",
+      timestamp: firstAttentionAt,
+    });
+
+    const queue = await requestJson(port, "GET", "/api/queue?attentionRequired=true");
+    const queuePayload = queue.payload as QueueSummaryPayload;
+
+    assert.equal(queue.statusCode, 200);
+    assert.equal(queuePayload.summary.oldestAttentionCallId, secondCallId);
+    assert.equal(queuePayload.summary.oldestAttentionOpenclawSessionId, "age-session-02");
+    assert.equal(queuePayload.summary.oldestAttentionStartedAt, secondAttentionAt);
+    assert.ok((queuePayload.summary.oldestAttentionAgeMs ?? 0) >= 120_000);
+
+    const firstSnapshot = await requestJson(port, "GET", `/api/calls/${firstCallId}`);
+    const firstPayload = firstSnapshot.payload as SnapshotPayload;
+    assert.equal(firstSnapshot.statusCode, 200);
+    assert.equal(firstPayload.attention?.source, "operator_steer");
+    assert.ok((firstPayload.attention?.ageMs ?? 0) >= 60_000);
+    assert.ok((firstPayload.attention?.ageMs ?? 0) < 120_000);
   });
 });

@@ -200,6 +200,13 @@ async function runFallbackScenario(port) {
   };
 }
 
+async function getQueueAttentionSummary(port) {
+  const queue = await requestJson(port, "GET", "/api/queue?attentionRequired=true");
+  assert.equal(queue.statusCode, 200);
+
+  return queue.payload.summary;
+}
+
 function summarizeArtifact(artifact) {
   const scriptedWrapped = artifact.scripted.checkpoints.wrapped;
   const fallbackCheckpoint = artifact.fallback.checkpoint;
@@ -217,6 +224,17 @@ function summarizeArtifact(artifact) {
   return {
     healthOk: artifact.health.ok,
     runtimeSeams: artifact.health.runtimeSeams,
+    queueAttention: {
+      totalCalls: artifact.queueAttention.totalCalls,
+      attentionRequired: artifact.queueAttention.attentionRequired,
+      oldestAttentionCallId: artifact.queueAttention.oldestAttentionCallId,
+      oldestAttentionOpenclawSessionLabel: artifact.queueAttention.oldestAttentionOpenclawSessionLabel,
+      oldestAttentionAgeMs: artifact.queueAttention.oldestAttentionAgeMs,
+      oldestAttentionStartedAt: artifact.queueAttention.oldestAttentionStartedAt,
+      oldestAttentionFlowState: artifact.queueAttention.oldestAttentionFlowState,
+      oldestAttentionReason: artifact.queueAttention.oldestAttentionReason,
+      oldestAttentionSource: artifact.queueAttention.oldestAttentionSource,
+    },
     scripted: {
       outcome: artifact.scripted.outcome,
       callId: artifact.scripted.callId,
@@ -241,12 +259,14 @@ async function main() {
 
     const scripted = await runScriptedScenario(port);
     const fallback = await runFallbackScenario(port);
+    const queueAttention = await getQueueAttentionSummary(port);
 
     return {
       generatedAt: new Date().toISOString(),
       demoName: config.demoName,
       provider: config.provider.name,
       health: health.payload,
+      queueAttention,
       scripted,
       fallback,
     };
