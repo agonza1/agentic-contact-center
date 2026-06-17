@@ -8,6 +8,12 @@ import { buildHttpServer } from "../src/http/createServer";
 interface SnapshotPayload {
   session: { callId: string };
   flowState: string;
+  attention?: {
+    required: boolean;
+    source: string | null;
+    reason: string | null;
+    ageMs: number | null;
+  };
   transcript: Array<{ speaker: string; text: string }>;
   demoFallback: {
     armed: boolean;
@@ -393,8 +399,20 @@ test("GET /api/calls lists active demo calls in start order", async () => {
     assert.deepEqual(listedPayload.calls.map((call) => call.session.callId), [firstCallId, secondCallId]);
     assert.equal(listedPayload.calls[0]?.transcript.length, 2);
     assert.equal(listedPayload.calls[0]?.flowState, "diagnose");
+    assert.deepEqual(listedPayload.calls[0]?.attention, {
+      required: false,
+      source: null,
+      reason: null,
+      ageMs: null,
+    });
     assert.equal(listedPayload.calls[1]?.transcript.length, 0);
     assert.equal(listedPayload.calls[1]?.flowState, "call_started");
+    assert.deepEqual(listedPayload.calls[1]?.attention, {
+      required: false,
+      source: null,
+      reason: null,
+      ageMs: null,
+    });
     assert.deepEqual(listedPayload.summary, {
       totalCalls: 2,
       filteredCalls: 2,

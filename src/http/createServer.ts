@@ -3,7 +3,16 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { getPipecatPrototypeHealth } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
-import type { AttentionSource, FallbackMode, FlowState, OperatorSteerAction, PocConfig, StartCallOptions, TranscriptTurn } from "../core/types";
+import type {
+  AttentionSource,
+  CallSnapshot,
+  FallbackMode,
+  FlowState,
+  OperatorSteerAction,
+  PocConfig,
+  StartCallOptions,
+  TranscriptTurn,
+} from "../core/types";
 
 const flowStates = new Set<FlowState>([
   "call_started",
@@ -75,6 +84,24 @@ function isFlowState(value: string): value is FlowState {
 
 function isAttentionSource(value: string): value is AttentionSource {
   return value === "operator_steer" || value === "fallback" || value === "operator_steer+fallback";
+}
+
+function buildAttentionMetadata(snapshot: CallSnapshot) {
+  const required = snapshot.operatorSteer.pending || snapshot.demoFallback.armed;
+  const source = snapshot.operatorSteer.pending && snapshot.demoFallback.armed
+    ? "operator_steer+fallback"
+    : snapshot.demoFallback.armed
+      ? "fallback"
+      : snapshot.operatorSteer.pending
+        ? "operator_steer"
+        : null;
+
+  return {
+    required,
+    source,
+    reason: snapshot.demoFallback.reason ?? snapshot.operatorSteer.lastReason,
+    ageMs: required ? Math.max(0, Date.now() - new Date(snapshot.session.startedAt).getTime()) : null,
+  };
 }
 
 function parseOptionalBooleanFilter(
@@ -523,7 +550,10 @@ async function routeRequest(
       return;
     }
 
-    const calls = await ingress.listSnapshots(filters);
+    const calls = (await ingress.listSnapshots(filters)).map((snapshot) => ({
+      ...snapshot,
+      attention: buildAttentionMetadata(snapshot),
+    }));
     const summary = await ingress.getQueueSummary();
     const filteredSummary = await ingress.getQueueSummary(filters);
 
