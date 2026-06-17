@@ -30,6 +30,16 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       health: { ok: boolean };
       summary: {
+        queueAttention: {
+          attentionRequired: number;
+          oldestAttentionAgeMs: number | null;
+          oldestAttentionCallId: string | null;
+          oldestAttentionFlowState: string | null;
+          oldestAttentionOpenclawSessionLabel: string | null;
+          oldestAttentionReason: string | null;
+          oldestAttentionSource: string | null;
+          totalCalls: number;
+        };
         healthOk: boolean;
         scripted: {
           agentTurns: number;
@@ -56,6 +66,14 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
 
     assert.equal(artifact.health.ok, true);
     assert.equal(artifact.summary.healthOk, true);
+    assert.equal(artifact.summary.queueAttention.totalCalls, 1);
+    assert.equal(artifact.summary.queueAttention.attentionRequired, 1);
+    assert.equal(typeof artifact.summary.queueAttention.oldestAttentionCallId, "string");
+    assert.equal(typeof artifact.summary.queueAttention.oldestAttentionOpenclawSessionLabel, "string");
+    assert.equal(typeof artifact.summary.queueAttention.oldestAttentionAgeMs, "number");
+    assert.equal(artifact.summary.queueAttention.oldestAttentionFlowState, "wrap");
+    assert.equal(artifact.summary.queueAttention.oldestAttentionReason, "pipecat tool exceeded latency budget");
+    assert.equal(artifact.summary.queueAttention.oldestAttentionSource, "fallback");
     assert.equal(artifact.scripted.outcome, "scripted_wrap_complete");
     assert.equal(artifact.scripted.checkpoints.wrapped.pipecatFlow.script.completed, true);
     assert.equal(artifact.summary.scripted.flowState, "wrap");

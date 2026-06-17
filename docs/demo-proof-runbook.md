@@ -26,6 +26,10 @@ Open `artifacts/demo-proof.json` or `artifacts/demo-proof-latest.json` and confi
 - `summary.fallback.mode` is `tool_timeout`
 - `summary.fallback.reason` is `pipecat tool exceeded latency budget`
 - `summary.fallback.eventTypes` includes `human_handoff_started`
+- `summary.queueAttention.attentionRequired` is `1`
+- `summary.queueAttention.oldestAttentionSource` is `fallback`
+- `summary.queueAttention.oldestAttentionFlowState` is `wrap`
+- `summary.queueAttention.oldestAttentionAgeMs` is a non-null number for stale-queue polling
 
 When generating the proof through Docker Compose on Linux, run `LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose run --rm proof` so the bind-mounted `artifacts/` files stay writable by the invoking host user.
 
