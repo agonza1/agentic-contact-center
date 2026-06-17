@@ -4,6 +4,7 @@ import {
   buildPipecatFlowPrototypeStatus,
   triggerFailClosedFallback,
 } from "./pipecatFlowPrototype";
+import { getAttentionMetadata } from "./attention";
 import type {
   AttentionSource,
   CallSnapshot,
@@ -364,6 +365,8 @@ export class InMemoryTelephonyIngress {
     const snapshots = this.getSnapshots(filters);
 
     for (const snapshot of snapshots) {
+      const attention = getAttentionMetadata(snapshot);
+
       byFlowState[snapshot.flowState] += 1;
 
       if (snapshot.operatorSteer.pending) {
@@ -374,29 +377,22 @@ export class InMemoryTelephonyIngress {
         fallbackArmed += 1;
       }
 
-      if (snapshot.operatorSteer.pending || snapshot.demoFallback.armed) {
+      if (attention.required) {
         attentionRequired += 1;
 
         if (
           oldestAttentionStartedAt === null ||
-          snapshot.session.startedAt.localeCompare(oldestAttentionStartedAt) < 0
+          (attention.startedAt !== null && attention.startedAt.localeCompare(oldestAttentionStartedAt) < 0)
         ) {
-          const attentionSource =
-            snapshot.operatorSteer.pending && snapshot.demoFallback.armed
-              ? "operator_steer+fallback"
-              : snapshot.demoFallback.armed
-                ? "fallback"
-                : "operator_steer";
-
           oldestAttentionCallId = snapshot.session.callId;
           oldestAttentionProviderCallId = snapshot.session.providerCallId;
           oldestAttentionOpenclawSessionId = snapshot.session.openclawSession.sessionId;
           oldestAttentionOpenclawSessionLabel = snapshot.session.openclawSession.label;
-          oldestAttentionAgeMs = Math.max(0, Date.now() - new Date(snapshot.session.startedAt).getTime());
-          oldestAttentionStartedAt = snapshot.session.startedAt;
+          oldestAttentionAgeMs = attention.ageMs;
+          oldestAttentionStartedAt = attention.startedAt;
           oldestAttentionFlowState = snapshot.flowState;
-          oldestAttentionReason = snapshot.demoFallback.reason ?? snapshot.operatorSteer.lastReason;
-          oldestAttentionSource = attentionSource;
+          oldestAttentionReason = attention.reason;
+          oldestAttentionSource = attention.source;
         }
       }
     }

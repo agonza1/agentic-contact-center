@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
+import { getAttentionMetadata } from "../core/attention";
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { getPipecatPrototypeHealth } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
@@ -86,28 +87,12 @@ function isAttentionSource(value: string): value is AttentionSource {
   return value === "operator_steer" || value === "fallback" || value === "operator_steer+fallback";
 }
 
-function buildAttentionMetadata(snapshot: CallSnapshot) {
-  const required = snapshot.operatorSteer.pending || snapshot.demoFallback.armed;
-  const source = snapshot.operatorSteer.pending && snapshot.demoFallback.armed
-    ? "operator_steer+fallback"
-    : snapshot.demoFallback.armed
-      ? "fallback"
-      : snapshot.operatorSteer.pending
-        ? "operator_steer"
-        : null;
-
-  return {
-    required,
-    source,
-    reason: snapshot.demoFallback.reason ?? snapshot.operatorSteer.lastReason,
-    ageMs: required ? Math.max(0, Date.now() - new Date(snapshot.session.startedAt).getTime()) : null,
-  };
-}
-
 function buildCallPayload(snapshot: CallSnapshot) {
+  const { startedAt, ...attention } = getAttentionMetadata(snapshot);
+
   return {
     ...snapshot,
-    attention: buildAttentionMetadata(snapshot),
+    attention,
   };
 }
 

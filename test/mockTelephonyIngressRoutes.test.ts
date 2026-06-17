@@ -1552,3 +1552,50 @@ test("off-script caller turns pause the prototype for operator guidance", async 
     assert.equal(lastAgentTurn.text.toLowerCase().includes("requesting operator guidance"), true);
   });
 });
+
+test("attention age metadata tracks when operator attention actually started", async () => {
+  await withServer(async (port) => {
+    const now = Date.now();
+    const firstAttentionAt = new Date(now - 90_000).toISOString();
+    const secondAttentionAt = new Date(now - 150_000).toISOString();
+
+    const firstStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "age-session-01",
+      openclawSessionLabel: "attention-age/first",
+    });
+    const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
+
+    const secondStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "age-session-02",
+      openclawSessionLabel: "attention-age/second",
+    });
+    const secondCallId = (secondStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${secondCallId}/fallback`, {
+      mode: "tool_timeout",
+      timestamp: secondAttentionAt,
+      reason: "tool_timeout",
+    });
+
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "unexpected script deviation",
+      timestamp: firstAttentionAt,
+    });
+
+    const queue = await requestJson(port, "GET", "/api/queue?attentionRequired=true");
+    const queuePayload = queue.payload as QueueSummaryPayload;
+
+    assert.equal(queue.statusCode, 200);
+    assert.equal(queuePayload.summary.oldestAttentionCallId, secondCallId);
+    assert.equal(queuePayload.summary.oldestAttentionOpenclawSessionId, "age-session-02");
+    assert.equal(queuePayload.summary.oldestAttentionStartedAt, secondAttentionAt);
+    assert.ok((queuePayload.summary.oldestAttentionAgeMs ?? 0) >= 120_000);
+
+    const firstSnapshot = await requestJson(port, "GET", `/api/calls/${firstCallId}`);
+    const firstPayload = firstSnapshot.payload as SnapshotPayload;
+    assert.equal(firstSnapshot.statusCode, 200);
+    assert.equal(firstPayload.attention?.source, "operator_steer");
+    assert.ok((firstPayload.attention?.ageMs ?? 0) >= 60_000);
+    assert.ok((firstPayload.attention?.ageMs ?? 0) < 120_000);
+  });
+});
