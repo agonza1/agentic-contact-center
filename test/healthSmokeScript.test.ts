@@ -147,3 +147,69 @@ test("health smoke script rejects 200 responses that still report ok false", asy
     assert.ok(attempts >= 2);
   });
 });
+
+test("health smoke script can assert expected health metadata", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        ok: true,
+        demoName: "ClueCon cancellation rescue",
+        mode: "mocked_telephony",
+        provider: "signalwire",
+        operatorChannel: "slack",
+      }),
+    );
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-demo-name",
+      "ClueCon cancellation rescue",
+      "--expect-mode",
+      "mocked_telephony",
+      "--expect-provider",
+      "signalwire",
+      "--expect-operator-channel",
+      "slack",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Health probe succeeded/);
+  });
+});
+
+test("health smoke script reports metadata mismatches in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, provider: "twilio" }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-provider",
+      "signalwire",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_provider_mismatch/);
+  });
+});
