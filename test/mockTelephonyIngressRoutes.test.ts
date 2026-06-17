@@ -333,6 +333,58 @@ test("GET /api/queue returns queue summary without call payloads", async () => {
   });
 });
 
+test("GET /api/queue orders oldest attention by timestamp value, not string format", async () => {
+  await withServer(async (port) => {
+    const firstStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "mixed-ts-1",
+      openclawSessionLabel: "cluecon-demo/mixed-ts-1",
+    });
+    const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+
+    const secondStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "mixed-ts-2",
+      openclawSessionLabel: "cluecon-demo/mixed-ts-2",
+    });
+    const secondCallId = (secondStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${secondCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "Wed, 10 Jun 2026 14:00:01 GMT",
+    });
+    await requestJson(port, "POST", `/api/calls/${secondCallId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "Wed, 10 Jun 2026 14:00:03 GMT",
+    });
+    await requestJson(port, "POST", `/api/calls/${secondCallId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "Wed, 10 Jun 2026 14:00:06 GMT",
+    });
+
+    const queue = await requestJson(port, "GET", "/api/queue");
+    const queuePayload = queue.payload as QueueSummaryPayload;
+
+    assert.equal(queue.statusCode, 200);
+    assert.equal(queuePayload.summary.attentionRequired, 2);
+    assert.equal(queuePayload.summary.oldestAttentionCallId, secondCallId);
+    assert.equal(queuePayload.summary.oldestAttentionOpenclawSessionId, "mixed-ts-2");
+    assert.equal(queuePayload.summary.oldestAttentionStartedAt, "Wed, 10 Jun 2026 14:00:06 GMT");
+    assert.notEqual(queuePayload.summary.oldestAttentionCallId, firstCallId);
+  });
+});
+
 test("GET /api/calls lists active demo calls in start order", async () => {
   await withServer(async (port) => {
     const emptyList = await requestJson(port, "GET", "/api/calls");

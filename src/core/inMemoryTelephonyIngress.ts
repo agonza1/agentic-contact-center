@@ -4,7 +4,7 @@ import {
   buildPipecatFlowPrototypeStatus,
   triggerFailClosedFallback,
 } from "./pipecatFlowPrototype";
-import { getAttentionMetadata } from "./attention";
+import { compareTimestamps, getAttentionMetadata } from "./attention";
 import type {
   AttentionSource,
   CallSnapshot,
@@ -382,7 +382,7 @@ export class InMemoryTelephonyIngress {
 
         if (
           oldestAttentionStartedAt === null ||
-          (attention.startedAt !== null && attention.startedAt.localeCompare(oldestAttentionStartedAt) < 0)
+          (attention.startedAt !== null && compareTimestamps(attention.startedAt, oldestAttentionStartedAt) < 0)
         ) {
           oldestAttentionCallId = snapshot.session.callId;
           oldestAttentionProviderCallId = snapshot.session.providerCallId;

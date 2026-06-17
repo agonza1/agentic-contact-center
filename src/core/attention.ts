@@ -8,6 +8,14 @@ interface AttentionMetadata {
   ageMs: number | null;
 }
 
+function getTimestampMs(value: string): number {
+  return new Date(value).getTime();
+}
+
+export function compareTimestamps(left: string, right: string): number {
+  return getTimestampMs(left) - getTimestampMs(right);
+}
+
 function getAttentionStartedAt(snapshot: CallSnapshot): string | null {
   const candidates = [
     snapshot.operatorSteer.pending ? snapshot.operatorSteer.requestedAt : null,
@@ -18,7 +26,7 @@ function getAttentionStartedAt(snapshot: CallSnapshot): string | null {
     return null;
   }
 
-  return candidates.reduce((oldest, candidate) => (candidate.localeCompare(oldest) < 0 ? candidate : oldest));
+  return candidates.reduce((oldest, candidate) => (compareTimestamps(candidate, oldest) < 0 ? candidate : oldest));
 }
 
 export function getAttentionMetadata(snapshot: CallSnapshot, now = Date.now()): AttentionMetadata {
