@@ -549,6 +549,10 @@ test("GET /api/calls can filter operator attention queues", async () => {
     const pendingPayload = pendingOnly.payload as CallListPayload;
     assert.equal(pendingOnly.statusCode, 200);
     assert.deepEqual(pendingPayload.calls.map((call) => call.session.callId), [pendingCallId]);
+    assert.equal(pendingPayload.calls[0]?.attention?.required, true);
+    assert.equal(pendingPayload.calls[0]?.attention?.source, "operator_steer");
+    assert.equal(pendingPayload.calls[0]?.attention?.reason, "safe_offer_review_requested");
+    assert.equal(typeof pendingPayload.calls[0]?.attention?.ageMs, "number");
     assert.equal(pendingPayload.summary.totalCalls, 3);
     assert.equal(pendingPayload.summary.filteredCalls, 1);
     assert.equal(pendingPayload.summary.pendingOperatorSteer, 1);
@@ -566,6 +570,10 @@ test("GET /api/calls can filter operator attention queues", async () => {
     const fallbackPayload = fallbackOnly.payload as CallListPayload;
     assert.equal(fallbackOnly.statusCode, 200);
     assert.deepEqual(fallbackPayload.calls.map((call) => call.session.callId), [fallbackCallId]);
+    assert.equal(fallbackPayload.calls[0]?.attention?.required, true);
+    assert.equal(fallbackPayload.calls[0]?.attention?.source, "fallback");
+    assert.equal(fallbackPayload.calls[0]?.attention?.reason, "audio degraded during live demo");
+    assert.equal(typeof fallbackPayload.calls[0]?.attention?.ageMs, "number");
     assert.equal(fallbackPayload.summary.fallbackArmed, 1);
     assert.equal(fallbackPayload.summary.attentionRequired, 2);
     assert.equal(fallbackPayload.summary.oldestAttentionCallId, pendingCallId);
@@ -581,6 +589,7 @@ test("GET /api/calls can filter operator attention queues", async () => {
     const attentionPayload = attentionOnly.payload as CallListPayload;
     assert.equal(attentionOnly.statusCode, 200);
     assert.deepEqual(attentionPayload.calls.map((call) => call.session.callId), [pendingCallId, fallbackCallId]);
+    assert.equal(attentionPayload.calls.every((call) => call.attention?.required === true), true);
     assert.equal(attentionPayload.summary.filteredCalls, 2);
     assert.equal(attentionPayload.summary.attentionRequired, 2);
     assert.equal(attentionPayload.summary.oldestAttentionCallId, pendingCallId);
@@ -891,6 +900,13 @@ test("GET /api/calls and /api/queue can filter by attention source", async () =>
     const combinedCallsPayload = combinedCalls.payload as CallListPayload;
     assert.equal(combinedCalls.statusCode, 200);
     assert.deepEqual(combinedCallsPayload.calls.map((call) => call.session.callId), [combinedCallId]);
+    assert.deepEqual(combinedCallsPayload.calls[0]?.attention, {
+      required: true,
+      source: "operator_steer+fallback",
+      reason: "supervisor asked for dual-track demo",
+      ageMs: combinedCallsPayload.calls[0]?.attention?.ageMs,
+    });
+    assert.equal(typeof combinedCallsPayload.calls[0]?.attention?.ageMs, "number");
     assert.equal(combinedCallsPayload.summary.filteredSummary.totalCalls, 1);
     assert.equal(combinedCallsPayload.summary.filteredSummary.oldestAttentionSource, "operator_steer+fallback");
 
@@ -1263,6 +1279,13 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     const fetched = await requestJson(port, "GET", `/api/calls/${callId}`);
     const fetchedPayload = fetched.payload as SnapshotPayload;
     assert.equal(fetched.statusCode, 200);
+    assert.deepEqual(fetchedPayload.attention, {
+      required: true,
+      source: "fallback",
+      reason: "pipecat tool exceeded latency budget",
+      ageMs: fetchedPayload.attention?.ageMs ?? null,
+    });
+    assert.equal(typeof fetchedPayload.attention?.ageMs, "number");
     assert.equal(fetchedPayload.demoFallback.reason, "pipecat tool exceeded latency budget");
     assert.equal(fetchedPayload.demoFallback.mode, "tool_timeout");
   });
