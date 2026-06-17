@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { getPipecatPrototypeHealth } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
-import type { FallbackMode, FlowState, OperatorSteerAction, PocConfig, StartCallOptions, TranscriptTurn } from "../core/types";
+import type { AttentionSource, FallbackMode, FlowState, OperatorSteerAction, PocConfig, StartCallOptions, TranscriptTurn } from "../core/types";
 
 const flowStates = new Set<FlowState>([
   "call_started",
@@ -73,6 +73,10 @@ function isFlowState(value: string): value is FlowState {
   return flowStates.has(value as FlowState);
 }
 
+function isAttentionSource(value: string): value is AttentionSource {
+  return value === "operator_steer" || value === "fallback" || value === "operator_steer+fallback";
+}
+
 function parseOptionalBooleanFilter(
   value: string | null,
   error: string,
@@ -97,6 +101,7 @@ interface CallListFilters {
   pendingOperatorSteer?: boolean;
   fallbackArmed?: boolean;
   attentionRequired?: boolean;
+  attentionSource?: AttentionSource;
   openclawSessionId?: string;
   openclawSessionLabel?: string;
   openclawSessionRef?: string;
@@ -136,6 +141,11 @@ function parseCallListFilters(
     return attentionRequired;
   }
 
+  const attentionSource = requestUrl.searchParams.get("attentionSource");
+  if (attentionSource !== null && !isAttentionSource(attentionSource)) {
+    return { error: `${invalidPrefix}_attention_source_invalid` };
+  }
+
   const openclawSessionId = requestUrl.searchParams.get("openclawSessionId");
   if (openclawSessionId !== null && !openclawSessionId.trim()) {
     return { error: `${invalidPrefix}_openclaw_session_id_invalid` };
@@ -161,6 +171,7 @@ function parseCallListFilters(
     pendingOperatorSteer,
     fallbackArmed,
     attentionRequired,
+    attentionSource: attentionSource ?? undefined,
     openclawSessionId: openclawSessionId?.trim() || undefined,
     openclawSessionLabel: openclawSessionLabel?.trim() || undefined,
     openclawSessionRef: openclawSessionRef?.trim() || undefined,

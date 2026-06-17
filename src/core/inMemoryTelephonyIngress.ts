@@ -5,6 +5,7 @@ import {
   triggerFailClosedFallback,
 } from "./pipecatFlowPrototype";
 import type {
+  AttentionSource,
   CallSnapshot,
   FlowState,
   LatencyBudgetStage,
@@ -233,6 +234,7 @@ export class InMemoryTelephonyIngress {
     pendingOperatorSteer?: boolean;
     fallbackArmed?: boolean;
     attentionRequired?: boolean;
+    attentionSource?: AttentionSource;
     openclawSessionId?: string;
     openclawSessionLabel?: string;
     openclawSessionRef?: string;
@@ -246,6 +248,7 @@ export class InMemoryTelephonyIngress {
     pendingOperatorSteer?: boolean;
     fallbackArmed?: boolean;
     attentionRequired?: boolean;
+    attentionSource?: AttentionSource;
     openclawSessionId?: string;
     openclawSessionLabel?: string;
     openclawSessionRef?: string;
@@ -266,6 +269,22 @@ export class InMemoryTelephonyIngress {
 
         const attentionRequired = snapshot.operatorSteer.pending || snapshot.demoFallback.armed;
         return attentionRequired === filters.attentionRequired;
+      })
+      .filter((snapshot) => {
+        if (filters.attentionSource === undefined) {
+          return true;
+        }
+
+        const attentionSource =
+          snapshot.operatorSteer.pending && snapshot.demoFallback.armed
+            ? "operator_steer+fallback"
+            : snapshot.demoFallback.armed
+              ? "fallback"
+              : snapshot.operatorSteer.pending
+                ? "operator_steer"
+                : null;
+
+        return attentionSource === filters.attentionSource;
       })
       .filter((snapshot) =>
         filters.providerCallId === undefined ? true : snapshot.session.providerCallId === filters.providerCallId,
@@ -298,6 +317,7 @@ export class InMemoryTelephonyIngress {
     pendingOperatorSteer?: boolean;
     fallbackArmed?: boolean;
     attentionRequired?: boolean;
+    attentionSource?: AttentionSource;
     openclawSessionId?: string;
     openclawSessionLabel?: string;
     openclawSessionRef?: string;
@@ -314,7 +334,7 @@ export class InMemoryTelephonyIngress {
     oldestAttentionStartedAt: string | null;
     oldestAttentionFlowState: FlowState | null;
     oldestAttentionReason: string | null;
-    oldestAttentionSource: "operator_steer" | "fallback" | "operator_steer+fallback" | null;
+    oldestAttentionSource: AttentionSource | null;
     byFlowState: Record<FlowState, number>;
   }> {
     const byFlowState: Record<FlowState, number> = {
@@ -337,7 +357,7 @@ export class InMemoryTelephonyIngress {
     let oldestAttentionStartedAt: string | null = null;
     let oldestAttentionFlowState: FlowState | null = null;
     let oldestAttentionReason: string | null = null;
-    let oldestAttentionSource: "operator_steer" | "fallback" | "operator_steer+fallback" | null = null;
+    let oldestAttentionSource: AttentionSource | null = null;
 
     const snapshots = this.getSnapshots(filters);
 

@@ -784,6 +784,98 @@ test("GET /api/queue can filter operator summary slices", async () => {
   });
 });
 
+
+
+test("GET /api/calls and /api/queue can filter by attention source", async () => {
+  await withServer(async (port) => {
+    const operatorStarted = await requestJson(port, "POST", "/api/demo/start");
+    const operatorCallId = (operatorStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+
+    const fallbackStarted = await requestJson(port, "POST", "/api/demo/start");
+    const fallbackCallId = (fallbackStarted.payload as SnapshotPayload).session.callId;
+    await requestJson(port, "POST", `/api/calls/${fallbackCallId}/operator-steer`, {
+      action: "arm_fallback",
+      reason: "audio degraded during live demo",
+      timestamp: "2026-06-10T14:00:11.000Z",
+    });
+
+    const combinedStarted = await requestJson(port, "POST", "/api/demo/start");
+    const combinedCallId = (combinedStarted.payload as SnapshotPayload).session.callId;
+    await requestJson(port, "POST", `/api/calls/${combinedCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:12.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${combinedCallId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:00:13.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${combinedCallId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:00:14.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${combinedCallId}/operator-steer`, {
+      action: "arm_fallback",
+      reason: "supervisor asked for dual-track demo",
+      timestamp: "2026-06-10T14:00:15.000Z",
+    });
+
+    const operatorOnlyCalls = await requestJson(port, "GET", "/api/calls?attentionSource=operator_steer");
+    const operatorOnlyCallsPayload = operatorOnlyCalls.payload as CallListPayload;
+    assert.equal(operatorOnlyCalls.statusCode, 200);
+    assert.deepEqual(operatorOnlyCallsPayload.calls.map((call) => call.session.callId), [operatorCallId]);
+    assert.equal(operatorOnlyCallsPayload.summary.filteredSummary.attentionRequired, 1);
+    assert.equal(operatorOnlyCallsPayload.summary.filteredSummary.oldestAttentionSource, "operator_steer");
+
+    const fallbackOnlyCalls = await requestJson(port, "GET", "/api/calls?attentionSource=fallback");
+    const fallbackOnlyCallsPayload = fallbackOnlyCalls.payload as CallListPayload;
+    assert.equal(fallbackOnlyCalls.statusCode, 200);
+    assert.deepEqual(fallbackOnlyCallsPayload.calls.map((call) => call.session.callId), [fallbackCallId]);
+    assert.equal(fallbackOnlyCallsPayload.summary.filteredSummary.oldestAttentionSource, "fallback");
+
+    const combinedCalls = await requestJson(port, "GET", "/api/calls?attentionSource=operator_steer%2Bfallback");
+    const combinedCallsPayload = combinedCalls.payload as CallListPayload;
+    assert.equal(combinedCalls.statusCode, 200);
+    assert.deepEqual(combinedCallsPayload.calls.map((call) => call.session.callId), [combinedCallId]);
+    assert.equal(combinedCallsPayload.summary.filteredSummary.totalCalls, 1);
+    assert.equal(combinedCallsPayload.summary.filteredSummary.oldestAttentionSource, "operator_steer+fallback");
+
+    const combinedQueue = await requestJson(port, "GET", "/api/queue?attentionSource=operator_steer%2Bfallback");
+    const combinedQueuePayload = combinedQueue.payload as QueueSummaryPayload;
+    assert.equal(combinedQueue.statusCode, 200);
+    assert.equal(combinedQueuePayload.summary.totalCalls, 1);
+    assert.equal(combinedQueuePayload.summary.attentionRequired, 1);
+    assert.equal(combinedQueuePayload.summary.oldestAttentionCallId, combinedCallId);
+    assert.equal(combinedQueuePayload.summary.oldestAttentionSource, "operator_steer+fallback");
+
+    const invalidCalls = await requestJson(port, "GET", "/api/calls?attentionSource=triage_bot");
+    assert.equal(invalidCalls.statusCode, 400);
+    assert.deepEqual(invalidCalls.payload, {
+      ok: false,
+      error: "call_list_attention_source_invalid",
+    });
+
+    const invalidQueue = await requestJson(port, "GET", "/api/queue?attentionSource=triage_bot");
+    assert.equal(invalidQueue.statusCode, 400);
+    assert.deepEqual(invalidQueue.payload, {
+      ok: false,
+      error: "queue_attention_source_invalid",
+    });
+  });
+});
+
 test("GET /api/calls can filter by provider and attached OpenClaw session metadata", async () => {
   await withServer(async (port) => {
     await requestJson(port, "POST", "/api/demo/start", {
