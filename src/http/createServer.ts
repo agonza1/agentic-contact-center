@@ -104,6 +104,13 @@ function buildAttentionMetadata(snapshot: CallSnapshot) {
   };
 }
 
+function buildCallPayload(snapshot: CallSnapshot) {
+  return {
+    ...snapshot,
+    attention: buildAttentionMetadata(snapshot),
+  };
+}
+
 function parseOptionalBooleanFilter(
   value: string | null,
   error: string,
@@ -374,7 +381,7 @@ async function routeRequest(
       openclawSessionId: openclawSessionId?.trim(),
       openclawSessionLabel: openclawSessionLabel?.trim(),
     } satisfies StartCallOptions);
-    writeJson(response, 201, snapshot);
+    writeJson(response, 201, buildCallPayload(snapshot));
     return;
   }
 
@@ -408,7 +415,7 @@ async function routeRequest(
 
     try {
       const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config);
-      writeJson(response, 200, snapshot);
+      writeJson(response, 200, buildCallPayload(snapshot));
     } catch {
       writeNotFound(response);
     }
@@ -449,7 +456,7 @@ async function routeRequest(
     try {
       const reason = getOptionalTrimmedString(body.reason);
       const snapshot = await ingress.triggerFallback(fallbackMatch[1], mode, timestamp, reason);
-      writeJson(response, 200, snapshot);
+      writeJson(response, 200, buildCallPayload(snapshot));
     } catch {
       writeNotFound(response);
     }
@@ -532,7 +539,7 @@ async function routeRequest(
 
     try {
       const snapshot = await ingress.applyOperatorSteer(operatorSteerMatch[1], resolvedAction, timestamp, reason);
-      writeJson(response, 200, snapshot);
+      writeJson(response, 200, buildCallPayload(snapshot));
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Call is not awaiting operator steer")) {
         writeBadRequest(response, "operator_steer_not_pending");
@@ -550,10 +557,7 @@ async function routeRequest(
       return;
     }
 
-    const calls = (await ingress.listSnapshots(filters)).map((snapshot) => ({
-      ...snapshot,
-      attention: buildAttentionMetadata(snapshot),
-    }));
+    const calls = (await ingress.listSnapshots(filters)).map((snapshot) => buildCallPayload(snapshot));
     const summary = await ingress.getQueueSummary();
     const filteredSummary = await ingress.getQueueSummary(filters);
 
@@ -576,7 +580,7 @@ async function routeRequest(
       return;
     }
 
-    writeJson(response, 200, snapshot);
+    writeJson(response, 200, buildCallPayload(snapshot));
     return;
   }
 

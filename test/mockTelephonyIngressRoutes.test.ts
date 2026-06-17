@@ -161,6 +161,7 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
       pipecatFlow: { ready: boolean; toolCoverage: string[] };
       events: Array<{ type: string }>;
       latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
+      attention: { required: boolean; source: string | null; reason: string | null; ageMs: number | null };
     };
 
     assert.equal(started.statusCode, 201);
@@ -193,6 +194,12 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
       requestedAt: null,
       respondedAt: null,
       source: null,
+    });
+    assert.deepEqual(startedPayload.attention, {
+      required: false,
+      source: null,
+      reason: null,
+      ageMs: null,
     });
     assert.deepEqual(
       startedPayload.latencyMarks.map((mark) => ({ stage: mark.stage, budgetMs: mark.budgetMs })),
@@ -231,6 +238,12 @@ test("the risky offer boundary parks the flow in policy hold without promising a
     const secondPayload = secondTurn.payload as SnapshotPayload;
     assert.equal(secondTurn.statusCode, 200);
     assert.equal(secondPayload.flowState, "policy_hold");
+    assert.deepEqual(secondPayload.attention, {
+      required: false,
+      source: null,
+      reason: null,
+      ageMs: null,
+    });
     assert.equal(secondPayload.events.some((event) => event.type === "policy_hold_entered"), true);
     assert.equal(secondPayload.latencyMarks.some((mark) => mark.stage === "policy_hold_entered" && mark.budgetMs === 1500), true);
 
