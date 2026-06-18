@@ -122,6 +122,7 @@ interface CallListFilters {
   openclawSessionId?: string;
   openclawSessionLabel?: string;
   openclawSessionRef?: string;
+  callId?: string;
   providerCallId?: string;
 }
 
@@ -178,6 +179,11 @@ function parseCallListFilters(
     return { error: `${invalidPrefix}_openclaw_session_ref_invalid` };
   }
 
+  const callId = requestUrl.searchParams.get("callId");
+  if (callId !== null && !callId.trim()) {
+    return { error: `${invalidPrefix}_call_id_invalid` };
+  }
+
   const providerCallId = requestUrl.searchParams.get("providerCallId");
   if (providerCallId !== null && !providerCallId.trim()) {
     return { error: `${invalidPrefix}_provider_call_id_invalid` };
@@ -192,6 +198,7 @@ function parseCallListFilters(
     openclawSessionId: openclawSessionId?.trim() || undefined,
     openclawSessionLabel: openclawSessionLabel?.trim() || undefined,
     openclawSessionRef: openclawSessionRef?.trim() || undefined,
+    callId: callId?.trim() || undefined,
     providerCallId: providerCallId?.trim() || undefined,
   };
 }
