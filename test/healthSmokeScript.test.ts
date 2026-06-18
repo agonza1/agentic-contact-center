@@ -356,6 +356,34 @@ test("health smoke script rejects unknown arguments before probing", async () =>
   assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
 });
 
+test("health smoke script rejects malformed timeout and interval values before probing", async () => {
+  const invalidTimeout = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--timeout-ms",
+    "200.5",
+    "--interval-ms",
+    "25",
+  ]);
+
+  assert.equal(invalidTimeout.code, 1);
+  assert.match(invalidTimeout.stderr, /invalid_timeout_ms_value\("200\.5"\)/);
+  assert.doesNotMatch(invalidTimeout.stderr, /Timed out waiting for a healthy response/);
+
+  const invalidInterval = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--timeout-ms",
+    "1500",
+    "--interval-ms",
+    "25ms",
+  ]);
+
+  assert.equal(invalidInterval.code, 1);
+  assert.match(invalidInterval.stderr, /invalid_interval_ms_value\("25ms"\)/);
+  assert.doesNotMatch(invalidInterval.stderr, /Timed out waiting for a healthy response/);
+});
+
 test("health smoke script rejects missing argument values before probing", async () => {
   const result = await runProbe([
     "--url",

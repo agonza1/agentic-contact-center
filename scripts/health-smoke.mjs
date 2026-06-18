@@ -54,12 +54,22 @@ function parseArgs(argv) {
     }
 
     if (arg === '--timeout-ms' && next) {
+      const invalidTimeoutMs = validatePositiveIntegerOption('timeout_ms', next);
+      if (invalidTimeoutMs) {
+        throw new Error(invalidTimeoutMs);
+      }
+
       args.timeoutMs = Number.parseInt(next, 10);
       index += 1;
       continue;
     }
 
     if (arg === '--interval-ms' && next) {
+      const invalidIntervalMs = validatePositiveIntegerOption('interval_ms', next);
+      if (invalidIntervalMs) {
+        throw new Error(invalidIntervalMs);
+      }
+
       args.intervalMs = Number.parseInt(next, 10);
       index += 1;
       continue;
@@ -191,6 +201,18 @@ function parseLatencyBudgetExpectation(rawExpectation) {
   }
 
   return { name, expectedValue };
+}
+
+function isStrictPositiveInteger(rawValue) {
+  return /^\d+$/.test(rawValue) && Number.parseInt(rawValue, 10) > 0;
+}
+
+function validatePositiveIntegerOption(flagName, rawValue) {
+  if (!isStrictPositiveInteger(String(rawValue))) {
+    return 'invalid_' + flagName + '_value(' + JSON.stringify(String(rawValue)) + ')';
+  }
+
+  return null;
 }
 
 function validateLatencyBudgetExpectations(args) {
@@ -362,6 +384,16 @@ async function main() {
   const invalidBooleanExpectation = validateBooleanExpectations(args);
   if (invalidBooleanExpectation) {
     throw new Error(invalidBooleanExpectation);
+  }
+
+  const invalidTimeoutMs = validatePositiveIntegerOption('timeout_ms', timeoutMs);
+  if (invalidTimeoutMs) {
+    throw new Error(invalidTimeoutMs);
+  }
+
+  const invalidIntervalMs = validatePositiveIntegerOption('interval_ms', intervalMs);
+  if (invalidIntervalMs) {
+    throw new Error(invalidIntervalMs);
   }
 
   const startedAt = Date.now();
