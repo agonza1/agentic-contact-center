@@ -73,6 +73,20 @@ interface CallListPayload extends QueueSummaryPayload {
   };
 }
 
+interface EventTrailPayload {
+  callId: string;
+  providerCallId: string;
+  openclawSession: { sessionId: string; label: string; status: string };
+  events: Array<{ type: string; at: string; detail: Record<string, string | number | boolean | null> }>;
+  summary: {
+    totalEvents: number;
+    returnedEvents: number;
+    filteredType: string | null;
+    latestEventType: string | null;
+    latestEventAt: string | null;
+  };
+}
+
 async function withServer<T>(run: (port: number) => Promise<T>): Promise<T> {
   const config = loadPocConfig();
   const server = buildHttpServer(config);
@@ -1961,5 +1975,51 @@ test("GET /api/calls and /api/queue can scope operator state by call id", async 
       ok: false,
       error: "queue_call_id_invalid",
     });
+  });
+});
+
+test("GET /api/calls/:callId/events returns filterable event evidence", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "events-session-01",
+      openclawSessionLabel: "events/filterable",
+    });
+    const callId = (started.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+
+    const allEvents = await requestJson(port, "GET", `/api/calls/${callId}/events`);
+    const allEventsPayload = allEvents.payload as EventTrailPayload;
+
+    assert.equal(allEvents.statusCode, 200);
+    assert.equal(allEventsPayload.callId, callId);
+    assert.equal(allEventsPayload.openclawSession.sessionId, "events-session-01");
+    assert.equal(allEventsPayload.summary.totalEvents, allEventsPayload.events.length);
+    assert.equal(allEventsPayload.summary.returnedEvents, allEventsPayload.events.length);
+    assert.equal(allEventsPayload.summary.filteredType, null);
+    assert.equal(allEventsPayload.events.some((event) => event.type === "caller_turn_appended"), true);
+
+    const filteredEvents = await requestJson(port, "GET", `/api/calls/${callId}/events?type=caller_turn_appended`);
+    const filteredPayload = filteredEvents.payload as EventTrailPayload;
+
+    assert.equal(filteredEvents.statusCode, 200);
+    assert.equal(filteredPayload.summary.totalEvents, allEventsPayload.summary.totalEvents);
+    assert.equal(filteredPayload.summary.returnedEvents, 1);
+    assert.equal(filteredPayload.summary.filteredType, "caller_turn_appended");
+    assert.equal(filteredPayload.summary.latestEventType, "caller_turn_appended");
+    assert.deepEqual(filteredPayload.events.map((event) => event.type), ["caller_turn_appended"]);
+
+    const invalidType = await requestJson(port, "GET", `/api/calls/${callId}/events?type=%20%20`);
+    assert.equal(invalidType.statusCode, 400);
+    assert.deepEqual(invalidType.payload, {
+      ok: false,
+      error: "event_type_invalid",
+    });
+
+    const missing = await requestJson(port, "GET", "/api/calls/missing-call/events");
+    assert.equal(missing.statusCode, 404);
   });
 });
