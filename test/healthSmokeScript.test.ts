@@ -191,7 +191,7 @@ test("health smoke script can assert expected health metadata and multiple runti
         operatorChannel: "slack",
         fallbackMode: "tool_timeout",
         runtimeSeams: ["flow engine", "mocked telephony ingress"],
-        pipecatFlow: { toolCoverage: ["goto_slide", "approve_offer"] },
+        pipecatFlow: { ready: true, toolCoverage: ["goto_slide", "approve_offer"] },
       }),
     );
   }, async (port) => {
@@ -212,6 +212,8 @@ test("health smoke script can assert expected health metadata and multiple runti
       "flow engine",
       "--expect-runtime-seam",
       "mocked telephony ingress",
+      "--expect-pipecat-ready",
+      "true",
       "--expect-pipecat-tool",
       "goto_slide",
       "--expect-pipecat-tool",
@@ -323,6 +325,49 @@ test("health smoke script rejects non-integer latency budget expectations before
   assert.equal(result.code, 1);
   assert.match(result.stderr, /invalid_latency_budget_value\("asrPartial=350\.5"\)/);
   assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
+test("health smoke script rejects malformed Pipecat readiness expectations before probing", async () => {
+  const result = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--expect-pipecat-ready",
+    "yes",
+    "--timeout-ms",
+    "1500",
+    "--interval-ms",
+    "25",
+  ]);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /invalid_pipecat_ready_value\("yes"\)/);
+  assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
+test("health smoke script reports Pipecat readiness mismatches in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, pipecatFlow: { ready: false, toolCoverage: ["goto_slide"] } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-pipecat-ready",
+      "true",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_pipecatFlow_ready_mismatch\(expected=true,actual=false\)/);
+  });
 });
 
 test("health smoke script reports missing Pipecat tools in the timeout summary", async () => {
