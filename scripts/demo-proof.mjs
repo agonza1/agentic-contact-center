@@ -214,6 +214,24 @@ async function getQueueAttentionSummary(port) {
   return queue.payload.summary;
 }
 
+async function getAttentionSortedCallList(port) {
+  const list = await requestJson(
+    port,
+    "GET",
+    "/api/calls?attentionRequired=true&sort=attentionStartedAt&limit=1",
+  );
+  assert.equal(list.statusCode, 200);
+  assert.equal(list.payload.calls.length, 1);
+  assert.equal(list.payload.calls[0].attention.required, true);
+
+  return {
+    route: "attentionRequired=true&sort=attentionStartedAt&limit=1",
+    firstCallId: list.payload.calls[0].session.callId,
+    firstAttentionStartedAt: list.payload.calls[0].attention.startedAt,
+    filteredSummary: list.payload.summary.filteredSummary,
+  };
+}
+
 async function getGitRevision() {
   try {
     const { stdout } = await execFileAsync("git", ["rev-parse", "--short=12", "HEAD"], {
@@ -258,6 +276,7 @@ function summarizeArtifact(artifact) {
       oldestAttentionReason: artifact.queueAttention.oldestAttentionReason,
       oldestAttentionSource: artifact.queueAttention.oldestAttentionSource,
     },
+    callAttentionList: artifact.callAttentionList,
     scripted: {
       outcome: artifact.scripted.outcome,
       callId: artifact.scripted.callId,
@@ -283,6 +302,7 @@ async function main() {
     const scripted = await runScriptedScenario(port);
     const fallback = await runFallbackScenario(port);
     const queueAttention = await getQueueAttentionSummary(port);
+    const callAttentionList = await getAttentionSortedCallList(port);
 
     return {
       schemaVersion: 1,
@@ -294,9 +314,11 @@ async function main() {
         requiredOutcomes: ["scripted_wrap_complete", "fail_closed_handoff"],
         requiredEventTypes: ["policy_hold_entered", "demo_fallback_triggered", "human_handoff_started"],
         queueAttentionFilter: "attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget",
+        callAttentionSort: "attentionRequired=true&sort=attentionStartedAt&limit=1",
       },
       health: health.payload,
       queueAttention,
+      callAttentionList,
       scripted,
       fallback,
     };

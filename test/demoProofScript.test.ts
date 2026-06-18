@@ -33,6 +33,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         requiredOutcomes: string[];
         requiredEventTypes: string[];
         queueAttentionFilter: string;
+        callAttentionSort: string;
       };
       health: { ok: boolean };
       gitRevision: string | null;
@@ -42,6 +43,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           requiredOutcomes: string[];
           requiredEventTypes: string[];
           queueAttentionFilter: string;
+          callAttentionSort: string;
         };
         queueAttention: {
           attentionRequired: number;
@@ -53,6 +55,12 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           oldestAttentionReason: string | null;
           oldestAttentionSource: string | null;
           totalCalls: number;
+        };
+        callAttentionList: {
+          route: string;
+          firstCallId: string;
+          firstAttentionStartedAt: string | null;
+          filteredSummary: { totalCalls: number; attentionRequired: number };
         };
         healthOk: boolean;
         gitRevision: string | null;
@@ -85,6 +93,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.proofContract.requiredEventTypes.includes("demo_fallback_triggered"), true);
     assert.equal(artifact.proofContract.requiredEventTypes.includes("human_handoff_started"), true);
     assert.equal(artifact.proofContract.queueAttentionFilter, "attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget");
+    assert.equal(artifact.proofContract.callAttentionSort, "attentionRequired=true&sort=attentionStartedAt&limit=1");
     assert.equal(artifact.summary.schemaVersion, 1);
     assert.deepEqual(artifact.summary.proofContract, artifact.proofContract);
     assert.equal(artifact.health.ok, true);
@@ -100,6 +109,11 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.queueAttention.oldestAttentionFlowState, "wrap");
     assert.equal(artifact.summary.queueAttention.oldestAttentionReason, "pipecat tool exceeded latency budget");
     assert.equal(artifact.summary.queueAttention.oldestAttentionSource, "fallback");
+    assert.equal(artifact.summary.callAttentionList.route, artifact.proofContract.callAttentionSort);
+    assert.equal(artifact.summary.callAttentionList.firstCallId, artifact.summary.queueAttention.oldestAttentionCallId);
+    assert.equal(artifact.summary.callAttentionList.firstAttentionStartedAt, artifact.summary.queueAttention.oldestAttentionStartedAt);
+    assert.equal(artifact.summary.callAttentionList.filteredSummary.totalCalls, 1);
+    assert.equal(artifact.summary.callAttentionList.filteredSummary.attentionRequired, 1);
     assert.equal(artifact.scripted.outcome, "scripted_wrap_complete");
     assert.equal(artifact.scripted.checkpoints.wrapped.pipecatFlow.script.completed, true);
     assert.equal(artifact.summary.scripted.flowState, "wrap");
