@@ -11,6 +11,7 @@ function parseArgs(argv) {
     expectOperatorChannel: undefined,
     expectFallbackMode: undefined,
     expectPipecatReady: undefined,
+    expectPipecatScriptCompleted: undefined,
     expectRuntimeSeams: [],
     expectPipecatTools: [],
     expectLatencyBudgetsMs: [],
@@ -28,6 +29,7 @@ function parseArgs(argv) {
     '--expect-operator-channel',
     '--expect-fallback-mode',
     '--expect-pipecat-ready',
+    '--expect-pipecat-script-completed',
     '--expect-runtime-seam',
     '--expect-pipecat-tool',
     '--expect-latency-budget-ms',
@@ -111,6 +113,12 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-pipecat-script-completed' && next) {
+      args.expectPipecatScriptCompleted = next;
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-runtime-seam' && next) {
       args.expectRuntimeSeams.push(next);
       index += 1;
@@ -150,6 +158,7 @@ function hasJsonExpectations(args) {
     args.expectOperatorChannel,
     args.expectFallbackMode,
     args.expectPipecatReady,
+    args.expectPipecatScriptCompleted,
   ].some((expectedValue) => expectedValue !== undefined)
     || args.expectRuntimeSeams.length > 0
     || args.expectPipecatTools.length > 0
@@ -196,11 +205,23 @@ function validateLatencyBudgetExpectations(args) {
 }
 
 function validateBooleanExpectations(args) {
-  if (args.expectPipecatReady === undefined) {
-    return null;
+  const booleanExpectations = [
+    ['pipecat_ready', args.expectPipecatReady],
+    ['pipecat_script_completed', args.expectPipecatScriptCompleted],
+  ];
+
+  for (const [flagName, rawValue] of booleanExpectations) {
+    if (rawValue === undefined) {
+      continue;
+    }
+
+    const parsedExpectation = parseBooleanExpectation(flagName, rawValue);
+    if (parsedExpectation.error) {
+      return parsedExpectation.error;
+    }
   }
 
-  return parseBooleanExpectation('pipecat_ready', args.expectPipecatReady).error || null;
+  return null;
 }
 
 async function getFailureReason(response, args) {
@@ -272,6 +293,23 @@ async function getFailureReason(response, args) {
 
     if (actualValue !== parsedExpectation.expectedValue) {
       return `json_pipecatFlow_ready_mismatch(expected=${JSON.stringify(parsedExpectation.expectedValue)},actual=${JSON.stringify(actualValue)})`;
+    }
+  }
+
+  if (args.expectPipecatScriptCompleted !== undefined) {
+    const parsedExpectation = parseBooleanExpectation('pipecat_script_completed', args.expectPipecatScriptCompleted);
+    if (parsedExpectation.error) {
+      return parsedExpectation.error;
+    }
+
+    const pipecatFlow = payload.pipecatFlow;
+    const script = pipecatFlow && typeof pipecatFlow === 'object' && pipecatFlow.script && typeof pipecatFlow.script === 'object'
+      ? pipecatFlow.script
+      : undefined;
+    const actualValue = script ? script.completed : undefined;
+
+    if (actualValue !== parsedExpectation.expectedValue) {
+      return `json_pipecatFlow_script_completed_mismatch(expected=${JSON.stringify(parsedExpectation.expectedValue)},actual=${JSON.stringify(actualValue)})`;
     }
   }
 
