@@ -222,8 +222,10 @@ function summarizeArtifact(artifact) {
   });
 
   return {
+    schemaVersion: artifact.schemaVersion,
     healthOk: artifact.health.ok,
     runtimeSeams: artifact.health.runtimeSeams,
+    proofContract: artifact.proofContract,
     queueAttention: {
       totalCalls: artifact.queueAttention.totalCalls,
       attentionRequired: artifact.queueAttention.attentionRequired,
@@ -262,9 +264,15 @@ async function main() {
     const queueAttention = await getQueueAttentionSummary(port);
 
     return {
+      schemaVersion: 1,
       generatedAt: new Date().toISOString(),
       demoName: config.demoName,
       provider: config.provider.name,
+      proofContract: {
+        requiredOutcomes: ["scripted_wrap_complete", "fail_closed_handoff"],
+        requiredEventTypes: ["policy_hold_entered", "demo_fallback_triggered", "human_handoff_started"],
+        queueAttentionFilter: "attentionRequired=true",
+      },
       health: health.payload,
       queueAttention,
       scripted,
