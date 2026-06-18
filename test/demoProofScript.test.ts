@@ -35,6 +35,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         queueAttentionFilter: string;
       };
       health: { ok: boolean };
+      gitRevision: string | null;
       summary: {
         schemaVersion: number;
         proofContract: {
@@ -54,6 +55,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           totalCalls: number;
         };
         healthOk: boolean;
+        gitRevision: string | null;
         scripted: {
           agentTurns: number;
           callerTurns: number;
@@ -87,6 +89,8 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.deepEqual(artifact.summary.proofContract, artifact.proofContract);
     assert.equal(artifact.health.ok, true);
     assert.equal(artifact.summary.healthOk, true);
+    assert.match(artifact.gitRevision ?? "", /^[0-9a-f]{7,12}$/);
+    assert.equal(artifact.summary.gitRevision, artifact.gitRevision);
     assert.equal(artifact.summary.queueAttention.totalCalls, 1);
     assert.equal(artifact.summary.queueAttention.attentionRequired, 1);
     assert.equal(typeof artifact.summary.queueAttention.oldestAttentionCallId, "string");
