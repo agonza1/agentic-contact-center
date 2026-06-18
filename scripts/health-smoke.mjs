@@ -123,6 +123,17 @@ function parseLatencyBudgetExpectation(rawExpectation) {
   return { name, expectedValue };
 }
 
+function validateLatencyBudgetExpectations(args) {
+  for (const rawExpectation of args.expectLatencyBudgetsMs) {
+    const parsedExpectation = parseLatencyBudgetExpectation(rawExpectation);
+    if (parsedExpectation.error) {
+      return parsedExpectation.error;
+    }
+  }
+
+  return null;
+}
+
 async function getFailureReason(response, args) {
   const contentType = response.headers.get('content-type') || '';
 
@@ -216,6 +227,11 @@ async function main() {
 
   if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
     throw new Error('--interval-ms must be a positive integer.');
+  }
+
+  const invalidLatencyBudgetExpectation = validateLatencyBudgetExpectations(args);
+  if (invalidLatencyBudgetExpectation) {
+    throw new Error(invalidLatencyBudgetExpectation);
   }
 
   const startedAt = Date.now();

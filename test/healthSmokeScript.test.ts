@@ -291,6 +291,40 @@ test("health smoke script can assert expected latency budgets", async () => {
   });
 });
 
+test("health smoke script rejects malformed latency budget expectations before probing", async () => {
+  const result = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--expect-latency-budget-ms",
+    "asrPartial",
+    "--timeout-ms",
+    "1500",
+    "--interval-ms",
+    "25",
+  ]);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /invalid_latency_budget_expectation\("asrPartial"\)/);
+  assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
+test("health smoke script rejects non-integer latency budget expectations before probing", async () => {
+  const result = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--expect-latency-budget-ms",
+    "asrPartial=350.5",
+    "--timeout-ms",
+    "1500",
+    "--interval-ms",
+    "25",
+  ]);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /invalid_latency_budget_value\("asrPartial=350\.5"\)/);
+  assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
 test("health smoke script reports missing Pipecat tools in the timeout summary", async () => {
   await withServer((request, response) => {
     if (request.url !== "/health") {
