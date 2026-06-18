@@ -62,6 +62,13 @@ interface CallListPayload extends QueueSummaryPayload {
   calls: SnapshotPayload[];
   summary: QueueSummaryPayload["summary"] & {
     filteredCalls: number;
+    returnedCalls: number;
+    page: {
+      offset: number;
+      limit: number | null;
+      totalFilteredCalls: number;
+      hasMore: boolean;
+    };
     filteredSummary: QueueSummaryPayload["summary"];
   };
 }
@@ -395,6 +402,13 @@ test("GET /api/calls lists active demo calls in start order", async () => {
     assert.deepEqual(emptyPayload.summary, {
       totalCalls: 0,
       filteredCalls: 0,
+      returnedCalls: 0,
+      page: {
+        offset: 0,
+        limit: null,
+        totalFilteredCalls: 0,
+        hasMore: false,
+      },
       pendingOperatorSteer: 0,
       fallbackArmed: 0,
       attentionRequired: 0,
@@ -486,6 +500,13 @@ test("GET /api/calls lists active demo calls in start order", async () => {
     assert.deepEqual(listedPayload.summary, {
       totalCalls: 2,
       filteredCalls: 2,
+      returnedCalls: 2,
+      page: {
+        offset: 0,
+        limit: null,
+        totalFilteredCalls: 2,
+        hasMore: false,
+      },
       pendingOperatorSteer: 0,
       fallbackArmed: 0,
       attentionRequired: 0,
@@ -630,6 +651,13 @@ test("GET /api/calls can limit active demo call payloads", async () => {
     assert.deepEqual(limitedPayload.calls.map((call) => call.session.callId), [firstCallId]);
     assert.equal(limitedPayload.summary.totalCalls, 2);
     assert.equal(limitedPayload.summary.filteredCalls, 1);
+    assert.equal(limitedPayload.summary.returnedCalls, 1);
+    assert.deepEqual(limitedPayload.summary.page, {
+      offset: 0,
+      limit: 1,
+      totalFilteredCalls: 2,
+      hasMore: true,
+    });
     assert.equal(limitedPayload.summary.filteredSummary.totalCalls, 2);
 
     const filteredLimited = await requestJson(port, "GET", "/api/calls?callId=" + secondCallId + "&limit=1");
@@ -639,6 +667,13 @@ test("GET /api/calls can limit active demo call payloads", async () => {
     assert.deepEqual(filteredLimitedPayload.calls.map((call) => call.session.callId), [secondCallId]);
     assert.equal(filteredLimitedPayload.summary.totalCalls, 2);
     assert.equal(filteredLimitedPayload.summary.filteredCalls, 1);
+    assert.equal(filteredLimitedPayload.summary.returnedCalls, 1);
+    assert.deepEqual(filteredLimitedPayload.summary.page, {
+      offset: 0,
+      limit: 1,
+      totalFilteredCalls: 1,
+      hasMore: false,
+    });
     assert.equal(filteredLimitedPayload.summary.filteredSummary.totalCalls, 1);
 
     const offsetLimited = await requestJson(port, "GET", "/api/calls?offset=1&limit=1");
@@ -648,6 +683,13 @@ test("GET /api/calls can limit active demo call payloads", async () => {
     assert.deepEqual(offsetLimitedPayload.calls.map((call) => call.session.callId), [secondCallId]);
     assert.equal(offsetLimitedPayload.summary.totalCalls, 2);
     assert.equal(offsetLimitedPayload.summary.filteredCalls, 1);
+    assert.equal(offsetLimitedPayload.summary.returnedCalls, 1);
+    assert.deepEqual(offsetLimitedPayload.summary.page, {
+      offset: 1,
+      limit: 1,
+      totalFilteredCalls: 2,
+      hasMore: false,
+    });
     assert.equal(offsetLimitedPayload.summary.filteredSummary.totalCalls, 2);
 
     const offsetOnly = await requestJson(port, "GET", "/api/calls?offset=1");
@@ -656,6 +698,13 @@ test("GET /api/calls can limit active demo call payloads", async () => {
     assert.equal(offsetOnly.statusCode, 200);
     assert.deepEqual(offsetOnlyPayload.calls.map((call) => call.session.callId), [secondCallId]);
     assert.equal(offsetOnlyPayload.summary.filteredCalls, 1);
+    assert.equal(offsetOnlyPayload.summary.returnedCalls, 1);
+    assert.deepEqual(offsetOnlyPayload.summary.page, {
+      offset: 1,
+      limit: null,
+      totalFilteredCalls: 2,
+      hasMore: false,
+    });
 
     const invalidLimit = await requestJson(port, "GET", "/api/calls?limit=0");
     assert.equal(invalidLimit.statusCode, 400);

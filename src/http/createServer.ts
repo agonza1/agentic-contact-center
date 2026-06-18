@@ -674,6 +674,13 @@ async function routeRequest(
       summary: {
         ...summary,
         filteredCalls: calls.length,
+        returnedCalls: calls.length,
+        page: {
+          offset: offset ?? 0,
+          limit: limit ?? null,
+          totalFilteredCalls: orderedSnapshots.length,
+          hasMore: limit === undefined ? false : (offset ?? 0) + calls.length < orderedSnapshots.length,
+        },
         filteredSummary,
       },
     });
