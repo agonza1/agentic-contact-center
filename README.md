@@ -81,6 +81,7 @@ The command:
 - runs the seeded scripted path through policy hold, operator steer, and wrap
 - runs the fail-closed `tool_timeout` fallback path
 - writes JSON proof output with transcript, event trail, and latency marks for both scenarios
+- adds a top-level `schemaVersion` plus `proofContract` block so reviewers can tell which outcomes, event types, and queue filter the artifact proves
 - adds a top-level `summary` block so reviewers can inspect outcomes, turn counts, fallback reason, event types, and latency stages quickly
 - optionally refreshes a stable latest artifact path for QA handoff or PR review attachments
 

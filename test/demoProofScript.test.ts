@@ -28,8 +28,20 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.match(stdout, /Updated latest proof artifact/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
+      schemaVersion: number;
+      proofContract: {
+        requiredOutcomes: string[];
+        requiredEventTypes: string[];
+        queueAttentionFilter: string;
+      };
       health: { ok: boolean };
       summary: {
+        schemaVersion: number;
+        proofContract: {
+          requiredOutcomes: string[];
+          requiredEventTypes: string[];
+          queueAttentionFilter: string;
+        };
         queueAttention: {
           attentionRequired: number;
           oldestAttentionAgeMs: number | null;
@@ -65,6 +77,14 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
 
     const latestArtifact = JSON.parse(await readFile(latestOutputPath, "utf8")) as typeof artifact;
 
+    assert.equal(artifact.schemaVersion, 1);
+    assert.deepEqual(artifact.proofContract.requiredOutcomes, ["scripted_wrap_complete", "fail_closed_handoff"]);
+    assert.equal(artifact.proofContract.requiredEventTypes.includes("policy_hold_entered"), true);
+    assert.equal(artifact.proofContract.requiredEventTypes.includes("demo_fallback_triggered"), true);
+    assert.equal(artifact.proofContract.requiredEventTypes.includes("human_handoff_started"), true);
+    assert.equal(artifact.proofContract.queueAttentionFilter, "attentionRequired=true");
+    assert.equal(artifact.summary.schemaVersion, 1);
+    assert.deepEqual(artifact.summary.proofContract, artifact.proofContract);
     assert.equal(artifact.health.ok, true);
     assert.equal(artifact.summary.healthOk, true);
     assert.equal(artifact.summary.queueAttention.totalCalls, 1);
