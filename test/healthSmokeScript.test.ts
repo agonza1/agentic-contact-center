@@ -215,6 +215,6 @@ test("health smoke script reports metadata mismatches in the timeout summary", a
     ]);
 
     assert.equal(result.code, 1);
-    assert.match(result.stderr, /Last failure: json_fallbackMode_mismatch/);
+    assert.match(result.stderr, /Last failure: json_fallbackMode_mismatch\(expected="tool_timeout",actual="operator_override"\)/);
   });
 });

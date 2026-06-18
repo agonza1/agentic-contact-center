@@ -114,7 +114,7 @@ async function getFailureReason(response, args) {
     }
 
     if (payload[field] !== expectedValue) {
-      return `json_${field}_mismatch`;
+      return `json_${field}_mismatch(expected=${JSON.stringify(expectedValue)},actual=${JSON.stringify(payload[field])})`;
     }
   }
 
