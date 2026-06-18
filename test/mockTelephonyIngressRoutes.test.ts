@@ -536,6 +536,79 @@ test("GET /api/calls lists active demo calls in start order", async () => {
 });
 
 
+test("GET /api/calls can sort operator attention before idle calls", async () => {
+  await withServer(async (port) => {
+    const idleStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "sort-session-idle",
+      openclawSessionLabel: "cluecon-demo/sort-idle",
+    });
+    const idleCallId = (idleStarted.payload as SnapshotPayload).session.callId;
+
+    const operatorStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "sort-session-operator",
+      openclawSessionLabel: "cluecon-demo/sort-operator",
+    });
+    const operatorCallId = (operatorStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:10:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:10:05.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:10:10.000Z",
+    });
+
+    const fallbackStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "sort-session-fallback",
+      openclawSessionLabel: "cluecon-demo/sort-fallback",
+    });
+    const fallbackCallId = (fallbackStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${fallbackCallId}/operator-steer`, {
+      action: "arm_fallback",
+      reason: "manual demo safety net",
+      timestamp: "2026-06-10T14:05:00.000Z",
+    });
+
+    const defaultList = await requestJson(port, "GET", "/api/calls");
+    const defaultPayload = defaultList.payload as CallListPayload;
+
+    assert.equal(defaultList.statusCode, 200);
+    assert.deepEqual(defaultPayload.calls.map((call) => call.session.callId), [
+      idleCallId,
+      operatorCallId,
+      fallbackCallId,
+    ]);
+
+    const attentionSorted = await requestJson(port, "GET", "/api/calls?sort=attentionStartedAt");
+    const attentionPayload = attentionSorted.payload as CallListPayload;
+
+    assert.equal(attentionSorted.statusCode, 200);
+    assert.deepEqual(attentionPayload.calls.map((call) => call.session.callId), [
+      fallbackCallId,
+      operatorCallId,
+      idleCallId,
+    ]);
+    assert.deepEqual(attentionPayload.calls.map((call) => call.attention?.startedAt), [
+      "2026-06-10T14:05:00.000Z",
+      "2026-06-10T14:10:10.000Z",
+      null,
+    ]);
+    assert.equal(attentionPayload.summary.totalCalls, 3);
+    assert.equal(attentionPayload.summary.filteredCalls, 3);
+    assert.equal(attentionPayload.summary.filteredSummary.oldestAttentionCallId, fallbackCallId);
+
+    const invalidSort = await requestJson(port, "GET", "/api/calls?sort=attentionAge");
+    assert.equal(invalidSort.statusCode, 400);
+    assert.deepEqual(invalidSort.payload, { ok: false, error: "call_list_sort_invalid" });
+  });
+});
+
 test("GET /api/calls can limit active demo call payloads", async () => {
   await withServer(async (port) => {
     const firstStarted = await requestJson(port, "POST", "/api/demo/start", {
