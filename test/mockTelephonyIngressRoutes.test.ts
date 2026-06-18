@@ -568,9 +568,29 @@ test("GET /api/calls can limit active demo call payloads", async () => {
     assert.equal(filteredLimitedPayload.summary.filteredCalls, 1);
     assert.equal(filteredLimitedPayload.summary.filteredSummary.totalCalls, 1);
 
+    const offsetLimited = await requestJson(port, "GET", "/api/calls?offset=1&limit=1");
+    const offsetLimitedPayload = offsetLimited.payload as CallListPayload;
+
+    assert.equal(offsetLimited.statusCode, 200);
+    assert.deepEqual(offsetLimitedPayload.calls.map((call) => call.session.callId), [secondCallId]);
+    assert.equal(offsetLimitedPayload.summary.totalCalls, 2);
+    assert.equal(offsetLimitedPayload.summary.filteredCalls, 1);
+    assert.equal(offsetLimitedPayload.summary.filteredSummary.totalCalls, 2);
+
+    const offsetOnly = await requestJson(port, "GET", "/api/calls?offset=1");
+    const offsetOnlyPayload = offsetOnly.payload as CallListPayload;
+
+    assert.equal(offsetOnly.statusCode, 200);
+    assert.deepEqual(offsetOnlyPayload.calls.map((call) => call.session.callId), [secondCallId]);
+    assert.equal(offsetOnlyPayload.summary.filteredCalls, 1);
+
     const invalidLimit = await requestJson(port, "GET", "/api/calls?limit=0");
     assert.equal(invalidLimit.statusCode, 400);
     assert.deepEqual(invalidLimit.payload, { ok: false, error: "call_list_limit_invalid" });
+
+    const invalidOffset = await requestJson(port, "GET", "/api/calls?offset=slow");
+    assert.equal(invalidOffset.statusCode, 400);
+    assert.deepEqual(invalidOffset.payload, { ok: false, error: "call_list_offset_invalid" });
   });
 });
 

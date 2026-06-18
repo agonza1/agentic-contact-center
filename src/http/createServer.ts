@@ -605,7 +605,15 @@ async function routeRequest(
       return;
     }
 
-    const calls = (await ingress.listSnapshots(filters)).slice(0, limit).map((snapshot) => buildCallPayload(snapshot));
+    const offset = parseOptionalNonNegativeIntegerFilter(requestUrl.searchParams.get("offset"), "call_list_offset_invalid");
+    if (offset !== undefined && typeof offset !== "number") {
+      writeBadRequest(response, offset.error);
+      return;
+    }
+
+    const calls = (await ingress.listSnapshots(filters))
+      .slice(offset ?? 0, limit === undefined ? undefined : (offset ?? 0) + limit)
+      .map((snapshot) => buildCallPayload(snapshot));
     const summary = await ingress.getQueueSummary();
     const filteredSummary = await ingress.getQueueSummary(filters);
 
