@@ -147,3 +147,471 @@ test("health smoke script rejects 200 responses that still report ok false", asy
     assert.ok(attempts >= 2);
   });
 });
+
+test("health smoke script requires a JSON payload when metadata assertions are configured", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "text/plain" });
+    response.end("ok");
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-provider",
+      "signalwire",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_payload_required/);
+  });
+});
+
+test("health smoke script can assert expected health metadata and multiple runtime seams", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        ok: true,
+        demoName: "ClueCon cancellation rescue",
+        mode: "mocked_telephony",
+        provider: "signalwire",
+        policyProfile: "retention_safe_mode",
+        policyToolScope: "deny_by_default",
+        operatorChannel: "slack",
+        fallbackMode: "tool_timeout",
+        runtimeSeams: ["flow engine", "mocked telephony ingress"],
+        pipecatFlow: { ready: true, toolCoverage: ["goto_slide", "approve_offer"], script: { completed: true } },
+      }),
+    );
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-demo-name",
+      "ClueCon cancellation rescue",
+      "--expect-mode",
+      "mocked_telephony",
+      "--expect-provider",
+      "signalwire",
+      "--expect-policy-profile",
+      "retention_safe_mode",
+      "--expect-policy-tool-scope",
+      "deny_by_default",
+      "--expect-operator-channel",
+      "slack",
+      "--expect-fallback-mode",
+      "tool_timeout",
+      "--expect-runtime-seam",
+      "flow engine",
+      "--expect-runtime-seam",
+      "mocked telephony ingress",
+      "--expect-pipecat-ready",
+      "true",
+      "--expect-pipecat-tool",
+      "goto_slide",
+      "--expect-pipecat-tool",
+      "approve_offer",
+      "--expect-pipecat-script-completed",
+      "true",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Health probe succeeded/);
+  });
+});
+
+test("health smoke script reports metadata mismatches in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, provider: "signalwire", policyProfile: "retention_safe_mode", fallbackMode: "operator_override" }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-provider",
+      "signalwire",
+      "--expect-policy-profile",
+      "strict_retention_mode",
+      "--expect-fallback-mode",
+      "tool_timeout",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_policyProfile_mismatch\(expected="strict_retention_mode",actual="retention_safe_mode"\)/);
+  });
+});
+
+test("health smoke script can assert expected latency budgets", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        ok: true,
+        latencyBudgetsMs: {
+          asrPartial: 350,
+          operatorNotification: 1000,
+        },
+      }),
+    );
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-latency-budget-ms",
+      "asrPartial=350",
+      "--expect-latency-budget-ms",
+      "operatorNotification=1000",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Health probe succeeded/);
+  });
+});
+
+test("health smoke script accepts latency budget maximum expectations", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, latencyBudgetsMs: { asrPartial: 320 } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-latency-budget-max-ms",
+      "asrPartial=350",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Health probe succeeded/);
+  });
+});
+
+test("health smoke script reports latency budget maximum overruns", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, latencyBudgetsMs: { asrPartial: 375 } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-latency-budget-max-ms",
+      "asrPartial=350",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_latencyBudgetsMs_asrPartial_over_max\(expected<=350,actual=375\)/);
+  });
+});
+
+test("health smoke script rejects malformed latency budget expectations before probing", async () => {
+  const result = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--expect-latency-budget-ms",
+    "asrPartial",
+    "--timeout-ms",
+    "1500",
+    "--interval-ms",
+    "25",
+  ]);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /invalid_latency_budget_expectation\("asrPartial"\)/);
+  assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
+test("health smoke script rejects non-integer latency budget expectations before probing", async () => {
+  const result = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--expect-latency-budget-ms",
+    "asrPartial=350.5",
+    "--timeout-ms",
+    "1500",
+    "--interval-ms",
+    "25",
+  ]);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /invalid_latency_budget_value\("asrPartial=350\.5"\)/);
+  assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
+test("health smoke script rejects unknown arguments before probing", async () => {
+  const result = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--expect-provider",
+    "signalwire",
+    "--expect-prvodier",
+    "signalwire",
+    "--timeout-ms",
+    "1500",
+    "--interval-ms",
+    "25",
+  ]);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /unknown_argument\("--expect-prvodier"\)/);
+  assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
+test("health smoke script rejects malformed timeout and interval values before probing", async () => {
+  const invalidTimeout = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--timeout-ms",
+    "200.5",
+    "--interval-ms",
+    "25",
+  ]);
+
+  assert.equal(invalidTimeout.code, 1);
+  assert.match(invalidTimeout.stderr, /invalid_timeout_ms_value\("200\.5"\)/);
+  assert.doesNotMatch(invalidTimeout.stderr, /Timed out waiting for a healthy response/);
+
+  const invalidInterval = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--timeout-ms",
+    "1500",
+    "--interval-ms",
+    "25ms",
+  ]);
+
+  assert.equal(invalidInterval.code, 1);
+  assert.match(invalidInterval.stderr, /invalid_interval_ms_value\("25ms"\)/);
+  assert.doesNotMatch(invalidInterval.stderr, /Timed out waiting for a healthy response/);
+});
+
+test("health smoke script rejects missing argument values before probing", async () => {
+  const result = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--expect-provider",
+    "--timeout-ms",
+    "1500",
+    "--interval-ms",
+    "25",
+  ]);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /missing_value\("--expect-provider"\)/);
+  assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
+test("health smoke script rejects malformed Pipecat script-completed expectations before probing", async () => {
+  const result = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--expect-pipecat-script-completed",
+    "yes",
+    "--timeout-ms",
+    "1500",
+    "--interval-ms",
+    "25",
+  ]);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /invalid_pipecat_script_completed_value\("yes"\)/);
+  assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
+test("health smoke script rejects malformed Pipecat readiness expectations before probing", async () => {
+  const result = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--expect-pipecat-ready",
+    "yes",
+    "--timeout-ms",
+    "1500",
+    "--interval-ms",
+    "25",
+  ]);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /invalid_pipecat_ready_value\("yes"\)/);
+  assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
+test("health smoke script reports Pipecat readiness mismatches in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, pipecatFlow: { ready: false, toolCoverage: ["goto_slide"] } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-pipecat-ready",
+      "true",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_pipecatFlow_ready_mismatch\(expected=true,actual=false\)/);
+  });
+});
+
+test("health smoke script reports Pipecat script-completed mismatches in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, pipecatFlow: { script: { completed: false } } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-pipecat-script-completed",
+      "true",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_pipecatFlow_script_completed_mismatch\(expected=true,actual=false\)/);
+  });
+});
+
+test("health smoke script reports missing Pipecat tools in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, pipecatFlow: { toolCoverage: ["goto_slide"] } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-pipecat-tool",
+      "approve_offer",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_pipecatFlow_toolCoverage_missing\(expected="approve_offer",actual=\["goto_slide"\]\)/);
+  });
+});
+
+test("health smoke script reports latency budget mismatches in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, latencyBudgetsMs: { asrPartial: 475 } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-latency-budget-ms",
+      "asrPartial=350",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_latencyBudgetsMs_asrPartial_mismatch\(expected=350,actual=475\)/);
+  });
+});
+
+test("health smoke script reports missing runtime seams in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, runtimeSeams: ["mocked telephony ingress"] }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-runtime-seam",
+      "flow engine",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_runtimeSeams_missing\(expected="flow engine",actual=\["mocked telephony ingress"\]\)/);
+  });
+});

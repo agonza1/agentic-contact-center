@@ -44,6 +44,8 @@ test("GET /health returns config-backed demo metadata", async () => {
     ok: boolean;
     demoName: string;
     operatorChannel: string;
+    policyProfile: string;
+    policyToolScope: string;
     fallbackMode: string;
     latencyBudgetsMs: { asrPartial: number; policyGate: number; operatorNotification: number; ttsFirstAudio: number };
     runtimeSeams: string[];
@@ -52,6 +54,8 @@ test("GET /health returns config-backed demo metadata", async () => {
 
   assert.equal(payload.ok, true);
   assert.equal(payload.demoName, config.demoName);
+  assert.equal(payload.policyProfile, config.policy.profile);
+  assert.equal(payload.policyToolScope, config.policy.toolScope);
   assert.equal(payload.operatorChannel, config.operator.channel);
   assert.equal(payload.fallbackMode, config.policy.fallbackMode);
   assert.deepEqual(payload.latencyBudgetsMs, config.latencyBudgetsMs);
