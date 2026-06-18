@@ -80,6 +80,16 @@ function isAbortError(error) {
   return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError');
 }
 
+function hasJsonExpectations(args) {
+  return [
+    args.expectDemoName,
+    args.expectMode,
+    args.expectProvider,
+    args.expectOperatorChannel,
+    args.expectFallbackMode,
+  ].some((expectedValue) => expectedValue !== undefined) || args.expectRuntimeSeams.length > 0;
+}
+
 async function getFailureReason(response, args) {
   const contentType = response.headers.get('content-type') || '';
 
@@ -88,7 +98,7 @@ async function getFailureReason(response, args) {
   }
 
   if (!contentType.toLowerCase().includes('application/json')) {
-    return null;
+    return hasJsonExpectations(args) ? 'json_payload_required' : null;
   }
 
   let payload = null;

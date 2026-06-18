@@ -148,6 +148,32 @@ test("health smoke script rejects 200 responses that still report ok false", asy
   });
 });
 
+test("health smoke script requires a JSON payload when metadata assertions are configured", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "text/plain" });
+    response.end("ok");
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-provider",
+      "signalwire",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_payload_required/);
+  });
+});
+
 test("health smoke script can assert expected health metadata and multiple runtime seams", async () => {
   await withServer((request, response) => {
     if (request.url !== "/health") {
