@@ -113,6 +113,26 @@ function parseOptionalBooleanFilter(
   return { error };
 }
 
+function parseOptionalPositiveIntegerFilter(
+  value: string | null,
+  error: string,
+): number | { error: string } | undefined {
+  if (value === null) {
+    return undefined;
+  }
+
+  if (!/^\d+$/.test(value)) {
+    return { error };
+  }
+
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    return { error };
+  }
+
+  return parsed;
+}
+
 interface CallListFilters {
   flowState?: FlowState;
   pendingOperatorSteer?: boolean;
@@ -549,7 +569,13 @@ async function routeRequest(
       return;
     }
 
-    const calls = (await ingress.listSnapshots(filters)).map((snapshot) => buildCallPayload(snapshot));
+    const limit = parseOptionalPositiveIntegerFilter(requestUrl.searchParams.get("limit"), "call_list_limit_invalid");
+    if (limit !== undefined && typeof limit !== "number") {
+      writeBadRequest(response, limit.error);
+      return;
+    }
+
+    const calls = (await ingress.listSnapshots(filters)).slice(0, limit).map((snapshot) => buildCallPayload(snapshot));
     const summary = await ingress.getQueueSummary();
     const filteredSummary = await ingress.getQueueSummary(filters);
 

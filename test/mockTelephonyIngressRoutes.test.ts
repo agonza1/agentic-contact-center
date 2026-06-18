@@ -536,6 +536,44 @@ test("GET /api/calls lists active demo calls in start order", async () => {
 });
 
 
+test("GET /api/calls can limit active demo call payloads", async () => {
+  await withServer(async (port) => {
+    const firstStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "limit-session-01",
+      openclawSessionLabel: "cluecon-demo/limit-first",
+    });
+    const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
+
+    const secondStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "limit-session-02",
+      openclawSessionLabel: "cluecon-demo/limit-second",
+    });
+    const secondCallId = (secondStarted.payload as SnapshotPayload).session.callId;
+
+    const limited = await requestJson(port, "GET", "/api/calls?limit=1");
+    const limitedPayload = limited.payload as CallListPayload;
+
+    assert.equal(limited.statusCode, 200);
+    assert.deepEqual(limitedPayload.calls.map((call) => call.session.callId), [firstCallId]);
+    assert.equal(limitedPayload.summary.totalCalls, 2);
+    assert.equal(limitedPayload.summary.filteredCalls, 1);
+    assert.equal(limitedPayload.summary.filteredSummary.totalCalls, 2);
+
+    const filteredLimited = await requestJson(port, "GET", "/api/calls?callId=" + secondCallId + "&limit=1");
+    const filteredLimitedPayload = filteredLimited.payload as CallListPayload;
+
+    assert.equal(filteredLimited.statusCode, 200);
+    assert.deepEqual(filteredLimitedPayload.calls.map((call) => call.session.callId), [secondCallId]);
+    assert.equal(filteredLimitedPayload.summary.totalCalls, 2);
+    assert.equal(filteredLimitedPayload.summary.filteredCalls, 1);
+    assert.equal(filteredLimitedPayload.summary.filteredSummary.totalCalls, 1);
+
+    const invalidLimit = await requestJson(port, "GET", "/api/calls?limit=0");
+    assert.equal(invalidLimit.statusCode, 400);
+    assert.deepEqual(invalidLimit.payload, { ok: false, error: "call_list_limit_invalid" });
+  });
+});
+
 test("GET /api/calls can filter the active demo call list by flow state", async () => {
   await withServer(async (port) => {
     const firstStarted = await requestJson(port, "POST", "/api/demo/start");
