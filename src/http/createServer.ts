@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
-import { getAttentionMetadata } from "../core/attention";
+import { compareTimestamps, getAttentionMetadata } from "../core/attention";
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { getPipecatPrototypeHealth } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
@@ -153,6 +153,38 @@ function parseOptionalNonNegativeIntegerFilter(
   return parsed;
 }
 
+function parseCallListSort(value: string | null): CallListSort | { error: string } {
+  if (value === null || value === "startedAt") {
+    return "startedAt";
+  }
+
+  if (value === "attentionStartedAt") {
+    return "attentionStartedAt";
+  }
+
+  return { error: "call_list_sort_invalid" };
+}
+
+function compareAttentionQueueOrder(left: CallSnapshot, right: CallSnapshot): number {
+  const leftAttention = getAttentionMetadata(left);
+  const rightAttention = getAttentionMetadata(right);
+
+  if (leftAttention.startedAt && rightAttention.startedAt) {
+    const attentionOrder = compareTimestamps(leftAttention.startedAt, rightAttention.startedAt);
+    return attentionOrder === 0 ? compareTimestamps(left.session.startedAt, right.session.startedAt) : attentionOrder;
+  }
+
+  if (leftAttention.startedAt) {
+    return -1;
+  }
+
+  if (rightAttention.startedAt) {
+    return 1;
+  }
+
+  return compareTimestamps(left.session.startedAt, right.session.startedAt);
+}
+
 interface CallListFilters {
   flowState?: FlowState;
   pendingOperatorSteer?: boolean;
@@ -167,6 +199,8 @@ interface CallListFilters {
   providerCallId?: string;
   minAttentionAgeMs?: number;
 }
+
+type CallListSort = "startedAt" | "attentionStartedAt";
 
 function parseCallListFilters(
   requestUrl: URL,
@@ -618,7 +652,18 @@ async function routeRequest(
       return;
     }
 
-    const calls = (await ingress.listSnapshots(filters))
+    const sort = parseCallListSort(requestUrl.searchParams.get("sort"));
+    if (typeof sort !== "string") {
+      writeBadRequest(response, sort.error);
+      return;
+    }
+
+    const orderedSnapshots = await ingress.listSnapshots(filters);
+    if (sort === "attentionStartedAt") {
+      orderedSnapshots.sort(compareAttentionQueueOrder);
+    }
+
+    const calls = orderedSnapshots
       .slice(offset ?? 0, limit === undefined ? undefined : (offset ?? 0) + limit)
       .map((snapshot) => buildCallPayload(snapshot));
     const summary = await ingress.getQueueSummary();
