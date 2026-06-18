@@ -1660,3 +1660,57 @@ test("attention age metadata tracks when operator attention actually started", a
     assert.ok((firstPayload.attention?.ageMs ?? 0) < 120_000);
   });
 });
+
+test("GET /api/calls and /api/queue can scope operator state by call id", async () => {
+  await withServer(async (port) => {
+    const firstStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "call-filter-01",
+      openclawSessionLabel: "call-filter/first",
+    });
+    const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+
+    const secondStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "call-filter-02",
+      openclawSessionLabel: "call-filter/second",
+    });
+    const secondCallId = (secondStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${secondCallId}/fallback`, {
+      mode: "tool_timeout",
+      reason: "manual QA fallback",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+
+    const filteredCalls = await requestJson(port, "GET", `/api/calls?callId=${secondCallId}`);
+    const filteredCallsPayload = filteredCalls.payload as CallListPayload;
+
+    assert.equal(filteredCalls.statusCode, 200);
+    assert.deepEqual(filteredCallsPayload.calls.map((call) => call.session.callId), [secondCallId]);
+    assert.equal(filteredCallsPayload.summary.totalCalls, 2);
+    assert.equal(filteredCallsPayload.summary.filteredCalls, 1);
+    assert.equal(filteredCallsPayload.summary.filteredSummary.totalCalls, 1);
+    assert.equal(filteredCallsPayload.summary.filteredSummary.fallbackArmed, 1);
+    assert.equal(filteredCallsPayload.summary.filteredSummary.oldestAttentionCallId, secondCallId);
+
+    const queue = await requestJson(port, "GET", `/api/queue?callId=${firstCallId}`);
+    const queuePayload = queue.payload as QueueSummaryPayload;
+
+    assert.equal(queue.statusCode, 200);
+    assert.equal(queuePayload.summary.totalCalls, 1);
+    assert.equal(queuePayload.summary.byFlowState.diagnose, 1);
+    assert.equal(queuePayload.summary.fallbackArmed, 0);
+    assert.equal(queuePayload.summary.oldestAttentionCallId, null);
+
+    const invalidQueue = await requestJson(port, "GET", "/api/queue?callId=%20%20%20");
+    assert.equal(invalidQueue.statusCode, 400);
+    assert.deepEqual(invalidQueue.payload, {
+      ok: false,
+      error: "queue_call_id_invalid",
+    });
+  });
+});
