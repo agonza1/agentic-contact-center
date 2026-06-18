@@ -94,8 +94,12 @@ function buildCallPayload(snapshot: CallSnapshot) {
   };
 }
 
-function buildEventTrailPayload(snapshot: CallSnapshot, eventType?: string) {
-  const events = eventType === undefined ? snapshot.events : snapshot.events.filter((event) => event.type === eventType);
+function buildEventTrailPayload(snapshot: CallSnapshot, eventType?: string, since?: string) {
+  const events = snapshot.events.filter((event) => {
+    const matchesType = eventType === undefined || event.type === eventType;
+    const matchesSince = since === undefined || compareTimestamps(event.at, since) >= 0;
+    return matchesType && matchesSince;
+  });
 
   return {
     callId: snapshot.session.callId,
@@ -106,6 +110,7 @@ function buildEventTrailPayload(snapshot: CallSnapshot, eventType?: string) {
       totalEvents: snapshot.events.length,
       returnedEvents: events.length,
       filteredType: eventType ?? null,
+      filteredSince: since ?? null,
       latestEventType: events.at(-1)?.type ?? null,
       latestEventAt: events.at(-1)?.at ?? null,
     },
@@ -713,13 +718,20 @@ async function routeRequest(
       return;
     }
 
+    const sinceParam = requestUrl.searchParams.get("since");
+    const since = sinceParam === null ? undefined : normalizeTimestamp(sinceParam, "event_since_invalid");
+    if (since !== undefined && typeof since !== "string") {
+      writeBadRequest(response, since.error);
+      return;
+    }
+
     const snapshot = await ingress.getSnapshot(callEventsMatch[1]);
     if (!snapshot) {
       writeNotFound(response);
       return;
     }
 
-    writeJson(response, 200, buildEventTrailPayload(snapshot, type?.trim() || undefined));
+    writeJson(response, 200, buildEventTrailPayload(snapshot, type?.trim() || undefined, since));
     return;
   }
 

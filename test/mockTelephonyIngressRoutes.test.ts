@@ -82,6 +82,7 @@ interface EventTrailPayload {
     totalEvents: number;
     returnedEvents: number;
     filteredType: string | null;
+    filteredSince: string | null;
     latestEventType: string | null;
     latestEventAt: string | null;
   };
@@ -2000,7 +2001,29 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.equal(allEventsPayload.summary.totalEvents, allEventsPayload.events.length);
     assert.equal(allEventsPayload.summary.returnedEvents, allEventsPayload.events.length);
     assert.equal(allEventsPayload.summary.filteredType, null);
+    assert.equal(allEventsPayload.summary.filteredSince, null);
     assert.equal(allEventsPayload.events.some((event) => event.type === "caller_turn_appended"), true);
+
+    const sinceFilteredEvents = await requestJson(
+      port,
+      "GET",
+      `/api/calls/${callId}/events?type=caller_turn_appended&since=${encodeURIComponent("2026-06-10T14:00:00.000Z")}`,
+    );
+    const sinceFilteredPayload = sinceFilteredEvents.payload as EventTrailPayload;
+
+    assert.equal(sinceFilteredEvents.statusCode, 200);
+    assert.equal(sinceFilteredPayload.summary.totalEvents, allEventsPayload.summary.totalEvents);
+    assert.equal(sinceFilteredPayload.summary.filteredType, "caller_turn_appended");
+    assert.equal(sinceFilteredPayload.summary.filteredSince, "2026-06-10T14:00:00.000Z");
+    assert.deepEqual(sinceFilteredPayload.events.map((event) => event.type), ["caller_turn_appended"]);
+
+    const futureEvents = await requestJson(port, "GET", `/api/calls/${callId}/events?since=2999-01-01T00:00:00.000Z`);
+    const futurePayload = futureEvents.payload as EventTrailPayload;
+
+    assert.equal(futureEvents.statusCode, 200);
+    assert.equal(futurePayload.summary.returnedEvents, 0);
+    assert.equal(futurePayload.summary.filteredSince, "2999-01-01T00:00:00.000Z");
+    assert.deepEqual(futurePayload.events, []);
 
     const filteredEvents = await requestJson(port, "GET", `/api/calls/${callId}/events?type=caller_turn_appended`);
     const filteredPayload = filteredEvents.payload as EventTrailPayload;
@@ -2009,6 +2032,7 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.equal(filteredPayload.summary.totalEvents, allEventsPayload.summary.totalEvents);
     assert.equal(filteredPayload.summary.returnedEvents, 1);
     assert.equal(filteredPayload.summary.filteredType, "caller_turn_appended");
+    assert.equal(filteredPayload.summary.filteredSince, null);
     assert.equal(filteredPayload.summary.latestEventType, "caller_turn_appended");
     assert.deepEqual(filteredPayload.events.map((event) => event.type), ["caller_turn_appended"]);
 
@@ -2017,6 +2041,13 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.deepEqual(invalidType.payload, {
       ok: false,
       error: "event_type_invalid",
+    });
+
+    const invalidSince = await requestJson(port, "GET", `/api/calls/${callId}/events?since=not-a-date`);
+    assert.equal(invalidSince.statusCode, 400);
+    assert.deepEqual(invalidSince.payload, {
+      ok: false,
+      error: "event_since_invalid",
     });
 
     const missing = await requestJson(port, "GET", "/api/calls/missing-call/events");
