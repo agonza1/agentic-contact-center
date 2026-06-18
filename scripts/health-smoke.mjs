@@ -14,9 +14,32 @@ function parseArgs(argv) {
     expectLatencyBudgetsMs: [],
   };
 
+  const valueFlags = new Set([
+    '--url',
+    '--timeout-ms',
+    '--interval-ms',
+    '--expect-demo-name',
+    '--expect-mode',
+    '--expect-provider',
+    '--expect-operator-channel',
+    '--expect-fallback-mode',
+    '--expect-pipecat-ready',
+    '--expect-runtime-seam',
+    '--expect-pipecat-tool',
+    '--expect-latency-budget-ms',
+  ]);
+
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     const next = argv[index + 1];
+
+    if (!valueFlags.has(arg)) {
+      throw new Error(`unknown_argument(${JSON.stringify(arg)})`);
+    }
+
+    if (next === undefined || next.startsWith('--')) {
+      throw new Error(`missing_value(${JSON.stringify(arg)})`);
+    }
 
     if (arg === '--url' && next) {
       args.url = next;

@@ -327,6 +327,41 @@ test("health smoke script rejects non-integer latency budget expectations before
   assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
 });
 
+test("health smoke script rejects unknown arguments before probing", async () => {
+  const result = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--expect-provider",
+    "signalwire",
+    "--expect-prvodier",
+    "signalwire",
+    "--timeout-ms",
+    "1500",
+    "--interval-ms",
+    "25",
+  ]);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /unknown_argument\("--expect-prvodier"\)/);
+  assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
+test("health smoke script rejects missing argument values before probing", async () => {
+  const result = await runProbe([
+    "--url",
+    "http://127.0.0.1:1/health",
+    "--expect-provider",
+    "--timeout-ms",
+    "1500",
+    "--interval-ms",
+    "25",
+  ]);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /missing_value\("--expect-provider"\)/);
+  assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
 test("health smoke script rejects malformed Pipecat readiness expectations before probing", async () => {
   const result = await runProbe([
     "--url",
