@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { promisify } from "node:util";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const require = createRequire(import.meta.url);
+const execFileAsync = promisify(execFile);
 
 const { loadPocConfig } = require("../dist/src/config/loadPocConfig.js");
 const { buildHttpServer } = require("../dist/src/http/createServer.js");
@@ -207,6 +210,19 @@ async function getQueueAttentionSummary(port) {
   return queue.payload.summary;
 }
 
+async function getGitRevision() {
+  try {
+    const { stdout } = await execFileAsync("git", ["rev-parse", "--short=12", "HEAD"], {
+      cwd: path.resolve(__dirname, ".."),
+      timeout: 2_000,
+    });
+
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 function summarizeArtifact(artifact) {
   const scriptedWrapped = artifact.scripted.checkpoints.wrapped;
   const fallbackCheckpoint = artifact.fallback.checkpoint;
@@ -224,6 +240,7 @@ function summarizeArtifact(artifact) {
   return {
     schemaVersion: artifact.schemaVersion,
     healthOk: artifact.health.ok,
+    gitRevision: artifact.gitRevision,
     runtimeSeams: artifact.health.runtimeSeams,
     proofContract: artifact.proofContract,
     queueAttention: {
@@ -266,6 +283,7 @@ async function main() {
     return {
       schemaVersion: 1,
       generatedAt: new Date().toISOString(),
+      gitRevision: await getGitRevision(),
       demoName: config.demoName,
       provider: config.provider.name,
       proofContract: {
