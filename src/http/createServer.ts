@@ -133,6 +133,26 @@ function parseOptionalPositiveIntegerFilter(
   return parsed;
 }
 
+function parseOptionalNonNegativeIntegerFilter(
+  value: string | null,
+  error: string,
+): number | { error: string } | undefined {
+  if (value === null) {
+    return undefined;
+  }
+
+  if (!/^\d+$/.test(value)) {
+    return { error };
+  }
+
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    return { error };
+  }
+
+  return parsed;
+}
+
 interface CallListFilters {
   flowState?: FlowState;
   pendingOperatorSteer?: boolean;
@@ -144,6 +164,7 @@ interface CallListFilters {
   openclawSessionRef?: string;
   callId?: string;
   providerCallId?: string;
+  minAttentionAgeMs?: number;
 }
 
 function parseCallListFilters(
@@ -209,6 +230,14 @@ function parseCallListFilters(
     return { error: `${invalidPrefix}_provider_call_id_invalid` };
   }
 
+  const minAttentionAgeMs = parseOptionalNonNegativeIntegerFilter(
+    requestUrl.searchParams.get("minAttentionAgeMs"),
+    `${invalidPrefix}_min_attention_age_ms_invalid`,
+  );
+  if (minAttentionAgeMs !== undefined && typeof minAttentionAgeMs !== "number") {
+    return minAttentionAgeMs;
+  }
+
   return {
     flowState: flowState ?? undefined,
     pendingOperatorSteer,
@@ -220,6 +249,7 @@ function parseCallListFilters(
     openclawSessionRef: openclawSessionRef?.trim() || undefined,
     callId: callId?.trim() || undefined,
     providerCallId: providerCallId?.trim() || undefined,
+    minAttentionAgeMs,
   };
 }
 
@@ -575,7 +605,15 @@ async function routeRequest(
       return;
     }
 
-    const calls = (await ingress.listSnapshots(filters)).slice(0, limit).map((snapshot) => buildCallPayload(snapshot));
+    const offset = parseOptionalNonNegativeIntegerFilter(requestUrl.searchParams.get("offset"), "call_list_offset_invalid");
+    if (offset !== undefined && typeof offset !== "number") {
+      writeBadRequest(response, offset.error);
+      return;
+    }
+
+    const calls = (await ingress.listSnapshots(filters))
+      .slice(offset ?? 0, limit === undefined ? undefined : (offset ?? 0) + limit)
+      .map((snapshot) => buildCallPayload(snapshot));
     const summary = await ingress.getQueueSummary();
     const filteredSummary = await ingress.getQueueSummary(filters);
 
