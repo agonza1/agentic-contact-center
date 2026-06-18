@@ -250,6 +250,68 @@ test("health smoke script reports metadata mismatches in the timeout summary", a
   });
 });
 
+test("health smoke script can assert expected latency budgets", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        ok: true,
+        latencyBudgetsMs: {
+          asrPartial: 350,
+          operatorNotification: 1000,
+        },
+      }),
+    );
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-latency-budget-ms",
+      "asrPartial=350",
+      "--expect-latency-budget-ms",
+      "operatorNotification=1000",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Health probe succeeded/);
+  });
+});
+
+test("health smoke script reports latency budget mismatches in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, latencyBudgetsMs: { asrPartial: 475 } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-latency-budget-ms",
+      "asrPartial=350",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_latencyBudgetsMs_asrPartial_mismatch\(expected=350,actual=475\)/);
+  });
+});
+
 test("health smoke script reports missing runtime seams in the timeout summary", async () => {
   await withServer((request, response) => {
     if (request.url !== "/health") {

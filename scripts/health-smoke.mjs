@@ -9,6 +9,7 @@ function parseArgs(argv) {
     expectOperatorChannel: undefined,
     expectFallbackMode: undefined,
     expectRuntimeSeams: [],
+    expectLatencyBudgetsMs: [],
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -66,6 +67,12 @@ function parseArgs(argv) {
     if (arg === '--expect-runtime-seam' && next) {
       args.expectRuntimeSeams.push(next);
       index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-latency-budget-ms' && next) {
+      args.expectLatencyBudgetsMs.push(next);
+      index += 1;
     }
   }
 
@@ -87,7 +94,23 @@ function hasJsonExpectations(args) {
     args.expectProvider,
     args.expectOperatorChannel,
     args.expectFallbackMode,
-  ].some((expectedValue) => expectedValue !== undefined) || args.expectRuntimeSeams.length > 0;
+  ].some((expectedValue) => expectedValue !== undefined) || args.expectRuntimeSeams.length > 0 || args.expectLatencyBudgetsMs.length > 0;
+}
+
+function parseLatencyBudgetExpectation(rawExpectation) {
+  const [name, rawValue, ...extraParts] = rawExpectation.split('=');
+
+  if (!name || rawValue === undefined || extraParts.length > 0) {
+    return { error: `invalid_latency_budget_expectation(${JSON.stringify(rawExpectation)})` };
+  }
+
+  const expectedValue = Number.parseInt(rawValue, 10);
+
+  if (!Number.isFinite(expectedValue) || String(expectedValue) !== rawValue || expectedValue < 0) {
+    return { error: `invalid_latency_budget_value(${JSON.stringify(rawExpectation)})` };
+  }
+
+  return { name, expectedValue };
 }
 
 async function getFailureReason(response, args) {
@@ -140,6 +163,22 @@ async function getFailureReason(response, args) {
 
     if (!Array.isArray(runtimeSeams) || !runtimeSeams.includes(expectedRuntimeSeam)) {
       return `json_runtimeSeams_missing(expected=${JSON.stringify(expectedRuntimeSeam)},actual=${JSON.stringify(runtimeSeams)})`;
+    }
+  }
+
+  for (const rawExpectation of args.expectLatencyBudgetsMs) {
+    const parsedExpectation = parseLatencyBudgetExpectation(rawExpectation);
+    if (parsedExpectation.error) {
+      return parsedExpectation.error;
+    }
+
+    const latencyBudgetsMs = payload.latencyBudgetsMs;
+    const actualValue = latencyBudgetsMs && typeof latencyBudgetsMs === 'object'
+      ? latencyBudgetsMs[parsedExpectation.name]
+      : undefined;
+
+    if (actualValue !== parsedExpectation.expectedValue) {
+      return `json_latencyBudgetsMs_${parsedExpectation.name}_mismatch(expected=${JSON.stringify(parsedExpectation.expectedValue)},actual=${JSON.stringify(actualValue)})`;
     }
   }
 
