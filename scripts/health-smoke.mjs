@@ -15,6 +15,7 @@ function parseArgs(argv) {
     expectRuntimeSeams: [],
     expectPipecatTools: [],
     expectLatencyBudgetsMs: [],
+    expectLatencyBudgetMaxMs: [],
   };
 
   const valueFlags = new Set([
@@ -33,6 +34,7 @@ function parseArgs(argv) {
     '--expect-runtime-seam',
     '--expect-pipecat-tool',
     '--expect-latency-budget-ms',
+    '--expect-latency-budget-max-ms',
   ]);
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -144,6 +146,12 @@ function parseArgs(argv) {
     if (arg === '--expect-latency-budget-ms' && next) {
       args.expectLatencyBudgetsMs.push(next);
       index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-latency-budget-max-ms' && next) {
+      args.expectLatencyBudgetMaxMs.push(next);
+      index += 1;
     }
   }
 
@@ -172,7 +180,8 @@ function hasJsonExpectations(args) {
   ].some((expectedValue) => expectedValue !== undefined)
     || args.expectRuntimeSeams.length > 0
     || args.expectPipecatTools.length > 0
-    || args.expectLatencyBudgetsMs.length > 0;
+    || args.expectLatencyBudgetsMs.length > 0
+    || args.expectLatencyBudgetMaxMs.length > 0;
 }
 
 function parseBooleanExpectation(flagName, rawValue) {
@@ -216,7 +225,7 @@ function validatePositiveIntegerOption(flagName, rawValue) {
 }
 
 function validateLatencyBudgetExpectations(args) {
-  for (const rawExpectation of args.expectLatencyBudgetsMs) {
+  for (const rawExpectation of [...args.expectLatencyBudgetsMs, ...args.expectLatencyBudgetMaxMs]) {
     const parsedExpectation = parseLatencyBudgetExpectation(rawExpectation);
     if (parsedExpectation.error) {
       return parsedExpectation.error;
@@ -358,6 +367,22 @@ async function getFailureReason(response, args) {
 
     if (actualValue !== parsedExpectation.expectedValue) {
       return `json_latencyBudgetsMs_${parsedExpectation.name}_mismatch(expected=${JSON.stringify(parsedExpectation.expectedValue)},actual=${JSON.stringify(actualValue)})`;
+    }
+  }
+
+  for (const rawExpectation of args.expectLatencyBudgetMaxMs) {
+    const parsedExpectation = parseLatencyBudgetExpectation(rawExpectation);
+    if (parsedExpectation.error) {
+      return parsedExpectation.error;
+    }
+
+    const latencyBudgetsMs = payload.latencyBudgetsMs;
+    const actualValue = latencyBudgetsMs && typeof latencyBudgetsMs === 'object'
+      ? latencyBudgetsMs[parsedExpectation.name]
+      : undefined;
+
+    if (typeof actualValue !== 'number' || !Number.isFinite(actualValue) || actualValue > parsedExpectation.expectedValue) {
+      return `json_latencyBudgetsMs_${parsedExpectation.name}_over_max(expected<=${JSON.stringify(parsedExpectation.expectedValue)},actual=${JSON.stringify(actualValue)})`;
     }
   }
 

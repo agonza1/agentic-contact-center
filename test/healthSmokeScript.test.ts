@@ -303,6 +303,58 @@ test("health smoke script can assert expected latency budgets", async () => {
   });
 });
 
+test("health smoke script accepts latency budget maximum expectations", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, latencyBudgetsMs: { asrPartial: 320 } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-latency-budget-max-ms",
+      "asrPartial=350",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Health probe succeeded/);
+  });
+});
+
+test("health smoke script reports latency budget maximum overruns", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, latencyBudgetsMs: { asrPartial: 375 } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-latency-budget-max-ms",
+      "asrPartial=350",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_latencyBudgetsMs_asrPartial_over_max\(expected<=350,actual=375\)/);
+  });
+});
+
 test("health smoke script rejects malformed latency budget expectations before probing", async () => {
   const result = await runProbe([
     "--url",
