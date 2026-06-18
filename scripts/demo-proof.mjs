@@ -204,7 +204,11 @@ async function runFallbackScenario(port) {
 }
 
 async function getQueueAttentionSummary(port) {
-  const queue = await requestJson(port, "GET", "/api/queue?attentionRequired=true");
+  const queue = await requestJson(
+    port,
+    "GET",
+    "/api/queue?attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget",
+  );
   assert.equal(queue.statusCode, 200);
 
   return queue.payload.summary;
@@ -289,7 +293,7 @@ async function main() {
       proofContract: {
         requiredOutcomes: ["scripted_wrap_complete", "fail_closed_handoff"],
         requiredEventTypes: ["policy_hold_entered", "demo_fallback_triggered", "human_handoff_started"],
-        queueAttentionFilter: "attentionRequired=true",
+        queueAttentionFilter: "attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget",
       },
       health: health.payload,
       queueAttention,

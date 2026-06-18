@@ -84,7 +84,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.proofContract.requiredEventTypes.includes("policy_hold_entered"), true);
     assert.equal(artifact.proofContract.requiredEventTypes.includes("demo_fallback_triggered"), true);
     assert.equal(artifact.proofContract.requiredEventTypes.includes("human_handoff_started"), true);
-    assert.equal(artifact.proofContract.queueAttentionFilter, "attentionRequired=true");
+    assert.equal(artifact.proofContract.queueAttentionFilter, "attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget");
     assert.equal(artifact.summary.schemaVersion, 1);
     assert.deepEqual(artifact.summary.proofContract, artifact.proofContract);
     assert.equal(artifact.health.ok, true);

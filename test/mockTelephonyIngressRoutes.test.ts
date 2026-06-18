@@ -1074,6 +1074,37 @@ test("GET /api/calls and /api/queue can filter by attention source", async () =>
     assert.equal(combinedQueuePayload.summary.oldestAttentionCallId, combinedCallId);
     assert.equal(combinedQueuePayload.summary.oldestAttentionSource, "operator_steer+fallback");
 
+    const reasonFilteredCalls = await requestJson(
+      port,
+      "GET",
+      "/api/calls?attentionReason=supervisor%20asked%20for%20dual-track%20demo",
+    );
+    const reasonFilteredCallsPayload = reasonFilteredCalls.payload as CallListPayload;
+    assert.equal(reasonFilteredCalls.statusCode, 200);
+    assert.deepEqual(reasonFilteredCallsPayload.calls.map((call) => call.session.callId), [combinedCallId]);
+    assert.equal(reasonFilteredCallsPayload.summary.filteredSummary.oldestAttentionReason, "supervisor asked for dual-track demo");
+
+    const reasonFilteredQueue = await requestJson(port, "GET", "/api/queue?attentionReason=audio%20degraded%20during%20live%20demo");
+    const reasonFilteredQueuePayload = reasonFilteredQueue.payload as QueueSummaryPayload;
+    assert.equal(reasonFilteredQueue.statusCode, 200);
+    assert.equal(reasonFilteredQueuePayload.summary.totalCalls, 1);
+    assert.equal(reasonFilteredQueuePayload.summary.oldestAttentionCallId, fallbackCallId);
+    assert.equal(reasonFilteredQueuePayload.summary.oldestAttentionReason, "audio degraded during live demo");
+
+    const invalidReasonCalls = await requestJson(port, "GET", "/api/calls?attentionReason=%20%20");
+    assert.equal(invalidReasonCalls.statusCode, 400);
+    assert.deepEqual(invalidReasonCalls.payload, {
+      ok: false,
+      error: "call_list_attention_reason_invalid",
+    });
+
+    const invalidReasonQueue = await requestJson(port, "GET", "/api/queue?attentionReason=%20%20");
+    assert.equal(invalidReasonQueue.statusCode, 400);
+    assert.deepEqual(invalidReasonQueue.payload, {
+      ok: false,
+      error: "queue_attention_reason_invalid",
+    });
+
     const invalidCalls = await requestJson(port, "GET", "/api/calls?attentionSource=triage_bot");
     assert.equal(invalidCalls.statusCode, 400);
     assert.deepEqual(invalidCalls.payload, {

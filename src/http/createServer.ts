@@ -159,6 +159,7 @@ interface CallListFilters {
   fallbackArmed?: boolean;
   attentionRequired?: boolean;
   attentionSource?: AttentionSource;
+  attentionReason?: string;
   openclawSessionId?: string;
   openclawSessionLabel?: string;
   openclawSessionRef?: string;
@@ -205,6 +206,11 @@ function parseCallListFilters(
     return { error: `${invalidPrefix}_attention_source_invalid` };
   }
 
+  const attentionReason = requestUrl.searchParams.get("attentionReason");
+  if (attentionReason !== null && !attentionReason.trim()) {
+    return { error: `${invalidPrefix}_attention_reason_invalid` };
+  }
+
   const openclawSessionId = requestUrl.searchParams.get("openclawSessionId");
   if (openclawSessionId !== null && !openclawSessionId.trim()) {
     return { error: `${invalidPrefix}_openclaw_session_id_invalid` };
@@ -244,6 +250,7 @@ function parseCallListFilters(
     fallbackArmed,
     attentionRequired,
     attentionSource: attentionSource ?? undefined,
+    attentionReason: attentionReason?.trim() || undefined,
     openclawSessionId: openclawSessionId?.trim() || undefined,
     openclawSessionLabel: openclawSessionLabel?.trim() || undefined,
     openclawSessionRef: openclawSessionRef?.trim() || undefined,

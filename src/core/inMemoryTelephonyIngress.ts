@@ -236,6 +236,7 @@ export class InMemoryTelephonyIngress {
     fallbackArmed?: boolean;
     attentionRequired?: boolean;
     attentionSource?: AttentionSource;
+    attentionReason?: string;
     openclawSessionId?: string;
     openclawSessionLabel?: string;
     openclawSessionRef?: string;
@@ -252,6 +253,7 @@ export class InMemoryTelephonyIngress {
     fallbackArmed?: boolean;
     attentionRequired?: boolean;
     attentionSource?: AttentionSource;
+    attentionReason?: string;
     openclawSessionId?: string;
     openclawSessionLabel?: string;
     openclawSessionRef?: string;
@@ -290,6 +292,13 @@ export class InMemoryTelephonyIngress {
                 : null;
 
         return attentionSource === filters.attentionSource;
+      })
+      .filter((snapshot) => {
+        if (filters.attentionReason === undefined) {
+          return true;
+        }
+
+        return getAttentionMetadata(snapshot).reason === filters.attentionReason;
       })
       .filter((snapshot) => (filters.callId === undefined ? true : snapshot.session.callId === filters.callId))
       .filter((snapshot) => {
@@ -332,6 +341,7 @@ export class InMemoryTelephonyIngress {
     fallbackArmed?: boolean;
     attentionRequired?: boolean;
     attentionSource?: AttentionSource;
+    attentionReason?: string;
     openclawSessionId?: string;
     openclawSessionLabel?: string;
     openclawSessionRef?: string;

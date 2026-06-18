@@ -27,6 +27,7 @@ Open `artifacts/demo-proof.json` or `artifacts/demo-proof-latest.json` and confi
 - `summary.fallback.reason` is `pipecat tool exceeded latency budget`
 - `summary.fallback.eventTypes` includes `human_handoff_started`
 - `summary.queueAttention.attentionRequired` is `1`
+- `proofContract.queueAttentionFilter` scopes queue proof to `attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget`
 - `summary.queueAttention.oldestAttentionSource` is `fallback`
 - `summary.queueAttention.oldestAttentionFlowState` is `wrap`
 - `summary.queueAttention.oldestAttentionAgeMs` is a non-null number for stale-queue polling
