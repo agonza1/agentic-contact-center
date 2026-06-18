@@ -94,6 +94,24 @@ function buildCallPayload(snapshot: CallSnapshot) {
   };
 }
 
+function buildEventTrailPayload(snapshot: CallSnapshot, eventType?: string) {
+  const events = eventType === undefined ? snapshot.events : snapshot.events.filter((event) => event.type === eventType);
+
+  return {
+    callId: snapshot.session.callId,
+    providerCallId: snapshot.session.providerCallId,
+    openclawSession: snapshot.session.openclawSession,
+    events,
+    summary: {
+      totalEvents: snapshot.events.length,
+      returnedEvents: events.length,
+      filteredType: eventType ?? null,
+      latestEventType: events.at(-1)?.type ?? null,
+      latestEventAt: events.at(-1)?.at ?? null,
+    },
+  };
+}
+
 function parseOptionalBooleanFilter(
   value: string | null,
   error: string,
@@ -684,6 +702,24 @@ async function routeRequest(
         filteredSummary,
       },
     });
+    return;
+  }
+
+  const callEventsMatch = request.method === "GET" ? pathname.match(/^\/api\/calls\/([^/]+)\/events$/) : null;
+  if (callEventsMatch) {
+    const type = requestUrl.searchParams.get("type");
+    if (type !== null && !type.trim()) {
+      writeBadRequest(response, "event_type_invalid");
+      return;
+    }
+
+    const snapshot = await ingress.getSnapshot(callEventsMatch[1]);
+    if (!snapshot) {
+      writeNotFound(response);
+      return;
+    }
+
+    writeJson(response, 200, buildEventTrailPayload(snapshot, type?.trim() || undefined));
     return;
   }
 
