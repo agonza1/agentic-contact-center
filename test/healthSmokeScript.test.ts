@@ -148,7 +148,7 @@ test("health smoke script rejects 200 responses that still report ok false", asy
   });
 });
 
-test("health smoke script can assert expected health metadata", async () => {
+test("health smoke script can assert expected health metadata and multiple runtime seams", async () => {
   await withServer((request, response) => {
     if (request.url !== "/health") {
       response.writeHead(404).end();
@@ -183,6 +183,8 @@ test("health smoke script can assert expected health metadata", async () => {
       "tool_timeout",
       "--expect-runtime-seam",
       "flow engine",
+      "--expect-runtime-seam",
+      "mocked telephony ingress",
       "--timeout-ms",
       "200",
       "--interval-ms",

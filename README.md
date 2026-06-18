@@ -22,7 +22,7 @@ npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-pro
 npm start
 ```
 
-The server listens on `http://localhost:8026` by default. With the server running in a managed background process, use `npm run health:smoke` for a bounded `/health` probe instead of treating the attached start command as the verification result. The probe retries until the outer timeout expires, aborts hanging `/health` responses instead of waiting on a stuck socket forever, and can assert expected `demoName`, `mode`, `provider`, `operatorChannel`, `fallbackMode`, or named `runtimeSeams` with `--expect-*` flags during QA handoff. Metadata assertion failures now print both the expected and actual values for faster triage.
+The server listens on `http://localhost:8026` by default. With the server running in a managed background process, use `npm run health:smoke` for a bounded `/health` probe instead of treating the attached start command as the verification result. The probe retries until the outer timeout expires, aborts hanging `/health` responses instead of waiting on a stuck socket forever, and can assert expected `demoName`, `mode`, `provider`, `operatorChannel`, `fallbackMode`, or one or more named `runtimeSeams` with repeatable `--expect-*` flags during QA handoff. Metadata assertion failures now print both the expected and actual values for faster triage.
 
 ## High-level flow
 

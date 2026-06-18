@@ -8,7 +8,7 @@ function parseArgs(argv) {
     expectProvider: undefined,
     expectOperatorChannel: undefined,
     expectFallbackMode: undefined,
-    expectRuntimeSeam: undefined,
+    expectRuntimeSeams: [],
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -64,7 +64,7 @@ function parseArgs(argv) {
     }
 
     if (arg === '--expect-runtime-seam' && next) {
-      args.expectRuntimeSeam = next;
+      args.expectRuntimeSeams.push(next);
       index += 1;
     }
   }
@@ -125,11 +125,11 @@ async function getFailureReason(response, args) {
     }
   }
 
-  if (args.expectRuntimeSeam !== undefined) {
+  for (const expectedRuntimeSeam of args.expectRuntimeSeams) {
     const runtimeSeams = payload.runtimeSeams;
 
-    if (!Array.isArray(runtimeSeams) || !runtimeSeams.includes(args.expectRuntimeSeam)) {
-      return `json_runtimeSeams_missing(expected=${JSON.stringify(args.expectRuntimeSeam)},actual=${JSON.stringify(runtimeSeams)})`;
+    if (!Array.isArray(runtimeSeams) || !runtimeSeams.includes(expectedRuntimeSeam)) {
+      return `json_runtimeSeams_missing(expected=${JSON.stringify(expectedRuntimeSeam)},actual=${JSON.stringify(runtimeSeams)})`;
     }
   }
 
