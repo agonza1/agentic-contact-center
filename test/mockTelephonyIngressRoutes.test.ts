@@ -698,6 +698,18 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.equal(attentionPayload.summary.oldestAttentionReason, "safe_offer_review_requested");
     assert.equal(attentionPayload.summary.oldestAttentionSource, "operator_steer");
 
+    const staleAttention = await requestJson(port, "GET", "/api/calls?minAttentionAgeMs=1");
+    const stalePayload = staleAttention.payload as CallListPayload;
+    assert.equal(staleAttention.statusCode, 200);
+    assert.deepEqual(stalePayload.calls.map((call) => call.session.callId), [pendingCallId, fallbackCallId]);
+    assert.equal(stalePayload.summary.filteredCalls, 2);
+
+    const noStaleAttention = await requestJson(port, "GET", "/api/calls?minAttentionAgeMs=999999999999999");
+    const noStalePayload = noStaleAttention.payload as CallListPayload;
+    assert.equal(noStaleAttention.statusCode, 200);
+    assert.deepEqual(noStalePayload.calls.map((call) => call.session.callId), []);
+    assert.equal(noStalePayload.summary.filteredSummary.totalCalls, 0);
+
     const notAttention = await requestJson(port, "GET", "/api/calls?attentionRequired=false");
     const notAttentionPayload = notAttention.payload as CallListPayload;
     assert.equal(notAttention.statusCode, 200);
@@ -740,6 +752,13 @@ test("GET /api/calls can filter operator attention queues", async () => {
     assert.deepEqual(invalidAttention.payload, {
       ok: false,
       error: "call_list_attention_required_invalid",
+    });
+
+    const invalidMinAge = await requestJson(port, "GET", "/api/calls?minAttentionAgeMs=slow");
+    assert.equal(invalidMinAge.statusCode, 400);
+    assert.deepEqual(invalidMinAge.payload, {
+      ok: false,
+      error: "call_list_min_attention_age_ms_invalid",
     });
   });
 });
@@ -817,6 +836,18 @@ test("GET /api/queue can filter operator summary slices", async () => {
       steered_response: 0,
       wrap: 0,
     });
+
+    const staleAttention = await requestJson(port, "GET", "/api/queue?minAttentionAgeMs=1");
+    const stalePayload = staleAttention.payload as QueueSummaryPayload;
+    assert.equal(staleAttention.statusCode, 200);
+    assert.equal(stalePayload.summary.totalCalls, 2);
+    assert.equal(stalePayload.summary.attentionRequired, 2);
+
+    const noStaleAttention = await requestJson(port, "GET", "/api/queue?minAttentionAgeMs=999999999999999");
+    const noStalePayload = noStaleAttention.payload as QueueSummaryPayload;
+    assert.equal(noStaleAttention.statusCode, 200);
+    assert.equal(noStalePayload.summary.totalCalls, 0);
+    assert.equal(noStalePayload.summary.attentionRequired, 0);
 
     const noAttentionRequired = await requestJson(port, "GET", "/api/queue?attentionRequired=false");
     const noAttentionRequiredPayload = noAttentionRequired.payload as QueueSummaryPayload;
@@ -900,6 +931,13 @@ test("GET /api/queue can filter operator summary slices", async () => {
     assert.deepEqual(invalidAttention.payload, {
       ok: false,
       error: "queue_attention_required_invalid",
+    });
+
+    const invalidMinAge = await requestJson(port, "GET", "/api/queue?minAttentionAgeMs=slow");
+    assert.equal(invalidMinAge.statusCode, 400);
+    assert.deepEqual(invalidMinAge.payload, {
+      ok: false,
+      error: "queue_min_attention_age_ms_invalid",
     });
 
     const invalidProvider = await requestJson(port, "GET", "/api/queue?providerCallId=%20%20%20");
