@@ -6,6 +6,8 @@ function parseArgs(argv) {
     expectDemoName: undefined,
     expectMode: undefined,
     expectProvider: undefined,
+    expectPolicyProfile: undefined,
+    expectPolicyToolScope: undefined,
     expectOperatorChannel: undefined,
     expectFallbackMode: undefined,
     expectPipecatReady: undefined,
@@ -21,6 +23,8 @@ function parseArgs(argv) {
     '--expect-demo-name',
     '--expect-mode',
     '--expect-provider',
+    '--expect-policy-profile',
+    '--expect-policy-tool-scope',
     '--expect-operator-channel',
     '--expect-fallback-mode',
     '--expect-pipecat-ready',
@@ -77,6 +81,18 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-policy-profile' && next) {
+      args.expectPolicyProfile = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-policy-tool-scope' && next) {
+      args.expectPolicyToolScope = next;
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-operator-channel' && next) {
       args.expectOperatorChannel = next;
       index += 1;
@@ -129,6 +145,8 @@ function hasJsonExpectations(args) {
     args.expectDemoName,
     args.expectMode,
     args.expectProvider,
+    args.expectPolicyProfile,
+    args.expectPolicyToolScope,
     args.expectOperatorChannel,
     args.expectFallbackMode,
     args.expectPipecatReady,
@@ -216,6 +234,8 @@ async function getFailureReason(response, args) {
     ['demoName', args.expectDemoName],
     ['mode', args.expectMode],
     ['provider', args.expectProvider],
+    ['policyProfile', args.expectPolicyProfile],
+    ['policyToolScope', args.expectPolicyToolScope],
     ['operatorChannel', args.expectOperatorChannel],
     ['fallbackMode', args.expectFallbackMode],
   ];

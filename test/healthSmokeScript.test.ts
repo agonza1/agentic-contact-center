@@ -188,6 +188,8 @@ test("health smoke script can assert expected health metadata and multiple runti
         demoName: "ClueCon cancellation rescue",
         mode: "mocked_telephony",
         provider: "signalwire",
+        policyProfile: "retention_safe_mode",
+        policyToolScope: "deny_by_default",
         operatorChannel: "slack",
         fallbackMode: "tool_timeout",
         runtimeSeams: ["flow engine", "mocked telephony ingress"],
@@ -204,6 +206,10 @@ test("health smoke script can assert expected health metadata and multiple runti
       "mocked_telephony",
       "--expect-provider",
       "signalwire",
+      "--expect-policy-profile",
+      "retention_safe_mode",
+      "--expect-policy-tool-scope",
+      "deny_by_default",
       "--expect-operator-channel",
       "slack",
       "--expect-fallback-mode",
@@ -237,13 +243,15 @@ test("health smoke script reports metadata mismatches in the timeout summary", a
     }
 
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ok: true, provider: "signalwire", fallbackMode: "operator_override" }));
+    response.end(JSON.stringify({ ok: true, provider: "signalwire", policyProfile: "retention_safe_mode", fallbackMode: "operator_override" }));
   }, async (port) => {
     const result = await runProbe([
       "--url",
       `http://127.0.0.1:${port}/health`,
       "--expect-provider",
       "signalwire",
+      "--expect-policy-profile",
+      "strict_retention_mode",
       "--expect-fallback-mode",
       "tool_timeout",
       "--timeout-ms",
@@ -253,7 +261,7 @@ test("health smoke script reports metadata mismatches in the timeout summary", a
     ]);
 
     assert.equal(result.code, 1);
-    assert.match(result.stderr, /Last failure: json_fallbackMode_mismatch\(expected="tool_timeout",actual="operator_override"\)/);
+    assert.match(result.stderr, /Last failure: json_policyProfile_mismatch\(expected="strict_retention_mode",actual="retention_safe_mode"\)/);
   });
 });
 

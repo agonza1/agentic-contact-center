@@ -313,6 +313,8 @@ async function routeRequest(
       demoName: config.demoName,
       mode: config.mode,
       provider: config.provider.name,
+      policyProfile: config.policy.profile,
+      policyToolScope: config.policy.toolScope,
       operatorChannel: config.operator.channel,
       fallbackMode: config.policy.fallbackMode,
       latencyBudgetsMs: config.latencyBudgetsMs,
