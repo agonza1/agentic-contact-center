@@ -9,6 +9,7 @@ function parseArgs(argv) {
     expectOperatorChannel: undefined,
     expectFallbackMode: undefined,
     expectRuntimeSeams: [],
+    expectPipecatTools: [],
     expectLatencyBudgetsMs: [],
   };
 
@@ -70,6 +71,12 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-pipecat-tool' && next) {
+      args.expectPipecatTools.push(next);
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-latency-budget-ms' && next) {
       args.expectLatencyBudgetsMs.push(next);
       index += 1;
@@ -94,7 +101,10 @@ function hasJsonExpectations(args) {
     args.expectProvider,
     args.expectOperatorChannel,
     args.expectFallbackMode,
-  ].some((expectedValue) => expectedValue !== undefined) || args.expectRuntimeSeams.length > 0 || args.expectLatencyBudgetsMs.length > 0;
+  ].some((expectedValue) => expectedValue !== undefined)
+    || args.expectRuntimeSeams.length > 0
+    || args.expectPipecatTools.length > 0
+    || args.expectLatencyBudgetsMs.length > 0;
 }
 
 function parseLatencyBudgetExpectation(rawExpectation) {
@@ -163,6 +173,17 @@ async function getFailureReason(response, args) {
 
     if (!Array.isArray(runtimeSeams) || !runtimeSeams.includes(expectedRuntimeSeam)) {
       return `json_runtimeSeams_missing(expected=${JSON.stringify(expectedRuntimeSeam)},actual=${JSON.stringify(runtimeSeams)})`;
+    }
+  }
+
+
+  for (const expectedPipecatTool of args.expectPipecatTools) {
+    const toolCoverage = payload.pipecatFlow && typeof payload.pipecatFlow === 'object'
+      ? payload.pipecatFlow.toolCoverage
+      : undefined;
+
+    if (!Array.isArray(toolCoverage) || !toolCoverage.includes(expectedPipecatTool)) {
+      return `json_pipecatFlow_toolCoverage_missing(expected=${JSON.stringify(expectedPipecatTool)},actual=${JSON.stringify(toolCoverage)})`;
     }
   }
 

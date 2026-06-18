@@ -191,6 +191,7 @@ test("health smoke script can assert expected health metadata and multiple runti
         operatorChannel: "slack",
         fallbackMode: "tool_timeout",
         runtimeSeams: ["flow engine", "mocked telephony ingress"],
+        pipecatFlow: { toolCoverage: ["goto_slide", "approve_offer"] },
       }),
     );
   }, async (port) => {
@@ -211,6 +212,10 @@ test("health smoke script can assert expected health metadata and multiple runti
       "flow engine",
       "--expect-runtime-seam",
       "mocked telephony ingress",
+      "--expect-pipecat-tool",
+      "goto_slide",
+      "--expect-pipecat-tool",
+      "approve_offer",
       "--timeout-ms",
       "200",
       "--interval-ms",
@@ -283,6 +288,32 @@ test("health smoke script can assert expected latency budgets", async () => {
 
     assert.equal(result.code, 0);
     assert.match(result.stdout, /Health probe succeeded/);
+  });
+});
+
+test("health smoke script reports missing Pipecat tools in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, pipecatFlow: { toolCoverage: ["goto_slide"] } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-pipecat-tool",
+      "approve_offer",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_pipecatFlow_toolCoverage_missing\(expected="approve_offer",actual=\["goto_slide"\]\)/);
   });
 });
 
