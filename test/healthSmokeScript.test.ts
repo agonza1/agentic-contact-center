@@ -164,6 +164,7 @@ test("health smoke script can assert expected health metadata", async () => {
         provider: "signalwire",
         operatorChannel: "slack",
         fallbackMode: "tool_timeout",
+        runtimeSeams: ["flow engine", "mocked telephony ingress"],
       }),
     );
   }, async (port) => {
@@ -180,6 +181,8 @@ test("health smoke script can assert expected health metadata", async () => {
       "slack",
       "--expect-fallback-mode",
       "tool_timeout",
+      "--expect-runtime-seam",
+      "flow engine",
       "--timeout-ms",
       "200",
       "--interval-ms",
@@ -216,5 +219,31 @@ test("health smoke script reports metadata mismatches in the timeout summary", a
 
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Last failure: json_fallbackMode_mismatch\(expected="tool_timeout",actual="operator_override"\)/);
+  });
+});
+
+test("health smoke script reports missing runtime seams in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, runtimeSeams: ["mocked telephony ingress"] }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-runtime-seam",
+      "flow engine",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_runtimeSeams_missing\(expected="flow engine",actual=\["mocked telephony ingress"\]\)/);
   });
 });

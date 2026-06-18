@@ -8,6 +8,7 @@ function parseArgs(argv) {
     expectProvider: undefined,
     expectOperatorChannel: undefined,
     expectFallbackMode: undefined,
+    expectRuntimeSeam: undefined,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -58,6 +59,12 @@ function parseArgs(argv) {
 
     if (arg === '--expect-fallback-mode' && next) {
       args.expectFallbackMode = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-runtime-seam' && next) {
+      args.expectRuntimeSeam = next;
       index += 1;
     }
   }
@@ -115,6 +122,14 @@ async function getFailureReason(response, args) {
 
     if (payload[field] !== expectedValue) {
       return `json_${field}_mismatch(expected=${JSON.stringify(expectedValue)},actual=${JSON.stringify(payload[field])})`;
+    }
+  }
+
+  if (args.expectRuntimeSeam !== undefined) {
+    const runtimeSeams = payload.runtimeSeams;
+
+    if (!Array.isArray(runtimeSeams) || !runtimeSeams.includes(args.expectRuntimeSeam)) {
+      return `json_runtimeSeams_missing(expected=${JSON.stringify(args.expectRuntimeSeam)},actual=${JSON.stringify(runtimeSeams)})`;
     }
   }
 
