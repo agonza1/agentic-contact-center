@@ -7,6 +7,7 @@ function parseArgs(argv) {
     expectMode: undefined,
     expectProvider: undefined,
     expectOperatorChannel: undefined,
+    expectFallbackMode: undefined,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -51,6 +52,12 @@ function parseArgs(argv) {
 
     if (arg === '--expect-operator-channel' && next) {
       args.expectOperatorChannel = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-fallback-mode' && next) {
+      args.expectFallbackMode = next;
       index += 1;
     }
   }
@@ -98,6 +105,7 @@ async function getFailureReason(response, args) {
     ['mode', args.expectMode],
     ['provider', args.expectProvider],
     ['operatorChannel', args.expectOperatorChannel],
+    ['fallbackMode', args.expectFallbackMode],
   ];
 
   for (const [field, expectedValue] of expectations) {

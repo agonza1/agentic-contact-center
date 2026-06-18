@@ -163,6 +163,7 @@ test("health smoke script can assert expected health metadata", async () => {
         mode: "mocked_telephony",
         provider: "signalwire",
         operatorChannel: "slack",
+        fallbackMode: "tool_timeout",
       }),
     );
   }, async (port) => {
@@ -177,6 +178,8 @@ test("health smoke script can assert expected health metadata", async () => {
       "signalwire",
       "--expect-operator-channel",
       "slack",
+      "--expect-fallback-mode",
+      "tool_timeout",
       "--timeout-ms",
       "200",
       "--interval-ms",
@@ -196,13 +199,15 @@ test("health smoke script reports metadata mismatches in the timeout summary", a
     }
 
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ok: true, provider: "twilio" }));
+    response.end(JSON.stringify({ ok: true, provider: "signalwire", fallbackMode: "operator_override" }));
   }, async (port) => {
     const result = await runProbe([
       "--url",
       `http://127.0.0.1:${port}/health`,
       "--expect-provider",
       "signalwire",
+      "--expect-fallback-mode",
+      "tool_timeout",
       "--timeout-ms",
       "200",
       "--interval-ms",
@@ -210,6 +215,6 @@ test("health smoke script reports metadata mismatches in the timeout summary", a
     ]);
 
     assert.equal(result.code, 1);
-    assert.match(result.stderr, /Last failure: json_provider_mismatch/);
+    assert.match(result.stderr, /Last failure: json_fallbackMode_mismatch/);
   });
 });
