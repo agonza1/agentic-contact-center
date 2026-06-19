@@ -128,6 +128,7 @@ function buildEventTrailPayload(
         limit: limit ?? null,
         totalFilteredEvents: filteredEvents.length,
         hasMore: limit === undefined ? false : offset + events.length < filteredEvents.length,
+        nextOffset: limit !== undefined && offset + events.length < filteredEvents.length ? offset + events.length : null,
       },
       latestEventType: latestFilteredEvent?.type ?? null,
       latestEventAt: latestFilteredEvent?.at ?? null,

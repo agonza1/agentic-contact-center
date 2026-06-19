@@ -89,6 +89,7 @@ interface EventTrailPayload {
       limit: number | null;
       totalFilteredEvents: number;
       hasMore: boolean;
+      nextOffset: number | null;
     };
     latestEventType: string | null;
     latestEventAt: string | null;
@@ -2017,6 +2018,7 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
       limit: null,
       totalFilteredEvents: allEventsPayload.summary.totalEvents,
       hasMore: false,
+      nextOffset: null,
     });
     assert.equal(allEventsPayload.events.some((event) => event.type === "caller_turn_appended"), true);
 
@@ -2079,6 +2081,7 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
       limit: 2,
       totalFilteredEvents: allEventsPayload.summary.totalEvents,
       hasMore: allEventsPayload.summary.totalEvents > 3,
+      nextOffset: allEventsPayload.summary.totalEvents > 3 ? 3 : null,
     });
 
     const invalidType = await requestJson(port, "GET", `/api/calls/${callId}/events?type=%20%20`);
