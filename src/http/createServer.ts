@@ -110,6 +110,7 @@ function buildEventTrailPayload(
   const orderedEvents = order === "asc" ? filteredEvents : [...filteredEvents].reverse();
   const events = orderedEvents.slice(offset, limit === undefined ? undefined : offset + limit);
   const latestFilteredEvent = filteredEvents.at(-1);
+  const lastReturnedEvent = events.at(-1);
 
   return {
     callId: snapshot.session.callId,
@@ -130,6 +131,8 @@ function buildEventTrailPayload(
       },
       latestEventType: latestFilteredEvent?.type ?? null,
       latestEventAt: latestFilteredEvent?.at ?? null,
+      lastReturnedEventType: lastReturnedEvent?.type ?? null,
+      lastReturnedEventAt: lastReturnedEvent?.at ?? null,
     },
   };
 }
