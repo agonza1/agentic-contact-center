@@ -94,12 +94,19 @@ function buildCallPayload(snapshot: CallSnapshot) {
   };
 }
 
-function buildEventTrailPayload(snapshot: CallSnapshot, eventType?: string, since?: string) {
-  const events = snapshot.events.filter((event) => {
+function buildEventTrailPayload(
+  snapshot: CallSnapshot,
+  eventType?: string,
+  since?: string,
+  offset = 0,
+  limit?: number,
+) {
+  const filteredEvents = snapshot.events.filter((event) => {
     const matchesType = eventType === undefined || event.type === eventType;
     const matchesSince = since === undefined || compareTimestamps(event.at, since) >= 0;
     return matchesType && matchesSince;
   });
+  const events = filteredEvents.slice(offset, limit === undefined ? undefined : offset + limit);
 
   return {
     callId: snapshot.session.callId,
@@ -111,6 +118,12 @@ function buildEventTrailPayload(snapshot: CallSnapshot, eventType?: string, sinc
       returnedEvents: events.length,
       filteredType: eventType ?? null,
       filteredSince: since ?? null,
+      page: {
+        offset,
+        limit: limit ?? null,
+        totalFilteredEvents: filteredEvents.length,
+        hasMore: limit === undefined ? false : offset + events.length < filteredEvents.length,
+      },
       latestEventType: events.at(-1)?.type ?? null,
       latestEventAt: events.at(-1)?.at ?? null,
     },
@@ -725,13 +738,25 @@ async function routeRequest(
       return;
     }
 
+    const offset = parseOptionalNonNegativeIntegerFilter(requestUrl.searchParams.get("offset"), "event_offset_invalid");
+    if (offset !== undefined && typeof offset !== "number") {
+      writeBadRequest(response, offset.error);
+      return;
+    }
+
+    const limit = parseOptionalPositiveIntegerFilter(requestUrl.searchParams.get("limit"), "event_limit_invalid");
+    if (limit !== undefined && typeof limit !== "number") {
+      writeBadRequest(response, limit.error);
+      return;
+    }
+
     const snapshot = await ingress.getSnapshot(callEventsMatch[1]);
     if (!snapshot) {
       writeNotFound(response);
       return;
     }
 
-    writeJson(response, 200, buildEventTrailPayload(snapshot, type?.trim() || undefined, since));
+    writeJson(response, 200, buildEventTrailPayload(snapshot, type?.trim() || undefined, since, offset, limit));
     return;
   }
 
