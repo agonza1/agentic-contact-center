@@ -2112,6 +2112,13 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
       error: "event_limit_invalid",
     });
 
+    const oversizedLimit = await requestJson(port, "GET", `/api/calls/${callId}/events?limit=101`);
+    assert.equal(oversizedLimit.statusCode, 400);
+    assert.deepEqual(oversizedLimit.payload, {
+      ok: false,
+      error: "event_limit_invalid",
+    });
+
     const invalidOrder = await requestJson(port, "GET", `/api/calls/${callId}/events?order=latest`);
     assert.equal(invalidOrder.statusCode, 400);
     assert.deepEqual(invalidOrder.payload, {

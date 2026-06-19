@@ -25,6 +25,8 @@ const flowStates = new Set<FlowState>([
   "wrap",
 ]);
 
+const maxEventTrailPageLimit = 100;
+
 function writeJson(response: ServerResponse, statusCode: number, payload: object): void {
   response.statusCode = statusCode;
   response.setHeader("content-type", "application/json; charset=utf-8");
@@ -755,6 +757,11 @@ async function routeRequest(
     const limit = parseOptionalPositiveIntegerFilter(requestUrl.searchParams.get("limit"), "event_limit_invalid");
     if (limit !== undefined && typeof limit !== "number") {
       writeBadRequest(response, limit.error);
+      return;
+    }
+
+    if (limit !== undefined && limit > maxEventTrailPageLimit) {
+      writeBadRequest(response, "event_limit_invalid");
       return;
     }
 
