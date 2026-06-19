@@ -68,6 +68,7 @@ interface CallListPayload extends QueueSummaryPayload {
       limit: number | null;
       totalFilteredCalls: number;
       hasMore: boolean;
+      nextOffset: number | null;
     };
     filteredSummary: QueueSummaryPayload["summary"];
   };
@@ -433,6 +434,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
         limit: null,
         totalFilteredCalls: 0,
         hasMore: false,
+        nextOffset: null,
       },
       pendingOperatorSteer: 0,
       fallbackArmed: 0,
@@ -531,6 +533,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
         limit: null,
         totalFilteredCalls: 2,
         hasMore: false,
+        nextOffset: null,
       },
       pendingOperatorSteer: 0,
       fallbackArmed: 0,
@@ -675,13 +678,14 @@ test("GET /api/calls can limit active demo call payloads", async () => {
     assert.equal(limited.statusCode, 200);
     assert.deepEqual(limitedPayload.calls.map((call) => call.session.callId), [firstCallId]);
     assert.equal(limitedPayload.summary.totalCalls, 2);
-    assert.equal(limitedPayload.summary.filteredCalls, 1);
+    assert.equal(limitedPayload.summary.filteredCalls, 2);
     assert.equal(limitedPayload.summary.returnedCalls, 1);
     assert.deepEqual(limitedPayload.summary.page, {
       offset: 0,
       limit: 1,
       totalFilteredCalls: 2,
       hasMore: true,
+      nextOffset: 1,
     });
     assert.equal(limitedPayload.summary.filteredSummary.totalCalls, 2);
 
@@ -698,6 +702,7 @@ test("GET /api/calls can limit active demo call payloads", async () => {
       limit: 1,
       totalFilteredCalls: 1,
       hasMore: false,
+      nextOffset: null,
     });
     assert.equal(filteredLimitedPayload.summary.filteredSummary.totalCalls, 1);
 
@@ -707,13 +712,14 @@ test("GET /api/calls can limit active demo call payloads", async () => {
     assert.equal(offsetLimited.statusCode, 200);
     assert.deepEqual(offsetLimitedPayload.calls.map((call) => call.session.callId), [secondCallId]);
     assert.equal(offsetLimitedPayload.summary.totalCalls, 2);
-    assert.equal(offsetLimitedPayload.summary.filteredCalls, 1);
+    assert.equal(offsetLimitedPayload.summary.filteredCalls, 2);
     assert.equal(offsetLimitedPayload.summary.returnedCalls, 1);
     assert.deepEqual(offsetLimitedPayload.summary.page, {
       offset: 1,
       limit: 1,
       totalFilteredCalls: 2,
       hasMore: false,
+      nextOffset: null,
     });
     assert.equal(offsetLimitedPayload.summary.filteredSummary.totalCalls, 2);
 
@@ -722,13 +728,14 @@ test("GET /api/calls can limit active demo call payloads", async () => {
 
     assert.equal(offsetOnly.statusCode, 200);
     assert.deepEqual(offsetOnlyPayload.calls.map((call) => call.session.callId), [secondCallId]);
-    assert.equal(offsetOnlyPayload.summary.filteredCalls, 1);
+    assert.equal(offsetOnlyPayload.summary.filteredCalls, 2);
     assert.equal(offsetOnlyPayload.summary.returnedCalls, 1);
     assert.deepEqual(offsetOnlyPayload.summary.page, {
       offset: 1,
       limit: null,
       totalFilteredCalls: 2,
       hasMore: false,
+      nextOffset: null,
     });
 
     const invalidLimit = await requestJson(port, "GET", "/api/calls?limit=0");
