@@ -34,6 +34,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         requiredEventTypes: string[];
         queueAttentionFilter: string;
         callAttentionSort: string;
+        fallbackSourceTrail: string;
       };
       health: { ok: boolean };
       gitRevision: string | null;
@@ -44,6 +45,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           requiredEventTypes: string[];
           queueAttentionFilter: string;
           callAttentionSort: string;
+          fallbackSourceTrail: string;
         };
         queueAttention: {
           attentionRequired: number;
@@ -61,6 +63,12 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           firstCallId: string;
           firstAttentionStartedAt: string | null;
           filteredSummary: { totalCalls: number; attentionRequired: number };
+        };
+        fallbackSourceTrail: {
+          route: string;
+          returnedEvents: number;
+          filteredSource: string | null;
+          eventTypes: string[];
         };
         healthOk: boolean;
         gitRevision: string | null;
@@ -82,7 +90,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         };
       };
       scripted: { outcome: string; checkpoints: { wrapped: { pipecatFlow: { script: { completed: boolean } } } } };
-      fallback: { outcome: string; checkpoint: { demoFallback: { mode: string | null } } };
+      fallback: { outcome: string; callId: string; checkpoint: { demoFallback: { mode: string | null } } };
     };
 
     const latestArtifact = JSON.parse(await readFile(latestOutputPath, "utf8")) as typeof artifact;
@@ -94,6 +102,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.proofContract.requiredEventTypes.includes("human_handoff_started"), true);
     assert.equal(artifact.proofContract.queueAttentionFilter, "attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget");
     assert.equal(artifact.proofContract.callAttentionSort, "attentionRequired=true&sort=attentionStartedAt&limit=1");
+    assert.equal(artifact.proofContract.fallbackSourceTrail, "events?source=tool_timeout_fail_closed");
     assert.equal(artifact.summary.schemaVersion, 1);
     assert.deepEqual(artifact.summary.proofContract, artifact.proofContract);
     assert.equal(artifact.health.ok, true);
@@ -114,6 +123,10 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.callAttentionList.firstAttentionStartedAt, artifact.summary.queueAttention.oldestAttentionStartedAt);
     assert.equal(artifact.summary.callAttentionList.filteredSummary.totalCalls, 1);
     assert.equal(artifact.summary.callAttentionList.filteredSummary.attentionRequired, 1);
+    assert.equal(artifact.summary.fallbackSourceTrail.route, "calls/" + artifact.fallback.callId + "/events?source=tool_timeout_fail_closed");
+    assert.equal(artifact.summary.fallbackSourceTrail.returnedEvents, 1);
+    assert.equal(artifact.summary.fallbackSourceTrail.filteredSource, "tool_timeout_fail_closed");
+    assert.deepEqual(artifact.summary.fallbackSourceTrail.eventTypes, ["human_handoff_started"]);
     assert.equal(artifact.scripted.outcome, "scripted_wrap_complete");
     assert.equal(artifact.scripted.checkpoints.wrapped.pipecatFlow.script.completed, true);
     assert.equal(artifact.summary.scripted.flowState, "wrap");
