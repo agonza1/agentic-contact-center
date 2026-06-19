@@ -232,6 +232,23 @@ async function getAttentionSortedCallList(port) {
   };
 }
 
+async function getFallbackSourceTrail(port, callId) {
+  const trail = await requestJson(port, "GET", `/api/calls/${callId}/events?source=tool_timeout_fail_closed`);
+  assert.equal(trail.statusCode, 200);
+  assert.equal(trail.payload.summary.filteredSource, "tool_timeout_fail_closed");
+  assert.deepEqual(
+    trail.payload.events.map((event) => event.type),
+    ["human_handoff_started"],
+  );
+
+  return {
+    route: `calls/${callId}/events?source=tool_timeout_fail_closed`,
+    returnedEvents: trail.payload.summary.returnedEvents,
+    filteredSource: trail.payload.summary.filteredSource,
+    eventTypes: trail.payload.events.map((event) => event.type),
+  };
+}
+
 async function getGitRevision() {
   try {
     const { stdout } = await execFileAsync("git", ["rev-parse", "--short=12", "HEAD"], {
@@ -277,6 +294,7 @@ function summarizeArtifact(artifact) {
       oldestAttentionSource: artifact.queueAttention.oldestAttentionSource,
     },
     callAttentionList: artifact.callAttentionList,
+    fallbackSourceTrail: artifact.fallbackSourceTrail,
     scripted: {
       outcome: artifact.scripted.outcome,
       callId: artifact.scripted.callId,
@@ -303,6 +321,7 @@ async function main() {
     const fallback = await runFallbackScenario(port);
     const queueAttention = await getQueueAttentionSummary(port);
     const callAttentionList = await getAttentionSortedCallList(port);
+    const fallbackSourceTrail = await getFallbackSourceTrail(port, fallback.callId);
 
     return {
       schemaVersion: 1,
@@ -315,10 +334,12 @@ async function main() {
         requiredEventTypes: ["policy_hold_entered", "demo_fallback_triggered", "human_handoff_started"],
         queueAttentionFilter: "attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget",
         callAttentionSort: "attentionRequired=true&sort=attentionStartedAt&limit=1",
+        fallbackSourceTrail: "events?source=tool_timeout_fail_closed",
       },
       health: health.payload,
       queueAttention,
       callAttentionList,
+      fallbackSourceTrail,
       scripted,
       fallback,
     };
