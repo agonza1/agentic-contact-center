@@ -83,6 +83,7 @@ interface EventTrailPayload {
     returnedEvents: number;
     filteredType: string | null;
     filteredSince: string | null;
+    order: "asc" | "desc";
     page: {
       offset: number;
       limit: number | null;
@@ -2008,6 +2009,7 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.equal(allEventsPayload.summary.returnedEvents, allEventsPayload.events.length);
     assert.equal(allEventsPayload.summary.filteredType, null);
     assert.equal(allEventsPayload.summary.filteredSince, null);
+    assert.equal(allEventsPayload.summary.order, "asc");
     assert.deepEqual(allEventsPayload.summary.page, {
       offset: 0,
       limit: null,
@@ -2048,6 +2050,17 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.equal(filteredPayload.summary.latestEventType, "caller_turn_appended");
     assert.deepEqual(filteredPayload.events.map((event) => event.type), ["caller_turn_appended"]);
 
+    const descendingEvents = await requestJson(port, "GET", `/api/calls/${callId}/events?order=desc&limit=2`);
+    const descendingPayload = descendingEvents.payload as EventTrailPayload;
+
+    assert.equal(descendingEvents.statusCode, 200);
+    assert.equal(descendingPayload.summary.order, "desc");
+    assert.deepEqual(
+      descendingPayload.events.map((event) => event.type),
+      [...allEventsPayload.events].reverse().slice(0, 2).map((event) => event.type),
+    );
+    assert.equal(descendingPayload.summary.latestEventType, allEventsPayload.events.at(-1)?.type);
+
     const pagedEvents = await requestJson(port, "GET", `/api/calls/${callId}/events?offset=1&limit=2`);
     const pagedPayload = pagedEvents.payload as EventTrailPayload;
 
@@ -2086,6 +2099,13 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.deepEqual(invalidLimit.payload, {
       ok: false,
       error: "event_limit_invalid",
+    });
+
+    const invalidOrder = await requestJson(port, "GET", `/api/calls/${callId}/events?order=latest`);
+    assert.equal(invalidOrder.statusCode, 400);
+    assert.deepEqual(invalidOrder.payload, {
+      ok: false,
+      error: "event_order_invalid",
     });
 
     const missing = await requestJson(port, "GET", "/api/calls/missing-call/events");

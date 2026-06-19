@@ -100,13 +100,16 @@ function buildEventTrailPayload(
   since?: string,
   offset = 0,
   limit?: number,
+  order: "asc" | "desc" = "asc",
 ) {
   const filteredEvents = snapshot.events.filter((event) => {
     const matchesType = eventType === undefined || event.type === eventType;
     const matchesSince = since === undefined || compareTimestamps(event.at, since) >= 0;
     return matchesType && matchesSince;
   });
-  const events = filteredEvents.slice(offset, limit === undefined ? undefined : offset + limit);
+  const orderedEvents = order === "asc" ? filteredEvents : [...filteredEvents].reverse();
+  const events = orderedEvents.slice(offset, limit === undefined ? undefined : offset + limit);
+  const latestFilteredEvent = filteredEvents.at(-1);
 
   return {
     callId: snapshot.session.callId,
@@ -118,14 +121,15 @@ function buildEventTrailPayload(
       returnedEvents: events.length,
       filteredType: eventType ?? null,
       filteredSince: since ?? null,
+      order,
       page: {
         offset,
         limit: limit ?? null,
         totalFilteredEvents: filteredEvents.length,
         hasMore: limit === undefined ? false : offset + events.length < filteredEvents.length,
       },
-      latestEventType: events.at(-1)?.type ?? null,
-      latestEventAt: events.at(-1)?.at ?? null,
+      latestEventType: latestFilteredEvent?.type ?? null,
+      latestEventAt: latestFilteredEvent?.at ?? null,
     },
   };
 }
@@ -750,13 +754,19 @@ async function routeRequest(
       return;
     }
 
+    const orderParam = requestUrl.searchParams.get("order");
+    if (orderParam !== null && orderParam !== "asc" && orderParam !== "desc") {
+      writeBadRequest(response, "event_order_invalid");
+      return;
+    }
+
     const snapshot = await ingress.getSnapshot(callEventsMatch[1]);
     if (!snapshot) {
       writeNotFound(response);
       return;
     }
 
-    writeJson(response, 200, buildEventTrailPayload(snapshot, type?.trim() || undefined, since, offset, limit));
+    writeJson(response, 200, buildEventTrailPayload(snapshot, type?.trim() || undefined, since, offset, limit, orderParam ?? "asc"));
     return;
   }
 
