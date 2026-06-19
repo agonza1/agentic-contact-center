@@ -719,13 +719,14 @@ async function routeRequest(
       calls,
       summary: {
         ...summary,
-        filteredCalls: calls.length,
+        filteredCalls: orderedSnapshots.length,
         returnedCalls: calls.length,
         page: {
           offset: offset ?? 0,
           limit: limit ?? null,
           totalFilteredCalls: orderedSnapshots.length,
           hasMore: limit === undefined ? false : (offset ?? 0) + calls.length < orderedSnapshots.length,
+          nextOffset: limit !== undefined && (offset ?? 0) + calls.length < orderedSnapshots.length ? (offset ?? 0) + calls.length : null,
         },
         filteredSummary,
       },
