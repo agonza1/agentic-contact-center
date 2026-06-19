@@ -25,6 +25,8 @@ const flowStates = new Set<FlowState>([
   "wrap",
 ]);
 
+const maxEventTrailPageLimit = 100;
+
 function writeJson(response: ServerResponse, statusCode: number, payload: object): void {
   response.statusCode = statusCode;
   response.setHeader("content-type", "application/json; charset=utf-8");
@@ -94,12 +96,23 @@ function buildCallPayload(snapshot: CallSnapshot) {
   };
 }
 
-function buildEventTrailPayload(snapshot: CallSnapshot, eventType?: string, since?: string) {
-  const events = snapshot.events.filter((event) => {
+function buildEventTrailPayload(
+  snapshot: CallSnapshot,
+  eventType?: string,
+  since?: string,
+  offset = 0,
+  limit?: number,
+  order: "asc" | "desc" = "asc",
+) {
+  const filteredEvents = snapshot.events.filter((event) => {
     const matchesType = eventType === undefined || event.type === eventType;
     const matchesSince = since === undefined || compareTimestamps(event.at, since) >= 0;
     return matchesType && matchesSince;
   });
+  const orderedEvents = order === "asc" ? filteredEvents : [...filteredEvents].reverse();
+  const events = orderedEvents.slice(offset, limit === undefined ? undefined : offset + limit);
+  const latestFilteredEvent = filteredEvents.at(-1);
+  const lastReturnedEvent = events.at(-1);
 
   return {
     callId: snapshot.session.callId,
@@ -111,8 +124,18 @@ function buildEventTrailPayload(snapshot: CallSnapshot, eventType?: string, sinc
       returnedEvents: events.length,
       filteredType: eventType ?? null,
       filteredSince: since ?? null,
-      latestEventType: events.at(-1)?.type ?? null,
-      latestEventAt: events.at(-1)?.at ?? null,
+      order,
+      page: {
+        offset,
+        limit: limit ?? null,
+        totalFilteredEvents: filteredEvents.length,
+        hasMore: limit === undefined ? false : offset + events.length < filteredEvents.length,
+        nextOffset: limit !== undefined && offset + events.length < filteredEvents.length ? offset + events.length : null,
+      },
+      latestEventType: latestFilteredEvent?.type ?? null,
+      latestEventAt: latestFilteredEvent?.at ?? null,
+      lastReturnedEventType: lastReturnedEvent?.type ?? null,
+      lastReturnedEventAt: lastReturnedEvent?.at ?? null,
     },
   };
 }
@@ -725,13 +748,36 @@ async function routeRequest(
       return;
     }
 
+    const offset = parseOptionalNonNegativeIntegerFilter(requestUrl.searchParams.get("offset"), "event_offset_invalid");
+    if (offset !== undefined && typeof offset !== "number") {
+      writeBadRequest(response, offset.error);
+      return;
+    }
+
+    const limit = parseOptionalPositiveIntegerFilter(requestUrl.searchParams.get("limit"), "event_limit_invalid");
+    if (limit !== undefined && typeof limit !== "number") {
+      writeBadRequest(response, limit.error);
+      return;
+    }
+
+    if (limit !== undefined && limit > maxEventTrailPageLimit) {
+      writeBadRequest(response, "event_limit_invalid");
+      return;
+    }
+
+    const orderParam = requestUrl.searchParams.get("order");
+    if (orderParam !== null && orderParam !== "asc" && orderParam !== "desc") {
+      writeBadRequest(response, "event_order_invalid");
+      return;
+    }
+
     const snapshot = await ingress.getSnapshot(callEventsMatch[1]);
     if (!snapshot) {
       writeNotFound(response);
       return;
     }
 
-    writeJson(response, 200, buildEventTrailPayload(snapshot, type?.trim() || undefined, since));
+    writeJson(response, 200, buildEventTrailPayload(snapshot, type?.trim() || undefined, since, offset, limit, orderParam ?? "asc"));
     return;
   }
 
