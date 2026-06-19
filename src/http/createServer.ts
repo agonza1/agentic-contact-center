@@ -99,6 +99,7 @@ function buildCallPayload(snapshot: CallSnapshot) {
 function buildEventTrailPayload(
   snapshot: CallSnapshot,
   eventType?: string,
+  source?: string,
   since?: string,
   offset = 0,
   limit?: number,
@@ -106,8 +107,9 @@ function buildEventTrailPayload(
 ) {
   const filteredEvents = snapshot.events.filter((event) => {
     const matchesType = eventType === undefined || event.type === eventType;
+    const matchesSource = source === undefined || event.detail.source === source;
     const matchesSince = since === undefined || compareTimestamps(event.at, since) >= 0;
-    return matchesType && matchesSince;
+    return matchesType && matchesSource && matchesSince;
   });
   const orderedEvents = order === "asc" ? filteredEvents : [...filteredEvents].reverse();
   const events = orderedEvents.slice(offset, limit === undefined ? undefined : offset + limit);
@@ -123,6 +125,7 @@ function buildEventTrailPayload(
       totalEvents: snapshot.events.length,
       returnedEvents: events.length,
       filteredType: eventType ?? null,
+      filteredSource: source ?? null,
       filteredSince: since ?? null,
       order,
       page: {
@@ -742,6 +745,12 @@ async function routeRequest(
       return;
     }
 
+    const source = requestUrl.searchParams.get("source");
+    if (source !== null && !source.trim()) {
+      writeBadRequest(response, "event_source_invalid");
+      return;
+    }
+
     const sinceParam = requestUrl.searchParams.get("since");
     const since = sinceParam === null ? undefined : normalizeTimestamp(sinceParam, "event_since_invalid");
     if (since !== undefined && typeof since !== "string") {
@@ -778,7 +787,19 @@ async function routeRequest(
       return;
     }
 
-    writeJson(response, 200, buildEventTrailPayload(snapshot, type?.trim() || undefined, since, offset, limit, orderParam ?? "asc"));
+    writeJson(
+      response,
+      200,
+      buildEventTrailPayload(
+        snapshot,
+        type?.trim() || undefined,
+        source?.trim() || undefined,
+        since,
+        offset,
+        limit,
+        orderParam ?? "asc",
+      ),
+    );
     return;
   }
 

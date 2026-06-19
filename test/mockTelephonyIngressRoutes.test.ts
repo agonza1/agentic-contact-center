@@ -83,6 +83,7 @@ interface EventTrailPayload {
     totalEvents: number;
     returnedEvents: number;
     filteredType: string | null;
+    filteredSource: string | null;
     filteredSince: string | null;
     order: "asc" | "desc";
     page: {
@@ -2018,6 +2019,7 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.equal(allEventsPayload.summary.totalEvents, allEventsPayload.events.length);
     assert.equal(allEventsPayload.summary.returnedEvents, allEventsPayload.events.length);
     assert.equal(allEventsPayload.summary.filteredType, null);
+    assert.equal(allEventsPayload.summary.filteredSource, null);
     assert.equal(allEventsPayload.summary.filteredSince, null);
     assert.equal(allEventsPayload.summary.order, "asc");
     assert.deepEqual(allEventsPayload.summary.page, {
@@ -2039,6 +2041,7 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.equal(sinceFilteredEvents.statusCode, 200);
     assert.equal(sinceFilteredPayload.summary.totalEvents, allEventsPayload.summary.totalEvents);
     assert.equal(sinceFilteredPayload.summary.filteredType, "caller_turn_appended");
+    assert.equal(sinceFilteredPayload.summary.filteredSource, null);
     assert.equal(sinceFilteredPayload.summary.filteredSince, "2026-06-10T14:00:00.000Z");
     assert.deepEqual(sinceFilteredPayload.events.map((event) => event.type), ["caller_turn_appended"]);
 
@@ -2059,6 +2062,7 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.equal(filteredPayload.summary.totalEvents, allEventsPayload.summary.totalEvents);
     assert.equal(filteredPayload.summary.returnedEvents, 1);
     assert.equal(filteredPayload.summary.filteredType, "caller_turn_appended");
+    assert.equal(filteredPayload.summary.filteredSource, null);
     assert.equal(filteredPayload.summary.filteredSince, null);
     assert.equal(filteredPayload.summary.latestEventType, "caller_turn_appended");
     assert.equal(filteredPayload.summary.lastReturnedEventType, "caller_turn_appended");
@@ -2091,11 +2095,39 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
       nextOffset: allEventsPayload.summary.totalEvents > 3 ? 3 : null,
     });
 
+    await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {
+      mode: "tool_timeout",
+      reason: "operator audit source filter",
+      timestamp: "2026-06-10T14:00:15.000Z",
+    });
+
+    const sourceFilteredEvents = await requestJson(port, "GET", `/api/calls/${callId}/events?source=mock_http_route`);
+    const sourceFilteredPayload = sourceFilteredEvents.payload as EventTrailPayload;
+
+    assert.equal(sourceFilteredEvents.statusCode, 200);
+    assert.equal(sourceFilteredPayload.summary.filteredSource, "mock_http_route");
+    assert.equal(sourceFilteredPayload.summary.filteredType, null);
+    assert.deepEqual(sourceFilteredPayload.events.map((event) => event.type), ["demo_fallback_triggered"]);
+
+    const handoffSourceEvents = await requestJson(port, "GET", `/api/calls/${callId}/events?source=tool_timeout_fail_closed`);
+    const handoffSourcePayload = handoffSourceEvents.payload as EventTrailPayload;
+
+    assert.equal(handoffSourceEvents.statusCode, 200);
+    assert.equal(handoffSourcePayload.summary.filteredSource, "tool_timeout_fail_closed");
+    assert.deepEqual(handoffSourcePayload.events.map((event) => event.type), ["human_handoff_started"]);
+
     const invalidType = await requestJson(port, "GET", `/api/calls/${callId}/events?type=%20%20`);
     assert.equal(invalidType.statusCode, 400);
     assert.deepEqual(invalidType.payload, {
       ok: false,
       error: "event_type_invalid",
+    });
+
+    const invalidSource = await requestJson(port, "GET", `/api/calls/${callId}/events?source=%20%20`);
+    assert.equal(invalidSource.statusCode, 400);
+    assert.deepEqual(invalidSource.payload, {
+      ok: false,
+      error: "event_source_invalid",
     });
 
     const invalidSince = await requestJson(port, "GET", `/api/calls/${callId}/events?since=not-a-date`);
