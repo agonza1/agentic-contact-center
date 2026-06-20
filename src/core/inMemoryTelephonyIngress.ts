@@ -242,6 +242,7 @@ export class InMemoryTelephonyIngress {
     openclawSessionRef?: string;
     callId?: string;
     providerCallId?: string;
+    transcriptText?: string;
     minAttentionAgeMs?: number;
   } = {}): Promise<CallSnapshot[]> {
     return this.getSnapshots(filters).map((snapshot) => cloneSnapshot(snapshot));
@@ -259,6 +260,7 @@ export class InMemoryTelephonyIngress {
     openclawSessionRef?: string;
     callId?: string;
     providerCallId?: string;
+    transcriptText?: string;
     minAttentionAgeMs?: number;
   } = {}): CallSnapshot[] {
     return [...this.calls.values()]
@@ -312,6 +314,14 @@ export class InMemoryTelephonyIngress {
       .filter((snapshot) =>
         filters.providerCallId === undefined ? true : snapshot.session.providerCallId === filters.providerCallId,
       )
+      .filter((snapshot) => {
+        if (filters.transcriptText === undefined) {
+          return true;
+        }
+
+        const normalizedText = filters.transcriptText.toLocaleLowerCase();
+        return snapshot.transcript.some((turn) => turn.text.toLocaleLowerCase().includes(normalizedText));
+      })
       .filter((snapshot) =>
         filters.openclawSessionId === undefined
           ? true
@@ -347,6 +357,7 @@ export class InMemoryTelephonyIngress {
     openclawSessionRef?: string;
     callId?: string;
     providerCallId?: string;
+    transcriptText?: string;
     minAttentionAgeMs?: number;
   } = {}): Promise<{
     totalCalls: number;

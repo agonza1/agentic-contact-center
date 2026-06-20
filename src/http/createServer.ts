@@ -371,6 +371,7 @@ interface CallListFilters {
   openclawSessionRef?: string;
   callId?: string;
   providerCallId?: string;
+  transcriptText?: string;
   minAttentionAgeMs?: number;
 }
 
@@ -445,6 +446,11 @@ function parseCallListFilters(
     return { error: `${invalidPrefix}_provider_call_id_invalid` };
   }
 
+  const transcriptText = requestUrl.searchParams.get("transcriptText");
+  if (transcriptText !== null && !transcriptText.trim()) {
+    return { error: `${invalidPrefix}_transcript_text_invalid` };
+  }
+
   const minAttentionAgeMs = parseOptionalNonNegativeIntegerFilter(
     requestUrl.searchParams.get("minAttentionAgeMs"),
     `${invalidPrefix}_min_attention_age_ms_invalid`,
@@ -465,6 +471,7 @@ function parseCallListFilters(
     openclawSessionRef: openclawSessionRef?.trim() || undefined,
     callId: callId?.trim() || undefined,
     providerCallId: providerCallId?.trim() || undefined,
+    transcriptText: transcriptText?.trim() || undefined,
     minAttentionAgeMs,
   };
 }
