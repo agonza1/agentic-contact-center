@@ -27,6 +27,7 @@ const flowStates = new Set<FlowState>([
 
 const maxEventTrailPageLimit = 100;
 const maxTranscriptPageLimit = 100;
+const maxLatencyMarkPageLimit = 100;
 
 function writeJson(response: ServerResponse, statusCode: number, payload: object): void {
   response.statusCode = statusCode;
@@ -195,6 +196,53 @@ function buildTranscriptPayload(
       latestTurnAt: latestFilteredTurn?.timestamp ?? null,
       lastReturnedSpeaker: lastReturnedTurn?.speaker ?? null,
       lastReturnedTurnAt: lastReturnedTurn?.timestamp ?? null,
+    },
+  };
+}
+
+function buildLatencyPayload(
+  snapshot: CallSnapshot,
+  stage?: string,
+  overBudget?: boolean,
+  offset = 0,
+  limit?: number,
+  order: "asc" | "desc" = "asc",
+) {
+  const filteredMarks = snapshot.latencyMarks.filter((mark) => {
+    const matchesStage = stage === undefined || mark.stage === stage;
+    const isOverBudget = mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs;
+    const matchesOverBudget = overBudget === undefined || isOverBudget === overBudget;
+    return matchesStage && matchesOverBudget;
+  });
+  const orderedMarks = order === "asc" ? filteredMarks : [...filteredMarks].reverse();
+  const marks = orderedMarks.slice(offset, limit === undefined ? undefined : offset + limit);
+  const latestFilteredMark = filteredMarks.at(-1);
+  const lastReturnedMark = marks.at(-1);
+
+  return {
+    callId: snapshot.session.callId,
+    providerCallId: snapshot.session.providerCallId,
+    openclawSession: snapshot.session.openclawSession,
+    latencyBudgetsMs: snapshot.latencyBudgetsMs,
+    marks,
+    summary: {
+      totalMarks: snapshot.latencyMarks.length,
+      returnedMarks: marks.length,
+      filteredStage: stage ?? null,
+      filteredOverBudget: overBudget ?? null,
+      order,
+      page: {
+        offset,
+        limit: limit ?? null,
+        totalFilteredMarks: filteredMarks.length,
+        hasMore: limit === undefined ? false : offset + marks.length < filteredMarks.length,
+        nextOffset: limit !== undefined && offset + marks.length < filteredMarks.length ? offset + marks.length : null,
+      },
+      overBudgetMarks: filteredMarks.filter((mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs).length,
+      latestMarkStage: latestFilteredMark?.stage ?? null,
+      latestMarkAt: latestFilteredMark?.recordedAt ?? null,
+      lastReturnedMarkStage: lastReturnedMark?.stage ?? null,
+      lastReturnedMarkAt: lastReturnedMark?.recordedAt ?? null,
     },
   };
 }
@@ -959,6 +1007,60 @@ async function routeRequest(
         limit,
         orderParam ?? "asc",
       ),
+    );
+    return;
+  }
+
+  const callLatencyMatch = request.method === "GET" ? pathname.match(/^\/api\/calls\/([^/]+)\/latency$/) : null;
+  if (callLatencyMatch) {
+    const stage = requestUrl.searchParams.get("stage");
+    if (stage !== null && !stage.trim()) {
+      writeBadRequest(response, "latency_stage_invalid");
+      return;
+    }
+
+    const overBudget = parseOptionalBooleanFilter(
+      requestUrl.searchParams.get("overBudget"),
+      "latency_over_budget_invalid",
+    );
+    if (overBudget !== undefined && typeof overBudget !== "boolean") {
+      writeBadRequest(response, overBudget.error);
+      return;
+    }
+
+    const offset = parseOptionalNonNegativeIntegerFilter(requestUrl.searchParams.get("offset"), "latency_offset_invalid");
+    if (offset !== undefined && typeof offset !== "number") {
+      writeBadRequest(response, offset.error);
+      return;
+    }
+
+    const limit = parseOptionalPositiveIntegerFilter(requestUrl.searchParams.get("limit"), "latency_limit_invalid");
+    if (limit !== undefined && typeof limit !== "number") {
+      writeBadRequest(response, limit.error);
+      return;
+    }
+
+    if (limit !== undefined && limit > maxLatencyMarkPageLimit) {
+      writeBadRequest(response, "latency_limit_invalid");
+      return;
+    }
+
+    const orderParam = requestUrl.searchParams.get("order");
+    if (orderParam !== null && orderParam !== "asc" && orderParam !== "desc") {
+      writeBadRequest(response, "latency_order_invalid");
+      return;
+    }
+
+    const snapshot = await ingress.getSnapshot(callLatencyMatch[1]);
+    if (!snapshot) {
+      writeNotFound(response);
+      return;
+    }
+
+    writeJson(
+      response,
+      200,
+      buildLatencyPayload(snapshot, stage?.trim() || undefined, overBudget, offset, limit, orderParam ?? "asc"),
     );
     return;
   }

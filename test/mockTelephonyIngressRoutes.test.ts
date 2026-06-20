@@ -102,6 +102,33 @@ interface EventTrailPayload {
   };
 }
 
+interface LatencyPayload {
+  callId: string;
+  providerCallId: string;
+  openclawSession: { sessionId: string; label: string; status: string };
+  latencyBudgetsMs: Record<string, number>;
+  marks: Array<{ stage: string; recordedAt: string; elapsedMs: number; budgetMs: number | null }>;
+  summary: {
+    totalMarks: number;
+    returnedMarks: number;
+    filteredStage: string | null;
+    filteredOverBudget: boolean | null;
+    order: "asc" | "desc";
+    page: {
+      offset: number;
+      limit: number | null;
+      totalFilteredMarks: number;
+      hasMore: boolean;
+      nextOffset: number | null;
+    };
+    overBudgetMarks: number;
+    latestMarkStage: string | null;
+    latestMarkAt: string | null;
+    lastReturnedMarkStage: string | null;
+    lastReturnedMarkAt: string | null;
+  };
+}
+
 async function withServer<T>(run: (port: number) => Promise<T>): Promise<T> {
   const config = loadPocConfig();
   const server = buildHttpServer(config);
@@ -2188,6 +2215,108 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     });
 
     const missing = await requestJson(port, "GET", "/api/calls/missing-call/events");
+    assert.equal(missing.statusCode, 404);
+  });
+});
+
+test("GET /api/calls/:callId/latency returns filterable latency evidence", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "latency-session-01",
+      openclawSessionLabel: "latency/filterable",
+    });
+    const callId = (started.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+
+    const allLatency = await requestJson(port, "GET", `/api/calls/${callId}/latency`);
+    const allLatencyPayload = allLatency.payload as LatencyPayload;
+
+    assert.equal(allLatency.statusCode, 200);
+    assert.equal(allLatencyPayload.callId, callId);
+    assert.equal(allLatencyPayload.openclawSession.sessionId, "latency-session-01");
+    assert.equal(allLatencyPayload.latencyBudgetsMs.asrPartial, 500);
+    assert.equal(allLatencyPayload.summary.totalMarks, allLatencyPayload.marks.length);
+    assert.equal(allLatencyPayload.summary.returnedMarks, allLatencyPayload.marks.length);
+    assert.equal(allLatencyPayload.summary.filteredStage, null);
+    assert.equal(allLatencyPayload.summary.filteredOverBudget, null);
+    assert.equal(allLatencyPayload.summary.order, "asc");
+    assert.deepEqual(allLatencyPayload.summary.page, {
+      offset: 0,
+      limit: null,
+      totalFilteredMarks: allLatencyPayload.summary.totalMarks,
+      hasMore: false,
+      nextOffset: null,
+    });
+    assert.equal(allLatencyPayload.marks.some((mark) => mark.stage === "caller_turn_received"), true);
+
+    const stageFiltered = await requestJson(port, "GET", `/api/calls/${callId}/latency?stage=caller_turn_received`);
+    const stageFilteredPayload = stageFiltered.payload as LatencyPayload;
+
+    assert.equal(stageFiltered.statusCode, 200);
+    assert.equal(stageFilteredPayload.summary.filteredStage, "caller_turn_received");
+    assert.equal(stageFilteredPayload.summary.filteredOverBudget, null);
+    assert.equal(stageFilteredPayload.summary.latestMarkStage, "caller_turn_received");
+    assert.equal(stageFilteredPayload.summary.lastReturnedMarkStage, "caller_turn_received");
+    assert.deepEqual(stageFilteredPayload.marks.map((mark) => mark.stage), ["caller_turn_received"]);
+
+    const descendingPage = await requestJson(port, "GET", `/api/calls/${callId}/latency?order=desc&limit=2`);
+    const descendingPayload = descendingPage.payload as LatencyPayload;
+
+    assert.equal(descendingPage.statusCode, 200);
+    assert.equal(descendingPayload.summary.order, "desc");
+    assert.deepEqual(
+      descendingPayload.marks.map((mark) => mark.stage),
+      [...allLatencyPayload.marks].reverse().slice(0, 2).map((mark) => mark.stage),
+    );
+    assert.deepEqual(descendingPayload.summary.page, {
+      offset: 0,
+      limit: 2,
+      totalFilteredMarks: allLatencyPayload.summary.totalMarks,
+      hasMore: allLatencyPayload.summary.totalMarks > 2,
+      nextOffset: allLatencyPayload.summary.totalMarks > 2 ? 2 : null,
+    });
+
+    const overBudget = await requestJson(port, "GET", `/api/calls/${callId}/latency?overBudget=true`);
+    const overBudgetPayload = overBudget.payload as LatencyPayload;
+
+    assert.equal(overBudget.statusCode, 200);
+    assert.equal(overBudgetPayload.summary.filteredOverBudget, true);
+    assert.equal(overBudgetPayload.summary.overBudgetMarks, overBudgetPayload.marks.length);
+    assert.deepEqual(overBudgetPayload.marks, []);
+
+    const invalidStage = await requestJson(port, "GET", `/api/calls/${callId}/latency?stage=%20%20`);
+    assert.equal(invalidStage.statusCode, 400);
+    assert.deepEqual(invalidStage.payload, {
+      ok: false,
+      error: "latency_stage_invalid",
+    });
+
+    const invalidOverBudget = await requestJson(port, "GET", `/api/calls/${callId}/latency?overBudget=yes`);
+    assert.equal(invalidOverBudget.statusCode, 400);
+    assert.deepEqual(invalidOverBudget.payload, {
+      ok: false,
+      error: "latency_over_budget_invalid",
+    });
+
+    const invalidLimit = await requestJson(port, "GET", `/api/calls/${callId}/latency?limit=101`);
+    assert.equal(invalidLimit.statusCode, 400);
+    assert.deepEqual(invalidLimit.payload, {
+      ok: false,
+      error: "latency_limit_invalid",
+    });
+
+    const invalidOrder = await requestJson(port, "GET", `/api/calls/${callId}/latency?order=latest`);
+    assert.equal(invalidOrder.statusCode, 400);
+    assert.deepEqual(invalidOrder.payload, {
+      ok: false,
+      error: "latency_order_invalid",
+    });
+
+    const missing = await requestJson(port, "GET", "/api/calls/missing-call/latency");
     assert.equal(missing.statusCode, 404);
   });
 });
