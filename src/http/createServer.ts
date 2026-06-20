@@ -26,6 +26,7 @@ const flowStates = new Set<FlowState>([
 ]);
 
 const maxEventTrailPageLimit = 100;
+const maxTranscriptPageLimit = 100;
 
 function writeJson(response: ServerResponse, statusCode: number, payload: object): void {
   response.statusCode = statusCode;
@@ -89,6 +90,10 @@ function isAttentionSource(value: string): value is AttentionSource {
   return value === "operator_steer" || value === "fallback" || value === "operator_steer+fallback";
 }
 
+function isTranscriptSpeaker(value: string): value is TranscriptTurn["speaker"] {
+  return value === "caller" || value === "agent" || value === "operator" || value === "system";
+}
+
 function buildCallPayload(snapshot: CallSnapshot) {
   return {
     ...snapshot,
@@ -139,6 +144,57 @@ function buildEventTrailPayload(
       latestEventAt: latestFilteredEvent?.at ?? null,
       lastReturnedEventType: lastReturnedEvent?.type ?? null,
       lastReturnedEventAt: lastReturnedEvent?.at ?? null,
+    },
+  };
+}
+
+function buildTranscriptPayload(
+  snapshot: CallSnapshot,
+  speaker?: TranscriptTurn["speaker"],
+  since?: string,
+  until?: string,
+  text?: string,
+  offset = 0,
+  limit?: number,
+  order: "asc" | "desc" = "asc",
+) {
+  const normalizedText = text?.toLocaleLowerCase();
+  const filteredTurns = snapshot.transcript.filter((turn) => {
+    const matchesSpeaker = speaker === undefined || turn.speaker === speaker;
+    const matchesSince = since === undefined || compareTimestamps(turn.timestamp, since) >= 0;
+    const matchesUntil = until === undefined || compareTimestamps(turn.timestamp, until) <= 0;
+    const matchesText = normalizedText === undefined || turn.text.toLocaleLowerCase().includes(normalizedText);
+    return matchesSpeaker && matchesSince && matchesUntil && matchesText;
+  });
+  const orderedTurns = order === "asc" ? filteredTurns : [...filteredTurns].reverse();
+  const transcript = orderedTurns.slice(offset, limit === undefined ? undefined : offset + limit);
+  const latestFilteredTurn = filteredTurns.at(-1);
+  const lastReturnedTurn = transcript.at(-1);
+
+  return {
+    callId: snapshot.session.callId,
+    providerCallId: snapshot.session.providerCallId,
+    openclawSession: snapshot.session.openclawSession,
+    transcript,
+    summary: {
+      totalTurns: snapshot.transcript.length,
+      returnedTurns: transcript.length,
+      filteredSpeaker: speaker ?? null,
+      filteredSince: since ?? null,
+      filteredUntil: until ?? null,
+      filteredText: text ?? null,
+      order,
+      page: {
+        offset,
+        limit: limit ?? null,
+        totalFilteredTurns: filteredTurns.length,
+        hasMore: limit === undefined ? false : offset + transcript.length < filteredTurns.length,
+        nextOffset: limit !== undefined && offset + transcript.length < filteredTurns.length ? offset + transcript.length : null,
+      },
+      latestSpeaker: latestFilteredTurn?.speaker ?? null,
+      latestTurnAt: latestFilteredTurn?.timestamp ?? null,
+      lastReturnedSpeaker: lastReturnedTurn?.speaker ?? null,
+      lastReturnedTurnAt: lastReturnedTurn?.timestamp ?? null,
     },
   };
 }
@@ -759,6 +815,85 @@ async function routeRequest(
         filteredSummary,
       },
     });
+    return;
+  }
+
+  const callTranscriptMatch = request.method === "GET" ? pathname.match(/^\/api\/calls\/([^/]+)\/transcript$/) : null;
+  if (callTranscriptMatch) {
+    const speakerParam = requestUrl.searchParams.get("speaker");
+    if (speakerParam !== null && (!speakerParam.trim() || !isTranscriptSpeaker(speakerParam))) {
+      writeBadRequest(response, "transcript_speaker_invalid");
+      return;
+    }
+
+    const offset = parseOptionalNonNegativeIntegerFilter(requestUrl.searchParams.get("offset"), "transcript_offset_invalid");
+    if (offset !== undefined && typeof offset !== "number") {
+      writeBadRequest(response, offset.error);
+      return;
+    }
+
+    const limit = parseOptionalPositiveIntegerFilter(requestUrl.searchParams.get("limit"), "transcript_limit_invalid");
+    if (limit !== undefined && typeof limit !== "number") {
+      writeBadRequest(response, limit.error);
+      return;
+    }
+
+    if (limit !== undefined && limit > maxTranscriptPageLimit) {
+      writeBadRequest(response, "transcript_limit_invalid");
+      return;
+    }
+
+    const sinceParam = requestUrl.searchParams.get("since");
+    const since = sinceParam === null ? undefined : normalizeTimestamp(sinceParam, "transcript_since_invalid");
+    if (since !== undefined && typeof since !== "string") {
+      writeBadRequest(response, since.error);
+      return;
+    }
+
+    const untilParam = requestUrl.searchParams.get("until");
+    const until = untilParam === null ? undefined : normalizeTimestamp(untilParam, "transcript_until_invalid");
+    if (until !== undefined && typeof until !== "string") {
+      writeBadRequest(response, until.error);
+      return;
+    }
+
+    if (since !== undefined && until !== undefined && compareTimestamps(since, until) > 0) {
+      writeBadRequest(response, "transcript_window_invalid");
+      return;
+    }
+
+    const textParam = requestUrl.searchParams.get("text");
+    if (textParam !== null && !textParam.trim()) {
+      writeBadRequest(response, "transcript_text_invalid");
+      return;
+    }
+
+    const orderParam = requestUrl.searchParams.get("order");
+    if (orderParam !== null && orderParam !== "asc" && orderParam !== "desc") {
+      writeBadRequest(response, "transcript_order_invalid");
+      return;
+    }
+
+    const snapshot = await ingress.getSnapshot(callTranscriptMatch[1]);
+    if (!snapshot) {
+      writeNotFound(response);
+      return;
+    }
+
+    writeJson(
+      response,
+      200,
+      buildTranscriptPayload(
+        snapshot,
+        speakerParam ?? undefined,
+        since,
+        until,
+        textParam?.trim() || undefined,
+        offset,
+        limit,
+        orderParam ?? "asc",
+      ),
+    );
     return;
   }
 
