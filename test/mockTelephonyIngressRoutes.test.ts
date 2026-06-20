@@ -2191,3 +2191,79 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.equal(missing.statusCode, 404);
   });
 });
+
+test("GET /api/calls/:callId/transcript returns filterable transcript pages", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+
+    const callerPage = await requestJson(port, "GET", `/api/calls/${callId}/transcript?speaker=caller&limit=2`);
+    const callerPayload = callerPage.payload as {
+      callId: string;
+      transcript: Array<{ speaker: string; text: string; timestamp: string }>;
+      summary: {
+        totalTurns: number;
+        returnedTurns: number;
+        filteredSpeaker: string | null;
+        order: "asc" | "desc";
+        page: { offset: number; limit: number | null; totalFilteredTurns: number; hasMore: boolean; nextOffset: number | null };
+        latestSpeaker: string | null;
+        latestTurnAt: string | null;
+        lastReturnedSpeaker: string | null;
+        lastReturnedTurnAt: string | null;
+      };
+    };
+
+    assert.equal(callerPage.statusCode, 200);
+    assert.equal(callerPayload.callId, callId);
+    assert.deepEqual(callerPayload.transcript.map((turn) => turn.speaker), ["caller", "caller"]);
+    assert.deepEqual(callerPayload.transcript.map((turn) => turn.text), [
+      "I want to cancel my policy today.",
+      "The renewal increase is too high.",
+    ]);
+    assert.equal(callerPayload.summary.totalTurns, 6);
+    assert.equal(callerPayload.summary.returnedTurns, 2);
+    assert.equal(callerPayload.summary.filteredSpeaker, "caller");
+    assert.equal(callerPayload.summary.order, "asc");
+    assert.deepEqual(callerPayload.summary.page, {
+      offset: 0,
+      limit: 2,
+      totalFilteredTurns: 3,
+      hasMore: true,
+      nextOffset: 2,
+    });
+    assert.equal(callerPayload.summary.latestSpeaker, "caller");
+    assert.equal(callerPayload.summary.latestTurnAt, "2026-06-10T14:00:10.000Z");
+    assert.equal(callerPayload.summary.lastReturnedSpeaker, "caller");
+    assert.equal(callerPayload.summary.lastReturnedTurnAt, "2026-06-10T14:00:05.000Z");
+
+    const newestAgentTurn = await requestJson(port, "GET", `/api/calls/${callId}/transcript?speaker=agent&order=desc&limit=1`);
+    const newestAgentPayload = newestAgentTurn.payload as { transcript: Array<{ speaker: string; text: string }> };
+
+    assert.equal(newestAgentTurn.statusCode, 200);
+    assert.equal(newestAgentPayload.transcript.length, 1);
+    assert.equal(newestAgentPayload.transcript[0]?.speaker, "agent");
+    assert.match(newestAgentPayload.transcript[0]?.text ?? "", /operator approves/);
+
+    const invalidSpeaker = await requestJson(port, "GET", `/api/calls/${callId}/transcript?speaker=supervisor`);
+    assert.equal(invalidSpeaker.statusCode, 400);
+    assert.deepEqual(invalidSpeaker.payload, { ok: false, error: "transcript_speaker_invalid" });
+
+    const invalidLimit = await requestJson(port, "GET", `/api/calls/${callId}/transcript?limit=101`);
+    assert.equal(invalidLimit.statusCode, 400);
+    assert.deepEqual(invalidLimit.payload, { ok: false, error: "transcript_limit_invalid" });
+  });
+});

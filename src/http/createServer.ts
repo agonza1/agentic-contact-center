@@ -26,6 +26,7 @@ const flowStates = new Set<FlowState>([
 ]);
 
 const maxEventTrailPageLimit = 100;
+const maxTranscriptPageLimit = 100;
 
 function writeJson(response: ServerResponse, statusCode: number, payload: object): void {
   response.statusCode = statusCode;
@@ -89,6 +90,10 @@ function isAttentionSource(value: string): value is AttentionSource {
   return value === "operator_steer" || value === "fallback" || value === "operator_steer+fallback";
 }
 
+function isTranscriptSpeaker(value: string): value is TranscriptTurn["speaker"] {
+  return value === "caller" || value === "agent" || value === "operator" || value === "system";
+}
+
 function buildCallPayload(snapshot: CallSnapshot) {
   return {
     ...snapshot,
@@ -139,6 +144,44 @@ function buildEventTrailPayload(
       latestEventAt: latestFilteredEvent?.at ?? null,
       lastReturnedEventType: lastReturnedEvent?.type ?? null,
       lastReturnedEventAt: lastReturnedEvent?.at ?? null,
+    },
+  };
+}
+
+function buildTranscriptPayload(
+  snapshot: CallSnapshot,
+  speaker?: TranscriptTurn["speaker"],
+  offset = 0,
+  limit?: number,
+  order: "asc" | "desc" = "asc",
+) {
+  const filteredTurns = snapshot.transcript.filter((turn) => speaker === undefined || turn.speaker === speaker);
+  const orderedTurns = order === "asc" ? filteredTurns : [...filteredTurns].reverse();
+  const transcript = orderedTurns.slice(offset, limit === undefined ? undefined : offset + limit);
+  const latestFilteredTurn = filteredTurns.at(-1);
+  const lastReturnedTurn = transcript.at(-1);
+
+  return {
+    callId: snapshot.session.callId,
+    providerCallId: snapshot.session.providerCallId,
+    openclawSession: snapshot.session.openclawSession,
+    transcript,
+    summary: {
+      totalTurns: snapshot.transcript.length,
+      returnedTurns: transcript.length,
+      filteredSpeaker: speaker ?? null,
+      order,
+      page: {
+        offset,
+        limit: limit ?? null,
+        totalFilteredTurns: filteredTurns.length,
+        hasMore: limit === undefined ? false : offset + transcript.length < filteredTurns.length,
+        nextOffset: limit !== undefined && offset + transcript.length < filteredTurns.length ? offset + transcript.length : null,
+      },
+      latestSpeaker: latestFilteredTurn?.speaker ?? null,
+      latestTurnAt: latestFilteredTurn?.timestamp ?? null,
+      lastReturnedSpeaker: lastReturnedTurn?.speaker ?? null,
+      lastReturnedTurnAt: lastReturnedTurn?.timestamp ?? null,
     },
   };
 }
@@ -759,6 +802,51 @@ async function routeRequest(
         filteredSummary,
       },
     });
+    return;
+  }
+
+  const callTranscriptMatch = request.method === "GET" ? pathname.match(/^\/api\/calls\/([^/]+)\/transcript$/) : null;
+  if (callTranscriptMatch) {
+    const speakerParam = requestUrl.searchParams.get("speaker");
+    if (speakerParam !== null && (!speakerParam.trim() || !isTranscriptSpeaker(speakerParam))) {
+      writeBadRequest(response, "transcript_speaker_invalid");
+      return;
+    }
+
+    const offset = parseOptionalNonNegativeIntegerFilter(requestUrl.searchParams.get("offset"), "transcript_offset_invalid");
+    if (offset !== undefined && typeof offset !== "number") {
+      writeBadRequest(response, offset.error);
+      return;
+    }
+
+    const limit = parseOptionalPositiveIntegerFilter(requestUrl.searchParams.get("limit"), "transcript_limit_invalid");
+    if (limit !== undefined && typeof limit !== "number") {
+      writeBadRequest(response, limit.error);
+      return;
+    }
+
+    if (limit !== undefined && limit > maxTranscriptPageLimit) {
+      writeBadRequest(response, "transcript_limit_invalid");
+      return;
+    }
+
+    const orderParam = requestUrl.searchParams.get("order");
+    if (orderParam !== null && orderParam !== "asc" && orderParam !== "desc") {
+      writeBadRequest(response, "transcript_order_invalid");
+      return;
+    }
+
+    const snapshot = await ingress.getSnapshot(callTranscriptMatch[1]);
+    if (!snapshot) {
+      writeNotFound(response);
+      return;
+    }
+
+    writeJson(
+      response,
+      200,
+      buildTranscriptPayload(snapshot, speakerParam ?? undefined, offset, limit, orderParam ?? "asc"),
+    );
     return;
   }
 
