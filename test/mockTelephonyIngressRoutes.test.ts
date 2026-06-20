@@ -2220,6 +2220,7 @@ test("GET /api/calls/:callId/transcript returns filterable transcript pages", as
         filteredSpeaker: string | null;
         filteredSince: string | null;
         filteredUntil: string | null;
+        filteredText: string | null;
         order: "asc" | "desc";
         page: { offset: number; limit: number | null; totalFilteredTurns: number; hasMore: boolean; nextOffset: number | null };
         latestSpeaker: string | null;
@@ -2241,6 +2242,7 @@ test("GET /api/calls/:callId/transcript returns filterable transcript pages", as
     assert.equal(callerPayload.summary.filteredSpeaker, "caller");
     assert.equal(callerPayload.summary.filteredSince, null);
     assert.equal(callerPayload.summary.filteredUntil, null);
+    assert.equal(callerPayload.summary.filteredText, null);
     assert.equal(callerPayload.summary.order, "asc");
     assert.deepEqual(callerPayload.summary.page, {
       offset: 0,
@@ -2297,6 +2299,24 @@ test("GET /api/calls/:callId/transcript returns filterable transcript pages", as
       "2026-06-10T14:00:05.000Z",
       "2026-06-10T14:00:05.000Z",
     ]);
+
+    const textFiltered = await requestJson(port, "GET", `/api/calls/${callId}/transcript?text=renewal`);
+    const textFilteredPayload = textFiltered.payload as {
+      transcript: Array<{ speaker: string; text: string }>;
+      summary: { filteredText: string | null; page: { totalFilteredTurns: number } };
+    };
+
+    assert.equal(textFiltered.statusCode, 200);
+    assert.equal(textFilteredPayload.summary.filteredText, "renewal");
+    assert.equal(textFilteredPayload.summary.page.totalFilteredTurns, 2);
+    assert.deepEqual(textFilteredPayload.transcript.map((turn) => turn.text), [
+      "The renewal increase is too high.",
+      "I heard the renewal increase concern. I am pausing before I discuss any retention offer so I stay within approved options.",
+    ]);
+
+    const invalidText = await requestJson(port, "GET", `/api/calls/${callId}/transcript?text=%20%20`);
+    assert.equal(invalidText.statusCode, 400);
+    assert.deepEqual(invalidText.payload, { ok: false, error: "transcript_text_invalid" });
 
     const invalidSpeaker = await requestJson(port, "GET", `/api/calls/${callId}/transcript?speaker=supervisor`);
     assert.equal(invalidSpeaker.statusCode, 400);

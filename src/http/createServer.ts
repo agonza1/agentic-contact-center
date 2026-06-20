@@ -153,15 +153,18 @@ function buildTranscriptPayload(
   speaker?: TranscriptTurn["speaker"],
   since?: string,
   until?: string,
+  text?: string,
   offset = 0,
   limit?: number,
   order: "asc" | "desc" = "asc",
 ) {
+  const normalizedText = text?.toLocaleLowerCase();
   const filteredTurns = snapshot.transcript.filter((turn) => {
     const matchesSpeaker = speaker === undefined || turn.speaker === speaker;
     const matchesSince = since === undefined || compareTimestamps(turn.timestamp, since) >= 0;
     const matchesUntil = until === undefined || compareTimestamps(turn.timestamp, until) <= 0;
-    return matchesSpeaker && matchesSince && matchesUntil;
+    const matchesText = normalizedText === undefined || turn.text.toLocaleLowerCase().includes(normalizedText);
+    return matchesSpeaker && matchesSince && matchesUntil && matchesText;
   });
   const orderedTurns = order === "asc" ? filteredTurns : [...filteredTurns].reverse();
   const transcript = orderedTurns.slice(offset, limit === undefined ? undefined : offset + limit);
@@ -179,6 +182,7 @@ function buildTranscriptPayload(
       filteredSpeaker: speaker ?? null,
       filteredSince: since ?? null,
       filteredUntil: until ?? null,
+      filteredText: text ?? null,
       order,
       page: {
         offset,
@@ -853,6 +857,12 @@ async function routeRequest(
       return;
     }
 
+    const textParam = requestUrl.searchParams.get("text");
+    if (textParam !== null && !textParam.trim()) {
+      writeBadRequest(response, "transcript_text_invalid");
+      return;
+    }
+
     const orderParam = requestUrl.searchParams.get("order");
     if (orderParam !== null && orderParam !== "asc" && orderParam !== "desc") {
       writeBadRequest(response, "transcript_order_invalid");
@@ -868,7 +878,16 @@ async function routeRequest(
     writeJson(
       response,
       200,
-      buildTranscriptPayload(snapshot, speakerParam ?? undefined, since, until, offset, limit, orderParam ?? "asc"),
+      buildTranscriptPayload(
+        snapshot,
+        speakerParam ?? undefined,
+        since,
+        until,
+        textParam?.trim() || undefined,
+        offset,
+        limit,
+        orderParam ?? "asc",
+      ),
     );
     return;
   }
