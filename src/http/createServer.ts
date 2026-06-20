@@ -107,6 +107,7 @@ function buildEventTrailPayload(
   eventType?: string,
   source?: string,
   since?: string,
+  until?: string,
   offset = 0,
   limit?: number,
   order: "asc" | "desc" = "asc",
@@ -115,7 +116,8 @@ function buildEventTrailPayload(
     const matchesType = eventType === undefined || event.type === eventType;
     const matchesSource = source === undefined || event.detail.source === source;
     const matchesSince = since === undefined || compareTimestamps(event.at, since) >= 0;
-    return matchesType && matchesSource && matchesSince;
+    const matchesUntil = until === undefined || compareTimestamps(event.at, until) <= 0;
+    return matchesType && matchesSource && matchesSince && matchesUntil;
   });
   const orderedEvents = order === "asc" ? filteredEvents : [...filteredEvents].reverse();
   const events = orderedEvents.slice(offset, limit === undefined ? undefined : offset + limit);
@@ -133,6 +135,7 @@ function buildEventTrailPayload(
       filteredType: eventType ?? null,
       filteredSource: source ?? null,
       filteredSince: since ?? null,
+      filteredUntil: until ?? null,
       order,
       page: {
         offset,
@@ -972,6 +975,18 @@ async function routeRequest(
       return;
     }
 
+    const untilParam = requestUrl.searchParams.get("until");
+    const until = untilParam === null ? undefined : normalizeTimestamp(untilParam, "event_until_invalid");
+    if (until !== undefined && typeof until !== "string") {
+      writeBadRequest(response, until.error);
+      return;
+    }
+
+    if (since !== undefined && until !== undefined && compareTimestamps(since, until) > 0) {
+      writeBadRequest(response, "event_window_invalid");
+      return;
+    }
+
     const offset = parseOptionalNonNegativeIntegerFilter(requestUrl.searchParams.get("offset"), "event_offset_invalid");
     if (offset !== undefined && typeof offset !== "number") {
       writeBadRequest(response, offset.error);
@@ -1009,6 +1024,7 @@ async function routeRequest(
         type?.trim() || undefined,
         source?.trim() || undefined,
         since,
+        until,
         offset,
         limit,
         orderParam ?? "asc",

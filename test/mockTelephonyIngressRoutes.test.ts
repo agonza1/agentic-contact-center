@@ -87,6 +87,7 @@ interface EventTrailPayload {
     filteredType: string | null;
     filteredSource: string | null;
     filteredSince: string | null;
+    filteredUntil: string | null;
     order: "asc" | "desc";
     page: {
       offset: number;
@@ -2072,6 +2073,7 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.equal(allEventsPayload.summary.filteredType, null);
     assert.equal(allEventsPayload.summary.filteredSource, null);
     assert.equal(allEventsPayload.summary.filteredSince, null);
+    assert.equal(allEventsPayload.summary.filteredUntil, null);
     assert.equal(allEventsPayload.summary.order, "asc");
     assert.deepEqual(allEventsPayload.summary.page, {
       offset: 0,
@@ -2094,7 +2096,20 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.equal(sinceFilteredPayload.summary.filteredType, "caller_turn_appended");
     assert.equal(sinceFilteredPayload.summary.filteredSource, null);
     assert.equal(sinceFilteredPayload.summary.filteredSince, "2026-06-10T14:00:00.000Z");
+    assert.equal(sinceFilteredPayload.summary.filteredUntil, null);
     assert.deepEqual(sinceFilteredPayload.events.map((event) => event.type), ["caller_turn_appended"]);
+
+    const boundedEvents = await requestJson(
+      port,
+      "GET",
+      "/api/calls/" + callId + "/events?type=caller_turn_appended&since=2026-06-10T14:00:00.000Z&until=2026-06-10T14:00:01.000Z",
+    );
+    const boundedPayload = boundedEvents.payload as EventTrailPayload;
+
+    assert.equal(boundedEvents.statusCode, 200);
+    assert.equal(boundedPayload.summary.filteredSince, "2026-06-10T14:00:00.000Z");
+    assert.equal(boundedPayload.summary.filteredUntil, "2026-06-10T14:00:01.000Z");
+    assert.deepEqual(boundedPayload.events.map((event) => event.type), ["caller_turn_appended"]);
 
     const futureEvents = await requestJson(port, "GET", `/api/calls/${callId}/events?since=2999-01-01T00:00:00.000Z`);
     const futurePayload = futureEvents.payload as EventTrailPayload;
@@ -2102,6 +2117,7 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.equal(futureEvents.statusCode, 200);
     assert.equal(futurePayload.summary.returnedEvents, 0);
     assert.equal(futurePayload.summary.filteredSince, "2999-01-01T00:00:00.000Z");
+    assert.equal(futurePayload.summary.filteredUntil, null);
     assert.equal(futurePayload.summary.lastReturnedEventType, null);
     assert.equal(futurePayload.summary.lastReturnedEventAt, null);
     assert.deepEqual(futurePayload.events, []);
@@ -2115,6 +2131,7 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.equal(filteredPayload.summary.filteredType, "caller_turn_appended");
     assert.equal(filteredPayload.summary.filteredSource, null);
     assert.equal(filteredPayload.summary.filteredSince, null);
+    assert.equal(filteredPayload.summary.filteredUntil, null);
     assert.equal(filteredPayload.summary.latestEventType, "caller_turn_appended");
     assert.equal(filteredPayload.summary.lastReturnedEventType, "caller_turn_appended");
     assert.equal(filteredPayload.summary.lastReturnedEventAt, filteredPayload.events.at(-1)?.at);
@@ -2188,7 +2205,25 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
       error: "event_since_invalid",
     });
 
-    const invalidOffset = await requestJson(port, "GET", `/api/calls/${callId}/events?offset=-1`);
+    const invalidUntil = await requestJson(port, "GET", "/api/calls/" + callId + "/events?until=not-a-date");
+    assert.equal(invalidUntil.statusCode, 400);
+    assert.deepEqual(invalidUntil.payload, {
+      ok: false,
+      error: "event_until_invalid",
+    });
+
+    const invalidWindow = await requestJson(
+      port,
+      "GET",
+      "/api/calls/" + callId + "/events?since=2026-06-10T14:00:02.000Z&until=2026-06-10T14:00:01.000Z",
+    );
+    assert.equal(invalidWindow.statusCode, 400);
+    assert.deepEqual(invalidWindow.payload, {
+      ok: false,
+      error: "event_window_invalid",
+    });
+
+    const invalidOffset = await requestJson(port, "GET", "/api/calls/" + callId + "/events?offset=-1");
     assert.equal(invalidOffset.statusCode, 400);
     assert.deepEqual(invalidOffset.payload, {
       ok: false,
