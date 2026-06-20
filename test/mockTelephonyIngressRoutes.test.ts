@@ -2218,6 +2218,7 @@ test("GET /api/calls/:callId/transcript returns filterable transcript pages", as
         totalTurns: number;
         returnedTurns: number;
         filteredSpeaker: string | null;
+        filteredSince: string | null;
         order: "asc" | "desc";
         page: { offset: number; limit: number | null; totalFilteredTurns: number; hasMore: boolean; nextOffset: number | null };
         latestSpeaker: string | null;
@@ -2237,6 +2238,7 @@ test("GET /api/calls/:callId/transcript returns filterable transcript pages", as
     assert.equal(callerPayload.summary.totalTurns, 6);
     assert.equal(callerPayload.summary.returnedTurns, 2);
     assert.equal(callerPayload.summary.filteredSpeaker, "caller");
+    assert.equal(callerPayload.summary.filteredSince, null);
     assert.equal(callerPayload.summary.order, "asc");
     assert.deepEqual(callerPayload.summary.page, {
       offset: 0,
@@ -2258,9 +2260,30 @@ test("GET /api/calls/:callId/transcript returns filterable transcript pages", as
     assert.equal(newestAgentPayload.transcript[0]?.speaker, "agent");
     assert.match(newestAgentPayload.transcript[0]?.text ?? "", /operator approves/);
 
+    const sincePage = await requestJson(port, "GET", `/api/calls/${callId}/transcript?since=2026-06-10T14:00:05.000Z`);
+    const sincePayload = sincePage.payload as {
+      transcript: Array<{ speaker: string; text: string; timestamp: string }>;
+      summary: { filteredSince: string | null; page: { totalFilteredTurns: number }; latestTurnAt: string | null };
+    };
+
+    assert.equal(sincePage.statusCode, 200);
+    assert.equal(sincePayload.summary.filteredSince, "2026-06-10T14:00:05.000Z");
+    assert.equal(sincePayload.summary.page.totalFilteredTurns, 4);
+    assert.deepEqual(sincePayload.transcript.map((turn) => turn.timestamp), [
+      "2026-06-10T14:00:05.000Z",
+      "2026-06-10T14:00:05.000Z",
+      "2026-06-10T14:00:10.000Z",
+      "2026-06-10T14:00:10.000Z",
+    ]);
+    assert.equal(sincePayload.summary.latestTurnAt, "2026-06-10T14:00:10.000Z");
+
     const invalidSpeaker = await requestJson(port, "GET", `/api/calls/${callId}/transcript?speaker=supervisor`);
     assert.equal(invalidSpeaker.statusCode, 400);
     assert.deepEqual(invalidSpeaker.payload, { ok: false, error: "transcript_speaker_invalid" });
+
+    const invalidSince = await requestJson(port, "GET", `/api/calls/${callId}/transcript?since=not-a-date`);
+    assert.equal(invalidSince.statusCode, 400);
+    assert.deepEqual(invalidSince.payload, { ok: false, error: "transcript_since_invalid" });
 
     const invalidLimit = await requestJson(port, "GET", `/api/calls/${callId}/transcript?limit=101`);
     assert.equal(invalidLimit.statusCode, 400);

@@ -151,11 +151,16 @@ function buildEventTrailPayload(
 function buildTranscriptPayload(
   snapshot: CallSnapshot,
   speaker?: TranscriptTurn["speaker"],
+  since?: string,
   offset = 0,
   limit?: number,
   order: "asc" | "desc" = "asc",
 ) {
-  const filteredTurns = snapshot.transcript.filter((turn) => speaker === undefined || turn.speaker === speaker);
+  const filteredTurns = snapshot.transcript.filter((turn) => {
+    const matchesSpeaker = speaker === undefined || turn.speaker === speaker;
+    const matchesSince = since === undefined || compareTimestamps(turn.timestamp, since) >= 0;
+    return matchesSpeaker && matchesSince;
+  });
   const orderedTurns = order === "asc" ? filteredTurns : [...filteredTurns].reverse();
   const transcript = orderedTurns.slice(offset, limit === undefined ? undefined : offset + limit);
   const latestFilteredTurn = filteredTurns.at(-1);
@@ -170,6 +175,7 @@ function buildTranscriptPayload(
       totalTurns: snapshot.transcript.length,
       returnedTurns: transcript.length,
       filteredSpeaker: speaker ?? null,
+      filteredSince: since ?? null,
       order,
       page: {
         offset,
@@ -830,6 +836,13 @@ async function routeRequest(
       return;
     }
 
+    const sinceParam = requestUrl.searchParams.get("since");
+    const since = sinceParam === null ? undefined : normalizeTimestamp(sinceParam, "transcript_since_invalid");
+    if (since !== undefined && typeof since !== "string") {
+      writeBadRequest(response, since.error);
+      return;
+    }
+
     const orderParam = requestUrl.searchParams.get("order");
     if (orderParam !== null && orderParam !== "asc" && orderParam !== "desc") {
       writeBadRequest(response, "transcript_order_invalid");
@@ -845,7 +858,7 @@ async function routeRequest(
     writeJson(
       response,
       200,
-      buildTranscriptPayload(snapshot, speakerParam ?? undefined, offset, limit, orderParam ?? "asc"),
+      buildTranscriptPayload(snapshot, speakerParam ?? undefined, since, offset, limit, orderParam ?? "asc"),
     );
     return;
   }
