@@ -113,6 +113,8 @@ interface LatencyPayload {
     returnedMarks: number;
     filteredStage: string | null;
     filteredOverBudget: boolean | null;
+    filteredSince: string | null;
+    filteredUntil: string | null;
     order: "asc" | "desc";
     page: {
       offset: number;
@@ -2243,6 +2245,8 @@ test("GET /api/calls/:callId/latency returns filterable latency evidence", async
     assert.equal(allLatencyPayload.summary.returnedMarks, allLatencyPayload.marks.length);
     assert.equal(allLatencyPayload.summary.filteredStage, null);
     assert.equal(allLatencyPayload.summary.filteredOverBudget, null);
+    assert.equal(allLatencyPayload.summary.filteredSince, null);
+    assert.equal(allLatencyPayload.summary.filteredUntil, null);
     assert.equal(allLatencyPayload.summary.order, "asc");
     assert.deepEqual(allLatencyPayload.summary.page, {
       offset: 0,
@@ -2280,6 +2284,20 @@ test("GET /api/calls/:callId/latency returns filterable latency evidence", async
       nextOffset: allLatencyPayload.summary.totalMarks > 2 ? 2 : null,
     });
 
+    const boundedWindow = await requestJson(
+      port,
+      "GET",
+      `/api/calls/${callId}/latency?since=2026-06-10T14%3A00%3A00.000Z&until=2026-06-10T14%3A00%3A00.000Z`,
+    );
+    const boundedWindowPayload = boundedWindow.payload as LatencyPayload;
+
+    assert.equal(boundedWindow.statusCode, 200);
+    assert.equal(boundedWindowPayload.summary.filteredSince, "2026-06-10T14:00:00.000Z");
+    assert.equal(boundedWindowPayload.summary.filteredUntil, "2026-06-10T14:00:00.000Z");
+    assert.equal(boundedWindowPayload.summary.page.totalFilteredMarks, boundedWindowPayload.marks.length);
+    assert.equal(boundedWindowPayload.marks.some((mark) => mark.stage === "call_bootstrapped"), false);
+    assert.equal(boundedWindowPayload.marks.every((mark) => mark.recordedAt === "2026-06-10T14:00:00.000Z"), true);
+
     const overBudget = await requestJson(port, "GET", `/api/calls/${callId}/latency?overBudget=true`);
     const overBudgetPayload = overBudget.payload as LatencyPayload;
 
@@ -2300,6 +2318,31 @@ test("GET /api/calls/:callId/latency returns filterable latency evidence", async
     assert.deepEqual(invalidOverBudget.payload, {
       ok: false,
       error: "latency_over_budget_invalid",
+    });
+
+    const invalidSince = await requestJson(port, "GET", `/api/calls/${callId}/latency?since=not-a-date`);
+    assert.equal(invalidSince.statusCode, 400);
+    assert.deepEqual(invalidSince.payload, {
+      ok: false,
+      error: "latency_since_invalid",
+    });
+
+    const invalidUntil = await requestJson(port, "GET", `/api/calls/${callId}/latency?until=not-a-date`);
+    assert.equal(invalidUntil.statusCode, 400);
+    assert.deepEqual(invalidUntil.payload, {
+      ok: false,
+      error: "latency_until_invalid",
+    });
+
+    const invalidWindow = await requestJson(
+      port,
+      "GET",
+      `/api/calls/${callId}/latency?since=2026-06-10T14%3A00%3A01.000Z&until=2026-06-10T14%3A00%3A00.000Z`,
+    );
+    assert.equal(invalidWindow.statusCode, 400);
+    assert.deepEqual(invalidWindow.payload, {
+      ok: false,
+      error: "latency_window_invalid",
     });
 
     const invalidLimit = await requestJson(port, "GET", `/api/calls/${callId}/latency?limit=101`);

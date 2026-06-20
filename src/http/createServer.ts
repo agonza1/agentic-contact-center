@@ -204,15 +204,19 @@ function buildLatencyPayload(
   snapshot: CallSnapshot,
   stage?: string,
   overBudget?: boolean,
+  since?: string,
+  until?: string,
   offset = 0,
   limit?: number,
   order: "asc" | "desc" = "asc",
 ) {
   const filteredMarks = snapshot.latencyMarks.filter((mark) => {
     const matchesStage = stage === undefined || mark.stage === stage;
+    const matchesSince = since === undefined || compareTimestamps(mark.recordedAt, since) >= 0;
+    const matchesUntil = until === undefined || compareTimestamps(mark.recordedAt, until) <= 0;
     const isOverBudget = mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs;
     const matchesOverBudget = overBudget === undefined || isOverBudget === overBudget;
-    return matchesStage && matchesOverBudget;
+    return matchesStage && matchesSince && matchesUntil && matchesOverBudget;
   });
   const orderedMarks = order === "asc" ? filteredMarks : [...filteredMarks].reverse();
   const marks = orderedMarks.slice(offset, limit === undefined ? undefined : offset + limit);
@@ -230,6 +234,8 @@ function buildLatencyPayload(
       returnedMarks: marks.length,
       filteredStage: stage ?? null,
       filteredOverBudget: overBudget ?? null,
+      filteredSince: since ?? null,
+      filteredUntil: until ?? null,
       order,
       page: {
         offset,
@@ -1028,6 +1034,25 @@ async function routeRequest(
       return;
     }
 
+    const sinceParam = requestUrl.searchParams.get("since");
+    const since = sinceParam === null ? undefined : normalizeTimestamp(sinceParam, "latency_since_invalid");
+    if (since !== undefined && typeof since !== "string") {
+      writeBadRequest(response, since.error);
+      return;
+    }
+
+    const untilParam = requestUrl.searchParams.get("until");
+    const until = untilParam === null ? undefined : normalizeTimestamp(untilParam, "latency_until_invalid");
+    if (until !== undefined && typeof until !== "string") {
+      writeBadRequest(response, until.error);
+      return;
+    }
+
+    if (since !== undefined && until !== undefined && compareTimestamps(since, until) > 0) {
+      writeBadRequest(response, "latency_window_invalid");
+      return;
+    }
+
     const offset = parseOptionalNonNegativeIntegerFilter(requestUrl.searchParams.get("offset"), "latency_offset_invalid");
     if (offset !== undefined && typeof offset !== "number") {
       writeBadRequest(response, offset.error);
@@ -1060,7 +1085,7 @@ async function routeRequest(
     writeJson(
       response,
       200,
-      buildLatencyPayload(snapshot, stage?.trim() || undefined, overBudget, offset, limit, orderParam ?? "asc"),
+      buildLatencyPayload(snapshot, stage?.trim() || undefined, overBudget, since, until, offset, limit, orderParam ?? "asc"),
     );
     return;
   }
