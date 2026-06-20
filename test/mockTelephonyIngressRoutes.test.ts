@@ -830,6 +830,20 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     assert.equal(filteredPayload.summary.filteredSummary.oldestAttentionOpenclawSessionId, null);
     assert.equal(filteredPayload.summary.byFlowState.policy_hold, 1);
 
+    const byTranscript = await requestJson(port, "GET", "/api/calls?transcriptText=RENEWAL%20increase");
+    const byTranscriptPayload = byTranscript.payload as CallListPayload;
+    assert.equal(byTranscript.statusCode, 200);
+    assert.deepEqual(byTranscriptPayload.calls.map((call) => call.session.callId), [firstCallId]);
+    assert.equal(byTranscriptPayload.summary.filteredCalls, 1);
+    assert.equal(byTranscriptPayload.summary.filteredSummary.totalCalls, 1);
+
+    const invalidTranscriptText = await requestJson(port, "GET", "/api/calls?transcriptText=%20%20%20");
+    assert.equal(invalidTranscriptText.statusCode, 400);
+    assert.deepEqual(invalidTranscriptText.payload, {
+      ok: false,
+      error: "call_list_transcript_text_invalid",
+    });
+
     const invalidFilter = await requestJson(port, "GET", "/api/calls?flowState=paused_forever");
     assert.equal(invalidFilter.statusCode, 400);
     assert.deepEqual(invalidFilter.payload, {
@@ -1131,6 +1145,19 @@ test("GET /api/queue can filter operator summary slices", async () => {
     assert.equal(byProvider.statusCode, 200);
     assert.equal(byProviderPayload.summary.totalCalls, 1);
     assert.equal(byProviderPayload.summary.oldestAttentionCallId, fallbackCallId);
+
+    const byTranscript = await requestJson(port, "GET", "/api/queue?transcriptText=safe%20options");
+    const byTranscriptPayload = byTranscript.payload as QueueSummaryPayload;
+    assert.equal(byTranscript.statusCode, 200);
+    assert.equal(byTranscriptPayload.summary.totalCalls, 1);
+    assert.equal(byTranscriptPayload.summary.oldestAttentionCallId, firstCallId);
+
+    const invalidTranscriptText = await requestJson(port, "GET", "/api/queue?transcriptText=%20%20%20");
+    assert.equal(invalidTranscriptText.statusCode, 400);
+    assert.deepEqual(invalidTranscriptText.payload, {
+      ok: false,
+      error: "queue_transcript_text_invalid",
+    });
 
     const invalidFlowState = await requestJson(port, "GET", "/api/queue?flowState=paused_forever");
     assert.equal(invalidFlowState.statusCode, 400);
