@@ -2333,5 +2333,13 @@ test("GET /api/calls/:callId/transcript returns filterable transcript pages", as
     const invalidUntil = await requestJson(port, "GET", `/api/calls/${callId}/transcript?until=not-a-date`);
     assert.equal(invalidUntil.statusCode, 400);
     assert.deepEqual(invalidUntil.payload, { ok: false, error: "transcript_until_invalid" });
+
+    const invalidWindow = await requestJson(
+      port,
+      "GET",
+      `/api/calls/${callId}/transcript?since=2026-06-10T14:00:10.000Z&until=2026-06-10T14:00:05.000Z`,
+    );
+    assert.equal(invalidWindow.statusCode, 400);
+    assert.deepEqual(invalidWindow.payload, { ok: false, error: "transcript_window_invalid" });
   });
 });

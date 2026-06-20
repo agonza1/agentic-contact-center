@@ -857,6 +857,11 @@ async function routeRequest(
       return;
     }
 
+    if (since !== undefined && until !== undefined && compareTimestamps(since, until) > 0) {
+      writeBadRequest(response, "transcript_window_invalid");
+      return;
+    }
+
     const textParam = requestUrl.searchParams.get("text");
     if (textParam !== null && !textParam.trim()) {
       writeBadRequest(response, "transcript_text_invalid");
