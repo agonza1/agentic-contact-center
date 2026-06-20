@@ -795,6 +795,10 @@ test("GET /api/calls can limit active demo call payloads", async () => {
     assert.equal(invalidLimit.statusCode, 400);
     assert.deepEqual(invalidLimit.payload, { ok: false, error: "call_list_limit_invalid" });
 
+    const oversizedLimit = await requestJson(port, "GET", "/api/calls?limit=101");
+    assert.equal(oversizedLimit.statusCode, 400);
+    assert.deepEqual(oversizedLimit.payload, { ok: false, error: "call_list_limit_invalid" });
+
     const invalidOffset = await requestJson(port, "GET", "/api/calls?offset=slow");
     assert.equal(invalidOffset.statusCode, 400);
     assert.deepEqual(invalidOffset.payload, { ok: false, error: "call_list_offset_invalid" });

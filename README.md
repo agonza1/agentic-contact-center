@@ -151,7 +151,7 @@ The flow enters `policy_hold` before unsafe retention offers, requests operator 
 
 Common list/queue filters include `callId`, `providerCallId`, `flowState`, `pendingOperatorSteer`, `fallbackArmed`, `attentionRequired`, `attentionSource`, `attentionReason`, `openclawSessionId`, `openclawSessionLabel`, `openclawSessionRef`, `transcriptText`, and `minAttentionAgeMs`.
 
-Transcript, event, and latency routes support pagination with `offset`, `limit`, and `order=asc|desc`. Their max page size is `100`.
+Call, transcript, event, and latency routes support pagination with `offset`, `limit`, and `order=asc|desc`. Their max page size is `100`.
 
 Minimal manual exercise:
 
