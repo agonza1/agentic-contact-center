@@ -152,6 +152,7 @@ function buildTranscriptPayload(
   snapshot: CallSnapshot,
   speaker?: TranscriptTurn["speaker"],
   since?: string,
+  until?: string,
   offset = 0,
   limit?: number,
   order: "asc" | "desc" = "asc",
@@ -159,7 +160,8 @@ function buildTranscriptPayload(
   const filteredTurns = snapshot.transcript.filter((turn) => {
     const matchesSpeaker = speaker === undefined || turn.speaker === speaker;
     const matchesSince = since === undefined || compareTimestamps(turn.timestamp, since) >= 0;
-    return matchesSpeaker && matchesSince;
+    const matchesUntil = until === undefined || compareTimestamps(turn.timestamp, until) <= 0;
+    return matchesSpeaker && matchesSince && matchesUntil;
   });
   const orderedTurns = order === "asc" ? filteredTurns : [...filteredTurns].reverse();
   const transcript = orderedTurns.slice(offset, limit === undefined ? undefined : offset + limit);
@@ -176,6 +178,7 @@ function buildTranscriptPayload(
       returnedTurns: transcript.length,
       filteredSpeaker: speaker ?? null,
       filteredSince: since ?? null,
+      filteredUntil: until ?? null,
       order,
       page: {
         offset,
@@ -843,6 +846,13 @@ async function routeRequest(
       return;
     }
 
+    const untilParam = requestUrl.searchParams.get("until");
+    const until = untilParam === null ? undefined : normalizeTimestamp(untilParam, "transcript_until_invalid");
+    if (until !== undefined && typeof until !== "string") {
+      writeBadRequest(response, until.error);
+      return;
+    }
+
     const orderParam = requestUrl.searchParams.get("order");
     if (orderParam !== null && orderParam !== "asc" && orderParam !== "desc") {
       writeBadRequest(response, "transcript_order_invalid");
@@ -858,7 +868,7 @@ async function routeRequest(
     writeJson(
       response,
       200,
-      buildTranscriptPayload(snapshot, speakerParam ?? undefined, since, offset, limit, orderParam ?? "asc"),
+      buildTranscriptPayload(snapshot, speakerParam ?? undefined, since, until, offset, limit, orderParam ?? "asc"),
     );
     return;
   }
