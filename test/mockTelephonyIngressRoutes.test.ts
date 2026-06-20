@@ -63,6 +63,8 @@ interface CallListPayload extends QueueSummaryPayload {
   summary: QueueSummaryPayload["summary"] & {
     filteredCalls: number;
     returnedCalls: number;
+    sort: "startedAt" | "attentionStartedAt";
+    order: "asc" | "desc";
     page: {
       offset: number;
       limit: number | null;
@@ -430,6 +432,8 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       totalCalls: 0,
       filteredCalls: 0,
       returnedCalls: 0,
+      sort: "startedAt",
+      order: "asc",
       page: {
         offset: 0,
         limit: null,
@@ -529,6 +533,8 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       totalCalls: 2,
       filteredCalls: 2,
       returnedCalls: 2,
+      sort: "startedAt",
+      order: "asc",
       page: {
         offset: 0,
         limit: null,
@@ -653,9 +659,25 @@ test("GET /api/calls can sort operator attention before idle calls", async () =>
     assert.equal(attentionPayload.summary.filteredCalls, 3);
     assert.equal(attentionPayload.summary.filteredSummary.oldestAttentionCallId, fallbackCallId);
 
+    const newestAttentionFirst = await requestJson(port, "GET", "/api/calls?sort=attentionStartedAt&order=desc");
+    const newestAttentionPayload = newestAttentionFirst.payload as CallListPayload;
+
+    assert.equal(newestAttentionFirst.statusCode, 200);
+    assert.deepEqual(newestAttentionPayload.calls.map((call) => call.session.callId), [
+      idleCallId,
+      operatorCallId,
+      fallbackCallId,
+    ]);
+    assert.equal(newestAttentionPayload.summary.sort, "attentionStartedAt");
+    assert.equal(newestAttentionPayload.summary.order, "desc");
+
     const invalidSort = await requestJson(port, "GET", "/api/calls?sort=attentionAge");
     assert.equal(invalidSort.statusCode, 400);
     assert.deepEqual(invalidSort.payload, { ok: false, error: "call_list_sort_invalid" });
+
+    const invalidOrder = await requestJson(port, "GET", "/api/calls?order=latest");
+    assert.equal(invalidOrder.statusCode, 400);
+    assert.deepEqual(invalidOrder.payload, { ok: false, error: "call_list_order_invalid" });
   });
 });
 

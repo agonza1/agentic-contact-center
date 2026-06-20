@@ -214,6 +214,18 @@ function parseCallListSort(value: string | null): CallListSort | { error: string
   return { error: "call_list_sort_invalid" };
 }
 
+function parseCallListOrder(value: string | null): CallListOrder | { error: string } {
+  if (value === null || value === "asc") {
+    return "asc";
+  }
+
+  if (value === "desc") {
+    return "desc";
+  }
+
+  return { error: "call_list_order_invalid" };
+}
+
 function compareAttentionQueueOrder(left: CallSnapshot, right: CallSnapshot): number {
   const leftAttention = getAttentionMetadata(left);
   const rightAttention = getAttentionMetadata(right);
@@ -250,6 +262,7 @@ interface CallListFilters {
 }
 
 type CallListSort = "startedAt" | "attentionStartedAt";
+type CallListOrder = "asc" | "desc";
 
 function parseCallListFilters(
   requestUrl: URL,
@@ -707,9 +720,19 @@ async function routeRequest(
       return;
     }
 
+    const order = parseCallListOrder(requestUrl.searchParams.get("order"));
+    if (typeof order !== "string") {
+      writeBadRequest(response, order.error);
+      return;
+    }
+
     const orderedSnapshots = await ingress.listSnapshots(filters);
     if (sort === "attentionStartedAt") {
       orderedSnapshots.sort(compareAttentionQueueOrder);
+    }
+
+    if (order === "desc") {
+      orderedSnapshots.reverse();
     }
 
     const calls = orderedSnapshots
@@ -724,6 +747,8 @@ async function routeRequest(
         ...summary,
         filteredCalls: orderedSnapshots.length,
         returnedCalls: calls.length,
+        sort,
+        order,
         page: {
           offset: offset ?? 0,
           limit: limit ?? null,
