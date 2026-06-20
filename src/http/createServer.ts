@@ -28,6 +28,7 @@ const flowStates = new Set<FlowState>([
 const maxEventTrailPageLimit = 100;
 const maxTranscriptPageLimit = 100;
 const maxLatencyMarkPageLimit = 100;
+const maxCallListPageLimit = 100;
 
 function writeJson(response: ServerResponse, statusCode: number, payload: object): void {
   response.statusCode = statusCode;
@@ -825,6 +826,11 @@ async function routeRequest(
     const limit = parseOptionalPositiveIntegerFilter(requestUrl.searchParams.get("limit"), "call_list_limit_invalid");
     if (limit !== undefined && typeof limit !== "number") {
       writeBadRequest(response, limit.error);
+      return;
+    }
+
+    if (limit !== undefined && limit > maxCallListPageLimit) {
+      writeBadRequest(response, "call_list_limit_invalid");
       return;
     }
 
