@@ -21,7 +21,7 @@ export function resolvePocConfigPath(env = process.env): string {
   return path.resolve(process.cwd(), configuredPath);
 }
 
-export function loadPocConfig(configPath = DEFAULT_CONFIG_PATH): PocConfig {
+export function loadPocConfig(configPath = resolvePocConfigPath()): PocConfig {
   const rawConfig = readFileSync(configPath, "utf8");
   const config = JSON.parse(rawConfig) as Partial<PocConfig>;
 
