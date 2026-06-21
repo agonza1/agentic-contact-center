@@ -9,7 +9,19 @@ const DEFAULT_CONFIG_PATH = path.resolve(
   "poc.config.example.json",
 );
 
-export function loadPocConfig(configPath = DEFAULT_CONFIG_PATH): PocConfig {
+const CONFIG_PATH_ENV = "POC_CONFIG_PATH";
+
+export function resolvePocConfigPath(env = process.env): string {
+  const configuredPath = env[CONFIG_PATH_ENV]?.trim();
+
+  if (!configuredPath) {
+    return DEFAULT_CONFIG_PATH;
+  }
+
+  return path.resolve(process.cwd(), configuredPath);
+}
+
+export function loadPocConfig(configPath = resolvePocConfigPath()): PocConfig {
   const rawConfig = readFileSync(configPath, "utf8");
   const config = JSON.parse(rawConfig) as Partial<PocConfig>;
 
