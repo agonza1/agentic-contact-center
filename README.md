@@ -50,7 +50,7 @@ The runtime is intentionally local and in-memory. Restarting the server clears c
 
 ## Configuration
 
-The Node server reads `config/poc.config.example.json` from the repo root. It must include:
+The Node server reads `config/poc.config.example.json` from the repo root by default. Set `POC_CONFIG_PATH` to point at another JSON config file. It must include:
 
 - `demoName` and `mode`
 - `provider.name` and `provider.callId`
@@ -61,6 +61,7 @@ The Node server reads `config/poc.config.example.json` from the repo root. It mu
 Environment variables:
 
 - `PORT`: optional HTTP port for `npm start`; defaults to `8026`.
+- `POC_CONFIG_PATH`: optional path to a JSON config file; defaults to `config/poc.config.example.json`.
 - `LOCAL_UID` / `LOCAL_GID`: optional Docker proof runner ownership override for Linux bind-mounted artifacts.
 
 There is no `.env` file in the current Node app, and no production credentials are required for the mocked POC.
@@ -220,5 +221,4 @@ If `--out` is omitted, the artifact is written to `artifacts/demo-proof-<timesta
 
 - State is in-memory and process-local.
 - Telephony, OpenClaw, Pipecat, Slack, CRM, billing, and authentication are mocked or represented as deterministic contracts.
-- The Node app always loads `config/poc.config.example.json`; there is no runtime config path environment variable yet.
 - `apps/api` and `apps/web` are not covered by the root npm scripts or Docker runtime.

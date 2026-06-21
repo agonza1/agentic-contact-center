@@ -1,5 +1,5 @@
 import { buildHttpServer } from "./http/createServer";
-import { loadPocConfig } from "./config/loadPocConfig";
+import { loadPocConfig, resolvePocConfigPath } from "./config/loadPocConfig";
 
 const DEFAULT_PORT = 8026;
 
@@ -15,7 +15,7 @@ function resolvePort(): number {
 }
 
 async function main(): Promise<void> {
-  const config = loadPocConfig();
+  const config = loadPocConfig(resolvePocConfigPath());
   const port = resolvePort();
   const server = buildHttpServer(config);
 
