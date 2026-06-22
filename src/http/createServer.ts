@@ -375,6 +375,8 @@ interface CallListFilters {
   transcriptText?: string;
   minAttentionAgeMs?: number;
   maxAttentionAgeMs?: number;
+  latencyStage?: string;
+  latencyOverBudget?: boolean;
 }
 
 type CallListSort = "startedAt" | "attentionStartedAt";
@@ -469,6 +471,19 @@ function parseCallListFilters(
     return maxAttentionAgeMs;
   }
 
+  const latencyStage = requestUrl.searchParams.get("latencyStage");
+  if (latencyStage !== null && !latencyStage.trim()) {
+    return { error: `${invalidPrefix}_latency_stage_invalid` };
+  }
+
+  const latencyOverBudget = parseOptionalBooleanFilter(
+    requestUrl.searchParams.get("latencyOverBudget"),
+    `${invalidPrefix}_latency_over_budget_invalid`,
+  );
+  if (latencyOverBudget !== undefined && typeof latencyOverBudget !== "boolean") {
+    return latencyOverBudget;
+  }
+
   return {
     flowState: flowState ?? undefined,
     pendingOperatorSteer,
@@ -484,6 +499,8 @@ function parseCallListFilters(
     transcriptText: transcriptText?.trim() || undefined,
     minAttentionAgeMs,
     maxAttentionAgeMs,
+    latencyStage: latencyStage?.trim() || undefined,
+    latencyOverBudget,
   };
 }
 
