@@ -862,6 +862,22 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     assert.deepEqual(noActiveToolPayload.calls.map((call) => call.session.callId), []);
     assert.equal(noActiveToolPayload.summary.filteredSummary.totalCalls, 0);
 
+    await requestJson(port, "POST", `/api/calls/${firstCallId}/fallback`, {
+      mode: "tool_timeout",
+      reason: "synthetic future latency audit",
+      timestamp: "2099-01-01T00:00:00.000Z",
+    });
+
+    const mismatchedLatencyFilters = await requestJson(
+      port,
+      "GET",
+      "/api/calls?latencyStage=call_bootstrapped&latencyOverBudget=true",
+    );
+    const mismatchedLatencyPayload = mismatchedLatencyFilters.payload as CallListPayload;
+    assert.equal(mismatchedLatencyFilters.statusCode, 200);
+    assert.deepEqual(mismatchedLatencyPayload.calls.map((call) => call.session.callId), []);
+    assert.equal(mismatchedLatencyPayload.summary.filteredSummary.totalCalls, 0);
+
     const noLatencyStage = await requestJson(port, "GET", "/api/calls?latencyStage=missing_stage");
     const noLatencyStagePayload = noLatencyStage.payload as CallListPayload;
     assert.equal(noLatencyStage.statusCode, 200);
@@ -1240,6 +1256,22 @@ test("GET /api/queue can filter operator summary slices", async () => {
     assert.equal(byLatencyStage.statusCode, 200);
     assert.equal(byLatencyStagePayload.summary.totalCalls, 1);
     assert.equal(byLatencyStagePayload.summary.oldestAttentionCallId, firstCallId);
+
+    await requestJson(port, "POST", `/api/calls/${fallbackCallId}/fallback`, {
+      mode: "tool_timeout",
+      reason: "synthetic future latency audit",
+      timestamp: "2099-01-01T00:00:00.000Z",
+    });
+
+    const mismatchedLatencyFilters = await requestJson(
+      port,
+      "GET",
+      "/api/queue?latencyStage=call_bootstrapped&latencyOverBudget=true",
+    );
+    const mismatchedLatencyPayload = mismatchedLatencyFilters.payload as QueueSummaryPayload;
+    assert.equal(mismatchedLatencyFilters.statusCode, 200);
+    assert.equal(mismatchedLatencyPayload.summary.totalCalls, 0);
+    assert.equal(mismatchedLatencyPayload.summary.oldestAttentionCallId, null);
 
     const byActiveTool = await requestJson(port, "GET", "/api/queue?pipecatActiveTool=ask_operator");
     const byActiveToolPayload = byActiveTool.payload as QueueSummaryPayload;
