@@ -9,6 +9,7 @@ import type {
   AttentionSource,
   CallSnapshot,
   FlowState,
+  LatencyMark,
   LatencyBudgetStage,
   FallbackMode,
   OperatorSteerAction,
@@ -58,6 +59,22 @@ function recordLatencyMark(
     elapsedMs,
     budgetMs: budgetStage ? snapshot.latencyBudgetsMs[budgetStage] : null,
   });
+}
+
+function latencyMarkMatchesFilters(
+  mark: LatencyMark,
+  filters: { latencyStage?: string; latencyOverBudget?: boolean },
+): boolean {
+  if (filters.latencyStage !== undefined && mark.stage !== filters.latencyStage) {
+    return false;
+  }
+
+  if (filters.latencyOverBudget === undefined) {
+    return true;
+  }
+
+  const isOverBudget = mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs;
+  return isOverBudget === filters.latencyOverBudget;
 }
 
 export class InMemoryTelephonyIngress {
@@ -341,23 +358,7 @@ export class InMemoryTelephonyIngress {
         const normalizedText = filters.transcriptText.toLocaleLowerCase();
         return snapshot.transcript.some((turn) => turn.text.toLocaleLowerCase().includes(normalizedText));
       })
-      .filter((snapshot) => {
-        if (filters.latencyStage === undefined) {
-          return true;
-        }
-
-        return snapshot.latencyMarks.some((mark) => mark.stage === filters.latencyStage);
-      })
-      .filter((snapshot) => {
-        if (filters.latencyOverBudget === undefined) {
-          return true;
-        }
-
-        return snapshot.latencyMarks.some((mark) => {
-          const isOverBudget = mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs;
-          return isOverBudget === filters.latencyOverBudget;
-        });
-      })
+      .filter((snapshot) => snapshot.latencyMarks.some((mark) => latencyMarkMatchesFilters(mark, filters)))
       .filter((snapshot) =>
         filters.openclawSessionId === undefined
           ? true
