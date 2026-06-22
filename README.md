@@ -147,7 +147,7 @@ The flow enters `policy_hold` before unsafe retention offers, requests operator 
 - `GET /api/queue`: return queue summary metadata without full call payloads.
 - `GET /api/calls/:callId`: fetch the current call snapshot.
 - `GET /api/calls/:callId/transcript`: fetch filterable transcript pages.
-- `GET /api/calls/:callId/events`: fetch filterable event evidence.
+- `GET /api/calls/:callId/events`: fetch filterable event evidence, including detail-text search for QA audits.
 - `GET /api/calls/:callId/latency`: fetch filterable latency evidence.
 
 Common list/queue filters include `callId`, `providerCallId`, `flowState`, `pendingOperatorSteer`, `fallbackArmed`, `attentionRequired`, `attentionSource`, `attentionReason`, `openclawSessionId`, `openclawSessionLabel`, `openclawSessionRef`, `transcriptText`, `minAttentionAgeMs`, `maxAttentionAgeMs`, `latencyStage`, and `latencyOverBudget`.
