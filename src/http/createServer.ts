@@ -367,6 +367,7 @@ function compareAttentionQueueOrder(left: CallSnapshot, right: CallSnapshot): nu
 
 interface CallListFilters {
   flowState?: FlowState;
+  pipecatActiveTool?: string;
   pendingOperatorSteer?: boolean;
   fallbackArmed?: boolean;
   attentionRequired?: boolean;
@@ -394,6 +395,11 @@ function parseCallListFilters(
   const flowState = requestUrl.searchParams.get("flowState");
   if (flowState !== null && !isFlowState(flowState)) {
     return { error: `${invalidPrefix}_flow_state_invalid` };
+  }
+
+  const pipecatActiveTool = requestUrl.searchParams.get("pipecatActiveTool");
+  if (pipecatActiveTool !== null && !pipecatActiveTool.trim()) {
+    return { error: `${invalidPrefix}_pipecat_active_tool_invalid` };
   }
 
   const pendingOperatorSteer = parseOptionalBooleanFilter(
@@ -491,6 +497,7 @@ function parseCallListFilters(
 
   return {
     flowState: flowState ?? undefined,
+    pipecatActiveTool: pipecatActiveTool?.trim() || undefined,
     pendingOperatorSteer,
     fallbackArmed,
     attentionRequired,

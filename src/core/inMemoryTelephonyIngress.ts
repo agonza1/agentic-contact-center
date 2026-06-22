@@ -232,6 +232,7 @@ export class InMemoryTelephonyIngress {
 
   async listSnapshots(filters: {
     flowState?: FlowState;
+    pipecatActiveTool?: string;
     pendingOperatorSteer?: boolean;
     fallbackArmed?: boolean;
     attentionRequired?: boolean;
@@ -253,6 +254,7 @@ export class InMemoryTelephonyIngress {
 
   private getSnapshots(filters: {
     flowState?: FlowState;
+    pipecatActiveTool?: string;
     pendingOperatorSteer?: boolean;
     fallbackArmed?: boolean;
     attentionRequired?: boolean;
@@ -271,6 +273,9 @@ export class InMemoryTelephonyIngress {
   } = {}): CallSnapshot[] {
     return [...this.calls.values()]
       .filter((snapshot) => (filters.flowState ? snapshot.flowState === filters.flowState : true))
+      .filter((snapshot) =>
+        filters.pipecatActiveTool === undefined ? true : snapshot.pipecatFlow.activeTool === filters.pipecatActiveTool,
+      )
       .filter((snapshot) =>
         filters.pendingOperatorSteer === undefined ? true : snapshot.operatorSteer.pending === filters.pendingOperatorSteer,
       )
@@ -378,6 +383,7 @@ export class InMemoryTelephonyIngress {
 
   async getQueueSummary(filters: {
     flowState?: FlowState;
+    pipecatActiveTool?: string;
     pendingOperatorSteer?: boolean;
     fallbackArmed?: boolean;
     attentionRequired?: boolean;

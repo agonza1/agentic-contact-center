@@ -849,6 +849,19 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     assert.equal(byLatencyStagePayload.summary.filteredCalls, 1);
     assert.equal(byLatencyStagePayload.summary.filteredSummary.totalCalls, 1);
 
+    const byActiveTool = await requestJson(port, "GET", "/api/calls?pipecatActiveTool=goto_slide");
+    const byActiveToolPayload = byActiveTool.payload as CallListPayload;
+    assert.equal(byActiveTool.statusCode, 200);
+    assert.deepEqual(byActiveToolPayload.calls.map((call) => call.session.callId), [firstCallId]);
+    assert.equal(byActiveToolPayload.summary.filteredCalls, 1);
+    assert.equal(byActiveToolPayload.summary.filteredSummary.totalCalls, 1);
+
+    const noActiveTool = await requestJson(port, "GET", "/api/calls?pipecatActiveTool=missing_tool");
+    const noActiveToolPayload = noActiveTool.payload as CallListPayload;
+    assert.equal(noActiveTool.statusCode, 200);
+    assert.deepEqual(noActiveToolPayload.calls.map((call) => call.session.callId), []);
+    assert.equal(noActiveToolPayload.summary.filteredSummary.totalCalls, 0);
+
     const noLatencyStage = await requestJson(port, "GET", "/api/calls?latencyStage=missing_stage");
     const noLatencyStagePayload = noLatencyStage.payload as CallListPayload;
     assert.equal(noLatencyStage.statusCode, 200);
@@ -860,6 +873,13 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     assert.deepEqual(invalidLatencyStage.payload, {
       ok: false,
       error: "call_list_latency_stage_invalid",
+    });
+
+    const invalidActiveTool = await requestJson(port, "GET", "/api/calls?pipecatActiveTool=%20%20%20");
+    assert.equal(invalidActiveTool.statusCode, 400);
+    assert.deepEqual(invalidActiveTool.payload, {
+      ok: false,
+      error: "call_list_pipecat_active_tool_invalid",
     });
 
     const invalidLatencyOverBudget = await requestJson(port, "GET", "/api/calls?latencyOverBudget=maybe");
@@ -1221,6 +1241,19 @@ test("GET /api/queue can filter operator summary slices", async () => {
     assert.equal(byLatencyStagePayload.summary.totalCalls, 1);
     assert.equal(byLatencyStagePayload.summary.oldestAttentionCallId, firstCallId);
 
+    const byActiveTool = await requestJson(port, "GET", "/api/queue?pipecatActiveTool=ask_operator");
+    const byActiveToolPayload = byActiveTool.payload as QueueSummaryPayload;
+    assert.equal(byActiveTool.statusCode, 200);
+    assert.equal(byActiveToolPayload.summary.totalCalls, 1);
+    assert.equal(byActiveToolPayload.summary.attentionRequired, 1);
+    assert.equal(byActiveToolPayload.summary.oldestAttentionCallId, firstCallId);
+
+    const noActiveTool = await requestJson(port, "GET", "/api/queue?pipecatActiveTool=missing_tool");
+    const noActiveToolPayload = noActiveTool.payload as QueueSummaryPayload;
+    assert.equal(noActiveTool.statusCode, 200);
+    assert.equal(noActiveToolPayload.summary.totalCalls, 0);
+    assert.equal(noActiveToolPayload.summary.oldestAttentionCallId, null);
+
     const noLatencyStage = await requestJson(port, "GET", "/api/queue?latencyStage=missing_stage");
     const noLatencyStagePayload = noLatencyStage.payload as QueueSummaryPayload;
     assert.equal(noLatencyStage.statusCode, 200);
@@ -1232,6 +1265,13 @@ test("GET /api/queue can filter operator summary slices", async () => {
     assert.deepEqual(invalidLatencyStage.payload, {
       ok: false,
       error: "queue_latency_stage_invalid",
+    });
+
+    const invalidActiveTool = await requestJson(port, "GET", "/api/queue?pipecatActiveTool=%20%20%20");
+    assert.equal(invalidActiveTool.statusCode, 400);
+    assert.deepEqual(invalidActiveTool.payload, {
+      ok: false,
+      error: "queue_pipecat_active_tool_invalid",
     });
 
     const invalidLatencyOverBudget = await requestJson(port, "GET", "/api/queue?latencyOverBudget=maybe");
