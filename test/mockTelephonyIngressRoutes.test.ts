@@ -841,6 +841,33 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     assert.equal(byTranscriptPayload.summary.filteredCalls, 1);
     assert.equal(byTranscriptPayload.summary.filteredSummary.totalCalls, 1);
 
+    const byLatencyStage = await requestJson(port, "GET", "/api/calls?latencyStage=caller_turn_received");
+    const byLatencyStagePayload = byLatencyStage.payload as CallListPayload;
+    assert.equal(byLatencyStage.statusCode, 200);
+    assert.deepEqual(byLatencyStagePayload.calls.map((call) => call.session.callId), [firstCallId]);
+    assert.equal(byLatencyStagePayload.summary.filteredCalls, 1);
+    assert.equal(byLatencyStagePayload.summary.filteredSummary.totalCalls, 1);
+
+    const noLatencyStage = await requestJson(port, "GET", "/api/calls?latencyStage=missing_stage");
+    const noLatencyStagePayload = noLatencyStage.payload as CallListPayload;
+    assert.equal(noLatencyStage.statusCode, 200);
+    assert.deepEqual(noLatencyStagePayload.calls.map((call) => call.session.callId), []);
+    assert.equal(noLatencyStagePayload.summary.filteredSummary.totalCalls, 0);
+
+    const invalidLatencyStage = await requestJson(port, "GET", "/api/calls?latencyStage=%20%20%20");
+    assert.equal(invalidLatencyStage.statusCode, 400);
+    assert.deepEqual(invalidLatencyStage.payload, {
+      ok: false,
+      error: "call_list_latency_stage_invalid",
+    });
+
+    const invalidLatencyOverBudget = await requestJson(port, "GET", "/api/calls?latencyOverBudget=maybe");
+    assert.equal(invalidLatencyOverBudget.statusCode, 400);
+    assert.deepEqual(invalidLatencyOverBudget.payload, {
+      ok: false,
+      error: "call_list_latency_over_budget_invalid",
+    });
+
     const invalidTranscriptText = await requestJson(port, "GET", "/api/calls?transcriptText=%20%20%20");
     assert.equal(invalidTranscriptText.statusCode, 400);
     assert.deepEqual(invalidTranscriptText.payload, {
@@ -1186,6 +1213,32 @@ test("GET /api/queue can filter operator summary slices", async () => {
     assert.equal(byTranscript.statusCode, 200);
     assert.equal(byTranscriptPayload.summary.totalCalls, 1);
     assert.equal(byTranscriptPayload.summary.oldestAttentionCallId, firstCallId);
+
+    const byLatencyStage = await requestJson(port, "GET", "/api/queue?latencyStage=caller_turn_received");
+    const byLatencyStagePayload = byLatencyStage.payload as QueueSummaryPayload;
+    assert.equal(byLatencyStage.statusCode, 200);
+    assert.equal(byLatencyStagePayload.summary.totalCalls, 1);
+    assert.equal(byLatencyStagePayload.summary.oldestAttentionCallId, firstCallId);
+
+    const noLatencyStage = await requestJson(port, "GET", "/api/queue?latencyStage=missing_stage");
+    const noLatencyStagePayload = noLatencyStage.payload as QueueSummaryPayload;
+    assert.equal(noLatencyStage.statusCode, 200);
+    assert.equal(noLatencyStagePayload.summary.totalCalls, 0);
+    assert.equal(noLatencyStagePayload.summary.oldestAttentionCallId, null);
+
+    const invalidLatencyStage = await requestJson(port, "GET", "/api/queue?latencyStage=%20%20%20");
+    assert.equal(invalidLatencyStage.statusCode, 400);
+    assert.deepEqual(invalidLatencyStage.payload, {
+      ok: false,
+      error: "queue_latency_stage_invalid",
+    });
+
+    const invalidLatencyOverBudget = await requestJson(port, "GET", "/api/queue?latencyOverBudget=maybe");
+    assert.equal(invalidLatencyOverBudget.statusCode, 400);
+    assert.deepEqual(invalidLatencyOverBudget.payload, {
+      ok: false,
+      error: "queue_latency_over_budget_invalid",
+    });
 
     const invalidTranscriptText = await requestJson(port, "GET", "/api/queue?transcriptText=%20%20%20");
     assert.equal(invalidTranscriptText.statusCode, 400);

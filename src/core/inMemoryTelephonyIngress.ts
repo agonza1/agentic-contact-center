@@ -245,6 +245,8 @@ export class InMemoryTelephonyIngress {
     transcriptText?: string;
     minAttentionAgeMs?: number;
     maxAttentionAgeMs?: number;
+    latencyStage?: string;
+    latencyOverBudget?: boolean;
   } = {}): Promise<CallSnapshot[]> {
     return this.getSnapshots(filters).map((snapshot) => cloneSnapshot(snapshot));
   }
@@ -264,6 +266,8 @@ export class InMemoryTelephonyIngress {
     transcriptText?: string;
     minAttentionAgeMs?: number;
     maxAttentionAgeMs?: number;
+    latencyStage?: string;
+    latencyOverBudget?: boolean;
   } = {}): CallSnapshot[] {
     return [...this.calls.values()]
       .filter((snapshot) => (filters.flowState ? snapshot.flowState === filters.flowState : true))
@@ -332,6 +336,23 @@ export class InMemoryTelephonyIngress {
         const normalizedText = filters.transcriptText.toLocaleLowerCase();
         return snapshot.transcript.some((turn) => turn.text.toLocaleLowerCase().includes(normalizedText));
       })
+      .filter((snapshot) => {
+        if (filters.latencyStage === undefined) {
+          return true;
+        }
+
+        return snapshot.latencyMarks.some((mark) => mark.stage === filters.latencyStage);
+      })
+      .filter((snapshot) => {
+        if (filters.latencyOverBudget === undefined) {
+          return true;
+        }
+
+        return snapshot.latencyMarks.some((mark) => {
+          const isOverBudget = mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs;
+          return isOverBudget === filters.latencyOverBudget;
+        });
+      })
       .filter((snapshot) =>
         filters.openclawSessionId === undefined
           ? true
@@ -370,6 +391,8 @@ export class InMemoryTelephonyIngress {
     transcriptText?: string;
     minAttentionAgeMs?: number;
     maxAttentionAgeMs?: number;
+    latencyStage?: string;
+    latencyOverBudget?: boolean;
   } = {}): Promise<{
     totalCalls: number;
     pendingOperatorSteer: number;
