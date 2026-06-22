@@ -374,6 +374,7 @@ interface CallListFilters {
   providerCallId?: string;
   transcriptText?: string;
   minAttentionAgeMs?: number;
+  maxAttentionAgeMs?: number;
 }
 
 type CallListSort = "startedAt" | "attentionStartedAt";
@@ -460,6 +461,14 @@ function parseCallListFilters(
     return minAttentionAgeMs;
   }
 
+  const maxAttentionAgeMs = parseOptionalNonNegativeIntegerFilter(
+    requestUrl.searchParams.get("maxAttentionAgeMs"),
+    `${invalidPrefix}_max_attention_age_ms_invalid`,
+  );
+  if (maxAttentionAgeMs !== undefined && typeof maxAttentionAgeMs !== "number") {
+    return maxAttentionAgeMs;
+  }
+
   return {
     flowState: flowState ?? undefined,
     pendingOperatorSteer,
@@ -474,6 +483,7 @@ function parseCallListFilters(
     providerCallId: providerCallId?.trim() || undefined,
     transcriptText: transcriptText?.trim() || undefined,
     minAttentionAgeMs,
+    maxAttentionAgeMs,
   };
 }
 
