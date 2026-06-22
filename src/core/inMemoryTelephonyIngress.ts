@@ -244,6 +244,7 @@ export class InMemoryTelephonyIngress {
     providerCallId?: string;
     transcriptText?: string;
     minAttentionAgeMs?: number;
+    maxAttentionAgeMs?: number;
   } = {}): Promise<CallSnapshot[]> {
     return this.getSnapshots(filters).map((snapshot) => cloneSnapshot(snapshot));
   }
@@ -262,6 +263,7 @@ export class InMemoryTelephonyIngress {
     providerCallId?: string;
     transcriptText?: string;
     minAttentionAgeMs?: number;
+    maxAttentionAgeMs?: number;
   } = {}): CallSnapshot[] {
     return [...this.calls.values()]
       .filter((snapshot) => (filters.flowState ? snapshot.flowState === filters.flowState : true))
@@ -311,6 +313,14 @@ export class InMemoryTelephonyIngress {
         const attentionAgeMs = getAttentionMetadata(snapshot).ageMs;
         return attentionAgeMs !== null && attentionAgeMs >= filters.minAttentionAgeMs;
       })
+      .filter((snapshot) => {
+        if (filters.maxAttentionAgeMs === undefined) {
+          return true;
+        }
+
+        const attentionAgeMs = getAttentionMetadata(snapshot).ageMs;
+        return attentionAgeMs !== null && attentionAgeMs <= filters.maxAttentionAgeMs;
+      })
       .filter((snapshot) =>
         filters.providerCallId === undefined ? true : snapshot.session.providerCallId === filters.providerCallId,
       )
@@ -359,6 +369,7 @@ export class InMemoryTelephonyIngress {
     providerCallId?: string;
     transcriptText?: string;
     minAttentionAgeMs?: number;
+    maxAttentionAgeMs?: number;
   } = {}): Promise<{
     totalCalls: number;
     pendingOperatorSteer: number;
