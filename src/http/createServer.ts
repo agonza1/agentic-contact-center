@@ -107,18 +107,22 @@ function buildEventTrailPayload(
   snapshot: CallSnapshot,
   eventType?: string,
   source?: string,
+  detailText?: string,
   since?: string,
   until?: string,
   offset = 0,
   limit?: number,
   order: "asc" | "desc" = "asc",
 ) {
+  const normalizedDetailText = detailText?.toLocaleLowerCase();
   const filteredEvents = snapshot.events.filter((event) => {
     const matchesType = eventType === undefined || event.type === eventType;
     const matchesSource = source === undefined || event.detail.source === source;
+    const matchesDetailText =
+      normalizedDetailText === undefined || JSON.stringify(event.detail).toLocaleLowerCase().includes(normalizedDetailText);
     const matchesSince = since === undefined || compareTimestamps(event.at, since) >= 0;
     const matchesUntil = until === undefined || compareTimestamps(event.at, until) <= 0;
-    return matchesType && matchesSource && matchesSince && matchesUntil;
+    return matchesType && matchesSource && matchesDetailText && matchesSince && matchesUntil;
   });
   const orderedEvents = order === "asc" ? filteredEvents : [...filteredEvents].reverse();
   const events = orderedEvents.slice(offset, limit === undefined ? undefined : offset + limit);
@@ -135,6 +139,7 @@ function buildEventTrailPayload(
       returnedEvents: events.length,
       filteredType: eventType ?? null,
       filteredSource: source ?? null,
+      filteredDetailText: detailText ?? null,
       filteredSince: since ?? null,
       filteredUntil: until ?? null,
       order,
@@ -1008,6 +1013,12 @@ async function routeRequest(
       return;
     }
 
+    const detailText = requestUrl.searchParams.get("detailText");
+    if (detailText !== null && !detailText.trim()) {
+      writeBadRequest(response, "event_detail_text_invalid");
+      return;
+    }
+
     const sinceParam = requestUrl.searchParams.get("since");
     const since = sinceParam === null ? undefined : normalizeTimestamp(sinceParam, "event_since_invalid");
     if (since !== undefined && typeof since !== "string") {
@@ -1063,6 +1074,7 @@ async function routeRequest(
         snapshot,
         type?.trim() || undefined,
         source?.trim() || undefined,
+        detailText?.trim() || undefined,
         since,
         until,
         offset,
