@@ -79,7 +79,11 @@ interface CallListPayload extends QueueSummaryPayload {
 interface OperatorConsolePayload {
   schemaVersion: number;
   runtimeHealth: { ok: boolean; mode: string; provider: string; pipecatFlow: { ready: boolean } };
-  controls: { commandWrappers: string[]; actions: Array<{ action: string }> };
+  controls: {
+    commandWrappers: string[];
+    routes: { steerCall: string; noteCall: string };
+    actions: Array<{ action: string; postTemplate: string }>;
+  };
   queue: QueueSummaryPayload;
   calls: { items: SnapshotPayload[]; summary: CallListPayload["summary"] };
 }
@@ -830,7 +834,16 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(consolePayload.runtimeHealth.ok, true);
     assert.equal(consolePayload.runtimeHealth.pipecatFlow.ready, true);
     assert.deepEqual(consolePayload.controls.commandWrappers, ["/operator", "/steer"]);
-    assert.equal(consolePayload.controls.actions.some((entry) => entry.action === "approve_offer"), true);
+    assert.deepEqual(consolePayload.controls.routes, {
+      steerCall: "/api/calls/{callId}/operator-steer",
+      noteCall: "/api/calls/{callId}/operator-note",
+    });
+    assert.equal(
+      consolePayload.controls.actions.some(
+        (entry) => entry.action === "approve_offer" && entry.postTemplate === "/api/calls/{callId}/operator-steer",
+      ),
+      true,
+    );
     assert.equal(consolePayload.queue.summary.totalCalls, 2);
     assert.equal(consolePayload.queue.summary.pendingOperatorSteer, 1);
     assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
@@ -3080,10 +3093,12 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     const payload = response.payload as {
       schemaVersion: number;
       commandWrappers: string[];
+      routes: { steerCall: string; noteCall: string };
       actions: Array<{
         action: string;
         requiresPendingCall: boolean;
         requiresReason: boolean;
+        postTemplate: string;
         commandExamples: string[];
       }>;
     };
@@ -3091,6 +3106,10 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     assert.equal(response.statusCode, 200);
     assert.equal(payload.schemaVersion, 1);
     assert.deepEqual(payload.commandWrappers, ["/operator", "/steer"]);
+    assert.deepEqual(payload.routes, {
+      steerCall: "/api/calls/{callId}/operator-steer",
+      noteCall: "/api/calls/{callId}/operator-note",
+    });
     assert.deepEqual(
       payload.actions.map((action) => action.action),
       [
@@ -3114,6 +3133,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     const approveOffer = payload.actions.find((action) => action.action === "approve_offer");
     assert.equal(approveOffer?.requiresPendingCall, true);
     assert.equal(approveOffer?.requiresReason, false);
+    assert.equal(approveOffer?.postTemplate, "/api/calls/{callId}/operator-steer");
 
     const denyOffer = payload.actions.find((action) => action.action === "deny_offer");
     assert.equal(denyOffer?.requiresPendingCall, true);

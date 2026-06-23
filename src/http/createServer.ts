@@ -46,60 +46,70 @@ const operatorActionCatalog: Array<{
   action: OperatorSteerAction;
   requiresPendingCall: boolean;
   requiresReason: boolean;
+  postTemplate: string;
   commandExamples: string[];
 }> = [
   {
     action: "pause",
     requiresPendingCall: false,
     requiresReason: false,
+    postTemplate: "/api/calls/{callId}/operator-steer",
     commandExamples: ["/operator pause", "/steer pause"],
   },
   {
     action: "resume",
     requiresPendingCall: true,
     requiresReason: false,
+    postTemplate: "/api/calls/{callId}/operator-steer",
     commandExamples: ["/operator resume", "/steer resume"],
   },
   {
     action: "approve_offer",
     requiresPendingCall: true,
     requiresReason: false,
+    postTemplate: "/api/calls/{callId}/operator-steer",
     commandExamples: ["/operator approve-offer", "/steer approve offer"],
   },
   {
     action: "deny_offer",
     requiresPendingCall: true,
     requiresReason: false,
+    postTemplate: "/api/calls/{callId}/operator-steer",
     commandExamples: ["/operator deny-offer", "/steer deny offer"],
   },
   {
     action: "escalate_to_human",
     requiresPendingCall: true,
     requiresReason: false,
+    postTemplate: "/api/calls/{callId}/operator-steer",
     commandExamples: ["/operator escalate", "/steer escalate-to-human"],
   },
   {
     action: "goto_slide",
     requiresPendingCall: false,
     requiresReason: true,
+    postTemplate: "/api/calls/{callId}/operator-steer",
     commandExamples: ["/operator goto-slide retention-safe-mode", "/steer goto slide policy-hold"],
   },
   {
     action: "ask_operator",
     requiresPendingCall: false,
     requiresReason: true,
+    postTemplate: "/api/calls/{callId}/operator-steer",
     commandExamples: ["/operator ask verify latency budget", "/steer ask confirm safe offer copy"],
   },
   {
     action: "arm_fallback",
     requiresPendingCall: false,
     requiresReason: true,
+    postTemplate: "/api/calls/{callId}/operator-steer",
     commandExamples: ["/operator arm-fallback audio degraded", "/steer arm fallback tool timeout"],
   },
   {
     action: "disarm_fallback",
     requiresPendingCall: false,
     requiresReason: false,
+    postTemplate: "/api/calls/{callId}/operator-steer",
     commandExamples: ["/operator disarm-fallback", "/steer disarm fallback"],
   },
 ];
@@ -423,6 +433,10 @@ function buildOperatorActionsPayload() {
   return {
     schemaVersion: 1,
     commandWrappers: ["/operator", "/steer"],
+    routes: {
+      steerCall: "/api/calls/{callId}/operator-steer",
+      noteCall: "/api/calls/{callId}/operator-note",
+    },
     actions: operatorActionCatalog,
   };
 }
