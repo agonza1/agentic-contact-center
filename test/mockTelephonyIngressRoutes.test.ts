@@ -100,6 +100,7 @@ interface OperatorConsolePayload {
         evidenceSummary: {
           latestEventType: string | null;
           latestTranscriptSpeaker: string | null;
+          latestEvidenceAt: string | null;
           transcriptTurns: number;
           eventCount: number;
           latencyMarkCount: number;
@@ -897,6 +898,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     const operatorConsoleCall = consolePayload.calls.items[0];
     assert.equal(operatorConsoleCall.evidenceSummary.latestEventType, "agent_turn_appended");
     assert.equal(operatorConsoleCall.evidenceSummary.latestTranscriptSpeaker, "agent");
+    assert.equal(operatorConsoleCall.evidenceSummary.latestEvidenceAt, "2026-06-10T14:10:10.000Z");
     assert.equal(operatorConsoleCall.evidenceSummary.transcriptTurns, 6);
     assert.equal(operatorConsoleCall.evidenceSummary.eventCount, 14);
     assert.equal(operatorConsoleCall.evidenceSummary.latencyMarkCount, 9);

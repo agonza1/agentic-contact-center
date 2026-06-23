@@ -243,6 +243,10 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
   const latestEvent = snapshot.events.at(-1);
   const latestTranscriptTurn = snapshot.transcript.at(-1);
   const latestLatencyMark = snapshot.latencyMarks.at(-1);
+  const latestEvidenceAt = [latestEvent?.at, latestTranscriptTurn?.timestamp, latestLatencyMark?.recordedAt]
+    .filter((timestamp): timestamp is string => timestamp !== undefined)
+    .sort(compareTimestamps)
+    .at(-1) ?? null;
   const attention = getAttentionMetadata(snapshot);
 
   return {
@@ -254,6 +258,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       latestTranscriptAt: latestTranscriptTurn?.timestamp ?? null,
       latestLatencyStage: latestLatencyMark?.stage ?? null,
       latestLatencyAt: latestLatencyMark?.recordedAt ?? null,
+      latestEvidenceAt,
       transcriptTurns: snapshot.transcript.length,
       eventCount: snapshot.events.length,
       latencyMarkCount: snapshot.latencyMarks.length,
