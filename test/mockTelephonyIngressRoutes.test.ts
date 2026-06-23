@@ -2345,6 +2345,16 @@ test("slash-command style steer text is parsed into operator actions", async () 
     assert.equal(takeoverPayload.demoFallback.armed, true);
     assert.equal(takeoverPayload.demoFallback.reason, "operator_barged_in");
     assert.equal(takeoverPayload.events.some((event) => event.type === "operator_takeover_started"), true);
+
+    const endCall = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-steer", {
+      command: "/operator end-call",
+      timestamp: "2026-06-10T14:00:18.000Z",
+    });
+    const endCallPayload = endCall.payload as SnapshotPayload;
+    assert.equal(endCall.statusCode, 200);
+    assert.equal(endCallPayload.flowState, "wrap");
+    assert.equal(endCallPayload.operatorSteer.lastAction, "end_call");
+    assert.equal(endCallPayload.events.some((event) => event.type === "operator_call_ended"), true);
   });
 });
 
@@ -3137,6 +3147,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
         "deny_offer",
         "escalate_to_human",
         "takeover",
+        "end_call",
         "goto_slide",
         "ask_operator",
         "arm_fallback",
@@ -3163,5 +3174,10 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     assert.equal(takeover?.requiresPendingCall, false);
     assert.equal(takeover?.requiresReason, false);
     assert.equal(takeover?.commandExamples.includes("/steer barge-in"), true);
+
+    const endCall = payload.actions.find((action) => action.action === "end_call");
+    assert.equal(endCall?.requiresPendingCall, false);
+    assert.equal(endCall?.requiresReason, false);
+    assert.equal(endCall?.commandExamples.includes("/operator end-call"), true);
   });
 });

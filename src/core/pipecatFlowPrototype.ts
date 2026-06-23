@@ -428,6 +428,17 @@ export function applyOperatorSteer(
     return;
   }
 
+  if (action === "end_call") {
+    recordEvent(snapshot, "operator_call_ended", timestamp, {
+      operatorChannel: snapshot.scenario.operatorChannel,
+      source: "operator_steer",
+    });
+    transitionFlowState(snapshot, "wrap", timestamp, "operator_ended_live_call");
+    appendAgentTurn(snapshot, "The operator ended the demo call and recorded a safe closeout.", timestamp);
+    snapshot.pipecatFlow.activeTool = "pause_presentation";
+    return;
+  }
+
   transitionFlowState(
     snapshot,
     "steered_response",

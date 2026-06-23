@@ -141,7 +141,7 @@ The flow enters `policy_hold` before unsafe retention offers, requests operator 
 - `GET /health`: service/config/runtime readiness.
 - `POST /api/demo/start`: create a mocked call session.
 - `POST /api/calls/:callId/caller-turn`: append a caller transcript turn and advance the flow.
-- `POST /api/calls/:callId/operator-steer`: apply operator commands or direct actions.
+- `POST /api/calls/:callId/operator-steer`: apply operator commands or direct actions, including pause/resume, approval, takeover, escalation, and safe call closeout.
 - `POST /api/calls/:callId/operator-note`: record operator notes and optional dispositions into the transcript and proof event trail.
 - `POST /api/calls/:callId/fallback`: trigger demo fallback, currently centered on `tool_timeout`.
 - `GET /api/calls`: list active calls with optional queue/operator filters.
