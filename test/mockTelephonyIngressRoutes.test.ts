@@ -90,7 +90,7 @@ interface OperatorConsolePayload {
   controls: {
     commandWrappers: string[];
     callReferenceFields: string[];
-    routes: { steerCall: string; noteCall: string; consoleAction: string };
+    routes: { startDemoCall: string; steerCall: string; noteCall: string; consoleAction: string };
     actions: Array<{ action: string; method: string; postTemplate: string; bodyTemplate: { action: string; reason?: string }; operatorOutcome: string }>;
   };
   queue: QueueSummaryPayload;
@@ -904,6 +904,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       "openclawSessionRef",
     ]);
     assert.deepEqual(consolePayload.controls.routes, {
+      startDemoCall: "/api/demo/start",
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
@@ -996,6 +997,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.equal(response.statusCode, 200);
     assert.equal(response.contentType, "text/html; charset=utf-8");
     assert.match(response.body, /<title>Operator Console<\/title>/);
+    assert.match(response.body, /Start Demo Call/);
+    assert.match(response.body, /\/api\/demo\/start/);
     assert.match(response.body, /"goto_slide"/);
     assert.match(response.body, /"ask_operator"/);
     assert.match(response.body, /Slide or step/);
@@ -3367,7 +3370,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
       schemaVersion: number;
       commandWrappers: string[];
       callReferenceFields: string[];
-      routes: { steerCall: string; noteCall: string; consoleAction: string };
+      routes: { startDemoCall: string; steerCall: string; noteCall: string; consoleAction: string };
       actions: Array<{
         action: string;
         requiresPendingCall: boolean;
@@ -3388,6 +3391,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
       "openclawSessionRef",
     ]);
     assert.deepEqual(payload.routes, {
+      startDemoCall: "/api/demo/start",
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",

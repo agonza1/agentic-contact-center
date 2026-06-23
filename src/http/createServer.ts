@@ -222,7 +222,7 @@ function buildOperatorConsoleHtml(): string {
 <body>
   <header>
     <h1>Operator Console</h1>
-    <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" id="refresh">Refresh</button></div>
+    <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" id="start-demo">Start Demo Call</button><button type="button" id="refresh">Refresh</button></div>
   </header>
   <main>
     <section class="panel" aria-label="Live calls"><h2>Live Calls</h2><div class="call-list" id="calls"></div></section>
@@ -251,6 +251,14 @@ function buildOperatorConsoleHtml(): string {
       if (!call) return;
       const response = await fetch("/api/operator/console/action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ callId: call.session.callId, action: action, reason: reason || undefined }) });
       if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); setStatus(payload.error || "Action failed"); return; }
+      await refresh();
+    }
+    async function startDemoCall() {
+      setStatus("Starting demo call");
+      const response = await fetch("/api/demo/start", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ openclawSessionLabel: "operator-console/manual" }) });
+      if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); setStatus(payload.error || "Start failed"); return; }
+      const payload = await response.json();
+      state.selectedCallId = payload.session.callId;
       await refresh();
     }
     async function recordNote(event) {
@@ -288,6 +296,7 @@ function buildOperatorConsoleHtml(): string {
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
     function render() { renderCalls(); renderDetail(); }
+    document.getElementById("start-demo").addEventListener("click", function() { startDemoCall().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("refresh").addEventListener("click", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     refresh().catch(function(error) { setStatus(error.message); });
   </script>
@@ -662,6 +671,7 @@ function buildOperatorActionsPayload() {
     commandWrappers: ["/operator", "/steer"],
     callReferenceFields: ["callId", "providerCallId", "openclawSessionId", "openclawSessionLabel", "openclawSessionRef"],
     routes: {
+      startDemoCall: "/api/demo/start",
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
