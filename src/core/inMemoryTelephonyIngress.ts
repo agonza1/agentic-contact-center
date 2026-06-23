@@ -22,7 +22,10 @@ function cloneSnapshot(snapshot: CallSnapshot): CallSnapshot {
   return {
     session: {
       ...snapshot.session,
-      openclawSession: { ...snapshot.session.openclawSession },
+      openclawSession: {
+        ...snapshot.session.openclawSession,
+        artifactLinks: { ...snapshot.session.openclawSession.artifactLinks },
+      },
     },
     scenario: { ...snapshot.scenario },
     demoFallback: { ...snapshot.demoFallback },
@@ -40,6 +43,19 @@ function cloneSnapshot(snapshot: CallSnapshot): CallSnapshot {
     events: snapshot.events.map((event) => ({ ...event, detail: { ...event.detail } })),
     latencyBudgetsMs: { ...snapshot.latencyBudgetsMs },
     latencyMarks: snapshot.latencyMarks.map((mark) => ({ ...mark })),
+  };
+}
+
+
+function buildOpenClawArtifactLinks(callId: string) {
+  const basePath = `/api/calls/${callId}`;
+
+  return {
+    snapshot: basePath,
+    proof: `${basePath}/proof`,
+    transcript: `${basePath}/transcript`,
+    events: `${basePath}/events`,
+    latencyMarks: `${basePath}/latency`,
   };
 }
 
@@ -105,6 +121,7 @@ export class InMemoryTelephonyIngress {
           label: openclawSessionLabel,
           status: "attached_mock",
           eventTrailVersion: 1,
+          artifactLinks: buildOpenClawArtifactLinks(callId),
         },
       },
       scenario: {
@@ -150,6 +167,7 @@ export class InMemoryTelephonyIngress {
             sessionId: openclawSessionId,
             sessionLabel: openclawSessionLabel,
             status: "attached_mock",
+            proofPath: `/api/calls/${callId}/proof`,
           },
         },
       ],
