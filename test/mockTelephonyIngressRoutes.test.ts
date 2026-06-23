@@ -91,7 +91,14 @@ interface OperatorConsolePayload {
     commandWrappers: string[];
     callReferenceFields: string[];
     routes: { startDemoCall: string; steerCall: string; noteCall: string; consoleAction: string };
-    actions: Array<{ action: string; method: string; postTemplate: string; bodyTemplate: { action: string; reason?: string }; operatorOutcome: string }>;
+    actions: Array<{
+      action: string;
+      method: string;
+      postTemplate: string;
+      bodyTemplate: { action: string; reason?: string };
+      operatorOutcome: string;
+      confirmationRequired: boolean;
+    }>;
   };
   queue: QueueSummaryPayload;
   calls: {
@@ -919,12 +926,14 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       postTemplate: "/api/calls/{callId}/operator-steer",
       bodyTemplate: { action: "approve_offer" },
       operatorOutcome: "resume",
+      confirmationRequired: false,
       commandExamples: ["/operator approve-offer", "/steer approve offer"],
     });
     const takeoverAction = consolePayload.controls.actions.find((entry) => entry.action === "takeover");
     assert.equal(takeoverAction?.method, "POST");
     assert.deepEqual(takeoverAction?.bodyTemplate, { action: "takeover" });
     assert.equal(takeoverAction?.operatorOutcome, "handoff");
+    assert.equal(takeoverAction?.confirmationRequired, true);
     assert.equal(consolePayload.queue.summary.totalCalls, 2);
     assert.equal(consolePayload.queue.summary.pendingOperatorSteer, 1);
     assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
@@ -1006,6 +1015,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /"ask_operator"/);
     assert.match(response.body, /Slide or step/);
     assert.match(response.body, /Operator question/);
+    assert.match(response.body, /confirmationRequired/);
+    assert.match(response.body, /Confirm /);
   });
 });
 
