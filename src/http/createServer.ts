@@ -488,6 +488,7 @@ function buildOperatorActionsPayload() {
     routes: {
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
+      consoleAction: "/api/operator/console/action",
     },
     actions: operatorActionCatalog,
   };
@@ -840,6 +841,67 @@ function parseOperatorSteerCommand(
   return { error: "operator_steer_command_invalid" };
 }
 
+function parseOperatorSteerBody(
+  body: Record<string, unknown>,
+  errors: {
+    actionRequired: string;
+    commandInvalid: string;
+    commandConflict: string;
+    reasonInvalid: string;
+    fallbackReasonRequired: string;
+    timestampInvalid: string;
+  },
+): { action: OperatorSteerAction; reason?: string; timestamp: string } | { error: string } {
+  const commandInput = getOptionalTrimmedString(body.command);
+  const textInput = getOptionalTrimmedString(body.text);
+
+  let parsedCommand = parseOperatorSteerCommand(commandInput);
+  if (parsedCommand && "error" in parsedCommand && commandInput && textInput && isSlackSlashCommandName(commandInput)) {
+    parsedCommand = undefined;
+  }
+
+  if (parsedCommand && "error" in parsedCommand) {
+    return { error: errors.commandInvalid };
+  }
+
+  const parsedText = parsedCommand ? undefined : parseOperatorSteerCommand(textInput);
+  if (parsedText && "error" in parsedText) {
+    return { error: errors.commandInvalid };
+  }
+
+  const action = body.action;
+  if (action !== undefined && !operatorSteerActions.includes(action as OperatorSteerAction)) {
+    return { error: errors.actionRequired };
+  }
+
+  const parsedSteer = parsedCommand ?? parsedText;
+
+  if (action !== undefined && parsedSteer && action !== parsedSteer.action) {
+    return { error: errors.commandConflict };
+  }
+
+  const resolvedAction = (action as OperatorSteerAction | undefined) ?? parsedSteer?.action;
+  if (!resolvedAction) {
+    return { error: errors.actionRequired };
+  }
+
+  if (hasInvalidOptionalString(body.reason)) {
+    return { error: errors.reasonInvalid };
+  }
+
+  const reason = getOptionalTrimmedString(body.reason) ?? parsedSteer?.reason;
+  if (resolvedAction === "arm_fallback" && !reason) {
+    return { error: errors.fallbackReasonRequired };
+  }
+
+  const timestamp = normalizeTimestamp(body.timestamp, errors.timestampInvalid);
+  if (typeof timestamp !== "string") {
+    return timestamp;
+  }
+
+  return { action: resolvedAction, reason, timestamp };
+}
+
 async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
   const chunks: Buffer[] = [];
 
@@ -889,6 +951,57 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/api/operator/actions") {
     writeJson(response, 200, buildOperatorActionsPayload());
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/operator/console/action") {
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const callId = getOptionalTrimmedString(body.callId);
+    if (!callId) {
+      writeBadRequest(response, "operator_console_action_call_id_required");
+      return;
+    }
+
+    const parsedSteer = parseOperatorSteerBody(body, {
+      actionRequired: "operator_console_action_required",
+      commandInvalid: "operator_console_command_invalid",
+      commandConflict: "operator_console_command_conflict",
+      reasonInvalid: "operator_console_reason_invalid",
+      fallbackReasonRequired: "operator_console_fallback_reason_required",
+      timestampInvalid: "operator_console_timestamp_invalid",
+    });
+
+    if ("error" in parsedSteer) {
+      writeBadRequest(response, parsedSteer.error);
+      return;
+    }
+
+    try {
+      const snapshot = await ingress.applyOperatorSteer(
+        callId,
+        parsedSteer.action,
+        parsedSteer.timestamp,
+        parsedSteer.reason,
+      );
+      writeJson(response, 200, {
+        ok: true,
+        route: "/api/operator/console/action",
+        appliedAction: parsedSteer.action,
+        call: buildCallPayload(snapshot),
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Call is not awaiting operator steer")) {
+        writeBadRequest(response, "operator_console_action_not_pending");
+        return;
+      }
+      writeNotFound(response);
+    }
     return;
   }
 
@@ -1152,63 +1265,27 @@ async function routeRequest(
       return;
     }
 
-    const commandInput = getOptionalTrimmedString(body.command);
-    const textInput = getOptionalTrimmedString(body.text);
+    const parsedSteer = parseOperatorSteerBody(body, {
+      actionRequired: "operator_steer_action_required",
+      commandInvalid: "operator_steer_command_invalid",
+      commandConflict: "operator_steer_command_conflict",
+      reasonInvalid: "operator_steer_reason_invalid",
+      fallbackReasonRequired: "operator_fallback_reason_required",
+      timestampInvalid: "operator_steer_timestamp_invalid",
+    });
 
-    let parsedCommand = parseOperatorSteerCommand(commandInput);
-    if (parsedCommand && "error" in parsedCommand && commandInput && textInput && isSlackSlashCommandName(commandInput)) {
-      parsedCommand = undefined;
-    }
-
-    if (parsedCommand && "error" in parsedCommand) {
-      writeBadRequest(response, parsedCommand.error);
-      return;
-    }
-
-    const parsedText = parsedCommand ? undefined : parseOperatorSteerCommand(textInput);
-    if (parsedText && "error" in parsedText) {
-      writeBadRequest(response, parsedText.error);
-      return;
-    }
-
-    const action = body.action;
-    if (action !== undefined && !operatorSteerActions.includes(action as OperatorSteerAction)) {
-      writeBadRequest(response, "operator_steer_action_required");
-      return;
-    }
-
-    const parsedSteer = parsedCommand ?? parsedText;
-
-    if (action !== undefined && parsedSteer && action !== parsedSteer.action) {
-      writeBadRequest(response, "operator_steer_command_conflict");
-      return;
-    }
-
-    const resolvedAction = (action as OperatorSteerAction | undefined) ?? parsedSteer?.action;
-    if (!resolvedAction) {
-      writeBadRequest(response, "operator_steer_action_required");
-      return;
-    }
-
-    if (hasInvalidOptionalString(body.reason)) {
-      writeBadRequest(response, "operator_steer_reason_invalid");
-      return;
-    }
-
-    const reason = getOptionalTrimmedString(body.reason) ?? parsedSteer?.reason;
-    if (resolvedAction === "arm_fallback" && !reason) {
-      writeBadRequest(response, "operator_fallback_reason_required");
-      return;
-    }
-
-    const timestamp = normalizeTimestamp(body.timestamp, "operator_steer_timestamp_invalid");
-    if (typeof timestamp !== "string") {
-      writeBadRequest(response, timestamp.error);
+    if ("error" in parsedSteer) {
+      writeBadRequest(response, parsedSteer.error);
       return;
     }
 
     try {
-      const snapshot = await ingress.applyOperatorSteer(operatorSteerMatch[1], resolvedAction, timestamp, reason);
+      const snapshot = await ingress.applyOperatorSteer(
+        operatorSteerMatch[1],
+        parsedSteer.action,
+        parsedSteer.timestamp,
+        parsedSteer.reason,
+      );
       writeJson(response, 200, buildCallPayload(snapshot));
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Call is not awaiting operator steer")) {
