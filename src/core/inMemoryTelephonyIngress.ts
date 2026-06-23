@@ -248,7 +248,8 @@ export class InMemoryTelephonyIngress {
       throw new Error(`Unknown call id: ${callId}`);
     }
 
-    const requiresPendingState = action === "approve_offer" || action === "escalate_to_human" || action === "resume";
+    const requiresPendingState =
+      action === "approve_offer" || action === "deny_offer" || action === "escalate_to_human" || action === "resume";
     if (requiresPendingState && snapshot.flowState !== "policy_hold" && snapshot.flowState !== "operator_steer") {
       throw new Error(`Call is not awaiting operator steer: ${callId}`);
     }
@@ -256,6 +257,32 @@ export class InMemoryTelephonyIngress {
     applyOperatorSteer(snapshot, action, timestamp, reason);
     recordLatencyMark(snapshot, "operator_notified", timestamp, "operatorNotification");
     recordLatencyMark(snapshot, "agent_response_ready", timestamp, "ttsFirstAudio");
+
+    return cloneSnapshot(snapshot);
+  }
+
+  async recordOperatorNote(callId: string, text: string, timestamp: string, disposition?: string): Promise<CallSnapshot> {
+    const snapshot = this.calls.get(callId);
+
+    if (!snapshot) {
+      throw new Error(`Unknown call id: ${callId}`);
+    }
+
+    snapshot.transcript.push({
+      speaker: "operator",
+      text,
+      timestamp,
+    });
+    snapshot.events.push({
+      type: "operator_note_recorded",
+      at: timestamp,
+      detail: {
+        text,
+        disposition: disposition ?? null,
+        source: "mock_http_route",
+        transcriptLength: snapshot.transcript.length,
+      },
+    });
 
     return cloneSnapshot(snapshot);
   }

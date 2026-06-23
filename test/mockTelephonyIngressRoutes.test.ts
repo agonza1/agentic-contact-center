@@ -76,6 +76,14 @@ interface CallListPayload extends QueueSummaryPayload {
   };
 }
 
+interface OperatorConsolePayload {
+  schemaVersion: number;
+  runtimeHealth: { ok: boolean; mode: string; provider: string; pipecatFlow: { ready: boolean } };
+  controls: { commandWrappers: string[]; actions: Array<{ action: string }> };
+  queue: QueueSummaryPayload;
+  calls: { items: SnapshotPayload[]; summary: CallListPayload["summary"] };
+}
+
 interface EventTrailPayload {
   callId: string;
   providerCallId: string;
@@ -720,6 +728,108 @@ test("GET /api/calls lists active demo calls in start order", async () => {
   });
 });
 
+
+test("GET /api/operator/console returns operator-ready controls and attention-sorted calls", async () => {
+  await withServer(async (port) => {
+    const idleStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "console-session-idle",
+      openclawSessionLabel: "cluecon-demo/console-idle",
+    });
+    const idleCallId = (idleStarted.payload as SnapshotPayload).session.callId;
+
+    const operatorStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "console-session-operator",
+      openclawSessionLabel: "cluecon-demo/console-operator",
+    });
+    const operatorCallId = (operatorStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:10:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:10:05.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:10:10.000Z",
+    });
+
+    const consoleResponse = await requestJson(port, "GET", "/api/operator/console");
+    const consolePayload = consoleResponse.payload as OperatorConsolePayload;
+
+    assert.equal(consoleResponse.statusCode, 200);
+    assert.equal(consolePayload.runtimeHealth.ok, true);
+    assert.equal(consolePayload.runtimeHealth.pipecatFlow.ready, true);
+    assert.deepEqual(consolePayload.controls.commandWrappers, ["/operator", "/steer"]);
+    assert.equal(consolePayload.controls.actions.some((entry) => entry.action === "approve_offer"), true);
+    assert.equal(consolePayload.queue.summary.totalCalls, 2);
+    assert.equal(consolePayload.queue.summary.pendingOperatorSteer, 1);
+    assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
+    assert.equal(consolePayload.calls.summary.sort, "attentionStartedAt");
+    assert.equal(consolePayload.calls.summary.returnedCalls, 2);
+    assert.deepEqual(consolePayload.calls.summary.page, {
+      offset: 0,
+      limit: 25,
+      totalFilteredCalls: 2,
+      hasMore: false,
+      nextOffset: null,
+    });
+
+    const filteredConsole = await requestJson(port, "GET", "/api/operator/console?attentionRequired=true&limit=1");
+    const filteredPayload = filteredConsole.payload as OperatorConsolePayload;
+
+    assert.equal(filteredConsole.statusCode, 200);
+    assert.deepEqual(filteredPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
+    assert.equal(filteredPayload.calls.summary.filteredSummary.attentionRequired, 1);
+    assert.equal(filteredPayload.calls.summary.page.limit, 1);
+
+    const invalidFilter = await requestJson(port, "GET", "/api/operator/console?attentionRequired=maybe");
+    assert.equal(invalidFilter.statusCode, 400);
+    assert.deepEqual(invalidFilter.payload, { ok: false, error: "operator_console_attention_required_invalid" });
+  });
+});
+
+test("POST /api/calls/:callId/operator-note records operator notes and dispositions", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as SnapshotPayload).session.callId;
+
+    const noted = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-note", {
+      text: "Customer asked for licensed follow-up after safe offer review.",
+      disposition: "follow_up_requested",
+      timestamp: "2026-06-10T14:12:00.000Z",
+    });
+    const notedPayload = noted.payload as SnapshotPayload;
+
+    assert.equal(noted.statusCode, 200);
+    assert.deepEqual(notedPayload.transcript.at(-1), {
+      speaker: "operator",
+      text: "Customer asked for licensed follow-up after safe offer review.",
+      timestamp: "2026-06-10T14:12:00.000Z",
+    });
+    assert.deepEqual(notedPayload.events.at(-1), {
+      type: "operator_note_recorded",
+      at: "2026-06-10T14:12:00.000Z",
+      detail: {
+        text: "Customer asked for licensed follow-up after safe offer review.",
+        disposition: "follow_up_requested",
+        source: "mock_http_route",
+        transcriptLength: notedPayload.transcript.length,
+      },
+    });
+
+    const proof = await requestJson(port, "GET", "/api/calls/" + callId + "/proof");
+    const proofPayload = proof.payload as { events: Array<{ type: string }>; transcript: Array<{ speaker: string; text: string }> };
+    assert.equal(proofPayload.events.some((event) => event.type === "operator_note_recorded"), true);
+    assert.equal(proofPayload.transcript.some((turn) => turn.speaker === "operator" && turn.text.includes("licensed follow-up")), true);
+
+    const missingText = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-note", { text: "   " });
+    assert.equal(missingText.statusCode, 400);
+    assert.deepEqual(missingText.payload, { ok: false, error: "operator_note_text_required" });
+  });
+});
 
 test("GET /api/calls can sort operator attention before idle calls", async () => {
   await withServer(async (port) => {
@@ -1797,6 +1907,42 @@ test("the scripted flow pauses for operator steer and resumes with an approved s
     assert.equal(wrappedPayload.flowState, "wrap");
     assert.equal(wrappedPayload.pipecatFlow.script.matchedCallerTurns, 4);
     assert.equal(wrappedPayload.pipecatFlow.script.completed, true);
+  });
+});
+
+test("operators can deny an offer approval with a visible safe response", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+
+    const denied = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "deny_offer",
+      timestamp: "2026-06-10T14:00:11.000Z",
+    });
+    const deniedPayload = denied.payload as SnapshotPayload;
+    assert.equal(denied.statusCode, 200);
+    assert.equal(deniedPayload.flowState, "steered_response");
+    assert.equal(deniedPayload.operatorSteer.pending, false);
+    assert.equal(deniedPayload.operatorSteer.lastAction, "deny_offer");
+    assert.equal(deniedPayload.events.some((event) => event.type === "operator_offer_denied"), true);
+
+    const safeAgentTurn = [...deniedPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
+    assert.ok(safeAgentTurn);
+    assert.equal(safeAgentTurn.text.includes("did not approve a retention offer"), true);
+    assert.equal(safeAgentTurn.text.includes("cannot discuss a billing credit"), true);
   });
 });
 
@@ -2884,6 +3030,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
         "pause",
         "resume",
         "approve_offer",
+        "deny_offer",
         "escalate_to_human",
         "goto_slide",
         "ask_operator",
@@ -2900,5 +3047,10 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     const approveOffer = payload.actions.find((action) => action.action === "approve_offer");
     assert.equal(approveOffer?.requiresPendingCall, true);
     assert.equal(approveOffer?.requiresReason, false);
+
+    const denyOffer = payload.actions.find((action) => action.action === "deny_offer");
+    assert.equal(denyOffer?.requiresPendingCall, true);
+    assert.equal(denyOffer?.requiresReason, false);
+    assert.equal(denyOffer?.commandExamples.includes("/operator deny-offer"), true);
   });
 });

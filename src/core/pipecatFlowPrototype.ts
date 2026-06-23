@@ -106,6 +106,10 @@ function computeScriptProgress(snapshot: CallSnapshot): ScriptProgress {
 }
 
 function buildSteeredResponse(action: OperatorSteerAction): string {
+  if (action === "deny_offer") {
+    return "Thanks for waiting. The operator did not approve a retention offer, so I cannot discuss a billing credit; I can document the concern or connect you with a licensed retention specialist.";
+  }
+
   if (action === "escalate_to_human") {
     return "Thanks for waiting. I am connecting you to a licensed retention specialist because I cannot make an offer without human review, and I will not promise any billing credit on this call.";
   }
@@ -381,6 +385,17 @@ export function applyOperatorSteer(
       "I am explicitly asking the operator for guidance before I continue this demo call.",
       timestamp,
     );
+    snapshot.pipecatFlow.activeTool = "ask_operator";
+    return;
+  }
+
+  if (action === "deny_offer") {
+    recordEvent(snapshot, "operator_offer_denied", timestamp, {
+      operatorChannel: snapshot.scenario.operatorChannel,
+      source: "operator_steer",
+    });
+    transitionFlowState(snapshot, "steered_response", timestamp, "operator_denied_retention_offer");
+    appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
     snapshot.pipecatFlow.activeTool = "ask_operator";
     return;
   }

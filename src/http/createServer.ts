@@ -32,6 +32,7 @@ const maxCallListPageLimit = 100;
 
 const operatorSteerActions: OperatorSteerAction[] = [
   "approve_offer",
+  "deny_offer",
   "escalate_to_human",
   "pause",
   "resume",
@@ -64,6 +65,12 @@ const operatorActionCatalog: Array<{
     requiresPendingCall: true,
     requiresReason: false,
     commandExamples: ["/operator approve-offer", "/steer approve offer"],
+  },
+  {
+    action: "deny_offer",
+    requiresPendingCall: true,
+    requiresReason: false,
+    commandExamples: ["/operator deny-offer", "/steer deny offer"],
   },
   {
     action: "escalate_to_human",
@@ -386,6 +393,14 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
   };
 }
 
+function buildOperatorActionsPayload() {
+  return {
+    schemaVersion: 1,
+    commandWrappers: ["/operator", "/steer"],
+    actions: operatorActionCatalog,
+  };
+}
+
 function parseOptionalBooleanFilter(
   value: string | null,
   error: string,
@@ -514,7 +529,7 @@ type CallListOrder = "asc" | "desc";
 
 function parseCallListFilters(
   requestUrl: URL,
-  invalidPrefix: "call_list" | "queue",
+  invalidPrefix: "call_list" | "queue" | "operator_console",
 ): CallListFilters | { error: string } {
   const flowState = requestUrl.searchParams.get("flowState");
   if (flowState !== null && !isFlowState(flowState)) {
@@ -681,6 +696,10 @@ function parseOperatorSteerCommand(
     return { action: "approve_offer" };
   }
 
+  if (lowerCommand === "deny-offer" || lowerCommand === "deny offer") {
+    return { action: "deny_offer" };
+  }
+
   if (lowerCommand === "escalate" || lowerCommand === "escalate-to-human") {
     return { action: "escalate_to_human" };
   }
@@ -769,10 +788,91 @@ async function routeRequest(
   }
 
   if (request.method === "GET" && pathname === "/api/operator/actions") {
+    writeJson(response, 200, buildOperatorActionsPayload());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/operator/console") {
+    const filters = parseCallListFilters(requestUrl, "operator_console");
+    if ("error" in filters) {
+      writeBadRequest(response, filters.error);
+      return;
+    }
+
+    const limit = parseOptionalPositiveIntegerFilter(requestUrl.searchParams.get("limit"), "operator_console_limit_invalid");
+    if (limit !== undefined && typeof limit !== "number") {
+      writeBadRequest(response, limit.error);
+      return;
+    }
+
+    if (limit !== undefined && limit > maxCallListPageLimit) {
+      writeBadRequest(response, "operator_console_limit_invalid");
+      return;
+    }
+
+    const offset = parseOptionalNonNegativeIntegerFilter(requestUrl.searchParams.get("offset"), "operator_console_offset_invalid");
+    if (offset !== undefined && typeof offset !== "number") {
+      writeBadRequest(response, offset.error);
+      return;
+    }
+
+    const sortParam = requestUrl.searchParams.get("sort");
+    const sort = sortParam === null ? "attentionStartedAt" : parseCallListSort(sortParam);
+    if (typeof sort !== "string") {
+      writeBadRequest(response, sort.error);
+      return;
+    }
+
+    const order = parseCallListOrder(requestUrl.searchParams.get("order"));
+    if (typeof order !== "string") {
+      writeBadRequest(response, order.error);
+      return;
+    }
+
+    const orderedSnapshots = await ingress.listSnapshots(filters);
+    if (sort === "attentionStartedAt") {
+      orderedSnapshots.sort(compareAttentionQueueOrder);
+    }
+
+    if (order === "desc") {
+      orderedSnapshots.reverse();
+    }
+
+    const pageOffset = offset ?? 0;
+    const pageLimit = limit ?? 25;
+    const calls = orderedSnapshots.slice(pageOffset, pageOffset + pageLimit).map((snapshot) => buildCallPayload(snapshot));
+    const summary = await ingress.getQueueSummary();
+    const filteredSummary = await ingress.getQueueSummary(filters);
+
     writeJson(response, 200, {
       schemaVersion: 1,
-      commandWrappers: ["/operator", "/steer"],
-      actions: operatorActionCatalog,
+      generatedAt: new Date().toISOString(),
+      runtimeHealth: {
+        ok: true,
+        mode: config.mode,
+        provider: config.provider.name,
+        pipecatFlow: getPipecatPrototypeHealth(),
+      },
+      controls: buildOperatorActionsPayload(),
+      queue: { summary },
+      calls: {
+        items: calls,
+        summary: {
+          ...summary,
+          filteredCalls: orderedSnapshots.length,
+          returnedCalls: calls.length,
+          sort,
+          order,
+          page: {
+            offset: pageOffset,
+            limit: pageLimit,
+            totalFilteredCalls: orderedSnapshots.length,
+            hasMore: pageOffset + calls.length < orderedSnapshots.length,
+            nextOffset: pageOffset + calls.length < orderedSnapshots.length ? pageOffset + calls.length : null,
+          },
+          filteredSummary,
+        },
+      },
     });
     return;
   }
@@ -894,6 +994,41 @@ async function routeRequest(
     try {
       const reason = getOptionalTrimmedString(body.reason);
       const snapshot = await ingress.triggerFallback(fallbackMatch[1], mode, timestamp, reason);
+      writeJson(response, 200, buildCallPayload(snapshot));
+    } catch {
+      writeNotFound(response);
+    }
+    return;
+  }
+
+  const operatorNoteMatch = request.method === "POST" ? pathname.match(/^\/api\/calls\/([^/]+)\/operator-note$/) : null;
+  if (operatorNoteMatch) {
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const text = getOptionalTrimmedString(body.text);
+    if (!text) {
+      writeBadRequest(response, "operator_note_text_required");
+      return;
+    }
+
+    if (hasInvalidOptionalString(body.disposition)) {
+      writeBadRequest(response, "operator_note_disposition_invalid");
+      return;
+    }
+
+    const timestamp = normalizeTimestamp(body.timestamp, "operator_note_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+
+    try {
+      const snapshot = await ingress.recordOperatorNote(operatorNoteMatch[1], text, timestamp, getOptionalTrimmedString(body.disposition));
       writeJson(response, 200, buildCallPayload(snapshot));
     } catch {
       writeNotFound(response);
