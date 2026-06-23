@@ -268,6 +268,32 @@ async function requestRaw(
   };
 }
 
+async function requestText(
+  port: number,
+  method: string,
+  path: string,
+): Promise<{ statusCode: number; body: string; contentType: string | undefined }> {
+  return new Promise((resolve, reject) => {
+    const req = request({ host: "127.0.0.1", port, path, method }, (response) => {
+      let collected = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => {
+        collected += chunk;
+      });
+      response.on("end", () => {
+        resolve({
+          statusCode: response.statusCode ?? 0,
+          body: collected,
+          contentType: response.headers["content-type"],
+        });
+      });
+    });
+
+    req.on("error", reject);
+    req.end();
+  });
+}
+
 async function requestJson(
   port: number,
   method: string,
@@ -960,6 +986,20 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     const invalidFilter = await requestJson(port, "GET", "/api/operator/console?attentionRequired=maybe");
     assert.equal(invalidFilter.statusCode, 400);
     assert.deepEqual(invalidFilter.payload, { ok: false, error: "operator_console_attention_required_invalid" });
+  });
+});
+
+test("GET /operator/console serves the local console with the full action set", async () => {
+  await withServer(async (port) => {
+    const response = await requestText(port, "GET", "/operator/console");
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.contentType, "text/html; charset=utf-8");
+    assert.match(response.body, /<title>Operator Console<\/title>/);
+    assert.match(response.body, /"goto_slide"/);
+    assert.match(response.body, /"ask_operator"/);
+    assert.match(response.body, /Slide or step/);
+    assert.match(response.body, /Operator question/);
   });
 });
 

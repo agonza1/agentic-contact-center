@@ -230,8 +230,9 @@ function buildOperatorConsoleHtml(): string {
   </main>
   <script>
     const state = { calls: [], selectedCallId: null };
-    const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "end_call", "arm_fallback", "disarm_fallback"];
-    const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", end_call: "End Call", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
+    const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
+    const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
+    const reasonPrompts = { goto_slide: "Slide or step", ask_operator: "Operator question", arm_fallback: "Fallback reason" };
     function setStatus(text) { document.getElementById("status").textContent = text; }
     function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[char]; }); }
     function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
@@ -283,7 +284,7 @@ function buildOperatorConsoleHtml(): string {
         return '<div class="turn"><b>' + escapeHtml(turn.speaker) + '</b><span>' + escapeHtml(turn.text) + '</span></div>';
       }).join("");
       root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong></div><div class="metric"><span class="meta">Events</span><strong>' + call.evidenceSummary.eventCount + '</strong></div></div><div class="actions">' + actionHtml + '</div><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
-      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const reason = action === "arm_fallback" ? prompt("Fallback reason") : undefined; if (action === "arm_fallback" && !reason) return; postAction(action, reason); }); });
+      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const promptLabel = reasonPrompts[action]; const reason = promptLabel ? prompt(promptLabel) : undefined; if (promptLabel && !reason) return; postAction(action, reason); }); });
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
     function render() { renderCalls(); renderDetail(); }
