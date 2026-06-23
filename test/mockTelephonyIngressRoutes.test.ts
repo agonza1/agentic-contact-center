@@ -112,6 +112,30 @@ interface EventTrailPayload {
   };
 }
 
+interface ArtifactManifestPayload {
+  schemaVersion: number;
+  callId: string;
+  providerCallId: string;
+  openclawSession: {
+    sessionId: string;
+    label: string;
+    status: string;
+    artifactLinks: { snapshot: string; artifacts: string; proof: string; transcript: string; events: string; latencyMarks: string };
+  };
+  artifacts: { snapshot: string; artifacts: string; proof: string; transcript: string; events: string; latencyMarks: string };
+  summary: {
+    transcriptTurns: number;
+    eventCount: number;
+    latencyMarkCount: number;
+    latestEventType: string | null;
+    latestEventAt: string | null;
+    latestTranscriptSpeaker: string | null;
+    latestTranscriptAt: string | null;
+    latestLatencyStage: string | null;
+    latestLatencyAt: string | null;
+  };
+}
+
 interface LatencyPayload {
   callId: string;
   providerCallId: string;
@@ -227,7 +251,7 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
           label: string;
           status: string;
           eventTrailVersion: number;
-          artifactLinks: { snapshot: string; proof: string; transcript: string; events: string; latencyMarks: string };
+          artifactLinks: { snapshot: string; artifacts: string; proof: string; transcript: string; events: string; latencyMarks: string };
         };
       };
       scenario: { mode: string; policyProfile: string; fallbackMode: string };
@@ -254,6 +278,7 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
     assert.equal(startedPayload.session.openclawSession.eventTrailVersion, 1);
     assert.deepEqual(startedPayload.session.openclawSession.artifactLinks, {
       snapshot: `/api/calls/${startedPayload.session.callId}`,
+      artifacts: `/api/calls/${startedPayload.session.callId}/artifacts`,
       proof: `/api/calls/${startedPayload.session.callId}/proof`,
       transcript: `/api/calls/${startedPayload.session.callId}/transcript`,
       events: `/api/calls/${startedPayload.session.callId}/events`,
@@ -374,7 +399,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
         signalWire: string;
         openclawSession: { sessionId: string; label: string; status: string };
       };
-      artifacts: { snapshot: string; proof: string; transcript: string; events: string; latencyMarks: string };
+      artifacts: { snapshot: string; artifacts: string; proof: string; transcript: string; events: string; latencyMarks: string };
       pii: { redactionApplied: boolean; assumptions: string };
       outcome: {
         flowState: string;
@@ -410,6 +435,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
     assert.equal(payload.runtimeMode.openclawSession.label, "qa/proof-bundle");
     assert.deepEqual(payload.artifacts, {
       snapshot: `/api/calls/${callId}`,
+      artifacts: `/api/calls/${callId}/artifacts`,
       proof: `/api/calls/${callId}/proof`,
       transcript: `/api/calls/${callId}/transcript`,
       events: `/api/calls/${callId}/events`,
@@ -426,6 +452,47 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
     assert.equal(payload.summary.latencyMarkCount, payload.latencyMarks.length);
     assert.equal(payload.summary.eventTypes.includes("policy_hold_entered"), true);
     assert.equal(payload.summary.toolCoverage.includes("ask_operator"), true);
+  });
+});
+
+test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "artifact-session-42",
+      openclawSessionLabel: "qa/artifact-manifest",
+    });
+    const callId = (started.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", "/api/calls/" + callId + "/caller-turn", {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-12T10:00:00.000Z",
+    });
+
+    const manifest = await requestJson(port, "GET", "/api/calls/" + callId + "/artifacts");
+    const payload = manifest.payload as ArtifactManifestPayload;
+
+    assert.equal(manifest.statusCode, 200);
+    assert.equal(payload.schemaVersion, 1);
+    assert.equal(payload.callId, callId);
+    assert.equal(payload.providerCallId, "mock-sw-call-001-0001");
+    assert.equal(payload.openclawSession.sessionId, "artifact-session-42");
+    assert.equal(payload.openclawSession.label, "qa/artifact-manifest");
+    assert.deepEqual(payload.artifacts, payload.openclawSession.artifactLinks);
+    assert.deepEqual(payload.artifacts, {
+      snapshot: `/api/calls/${callId}`,
+      artifacts: `/api/calls/${callId}/artifacts`,
+      proof: `/api/calls/${callId}/proof`,
+      transcript: `/api/calls/${callId}/transcript`,
+      events: `/api/calls/${callId}/events`,
+      latencyMarks: `/api/calls/${callId}/latency`,
+    });
+    assert.equal(payload.summary.transcriptTurns, 2);
+    assert.equal(payload.summary.eventCount > 2, true);
+    assert.equal(payload.summary.latencyMarkCount > 1, true);
+    assert.equal(payload.summary.latestEventType, "flow_state_transition");
+    assert.equal(payload.summary.latestTranscriptSpeaker, "agent");
+    assert.equal(payload.summary.latestTranscriptAt, "2026-06-12T10:00:00.000Z");
+    assert.equal(payload.summary.latestLatencyStage, "agent_response_ready");
   });
 });
 

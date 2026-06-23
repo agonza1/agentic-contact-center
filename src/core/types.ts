@@ -93,6 +93,7 @@ export interface OpenClawSessionEnvelope {
   eventTrailVersion: number;
   artifactLinks: {
     snapshot: string;
+    artifacts: string;
     proof: string;
     transcript: string;
     events: string;
