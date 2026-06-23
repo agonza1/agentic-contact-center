@@ -678,6 +678,21 @@ function operatorActionRequiresConfirmation(action: OperatorSteerAction): boolea
   return action === "arm_fallback" || action === "escalate_to_human" || action === "takeover" || action === "end_call";
 }
 
+function getOperatorActionConfirmationMessage(action: OperatorSteerAction): string | null {
+  switch (action) {
+    case "arm_fallback":
+      return "Arming fallback changes the live call path until fallback is disarmed.";
+    case "escalate_to_human":
+      return "Escalating hands the caller to a human operator.";
+    case "takeover":
+      return "Takeover gives the operator direct control of the live call.";
+    case "end_call":
+      return "Ending the call closes the active demo session.";
+    default:
+      return null;
+  }
+}
+
 function buildOperatorActionsPayload() {
   return {
     schemaVersion: 1,
@@ -692,6 +707,7 @@ function buildOperatorActionsPayload() {
     actions: operatorActionCatalog.map((entry) => ({
       ...entry,
       confirmationRequired: operatorActionRequiresConfirmation(entry.action),
+      confirmationMessage: getOperatorActionConfirmationMessage(entry.action),
     })),
   };
 }

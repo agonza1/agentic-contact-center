@@ -98,6 +98,7 @@ interface OperatorConsolePayload {
       bodyTemplate: { action: string; reason?: string };
       operatorOutcome: string;
       confirmationRequired: boolean;
+      confirmationMessage: string | null;
     }>;
   };
   queue: QueueSummaryPayload;
@@ -927,6 +928,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       bodyTemplate: { action: "approve_offer" },
       operatorOutcome: "resume",
       confirmationRequired: false,
+      confirmationMessage: null,
       commandExamples: ["/operator approve-offer", "/steer approve offer"],
     });
     const takeoverAction = consolePayload.controls.actions.find((entry) => entry.action === "takeover");
@@ -934,6 +936,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.deepEqual(takeoverAction?.bodyTemplate, { action: "takeover" });
     assert.equal(takeoverAction?.operatorOutcome, "handoff");
     assert.equal(takeoverAction?.confirmationRequired, true);
+    assert.equal(takeoverAction?.confirmationMessage, "Takeover gives the operator direct control of the live call.");
     assert.equal(consolePayload.queue.summary.totalCalls, 2);
     assert.equal(consolePayload.queue.summary.pendingOperatorSteer, 1);
     assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
