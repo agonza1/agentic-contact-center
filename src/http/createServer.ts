@@ -172,6 +172,128 @@ function writeJson(response: ServerResponse, statusCode: number, payload: object
   response.end(JSON.stringify(payload, null, 2));
 }
 
+function writeHtml(response: ServerResponse, statusCode: number, html: string): void {
+  response.statusCode = statusCode;
+  response.setHeader("content-type", "text/html; charset=utf-8");
+  response.end(html);
+}
+
+function buildOperatorConsoleHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Operator Console</title>
+  <style>
+    :root { --bg: #f6f7f9; --panel: #fff; --text: #14202b; --muted: #657487; --line: #d7dee8; --accent: #0f766e; --danger: #b42318; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0; }
+    main { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 16px; padding: 16px; }
+    button, input, textarea { font: inherit; }
+    button { min-height: 36px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); cursor: pointer; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.danger { color: var(--danger); border-color: #f0b8b2; }
+    button:disabled { cursor: not-allowed; opacity: 0.45; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    .panel h2 { margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 15px; }
+    .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .status, .meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .call-list { display: grid; }
+    .call-item { width: 100%; display: grid; gap: 4px; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; text-align: left; }
+    .call-item[aria-selected="true"] { border-left: 4px solid var(--accent); background: #eefaf7; padding-left: 10px; }
+    .call-id { font-weight: 700; }
+    .detail { display: grid; gap: 14px; padding: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .metric { border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fbfcfe; }
+    .metric strong { display: block; font-size: 18px; }
+    .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+    .transcript { display: grid; gap: 8px; max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fbfcfe; }
+    .turn { display: grid; gap: 2px; }
+    .turn b { font-size: 12px; color: var(--muted); text-transform: uppercase; }
+    form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    textarea { min-height: 72px; resize: vertical; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+    input { min-height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 8px; max-width: 160px; }
+    @media (max-width: 820px) { main { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr; } form { grid-template-columns: 1fr; } input { max-width: none; width: 100%; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Operator Console</h1>
+    <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" id="refresh">Refresh</button></div>
+  </header>
+  <main>
+    <section class="panel" aria-label="Live calls"><h2>Live Calls</h2><div class="call-list" id="calls"></div></section>
+    <section class="panel" aria-label="Selected call"><h2 id="selected-title">Select a call</h2><div class="detail" id="detail"></div></section>
+  </main>
+  <script>
+    const state = { calls: [], selectedCallId: null };
+    const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "end_call", "arm_fallback", "disarm_fallback"];
+    const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", end_call: "End Call", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
+    function setStatus(text) { document.getElementById("status").textContent = text; }
+    function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[char]; }); }
+    function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
+    async function refresh() {
+      setStatus("Refreshing");
+      const response = await fetch("/api/operator/console?sort=attentionStartedAt&order=asc&limit=25");
+      if (!response.ok) throw new Error("console_fetch_failed");
+      const payload = await response.json();
+      state.calls = payload.calls.items;
+      if (!state.calls.some(function(call) { return call.session.callId === state.selectedCallId; })) state.selectedCallId = state.calls[0] ? state.calls[0].session.callId : null;
+      render();
+      setStatus(new Date().toLocaleTimeString());
+    }
+    async function postAction(action, reason) {
+      const call = selectedCall();
+      if (!call) return;
+      const response = await fetch("/api/operator/console/action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ callId: call.session.callId, action: action, reason: reason || undefined }) });
+      if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); setStatus(payload.error || "Action failed"); return; }
+      await refresh();
+    }
+    async function recordNote(event) {
+      event.preventDefault();
+      const call = selectedCall();
+      const note = document.getElementById("note");
+      if (!call || !note.value.trim()) return;
+      await fetch("/api/calls/" + call.session.callId + "/operator-note", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: note.value.trim(), disposition: document.getElementById("disposition").value.trim() || undefined }) });
+      note.value = "";
+      await refresh();
+    }
+    function renderCalls() {
+      const root = document.getElementById("calls");
+      root.innerHTML = state.calls.map(function(call) {
+        return '<button type="button" class="call-item" aria-selected="' + (call.session.callId === state.selectedCallId) + '" data-call-id="' + escapeHtml(call.session.callId) + '"><span class="call-id">' + escapeHtml(call.session.callId) + '</span><span class="meta">' + escapeHtml(call.flowState) + ' | ' + (call.attention.required ? "attention" : "monitoring") + '</span><span class="meta">' + escapeHtml(call.session.openclawSession.label) + '</span></button>';
+      }).join("") || '<div class="meta" style="padding:14px">No active calls</div>';
+      root.querySelectorAll("button[data-call-id]").forEach(function(button) { button.addEventListener("click", function() { state.selectedCallId = button.dataset.callId; render(); }); });
+    }
+    function renderDetail() {
+      const call = selectedCall();
+      document.getElementById("selected-title").textContent = call ? call.session.callId : "Select a call";
+      const root = document.getElementById("detail");
+      if (!call) { root.innerHTML = ""; return; }
+      const unavailable = new Set(call.actionState.unavailableActions.map(function(entry) { return entry.action; }));
+      const actionHtml = actions.map(function(action) {
+        const cssClass = action === "end_call" ? "danger" : action === "approve_offer" ? "primary" : "";
+        const disabled = unavailable.has(action) ? "disabled" : "";
+        return '<button type="button" data-action="' + action + '" class="' + cssClass + '" ' + disabled + '>' + escapeHtml(labels[action] || action.replace(/_/g, " ")) + '</button>';
+      }).join("");
+      const transcriptHtml = call.transcript.slice(-10).map(function(turn) {
+        return '<div class="turn"><b>' + escapeHtml(turn.speaker) + '</b><span>' + escapeHtml(turn.text) + '</span></div>';
+      }).join("");
+      root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong></div><div class="metric"><span class="meta">Events</span><strong>' + call.evidenceSummary.eventCount + '</strong></div></div><div class="actions">' + actionHtml + '</div><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
+      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const reason = action === "arm_fallback" ? prompt("Fallback reason") : undefined; if (action === "arm_fallback" && !reason) return; postAction(action, reason); }); });
+      document.getElementById("note-form").addEventListener("submit", recordNote);
+    }
+    function render() { renderCalls(); renderDetail(); }
+    document.getElementById("refresh").addEventListener("click", function() { refresh().catch(function(error) { setStatus(error.message); }); });
+    refresh().catch(function(error) { setStatus(error.message); });
+  </script>
+</body>
+</html>`;
+}
+
 function writeNotFound(response: ServerResponse): void {
   writeJson(response, 404, {
     ok: false,
@@ -1030,6 +1152,11 @@ async function routeRequest(
       runtimeSeams,
       pipecatFlow: getPipecatPrototypeHealth(),
     });
+    return;
+  }
+
+  if (request.method === "GET" && (pathname === "/operator" || pathname === "/operator/console")) {
+    writeHtml(response, 200, buildOperatorConsoleHtml());
     return;
   }
 
