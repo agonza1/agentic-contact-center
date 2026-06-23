@@ -239,6 +239,58 @@ function buildCallPayload(snapshot: CallSnapshot) {
   };
 }
 
+function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
+  const latestEvent = snapshot.events.at(-1);
+  const latestTranscriptTurn = snapshot.transcript.at(-1);
+  const latestLatencyMark = snapshot.latencyMarks.at(-1);
+  const operatorNoteEvents = snapshot.events.filter((event) => event.type === "operator_note_recorded");
+  const latestOperatorNote = operatorNoteEvents.at(-1);
+  const latestEvidenceAt = [latestEvent?.at, latestTranscriptTurn?.timestamp, latestLatencyMark?.recordedAt]
+    .filter((timestamp): timestamp is string => timestamp !== undefined)
+    .sort(compareTimestamps)
+    .at(-1) ?? null;
+  const attention = getAttentionMetadata(snapshot);
+  const unavailableActions = operatorActionCatalog
+    .filter((entry) => entry.requiresPendingCall && !snapshot.operatorSteer.pending)
+    .map((entry) => ({
+      action: entry.action,
+      reason: "pending_operator_steer_required",
+    }));
+
+  return {
+    ...buildCallPayload(snapshot),
+    evidenceSummary: {
+      latestEventType: latestEvent?.type ?? null,
+      latestEventAt: latestEvent?.at ?? null,
+      latestTranscriptSpeaker: latestTranscriptTurn?.speaker ?? null,
+      latestTranscriptAt: latestTranscriptTurn?.timestamp ?? null,
+      latestLatencyStage: latestLatencyMark?.stage ?? null,
+      latestLatencyAt: latestLatencyMark?.recordedAt ?? null,
+      latestEvidenceAt,
+      transcriptTurns: snapshot.transcript.length,
+      eventCount: snapshot.events.length,
+      latencyMarkCount: snapshot.latencyMarks.length,
+      operatorNoteCount: operatorNoteEvents.length,
+      latestOperatorNoteText: typeof latestOperatorNote?.detail.text === "string" ? latestOperatorNote.detail.text : null,
+      latestOperatorNoteAt: latestOperatorNote?.at ?? null,
+      latestDisposition: typeof latestOperatorNote?.detail.disposition === "string" ? latestOperatorNote.detail.disposition : null,
+      overBudgetLatencyMarkCount: snapshot.latencyMarks.filter(
+        (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
+      ).length,
+      links: snapshot.session.openclawSession.artifactLinks,
+    },
+    actionState: {
+      attentionRequired: attention.required,
+      pendingApproval: snapshot.operatorSteer.pending,
+      fallbackArmed: snapshot.demoFallback.armed,
+      availableActions: operatorActionCatalog
+        .filter((entry) => !entry.requiresPendingCall || snapshot.operatorSteer.pending)
+        .map((entry) => entry.action),
+      unavailableActions,
+    },
+  };
+}
+
 function buildEventTrailPayload(
   snapshot: CallSnapshot,
   eventType?: string,
@@ -1085,7 +1137,9 @@ async function routeRequest(
 
     const pageOffset = offset ?? 0;
     const pageLimit = limit ?? 25;
-    const calls = orderedSnapshots.slice(pageOffset, pageOffset + pageLimit).map((snapshot) => buildCallPayload(snapshot));
+    const calls = orderedSnapshots
+      .slice(pageOffset, pageOffset + pageLimit)
+      .map((snapshot) => buildOperatorConsoleCallPayload(snapshot));
     const summary = await ingress.getQueueSummary();
     const filteredSummary = await ingress.getQueueSummary(filters);
 
