@@ -262,6 +262,62 @@ function buildLatencyPayload(
   };
 }
 
+function buildCallProofBundlePayload(snapshot: CallSnapshot) {
+  const attention = getAttentionMetadata(snapshot);
+  const eventTypes = [...new Set(snapshot.events.map((event) => event.type))];
+  const operatorActions = snapshot.events.filter((event) =>
+    ["operator_steer_applied", "operator_steer_requested", "demo_fallback_triggered", "human_handoff_started"].includes(event.type),
+  );
+  const overBudgetLatencyMarks = snapshot.latencyMarks.filter(
+    (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
+  );
+
+  return {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    callId: snapshot.session.callId,
+    providerCallId: snapshot.session.providerCallId,
+    runtimeMode: {
+      flow: snapshot.pipecatFlow.prototypeMode,
+      pipecatTransport: snapshot.pipecatFlow.transport,
+      telephony: snapshot.scenario.mode,
+      signalWire: snapshot.session.providerName === "signalwire" ? snapshot.scenario.mode : "not_configured",
+      openclawSession: snapshot.session.openclawSession,
+    },
+    pii: {
+      redactionApplied: false,
+      assumptions: "Demo proof bundles contain only seeded or mock caller text and should not be used with live PII before redaction is added.",
+    },
+    outcome: {
+      flowState: snapshot.flowState,
+      scriptCompleted: snapshot.pipecatFlow.script.completed,
+      fallbackArmed: snapshot.demoFallback.armed,
+      fallbackMode: snapshot.demoFallback.mode,
+      handoffStarted: snapshot.events.some((event) => event.type === "human_handoff_started"),
+      attentionRequired: attention.required,
+      attentionReason: attention.reason,
+    },
+    summary: {
+      transcriptTurns: snapshot.transcript.length,
+      eventCount: snapshot.events.length,
+      eventTypes,
+      operatorActionCount: operatorActions.length,
+      latencyMarkCount: snapshot.latencyMarks.length,
+      overBudgetLatencyMarkCount: overBudgetLatencyMarks.length,
+      toolCoverage: snapshot.pipecatFlow.toolCoverage,
+    },
+    session: snapshot.session,
+    scenario: snapshot.scenario,
+    transcript: snapshot.transcript,
+    events: snapshot.events,
+    operatorSteer: snapshot.operatorSteer,
+    demoFallback: snapshot.demoFallback,
+    pipecatFlow: snapshot.pipecatFlow,
+    latencyBudgetsMs: snapshot.latencyBudgetsMs,
+    latencyMarks: snapshot.latencyMarks,
+  };
+}
+
 function parseOptionalBooleanFilter(
   value: string | null,
   error: string,
@@ -1162,6 +1218,18 @@ async function routeRequest(
       200,
       buildLatencyPayload(snapshot, stage?.trim() || undefined, overBudget, since, until, offset, limit, orderParam ?? "asc"),
     );
+    return;
+  }
+
+  const callProofBundleMatch = request.method === "GET" ? pathname.match(/^\/api\/calls\/([^/]+)\/proof$/) : null;
+  if (callProofBundleMatch) {
+    const snapshot = await ingress.getSnapshot(callProofBundleMatch[1]);
+    if (!snapshot) {
+      writeNotFound(response);
+      return;
+    }
+
+    writeJson(response, 200, buildCallProofBundlePayload(snapshot));
     return;
   }
 
