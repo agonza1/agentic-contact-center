@@ -90,6 +90,13 @@ export interface OpenClawSessionEnvelope {
   label: string;
   status: "attached_mock";
   eventTrailVersion: number;
+  artifactLinks: {
+    snapshot: string;
+    proof: string;
+    transcript: string;
+    events: string;
+    latencyMarks: string;
+  };
 }
 
 export interface SessionMetadata {

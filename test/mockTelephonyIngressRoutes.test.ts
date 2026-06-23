@@ -214,7 +214,13 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
     const startedPayload = started.payload as {
       session: {
         callId: string;
-        openclawSession: { sessionId: string; label: string; status: string; eventTrailVersion: number };
+        openclawSession: {
+          sessionId: string;
+          label: string;
+          status: string;
+          eventTrailVersion: number;
+          artifactLinks: { snapshot: string; proof: string; transcript: string; events: string; latencyMarks: string };
+        };
       };
       scenario: { mode: string; policyProfile: string; fallbackMode: string };
       demoFallback: { armed: boolean; reason: string | null; mode: string | null; armedAt: string | null; disarmedAt: string | null };
@@ -238,6 +244,13 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
     assert.equal(startedPayload.session.openclawSession.label, "cluecon-demo/live-call");
     assert.equal(startedPayload.session.openclawSession.status, "attached_mock");
     assert.equal(startedPayload.session.openclawSession.eventTrailVersion, 1);
+    assert.deepEqual(startedPayload.session.openclawSession.artifactLinks, {
+      snapshot: `/api/calls/${startedPayload.session.callId}`,
+      proof: `/api/calls/${startedPayload.session.callId}/proof`,
+      transcript: `/api/calls/${startedPayload.session.callId}/transcript`,
+      events: `/api/calls/${startedPayload.session.callId}/events`,
+      latencyMarks: `/api/calls/${startedPayload.session.callId}/latency`,
+    });
     assert.equal(startedPayload.scenario.mode, "mocked_telephony");
     assert.equal(startedPayload.scenario.policyProfile, "retention_safe_mode");
     assert.equal(startedPayload.scenario.fallbackMode, "tool_timeout");
@@ -353,6 +366,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
         signalWire: string;
         openclawSession: { sessionId: string; label: string; status: string };
       };
+      artifacts: { snapshot: string; proof: string; transcript: string; events: string; latencyMarks: string };
       pii: { redactionApplied: boolean; assumptions: string };
       outcome: {
         flowState: string;
@@ -386,6 +400,13 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
     assert.equal(payload.runtimeMode.signalWire, "mocked_telephony");
     assert.equal(payload.runtimeMode.openclawSession.sessionId, "proof-session-42");
     assert.equal(payload.runtimeMode.openclawSession.label, "qa/proof-bundle");
+    assert.deepEqual(payload.artifacts, {
+      snapshot: `/api/calls/${callId}`,
+      proof: `/api/calls/${callId}/proof`,
+      transcript: `/api/calls/${callId}/transcript`,
+      events: `/api/calls/${callId}/events`,
+      latencyMarks: `/api/calls/${callId}/latency`,
+    });
     assert.equal(payload.pii.redactionApplied, false);
     assert.match(payload.pii.assumptions, /mock caller text/);
     assert.equal(payload.outcome.flowState, "policy_hold");

@@ -297,6 +297,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       attentionRequired: attention.required,
       attentionReason: attention.reason,
     },
+    artifacts: snapshot.session.openclawSession.artifactLinks,
     summary: {
       transcriptTurns: snapshot.transcript.length,
       eventCount: snapshot.events.length,
