@@ -2142,6 +2142,41 @@ test("demo start rejects non-object JSON payloads and invalid session envelope f
     assert.equal(invalidSessionLabel.statusCode, 400);
     assert.equal(invalidSessionLabelPayload.error, "openclaw_session_label_invalid");
 
+    const invalidAttachFailureFlag = await requestJson(port, "POST", "/api/demo/start", {
+      simulateOpenClawAttachFailure: "yes",
+    });
+    const invalidAttachFailureFlagPayload = invalidAttachFailureFlag.payload as { error: string };
+
+    assert.equal(invalidAttachFailureFlag.statusCode, 400);
+    assert.equal(invalidAttachFailureFlagPayload.error, "openclaw_attach_failure_flag_invalid");
+
+    const attachFailure = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "attach-failure-session",
+      openclawSessionLabel: "cluecon-demo/attach-failure",
+      simulateOpenClawAttachFailure: true,
+    });
+    const attachFailurePayload = attachFailure.payload as {
+      session: {
+        callId: string;
+        openclawSession: { sessionId: string; label: string; status: string; attachError: string | null };
+      };
+      events: Array<{ type: string; detail: Record<string, string | number | boolean | null> }>;
+    };
+
+    assert.equal(attachFailure.statusCode, 201);
+    assert.equal(attachFailurePayload.session.openclawSession.sessionId, "attach-failure-session");
+    assert.equal(attachFailurePayload.session.openclawSession.label, "cluecon-demo/attach-failure");
+    assert.equal(attachFailurePayload.session.openclawSession.status, "attach_failed_mock");
+    assert.equal(attachFailurePayload.session.openclawSession.attachError, "simulated_openclaw_session_attach_failure");
+    assert.equal(
+      attachFailurePayload.events.some((event) => event.type === "openclaw_session_attach_failed"),
+      true,
+    );
+    assert.equal(
+      attachFailurePayload.events.some((event) => event.detail.proofPath === `/api/calls/${attachFailurePayload.session.callId}/proof`),
+      true,
+    );
+
     const trimmed = await requestJson(port, "POST", "/api/demo/start", {
       openclawSessionId: "  heartbeat-session-99  ",
       openclawSessionLabel: "  cluecon-demo/validated-start  ",
