@@ -141,12 +141,12 @@ The flow enters `policy_hold` before unsafe retention offers, requests operator 
 - `GET /health`: service/config/runtime readiness.
 - `POST /api/demo/start`: create a mocked call session.
 - `POST /api/calls/:callId/caller-turn`: append a caller transcript turn and advance the flow.
-- `POST /api/calls/:callId/operator-steer`: apply operator commands or direct actions.
+- `POST /api/calls/:callId/operator-steer`: apply operator commands or direct actions, including pause/resume, approval, takeover, escalation, and safe call closeout.
 - `POST /api/calls/:callId/operator-note`: record operator notes and optional dispositions into the transcript and proof event trail.
 - `POST /api/calls/:callId/fallback`: trigger demo fallback, currently centered on `tool_timeout`.
 - `GET /api/calls`: list active calls with optional queue/operator filters.
 - `GET /api/queue`: return queue summary metadata without full call payloads.
-- `GET /api/operator/actions`: expose the Slack-ready operator action catalog with command examples and reason/pending-call requirements.
+- `GET /api/operator/actions`: expose the Slack-ready operator action catalog with command examples, reason/pending-call requirements, HTTP body templates, and outcome hints for console buttons.
 - `GET /api/calls/:callId`: fetch the current call snapshot.
 - `GET /api/calls/:callId/transcript`: fetch filterable transcript pages.
 - `GET /api/calls/:callId/events`: fetch filterable event evidence, including detail-text search for QA audits.

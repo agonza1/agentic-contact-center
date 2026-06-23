@@ -79,7 +79,11 @@ interface CallListPayload extends QueueSummaryPayload {
 interface OperatorConsolePayload {
   schemaVersion: number;
   runtimeHealth: { ok: boolean; mode: string; provider: string; pipecatFlow: { ready: boolean } };
-  controls: { commandWrappers: string[]; actions: Array<{ action: string }> };
+  controls: {
+    commandWrappers: string[];
+    routes: { steerCall: string; noteCall: string };
+    actions: Array<{ action: string; method: string; postTemplate: string; bodyTemplate: { action: string; reason?: string }; operatorOutcome: string }>;
+  };
   queue: QueueSummaryPayload;
   calls: { items: SnapshotPayload[]; summary: CallListPayload["summary"] };
 }
@@ -830,7 +834,25 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(consolePayload.runtimeHealth.ok, true);
     assert.equal(consolePayload.runtimeHealth.pipecatFlow.ready, true);
     assert.deepEqual(consolePayload.controls.commandWrappers, ["/operator", "/steer"]);
-    assert.equal(consolePayload.controls.actions.some((entry) => entry.action === "approve_offer"), true);
+    assert.deepEqual(consolePayload.controls.routes, {
+      steerCall: "/api/calls/{callId}/operator-steer",
+      noteCall: "/api/calls/{callId}/operator-note",
+    });
+    const approveOfferAction = consolePayload.controls.actions.find((entry) => entry.action === "approve_offer");
+    assert.deepEqual(approveOfferAction, {
+      action: "approve_offer",
+      method: "POST",
+      requiresPendingCall: true,
+      requiresReason: false,
+      postTemplate: "/api/calls/{callId}/operator-steer",
+      bodyTemplate: { action: "approve_offer" },
+      operatorOutcome: "resume",
+      commandExamples: ["/operator approve-offer", "/steer approve offer"],
+    });
+    const takeoverAction = consolePayload.controls.actions.find((entry) => entry.action === "takeover");
+    assert.equal(takeoverAction?.method, "POST");
+    assert.deepEqual(takeoverAction?.bodyTemplate, { action: "takeover" });
+    assert.equal(takeoverAction?.operatorOutcome, "handoff");
     assert.equal(consolePayload.queue.summary.totalCalls, 2);
     assert.equal(consolePayload.queue.summary.pendingOperatorSteer, 1);
     assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
@@ -2314,6 +2336,28 @@ test("slash-command style steer text is parsed into operator actions", async () 
     assert.equal(slackPayload.statusCode, 200);
     assert.equal(slackPayloadBody.flowState, "steered_response");
     assert.equal(slackPayloadBody.operatorSteer.lastAction, "resume");
+
+    const takeover = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-steer", {
+      command: "/steer barge-in",
+      timestamp: "2026-06-10T14:00:17.000Z",
+    });
+    const takeoverPayload = takeover.payload as SnapshotPayload;
+    assert.equal(takeover.statusCode, 200);
+    assert.equal(takeoverPayload.flowState, "wrap");
+    assert.equal(takeoverPayload.operatorSteer.lastAction, "takeover");
+    assert.equal(takeoverPayload.demoFallback.armed, true);
+    assert.equal(takeoverPayload.demoFallback.reason, "operator_barged_in");
+    assert.equal(takeoverPayload.events.some((event) => event.type === "operator_takeover_started"), true);
+
+    const endCall = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-steer", {
+      command: "/operator end-call",
+      timestamp: "2026-06-10T14:00:18.000Z",
+    });
+    const endCallPayload = endCall.payload as SnapshotPayload;
+    assert.equal(endCall.statusCode, 200);
+    assert.equal(endCallPayload.flowState, "wrap");
+    assert.equal(endCallPayload.operatorSteer.lastAction, "end_call");
+    assert.equal(endCallPayload.events.some((event) => event.type === "operator_call_ended"), true);
   });
 });
 
@@ -3080,10 +3124,12 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     const payload = response.payload as {
       schemaVersion: number;
       commandWrappers: string[];
+      routes: { steerCall: string; noteCall: string };
       actions: Array<{
         action: string;
         requiresPendingCall: boolean;
         requiresReason: boolean;
+        postTemplate: string;
         commandExamples: string[];
       }>;
     };
@@ -3091,6 +3137,10 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     assert.equal(response.statusCode, 200);
     assert.equal(payload.schemaVersion, 1);
     assert.deepEqual(payload.commandWrappers, ["/operator", "/steer"]);
+    assert.deepEqual(payload.routes, {
+      steerCall: "/api/calls/{callId}/operator-steer",
+      noteCall: "/api/calls/{callId}/operator-note",
+    });
     assert.deepEqual(
       payload.actions.map((action) => action.action),
       [
@@ -3099,6 +3149,8 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
         "approve_offer",
         "deny_offer",
         "escalate_to_human",
+        "takeover",
+        "end_call",
         "goto_slide",
         "ask_operator",
         "arm_fallback",
@@ -3114,10 +3166,21 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     const approveOffer = payload.actions.find((action) => action.action === "approve_offer");
     assert.equal(approveOffer?.requiresPendingCall, true);
     assert.equal(approveOffer?.requiresReason, false);
+    assert.equal(approveOffer?.postTemplate, "/api/calls/{callId}/operator-steer");
 
     const denyOffer = payload.actions.find((action) => action.action === "deny_offer");
     assert.equal(denyOffer?.requiresPendingCall, true);
     assert.equal(denyOffer?.requiresReason, false);
     assert.equal(denyOffer?.commandExamples.includes("/operator deny-offer"), true);
+
+    const takeover = payload.actions.find((action) => action.action === "takeover");
+    assert.equal(takeover?.requiresPendingCall, false);
+    assert.equal(takeover?.requiresReason, false);
+    assert.equal(takeover?.commandExamples.includes("/steer barge-in"), true);
+
+    const endCall = payload.actions.find((action) => action.action === "end_call");
+    assert.equal(endCall?.requiresPendingCall, false);
+    assert.equal(endCall?.requiresReason, false);
+    assert.equal(endCall?.commandExamples.includes("/operator end-call"), true);
   });
 });
