@@ -76,6 +76,14 @@ interface CallListPayload extends QueueSummaryPayload {
   };
 }
 
+interface OperatorConsolePayload {
+  schemaVersion: number;
+  runtimeHealth: { ok: boolean; mode: string; provider: string; pipecatFlow: { ready: boolean } };
+  controls: { commandWrappers: string[]; actions: Array<{ action: string }> };
+  queue: QueueSummaryPayload;
+  calls: { items: SnapshotPayload[]; summary: CallListPayload["summary"] };
+}
+
 interface EventTrailPayload {
   callId: string;
   providerCallId: string;
@@ -720,6 +728,68 @@ test("GET /api/calls lists active demo calls in start order", async () => {
   });
 });
 
+
+test("GET /api/operator/console returns operator-ready controls and attention-sorted calls", async () => {
+  await withServer(async (port) => {
+    const idleStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "console-session-idle",
+      openclawSessionLabel: "cluecon-demo/console-idle",
+    });
+    const idleCallId = (idleStarted.payload as SnapshotPayload).session.callId;
+
+    const operatorStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "console-session-operator",
+      openclawSessionLabel: "cluecon-demo/console-operator",
+    });
+    const operatorCallId = (operatorStarted.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:10:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:10:05.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:10:10.000Z",
+    });
+
+    const consoleResponse = await requestJson(port, "GET", "/api/operator/console");
+    const consolePayload = consoleResponse.payload as OperatorConsolePayload;
+
+    assert.equal(consoleResponse.statusCode, 200);
+    assert.equal(consolePayload.runtimeHealth.ok, true);
+    assert.equal(consolePayload.runtimeHealth.pipecatFlow.ready, true);
+    assert.deepEqual(consolePayload.controls.commandWrappers, ["/operator", "/steer"]);
+    assert.equal(consolePayload.controls.actions.some((entry) => entry.action === "approve_offer"), true);
+    assert.equal(consolePayload.queue.summary.totalCalls, 2);
+    assert.equal(consolePayload.queue.summary.pendingOperatorSteer, 1);
+    assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
+    assert.equal(consolePayload.calls.summary.sort, "attentionStartedAt");
+    assert.equal(consolePayload.calls.summary.returnedCalls, 2);
+    assert.deepEqual(consolePayload.calls.summary.page, {
+      offset: 0,
+      limit: 25,
+      totalFilteredCalls: 2,
+      hasMore: false,
+      nextOffset: null,
+    });
+
+    const filteredConsole = await requestJson(port, "GET", "/api/operator/console?attentionRequired=true&limit=1");
+    const filteredPayload = filteredConsole.payload as OperatorConsolePayload;
+
+    assert.equal(filteredConsole.statusCode, 200);
+    assert.deepEqual(filteredPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
+    assert.equal(filteredPayload.calls.summary.filteredSummary.attentionRequired, 1);
+    assert.equal(filteredPayload.calls.summary.page.limit, 1);
+
+    const invalidFilter = await requestJson(port, "GET", "/api/operator/console?attentionRequired=maybe");
+    assert.equal(invalidFilter.statusCode, 400);
+    assert.deepEqual(invalidFilter.payload, { ok: false, error: "operator_console_attention_required_invalid" });
+  });
+});
 
 test("GET /api/calls can sort operator attention before idle calls", async () => {
   await withServer(async (port) => {
