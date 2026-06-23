@@ -291,7 +291,7 @@ function buildOperatorConsoleHtml(): string {
       const transcriptHtml = call.transcript.slice(-10).map(function(turn) {
         return '<div class="turn"><b>' + escapeHtml(turn.speaker) + '</b><span>' + escapeHtml(turn.text) + '</span></div>';
       }).join("");
-      root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong></div><div class="metric"><span class="meta">Events</span><strong>' + call.evidenceSummary.eventCount + '</strong></div></div><div class="actions">' + actionHtml + '</div><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
+      root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div></div><div class="actions">' + actionHtml + '</div><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const promptLabel = reasonPrompts[action]; const reason = promptLabel ? prompt(promptLabel) : undefined; if (promptLabel && !reason) return; postAction(action, reason); }); });
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
@@ -382,6 +382,13 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
     .sort(compareTimestamps)
     .at(-1) ?? null;
   const attention = getAttentionMetadata(snapshot);
+  const nextRecommendedAction = snapshot.operatorSteer.pending
+    ? "approve_offer"
+    : snapshot.demoFallback.armed
+      ? "disarm_fallback"
+      : attention.required
+        ? "takeover"
+        : "pause";
   const unavailableActions = operatorActionCatalog
     .filter((entry) => entry.requiresPendingCall && !snapshot.operatorSteer.pending)
     .map((entry) => ({
@@ -415,6 +422,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       attentionRequired: attention.required,
       pendingApproval: snapshot.operatorSteer.pending,
       fallbackArmed: snapshot.demoFallback.armed,
+      nextRecommendedAction,
       availableActions: operatorActionCatalog
         .filter((entry) => !entry.requiresPendingCall || snapshot.operatorSteer.pending)
         .map((entry) => entry.action),

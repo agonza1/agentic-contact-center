@@ -115,6 +115,7 @@ interface OperatorConsolePayload {
           attentionRequired: boolean;
           pendingApproval: boolean;
           fallbackArmed: boolean;
+          nextRecommendedAction: string;
           availableActions: string[];
           unavailableActions: Array<{ action: string; reason: string }>;
         };
@@ -944,6 +945,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       attentionRequired: true,
       pendingApproval: true,
       fallbackArmed: false,
+      nextRecommendedAction: "approve_offer",
       availableActions: [
         "pause",
         "resume",
@@ -960,6 +962,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       unavailableActions: [],
     });
     const idleConsoleCall = consolePayload.calls.items[1];
+    assert.equal(idleConsoleCall?.actionState.nextRecommendedAction, "pause");
     assert.deepEqual(idleConsoleCall?.actionState.unavailableActions, [
       { action: "resume", reason: "pending_operator_steer_required" },
       { action: "approve_offer", reason: "pending_operator_steer_required" },
