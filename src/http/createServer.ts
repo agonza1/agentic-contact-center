@@ -32,6 +32,7 @@ const maxCallListPageLimit = 100;
 
 const operatorSteerActions: OperatorSteerAction[] = [
   "approve_offer",
+  "deny_offer",
   "escalate_to_human",
   "pause",
   "resume",
@@ -64,6 +65,12 @@ const operatorActionCatalog: Array<{
     requiresPendingCall: true,
     requiresReason: false,
     commandExamples: ["/operator approve-offer", "/steer approve offer"],
+  },
+  {
+    action: "deny_offer",
+    requiresPendingCall: true,
+    requiresReason: false,
+    commandExamples: ["/operator deny-offer", "/steer deny offer"],
   },
   {
     action: "escalate_to_human",
@@ -687,6 +694,10 @@ function parseOperatorSteerCommand(
 
   if (lowerCommand === "approve-offer" || lowerCommand === "approve offer") {
     return { action: "approve_offer" };
+  }
+
+  if (lowerCommand === "deny-offer" || lowerCommand === "deny offer") {
+    return { action: "deny_offer" };
   }
 
   if (lowerCommand === "escalate" || lowerCommand === "escalate-to-human") {

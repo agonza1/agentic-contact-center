@@ -1910,6 +1910,42 @@ test("the scripted flow pauses for operator steer and resumes with an approved s
   });
 });
 
+test("operators can deny an offer approval with a visible safe response", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+
+    const denied = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "deny_offer",
+      timestamp: "2026-06-10T14:00:11.000Z",
+    });
+    const deniedPayload = denied.payload as SnapshotPayload;
+    assert.equal(denied.statusCode, 200);
+    assert.equal(deniedPayload.flowState, "steered_response");
+    assert.equal(deniedPayload.operatorSteer.pending, false);
+    assert.equal(deniedPayload.operatorSteer.lastAction, "deny_offer");
+    assert.equal(deniedPayload.events.some((event) => event.type === "operator_offer_denied"), true);
+
+    const safeAgentTurn = [...deniedPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
+    assert.ok(safeAgentTurn);
+    assert.equal(safeAgentTurn.text.includes("did not approve a retention offer"), true);
+    assert.equal(safeAgentTurn.text.includes("cannot discuss a billing credit"), true);
+  });
+});
+
 test("an escalation steer triggers the human handoff path", async () => {
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start");
@@ -2994,6 +3030,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
         "pause",
         "resume",
         "approve_offer",
+        "deny_offer",
         "escalate_to_human",
         "goto_slide",
         "ask_operator",
@@ -3010,5 +3047,10 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     const approveOffer = payload.actions.find((action) => action.action === "approve_offer");
     assert.equal(approveOffer?.requiresPendingCall, true);
     assert.equal(approveOffer?.requiresReason, false);
+
+    const denyOffer = payload.actions.find((action) => action.action === "deny_offer");
+    assert.equal(denyOffer?.requiresPendingCall, true);
+    assert.equal(denyOffer?.requiresReason, false);
+    assert.equal(denyOffer?.commandExamples.includes("/operator deny-offer"), true);
   });
 });
