@@ -323,6 +323,83 @@ test("the risky offer boundary parks the flow in policy hold without promising a
   });
 });
 
+
+test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "proof-session-42",
+      openclawSessionLabel: "qa/proof-bundle",
+    });
+    const callId = (started.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", "/api/calls/" + callId + "/caller-turn", {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-12T10:00:00.000Z",
+    });
+    await requestJson(port, "POST", "/api/calls/" + callId + "/caller-turn", {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-12T10:00:05.000Z",
+    });
+
+    const proof = await requestJson(port, "GET", "/api/calls/" + callId + "/proof");
+    const payload = proof.payload as {
+      schemaVersion: number;
+      callId: string;
+      providerCallId: string;
+      runtimeMode: {
+        flow: string;
+        pipecatTransport: string;
+        telephony: string;
+        signalWire: string;
+        openclawSession: { sessionId: string; label: string; status: string };
+      };
+      pii: { redactionApplied: boolean; assumptions: string };
+      outcome: {
+        flowState: string;
+        scriptCompleted: boolean;
+        fallbackArmed: boolean;
+        handoffStarted: boolean;
+        attentionRequired: boolean;
+      };
+      summary: {
+        transcriptTurns: number;
+        eventCount: number;
+        eventTypes: string[];
+        operatorActionCount: number;
+        latencyMarkCount: number;
+        overBudgetLatencyMarkCount: number;
+        toolCoverage: string[];
+      };
+      session: { callId: string; openclawSession: { sessionId: string; label: string } };
+      transcript: Array<{ speaker: string; text: string }>;
+      events: Array<{ type: string }>;
+      latencyMarks: Array<{ stage: string }>;
+    };
+
+    assert.equal(proof.statusCode, 200);
+    assert.equal(payload.schemaVersion, 1);
+    assert.equal(payload.callId, callId);
+    assert.equal(payload.session.callId, callId);
+    assert.equal(payload.runtimeMode.flow, "deterministic_templates");
+    assert.equal(payload.runtimeMode.pipecatTransport, "adapter_ready");
+    assert.equal(payload.runtimeMode.telephony, "mocked_telephony");
+    assert.equal(payload.runtimeMode.signalWire, "mocked_telephony");
+    assert.equal(payload.runtimeMode.openclawSession.sessionId, "proof-session-42");
+    assert.equal(payload.runtimeMode.openclawSession.label, "qa/proof-bundle");
+    assert.equal(payload.pii.redactionApplied, false);
+    assert.match(payload.pii.assumptions, /mock caller text/);
+    assert.equal(payload.outcome.flowState, "policy_hold");
+    assert.equal(payload.outcome.fallbackArmed, false);
+    assert.equal(payload.outcome.handoffStarted, false);
+    assert.equal(payload.outcome.attentionRequired, false);
+    assert.equal(payload.summary.transcriptTurns, payload.transcript.length);
+    assert.equal(payload.summary.eventCount, payload.events.length);
+    assert.equal(payload.summary.latencyMarkCount, payload.latencyMarks.length);
+    assert.equal(payload.summary.eventTypes.includes("policy_hold_entered"), true);
+    assert.equal(payload.summary.toolCoverage.includes("ask_operator"), true);
+  });
+});
+
 test("GET /api/queue returns queue summary without call payloads", async () => {
   await withServer(async (port) => {
     const emptyQueue = await requestJson(port, "GET", "/api/queue");
