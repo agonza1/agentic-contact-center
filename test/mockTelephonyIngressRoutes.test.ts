@@ -90,7 +90,7 @@ interface OperatorConsolePayload {
   controls: {
     commandWrappers: string[];
     callReferenceFields: string[];
-    routes: { steerCall: string; noteCall: string; consoleAction: string };
+    routes: { startDemoCall: string; steerCall: string; noteCall: string; consoleAction: string };
     actions: Array<{ action: string; method: string; postTemplate: string; bodyTemplate: { action: string; reason?: string }; operatorOutcome: string }>;
   };
   queue: QueueSummaryPayload;
@@ -115,6 +115,7 @@ interface OperatorConsolePayload {
           attentionRequired: boolean;
           pendingApproval: boolean;
           fallbackArmed: boolean;
+          nextRecommendedAction: string;
           availableActions: string[];
           unavailableActions: Array<{ action: string; reason: string }>;
         };
@@ -266,6 +267,32 @@ async function requestRaw(
     statusCode: responseBody.statusCode,
     payload: JSON.parse(responseBody.body),
   };
+}
+
+async function requestText(
+  port: number,
+  method: string,
+  path: string,
+): Promise<{ statusCode: number; body: string; contentType: string | undefined }> {
+  return new Promise((resolve, reject) => {
+    const req = request({ host: "127.0.0.1", port, path, method }, (response) => {
+      let collected = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => {
+        collected += chunk;
+      });
+      response.on("end", () => {
+        resolve({
+          statusCode: response.statusCode ?? 0,
+          body: collected,
+          contentType: response.headers["content-type"],
+        });
+      });
+    });
+
+    req.on("error", reject);
+    req.end();
+  });
 }
 
 async function requestJson(
@@ -878,6 +905,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       "openclawSessionRef",
     ]);
     assert.deepEqual(consolePayload.controls.routes, {
+      startDemoCall: "/api/demo/start",
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
@@ -917,6 +945,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       attentionRequired: true,
       pendingApproval: true,
       fallbackArmed: false,
+      nextRecommendedAction: "approve_offer",
       availableActions: [
         "pause",
         "resume",
@@ -933,6 +962,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       unavailableActions: [],
     });
     const idleConsoleCall = consolePayload.calls.items[1];
+    assert.equal(idleConsoleCall?.actionState.nextRecommendedAction, "pause");
     assert.deepEqual(idleConsoleCall?.actionState.unavailableActions, [
       { action: "resume", reason: "pending_operator_steer_required" },
       { action: "approve_offer", reason: "pending_operator_steer_required" },
@@ -960,6 +990,22 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     const invalidFilter = await requestJson(port, "GET", "/api/operator/console?attentionRequired=maybe");
     assert.equal(invalidFilter.statusCode, 400);
     assert.deepEqual(invalidFilter.payload, { ok: false, error: "operator_console_attention_required_invalid" });
+  });
+});
+
+test("GET /operator/console serves the local console with the full action set", async () => {
+  await withServer(async (port) => {
+    const response = await requestText(port, "GET", "/operator/console");
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.contentType, "text/html; charset=utf-8");
+    assert.match(response.body, /<title>Operator Console<\/title>/);
+    assert.match(response.body, /Start Demo Call/);
+    assert.match(response.body, /\/api\/demo\/start/);
+    assert.match(response.body, /"goto_slide"/);
+    assert.match(response.body, /"ask_operator"/);
+    assert.match(response.body, /Slide or step/);
+    assert.match(response.body, /Operator question/);
   });
 });
 
@@ -3327,7 +3373,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
       schemaVersion: number;
       commandWrappers: string[];
       callReferenceFields: string[];
-      routes: { steerCall: string; noteCall: string; consoleAction: string };
+      routes: { startDemoCall: string; steerCall: string; noteCall: string; consoleAction: string };
       actions: Array<{
         action: string;
         requiresPendingCall: boolean;
@@ -3348,6 +3394,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
       "openclawSessionRef",
     ]);
     assert.deepEqual(payload.routes, {
+      startDemoCall: "/api/demo/start",
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
