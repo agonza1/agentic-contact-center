@@ -791,6 +791,46 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
   });
 });
 
+test("POST /api/calls/:callId/operator-note records operator notes and dispositions", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as SnapshotPayload).session.callId;
+
+    const noted = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-note", {
+      text: "Customer asked for licensed follow-up after safe offer review.",
+      disposition: "follow_up_requested",
+      timestamp: "2026-06-10T14:12:00.000Z",
+    });
+    const notedPayload = noted.payload as SnapshotPayload;
+
+    assert.equal(noted.statusCode, 200);
+    assert.deepEqual(notedPayload.transcript.at(-1), {
+      speaker: "operator",
+      text: "Customer asked for licensed follow-up after safe offer review.",
+      timestamp: "2026-06-10T14:12:00.000Z",
+    });
+    assert.deepEqual(notedPayload.events.at(-1), {
+      type: "operator_note_recorded",
+      at: "2026-06-10T14:12:00.000Z",
+      detail: {
+        text: "Customer asked for licensed follow-up after safe offer review.",
+        disposition: "follow_up_requested",
+        source: "mock_http_route",
+        transcriptLength: notedPayload.transcript.length,
+      },
+    });
+
+    const proof = await requestJson(port, "GET", "/api/calls/" + callId + "/proof");
+    const proofPayload = proof.payload as { events: Array<{ type: string }>; transcript: Array<{ speaker: string; text: string }> };
+    assert.equal(proofPayload.events.some((event) => event.type === "operator_note_recorded"), true);
+    assert.equal(proofPayload.transcript.some((turn) => turn.speaker === "operator" && turn.text.includes("licensed follow-up")), true);
+
+    const missingText = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-note", { text: "   " });
+    assert.equal(missingText.statusCode, 400);
+    assert.deepEqual(missingText.payload, { ok: false, error: "operator_note_text_required" });
+  });
+});
+
 test("GET /api/calls can sort operator attention before idle calls", async () => {
   await withServer(async (port) => {
     const idleStarted = await requestJson(port, "POST", "/api/demo/start", {

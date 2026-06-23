@@ -260,6 +260,32 @@ export class InMemoryTelephonyIngress {
     return cloneSnapshot(snapshot);
   }
 
+  async recordOperatorNote(callId: string, text: string, timestamp: string, disposition?: string): Promise<CallSnapshot> {
+    const snapshot = this.calls.get(callId);
+
+    if (!snapshot) {
+      throw new Error(`Unknown call id: ${callId}`);
+    }
+
+    snapshot.transcript.push({
+      speaker: "operator",
+      text,
+      timestamp,
+    });
+    snapshot.events.push({
+      type: "operator_note_recorded",
+      at: timestamp,
+      detail: {
+        text,
+        disposition: disposition ?? null,
+        source: "mock_http_route",
+        transcriptLength: snapshot.transcript.length,
+      },
+    });
+
+    return cloneSnapshot(snapshot);
+  }
+
   async getSnapshot(callId: string): Promise<CallSnapshot | null> {
     const snapshot = this.calls.get(callId);
     return snapshot ? cloneSnapshot(snapshot) : null;

@@ -990,6 +990,41 @@ async function routeRequest(
     return;
   }
 
+  const operatorNoteMatch = request.method === "POST" ? pathname.match(/^\/api\/calls\/([^/]+)\/operator-note$/) : null;
+  if (operatorNoteMatch) {
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const text = getOptionalTrimmedString(body.text);
+    if (!text) {
+      writeBadRequest(response, "operator_note_text_required");
+      return;
+    }
+
+    if (hasInvalidOptionalString(body.disposition)) {
+      writeBadRequest(response, "operator_note_disposition_invalid");
+      return;
+    }
+
+    const timestamp = normalizeTimestamp(body.timestamp, "operator_note_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+
+    try {
+      const snapshot = await ingress.recordOperatorNote(operatorNoteMatch[1], text, timestamp, getOptionalTrimmedString(body.disposition));
+      writeJson(response, 200, buildCallPayload(snapshot));
+    } catch {
+      writeNotFound(response);
+    }
+    return;
+  }
+
   const operatorSteerMatch = request.method === "POST" ? pathname.match(/^\/api\/calls\/([^/]+)\/operator-steer$/) : null;
   if (operatorSteerMatch) {
     const body = await readJsonBody<unknown>(request);
