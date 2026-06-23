@@ -239,6 +239,40 @@ function buildCallPayload(snapshot: CallSnapshot) {
   };
 }
 
+function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
+  const latestEvent = snapshot.events.at(-1);
+  const latestTranscriptTurn = snapshot.transcript.at(-1);
+  const latestLatencyMark = snapshot.latencyMarks.at(-1);
+  const attention = getAttentionMetadata(snapshot);
+
+  return {
+    ...buildCallPayload(snapshot),
+    evidenceSummary: {
+      latestEventType: latestEvent?.type ?? null,
+      latestEventAt: latestEvent?.at ?? null,
+      latestTranscriptSpeaker: latestTranscriptTurn?.speaker ?? null,
+      latestTranscriptAt: latestTranscriptTurn?.timestamp ?? null,
+      latestLatencyStage: latestLatencyMark?.stage ?? null,
+      latestLatencyAt: latestLatencyMark?.recordedAt ?? null,
+      transcriptTurns: snapshot.transcript.length,
+      eventCount: snapshot.events.length,
+      latencyMarkCount: snapshot.latencyMarks.length,
+      overBudgetLatencyMarkCount: snapshot.latencyMarks.filter(
+        (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
+      ).length,
+      links: snapshot.session.openclawSession.artifactLinks,
+    },
+    actionState: {
+      attentionRequired: attention.required,
+      pendingApproval: snapshot.operatorSteer.pending,
+      fallbackArmed: snapshot.demoFallback.armed,
+      availableActions: operatorActionCatalog
+        .filter((entry) => !entry.requiresPendingCall || snapshot.operatorSteer.pending)
+        .map((entry) => entry.action),
+    },
+  };
+}
+
 function buildEventTrailPayload(
   snapshot: CallSnapshot,
   eventType?: string,
@@ -1085,7 +1119,9 @@ async function routeRequest(
 
     const pageOffset = offset ?? 0;
     const pageLimit = limit ?? 25;
-    const calls = orderedSnapshots.slice(pageOffset, pageOffset + pageLimit).map((snapshot) => buildCallPayload(snapshot));
+    const calls = orderedSnapshots
+      .slice(pageOffset, pageOffset + pageLimit)
+      .map((snapshot) => buildOperatorConsoleCallPayload(snapshot));
     const summary = await ingress.getQueueSummary();
     const filteredSummary = await ingress.getQueueSummary(filters);
 

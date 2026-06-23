@@ -9,7 +9,11 @@ interface SnapshotPayload {
   session: {
     callId: string;
     providerCallId: string;
-    openclawSession: { sessionId: string; label: string };
+    openclawSession: {
+      sessionId: string;
+      label: string;
+      artifactLinks: { transcript: string; events: string; latencyMarks: string; proof: string };
+    };
   };
   flowState: string;
   attention?: {
@@ -90,7 +94,28 @@ interface OperatorConsolePayload {
     actions: Array<{ action: string; method: string; postTemplate: string; bodyTemplate: { action: string; reason?: string }; operatorOutcome: string }>;
   };
   queue: QueueSummaryPayload;
-  calls: { items: SnapshotPayload[]; summary: CallListPayload["summary"] };
+  calls: {
+    items: Array<
+      SnapshotPayload & {
+        evidenceSummary: {
+          latestEventType: string | null;
+          latestTranscriptSpeaker: string | null;
+          transcriptTurns: number;
+          eventCount: number;
+          latencyMarkCount: number;
+          overBudgetLatencyMarkCount: number;
+          links: { transcript: string; events: string; latencyMarks: string; proof: string };
+        };
+        actionState: {
+          attentionRequired: boolean;
+          pendingApproval: boolean;
+          fallbackArmed: boolean;
+          availableActions: string[];
+        };
+      }
+    >;
+    summary: CallListPayload["summary"];
+  };
 }
 
 interface EventTrailPayload {
@@ -869,6 +894,32 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(consolePayload.queue.summary.totalCalls, 2);
     assert.equal(consolePayload.queue.summary.pendingOperatorSteer, 1);
     assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
+    const operatorConsoleCall = consolePayload.calls.items[0];
+    assert.equal(operatorConsoleCall.evidenceSummary.latestEventType, "agent_turn_appended");
+    assert.equal(operatorConsoleCall.evidenceSummary.latestTranscriptSpeaker, "agent");
+    assert.equal(operatorConsoleCall.evidenceSummary.transcriptTurns, 6);
+    assert.equal(operatorConsoleCall.evidenceSummary.eventCount, 14);
+    assert.equal(operatorConsoleCall.evidenceSummary.latencyMarkCount, 9);
+    assert.equal(operatorConsoleCall.evidenceSummary.overBudgetLatencyMarkCount, 0);
+    assert.deepEqual(operatorConsoleCall.evidenceSummary.links, operatorConsoleCall.session.openclawSession.artifactLinks);
+    assert.deepEqual(operatorConsoleCall.actionState, {
+      attentionRequired: true,
+      pendingApproval: true,
+      fallbackArmed: false,
+      availableActions: [
+        "pause",
+        "resume",
+        "approve_offer",
+        "deny_offer",
+        "escalate_to_human",
+        "takeover",
+        "end_call",
+        "goto_slide",
+        "ask_operator",
+        "arm_fallback",
+        "disarm_fallback",
+      ],
+    });
     assert.equal(consolePayload.calls.summary.sort, "attentionStartedAt");
     assert.equal(consolePayload.calls.summary.returnedCalls, 2);
     assert.deepEqual(consolePayload.calls.summary.page, {
