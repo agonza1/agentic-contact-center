@@ -1015,9 +1015,16 @@ async function routeRequest(
       return;
     }
 
+    const simulateOpenClawAttachFailure = body.simulateOpenClawAttachFailure;
+    if (simulateOpenClawAttachFailure !== undefined && typeof simulateOpenClawAttachFailure !== "boolean") {
+      writeBadRequest(response, "openclaw_attach_failure_flag_invalid");
+      return;
+    }
+
     const snapshot = await ingress.startCall(config, {
       openclawSessionId: openclawSessionId?.trim(),
       openclawSessionLabel: openclawSessionLabel?.trim(),
+      simulateOpenClawAttachFailure,
     } satisfies StartCallOptions);
     writeJson(response, 201, buildCallPayload(snapshot));
     return;

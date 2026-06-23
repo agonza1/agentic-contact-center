@@ -86,12 +86,14 @@ export interface PocConfig {
 export interface StartCallOptions {
   openclawSessionId?: string;
   openclawSessionLabel?: string;
+  simulateOpenClawAttachFailure?: boolean;
 }
 
 export interface OpenClawSessionEnvelope {
   sessionId: string;
   label: string;
-  status: "attached_mock";
+  status: "attached_mock" | "attach_failed_mock";
+  attachError: string | null;
   eventTrailVersion: number;
   artifactLinks: {
     snapshot: string;

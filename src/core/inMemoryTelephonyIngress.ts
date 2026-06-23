@@ -109,6 +109,7 @@ export class InMemoryTelephonyIngress {
     const startedAt = new Date().toISOString();
     const openclawSessionId = options.openclawSessionId ?? `openclaw-call-${paddedSequence}`;
     const openclawSessionLabel = options.openclawSessionLabel ?? `${config.demoName}:${callId}`;
+    const openclawAttachFailed = options.simulateOpenClawAttachFailure === true;
 
     const snapshot: CallSnapshot = {
       session: {
@@ -120,7 +121,8 @@ export class InMemoryTelephonyIngress {
         openclawSession: {
           sessionId: openclawSessionId,
           label: openclawSessionLabel,
-          status: "attached_mock",
+          status: openclawAttachFailed ? "attach_failed_mock" : "attached_mock",
+          attachError: openclawAttachFailed ? "simulated_openclaw_session_attach_failure" : null,
           eventTrailVersion: 1,
           artifactLinks: buildOpenClawArtifactLinks(callId),
         },
@@ -162,12 +164,13 @@ export class InMemoryTelephonyIngress {
           },
         },
         {
-          type: "openclaw_session_attached",
+          type: openclawAttachFailed ? "openclaw_session_attach_failed" : "openclaw_session_attached",
           at: startedAt,
           detail: {
             sessionId: openclawSessionId,
             sessionLabel: openclawSessionLabel,
-            status: "attached_mock",
+            status: openclawAttachFailed ? "attach_failed_mock" : "attached_mock",
+            attachError: openclawAttachFailed ? "simulated_openclaw_session_attach_failure" : null,
             proofPath: `/api/calls/${callId}/proof`,
           },
         },
