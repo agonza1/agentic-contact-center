@@ -250,6 +250,12 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
     .sort(compareTimestamps)
     .at(-1) ?? null;
   const attention = getAttentionMetadata(snapshot);
+  const unavailableActions = operatorActionCatalog
+    .filter((entry) => entry.requiresPendingCall && !snapshot.operatorSteer.pending)
+    .map((entry) => ({
+      action: entry.action,
+      reason: "pending_operator_steer_required",
+    }));
 
   return {
     ...buildCallPayload(snapshot),
@@ -280,6 +286,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       availableActions: operatorActionCatalog
         .filter((entry) => !entry.requiresPendingCall || snapshot.operatorSteer.pending)
         .map((entry) => entry.action),
+      unavailableActions,
     },
   };
 }

@@ -116,6 +116,7 @@ interface OperatorConsolePayload {
           pendingApproval: boolean;
           fallbackArmed: boolean;
           availableActions: string[];
+          unavailableActions: Array<{ action: string; reason: string }>;
         };
       }
     >;
@@ -929,7 +930,15 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
         "arm_fallback",
         "disarm_fallback",
       ],
+      unavailableActions: [],
     });
+    const idleConsoleCall = consolePayload.calls.items[1];
+    assert.deepEqual(idleConsoleCall?.actionState.unavailableActions, [
+      { action: "resume", reason: "pending_operator_steer_required" },
+      { action: "approve_offer", reason: "pending_operator_steer_required" },
+      { action: "deny_offer", reason: "pending_operator_steer_required" },
+      { action: "escalate_to_human", reason: "pending_operator_steer_required" },
+    ]);
     assert.equal(consolePayload.calls.summary.sort, "attentionStartedAt");
     assert.equal(consolePayload.calls.summary.returnedCalls, 2);
     assert.deepEqual(consolePayload.calls.summary.page, {
