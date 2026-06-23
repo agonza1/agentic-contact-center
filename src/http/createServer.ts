@@ -243,6 +243,8 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
   const latestEvent = snapshot.events.at(-1);
   const latestTranscriptTurn = snapshot.transcript.at(-1);
   const latestLatencyMark = snapshot.latencyMarks.at(-1);
+  const operatorNoteEvents = snapshot.events.filter((event) => event.type === "operator_note_recorded");
+  const latestOperatorNote = operatorNoteEvents.at(-1);
   const latestEvidenceAt = [latestEvent?.at, latestTranscriptTurn?.timestamp, latestLatencyMark?.recordedAt]
     .filter((timestamp): timestamp is string => timestamp !== undefined)
     .sort(compareTimestamps)
@@ -262,6 +264,10 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       transcriptTurns: snapshot.transcript.length,
       eventCount: snapshot.events.length,
       latencyMarkCount: snapshot.latencyMarks.length,
+      operatorNoteCount: operatorNoteEvents.length,
+      latestOperatorNoteText: typeof latestOperatorNote?.detail.text === "string" ? latestOperatorNote.detail.text : null,
+      latestOperatorNoteAt: latestOperatorNote?.at ?? null,
+      latestDisposition: typeof latestOperatorNote?.detail.disposition === "string" ? latestOperatorNote.detail.disposition : null,
       overBudgetLatencyMarkCount: snapshot.latencyMarks.filter(
         (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
       ).length,

@@ -104,6 +104,10 @@ interface OperatorConsolePayload {
           transcriptTurns: number;
           eventCount: number;
           latencyMarkCount: number;
+          operatorNoteCount: number;
+          latestOperatorNoteText: string | null;
+          latestOperatorNoteAt: string | null;
+          latestDisposition: string | null;
           overBudgetLatencyMarkCount: number;
           links: { transcript: string; events: string; latencyMarks: string; proof: string };
         };
@@ -902,6 +906,10 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(operatorConsoleCall.evidenceSummary.transcriptTurns, 6);
     assert.equal(operatorConsoleCall.evidenceSummary.eventCount, 14);
     assert.equal(operatorConsoleCall.evidenceSummary.latencyMarkCount, 9);
+    assert.equal(operatorConsoleCall.evidenceSummary.operatorNoteCount, 0);
+    assert.equal(operatorConsoleCall.evidenceSummary.latestOperatorNoteText, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.latestOperatorNoteAt, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.latestDisposition, null);
     assert.equal(operatorConsoleCall.evidenceSummary.overBudgetLatencyMarkCount, 0);
     assert.deepEqual(operatorConsoleCall.evidenceSummary.links, operatorConsoleCall.session.openclawSession.artifactLinks);
     assert.deepEqual(operatorConsoleCall.actionState, {
@@ -1053,6 +1061,16 @@ test("POST /api/calls/:callId/operator-note records operator notes and dispositi
     const proofPayload = proof.payload as { events: Array<{ type: string }>; transcript: Array<{ speaker: string; text: string }> };
     assert.equal(proofPayload.events.some((event) => event.type === "operator_note_recorded"), true);
     assert.equal(proofPayload.transcript.some((turn) => turn.speaker === "operator" && turn.text.includes("licensed follow-up")), true);
+
+    const consoleResponse = await requestJson(port, "GET", "/api/operator/console?callId=" + callId);
+    const consolePayload = consoleResponse.payload as OperatorConsolePayload;
+    const consoleCall = consolePayload.calls.items[0];
+
+    assert.equal(consoleResponse.statusCode, 200);
+    assert.equal(consoleCall.evidenceSummary.operatorNoteCount, 1);
+    assert.equal(consoleCall.evidenceSummary.latestOperatorNoteText, "Customer asked for licensed follow-up after safe offer review.");
+    assert.equal(consoleCall.evidenceSummary.latestOperatorNoteAt, "2026-06-10T14:12:00.000Z");
+    assert.equal(consoleCall.evidenceSummary.latestDisposition, "follow_up_requested");
 
     const missingText = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-note", { text: "   " });
     assert.equal(missingText.statusCode, 400);
