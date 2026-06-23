@@ -82,7 +82,7 @@ interface OperatorConsolePayload {
   controls: {
     commandWrappers: string[];
     routes: { steerCall: string; noteCall: string };
-    actions: Array<{ action: string; postTemplate: string }>;
+    actions: Array<{ action: string; method: string; postTemplate: string; bodyTemplate: { action: string; reason?: string }; operatorOutcome: string }>;
   };
   queue: QueueSummaryPayload;
   calls: { items: SnapshotPayload[]; summary: CallListPayload["summary"] };
@@ -838,18 +838,21 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
     });
-    assert.equal(
-      consolePayload.controls.actions.some(
-        (entry) => entry.action === "approve_offer" && entry.postTemplate === "/api/calls/{callId}/operator-steer",
-      ),
-      true,
-    );
-    assert.equal(
-      consolePayload.controls.actions.some(
-        (entry) => entry.action === "takeover" && entry.postTemplate === "/api/calls/{callId}/operator-steer",
-      ),
-      true,
-    );
+    const approveOfferAction = consolePayload.controls.actions.find((entry) => entry.action === "approve_offer");
+    assert.deepEqual(approveOfferAction, {
+      action: "approve_offer",
+      method: "POST",
+      requiresPendingCall: true,
+      requiresReason: false,
+      postTemplate: "/api/calls/{callId}/operator-steer",
+      bodyTemplate: { action: "approve_offer" },
+      operatorOutcome: "resume",
+      commandExamples: ["/operator approve-offer", "/steer approve offer"],
+    });
+    const takeoverAction = consolePayload.controls.actions.find((entry) => entry.action === "takeover");
+    assert.equal(takeoverAction?.method, "POST");
+    assert.deepEqual(takeoverAction?.bodyTemplate, { action: "takeover" });
+    assert.equal(takeoverAction?.operatorOutcome, "handoff");
     assert.equal(consolePayload.queue.summary.totalCalls, 2);
     assert.equal(consolePayload.queue.summary.pendingOperatorSteer, 1);
     assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
