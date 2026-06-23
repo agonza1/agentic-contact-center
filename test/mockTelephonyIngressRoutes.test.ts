@@ -844,6 +844,12 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       ),
       true,
     );
+    assert.equal(
+      consolePayload.controls.actions.some(
+        (entry) => entry.action === "takeover" && entry.postTemplate === "/api/calls/{callId}/operator-steer",
+      ),
+      true,
+    );
     assert.equal(consolePayload.queue.summary.totalCalls, 2);
     assert.equal(consolePayload.queue.summary.pendingOperatorSteer, 1);
     assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
@@ -2327,6 +2333,18 @@ test("slash-command style steer text is parsed into operator actions", async () 
     assert.equal(slackPayload.statusCode, 200);
     assert.equal(slackPayloadBody.flowState, "steered_response");
     assert.equal(slackPayloadBody.operatorSteer.lastAction, "resume");
+
+    const takeover = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-steer", {
+      command: "/steer barge-in",
+      timestamp: "2026-06-10T14:00:17.000Z",
+    });
+    const takeoverPayload = takeover.payload as SnapshotPayload;
+    assert.equal(takeover.statusCode, 200);
+    assert.equal(takeoverPayload.flowState, "wrap");
+    assert.equal(takeoverPayload.operatorSteer.lastAction, "takeover");
+    assert.equal(takeoverPayload.demoFallback.armed, true);
+    assert.equal(takeoverPayload.demoFallback.reason, "operator_barged_in");
+    assert.equal(takeoverPayload.events.some((event) => event.type === "operator_takeover_started"), true);
   });
 });
 
@@ -3118,6 +3136,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
         "approve_offer",
         "deny_offer",
         "escalate_to_human",
+        "takeover",
         "goto_slide",
         "ask_operator",
         "arm_fallback",
@@ -3139,5 +3158,10 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     assert.equal(denyOffer?.requiresPendingCall, true);
     assert.equal(denyOffer?.requiresReason, false);
     assert.equal(denyOffer?.commandExamples.includes("/operator deny-offer"), true);
+
+    const takeover = payload.actions.find((action) => action.action === "takeover");
+    assert.equal(takeover?.requiresPendingCall, false);
+    assert.equal(takeover?.requiresReason, false);
+    assert.equal(takeover?.commandExamples.includes("/steer barge-in"), true);
   });
 });

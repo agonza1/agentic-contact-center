@@ -34,6 +34,7 @@ const operatorSteerActions: OperatorSteerAction[] = [
   "approve_offer",
   "deny_offer",
   "escalate_to_human",
+  "takeover",
   "pause",
   "resume",
   "goto_slide",
@@ -83,6 +84,13 @@ const operatorActionCatalog: Array<{
     requiresReason: false,
     postTemplate: "/api/calls/{callId}/operator-steer",
     commandExamples: ["/operator escalate", "/steer escalate-to-human"],
+  },
+  {
+    action: "takeover",
+    requiresPendingCall: false,
+    requiresReason: false,
+    postTemplate: "/api/calls/{callId}/operator-steer",
+    commandExamples: ["/operator takeover", "/steer barge-in"],
   },
   {
     action: "goto_slide",
@@ -742,6 +750,10 @@ function parseOperatorSteerCommand(
 
   if (lowerCommand === "escalate" || lowerCommand === "escalate-to-human") {
     return { action: "escalate_to_human" };
+  }
+
+  if (lowerCommand === "takeover" || lowerCommand === "barge-in" || lowerCommand === "barge in") {
+    return { action: "takeover" };
   }
 
   if (lowerCommand === "disarm-fallback" || lowerCommand === "disarm fallback") {

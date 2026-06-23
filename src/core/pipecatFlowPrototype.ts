@@ -411,6 +411,23 @@ export function applyOperatorSteer(
     return;
   }
 
+  if (action === "takeover") {
+    setDemoFallback(snapshot, true, timestamp, reason ?? "operator_barged_in", null);
+    recordEvent(snapshot, "operator_takeover_started", timestamp, {
+      operatorChannel: snapshot.scenario.operatorChannel,
+      source: "operator_steer",
+      reason: snapshot.demoFallback.reason,
+    });
+    transitionFlowState(snapshot, "wrap", timestamp, "operator_took_over_live_call");
+    appendAgentTurn(
+      snapshot,
+      "The operator has taken over this live call. I am stopping automated responses and handing the session to the human supervisor.",
+      timestamp,
+    );
+    snapshot.pipecatFlow.activeTool = "pause_presentation";
+    return;
+  }
+
   transitionFlowState(
     snapshot,
     "steered_response",
