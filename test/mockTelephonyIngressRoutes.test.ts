@@ -6,7 +6,11 @@ import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildHttpServer } from "../src/http/createServer";
 
 interface SnapshotPayload {
-  session: { callId: string };
+  session: {
+    callId: string;
+    providerCallId: string;
+    openclawSession: { sessionId: string; label: string };
+  };
   flowState: string;
   attention?: {
     required: boolean;
@@ -81,6 +85,7 @@ interface OperatorConsolePayload {
   runtimeHealth: { ok: boolean; mode: string; provider: string; pipecatFlow: { ready: boolean } };
   controls: {
     commandWrappers: string[];
+    callReferenceFields: string[];
     routes: { steerCall: string; noteCall: string; consoleAction: string };
     actions: Array<{ action: string; method: string; postTemplate: string; bodyTemplate: { action: string; reason?: string }; operatorOutcome: string }>;
   };
@@ -834,6 +839,13 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(consolePayload.runtimeHealth.ok, true);
     assert.equal(consolePayload.runtimeHealth.pipecatFlow.ready, true);
     assert.deepEqual(consolePayload.controls.commandWrappers, ["/operator", "/steer"]);
+    assert.deepEqual(consolePayload.controls.callReferenceFields, [
+      "callId",
+      "providerCallId",
+      "openclawSessionId",
+      "openclawSessionLabel",
+      "openclawSessionRef",
+    ]);
     assert.deepEqual(consolePayload.controls.routes, {
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
@@ -915,9 +927,43 @@ test("POST /api/operator/console/action dispatches live call controls", async ()
     assert.equal(payload.call.operatorSteer.lastAction, "approve_offer");
     assert.equal(payload.call.flowState, "steered_response");
 
+    const refStarted = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "console-ref-session",
+      openclawSessionLabel: "cluecon-demo/console-ref",
+    });
+    const refCall = refStarted.payload as SnapshotPayload;
+    const refAction = await requestJson(port, "POST", "/api/operator/console/action", {
+      providerCallId: refCall.session.providerCallId,
+      command: "/operator pause",
+      timestamp: "2026-06-10T14:11:20.000Z",
+    });
+    const refPayload = refAction.payload as { ok: boolean; call: SnapshotPayload };
+
+    assert.equal(refAction.statusCode, 200);
+    assert.equal(refPayload.call.session.callId, refCall.session.callId);
+    assert.equal(refPayload.call.operatorSteer.lastAction, "pause");
+
+    const sessionRefAction = await requestJson(port, "POST", "/api/operator/console/action", {
+      openclawSessionRef: "cluecon-demo/console-ref",
+      command: "/operator takeover",
+      timestamp: "2026-06-10T14:11:21.000Z",
+    });
+    const sessionRefPayload = sessionRefAction.payload as { ok: boolean; call: SnapshotPayload };
+
+    assert.equal(sessionRefAction.statusCode, 200);
+    assert.equal(sessionRefPayload.call.session.callId, refCall.session.callId);
+    assert.equal(sessionRefPayload.call.operatorSteer.lastAction, "takeover");
+
     const missingCall = await requestJson(port, "POST", "/api/operator/console/action", { action: "pause" });
     assert.equal(missingCall.statusCode, 400);
-    assert.deepEqual(missingCall.payload, { ok: false, error: "operator_console_action_call_id_required" });
+    assert.deepEqual(missingCall.payload, { ok: false, error: "operator_console_action_call_ref_required" });
+
+    const unknownRef = await requestJson(port, "POST", "/api/operator/console/action", {
+      providerCallId: "missing-provider-call",
+      action: "pause",
+    });
+    assert.equal(unknownRef.statusCode, 400);
+    assert.deepEqual(unknownRef.payload, { ok: false, error: "operator_console_action_call_ref_not_found" });
   });
 });
 
@@ -3200,6 +3246,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     const payload = response.payload as {
       schemaVersion: number;
       commandWrappers: string[];
+      callReferenceFields: string[];
       routes: { steerCall: string; noteCall: string; consoleAction: string };
       actions: Array<{
         action: string;
@@ -3213,6 +3260,13 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     assert.equal(response.statusCode, 200);
     assert.equal(payload.schemaVersion, 1);
     assert.deepEqual(payload.commandWrappers, ["/operator", "/steer"]);
+    assert.deepEqual(payload.callReferenceFields, [
+      "callId",
+      "providerCallId",
+      "openclawSessionId",
+      "openclawSessionLabel",
+      "openclawSessionRef",
+    ]);
     assert.deepEqual(payload.routes, {
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
