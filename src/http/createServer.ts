@@ -30,6 +30,73 @@ const maxTranscriptPageLimit = 100;
 const maxLatencyMarkPageLimit = 100;
 const maxCallListPageLimit = 100;
 
+const operatorSteerActions: OperatorSteerAction[] = [
+  "approve_offer",
+  "escalate_to_human",
+  "pause",
+  "resume",
+  "goto_slide",
+  "ask_operator",
+  "arm_fallback",
+  "disarm_fallback",
+];
+
+const operatorActionCatalog: Array<{
+  action: OperatorSteerAction;
+  requiresPendingCall: boolean;
+  requiresReason: boolean;
+  commandExamples: string[];
+}> = [
+  {
+    action: "pause",
+    requiresPendingCall: false,
+    requiresReason: false,
+    commandExamples: ["/operator pause", "/steer pause"],
+  },
+  {
+    action: "resume",
+    requiresPendingCall: true,
+    requiresReason: false,
+    commandExamples: ["/operator resume", "/steer resume"],
+  },
+  {
+    action: "approve_offer",
+    requiresPendingCall: true,
+    requiresReason: false,
+    commandExamples: ["/operator approve-offer", "/steer approve offer"],
+  },
+  {
+    action: "escalate_to_human",
+    requiresPendingCall: true,
+    requiresReason: false,
+    commandExamples: ["/operator escalate", "/steer escalate-to-human"],
+  },
+  {
+    action: "goto_slide",
+    requiresPendingCall: false,
+    requiresReason: true,
+    commandExamples: ["/operator goto-slide retention-safe-mode", "/steer goto slide policy-hold"],
+  },
+  {
+    action: "ask_operator",
+    requiresPendingCall: false,
+    requiresReason: true,
+    commandExamples: ["/operator ask verify latency budget", "/steer ask confirm safe offer copy"],
+  },
+  {
+    action: "arm_fallback",
+    requiresPendingCall: false,
+    requiresReason: true,
+    commandExamples: ["/operator arm-fallback audio degraded", "/steer arm fallback tool timeout"],
+  },
+  {
+    action: "disarm_fallback",
+    requiresPendingCall: false,
+    requiresReason: false,
+    commandExamples: ["/operator disarm-fallback", "/steer disarm fallback"],
+  },
+];
+
 function writeJson(response: ServerResponse, statusCode: number, payload: object): void {
   response.statusCode = statusCode;
   response.setHeader("content-type", "application/json; charset=utf-8");
@@ -701,6 +768,15 @@ async function routeRequest(
     return;
   }
 
+  if (request.method === "GET" && pathname === "/api/operator/actions") {
+    writeJson(response, 200, {
+      schemaVersion: 1,
+      commandWrappers: ["/operator", "/steer"],
+      actions: operatorActionCatalog,
+    });
+    return;
+  }
+
   if (request.method === "GET" && pathname === "/api/queue") {
     const filters = parseCallListFilters(requestUrl, "queue");
     if ("error" in filters) {
@@ -834,16 +910,6 @@ async function routeRequest(
       return;
     }
 
-    const allowedActions: OperatorSteerAction[] = [
-      "approve_offer",
-      "escalate_to_human",
-      "pause",
-      "resume",
-      "goto_slide",
-      "ask_operator",
-      "arm_fallback",
-      "disarm_fallback",
-    ];
     const commandInput = getOptionalTrimmedString(body.command);
     const textInput = getOptionalTrimmedString(body.text);
 
@@ -864,7 +930,7 @@ async function routeRequest(
     }
 
     const action = body.action;
-    if (action !== undefined && !allowedActions.includes(action as OperatorSteerAction)) {
+    if (action !== undefined && !operatorSteerActions.includes(action as OperatorSteerAction)) {
       writeBadRequest(response, "operator_steer_action_required");
       return;
     }

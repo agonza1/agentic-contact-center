@@ -2860,3 +2860,45 @@ test("GET /api/calls/:callId/transcript returns filterable transcript pages", as
     assert.deepEqual(invalidWindow.payload, { ok: false, error: "transcript_window_invalid" });
   });
 });
+
+test("GET /api/operator/actions exposes Slack-ready control metadata", async () => {
+  await withServer(async (port) => {
+    const response = await requestJson(port, "GET", "/api/operator/actions");
+    const payload = response.payload as {
+      schemaVersion: number;
+      commandWrappers: string[];
+      actions: Array<{
+        action: string;
+        requiresPendingCall: boolean;
+        requiresReason: boolean;
+        commandExamples: string[];
+      }>;
+    };
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(payload.schemaVersion, 1);
+    assert.deepEqual(payload.commandWrappers, ["/operator", "/steer"]);
+    assert.deepEqual(
+      payload.actions.map((action) => action.action),
+      [
+        "pause",
+        "resume",
+        "approve_offer",
+        "escalate_to_human",
+        "goto_slide",
+        "ask_operator",
+        "arm_fallback",
+        "disarm_fallback",
+      ],
+    );
+
+    const armFallback = payload.actions.find((action) => action.action === "arm_fallback");
+    assert.equal(armFallback?.requiresReason, true);
+    assert.equal(armFallback?.requiresPendingCall, false);
+    assert.equal(armFallback?.commandExamples.includes("/operator arm-fallback audio degraded"), true);
+
+    const approveOffer = payload.actions.find((action) => action.action === "approve_offer");
+    assert.equal(approveOffer?.requiresPendingCall, true);
+    assert.equal(approveOffer?.requiresReason, false);
+  });
+});
