@@ -485,6 +485,7 @@ function buildOperatorActionsPayload() {
   return {
     schemaVersion: 1,
     commandWrappers: ["/operator", "/steer"],
+    callReferenceFields: ["callId", "providerCallId", "openclawSessionId", "openclawSessionLabel", "openclawSessionRef"],
     routes: {
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
@@ -492,6 +493,37 @@ function buildOperatorActionsPayload() {
     },
     actions: operatorActionCatalog,
   };
+}
+
+async function resolveOperatorConsoleCallId(
+  body: Record<string, unknown>,
+  ingress: InMemoryTelephonyIngress,
+): Promise<string | { error: string }> {
+  const directCallId = getOptionalTrimmedString(body.callId);
+  if (directCallId) {
+    return directCallId;
+  }
+
+  const providerCallId = getOptionalTrimmedString(body.providerCallId);
+  const openclawSessionId = getOptionalTrimmedString(body.openclawSessionId);
+  const openclawSessionLabel = getOptionalTrimmedString(body.openclawSessionLabel);
+  const openclawSessionRef = getOptionalTrimmedString(body.openclawSessionRef);
+  const referenceCount = [providerCallId, openclawSessionId, openclawSessionLabel, openclawSessionRef].filter(Boolean).length;
+
+  if (referenceCount === 0) {
+    return { error: "operator_console_action_call_ref_required" };
+  }
+
+  if (referenceCount > 1) {
+    return { error: "operator_console_action_call_ref_conflict" };
+  }
+
+  const matches = await ingress.listSnapshots({ providerCallId, openclawSessionId, openclawSessionLabel, openclawSessionRef });
+  if (matches.length !== 1) {
+    return { error: "operator_console_action_call_ref_not_found" };
+  }
+
+  return matches[0].session.callId;
 }
 
 function parseOptionalBooleanFilter(
@@ -962,9 +994,9 @@ async function routeRequest(
       return;
     }
 
-    const callId = getOptionalTrimmedString(body.callId);
-    if (!callId) {
-      writeBadRequest(response, "operator_console_action_call_id_required");
+    const callId = await resolveOperatorConsoleCallId(body, ingress);
+    if (typeof callId !== "string") {
+      writeBadRequest(response, callId.error);
       return;
     }
 
