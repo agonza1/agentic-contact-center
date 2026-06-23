@@ -81,7 +81,7 @@ interface OperatorConsolePayload {
   runtimeHealth: { ok: boolean; mode: string; provider: string; pipecatFlow: { ready: boolean } };
   controls: {
     commandWrappers: string[];
-    routes: { steerCall: string; noteCall: string };
+    routes: { steerCall: string; noteCall: string; consoleAction: string };
     actions: Array<{ action: string; method: string; postTemplate: string; bodyTemplate: { action: string; reason?: string }; operatorOutcome: string }>;
   };
   queue: QueueSummaryPayload;
@@ -837,6 +837,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.deepEqual(consolePayload.controls.routes, {
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
+      consoleAction: "/api/operator/console/action",
     });
     const approveOfferAction = consolePayload.controls.actions.find((entry) => entry.action === "approve_offer");
     assert.deepEqual(approveOfferAction, {
@@ -877,6 +878,46 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     const invalidFilter = await requestJson(port, "GET", "/api/operator/console?attentionRequired=maybe");
     assert.equal(invalidFilter.statusCode, 400);
     assert.deepEqual(invalidFilter.payload, { ok: false, error: "operator_console_attention_required_invalid" });
+  });
+});
+
+test("POST /api/operator/console/action dispatches live call controls", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as SnapshotPayload).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:11:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "The renewal increase is too high.",
+      timestamp: "2026-06-10T14:11:05.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Okay, what safe options can you review for me?",
+      timestamp: "2026-06-10T14:11:10.000Z",
+    });
+
+    const action = await requestJson(port, "POST", "/api/operator/console/action", {
+      callId,
+      command: "/operator approve-offer",
+      timestamp: "2026-06-10T14:11:12.000Z",
+    });
+    const payload = action.payload as { ok: boolean; route: string; appliedAction: string; call: SnapshotPayload };
+
+    assert.equal(action.statusCode, 200);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.route, "/api/operator/console/action");
+    assert.equal(payload.appliedAction, "approve_offer");
+    assert.equal(payload.call.session.callId, callId);
+    assert.equal(payload.call.operatorSteer.pending, false);
+    assert.equal(payload.call.operatorSteer.lastAction, "approve_offer");
+    assert.equal(payload.call.flowState, "steered_response");
+
+    const missingCall = await requestJson(port, "POST", "/api/operator/console/action", { action: "pause" });
+    assert.equal(missingCall.statusCode, 400);
+    assert.deepEqual(missingCall.payload, { ok: false, error: "operator_console_action_call_id_required" });
   });
 });
 
@@ -3159,7 +3200,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     const payload = response.payload as {
       schemaVersion: number;
       commandWrappers: string[];
-      routes: { steerCall: string; noteCall: string };
+      routes: { steerCall: string; noteCall: string; consoleAction: string };
       actions: Array<{
         action: string;
         requiresPendingCall: boolean;
@@ -3175,6 +3216,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     assert.deepEqual(payload.routes, {
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
+      consoleAction: "/api/operator/console/action",
     });
     assert.deepEqual(
       payload.actions.map((action) => action.action),
