@@ -94,11 +94,15 @@ interface OperatorConsolePayload {
     actions: Array<{
       action: string;
       method: string;
+      requiresPendingCall: boolean;
+      requiresReason: boolean;
       postTemplate: string;
       bodyTemplate: { action: string; reason?: string };
       operatorOutcome: string;
+      reasonPrompt: string | null;
       confirmationRequired: boolean;
       confirmationMessage: string | null;
+      commandExamples: string[];
     }>;
   };
   queue: QueueSummaryPayload;
@@ -927,6 +931,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       postTemplate: "/api/calls/{callId}/operator-steer",
       bodyTemplate: { action: "approve_offer" },
       operatorOutcome: "resume",
+      reasonPrompt: null,
       confirmationRequired: false,
       confirmationMessage: null,
       commandExamples: ["/operator approve-offer", "/steer approve offer"],
@@ -935,8 +940,12 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(takeoverAction?.method, "POST");
     assert.deepEqual(takeoverAction?.bodyTemplate, { action: "takeover" });
     assert.equal(takeoverAction?.operatorOutcome, "handoff");
+    assert.equal(takeoverAction?.reasonPrompt, null);
     assert.equal(takeoverAction?.confirmationRequired, true);
     assert.equal(takeoverAction?.confirmationMessage, "Takeover gives the operator direct control of the live call.");
+    const gotoSlideAction = consolePayload.controls.actions.find((entry) => entry.action === "goto_slide");
+    assert.equal(gotoSlideAction?.requiresReason, true);
+    assert.equal(gotoSlideAction?.reasonPrompt, "Slide or step");
     assert.equal(consolePayload.queue.summary.totalCalls, 2);
     assert.equal(consolePayload.queue.summary.pendingOperatorSteer, 1);
     assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
@@ -1016,8 +1025,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /\/api\/demo\/start/);
     assert.match(response.body, /"goto_slide"/);
     assert.match(response.body, /"ask_operator"/);
-    assert.match(response.body, /Slide or step/);
-    assert.match(response.body, /Operator question/);
+    assert.match(response.body, /reasonPrompt/);
+    assert.match(response.body, /requiresReason/);
     assert.match(response.body, /confirmationRequired/);
     assert.match(response.body, /Confirm /);
   });

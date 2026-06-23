@@ -229,10 +229,9 @@ function buildOperatorConsoleHtml(): string {
     <section class="panel" aria-label="Selected call"><h2 id="selected-title">Select a call</h2><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionConfirmations: {} };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {} };
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
-    const reasonPrompts = { goto_slide: "Slide or step", ask_operator: "Operator question", arm_fallback: "Fallback reason" };
     function setStatus(text) { document.getElementById("status").textContent = text; }
     function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[char]; }); }
     function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
@@ -241,7 +240,7 @@ function buildOperatorConsoleHtml(): string {
       const response = await fetch("/api/operator/console?sort=attentionStartedAt&order=asc&limit=25");
       if (!response.ok) throw new Error("console_fetch_failed");
       const payload = await response.json();
-      state.actionConfirmations = Object.fromEntries(payload.controls.actions.map(function(entry) { return [entry.action, { required: entry.confirmationRequired, message: entry.confirmationMessage }]; }));
+      state.actionMetadata = Object.fromEntries(payload.controls.actions.map(function(entry) { return [entry.action, entry]; }));
       state.calls = payload.calls.items;
       if (!state.calls.some(function(call) { return call.session.callId === state.selectedCallId; })) state.selectedCallId = state.calls[0] ? state.calls[0].session.callId : null;
       render();
@@ -293,7 +292,7 @@ function buildOperatorConsoleHtml(): string {
         return '<div class="turn"><b>' + escapeHtml(turn.speaker) + '</b><span>' + escapeHtml(turn.text) + '</span></div>';
       }).join("");
       root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div></div><div class="actions">' + actionHtml + '</div><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
-      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const promptLabel = reasonPrompts[action]; const reason = promptLabel ? prompt(promptLabel) : undefined; if (promptLabel && !reason) return; const confirmation = state.actionConfirmations[action] || { required: false, message: null }; if (confirmation.required && !confirm((confirmation.message || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\n\nCall: " + call.session.callId)) return; postAction(action, reason); }); });
+      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = state.actionMetadata[action] || {}; const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; if (metadata.confirmationRequired && !confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\n\nCall: " + call.session.callId)) return; postAction(action, reason); }); });
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
     function render() { renderCalls(); renderDetail(); }
@@ -693,6 +692,19 @@ function getOperatorActionConfirmationMessage(action: OperatorSteerAction): stri
   }
 }
 
+function getOperatorActionReasonPrompt(action: OperatorSteerAction): string | null {
+  switch (action) {
+    case "goto_slide":
+      return "Slide or step";
+    case "ask_operator":
+      return "Operator question";
+    case "arm_fallback":
+      return "Fallback reason";
+    default:
+      return null;
+  }
+}
+
 function buildOperatorActionsPayload() {
   return {
     schemaVersion: 1,
@@ -706,6 +718,7 @@ function buildOperatorActionsPayload() {
     },
     actions: operatorActionCatalog.map((entry) => ({
       ...entry,
+      reasonPrompt: getOperatorActionReasonPrompt(entry.action),
       confirmationRequired: operatorActionRequiresConfirmation(entry.action),
       confirmationMessage: getOperatorActionConfirmationMessage(entry.action),
     })),
