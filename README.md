@@ -151,6 +151,7 @@ The flow enters `policy_hold` before unsafe retention offers, requests operator 
 - `GET /api/calls/:callId/transcript`: fetch filterable transcript pages.
 - `GET /api/calls/:callId/events`: fetch filterable event evidence, including detail-text search for QA audits.
 - `GET /api/calls/:callId/latency`: fetch filterable latency evidence.
+- `GET /api/calls/:callId/artifacts`: fetch the OpenClaw artifact manifest for the call, including linked evidence routes and latest evidence counters.
 - `GET /api/calls/:callId/proof`: export a per-call QA proof bundle with transcript, events, operator decisions, runtime mode, latency, fallback/handoff state, OpenClaw artifact links, and demo PII assumptions.
 
 Common list/queue filters include `callId`, `providerCallId`, `flowState`, `pipecatActiveTool`, `pendingOperatorSteer`, `fallbackArmed`, `attentionRequired`, `attentionSource`, `attentionReason`, `openclawSessionId`, `openclawSessionLabel`, `openclawSessionRef`, `transcriptText`, `minAttentionAgeMs`, `maxAttentionAgeMs`, `latencyStage`, and `latencyOverBudget`.

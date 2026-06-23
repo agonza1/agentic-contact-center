@@ -393,6 +393,32 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
   };
 }
 
+function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
+  const latestEvent = snapshot.events.at(-1);
+  const latestTranscriptTurn = snapshot.transcript.at(-1);
+  const latestLatencyMark = snapshot.latencyMarks.at(-1);
+
+  return {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    callId: snapshot.session.callId,
+    providerCallId: snapshot.session.providerCallId,
+    openclawSession: snapshot.session.openclawSession,
+    artifacts: snapshot.session.openclawSession.artifactLinks,
+    summary: {
+      transcriptTurns: snapshot.transcript.length,
+      eventCount: snapshot.events.length,
+      latencyMarkCount: snapshot.latencyMarks.length,
+      latestEventType: latestEvent?.type ?? null,
+      latestEventAt: latestEvent?.at ?? null,
+      latestTranscriptSpeaker: latestTranscriptTurn?.speaker ?? null,
+      latestTranscriptAt: latestTranscriptTurn?.timestamp ?? null,
+      latestLatencyStage: latestLatencyMark?.stage ?? null,
+      latestLatencyAt: latestLatencyMark?.recordedAt ?? null,
+    },
+  };
+}
+
 function buildOperatorActionsPayload() {
   return {
     schemaVersion: 1,
@@ -1420,6 +1446,18 @@ async function routeRequest(
       200,
       buildLatencyPayload(snapshot, stage?.trim() || undefined, overBudget, since, until, offset, limit, orderParam ?? "asc"),
     );
+    return;
+  }
+
+  const callArtifactsMatch = request.method === "GET" ? pathname.match(/^\/api\/calls\/([^/]+)\/artifacts$/) : null;
+  if (callArtifactsMatch) {
+    const snapshot = await ingress.getSnapshot(callArtifactsMatch[1]);
+    if (!snapshot) {
+      writeNotFound(response);
+      return;
+    }
+
+    writeJson(response, 200, buildCallArtifactManifestPayload(snapshot));
     return;
   }
 

@@ -52,6 +52,7 @@ function buildOpenClawArtifactLinks(callId: string) {
 
   return {
     snapshot: basePath,
+    artifacts: `${basePath}/artifacts`,
     proof: `${basePath}/proof`,
     transcript: `${basePath}/transcript`,
     events: `${basePath}/events`,
