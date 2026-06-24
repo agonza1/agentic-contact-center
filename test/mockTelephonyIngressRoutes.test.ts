@@ -1104,6 +1104,15 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
           reasonPrompt: null,
         },
         {
+          action: "transfer",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: true,
+          confirmationMessage: "Transferring moves the caller out of the automated demo flow to a human queue.",
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
           action: "takeover",
           enabled: true,
           disabledReason: null,
@@ -1164,6 +1173,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
         "approve_offer",
         "deny_offer",
         "escalate_to_human",
+        "transfer",
         "takeover",
         "end_call",
         "goto_slide",
@@ -1173,6 +1183,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       ],
       requiresConfirmationActions: [
         { action: "escalate_to_human", confirmationMessage: "Escalating hands the caller to a human operator." },
+        { action: "transfer", confirmationMessage: "Transferring moves the caller out of the automated demo flow to a human queue." },
         { action: "takeover", confirmationMessage: "Takeover gives the operator direct control of the live call." },
         { action: "end_call", confirmationMessage: "Ending the call closes the active demo session." },
         { action: "arm_fallback", confirmationMessage: "Arming fallback changes the live call path until fallback is disarmed." },
@@ -1239,6 +1250,7 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /\/api\/demo\/start/);
     assert.match(response.body, /"goto_slide"/);
     assert.match(response.body, /"ask_operator"/);
+    assert.match(response.body, /"transfer"/);
     assert.match(response.body, /reasonPrompt/);
     assert.match(response.body, /requiresReason/);
     assert.match(response.body, /confirmationRequired/);
@@ -1328,6 +1340,21 @@ test("POST /api/operator/console/action dispatches live call controls", async ()
     assert.equal(sessionRefAction.statusCode, 200);
     assert.equal(sessionRefPayload.call.session.callId, refCall.session.callId);
     assert.equal(sessionRefPayload.call.operatorSteer.lastAction, "takeover");
+
+    const transferStarted = await requestJson(port, "POST", "/api/demo/start");
+    const transferCallId = (transferStarted.payload as SnapshotPayload).session.callId;
+    const transferAction = await requestJson(port, "POST", "/api/operator/console/action", {
+      callId: transferCallId,
+      command: "/operator transfer",
+      confirmationAcknowledged: true,
+      timestamp: "2026-06-10T14:11:25.000Z",
+    });
+    const transferPayload = transferAction.payload as { ok: boolean; call: SnapshotPayload };
+
+    assert.equal(transferAction.statusCode, 200);
+    assert.equal(transferPayload.call.operatorSteer.lastAction, "transfer");
+    assert.equal(transferPayload.call.flowState, "wrap");
+    assert.equal(transferPayload.call.events.some((event) => event.type === "operator_transfer_started"), true);
 
     const missingCall = await requestJson(port, "POST", "/api/operator/console/action", { action: "pause" });
     assert.equal(missingCall.statusCode, 400);
@@ -3669,6 +3696,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
         "approve_offer",
         "deny_offer",
         "escalate_to_human",
+        "transfer",
         "takeover",
         "end_call",
         "goto_slide",
@@ -3695,6 +3723,13 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     assert.equal(denyOffer?.requiresPendingCall, true);
     assert.equal(denyOffer?.requiresReason, false);
     assert.equal(denyOffer?.commandExamples.includes("/operator deny-offer"), true);
+
+    const transfer = payload.actions.find((action) => action.action === "transfer");
+    assert.equal(transfer?.requiresPendingCall, false);
+    assert.equal(transfer?.requiresReason, false);
+    assert.equal(transfer?.confirmationRequired, true);
+    assert.equal(transfer?.confirmationMessage, "Transferring moves the caller out of the automated demo flow to a human queue.");
+    assert.equal(transfer?.commandExamples.includes("/operator transfer"), true);
 
     const takeover = payload.actions.find((action) => action.action === "takeover");
     assert.equal(takeover?.requiresPendingCall, false);

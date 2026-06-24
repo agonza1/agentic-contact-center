@@ -34,6 +34,7 @@ const operatorSteerActions: OperatorSteerAction[] = [
   "approve_offer",
   "deny_offer",
   "escalate_to_human",
+  "transfer",
   "takeover",
   "end_call",
   "pause",
@@ -103,6 +104,16 @@ const operatorActionCatalog: Array<{
     bodyTemplate: { action: "escalate_to_human" },
     operatorOutcome: "handoff",
     commandExamples: ["/operator escalate", "/steer escalate-to-human"],
+  },
+  {
+    action: "transfer",
+    method: "POST",
+    requiresPendingCall: false,
+    requiresReason: false,
+    postTemplate: "/api/calls/{callId}/operator-steer",
+    bodyTemplate: { action: "transfer" },
+    operatorOutcome: "handoff",
+    commandExamples: ["/operator transfer", "/steer transfer"],
   },
   {
     action: "takeover",
@@ -230,8 +241,8 @@ function buildOperatorConsoleHtml(): string {
   </main>
   <script>
     const state = { calls: [], selectedCallId: null, actionMetadata: {} };
-    const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
-    const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
+    const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
+    const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
     function setStatus(text) { document.getElementById("status").textContent = text; }
     function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[char]; }); }
     function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
@@ -734,7 +745,7 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
 }
 
 function operatorActionRequiresConfirmation(action: OperatorSteerAction): boolean {
-  return action === "arm_fallback" || action === "escalate_to_human" || action === "takeover" || action === "end_call";
+  return action === "arm_fallback" || action === "escalate_to_human" || action === "transfer" || action === "takeover" || action === "end_call";
 }
 
 function getOperatorActionConfirmationMessage(action: OperatorSteerAction): string | null {
@@ -743,6 +754,8 @@ function getOperatorActionConfirmationMessage(action: OperatorSteerAction): stri
       return "Arming fallback changes the live call path until fallback is disarmed.";
     case "escalate_to_human":
       return "Escalating hands the caller to a human operator.";
+    case "transfer":
+      return "Transferring moves the caller out of the automated demo flow to a human queue.";
     case "takeover":
       return "Takeover gives the operator direct control of the live call.";
     case "end_call":
@@ -1157,6 +1170,10 @@ function parseOperatorSteerCommand(
 
   if (lowerCommand === "escalate" || lowerCommand === "escalate-to-human") {
     return { action: "escalate_to_human" };
+  }
+
+  if (lowerCommand === "transfer") {
+    return { action: "transfer" };
   }
 
   if (lowerCommand === "takeover" || lowerCommand === "barge-in" || lowerCommand === "barge in") {
