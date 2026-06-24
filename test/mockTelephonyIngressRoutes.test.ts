@@ -3415,6 +3415,9 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
         action: string;
         requiresPendingCall: boolean;
         requiresReason: boolean;
+        reasonPrompt: string | null;
+        confirmationRequired: boolean;
+        confirmationMessage: string | null;
         postTemplate: string;
         commandExamples: string[];
       }>;
@@ -3456,6 +3459,9 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     const armFallback = payload.actions.find((action) => action.action === "arm_fallback");
     assert.equal(armFallback?.requiresReason, true);
     assert.equal(armFallback?.requiresPendingCall, false);
+    assert.equal(armFallback?.reasonPrompt, "Fallback reason");
+    assert.equal(armFallback?.confirmationRequired, true);
+    assert.equal(armFallback?.confirmationMessage, "Arming fallback changes the live call path until fallback is disarmed.");
     assert.equal(armFallback?.commandExamples.includes("/operator arm-fallback audio degraded"), true);
 
     const approveOffer = payload.actions.find((action) => action.action === "approve_offer");
@@ -3471,6 +3477,9 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     const takeover = payload.actions.find((action) => action.action === "takeover");
     assert.equal(takeover?.requiresPendingCall, false);
     assert.equal(takeover?.requiresReason, false);
+    assert.equal(takeover?.reasonPrompt, null);
+    assert.equal(takeover?.confirmationRequired, true);
+    assert.equal(takeover?.confirmationMessage, "Takeover gives the operator direct control of the live call.");
     assert.equal(takeover?.commandExamples.includes("/steer barge-in"), true);
 
     const endCall = payload.actions.find((action) => action.action === "end_call");
