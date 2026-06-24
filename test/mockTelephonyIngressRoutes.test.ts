@@ -203,10 +203,22 @@ interface ArtifactManifestPayload {
     artifactLinks: { snapshot: string; artifacts: string; proof: string; transcript: string; events: string; latencyMarks: string };
   };
   artifacts: { snapshot: string; artifacts: string; proof: string; transcript: string; events: string; latencyMarks: string };
+  runtimeMode: { flow: string; pipecatTransport: string; runtimeEngine: string; credentialsMode: string; telephony: string };
+  evidenceRoutes: {
+    transcript: string;
+    events: string;
+    latencyMarks: string;
+    fallbackSourceTrail: string | null;
+    overBudgetLatencyTrail: string | null;
+  };
   summary: {
     transcriptTurns: number;
     eventCount: number;
     latencyMarkCount: number;
+    overBudgetLatencyMarkCount: number;
+    fallbackMode: string | null;
+    fallbackSource: string | null;
+    handoffStartedAt: string | null;
     latestEventType: string | null;
     latestEventAt: string | null;
     latestTranscriptSpeaker: string | null;
@@ -608,6 +620,20 @@ test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", a
       transcript: `/api/calls/${callId}/transcript`,
       events: `/api/calls/${callId}/events`,
       latencyMarks: `/api/calls/${callId}/latency`,
+    });
+    assert.deepEqual(payload.runtimeMode, {
+      flow: "pipecat_local_runtime",
+      pipecatTransport: "local_process",
+      runtimeEngine: "pipecat-ai",
+      credentialsMode: "mocked",
+      telephony: "mocked_telephony",
+    });
+    assert.deepEqual(payload.evidenceRoutes, {
+      transcript: `/api/calls/${callId}/transcript`,
+      events: `/api/calls/${callId}/events`,
+      latencyMarks: `/api/calls/${callId}/latency`,
+      fallbackSourceTrail: null,
+      overBudgetLatencyTrail: null,
     });
     assert.equal(payload.summary.transcriptTurns, 2);
     assert.equal(payload.summary.eventCount > 2, true);
@@ -2876,6 +2902,18 @@ test("tool timeout fallback fails closed and records the fallback reason", async
       `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
     );
     assert.equal(runtimeFailureConsoleCall?.evidenceSummary.handoffStartedAt, "2026-06-10T14:00:03.000Z");
+
+    const runtimeFailureManifest = await requestJson(port, "GET", `/api/calls/${runtimeFailureCallId}/artifacts`);
+    const runtimeFailureManifestPayload = runtimeFailureManifest.payload as ArtifactManifestPayload;
+    assert.equal(runtimeFailureManifest.statusCode, 200);
+    assert.equal(runtimeFailureManifestPayload.runtimeMode.flow, "pipecat_local_runtime");
+    assert.equal(runtimeFailureManifestPayload.summary.fallbackMode, "runtime_failure");
+    assert.equal(runtimeFailureManifestPayload.summary.fallbackSource, "pipecat_runtime_failure_fail_closed");
+    assert.equal(runtimeFailureManifestPayload.summary.handoffStartedAt, "2026-06-10T14:00:03.000Z");
+    assert.equal(
+      runtimeFailureManifestPayload.evidenceRoutes.fallbackSourceTrail,
+      `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
+    );
 
     const toolTimeoutQueue = await requestJson(port, "GET", "/api/queue?fallbackMode=tool_timeout");
     const toolTimeoutQueuePayload = toolTimeoutQueue.payload as QueueSummaryPayload;

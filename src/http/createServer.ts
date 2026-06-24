@@ -781,18 +781,45 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
   const latestEvent = snapshot.events.at(-1);
   const latestTranscriptTurn = snapshot.transcript.at(-1);
   const latestLatencyMark = snapshot.latencyMarks.at(-1);
+  const handoffEvent = snapshot.events.find((event) => event.type === "human_handoff_started");
+  const fallbackSource = typeof handoffEvent?.detail.source === "string" ? handoffEvent.detail.source : null;
+  const overBudgetLatencyMarkCount = snapshot.latencyMarks.filter(
+    (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
+  ).length;
 
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     callId: snapshot.session.callId,
     providerCallId: snapshot.session.providerCallId,
+    runtimeMode: {
+      flow: snapshot.pipecatFlow.prototypeMode,
+      pipecatTransport: snapshot.pipecatFlow.transport,
+      runtimeEngine: snapshot.pipecatFlow.runtimeEngine,
+      credentialsMode: snapshot.pipecatFlow.credentialsMode,
+      telephony: snapshot.scenario.mode,
+    },
     openclawSession: snapshot.session.openclawSession,
     artifacts: snapshot.session.openclawSession.artifactLinks,
+    evidenceRoutes: {
+      transcript: snapshot.session.openclawSession.artifactLinks.transcript,
+      events: snapshot.session.openclawSession.artifactLinks.events,
+      latencyMarks: snapshot.session.openclawSession.artifactLinks.latencyMarks,
+      fallbackSourceTrail: fallbackSource
+        ? snapshot.session.openclawSession.artifactLinks.events + "?source=" + encodeURIComponent(fallbackSource)
+        : null,
+      overBudgetLatencyTrail: overBudgetLatencyMarkCount > 0
+        ? snapshot.session.openclawSession.artifactLinks.latencyMarks + "?overBudget=true"
+        : null,
+    },
     summary: {
       transcriptTurns: snapshot.transcript.length,
       eventCount: snapshot.events.length,
       latencyMarkCount: snapshot.latencyMarks.length,
+      overBudgetLatencyMarkCount,
+      fallbackMode: snapshot.demoFallback.mode,
+      fallbackSource,
+      handoffStartedAt: handoffEvent?.at ?? null,
       latestEventType: latestEvent?.type ?? null,
       latestEventAt: latestEvent?.at ?? null,
       latestTranscriptSpeaker: latestTranscriptTurn?.speaker ?? null,
