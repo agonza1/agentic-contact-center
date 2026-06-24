@@ -172,33 +172,40 @@ async function runScriptedScenario(port) {
   };
 }
 
-async function runFallbackScenario(port) {
+async function runFallbackScenario(port, options = {}) {
+  const {
+    mode = "tool_timeout",
+    reason = "pipecat tool exceeded latency budget",
+    label = "cluecon-demo/fallback-proof",
+    timestamp = "2026-06-11T20:46:02.000Z",
+  } = options;
   const started = await requestJson(port, "POST", "/api/demo/start", {
-    openclawSessionLabel: "cluecon-demo/fallback-proof",
+    openclawSessionLabel: label,
   });
   assert.equal(started.statusCode, 201);
 
   const callId = started.payload.session.callId;
   const fallback = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {
-    mode: "tool_timeout",
-    reason: "pipecat tool exceeded latency budget",
-    timestamp: "2026-06-11T20:46:02.000Z",
+    mode,
+    reason,
+    timestamp,
   });
 
   assert.equal(fallback.statusCode, 200);
   assert.equal(fallback.payload.flowState, "wrap");
   assert.equal(fallback.payload.demoFallback.armed, true);
-  assert.equal(fallback.payload.demoFallback.mode, "tool_timeout");
+  assert.equal(fallback.payload.demoFallback.mode, mode);
   assert.equal(fallback.payload.events.some((event) => event.type === "demo_fallback_triggered"), true);
   assert.equal(fallback.payload.events.some((event) => event.type === "human_handoff_started"), true);
 
   const finalAgentTurn = [...fallback.payload.transcript].reverse().find((turn) => turn.speaker === "agent");
   assert.ok(finalAgentTurn);
-  assert.equal(finalAgentTurn.text.toLowerCase().includes("tool timed out"), true);
+  const expectedMessageFragment = mode === "runtime_failure" ? "runtime reported a failure" : "tool timed out";
+  assert.equal(finalAgentTurn.text.toLowerCase().includes(expectedMessageFragment), true);
 
   return {
     callId,
-    outcome: "fail_closed_handoff",
+    outcome: mode === "runtime_failure" ? "runtime_failure_fail_closed_handoff" : "fail_closed_handoff",
     checkpoint: fallback.payload,
   };
 }
@@ -232,17 +239,17 @@ async function getAttentionSortedCallList(port) {
   };
 }
 
-async function getFallbackSourceTrail(port, callId) {
-  const trail = await requestJson(port, "GET", `/api/calls/${callId}/events?source=tool_timeout_fail_closed`);
+async function getFallbackSourceTrail(port, callId, source = "tool_timeout_fail_closed") {
+  const trail = await requestJson(port, "GET", `/api/calls/${callId}/events?source=${source}`);
   assert.equal(trail.statusCode, 200);
-  assert.equal(trail.payload.summary.filteredSource, "tool_timeout_fail_closed");
+  assert.equal(trail.payload.summary.filteredSource, source);
   assert.deepEqual(
     trail.payload.events.map((event) => event.type),
     ["human_handoff_started"],
   );
 
   return {
-    route: `calls/${callId}/events?source=tool_timeout_fail_closed`,
+    route: `calls/${callId}/events?source=${source}`,
     returnedEvents: trail.payload.summary.returnedEvents,
     filteredSource: trail.payload.summary.filteredSource,
     eventTypes: trail.payload.events.map((event) => event.type),
@@ -304,6 +311,7 @@ function summarizeArtifact(artifact) {
     },
     callAttentionList: artifact.callAttentionList,
     fallbackSourceTrail: artifact.fallbackSourceTrail,
+    runtimeFailureSourceTrail: artifact.runtimeFailureSourceTrail,
     scripted: {
       outcome: artifact.scripted.outcome,
       callId: artifact.scripted.callId,
@@ -315,6 +323,13 @@ function summarizeArtifact(artifact) {
       mode: fallbackCheckpoint.demoFallback.mode,
       reason: fallbackCheckpoint.demoFallback.reason,
       ...summarizeScenario(fallbackCheckpoint),
+    },
+    runtimeFailure: {
+      outcome: artifact.runtimeFailure.outcome,
+      callId: artifact.runtimeFailure.callId,
+      mode: artifact.runtimeFailure.checkpoint.demoFallback.mode,
+      reason: artifact.runtimeFailure.checkpoint.demoFallback.reason,
+      ...summarizeScenario(artifact.runtimeFailure.checkpoint),
     },
   };
 }
@@ -331,6 +346,17 @@ async function main() {
     const queueAttention = await getQueueAttentionSummary(port);
     const callAttentionList = await getAttentionSortedCallList(port);
     const fallbackSourceTrail = await getFallbackSourceTrail(port, fallback.callId);
+    const runtimeFailure = await runFallbackScenario(port, {
+      mode: "runtime_failure",
+      reason: "pipecat local runtime import failed",
+      label: "cluecon-demo/runtime-failure-proof",
+      timestamp: "2026-06-11T20:47:02.000Z",
+    });
+    const runtimeFailureSourceTrail = await getFallbackSourceTrail(
+      port,
+      runtimeFailure.callId,
+      "pipecat_runtime_failure_fail_closed",
+    );
 
     return {
       schemaVersion: 1,
@@ -339,7 +365,11 @@ async function main() {
       demoName: config.demoName,
       provider: config.provider.name,
       proofContract: {
-        requiredOutcomes: ["scripted_wrap_complete", "fail_closed_handoff"],
+        requiredOutcomes: [
+          "scripted_wrap_complete",
+          "fail_closed_handoff",
+          "runtime_failure_fail_closed_handoff",
+        ],
         requiredEventTypes: ["policy_hold_entered", "demo_fallback_triggered", "human_handoff_started"],
         queueAttentionFilter: "attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget",
         callAttentionSort: "attentionRequired=true&sort=attentionStartedAt&limit=1",
@@ -349,8 +379,10 @@ async function main() {
       queueAttention,
       callAttentionList,
       fallbackSourceTrail,
+      runtimeFailureSourceTrail,
       scripted,
       fallback,
+      runtimeFailure,
     };
   });
 
@@ -375,6 +407,7 @@ async function main() {
       {
         scriptedOutcome: artifact.scripted.outcome,
         fallbackOutcome: artifact.fallback.outcome,
+        runtimeFailureOutcome: artifact.runtimeFailure.outcome,
       },
       null,
       2,

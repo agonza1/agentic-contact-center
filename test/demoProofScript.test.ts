@@ -81,6 +81,12 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           filteredSource: string | null;
           eventTypes: string[];
         };
+        runtimeFailureSourceTrail: {
+          route: string;
+          returnedEvents: number;
+          filteredSource: string | null;
+          eventTypes: string[];
+        };
         healthOk: boolean;
         gitRevision: string | null;
         pipecatRuntime: {
@@ -109,15 +115,27 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           reason: string | null;
           flowState: string;
         };
+        runtimeFailure: {
+          eventCount: number;
+          eventTypes: string[];
+          mode: string | null;
+          reason: string | null;
+          flowState: string;
+        };
       };
       scripted: { outcome: string; checkpoints: { wrapped: { pipecatFlow: { script: { completed: boolean } } } } };
       fallback: { outcome: string; callId: string; checkpoint: { demoFallback: { mode: string | null } } };
+      runtimeFailure: { outcome: string; callId: string; checkpoint: { demoFallback: { mode: string | null } } };
     };
 
     const latestArtifact = JSON.parse(await readFile(latestOutputPath, "utf8")) as typeof artifact;
 
     assert.equal(artifact.schemaVersion, 1);
-    assert.deepEqual(artifact.proofContract.requiredOutcomes, ["scripted_wrap_complete", "fail_closed_handoff"]);
+    assert.deepEqual(artifact.proofContract.requiredOutcomes, [
+      "scripted_wrap_complete",
+      "fail_closed_handoff",
+      "runtime_failure_fail_closed_handoff",
+    ]);
     assert.equal(artifact.proofContract.requiredEventTypes.includes("policy_hold_entered"), true);
     assert.equal(artifact.proofContract.requiredEventTypes.includes("demo_fallback_triggered"), true);
     assert.equal(artifact.proofContract.requiredEventTypes.includes("human_handoff_started"), true);
@@ -159,6 +177,13 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.fallbackSourceTrail.returnedEvents, 1);
     assert.equal(artifact.summary.fallbackSourceTrail.filteredSource, "tool_timeout_fail_closed");
     assert.deepEqual(artifact.summary.fallbackSourceTrail.eventTypes, ["human_handoff_started"]);
+    assert.equal(
+      artifact.summary.runtimeFailureSourceTrail.route,
+      "calls/" + artifact.runtimeFailure.callId + "/events?source=pipecat_runtime_failure_fail_closed",
+    );
+    assert.equal(artifact.summary.runtimeFailureSourceTrail.returnedEvents, 1);
+    assert.equal(artifact.summary.runtimeFailureSourceTrail.filteredSource, "pipecat_runtime_failure_fail_closed");
+    assert.deepEqual(artifact.summary.runtimeFailureSourceTrail.eventTypes, ["human_handoff_started"]);
     assert.equal(artifact.scripted.outcome, "scripted_wrap_complete");
     assert.equal(artifact.scripted.checkpoints.wrapped.pipecatFlow.script.completed, true);
     assert.equal(artifact.summary.scripted.flowState, "wrap");
@@ -176,6 +201,12 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.fallback.flowState, "wrap");
     assert.equal(artifact.summary.fallback.eventCount > 0, true);
     assert.equal(artifact.summary.fallback.eventTypes.includes("human_handoff_started"), true);
+    assert.equal(artifact.runtimeFailure.outcome, "runtime_failure_fail_closed_handoff");
+    assert.equal(artifact.runtimeFailure.checkpoint.demoFallback.mode, "runtime_failure");
+    assert.equal(artifact.summary.runtimeFailure.mode, "runtime_failure");
+    assert.equal(artifact.summary.runtimeFailure.reason, "pipecat local runtime import failed");
+    assert.equal(artifact.summary.runtimeFailure.flowState, "wrap");
+    assert.equal(artifact.summary.runtimeFailure.eventTypes.includes("human_handoff_started"), true);
     assert.deepEqual(latestArtifact, artifact);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
