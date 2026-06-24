@@ -44,6 +44,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           transport: string;
           runtimeEngine: string;
           credentialsMode: string;
+          activeTool: string | null;
           toolCoverage: string[];
         };
       };
@@ -88,6 +89,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           transport: string;
           runtimeEngine: string;
           credentialsMode: string;
+          activeTool: string | null;
           toolCoverage: string[];
         };
         scripted: {
@@ -135,6 +137,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.pipecatRuntime.transport, "local_process");
     assert.equal(artifact.summary.pipecatRuntime.runtimeEngine, "pipecat-ai");
     assert.equal(artifact.summary.pipecatRuntime.credentialsMode, "mocked");
+    assert.equal(artifact.summary.pipecatRuntime.activeTool, "get_current_slide");
     assert.equal(artifact.summary.pipecatRuntime.toolCoverage.includes("ask_operator"), true);
     assert.match(artifact.gitRevision ?? "", /^[0-9a-f]{7,12}$/);
     assert.equal(artifact.summary.gitRevision, artifact.gitRevision);

@@ -199,6 +199,7 @@ test("health smoke script can assert expected health metadata and multiple runti
           transport: "local_process",
           runtimeEngine: "pipecat-ai",
           credentialsMode: "mocked",
+          activeTool: "get_current_slide",
           toolCoverage: ["goto_slide", "approve_offer"],
           script: { completed: true },
         },
@@ -236,6 +237,8 @@ test("health smoke script can assert expected health metadata and multiple runti
       "pipecat-ai",
       "--expect-pipecat-credentials-mode",
       "mocked",
+      "--expect-pipecat-active-tool",
+      "get_current_slide",
       "--expect-pipecat-tool",
       "goto_slide",
       "--expect-pipecat-tool",
@@ -525,6 +528,32 @@ test("health smoke script reports Pipecat runtime metadata mismatches in the tim
 
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Last failure: json_pipecatFlow_prototypeMode_mismatch\(expected="pipecat_local_runtime",actual="deterministic_templates"\)/);
+  });
+});
+
+test("health smoke script reports Pipecat active-tool mismatches in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, pipecatFlow: { activeTool: "pause_presentation" } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-pipecat-active-tool",
+      "get_current_slide",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_pipecatFlow_activeTool_mismatch\(expected="get_current_slide",actual="pause_presentation"\)/);
   });
 });
 

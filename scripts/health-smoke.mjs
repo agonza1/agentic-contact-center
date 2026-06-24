@@ -15,6 +15,7 @@ function parseArgs(argv) {
     expectPipecatTransport: undefined,
     expectPipecatRuntimeEngine: undefined,
     expectPipecatCredentialsMode: undefined,
+    expectPipecatActiveTool: undefined,
     expectPipecatScriptCompleted: undefined,
     expectRuntimeSeams: [],
     expectPipecatTools: [],
@@ -38,6 +39,7 @@ function parseArgs(argv) {
     '--expect-pipecat-transport',
     '--expect-pipecat-runtime-engine',
     '--expect-pipecat-credentials-mode',
+    '--expect-pipecat-active-tool',
     '--expect-pipecat-script-completed',
     '--expect-runtime-seam',
     '--expect-pipecat-tool',
@@ -157,6 +159,12 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-pipecat-active-tool' && next) {
+      args.expectPipecatActiveTool = next;
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-pipecat-script-completed' && next) {
       args.expectPipecatScriptCompleted = next;
       index += 1;
@@ -212,6 +220,7 @@ function hasJsonExpectations(args) {
     args.expectPipecatTransport,
     args.expectPipecatRuntimeEngine,
     args.expectPipecatCredentialsMode,
+    args.expectPipecatActiveTool,
     args.expectPipecatScriptCompleted,
   ].some((expectedValue) => expectedValue !== undefined)
     || args.expectRuntimeSeams.length > 0
@@ -385,6 +394,7 @@ async function getFailureReason(response, args) {
     ['transport', args.expectPipecatTransport],
     ['runtimeEngine', args.expectPipecatRuntimeEngine],
     ['credentialsMode', args.expectPipecatCredentialsMode],
+    ['activeTool', args.expectPipecatActiveTool],
   ];
 
   for (const [field, expectedValue] of pipecatFlowExpectations) {

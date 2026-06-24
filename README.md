@@ -113,6 +113,7 @@ npm run health:smoke -- \
   --expect-pipecat-transport local_process \
   --expect-pipecat-runtime-engine pipecat-ai \
   --expect-pipecat-credentials-mode mocked \
+  --expect-pipecat-active-tool get_current_slide \
   --expect-pipecat-tool goto_slide
 ```
 

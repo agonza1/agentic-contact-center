@@ -187,7 +187,7 @@ export function buildPipecatFlowPrototypeStatus(): PipecatFlowPrototypeStatus {
 
 export function getPipecatPrototypeHealth(): Pick<
   PipecatFlowPrototypeStatus,
-  "ready" | "prototypeMode" | "transport" | "runtimeEngine" | "credentialsMode" | "toolCoverage"
+  "ready" | "prototypeMode" | "transport" | "runtimeEngine" | "credentialsMode" | "activeTool" | "toolCoverage"
 > {
   const status = buildPipecatFlowPrototypeStatus();
   return {
@@ -196,6 +196,7 @@ export function getPipecatPrototypeHealth(): Pick<
     transport: status.transport,
     runtimeEngine: status.runtimeEngine,
     credentialsMode: status.credentialsMode,
+    activeTool: status.activeTool,
     toolCoverage: status.toolCoverage,
   };
 }

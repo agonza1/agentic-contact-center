@@ -55,6 +55,7 @@ test("GET /health returns config-backed demo metadata", async () => {
       transport: string;
       runtimeEngine: string;
       credentialsMode: string;
+      activeTool: string | null;
       toolCoverage: string[];
     };
   };
@@ -72,5 +73,6 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.pipecatFlow.transport, "local_process");
   assert.equal(payload.pipecatFlow.runtimeEngine, "pipecat-ai");
   assert.equal(payload.pipecatFlow.credentialsMode, "mocked");
+  assert.equal(payload.pipecatFlow.activeTool, "get_current_slide");
   assert.equal(payload.pipecatFlow.toolCoverage.includes("goto_slide"), true);
 });
