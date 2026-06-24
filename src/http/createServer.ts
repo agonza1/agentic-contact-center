@@ -700,6 +700,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
   const operatorActions = snapshot.events.filter((event) =>
     ["operator_steer_applied", "operator_steer_requested", "demo_fallback_triggered", "human_handoff_started"].includes(event.type),
   );
+  const handoffEvent = snapshot.events.find((event) => event.type === "human_handoff_started");
   const overBudgetLatencyMarks = snapshot.latencyMarks.filter(
     (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
   );
@@ -725,7 +726,9 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       scriptCompleted: snapshot.pipecatFlow.script.completed,
       fallbackArmed: snapshot.demoFallback.armed,
       fallbackMode: snapshot.demoFallback.mode,
-      handoffStarted: snapshot.events.some((event) => event.type === "human_handoff_started"),
+      fallbackSource: typeof handoffEvent?.detail.source === "string" ? handoffEvent.detail.source : null,
+      handoffStarted: handoffEvent !== undefined,
+      handoffStartedAt: handoffEvent?.at ?? null,
       attentionRequired: attention.required,
       attentionReason: attention.reason,
     },

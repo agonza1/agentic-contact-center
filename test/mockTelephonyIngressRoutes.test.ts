@@ -519,7 +519,9 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
         flowState: string;
         scriptCompleted: boolean;
         fallbackArmed: boolean;
+        fallbackSource: string | null;
         handoffStarted: boolean;
+        handoffStartedAt: string | null;
         attentionRequired: boolean;
       };
       summary: {
@@ -559,7 +561,9 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
     assert.match(payload.pii.assumptions, /mock caller text/);
     assert.equal(payload.outcome.flowState, "policy_hold");
     assert.equal(payload.outcome.fallbackArmed, false);
+    assert.equal(payload.outcome.fallbackSource, null);
     assert.equal(payload.outcome.handoffStarted, false);
+    assert.equal(payload.outcome.handoffStartedAt, null);
     assert.equal(payload.outcome.attentionRequired, false);
     assert.equal(payload.summary.transcriptTurns, payload.transcript.length);
     assert.equal(payload.summary.eventCount, payload.events.length);
@@ -2802,6 +2806,17 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     const runtimeFailureAgentTurn = [...runtimeFailurePayload.transcript].reverse().find((turn) => turn.speaker === "agent");
     assert.ok(runtimeFailureAgentTurn);
     assert.equal(runtimeFailureAgentTurn.text.toLowerCase().includes("runtime reported a failure"), true);
+
+    const runtimeFailureProof = await requestJson(port, "GET", `/api/calls/${runtimeFailureCallId}/proof`);
+    const runtimeFailureProofPayload = runtimeFailureProof.payload as {
+      outcome: { fallbackMode: string | null; fallbackSource: string | null; handoffStarted: boolean; handoffStartedAt: string | null };
+    };
+
+    assert.equal(runtimeFailureProof.statusCode, 200);
+    assert.equal(runtimeFailureProofPayload.outcome.fallbackMode, "runtime_failure");
+    assert.equal(runtimeFailureProofPayload.outcome.fallbackSource, "pipecat_runtime_failure_fail_closed");
+    assert.equal(runtimeFailureProofPayload.outcome.handoffStarted, true);
+    assert.equal(runtimeFailureProofPayload.outcome.handoffStartedAt, "2026-06-10T14:00:03.000Z");
   });
 });
 
