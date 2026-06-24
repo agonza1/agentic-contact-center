@@ -23,7 +23,7 @@ export type OperatorSteerAction =
   | "arm_fallback"
   | "disarm_fallback";
 
-export type FallbackMode = "tool_timeout";
+export type FallbackMode = "tool_timeout" | "runtime_failure";
 
 export type AttentionSource = "operator_steer" | "fallback" | "operator_steer+fallback";
 

@@ -2781,6 +2781,27 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.equal(typeof fetchedPayload.attention?.ageMs, "number");
     assert.equal(fetchedPayload.demoFallback.reason, "pipecat tool exceeded latency budget");
     assert.equal(fetchedPayload.demoFallback.mode, "tool_timeout");
+
+    const runtimeFailureStarted = await requestJson(port, "POST", "/api/demo/start");
+    const runtimeFailureCallId = (runtimeFailureStarted.payload as { session: { callId: string } }).session.callId;
+    const runtimeFailure = await requestJson(port, "POST", `/api/calls/${runtimeFailureCallId}/fallback`, {
+      mode: "runtime_failure",
+      reason: "pipecat local runtime import failed",
+      timestamp: "2026-06-10T14:00:03.000Z",
+    });
+    const runtimeFailurePayload = runtimeFailure.payload as SnapshotPayload;
+
+    assert.equal(runtimeFailure.statusCode, 200);
+    assert.equal(runtimeFailurePayload.flowState, "wrap");
+    assert.equal(runtimeFailurePayload.demoFallback.mode, "runtime_failure");
+    assert.equal(runtimeFailurePayload.demoFallback.reason, "pipecat local runtime import failed");
+    const runtimeFailureHandoff = runtimeFailurePayload.events.find((event) => event.type === "human_handoff_started");
+    assert.ok(runtimeFailureHandoff);
+    assert.equal(runtimeFailureHandoff.detail.source, "pipecat_runtime_failure_fail_closed");
+    assert.equal(runtimeFailureHandoff.detail.reason, "pipecat local runtime import failed");
+    const runtimeFailureAgentTurn = [...runtimeFailurePayload.transcript].reverse().find((turn) => turn.speaker === "agent");
+    assert.ok(runtimeFailureAgentTurn);
+    assert.equal(runtimeFailureAgentTurn.text.toLowerCase().includes("runtime reported a failure"), true);
   });
 });
 

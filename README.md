@@ -10,7 +10,7 @@ The authoritative app for the current work is under `src/`. The older FastAPI/st
 - Local Pipecat runtime mode for the seeded cancellation-rescue path, with provider credentials and live telephony mocked.
 - Policy hold before risky retention responses.
 - Slack-style operator steer commands such as pause, resume, approve offer, jump slide, ask operator, arm fallback, and escalate.
-- Fail-closed fallback for a `tool_timeout` path.
+- Fail-closed fallback for `tool_timeout` and `runtime_failure` paths.
 - Operator/QA evidence through call snapshots, queue summaries, transcript pages, event trails, latency marks, and proof artifacts.
 
 ## Architecture
@@ -148,7 +148,7 @@ Seeded caller turns for the cancellation-rescue script:
 3. `Okay, what safe options can you review for me?`
 4. `Thanks, please note that follow-up and close the call.`
 
-The flow enters `policy_hold` before unsafe retention offers, requests operator steer, and resumes only after a safe action such as `approve_offer`. The fallback path uses `tool_timeout` to arm a fail-closed human handoff.
+The flow enters `policy_hold` before unsafe retention offers, requests operator steer, and resumes only after a safe action such as `approve_offer`. The fallback path accepts `tool_timeout` and `runtime_failure` modes to arm a fail-closed human handoff.
 
 ## API Overview
 
@@ -158,7 +158,7 @@ The flow enters `policy_hold` before unsafe retention offers, requests operator 
 - `POST /api/calls/:callId/caller-turn`: append a caller transcript turn and advance the flow.
 - `POST /api/calls/:callId/operator-steer`: apply operator commands or direct actions, including pause/resume, approval, takeover, escalation, and safe call closeout.
 - `POST /api/calls/:callId/operator-note`: record operator notes and optional dispositions into the transcript and proof event trail.
-- `POST /api/calls/:callId/fallback`: trigger demo fallback, currently centered on `tool_timeout`.
+- `POST /api/calls/:callId/fallback`: trigger demo fallback with `tool_timeout` or `runtime_failure`.
 - `GET /api/calls`: list active calls with optional queue/operator filters.
 - `GET /api/queue`: return queue summary metadata without full call payloads.
 - `GET /api/operator/actions`: expose the Slack-ready operator action catalog with command examples, reason/pending-call requirements, HTTP body templates, and outcome hints for console buttons.
@@ -216,7 +216,7 @@ npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-pro
 The proof runner builds the TypeScript app, starts the server on an ephemeral port, checks `/health`, and collects per-call evidence that matches the same bundle shape exposed by `GET /api/calls/:callId/proof`. It runs:
 
 - the scripted cancellation path through policy hold, operator steer, and wrap
-- the fail-closed `tool_timeout` fallback path
+- the fail-closed `tool_timeout` fallback path; the API route also accepts `runtime_failure` for local Pipecat runtime failure drills
 - queue and evidence lookups used by QA
 
 If `--out` is omitted, the artifact is written to `artifacts/demo-proof-<timestamp>.json`. `--latest-out` keeps a stable pointer for handoff. Use `npm run proof:pipecat -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json` when you want the Pipecat package self-check to gate the proof run. See [docs/demo-proof-runbook.md](docs/demo-proof-runbook.md) for the QA inspection checklist.

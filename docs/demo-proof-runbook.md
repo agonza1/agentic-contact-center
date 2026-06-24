@@ -19,7 +19,7 @@ python3 -m pip install --target .pipecat-runtime -r requirements-pipecat.txt
 npm run proof:pipecat -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json
 ```
 
-The proof command boots the local server on an ephemeral port, verifies a healthy `/health` response, runs both the seeded scripted flow and the fail-closed fallback flow, then writes reviewable JSON artifacts under `artifacts/`. The app still keeps live telephony and provider credentials mocked.
+The proof command boots the local server on an ephemeral port, verifies a healthy `/health` response, runs the seeded scripted flow and the fail-closed `tool_timeout` fallback flow, then writes reviewable JSON artifacts under `artifacts/`. The HTTP fallback route also accepts `runtime_failure` for local Pipecat runtime failures and records a `pipecat_runtime_failure_fail_closed` handoff source. The app still keeps live telephony and provider credentials mocked.
 
 ## What to inspect
 

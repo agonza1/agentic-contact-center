@@ -1706,7 +1706,7 @@ async function routeRequest(
       return;
     }
 
-    if (mode !== "tool_timeout") {
+    if (mode !== "tool_timeout" && mode !== "runtime_failure") {
       writeBadRequest(response, "fallback_mode_invalid");
       return;
     }
