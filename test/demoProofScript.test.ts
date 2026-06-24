@@ -36,7 +36,17 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         callAttentionSort: string;
         fallbackSourceTrail: string;
       };
-      health: { ok: boolean; pipecatFlow: { prototypeMode: string; runtimeEngine: string; credentialsMode: string } };
+      health: {
+        ok: boolean;
+        pipecatFlow: {
+          ready: boolean;
+          prototypeMode: string;
+          transport: string;
+          runtimeEngine: string;
+          credentialsMode: string;
+          toolCoverage: string[];
+        };
+      };
       gitRevision: string | null;
       summary: {
         schemaVersion: number;
@@ -72,6 +82,14 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         };
         healthOk: boolean;
         gitRevision: string | null;
+        pipecatRuntime: {
+          ready: boolean;
+          prototypeMode: string;
+          transport: string;
+          runtimeEngine: string;
+          credentialsMode: string;
+          toolCoverage: string[];
+        };
         scripted: {
           agentTurns: number;
           callerTurns: number;
@@ -111,6 +129,13 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.health.pipecatFlow.runtimeEngine, "pipecat-ai");
     assert.equal(artifact.health.pipecatFlow.credentialsMode, "mocked");
     assert.equal(artifact.summary.healthOk, true);
+    assert.deepEqual(artifact.summary.pipecatRuntime, artifact.health.pipecatFlow);
+    assert.equal(artifact.summary.pipecatRuntime.ready, true);
+    assert.equal(artifact.summary.pipecatRuntime.prototypeMode, "pipecat_local_runtime");
+    assert.equal(artifact.summary.pipecatRuntime.transport, "local_process");
+    assert.equal(artifact.summary.pipecatRuntime.runtimeEngine, "pipecat-ai");
+    assert.equal(artifact.summary.pipecatRuntime.credentialsMode, "mocked");
+    assert.equal(artifact.summary.pipecatRuntime.toolCoverage.includes("ask_operator"), true);
     assert.match(artifact.gitRevision ?? "", /^[0-9a-f]{7,12}$/);
     assert.equal(artifact.summary.gitRevision, artifact.gitRevision);
     assert.equal(artifact.summary.queueAttention.totalCalls, 1);

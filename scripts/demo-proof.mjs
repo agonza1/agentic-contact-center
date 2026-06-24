@@ -280,6 +280,14 @@ function summarizeArtifact(artifact) {
     schemaVersion: artifact.schemaVersion,
     healthOk: artifact.health.ok,
     gitRevision: artifact.gitRevision,
+    pipecatRuntime: {
+      ready: artifact.health.pipecatFlow.ready,
+      prototypeMode: artifact.health.pipecatFlow.prototypeMode,
+      transport: artifact.health.pipecatFlow.transport,
+      runtimeEngine: artifact.health.pipecatFlow.runtimeEngine,
+      credentialsMode: artifact.health.pipecatFlow.credentialsMode,
+      toolCoverage: artifact.health.pipecatFlow.toolCoverage,
+    },
     runtimeSeams: artifact.health.runtimeSeams,
     proofContract: artifact.proofContract,
     queueAttention: {
