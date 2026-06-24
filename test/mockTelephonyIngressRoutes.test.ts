@@ -1107,6 +1107,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /requiresReason/);
     assert.match(response.body, /confirmationRequired/);
     assert.match(response.body, /confirmationAcknowledged/);
+    assert.match(response.body, /callActionMetadata/);
+    assert.match(response.body, /unavailableReasons/);
     assert.match(response.body, /Confirm /);
   });
 });

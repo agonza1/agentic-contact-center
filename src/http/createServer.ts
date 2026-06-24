@@ -235,6 +235,17 @@ function buildOperatorConsoleHtml(): string {
     function setStatus(text) { document.getElementById("status").textContent = text; }
     function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[char]; }); }
     function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
+    function callActionMetadata(call, action) {
+      const catalogMetadata = state.actionMetadata[action] || {};
+      const confirmation = (call.actionState.requiresConfirmationActions || []).find(function(entry) { return entry.action === action; });
+      const reason = (call.actionState.requiresReasonActions || []).find(function(entry) { return entry.action === action; });
+      return Object.assign({}, catalogMetadata, {
+        confirmationRequired: Boolean(confirmation),
+        confirmationMessage: confirmation ? confirmation.confirmationMessage : null,
+        requiresReason: Boolean(reason),
+        reasonPrompt: reason ? reason.reasonPrompt : null,
+      });
+    }
     async function refresh() {
       setStatus("Refreshing");
       const response = await fetch("/api/operator/console?sort=attentionStartedAt&order=asc&limit=25");
@@ -283,16 +294,18 @@ function buildOperatorConsoleHtml(): string {
       const root = document.getElementById("detail");
       if (!call) { root.innerHTML = ""; return; }
       const unavailable = new Set(call.actionState.unavailableActions.map(function(entry) { return entry.action; }));
+      const unavailableReasons = Object.fromEntries(call.actionState.unavailableActions.map(function(entry) { return [entry.action, entry.reason]; }));
       const actionHtml = actions.map(function(action) {
         const cssClass = action === "end_call" ? "danger" : action === "approve_offer" ? "primary" : "";
         const disabled = unavailable.has(action) ? "disabled" : "";
-        return '<button type="button" data-action="' + action + '" class="' + cssClass + '" ' + disabled + '>' + escapeHtml(labels[action] || action.replace(/_/g, " ")) + '</button>';
+        const title = unavailableReasons[action] ? ' title="' + escapeHtml(unavailableReasons[action]) + '"' : "";
+        return '<button type="button" data-action="' + action + '" class="' + cssClass + '" ' + disabled + title + '>' + escapeHtml(labels[action] || action.replace(/_/g, " ")) + '</button>';
       }).join("");
       const transcriptHtml = call.transcript.slice(-10).map(function(turn) {
         return '<div class="turn"><b>' + escapeHtml(turn.speaker) + '</b><span>' + escapeHtml(turn.text) + '</span></div>';
       }).join("");
       root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div></div><div class="actions">' + actionHtml + '</div><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
-      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = state.actionMetadata[action] || {}; const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\n\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
+      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\n\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
     function render() { renderCalls(); renderDetail(); }
