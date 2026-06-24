@@ -1489,6 +1489,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /operatorConsoleQuery/);
     assert.match(response.body, /refreshIntervalMs/);
     assert.match(response.body, /scheduleRefresh/);
+    assert.match(response.body, /document.hidden/);
+    assert.match(response.body, /visibilitychange/);
     assert.match(response.body, /attentionRequired/);
     assert.match(response.body, /latencyOverBudget/);
     assert.match(response.body, /fallbackMode/);
