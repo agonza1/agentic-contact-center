@@ -10,7 +10,9 @@ health/proof artifacts.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib.metadata
+import io
 import json
 import sys
 from pathlib import Path
@@ -30,7 +32,9 @@ def main() -> int:
         parser.error("only --self-test is supported for the local mocked demo runtime")
 
     try:
-        import pipecat  # noqa: F401
+        import_output = io.StringIO()
+        with contextlib.redirect_stdout(import_output), contextlib.redirect_stderr(import_output):
+            import pipecat  # noqa: F401
         version = importlib.metadata.version("pipecat-ai")
     except Exception as exc:  # pragma: no cover - exercised by local setup only
         print(
