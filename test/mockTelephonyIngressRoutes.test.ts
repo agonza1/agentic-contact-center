@@ -1502,9 +1502,22 @@ test("POST /api/calls/:callId/operator-note records operator notes and dispositi
     });
 
     const proof = await requestJson(port, "GET", "/api/calls/" + callId + "/proof");
-    const proofPayload = proof.payload as { events: Array<{ type: string }>; transcript: Array<{ speaker: string; text: string }> };
+    const proofPayload = proof.payload as {
+      summary: {
+        operatorNoteCount: number;
+        latestOperatorNoteAt: string | null;
+        latestDisposition: string | null;
+        operatorNoteTrail: string | null;
+      };
+      events: Array<{ type: string }>;
+      transcript: Array<{ speaker: string; text: string }>;
+    };
     assert.equal(proofPayload.events.some((event) => event.type === "operator_note_recorded"), true);
     assert.equal(proofPayload.transcript.some((turn) => turn.speaker === "operator" && turn.text.includes("licensed follow-up")), true);
+    assert.equal(proofPayload.summary.operatorNoteCount, 1);
+    assert.equal(proofPayload.summary.latestOperatorNoteAt, "2026-06-10T14:12:00.000Z");
+    assert.equal(proofPayload.summary.latestDisposition, "follow_up_requested");
+    assert.equal(proofPayload.summary.operatorNoteTrail, "/api/calls/" + callId + "/events?type=operator_note_recorded");
 
     const consoleResponse = await requestJson(port, "GET", "/api/operator/console?callId=" + callId);
     const consolePayload = consoleResponse.payload as OperatorConsolePayload;

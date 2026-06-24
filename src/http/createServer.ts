@@ -726,6 +726,8 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
   const operatorActions = snapshot.events.filter((event) =>
     ["operator_steer_applied", "operator_steer_requested", "demo_fallback_triggered", "human_handoff_started"].includes(event.type),
   );
+  const operatorNoteEvents = snapshot.events.filter((event) => event.type === "operator_note_recorded");
+  const latestOperatorNote = operatorNoteEvents.at(-1);
   const handoffEvent = snapshot.events.find((event) => event.type === "human_handoff_started");
   const overBudgetLatencyMarks = snapshot.latencyMarks.filter(
     (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
@@ -764,6 +766,12 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       eventCount: snapshot.events.length,
       eventTypes,
       operatorActionCount: operatorActions.length,
+      operatorNoteCount: operatorNoteEvents.length,
+      latestOperatorNoteAt: latestOperatorNote?.at ?? null,
+      latestDisposition: typeof latestOperatorNote?.detail.disposition === "string" ? latestOperatorNote.detail.disposition : null,
+      operatorNoteTrail: operatorNoteEvents.length > 0
+        ? snapshot.session.openclawSession.artifactLinks.events + "?type=operator_note_recorded"
+        : null,
       latencyMarkCount: snapshot.latencyMarks.length,
       overBudgetLatencyMarkCount: overBudgetLatencyMarks.length,
       toolCoverage: snapshot.pipecatFlow.toolCoverage,
