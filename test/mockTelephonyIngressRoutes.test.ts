@@ -90,7 +90,7 @@ interface OperatorConsolePayload {
   controls: {
     commandWrappers: string[];
     callReferenceFields: string[];
-    routes: { startDemoCall: string; steerCall: string; noteCall: string; consoleAction: string };
+    routes: { startDemoCall: string; callerTurn: string; steerCall: string; noteCall: string; consoleAction: string };
     actions: Array<{
       action: string;
       method: string;
@@ -1001,6 +1001,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     ]);
     assert.deepEqual(consolePayload.controls.routes, {
       startDemoCall: "/api/demo/start",
+      callerTurn: "/api/calls/{callId}/caller-turn",
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
@@ -1248,6 +1249,9 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /<title>Operator Console<\/title>/);
     assert.match(response.body, /Start Demo Call/);
     assert.match(response.body, /\/api\/demo\/start/);
+    assert.match(response.body, /caller-turn-form/);
+    assert.match(response.body, /Caller transcript turn/);
+    assert.match(response.body, /\/caller-turn/);
     assert.match(response.body, /"goto_slide"/);
     assert.match(response.body, /"ask_operator"/);
     assert.match(response.body, /"transfer"/);
@@ -3668,7 +3672,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
       schemaVersion: number;
       commandWrappers: string[];
       callReferenceFields: string[];
-      routes: { startDemoCall: string; steerCall: string; noteCall: string; consoleAction: string };
+      routes: { startDemoCall: string; callerTurn: string; steerCall: string; noteCall: string; consoleAction: string };
       actions: Array<{
         action: string;
         requiresPendingCall: boolean;
@@ -3693,6 +3697,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     ]);
     assert.deepEqual(payload.routes, {
       startDemoCall: "/api/demo/start",
+      callerTurn: "/api/calls/{callId}/caller-turn",
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
