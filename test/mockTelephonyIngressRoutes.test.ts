@@ -129,6 +129,8 @@ interface OperatorConsolePayload {
           fallbackArmed: boolean;
           nextRecommendedAction: string;
           availableActions: string[];
+          requiresConfirmationActions: Array<{ action: string; confirmationMessage: string | null }>;
+          requiresReasonActions: Array<{ action: string; reasonPrompt: string | null }>;
           unavailableActions: Array<{ action: string; reason: string }>;
         };
       }
@@ -1044,6 +1046,17 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
         "ask_operator",
         "arm_fallback",
         "disarm_fallback",
+      ],
+      requiresConfirmationActions: [
+        { action: "escalate_to_human", confirmationMessage: "Escalating hands the caller to a human operator." },
+        { action: "takeover", confirmationMessage: "Takeover gives the operator direct control of the live call." },
+        { action: "end_call", confirmationMessage: "Ending the call closes the active demo session." },
+        { action: "arm_fallback", confirmationMessage: "Arming fallback changes the live call path until fallback is disarmed." },
+      ],
+      requiresReasonActions: [
+        { action: "goto_slide", reasonPrompt: "Slide or step" },
+        { action: "ask_operator", reasonPrompt: "Operator question" },
+        { action: "arm_fallback", reasonPrompt: "Fallback reason" },
       ],
       unavailableActions: [],
     });

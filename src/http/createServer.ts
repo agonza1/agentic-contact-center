@@ -426,6 +426,20 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       availableActions: operatorActionCatalog
         .filter((entry) => !entry.requiresPendingCall || snapshot.operatorSteer.pending)
         .map((entry) => entry.action),
+      requiresConfirmationActions: operatorActionCatalog
+        .filter((entry) => !entry.requiresPendingCall || snapshot.operatorSteer.pending)
+        .filter((entry) => operatorActionRequiresConfirmation(entry.action))
+        .map((entry) => ({
+          action: entry.action,
+          confirmationMessage: getOperatorActionConfirmationMessage(entry.action),
+        })),
+      requiresReasonActions: operatorActionCatalog
+        .filter((entry) => !entry.requiresPendingCall || snapshot.operatorSteer.pending)
+        .filter((entry) => entry.requiresReason)
+        .map((entry) => ({
+          action: entry.action,
+          reasonPrompt: getOperatorActionReasonPrompt(entry.action),
+        })),
       unavailableActions,
     },
   };
