@@ -41,6 +41,8 @@ Open `artifacts/demo-proof.json` or `artifacts/demo-proof-latest.json` and confi
 - `summary.runtimeFailureSourceTrail.filteredSource` is `pipecat_runtime_failure_fail_closed`
 - `summary.queueAttention.attentionRequired` is `1`
 - `proofContract.queueAttentionFilter` scopes queue proof to `attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget`
+- `proofContract.operatorNoteTrail` is `events?type=operator_note_recorded`
+- `summary.operatorNoteTrail.latestDisposition` is `qa_verified`
 - `proofContract.runtimeFailureSourceTrail` is `events?source=pipecat_runtime_failure_fail_closed`
 - `/api/calls?fallbackMode=runtime_failure` returns the runtime-failure drill call for targeted QA review
 - `summary.queueAttention.oldestAttentionSource` is `fallback`

@@ -34,6 +34,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         requiredEventTypes: string[];
         queueAttentionFilter: string;
         callAttentionSort: string;
+        operatorNoteTrail: string;
         fallbackSourceTrail: string;
         runtimeFailureSourceTrail: string;
       };
@@ -57,8 +58,9 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           requiredEventTypes: string[];
           queueAttentionFilter: string;
           callAttentionSort: string;
+          operatorNoteTrail: string;
           fallbackSourceTrail: string;
-        runtimeFailureSourceTrail: string;
+          runtimeFailureSourceTrail: string;
         };
         queueAttention: {
           attentionRequired: number;
@@ -76,6 +78,13 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           firstCallId: string;
           firstAttentionStartedAt: string | null;
           filteredSummary: { totalCalls: number; attentionRequired: number };
+        };
+        operatorNoteTrail: {
+          route: string;
+          returnedEvents: number;
+          filteredType: string | null;
+          latestDisposition: string | null;
+          eventTypes: string[];
         };
         fallbackSourceTrail: {
           route: string;
@@ -125,7 +134,10 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           flowState: string;
         };
       };
-      scripted: { outcome: string; checkpoints: { wrapped: { pipecatFlow: { script: { completed: boolean } } } } };
+      scripted: {
+        outcome: string;
+        checkpoints: { wrapped: { session: { callId: string }; pipecatFlow: { script: { completed: boolean } } } };
+      };
       fallback: { outcome: string; callId: string; checkpoint: { demoFallback: { mode: string | null } } };
       runtimeFailure: { outcome: string; callId: string; checkpoint: { demoFallback: { mode: string | null } } };
     };
@@ -143,6 +155,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.proofContract.requiredEventTypes.includes("human_handoff_started"), true);
     assert.equal(artifact.proofContract.queueAttentionFilter, "attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget");
     assert.equal(artifact.proofContract.callAttentionSort, "attentionRequired=true&sort=attentionStartedAt&limit=1");
+    assert.equal(artifact.proofContract.operatorNoteTrail, "events?type=operator_note_recorded");
     assert.equal(artifact.proofContract.fallbackSourceTrail, "events?source=tool_timeout_fail_closed");
     assert.equal(artifact.proofContract.runtimeFailureSourceTrail, "events?source=pipecat_runtime_failure_fail_closed");
     assert.equal(artifact.summary.schemaVersion, 1);
@@ -176,6 +189,11 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.callAttentionList.firstAttentionStartedAt, artifact.summary.queueAttention.oldestAttentionStartedAt);
     assert.equal(artifact.summary.callAttentionList.filteredSummary.totalCalls, 1);
     assert.equal(artifact.summary.callAttentionList.filteredSummary.attentionRequired, 1);
+    assert.equal(artifact.summary.operatorNoteTrail.route, "calls/" + artifact.scripted.checkpoints.wrapped.session.callId + "/events?type=operator_note_recorded");
+    assert.equal(artifact.summary.operatorNoteTrail.returnedEvents, 1);
+    assert.equal(artifact.summary.operatorNoteTrail.filteredType, "operator_note_recorded");
+    assert.equal(artifact.summary.operatorNoteTrail.latestDisposition, "qa_verified");
+    assert.deepEqual(artifact.summary.operatorNoteTrail.eventTypes, ["operator_note_recorded"]);
     assert.equal(artifact.summary.fallbackSourceTrail.route, "calls/" + artifact.fallback.callId + "/events?source=tool_timeout_fail_closed");
     assert.equal(artifact.summary.fallbackSourceTrail.returnedEvents, 1);
     assert.equal(artifact.summary.fallbackSourceTrail.filteredSource, "tool_timeout_fail_closed");

@@ -156,6 +156,14 @@ async function runScriptedScenario(port) {
   assert.equal(wrapped.payload.flowState, "wrap");
   assert.equal(wrapped.payload.pipecatFlow.script.completed, true);
 
+  const noted = await requestJson(port, "POST", `/api/calls/${callId}/operator-note`, {
+    text: "QA confirmed safe retention wrap and no billing credit promise.",
+    disposition: "qa_verified",
+    timestamp: "2026-06-11T20:45:16.000Z",
+  });
+  assert.equal(noted.statusCode, 200);
+  assert.equal(noted.payload.events.some((event) => event.type === "operator_note_recorded"), true);
+
   const finalAgentTurn = [...wrapped.payload.transcript].reverse().find((turn) => turn.speaker === "agent");
   assert.ok(finalAgentTurn);
   assert.equal(finalAgentTurn.text.toLowerCase().includes("billing credit"), false);
@@ -167,7 +175,7 @@ async function runScriptedScenario(port) {
       policyHold: policyHoldSnapshot,
       operatorSteerPending: pendingSnapshot,
       approvedSteer: approved.payload,
-      wrapped: wrapped.payload,
+      wrapped: noted.payload,
     },
   };
 }
@@ -256,6 +264,24 @@ async function getFallbackSourceTrail(port, callId, source = "tool_timeout_fail_
   };
 }
 
+async function getOperatorNoteTrail(port, callId) {
+  const trail = await requestJson(port, "GET", `/api/calls/${callId}/events?type=operator_note_recorded`);
+  assert.equal(trail.statusCode, 200);
+  assert.equal(trail.payload.summary.filteredType, "operator_note_recorded");
+  assert.deepEqual(
+    trail.payload.events.map((event) => event.type),
+    ["operator_note_recorded"],
+  );
+
+  return {
+    route: `calls/${callId}/events?type=operator_note_recorded`,
+    returnedEvents: trail.payload.summary.returnedEvents,
+    filteredType: trail.payload.summary.filteredType,
+    latestDisposition: trail.payload.events.at(-1).detail.disposition,
+    eventTypes: trail.payload.events.map((event) => event.type),
+  };
+}
+
 async function getGitRevision() {
   try {
     const { stdout } = await execFileAsync("git", ["rev-parse", "--short=12", "HEAD"], {
@@ -310,6 +336,7 @@ function summarizeArtifact(artifact) {
       oldestAttentionSource: artifact.queueAttention.oldestAttentionSource,
     },
     callAttentionList: artifact.callAttentionList,
+    operatorNoteTrail: artifact.operatorNoteTrail,
     fallbackSourceTrail: artifact.fallbackSourceTrail,
     runtimeFailureSourceTrail: artifact.runtimeFailureSourceTrail,
     scripted: {
@@ -342,6 +369,7 @@ async function main() {
     assert.equal(health.statusCode, 200);
 
     const scripted = await runScriptedScenario(port);
+    const operatorNoteTrail = await getOperatorNoteTrail(port, scripted.callId);
     const fallback = await runFallbackScenario(port);
     const queueAttention = await getQueueAttentionSummary(port);
     const callAttentionList = await getAttentionSortedCallList(port);
@@ -373,10 +401,12 @@ async function main() {
         requiredEventTypes: ["policy_hold_entered", "demo_fallback_triggered", "human_handoff_started"],
         queueAttentionFilter: "attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget",
         callAttentionSort: "attentionRequired=true&sort=attentionStartedAt&limit=1",
+        operatorNoteTrail: "events?type=operator_note_recorded",
         fallbackSourceTrail: "events?source=tool_timeout_fail_closed",
         runtimeFailureSourceTrail: "events?source=pipecat_runtime_failure_fail_closed",
       },
       health: health.payload,
+      operatorNoteTrail,
       queueAttention,
       callAttentionList,
       fallbackSourceTrail,
