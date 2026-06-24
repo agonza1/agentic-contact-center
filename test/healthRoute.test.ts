@@ -49,7 +49,14 @@ test("GET /health returns config-backed demo metadata", async () => {
     fallbackMode: string;
     latencyBudgetsMs: { asrPartial: number; policyGate: number; operatorNotification: number; ttsFirstAudio: number };
     runtimeSeams: string[];
-    pipecatFlow: { ready: boolean; toolCoverage: string[] };
+    pipecatFlow: {
+      ready: boolean;
+      prototypeMode: string;
+      transport: string;
+      runtimeEngine: string;
+      credentialsMode: string;
+      toolCoverage: string[];
+    };
   };
 
   assert.equal(payload.ok, true);
@@ -61,5 +68,9 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.deepEqual(payload.latencyBudgetsMs, config.latencyBudgetsMs);
   assert.equal(payload.runtimeSeams.includes("flow engine"), true);
   assert.equal(payload.pipecatFlow.ready, true);
+  assert.equal(payload.pipecatFlow.prototypeMode, "pipecat_local_runtime");
+  assert.equal(payload.pipecatFlow.transport, "local_process");
+  assert.equal(payload.pipecatFlow.runtimeEngine, "pipecat-ai");
+  assert.equal(payload.pipecatFlow.credentialsMode, "mocked");
   assert.equal(payload.pipecatFlow.toolCoverage.includes("goto_slide"), true);
 });

@@ -12,16 +12,26 @@ npm test
 npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json
 ```
 
-The proof command boots the local server on an ephemeral port, verifies a healthy `/health` response, runs both the seeded scripted flow and the fail-closed fallback flow, then writes reviewable JSON artifacts under `artifacts/`.
+To gate the same proof on the local Pipecat package boundary first, install the optional runtime dependency and run:
+
+```bash
+python3 -m pip install --target .pipecat-runtime -r requirements-pipecat.txt
+npm run proof:pipecat -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json
+```
+
+The proof command boots the local server on an ephemeral port, verifies a healthy `/health` response, runs both the seeded scripted flow and the fail-closed fallback flow, then writes reviewable JSON artifacts under `artifacts/`. The app still keeps live telephony and provider credentials mocked.
 
 ## What to inspect
 
 Open `artifacts/demo-proof.json` or `artifacts/demo-proof-latest.json` and confirm:
 
 - `summary.healthOk` is `true`
+- `health.pipecatFlow.prototypeMode` is `pipecat_local_runtime`
+- `health.pipecatFlow.credentialsMode` is `mocked`
 - `summary.scripted.outcome` is `scripted_wrap_complete`
 - `summary.scripted.flowState` is `wrap`
 - `summary.scripted.latencyStages` includes `policy_hold_entered`
+- `summary.scripted.eventTypes` includes `pipecat_runtime_turn_processed`
 - `summary.fallback.outcome` is `fail_closed_handoff`
 - `summary.fallback.mode` is `tool_timeout`
 - `summary.fallback.reason` is `pipecat tool exceeded latency budget`

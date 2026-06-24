@@ -170,8 +170,10 @@ function setOperatorSteerState(
 export function buildPipecatFlowPrototypeStatus(): PipecatFlowPrototypeStatus {
   return {
     ready: true,
-    prototypeMode: "deterministic_templates",
-    transport: "adapter_ready",
+    prototypeMode: "pipecat_local_runtime",
+    transport: "local_process",
+    runtimeEngine: "pipecat-ai",
+    credentialsMode: "mocked",
     activeTool: "get_current_slide",
     toolCoverage: [...PIPECAT_TOOL_COVERAGE],
     script: {
@@ -185,13 +187,15 @@ export function buildPipecatFlowPrototypeStatus(): PipecatFlowPrototypeStatus {
 
 export function getPipecatPrototypeHealth(): Pick<
   PipecatFlowPrototypeStatus,
-  "ready" | "prototypeMode" | "transport" | "toolCoverage"
+  "ready" | "prototypeMode" | "transport" | "runtimeEngine" | "credentialsMode" | "toolCoverage"
 > {
   const status = buildPipecatFlowPrototypeStatus();
   return {
     ready: status.ready,
     prototypeMode: status.prototypeMode,
     transport: status.transport,
+    runtimeEngine: status.runtimeEngine,
+    credentialsMode: status.credentialsMode,
     toolCoverage: status.toolCoverage,
   };
 }

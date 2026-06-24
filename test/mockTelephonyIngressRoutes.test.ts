@@ -40,6 +40,10 @@ interface SnapshotPayload {
     source: string | null;
   };
   pipecatFlow: {
+    prototypeMode: string;
+    transport: string;
+    runtimeEngine: string;
+    credentialsMode: string;
     activeTool: string | null;
     script: { matchedCallerTurns: number; completed: boolean };
   };
@@ -361,7 +365,14 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
         respondedAt: string | null;
         source: string | null;
       };
-      pipecatFlow: { ready: boolean; toolCoverage: string[] };
+      pipecatFlow: {
+        ready: boolean;
+        prototypeMode: string;
+        transport: string;
+        runtimeEngine: string;
+        credentialsMode: string;
+        toolCoverage: string[];
+      };
       events: Array<{ type: string }>;
       latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
       attention: { required: boolean; source: string | null; reason: string | null; startedAt: string | null; ageMs: number | null };
@@ -385,9 +396,14 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
     assert.equal(startedPayload.scenario.policyProfile, "retention_safe_mode");
     assert.equal(startedPayload.scenario.fallbackMode, "tool_timeout");
     assert.equal(startedPayload.pipecatFlow.ready, true);
+    assert.equal(startedPayload.pipecatFlow.prototypeMode, "pipecat_local_runtime");
+    assert.equal(startedPayload.pipecatFlow.transport, "local_process");
+    assert.equal(startedPayload.pipecatFlow.runtimeEngine, "pipecat-ai");
+    assert.equal(startedPayload.pipecatFlow.credentialsMode, "mocked");
     assert.equal(startedPayload.pipecatFlow.toolCoverage.includes("ask_operator"), true);
-    assert.deepEqual(startedPayload.events.map((event) => event.type).slice(0, 2), [
+    assert.deepEqual(startedPayload.events.map((event) => event.type).slice(0, 3), [
       "call_bootstrapped",
+      "pipecat_runtime_started",
       "openclaw_session_attached",
     ]);
     assert.deepEqual(startedPayload.demoFallback, {
@@ -441,6 +457,7 @@ test("the risky offer boundary parks the flow in policy hold without promising a
     const firstPayload = firstTurn.payload as SnapshotPayload;
     assert.equal(firstTurn.statusCode, 200);
     assert.equal(firstPayload.flowState, "diagnose");
+    assert.equal(firstPayload.events.some((event) => event.type === "pipecat_runtime_turn_processed"), true);
     assert.deepEqual(firstPayload.transcript.map((turn) => turn.speaker), ["caller", "agent"]);
 
     const secondTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
@@ -524,8 +541,8 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
     assert.equal(payload.schemaVersion, 1);
     assert.equal(payload.callId, callId);
     assert.equal(payload.session.callId, callId);
-    assert.equal(payload.runtimeMode.flow, "deterministic_templates");
-    assert.equal(payload.runtimeMode.pipecatTransport, "adapter_ready");
+    assert.equal(payload.runtimeMode.flow, "pipecat_local_runtime");
+    assert.equal(payload.runtimeMode.pipecatTransport, "local_process");
     assert.equal(payload.runtimeMode.telephony, "mocked_telephony");
     assert.equal(payload.runtimeMode.signalWire, "mocked_telephony");
     assert.equal(payload.runtimeMode.openclawSession.sessionId, "proof-session-42");
@@ -1038,7 +1055,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(operatorConsoleCall.evidenceSummary.latestTranscriptSpeaker, "agent");
     assert.equal(operatorConsoleCall.evidenceSummary.latestEvidenceAt, "2026-06-10T14:10:10.000Z");
     assert.equal(operatorConsoleCall.evidenceSummary.transcriptTurns, 6);
-    assert.equal(operatorConsoleCall.evidenceSummary.eventCount, 14);
+    assert.equal(operatorConsoleCall.evidenceSummary.eventCount, 18);
     assert.equal(operatorConsoleCall.evidenceSummary.latencyMarkCount, 9);
     assert.equal(operatorConsoleCall.evidenceSummary.operatorNoteCount, 0);
     assert.equal(operatorConsoleCall.evidenceSummary.latestOperatorNoteText, null);

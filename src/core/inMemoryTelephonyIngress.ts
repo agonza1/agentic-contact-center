@@ -161,6 +161,18 @@ export class InMemoryTelephonyIngress {
           detail: {
             providerCallId,
             mode: config.mode,
+            pipecatRuntimeMode: "pipecat_local_runtime",
+            credentialsMode: "mocked",
+          },
+        },
+        {
+          type: "pipecat_runtime_started",
+          at: startedAt,
+          detail: {
+            runtimeEngine: "pipecat-ai",
+            transport: "local_process",
+            credentialsMode: "mocked",
+            telephonyMode: config.mode,
           },
         },
         {
@@ -202,6 +214,17 @@ export class InMemoryTelephonyIngress {
       },
     });
     recordLatencyMark(snapshot, "caller_turn_received", turn.timestamp, "asrPartial");
+
+    snapshot.events.push({
+      type: "pipecat_runtime_turn_processed",
+      at: turn.timestamp,
+      detail: {
+        runtimeEngine: snapshot.pipecatFlow.runtimeEngine,
+        runtimeMode: snapshot.pipecatFlow.prototypeMode,
+        transport: snapshot.pipecatFlow.transport,
+        credentialsMode: snapshot.pipecatFlow.credentialsMode,
+      },
+    });
 
     applyDeterministicPipecatFlow(snapshot, config, turn);
 

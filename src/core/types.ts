@@ -58,8 +58,10 @@ export interface ScriptProgress {
 
 export interface PipecatFlowPrototypeStatus {
   ready: boolean;
-  prototypeMode: "deterministic_templates";
-  transport: "adapter_ready";
+  prototypeMode: "pipecat_local_runtime" | "deterministic_templates";
+  transport: "local_process" | "adapter_ready";
+  runtimeEngine: "pipecat-ai" | "deterministic_templates";
+  credentialsMode: "mocked";
   activeTool: string | null;
   toolCoverage: string[];
   script: ScriptProgress;

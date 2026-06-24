@@ -11,7 +11,9 @@
     "docker:app": "docker compose up --build app",
     "docker:proof": "sh -c 'LOCAL_UID=${LOCAL_UID:-$(id -u)} LOCAL_GID=${LOCAL_GID:-$(id -g)} docker compose run --rm proof'",
     "health:smoke": "node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health",
-    "docker:smoke": "sh -c 'cleanup(){ docker compose down --remove-orphans; }; trap cleanup EXIT; docker compose up --build -d app && node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health'"
+    "docker:smoke": "sh -c 'cleanup(){ docker compose down --remove-orphans; }; trap cleanup EXIT; docker compose up --build -d app && node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health'",
+    "pipecat:check": "python3 scripts/pipecat-local-runtime.py --self-test",
+    "proof:pipecat": "npm run pipecat:check && npm run proof --"
   },
   "engines": {
     "node": ">=20"

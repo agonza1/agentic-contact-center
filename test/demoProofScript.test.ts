@@ -36,7 +36,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         callAttentionSort: string;
         fallbackSourceTrail: string;
       };
-      health: { ok: boolean };
+      health: { ok: boolean; pipecatFlow: { prototypeMode: string; runtimeEngine: string; credentialsMode: string } };
       gitRevision: string | null;
       summary: {
         schemaVersion: number;
@@ -76,6 +76,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           agentTurns: number;
           callerTurns: number;
           eventCount: number;
+          eventTypes: string[];
           flowState: string;
           latencyMarkCount: number;
           transcriptTurns: number;
@@ -83,10 +84,10 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         };
         fallback: {
           eventCount: number;
+          eventTypes: string[];
           mode: string | null;
           reason: string | null;
           flowState: string;
-          eventTypes: string[];
         };
       };
       scripted: { outcome: string; checkpoints: { wrapped: { pipecatFlow: { script: { completed: boolean } } } } };
@@ -106,6 +107,9 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.schemaVersion, 1);
     assert.deepEqual(artifact.summary.proofContract, artifact.proofContract);
     assert.equal(artifact.health.ok, true);
+    assert.equal(artifact.health.pipecatFlow.prototypeMode, "pipecat_local_runtime");
+    assert.equal(artifact.health.pipecatFlow.runtimeEngine, "pipecat-ai");
+    assert.equal(artifact.health.pipecatFlow.credentialsMode, "mocked");
     assert.equal(artifact.summary.healthOk, true);
     assert.match(artifact.gitRevision ?? "", /^[0-9a-f]{7,12}$/);
     assert.equal(artifact.summary.gitRevision, artifact.gitRevision);
@@ -133,6 +137,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.scripted.transcriptTurns > 0, true);
     assert.equal(artifact.summary.scripted.agentTurns > 0, true);
     assert.equal(artifact.summary.scripted.callerTurns, 4);
+    assert.equal(artifact.summary.scripted.eventTypes.includes("pipecat_runtime_turn_processed"), true);
     assert.equal(artifact.summary.scripted.eventCount > 0, true);
     assert.equal(artifact.summary.scripted.latencyMarkCount > 0, true);
     assert.equal(artifact.summary.scripted.latencyStages.includes("policy_hold_entered"), true);
