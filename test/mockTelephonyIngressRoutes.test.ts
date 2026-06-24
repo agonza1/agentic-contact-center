@@ -96,6 +96,7 @@ interface OperatorConsolePayload {
     commandWrappers: string[];
     callReferenceFields: string[];
     routes: { startDemoCall: string; callerTurn: string; steerCall: string; noteCall: string; consoleAction: string };
+    scriptedCallerTurns: string[];
     actions: Array<{
       action: string;
       method: string;
@@ -1173,6 +1174,12 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
     });
+    assert.deepEqual(consolePayload.controls.scriptedCallerTurns, [
+      "I want to cancel my policy today.",
+      "The renewal increase is too high.",
+      "Okay, what safe options can you review for me?",
+      "Thanks, please note that follow-up and close the call.",
+    ]);
     const approveOfferAction = consolePayload.controls.actions.find((entry) => entry.action === "approve_offer");
     assert.deepEqual(approveOfferAction, {
       action: "approve_offer",
@@ -1486,6 +1493,9 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /\/api\/demo\/start/);
     assert.match(response.body, /caller-turn-form/);
     assert.match(response.body, /Caller transcript turn/);
+    assert.match(response.body, /scripted-turns/);
+    assert.match(response.body, /data-scripted-turn/);
+    assert.match(response.body, /postScriptedTurn/);
     assert.match(response.body, /\/caller-turn/);
     assert.match(response.body, /"goto_slide"/);
     assert.match(response.body, /"ask_operator"/);

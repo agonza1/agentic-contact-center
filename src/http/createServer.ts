@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 
 import { compareTimestamps, getAttentionMetadata } from "../core/attention";
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
-import { getPipecatPrototypeHealth } from "../core/pipecatFlowPrototype";
+import { getPipecatPrototypeHealth, SCRIPTED_CALLER_TURNS } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
 import type {
   AttentionSource,
@@ -225,6 +225,8 @@ function buildOperatorConsoleHtml(): string {
     .evidence { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
     .evidence a { color: var(--accent); font-weight: 700; text-decoration: none; }
     .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+    .scripted-turns { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+    .scripted-turns button { text-align: left; padding: 8px; }
     .transcript { display: grid; gap: 8px; max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fbfcfe; }
     .turn { display: grid; gap: 2px; }
     .turn b { font-size: 12px; color: var(--muted); text-transform: uppercase; }
@@ -282,12 +284,20 @@ function buildOperatorConsoleHtml(): string {
         reasonPrompt: reason ? reason.reasonPrompt : null,
       });
     }
-    async function refresh() {
+    function hasDirtyDetailInput() {
+      return ["caller-turn", "note", "disposition"].some(function(id) {
+        const input = document.getElementById(id);
+        return input && (document.activeElement === input || input.value.trim());
+      });
+    }
+    async function refresh(options) {
+      if (options && options.auto && hasDirtyDetailInput()) { setStatus("Refresh paused while editing"); return; }
       setStatus("Refreshing");
       const response = await fetch("/api/operator/console?" + operatorConsoleQuery());
       if (!response.ok) throw new Error("console_fetch_failed");
       const payload = await response.json();
       state.actionMetadata = Object.fromEntries(payload.controls.actions.map(function(entry) { return [entry.action, entry]; }));
+      state.scriptedCallerTurns = payload.controls.scriptedCallerTurns || [];
       state.calls = payload.calls.items;
       if (!state.calls.some(function(call) { return call.session.callId === state.selectedCallId; })) state.selectedCallId = state.calls[0] ? state.calls[0].session.callId : null;
       render();
@@ -313,9 +323,18 @@ function buildOperatorConsoleHtml(): string {
       const call = selectedCall();
       const input = document.getElementById("caller-turn");
       if (!call || !input.value.trim()) return;
-      const response = await fetch("/api/calls/" + call.session.callId + "/caller-turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: input.value.trim() }) });
-      if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); setStatus(payload.error || "Caller turn failed"); return; }
+      await postCallerTurn(call.session.callId, input.value.trim());
       input.value = "";
+      await refresh();
+    }
+    async function postCallerTurn(callId, text) {
+      const response = await fetch("/api/calls/" + callId + "/caller-turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: text }) });
+      if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); const message = payload.error || "Caller turn failed"; setStatus(message); throw new Error(message); }
+    }
+    async function postScriptedTurn(text) {
+      const call = selectedCall();
+      if (!call) return;
+      await postCallerTurn(call.session.callId, text);
       await refresh();
     }
     async function recordNote(event) {
@@ -367,8 +386,10 @@ function buildOperatorConsoleHtml(): string {
       const operatorNoteTrailLink = evidence.operatorNoteTrail || evidenceLinks.events;
       const reasonTrailHtml = fallbackReasonLink ? '<a href="' + escapeHtml(fallbackReasonLink) + '">Reason Trail</a>' : '';
       const evidenceHtml = '<div class="evidence" aria-label="Evidence markers"><div class="metric"><span class="meta">Latest Event</span><strong>' + escapeHtml(evidence.latestEventType || "none") + '</strong><span class="meta">' + escapeHtml(evidence.latestEventAt || "not recorded") + '</span><a href="' + escapeHtml(latestEventLink) + '">Event Trail</a></div><div class="metric"><span class="meta">Transcript Turns</span><strong>' + evidence.transcriptTurns + '</strong><a href="' + escapeHtml(evidenceLinks.transcript) + '">Transcript</a></div><div class="metric"><span class="meta">Latency Marks</span><strong>' + evidence.latencyMarkCount + '</strong><span class="meta">Over budget: ' + evidence.overBudgetLatencyMarkCount + '</span><a href="' + escapeHtml(latencyLink) + '">Latency</a></div><div class="metric"><span class="meta">Fallback</span><strong>' + escapeHtml(fallbackLabel) + '</strong><span class="meta">' + escapeHtml(fallbackDetail) + '</span><a href="' + escapeHtml(fallbackTrailLink) + '">Event Trail</a><a href="' + escapeHtml(fallbackQueueLink) + '">Fallback Queue</a>' + reasonTrailHtml + '</div><div class="metric"><span class="meta">Operator Notes</span><strong>' + evidence.operatorNoteCount + '</strong><span class="meta">' + escapeHtml(evidence.latestDisposition || evidence.latestOperatorNoteText || "none") + '</span><a href="' + escapeHtml(operatorNoteTrailLink) + '">Note Trail</a></div><div class="metric"><span class="meta">Proof Bundle</span><strong>' + evidence.eventCount + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Proof</a><a href="' + escapeHtml(evidenceLinks.artifacts) + '">Artifacts</a></div></div>';
-      root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + pendingHtml + '</div>' + evidenceHtml + '<div class="actions">' + actionHtml + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
-      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\\n\\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
+      const scriptedTurns = (state.scriptedCallerTurns || []).map(function(text, index) { return '<button type="button" data-scripted-turn="' + index + '"><span class="meta">Turn ' + (index + 1) + '</span><br>' + escapeHtml(text) + '</button>'; }).join("");
+      root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + pendingHtml + '</div>' + evidenceHtml + '<div class="actions">' + actionHtml + '</div><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
+      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\n\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
+      root.querySelectorAll("button[data-scripted-turn]").forEach(function(button) { button.addEventListener("click", function() { const text = state.scriptedCallerTurns[Number(button.dataset.scriptedTurn)]; if (text) postScriptedTurn(text).catch(function(error) { setStatus(error.message); }); }); });
       document.getElementById("caller-turn-form").addEventListener("submit", recordCallerTurn);
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
@@ -1110,6 +1131,7 @@ function buildOperatorActionsPayload() {
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
     },
+    scriptedCallerTurns: [...SCRIPTED_CALLER_TURNS],
     actions: operatorActionCatalog.map((entry) => ({
       ...entry,
       reasonPrompt: getOperatorActionReasonPrompt(entry.action),
