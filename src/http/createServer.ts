@@ -246,10 +246,10 @@ function buildOperatorConsoleHtml(): string {
       render();
       setStatus(new Date().toLocaleTimeString());
     }
-    async function postAction(action, reason) {
+    async function postAction(action, reason, confirmed) {
       const call = selectedCall();
       if (!call) return;
-      const response = await fetch("/api/operator/console/action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ callId: call.session.callId, action: action, reason: reason || undefined }) });
+      const response = await fetch("/api/operator/console/action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ callId: call.session.callId, action: action, reason: reason || undefined, confirmationAcknowledged: confirmed || undefined }) });
       if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); setStatus(payload.error || "Action failed"); return; }
       await refresh();
     }
@@ -292,7 +292,7 @@ function buildOperatorConsoleHtml(): string {
         return '<div class="turn"><b>' + escapeHtml(turn.speaker) + '</b><span>' + escapeHtml(turn.text) + '</span></div>';
       }).join("");
       root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div></div><div class="actions">' + actionHtml + '</div><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
-      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = state.actionMetadata[action] || {}; const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; if (metadata.confirmationRequired && !confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\n\nCall: " + call.session.callId)) return; postAction(action, reason); }); });
+      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = state.actionMetadata[action] || {}; const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\n\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
     function render() { renderCalls(); renderDetail(); }
@@ -1246,6 +1246,11 @@ async function routeRequest(
 
     if ("error" in parsedSteer) {
       writeBadRequest(response, parsedSteer.error);
+      return;
+    }
+
+    if (operatorActionRequiresConfirmation(parsedSteer.action) && body.confirmationAcknowledged !== true) {
+      writeBadRequest(response, "operator_console_confirmation_required");
       return;
     }
 

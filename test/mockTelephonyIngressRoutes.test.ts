@@ -1028,6 +1028,7 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /reasonPrompt/);
     assert.match(response.body, /requiresReason/);
     assert.match(response.body, /confirmationRequired/);
+    assert.match(response.body, /confirmationAcknowledged/);
     assert.match(response.body, /Confirm /);
   });
 });
@@ -1082,9 +1083,22 @@ test("POST /api/operator/console/action dispatches live call controls", async ()
     assert.equal(refPayload.call.session.callId, refCall.session.callId);
     assert.equal(refPayload.call.operatorSteer.lastAction, "pause");
 
+    const unconfirmedSessionRefAction = await requestJson(port, "POST", "/api/operator/console/action", {
+      openclawSessionRef: "cluecon-demo/console-ref",
+      command: "/operator takeover",
+      timestamp: "2026-06-10T14:11:21.000Z",
+    });
+
+    assert.equal(unconfirmedSessionRefAction.statusCode, 400);
+    assert.deepEqual(unconfirmedSessionRefAction.payload, {
+      ok: false,
+      error: "operator_console_confirmation_required",
+    });
+
     const sessionRefAction = await requestJson(port, "POST", "/api/operator/console/action", {
       openclawSessionRef: "cluecon-demo/console-ref",
       command: "/operator takeover",
+      confirmationAcknowledged: true,
       timestamp: "2026-06-10T14:11:21.000Z",
     });
     const sessionRefPayload = sessionRefAction.payload as { ok: boolean; call: SnapshotPayload };
