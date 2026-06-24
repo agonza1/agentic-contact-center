@@ -164,6 +164,13 @@ interface OperatorConsolePayload {
           } | null;
           fallbackArmed: boolean;
           nextRecommendedAction: string;
+          scriptedCallerTurnState: {
+            matchedTurns: number;
+            totalTurns: number;
+            nextTurnIndex: number | null;
+            nextTurnText: string | null;
+            completed: boolean;
+          };
           actionDetails: Array<{
             action: string;
             enabled: boolean;
@@ -1247,6 +1254,13 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       },
       fallbackArmed: false,
       nextRecommendedAction: "approve_offer",
+      scriptedCallerTurnState: {
+        matchedTurns: 3,
+        totalTurns: 4,
+        nextTurnIndex: 3,
+        nextTurnText: "Thanks, please note that follow-up and close the call.",
+        completed: false,
+      },
       actionDetails: [
         {
           action: "pause",
@@ -1388,6 +1402,13 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     const idleConsoleCall = consolePayload.calls.items[1];
     assert.equal(idleConsoleCall?.actionState.pendingApprovalDetails, null);
     assert.equal(idleConsoleCall?.actionState.nextRecommendedAction, "pause");
+    assert.deepEqual(idleConsoleCall?.actionState.scriptedCallerTurnState, {
+      matchedTurns: 0,
+      totalTurns: 4,
+      nextTurnIndex: 0,
+      nextTurnText: "I want to cancel my policy today.",
+      completed: false,
+    });
     assert.deepEqual(
       idleConsoleCall?.actionState.actionDetails
         .filter((entry) => !entry.enabled)
@@ -1502,6 +1523,7 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /caller-turn-form/);
     assert.match(response.body, /Caller transcript turn/);
     assert.match(response.body, /scripted-turns/);
+    assert.match(response.body, /Scripted Turns/);
     assert.match(response.body, /data-scripted-turn/);
     assert.match(response.body, /postScriptedTurn/);
     assert.match(response.body, /\/caller-turn/);
