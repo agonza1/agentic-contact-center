@@ -35,6 +35,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         queueAttentionFilter: string;
         callAttentionSort: string;
         fallbackSourceTrail: string;
+        runtimeFailureSourceTrail: string;
       };
       health: {
         ok: boolean;
@@ -57,6 +58,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           queueAttentionFilter: string;
           callAttentionSort: string;
           fallbackSourceTrail: string;
+        runtimeFailureSourceTrail: string;
         };
         queueAttention: {
           attentionRequired: number;
@@ -142,6 +144,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.proofContract.queueAttentionFilter, "attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget");
     assert.equal(artifact.proofContract.callAttentionSort, "attentionRequired=true&sort=attentionStartedAt&limit=1");
     assert.equal(artifact.proofContract.fallbackSourceTrail, "events?source=tool_timeout_fail_closed");
+    assert.equal(artifact.proofContract.runtimeFailureSourceTrail, "events?source=pipecat_runtime_failure_fail_closed");
     assert.equal(artifact.summary.schemaVersion, 1);
     assert.deepEqual(artifact.summary.proofContract, artifact.proofContract);
     assert.equal(artifact.health.ok, true);

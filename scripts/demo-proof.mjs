@@ -374,6 +374,7 @@ async function main() {
         queueAttentionFilter: "attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget",
         callAttentionSort: "attentionRequired=true&sort=attentionStartedAt&limit=1",
         fallbackSourceTrail: "events?source=tool_timeout_fail_closed",
+        runtimeFailureSourceTrail: "events?source=pipecat_runtime_failure_fail_closed",
       },
       health: health.payload,
       queueAttention,
