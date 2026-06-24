@@ -1250,7 +1250,14 @@ async function routeRequest(
     }
 
     if (operatorActionRequiresConfirmation(parsedSteer.action) && body.confirmationAcknowledged !== true) {
-      writeBadRequest(response, "operator_console_confirmation_required");
+      writeJson(response, 400, {
+        ok: false,
+        error: "operator_console_confirmation_required",
+        action: parsedSteer.action,
+        confirmationRequired: true,
+        confirmationMessage: getOperatorActionConfirmationMessage(parsedSteer.action),
+        confirmationAcknowledgementField: "confirmationAcknowledged",
+      });
       return;
     }
 

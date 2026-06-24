@@ -1093,6 +1093,10 @@ test("POST /api/operator/console/action dispatches live call controls", async ()
     assert.deepEqual(unconfirmedSessionRefAction.payload, {
       ok: false,
       error: "operator_console_confirmation_required",
+      action: "takeover",
+      confirmationRequired: true,
+      confirmationMessage: "Takeover gives the operator direct control of the live call.",
+      confirmationAcknowledgementField: "confirmationAcknowledged",
     });
 
     const sessionRefAction = await requestJson(port, "POST", "/api/operator/console/action", {
