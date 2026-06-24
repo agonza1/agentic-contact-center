@@ -126,9 +126,27 @@ interface OperatorConsolePayload {
         actionState: {
           attentionRequired: boolean;
           pendingApproval: boolean;
+          pendingApprovalDetails: {
+            recommendedAction: string | null;
+            reason: string | null;
+            requestedAt: string | null;
+            source: string | null;
+            approvalPrompt: string;
+          } | null;
           fallbackArmed: boolean;
           nextRecommendedAction: string;
+          actionDetails: Array<{
+            action: string;
+            enabled: boolean;
+            disabledReason: string | null;
+            confirmationRequired: boolean;
+            confirmationMessage: string | null;
+            requiresReason: boolean;
+            reasonPrompt: string | null;
+          }>;
           availableActions: string[];
+          requiresConfirmationActions: Array<{ action: string; confirmationMessage: string | null }>;
+          requiresReasonActions: Array<{ action: string; reasonPrompt: string | null }>;
           unavailableActions: Array<{ action: string; reason: string }>;
         };
       }
@@ -1030,14 +1048,132 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.deepEqual(operatorConsoleCall.actionState, {
       attentionRequired: true,
       pendingApproval: true,
+      pendingApprovalDetails: {
+        recommendedAction: "approve_offer",
+        reason: "safe_offer_review_requested",
+        requestedAt: "2026-06-10T14:10:10.000Z",
+        source: "mock_http_route",
+        approvalPrompt: "Review the held safe-offer guidance before approving or denying the response.",
+      },
       fallbackArmed: false,
       nextRecommendedAction: "approve_offer",
+      actionDetails: [
+        {
+          action: "pause",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "resume",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "approve_offer",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "deny_offer",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "escalate_to_human",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: true,
+          confirmationMessage: "Escalating hands the caller to a human operator.",
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "transfer",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: true,
+          confirmationMessage: "Transferring moves the caller out of the automated demo flow to a human queue.",
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "takeover",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: true,
+          confirmationMessage: "Takeover gives the operator direct control of the live call.",
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "end_call",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: true,
+          confirmationMessage: "Ending the call closes the active demo session.",
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "goto_slide",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: true,
+          reasonPrompt: "Slide or step",
+        },
+        {
+          action: "ask_operator",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: true,
+          reasonPrompt: "Operator question",
+        },
+        {
+          action: "arm_fallback",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: true,
+          confirmationMessage: "Arming fallback changes the live call path until fallback is disarmed.",
+          requiresReason: true,
+          reasonPrompt: "Fallback reason",
+        },
+        {
+          action: "disarm_fallback",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+      ],
       availableActions: [
         "pause",
         "resume",
         "approve_offer",
         "deny_offer",
         "escalate_to_human",
+        "transfer",
         "takeover",
         "end_call",
         "goto_slide",
@@ -1045,10 +1181,34 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
         "arm_fallback",
         "disarm_fallback",
       ],
+      requiresConfirmationActions: [
+        { action: "escalate_to_human", confirmationMessage: "Escalating hands the caller to a human operator." },
+        { action: "transfer", confirmationMessage: "Transferring moves the caller out of the automated demo flow to a human queue." },
+        { action: "takeover", confirmationMessage: "Takeover gives the operator direct control of the live call." },
+        { action: "end_call", confirmationMessage: "Ending the call closes the active demo session." },
+        { action: "arm_fallback", confirmationMessage: "Arming fallback changes the live call path until fallback is disarmed." },
+      ],
+      requiresReasonActions: [
+        { action: "goto_slide", reasonPrompt: "Slide or step" },
+        { action: "ask_operator", reasonPrompt: "Operator question" },
+        { action: "arm_fallback", reasonPrompt: "Fallback reason" },
+      ],
       unavailableActions: [],
     });
     const idleConsoleCall = consolePayload.calls.items[1];
+    assert.equal(idleConsoleCall?.actionState.pendingApprovalDetails, null);
     assert.equal(idleConsoleCall?.actionState.nextRecommendedAction, "pause");
+    assert.deepEqual(
+      idleConsoleCall?.actionState.actionDetails
+        .filter((entry) => !entry.enabled)
+        .map((entry) => ({ action: entry.action, disabledReason: entry.disabledReason })),
+      [
+        { action: "resume", disabledReason: "pending_operator_steer_required" },
+        { action: "approve_offer", disabledReason: "pending_operator_steer_required" },
+        { action: "deny_offer", disabledReason: "pending_operator_steer_required" },
+        { action: "escalate_to_human", disabledReason: "pending_operator_steer_required" },
+      ],
+    );
     assert.deepEqual(idleConsoleCall?.actionState.unavailableActions, [
       { action: "resume", reason: "pending_operator_steer_required" },
       { action: "approve_offer", reason: "pending_operator_steer_required" },
@@ -1090,10 +1250,15 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /\/api\/demo\/start/);
     assert.match(response.body, /"goto_slide"/);
     assert.match(response.body, /"ask_operator"/);
+    assert.match(response.body, /"transfer"/);
     assert.match(response.body, /reasonPrompt/);
     assert.match(response.body, /requiresReason/);
     assert.match(response.body, /confirmationRequired/);
     assert.match(response.body, /confirmationAcknowledged/);
+    assert.match(response.body, /callActionMetadata/);
+    assert.match(response.body, /actionDetails/);
+    assert.match(response.body, /disabledReason/);
+    assert.match(response.body, /unavailableReasons/);
     assert.match(response.body, /Confirm /);
   });
 });
@@ -1175,6 +1340,26 @@ test("POST /api/operator/console/action dispatches live call controls", async ()
     assert.equal(sessionRefAction.statusCode, 200);
     assert.equal(sessionRefPayload.call.session.callId, refCall.session.callId);
     assert.equal(sessionRefPayload.call.operatorSteer.lastAction, "takeover");
+    const takeoverAppliedEvent = sessionRefPayload.call.events.find(
+      (event) => event.type === "operator_steer_applied" && event.detail.action === "takeover",
+    );
+    assert.equal(takeoverAppliedEvent?.detail.sourceRoute, "/api/operator/console/action");
+    assert.equal(takeoverAppliedEvent?.detail.confirmationAcknowledged, true);
+
+    const transferStarted = await requestJson(port, "POST", "/api/demo/start");
+    const transferCallId = (transferStarted.payload as SnapshotPayload).session.callId;
+    const transferAction = await requestJson(port, "POST", "/api/operator/console/action", {
+      callId: transferCallId,
+      command: "/operator transfer",
+      confirmationAcknowledged: true,
+      timestamp: "2026-06-10T14:11:25.000Z",
+    });
+    const transferPayload = transferAction.payload as { ok: boolean; call: SnapshotPayload };
+
+    assert.equal(transferAction.statusCode, 200);
+    assert.equal(transferPayload.call.operatorSteer.lastAction, "transfer");
+    assert.equal(transferPayload.call.flowState, "wrap");
+    assert.equal(transferPayload.call.events.some((event) => event.type === "operator_transfer_started"), true);
 
     const missingCall = await requestJson(port, "POST", "/api/operator/console/action", { action: "pause" });
     assert.equal(missingCall.statusCode, 400);
@@ -3516,6 +3701,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
         "approve_offer",
         "deny_offer",
         "escalate_to_human",
+        "transfer",
         "takeover",
         "end_call",
         "goto_slide",
@@ -3542,6 +3728,13 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     assert.equal(denyOffer?.requiresPendingCall, true);
     assert.equal(denyOffer?.requiresReason, false);
     assert.equal(denyOffer?.commandExamples.includes("/operator deny-offer"), true);
+
+    const transfer = payload.actions.find((action) => action.action === "transfer");
+    assert.equal(transfer?.requiresPendingCall, false);
+    assert.equal(transfer?.requiresReason, false);
+    assert.equal(transfer?.confirmationRequired, true);
+    assert.equal(transfer?.confirmationMessage, "Transferring moves the caller out of the automated demo flow to a human queue.");
+    assert.equal(transfer?.commandExamples.includes("/operator transfer"), true);
 
     const takeover = payload.actions.find((action) => action.action === "takeover");
     assert.equal(takeover?.requiresPendingCall, false);

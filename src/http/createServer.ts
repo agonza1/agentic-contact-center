@@ -34,6 +34,7 @@ const operatorSteerActions: OperatorSteerAction[] = [
   "approve_offer",
   "deny_offer",
   "escalate_to_human",
+  "transfer",
   "takeover",
   "end_call",
   "pause",
@@ -103,6 +104,16 @@ const operatorActionCatalog: Array<{
     bodyTemplate: { action: "escalate_to_human" },
     operatorOutcome: "handoff",
     commandExamples: ["/operator escalate", "/steer escalate-to-human"],
+  },
+  {
+    action: "transfer",
+    method: "POST",
+    requiresPendingCall: false,
+    requiresReason: false,
+    postTemplate: "/api/calls/{callId}/operator-steer",
+    bodyTemplate: { action: "transfer" },
+    operatorOutcome: "handoff",
+    commandExamples: ["/operator transfer", "/steer transfer"],
   },
   {
     action: "takeover",
@@ -230,11 +241,24 @@ function buildOperatorConsoleHtml(): string {
   </main>
   <script>
     const state = { calls: [], selectedCallId: null, actionMetadata: {} };
-    const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
-    const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
+    const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
+    const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
     function setStatus(text) { document.getElementById("status").textContent = text; }
     function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[char]; }); }
     function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
+    function callActionMetadata(call, action) {
+      const actionDetail = (call.actionState.actionDetails || []).find(function(entry) { return entry.action === action; });
+      if (actionDetail) return actionDetail;
+      const catalogMetadata = state.actionMetadata[action] || {};
+      const confirmation = (call.actionState.requiresConfirmationActions || []).find(function(entry) { return entry.action === action; });
+      const reason = (call.actionState.requiresReasonActions || []).find(function(entry) { return entry.action === action; });
+      return Object.assign({}, catalogMetadata, {
+        confirmationRequired: Boolean(confirmation),
+        confirmationMessage: confirmation ? confirmation.confirmationMessage : null,
+        requiresReason: Boolean(reason),
+        reasonPrompt: reason ? reason.reasonPrompt : null,
+      });
+    }
     async function refresh() {
       setStatus("Refreshing");
       const response = await fetch("/api/operator/console?sort=attentionStartedAt&order=asc&limit=25");
@@ -282,17 +306,23 @@ function buildOperatorConsoleHtml(): string {
       document.getElementById("selected-title").textContent = call ? call.session.callId : "Select a call";
       const root = document.getElementById("detail");
       if (!call) { root.innerHTML = ""; return; }
+      const actionDetails = Object.fromEntries((call.actionState.actionDetails || []).map(function(entry) { return [entry.action, entry]; }));
       const unavailable = new Set(call.actionState.unavailableActions.map(function(entry) { return entry.action; }));
+      const unavailableReasons = Object.fromEntries(call.actionState.unavailableActions.map(function(entry) { return [entry.action, entry.reason]; }));
       const actionHtml = actions.map(function(action) {
+        const actionDetail = actionDetails[action] || {};
         const cssClass = action === "end_call" ? "danger" : action === "approve_offer" ? "primary" : "";
-        const disabled = unavailable.has(action) ? "disabled" : "";
-        return '<button type="button" data-action="' + action + '" class="' + cssClass + '" ' + disabled + '>' + escapeHtml(labels[action] || action.replace(/_/g, " ")) + '</button>';
+        const disabled = actionDetail.enabled === false || unavailable.has(action) ? "disabled" : "";
+        const titleText = actionDetail.disabledReason || unavailableReasons[action];
+        const title = titleText ? ' title="' + escapeHtml(titleText) + '"' : "";
+        return '<button type="button" data-action="' + action + '" class="' + cssClass + '" ' + disabled + title + '>' + escapeHtml(labels[action] || action.replace(/_/g, " ")) + '</button>';
       }).join("");
       const transcriptHtml = call.transcript.slice(-10).map(function(turn) {
         return '<div class="turn"><b>' + escapeHtml(turn.speaker) + '</b><span>' + escapeHtml(turn.text) + '</span></div>';
       }).join("");
-      root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div></div><div class="actions">' + actionHtml + '</div><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
-      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = state.actionMetadata[action] || {}; const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\n\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
+      const pendingHtml = call.actionState.pendingApprovalDetails ? '<div class="metric"><span class="meta">Approval</span><strong>' + escapeHtml(labels[call.actionState.pendingApprovalDetails.recommendedAction] || call.actionState.pendingApprovalDetails.recommendedAction.replace(/_/g, " ")) + '</strong><span class="meta">' + escapeHtml(call.actionState.pendingApprovalDetails.approvalPrompt) + '</span><span class="meta">' + escapeHtml(call.actionState.pendingApprovalDetails.reason || "no reason") + '</span></div>' : '';
+      root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + pendingHtml + '</div><div class="actions">' + actionHtml + '</div><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
+      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\n\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
     function render() { renderCalls(); renderDetail(); }
@@ -395,6 +425,33 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       action: entry.action,
       reason: "pending_operator_steer_required",
     }));
+  const availableActionSet = new Set(
+    operatorActionCatalog
+      .filter((entry) => !entry.requiresPendingCall || snapshot.operatorSteer.pending)
+      .map((entry) => entry.action),
+  );
+  const unavailableReasonByAction = new Map(unavailableActions.map((entry) => [entry.action, entry.reason]));
+  const actionDetails = operatorActionCatalog.map((entry) => ({
+    action: entry.action,
+    enabled: availableActionSet.has(entry.action),
+    disabledReason: unavailableReasonByAction.get(entry.action) ?? null,
+    confirmationRequired: operatorActionRequiresConfirmation(entry.action),
+    confirmationMessage: getOperatorActionConfirmationMessage(entry.action),
+    requiresReason: entry.requiresReason,
+    reasonPrompt: getOperatorActionReasonPrompt(entry.action),
+  }));
+  const pendingApprovalDetails = snapshot.operatorSteer.pending
+    ? {
+        recommendedAction: snapshot.operatorSteer.lastAction,
+        reason: snapshot.operatorSteer.lastReason,
+        requestedAt: snapshot.operatorSteer.requestedAt,
+        source: snapshot.operatorSteer.source,
+        approvalPrompt:
+          snapshot.operatorSteer.lastAction === "approve_offer"
+            ? "Review the held safe-offer guidance before approving or denying the response."
+            : "Review the held call context before applying operator guidance.",
+      }
+    : null;
 
   return {
     ...buildCallPayload(snapshot),
@@ -421,11 +478,25 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
     actionState: {
       attentionRequired: attention.required,
       pendingApproval: snapshot.operatorSteer.pending,
+      pendingApprovalDetails,
       fallbackArmed: snapshot.demoFallback.armed,
       nextRecommendedAction,
-      availableActions: operatorActionCatalog
+      actionDetails,
+      availableActions: actionDetails.filter((entry) => entry.enabled).map((entry) => entry.action),
+      requiresConfirmationActions: operatorActionCatalog
         .filter((entry) => !entry.requiresPendingCall || snapshot.operatorSteer.pending)
-        .map((entry) => entry.action),
+        .filter((entry) => operatorActionRequiresConfirmation(entry.action))
+        .map((entry) => ({
+          action: entry.action,
+          confirmationMessage: getOperatorActionConfirmationMessage(entry.action),
+        })),
+      requiresReasonActions: operatorActionCatalog
+        .filter((entry) => !entry.requiresPendingCall || snapshot.operatorSteer.pending)
+        .filter((entry) => entry.requiresReason)
+        .map((entry) => ({
+          action: entry.action,
+          reasonPrompt: getOperatorActionReasonPrompt(entry.action),
+        })),
       unavailableActions,
     },
   };
@@ -674,7 +745,7 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
 }
 
 function operatorActionRequiresConfirmation(action: OperatorSteerAction): boolean {
-  return action === "arm_fallback" || action === "escalate_to_human" || action === "takeover" || action === "end_call";
+  return action === "arm_fallback" || action === "escalate_to_human" || action === "transfer" || action === "takeover" || action === "end_call";
 }
 
 function getOperatorActionConfirmationMessage(action: OperatorSteerAction): string | null {
@@ -683,6 +754,8 @@ function getOperatorActionConfirmationMessage(action: OperatorSteerAction): stri
       return "Arming fallback changes the live call path until fallback is disarmed.";
     case "escalate_to_human":
       return "Escalating hands the caller to a human operator.";
+    case "transfer":
+      return "Transferring moves the caller out of the automated demo flow to a human queue.";
     case "takeover":
       return "Takeover gives the operator direct control of the live call.";
     case "end_call":
@@ -1099,6 +1172,10 @@ function parseOperatorSteerCommand(
     return { action: "escalate_to_human" };
   }
 
+  if (lowerCommand === "transfer") {
+    return { action: "transfer" };
+  }
+
   if (lowerCommand === "takeover" || lowerCommand === "barge-in" || lowerCommand === "barge in") {
     return { action: "takeover" };
   }
@@ -1376,11 +1453,16 @@ async function routeRequest(
     }
 
     try {
+      const confirmationRequired = operatorActionRequiresConfirmation(parsedSteer.action);
       const snapshot = await ingress.applyOperatorSteer(
         callId,
         parsedSteer.action,
         parsedSteer.timestamp,
         parsedSteer.reason,
+        {
+          sourceRoute: "/api/operator/console/action",
+          confirmationAcknowledged: confirmationRequired ? body.confirmationAcknowledged === true : null,
+        },
       );
       writeJson(response, 200, {
         ok: true,

@@ -114,6 +114,10 @@ function buildSteeredResponse(action: OperatorSteerAction): string {
     return "Thanks for waiting. I am connecting you to a licensed retention specialist because I cannot make an offer without human review, and I will not promise any billing credit on this call.";
   }
 
+  if (action === "transfer") {
+    return "Thanks for waiting. I am transferring this call to the supervised queue so a human operator can continue from the current context.";
+  }
+
   if (action === "resume") {
     return "Thanks for waiting. I can resume the approved script and review safe next steps without promising any billing credit on this call.";
   }
@@ -312,6 +316,7 @@ export function applyOperatorSteer(
   action: OperatorSteerAction,
   timestamp: string,
   reason?: string,
+  audit: { sourceRoute?: string; confirmationAcknowledged?: boolean | null } = {},
 ): void {
   snapshot.pipecatFlow.activeTool = "ask_operator";
   const wasPending = snapshot.operatorSteer.pending;
@@ -320,6 +325,8 @@ export function applyOperatorSteer(
   recordEvent(snapshot, "operator_steer_applied", timestamp, {
     action,
     source: "mock_http_route",
+    sourceRoute: audit.sourceRoute ?? null,
+    confirmationAcknowledged: audit.confirmationAcknowledged ?? null,
   });
 
   if (action === "pause") {
@@ -406,6 +413,17 @@ export function applyOperatorSteer(
       source: "operator_steer",
     });
     transitionFlowState(snapshot, "wrap", timestamp, "operator_escalated_to_human");
+    appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
+    snapshot.pipecatFlow.activeTool = "pause_presentation";
+    return;
+  }
+
+  if (action === "transfer") {
+    recordEvent(snapshot, "operator_transfer_started", timestamp, {
+      operatorChannel: snapshot.scenario.operatorChannel,
+      source: "operator_steer",
+    });
+    transitionFlowState(snapshot, "wrap", timestamp, "operator_transferred_to_human_queue");
     appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
     snapshot.pipecatFlow.activeTool = "pause_presentation";
     return;

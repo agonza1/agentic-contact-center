@@ -13,6 +13,7 @@ export type OperatorSteerAction =
   | "approve_offer"
   | "deny_offer"
   | "escalate_to_human"
+  | "transfer"
   | "takeover"
   | "end_call"
   | "pause"
