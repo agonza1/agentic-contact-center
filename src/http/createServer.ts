@@ -519,6 +519,9 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       latestOperatorNoteText: typeof latestOperatorNote?.detail.text === "string" ? latestOperatorNote.detail.text : null,
       latestOperatorNoteAt: latestOperatorNote?.at ?? null,
       latestDisposition: typeof latestOperatorNote?.detail.disposition === "string" ? latestOperatorNote.detail.disposition : null,
+      operatorNoteTrail: operatorNoteEvents.length > 0
+        ? `${snapshot.session.openclawSession.artifactLinks.events}?type=operator_note_recorded`
+        : null,
       fallbackMode: snapshot.demoFallback.mode,
       fallbackSource,
       fallbackSourceTrail: fallbackSource
@@ -805,6 +808,9 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
       transcript: snapshot.session.openclawSession.artifactLinks.transcript,
       events: snapshot.session.openclawSession.artifactLinks.events,
       latencyMarks: snapshot.session.openclawSession.artifactLinks.latencyMarks,
+      operatorNoteTrail: snapshot.events.some((event) => event.type === "operator_note_recorded")
+        ? snapshot.session.openclawSession.artifactLinks.events + "?type=operator_note_recorded"
+        : null,
       fallbackSourceTrail: fallbackSource
         ? snapshot.session.openclawSession.artifactLinks.events + "?source=" + encodeURIComponent(fallbackSource)
         : null,

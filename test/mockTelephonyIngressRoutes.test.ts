@@ -124,6 +124,7 @@ interface OperatorConsolePayload {
           latestOperatorNoteText: string | null;
           latestOperatorNoteAt: string | null;
           latestDisposition: string | null;
+          operatorNoteTrail: string | null;
           fallbackMode: string | null;
           fallbackSource: string | null;
           fallbackSourceTrail: string | null;
@@ -208,6 +209,7 @@ interface ArtifactManifestPayload {
     transcript: string;
     events: string;
     latencyMarks: string;
+    operatorNoteTrail: string | null;
     fallbackSourceTrail: string | null;
     overBudgetLatencyTrail: string | null;
   };
@@ -632,6 +634,7 @@ test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", a
       transcript: `/api/calls/${callId}/transcript`,
       events: `/api/calls/${callId}/events`,
       latencyMarks: `/api/calls/${callId}/latency`,
+      operatorNoteTrail: null,
       fallbackSourceTrail: null,
       overBudgetLatencyTrail: null,
     });
@@ -1096,6 +1099,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(operatorConsoleCall.evidenceSummary.latestOperatorNoteText, null);
     assert.equal(operatorConsoleCall.evidenceSummary.latestOperatorNoteAt, null);
     assert.equal(operatorConsoleCall.evidenceSummary.latestDisposition, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.operatorNoteTrail, null);
     assert.equal(operatorConsoleCall.evidenceSummary.fallbackMode, null);
     assert.equal(operatorConsoleCall.evidenceSummary.fallbackSource, null);
     assert.equal(operatorConsoleCall.evidenceSummary.fallbackSourceTrail, null);
@@ -1511,6 +1515,11 @@ test("POST /api/calls/:callId/operator-note records operator notes and dispositi
     assert.equal(consoleCall.evidenceSummary.latestOperatorNoteText, "Customer asked for licensed follow-up after safe offer review.");
     assert.equal(consoleCall.evidenceSummary.latestOperatorNoteAt, "2026-06-10T14:12:00.000Z");
     assert.equal(consoleCall.evidenceSummary.latestDisposition, "follow_up_requested");
+    assert.equal(consoleCall.evidenceSummary.operatorNoteTrail, `/api/calls/${callId}/events?type=operator_note_recorded`);
+
+    const manifest = await requestJson(port, "GET", "/api/calls/" + callId + "/artifacts");
+    const manifestPayload = manifest.payload as ArtifactManifestPayload;
+    assert.equal(manifestPayload.evidenceRoutes.operatorNoteTrail, `/api/calls/${callId}/events?type=operator_note_recorded`);
 
     const missingText = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-note", { text: "   " });
     assert.equal(missingText.statusCode, 400);
