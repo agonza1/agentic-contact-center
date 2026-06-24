@@ -287,6 +287,16 @@ function buildOperatorConsoleHtml(): string {
       state.selectedCallId = payload.session.callId;
       await refresh();
     }
+    async function recordCallerTurn(event) {
+      event.preventDefault();
+      const call = selectedCall();
+      const input = document.getElementById("caller-turn");
+      if (!call || !input.value.trim()) return;
+      const response = await fetch("/api/calls/" + call.session.callId + "/caller-turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: input.value.trim() }) });
+      if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); setStatus(payload.error || "Caller turn failed"); return; }
+      input.value = "";
+      await refresh();
+    }
     async function recordNote(event) {
       event.preventDefault();
       const call = selectedCall();
@@ -327,8 +337,9 @@ function buildOperatorConsoleHtml(): string {
       const evidence = call.evidenceSummary;
       const evidenceLinks = evidence.links || {};
       const evidenceHtml = '<div class="evidence" aria-label="Evidence markers"><div class="metric"><span class="meta">Latest Event</span><strong>' + escapeHtml(evidence.latestEventType || "none") + '</strong><span class="meta">' + escapeHtml(evidence.latestEventAt || "not recorded") + '</span></div><div class="metric"><span class="meta">Transcript Turns</span><strong>' + evidence.transcriptTurns + '</strong><a href="' + escapeHtml(evidenceLinks.transcript) + '">Transcript</a></div><div class="metric"><span class="meta">Latency Marks</span><strong>' + evidence.latencyMarkCount + '</strong><a href="' + escapeHtml(evidenceLinks.latencyMarks) + '">Latency</a></div><div class="metric"><span class="meta">Operator Notes</span><strong>' + evidence.operatorNoteCount + '</strong><span class="meta">' + escapeHtml(evidence.latestDisposition || evidence.latestOperatorNoteText || "none") + '</span></div><div class="metric"><span class="meta">Proof Bundle</span><strong>' + evidence.eventCount + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Proof</a></div></div>';
-      root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + pendingHtml + '</div>' + evidenceHtml + '<div class="actions">' + actionHtml + '</div><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
+      root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + pendingHtml + '</div>' + evidenceHtml + '<div class="actions">' + actionHtml + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\n\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
+      document.getElementById("caller-turn-form").addEventListener("submit", recordCallerTurn);
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
     function render() { renderCalls(); renderDetail(); }
@@ -791,6 +802,7 @@ function buildOperatorActionsPayload() {
     callReferenceFields: ["callId", "providerCallId", "openclawSessionId", "openclawSessionLabel", "openclawSessionRef"],
     routes: {
       startDemoCall: "/api/demo/start",
+      callerTurn: "/api/calls/{callId}/caller-turn",
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
