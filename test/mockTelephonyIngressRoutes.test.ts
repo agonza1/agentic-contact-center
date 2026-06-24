@@ -91,7 +91,19 @@ interface OperatorConsolePayload {
     commandWrappers: string[];
     callReferenceFields: string[];
     routes: { startDemoCall: string; steerCall: string; noteCall: string; consoleAction: string };
-    actions: Array<{ action: string; method: string; postTemplate: string; bodyTemplate: { action: string; reason?: string }; operatorOutcome: string }>;
+    actions: Array<{
+      action: string;
+      method: string;
+      requiresPendingCall: boolean;
+      requiresReason: boolean;
+      postTemplate: string;
+      bodyTemplate: { action: string; reason?: string };
+      operatorOutcome: string;
+      reasonPrompt: string | null;
+      confirmationRequired: boolean;
+      confirmationMessage: string | null;
+      commandExamples: string[];
+    }>;
   };
   queue: QueueSummaryPayload;
   calls: {
@@ -919,12 +931,21 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       postTemplate: "/api/calls/{callId}/operator-steer",
       bodyTemplate: { action: "approve_offer" },
       operatorOutcome: "resume",
+      reasonPrompt: null,
+      confirmationRequired: false,
+      confirmationMessage: null,
       commandExamples: ["/operator approve-offer", "/steer approve offer"],
     });
     const takeoverAction = consolePayload.controls.actions.find((entry) => entry.action === "takeover");
     assert.equal(takeoverAction?.method, "POST");
     assert.deepEqual(takeoverAction?.bodyTemplate, { action: "takeover" });
     assert.equal(takeoverAction?.operatorOutcome, "handoff");
+    assert.equal(takeoverAction?.reasonPrompt, null);
+    assert.equal(takeoverAction?.confirmationRequired, true);
+    assert.equal(takeoverAction?.confirmationMessage, "Takeover gives the operator direct control of the live call.");
+    const gotoSlideAction = consolePayload.controls.actions.find((entry) => entry.action === "goto_slide");
+    assert.equal(gotoSlideAction?.requiresReason, true);
+    assert.equal(gotoSlideAction?.reasonPrompt, "Slide or step");
     assert.equal(consolePayload.queue.summary.totalCalls, 2);
     assert.equal(consolePayload.queue.summary.pendingOperatorSteer, 1);
     assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
@@ -1004,8 +1025,11 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /\/api\/demo\/start/);
     assert.match(response.body, /"goto_slide"/);
     assert.match(response.body, /"ask_operator"/);
-    assert.match(response.body, /Slide or step/);
-    assert.match(response.body, /Operator question/);
+    assert.match(response.body, /reasonPrompt/);
+    assert.match(response.body, /requiresReason/);
+    assert.match(response.body, /confirmationRequired/);
+    assert.match(response.body, /confirmationAcknowledged/);
+    assert.match(response.body, /Confirm /);
   });
 });
 
@@ -1059,9 +1083,26 @@ test("POST /api/operator/console/action dispatches live call controls", async ()
     assert.equal(refPayload.call.session.callId, refCall.session.callId);
     assert.equal(refPayload.call.operatorSteer.lastAction, "pause");
 
+    const unconfirmedSessionRefAction = await requestJson(port, "POST", "/api/operator/console/action", {
+      openclawSessionRef: "cluecon-demo/console-ref",
+      command: "/operator takeover",
+      timestamp: "2026-06-10T14:11:21.000Z",
+    });
+
+    assert.equal(unconfirmedSessionRefAction.statusCode, 400);
+    assert.deepEqual(unconfirmedSessionRefAction.payload, {
+      ok: false,
+      error: "operator_console_confirmation_required",
+      action: "takeover",
+      confirmationRequired: true,
+      confirmationMessage: "Takeover gives the operator direct control of the live call.",
+      confirmationAcknowledgementField: "confirmationAcknowledged",
+    });
+
     const sessionRefAction = await requestJson(port, "POST", "/api/operator/console/action", {
       openclawSessionRef: "cluecon-demo/console-ref",
       command: "/operator takeover",
+      confirmationAcknowledged: true,
       timestamp: "2026-06-10T14:11:21.000Z",
     });
     const sessionRefPayload = sessionRefAction.payload as { ok: boolean; call: SnapshotPayload };
@@ -3378,6 +3419,9 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
         action: string;
         requiresPendingCall: boolean;
         requiresReason: boolean;
+        reasonPrompt: string | null;
+        confirmationRequired: boolean;
+        confirmationMessage: string | null;
         postTemplate: string;
         commandExamples: string[];
       }>;
@@ -3419,6 +3463,9 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     const armFallback = payload.actions.find((action) => action.action === "arm_fallback");
     assert.equal(armFallback?.requiresReason, true);
     assert.equal(armFallback?.requiresPendingCall, false);
+    assert.equal(armFallback?.reasonPrompt, "Fallback reason");
+    assert.equal(armFallback?.confirmationRequired, true);
+    assert.equal(armFallback?.confirmationMessage, "Arming fallback changes the live call path until fallback is disarmed.");
     assert.equal(armFallback?.commandExamples.includes("/operator arm-fallback audio degraded"), true);
 
     const approveOffer = payload.actions.find((action) => action.action === "approve_offer");
@@ -3434,6 +3481,9 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     const takeover = payload.actions.find((action) => action.action === "takeover");
     assert.equal(takeover?.requiresPendingCall, false);
     assert.equal(takeover?.requiresReason, false);
+    assert.equal(takeover?.reasonPrompt, null);
+    assert.equal(takeover?.confirmationRequired, true);
+    assert.equal(takeover?.confirmationMessage, "Takeover gives the operator direct control of the live call.");
     assert.equal(takeover?.commandExamples.includes("/steer barge-in"), true);
 
     const endCall = payload.actions.find((action) => action.action === "end_call");
