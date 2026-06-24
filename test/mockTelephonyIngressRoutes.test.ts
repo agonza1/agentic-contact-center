@@ -875,6 +875,71 @@ test("GET /api/calls lists active demo calls in start order", async () => {
 });
 
 
+
+test("POST /api/signalwire/events maps local SignalWire lifecycle into call runtime", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/signalwire/events", {
+      eventType: "call.started",
+      signalWireCallId: "sw-call-123",
+      timestamp: "2026-06-10T14:09:00.000Z",
+    });
+    const startedPayload = started.payload as { ok: boolean; route: string; eventType: string; signalWireCallId: string; call: SnapshotPayload };
+
+    assert.equal(started.statusCode, 201);
+    assert.equal(startedPayload.ok, true);
+    assert.equal(startedPayload.route, "/api/signalwire/events");
+    assert.equal(startedPayload.eventType, "call.started");
+    assert.equal(startedPayload.signalWireCallId, "sw-call-123");
+    assert.equal(startedPayload.call.session.providerCallId, "sw-call-123");
+    assert.equal(startedPayload.call.session.openclawSession.sessionId, "signalwire-sw-call-123");
+    assert.equal(startedPayload.call.session.openclawSession.label, "signalwire/sw-call-123");
+
+    const media = await requestJson(port, "POST", "/api/signalwire/events", {
+      eventType: "media.transcript",
+      callSid: "sw-call-123",
+      text: "I want to cancel my policy today.",
+      timestamp: "2026-06-10T14:09:05.000Z",
+    });
+    const mediaPayload = media.payload as { ok: boolean; eventType: string; call: SnapshotPayload };
+
+    assert.equal(media.statusCode, 200);
+    assert.equal(mediaPayload.eventType, "media.transcript");
+    assert.equal(mediaPayload.call.session.callId, startedPayload.call.session.callId);
+    assert.equal(mediaPayload.call.session.providerCallId, "sw-call-123");
+    assert.equal(mediaPayload.call.transcript.at(-2)?.speaker, "caller");
+    assert.equal(mediaPayload.call.transcript.at(-2)?.text, "I want to cancel my policy today.");
+
+    const error = await requestJson(port, "POST", "/api/signalwire/events", {
+      eventType: "call.error",
+      signalWireCallId: "sw-call-123",
+      reason: "media websocket timeout",
+      timestamp: "2026-06-10T14:09:08.000Z",
+    });
+    const errorPayload = error.payload as { ok: boolean; eventType: string; call: SnapshotPayload };
+
+    assert.equal(error.statusCode, 200);
+    assert.equal(errorPayload.eventType, "call.error");
+    assert.equal(errorPayload.call.demoFallback.armed, true);
+    assert.equal(errorPayload.call.demoFallback.reason, "media websocket timeout");
+    assert.equal(errorPayload.call.flowState, "wrap");
+
+    const filtered = await requestJson(port, "GET", "/api/calls?providerCallId=sw-call-123");
+    const filteredPayload = filtered.payload as CallListPayload;
+    assert.equal(filtered.statusCode, 200);
+    assert.equal(filteredPayload.summary.totalCalls, 1);
+    assert.equal(filteredPayload.calls[0]?.session.callId, startedPayload.call.session.callId);
+
+    const missingText = await requestJson(port, "POST", "/api/signalwire/events", {
+      eventType: "media.transcript",
+      signalWireCallId: "sw-call-123",
+      text: "   ",
+    });
+
+    assert.equal(missingText.statusCode, 400);
+    assert.deepEqual(missingText.payload, { ok: false, error: "signalwire_transcript_text_required" });
+  });
+});
+
 test("GET /api/operator/console returns operator-ready controls and attention-sorted calls", async () => {
   await withServer(async (port) => {
     const idleStarted = await requestJson(port, "POST", "/api/demo/start", {

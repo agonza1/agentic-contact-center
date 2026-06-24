@@ -105,7 +105,7 @@ export class InMemoryTelephonyIngress {
 
     const paddedSequence = String(sequence).padStart(4, "0");
     const callId = `demo-call-${paddedSequence}`;
-    const providerCallId = `${config.provider.callId}-${paddedSequence}`;
+    const providerCallId = options.providerCallId ?? `${config.provider.callId}-${paddedSequence}`;
     const startedAt = new Date().toISOString();
     const openclawSessionId = options.openclawSessionId ?? `openclaw-call-${paddedSequence}`;
     const openclawSessionLabel = options.openclawSessionLabel ?? `${config.demoName}:${callId}`;
