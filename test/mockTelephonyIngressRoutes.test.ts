@@ -129,6 +129,7 @@ interface OperatorConsolePayload {
           fallbackSourceTrail: string | null;
           handoffStartedAt: string | null;
           overBudgetLatencyMarkCount: number;
+          overBudgetLatencyTrail: string | null;
           links: { transcript: string; events: string; latencyMarks: string; proof: string };
         };
         actionState: {
@@ -1074,6 +1075,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(operatorConsoleCall.evidenceSummary.fallbackSourceTrail, null);
     assert.equal(operatorConsoleCall.evidenceSummary.handoffStartedAt, null);
     assert.equal(operatorConsoleCall.evidenceSummary.overBudgetLatencyMarkCount, 0);
+    assert.equal(operatorConsoleCall.evidenceSummary.overBudgetLatencyTrail, null);
     assert.deepEqual(operatorConsoleCall.evidenceSummary.links, operatorConsoleCall.session.openclawSession.artifactLinks);
     assert.deepEqual(operatorConsoleCall.actionState, {
       attentionRequired: true,
@@ -1263,6 +1265,22 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(filteredPayload.calls.summary.filteredSummary.attentionRequired, 1);
     assert.equal(filteredPayload.calls.summary.page.limit, 1);
 
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/fallback`, {
+      mode: "tool_timeout",
+      reason: "synthetic operator console latency audit",
+      timestamp: "2099-01-01T00:00:00.000Z",
+    });
+    const overBudgetConsole = await requestJson(port, "GET", "/api/operator/console?latencyOverBudget=true");
+    const overBudgetPayload = overBudgetConsole.payload as OperatorConsolePayload;
+    const overBudgetConsoleCall = overBudgetPayload.calls.items.find((call) => call.session.callId === operatorCallId);
+
+    assert.equal(overBudgetConsole.statusCode, 200);
+    assert.equal(overBudgetConsoleCall?.evidenceSummary.overBudgetLatencyMarkCount, 3);
+    assert.equal(
+      overBudgetConsoleCall?.evidenceSummary.overBudgetLatencyTrail,
+      `/api/calls/${operatorCallId}/latency?overBudget=true`,
+    );
+
     const invalidFilter = await requestJson(port, "GET", "/api/operator/console?attentionRequired=maybe");
     assert.equal(invalidFilter.statusCode, 400);
     assert.deepEqual(invalidFilter.payload, { ok: false, error: "operator_console_attention_required_invalid" });
@@ -1302,6 +1320,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Proof Bundle/);
     assert.match(response.body, /Event Trail/);
     assert.match(response.body, /fallbackSourceTrail/);
+    assert.match(response.body, /overBudgetLatencyTrail/);
+    assert.match(response.body, /Over budget:/);
     assert.match(response.body, /evidenceSummary/);
     assert.match(response.body, /callActionMetadata/);
     assert.match(response.body, /actionDetails/);

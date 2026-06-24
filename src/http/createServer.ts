@@ -350,10 +350,11 @@ function buildOperatorConsoleHtml(): string {
       const attentionDetail = call.attention.required ? [call.attention.source, call.attention.reason, call.attention.startedAt].filter(Boolean).join(" | ") : "monitoring";
       const evidence = call.evidenceSummary;
       const evidenceLinks = evidence.links || {};
+      const latencyLink = evidence.overBudgetLatencyTrail || evidenceLinks.latencyMarks;
       const fallbackLabel = evidence.fallbackMode ? evidence.fallbackMode.replace(/_/g, " ") : "none";
       const fallbackTrailLink = evidence.fallbackSourceTrail || evidenceLinks.events;
       const fallbackDetail = evidence.fallbackSource || evidence.handoffStartedAt || "no handoff";
-      const evidenceHtml = '<div class="evidence" aria-label="Evidence markers"><div class="metric"><span class="meta">Latest Event</span><strong>' + escapeHtml(evidence.latestEventType || "none") + '</strong><span class="meta">' + escapeHtml(evidence.latestEventAt || "not recorded") + '</span></div><div class="metric"><span class="meta">Transcript Turns</span><strong>' + evidence.transcriptTurns + '</strong><a href="' + escapeHtml(evidenceLinks.transcript) + '">Transcript</a></div><div class="metric"><span class="meta">Latency Marks</span><strong>' + evidence.latencyMarkCount + '</strong><a href="' + escapeHtml(evidenceLinks.latencyMarks) + '">Latency</a></div><div class="metric"><span class="meta">Fallback</span><strong>' + escapeHtml(fallbackLabel) + '</strong><span class="meta">' + escapeHtml(fallbackDetail) + '</span><a href="' + escapeHtml(fallbackTrailLink) + '">Event Trail</a></div><div class="metric"><span class="meta">Operator Notes</span><strong>' + evidence.operatorNoteCount + '</strong><span class="meta">' + escapeHtml(evidence.latestDisposition || evidence.latestOperatorNoteText || "none") + '</span></div><div class="metric"><span class="meta">Proof Bundle</span><strong>' + evidence.eventCount + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Proof</a></div></div>';
+      const evidenceHtml = '<div class="evidence" aria-label="Evidence markers"><div class="metric"><span class="meta">Latest Event</span><strong>' + escapeHtml(evidence.latestEventType || "none") + '</strong><span class="meta">' + escapeHtml(evidence.latestEventAt || "not recorded") + '</span></div><div class="metric"><span class="meta">Transcript Turns</span><strong>' + evidence.transcriptTurns + '</strong><a href="' + escapeHtml(evidenceLinks.transcript) + '">Transcript</a></div><div class="metric"><span class="meta">Latency Marks</span><strong>' + evidence.latencyMarkCount + '</strong><span class="meta">Over budget: ' + evidence.overBudgetLatencyMarkCount + '</span><a href="' + escapeHtml(latencyLink) + '">Latency</a></div><div class="metric"><span class="meta">Fallback</span><strong>' + escapeHtml(fallbackLabel) + '</strong><span class="meta">' + escapeHtml(fallbackDetail) + '</span><a href="' + escapeHtml(fallbackTrailLink) + '">Event Trail</a></div><div class="metric"><span class="meta">Operator Notes</span><strong>' + evidence.operatorNoteCount + '</strong><span class="meta">' + escapeHtml(evidence.latestDisposition || evidence.latestOperatorNoteText || "none") + '</span></div><div class="metric"><span class="meta">Proof Bundle</span><strong>' + evidence.eventCount + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Proof</a></div></div>';
       root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + pendingHtml + '</div>' + evidenceHtml + '<div class="actions">' + actionHtml + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\n\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       document.getElementById("caller-turn-form").addEventListener("submit", recordCallerTurn);
@@ -452,6 +453,9 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
   const fallbackSource = typeof handoffEvent?.detail.source === "string" ? handoffEvent.detail.source : null;
   const operatorNoteEvents = snapshot.events.filter((event) => event.type === "operator_note_recorded");
   const latestOperatorNote = operatorNoteEvents.at(-1);
+  const overBudgetLatencyMarkCount = snapshot.latencyMarks.filter(
+    (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
+  ).length;
   const latestEvidenceAt = [latestEvent?.at, latestTranscriptTurn?.timestamp, latestLatencyMark?.recordedAt]
     .filter((timestamp): timestamp is string => timestamp !== undefined)
     .sort(compareTimestamps)
@@ -521,9 +525,10 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
         ? `${snapshot.session.openclawSession.artifactLinks.events}?source=${encodeURIComponent(fallbackSource)}`
         : null,
       handoffStartedAt: handoffEvent?.at ?? null,
-      overBudgetLatencyMarkCount: snapshot.latencyMarks.filter(
-        (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
-      ).length,
+      overBudgetLatencyMarkCount,
+      overBudgetLatencyTrail: overBudgetLatencyMarkCount > 0
+        ? `${snapshot.session.openclawSession.artifactLinks.latencyMarks}?overBudget=true`
+        : null,
       links: snapshot.session.openclawSession.artifactLinks,
     },
     actionState: {
