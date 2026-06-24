@@ -304,7 +304,8 @@ function buildOperatorConsoleHtml(): string {
       const transcriptHtml = call.transcript.slice(-10).map(function(turn) {
         return '<div class="turn"><b>' + escapeHtml(turn.speaker) + '</b><span>' + escapeHtml(turn.text) + '</span></div>';
       }).join("");
-      root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div></div><div class="actions">' + actionHtml + '</div><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
+      const pendingHtml = call.actionState.pendingApprovalDetails ? '<div class="metric"><span class="meta">Approval</span><strong>' + escapeHtml(labels[call.actionState.pendingApprovalDetails.recommendedAction] || call.actionState.pendingApprovalDetails.recommendedAction.replace(/_/g, " ")) + '</strong><span class="meta">' + escapeHtml(call.actionState.pendingApprovalDetails.approvalPrompt) + '</span><span class="meta">' + escapeHtml(call.actionState.pendingApprovalDetails.reason || "no reason") + '</span></div>' : '';
+      root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + pendingHtml + '</div><div class="actions">' + actionHtml + '</div><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\n\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
@@ -408,6 +409,18 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       action: entry.action,
       reason: "pending_operator_steer_required",
     }));
+  const pendingApprovalDetails = snapshot.operatorSteer.pending
+    ? {
+        recommendedAction: snapshot.operatorSteer.lastAction,
+        reason: snapshot.operatorSteer.lastReason,
+        requestedAt: snapshot.operatorSteer.requestedAt,
+        source: snapshot.operatorSteer.source,
+        approvalPrompt:
+          snapshot.operatorSteer.lastAction === "approve_offer"
+            ? "Review the held safe-offer guidance before approving or denying the response."
+            : "Review the held call context before applying operator guidance.",
+      }
+    : null;
 
   return {
     ...buildCallPayload(snapshot),
@@ -434,6 +447,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
     actionState: {
       attentionRequired: attention.required,
       pendingApproval: snapshot.operatorSteer.pending,
+      pendingApprovalDetails,
       fallbackArmed: snapshot.demoFallback.armed,
       nextRecommendedAction,
       availableActions: operatorActionCatalog

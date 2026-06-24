@@ -126,6 +126,13 @@ interface OperatorConsolePayload {
         actionState: {
           attentionRequired: boolean;
           pendingApproval: boolean;
+          pendingApprovalDetails: {
+            recommendedAction: string | null;
+            reason: string | null;
+            requestedAt: string | null;
+            source: string | null;
+            approvalPrompt: string;
+          } | null;
           fallbackArmed: boolean;
           nextRecommendedAction: string;
           availableActions: string[];
@@ -1032,6 +1039,13 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.deepEqual(operatorConsoleCall.actionState, {
       attentionRequired: true,
       pendingApproval: true,
+      pendingApprovalDetails: {
+        recommendedAction: "approve_offer",
+        reason: "safe_offer_review_requested",
+        requestedAt: "2026-06-10T14:10:10.000Z",
+        source: "mock_http_route",
+        approvalPrompt: "Review the held safe-offer guidance before approving or denying the response.",
+      },
       fallbackArmed: false,
       nextRecommendedAction: "approve_offer",
       availableActions: [
@@ -1061,6 +1075,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       unavailableActions: [],
     });
     const idleConsoleCall = consolePayload.calls.items[1];
+    assert.equal(idleConsoleCall?.actionState.pendingApprovalDetails, null);
     assert.equal(idleConsoleCall?.actionState.nextRecommendedAction, "pause");
     assert.deepEqual(idleConsoleCall?.actionState.unavailableActions, [
       { action: "resume", reason: "pending_operator_steer_required" },
