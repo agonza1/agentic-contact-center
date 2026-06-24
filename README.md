@@ -109,6 +109,10 @@ npm run health:smoke -- \
   --expect-mode mocked_telephony \
   --expect-provider signalwire \
   --expect-pipecat-ready true \
+  --expect-pipecat-prototype-mode pipecat_local_runtime \
+  --expect-pipecat-transport local_process \
+  --expect-pipecat-runtime-engine pipecat-ai \
+  --expect-pipecat-credentials-mode mocked \
   --expect-pipecat-tool goto_slide
 ```
 

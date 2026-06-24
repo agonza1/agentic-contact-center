@@ -193,7 +193,15 @@ test("health smoke script can assert expected health metadata and multiple runti
         operatorChannel: "slack",
         fallbackMode: "tool_timeout",
         runtimeSeams: ["flow engine", "mocked telephony ingress"],
-        pipecatFlow: { ready: true, toolCoverage: ["goto_slide", "approve_offer"], script: { completed: true } },
+        pipecatFlow: {
+          ready: true,
+          prototypeMode: "pipecat_local_runtime",
+          transport: "local_process",
+          runtimeEngine: "pipecat-ai",
+          credentialsMode: "mocked",
+          toolCoverage: ["goto_slide", "approve_offer"],
+          script: { completed: true },
+        },
       }),
     );
   }, async (port) => {
@@ -220,6 +228,14 @@ test("health smoke script can assert expected health metadata and multiple runti
       "mocked telephony ingress",
       "--expect-pipecat-ready",
       "true",
+      "--expect-pipecat-prototype-mode",
+      "pipecat_local_runtime",
+      "--expect-pipecat-transport",
+      "local_process",
+      "--expect-pipecat-runtime-engine",
+      "pipecat-ai",
+      "--expect-pipecat-credentials-mode",
+      "mocked",
       "--expect-pipecat-tool",
       "goto_slide",
       "--expect-pipecat-tool",
@@ -484,6 +500,32 @@ test("health smoke script rejects malformed Pipecat readiness expectations befor
   assert.equal(result.code, 1);
   assert.match(result.stderr, /invalid_pipecat_ready_value\("yes"\)/);
   assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
+test("health smoke script reports Pipecat runtime metadata mismatches in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, pipecatFlow: { ready: true, prototypeMode: "deterministic_templates" } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-pipecat-prototype-mode",
+      "pipecat_local_runtime",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_pipecatFlow_prototypeMode_mismatch\(expected="pipecat_local_runtime",actual="deterministic_templates"\)/);
+  });
 });
 
 test("health smoke script reports Pipecat readiness mismatches in the timeout summary", async () => {

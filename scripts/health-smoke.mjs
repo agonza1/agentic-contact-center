@@ -11,6 +11,10 @@ function parseArgs(argv) {
     expectOperatorChannel: undefined,
     expectFallbackMode: undefined,
     expectPipecatReady: undefined,
+    expectPipecatPrototypeMode: undefined,
+    expectPipecatTransport: undefined,
+    expectPipecatRuntimeEngine: undefined,
+    expectPipecatCredentialsMode: undefined,
     expectPipecatScriptCompleted: undefined,
     expectRuntimeSeams: [],
     expectPipecatTools: [],
@@ -30,6 +34,10 @@ function parseArgs(argv) {
     '--expect-operator-channel',
     '--expect-fallback-mode',
     '--expect-pipecat-ready',
+    '--expect-pipecat-prototype-mode',
+    '--expect-pipecat-transport',
+    '--expect-pipecat-runtime-engine',
+    '--expect-pipecat-credentials-mode',
     '--expect-pipecat-script-completed',
     '--expect-runtime-seam',
     '--expect-pipecat-tool',
@@ -125,6 +133,30 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-pipecat-prototype-mode' && next) {
+      args.expectPipecatPrototypeMode = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-pipecat-transport' && next) {
+      args.expectPipecatTransport = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-pipecat-runtime-engine' && next) {
+      args.expectPipecatRuntimeEngine = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-pipecat-credentials-mode' && next) {
+      args.expectPipecatCredentialsMode = next;
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-pipecat-script-completed' && next) {
       args.expectPipecatScriptCompleted = next;
       index += 1;
@@ -176,6 +208,10 @@ function hasJsonExpectations(args) {
     args.expectOperatorChannel,
     args.expectFallbackMode,
     args.expectPipecatReady,
+    args.expectPipecatPrototypeMode,
+    args.expectPipecatTransport,
+    args.expectPipecatRuntimeEngine,
+    args.expectPipecatCredentialsMode,
     args.expectPipecatScriptCompleted,
   ].some((expectedValue) => expectedValue !== undefined)
     || args.expectRuntimeSeams.length > 0
@@ -341,6 +377,28 @@ async function getFailureReason(response, args) {
 
     if (actualValue !== parsedExpectation.expectedValue) {
       return `json_pipecatFlow_script_completed_mismatch(expected=${JSON.stringify(parsedExpectation.expectedValue)},actual=${JSON.stringify(actualValue)})`;
+    }
+  }
+
+  const pipecatFlowExpectations = [
+    ['prototypeMode', args.expectPipecatPrototypeMode],
+    ['transport', args.expectPipecatTransport],
+    ['runtimeEngine', args.expectPipecatRuntimeEngine],
+    ['credentialsMode', args.expectPipecatCredentialsMode],
+  ];
+
+  for (const [field, expectedValue] of pipecatFlowExpectations) {
+    if (expectedValue === undefined) {
+      continue;
+    }
+
+    const pipecatFlow = payload.pipecatFlow;
+    const actualValue = pipecatFlow && typeof pipecatFlow === 'object'
+      ? pipecatFlow[field]
+      : undefined;
+
+    if (actualValue !== expectedValue) {
+      return `json_pipecatFlow_${field}_mismatch(expected=${JSON.stringify(expectedValue)},actual=${JSON.stringify(actualValue)})`;
     }
   }
 
