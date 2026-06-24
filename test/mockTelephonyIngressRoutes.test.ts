@@ -126,6 +126,7 @@ interface OperatorConsolePayload {
           latestDisposition: string | null;
           fallbackMode: string | null;
           fallbackSource: string | null;
+          fallbackSourceTrail: string | null;
           handoffStartedAt: string | null;
           overBudgetLatencyMarkCount: number;
           links: { transcript: string; events: string; latencyMarks: string; proof: string };
@@ -1070,6 +1071,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(operatorConsoleCall.evidenceSummary.latestDisposition, null);
     assert.equal(operatorConsoleCall.evidenceSummary.fallbackMode, null);
     assert.equal(operatorConsoleCall.evidenceSummary.fallbackSource, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.fallbackSourceTrail, null);
     assert.equal(operatorConsoleCall.evidenceSummary.handoffStartedAt, null);
     assert.equal(operatorConsoleCall.evidenceSummary.overBudgetLatencyMarkCount, 0);
     assert.deepEqual(operatorConsoleCall.evidenceSummary.links, operatorConsoleCall.session.openclawSession.artifactLinks);
@@ -1298,6 +1300,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Evidence markers/);
     assert.match(response.body, /attentionDetail/);
     assert.match(response.body, /Proof Bundle/);
+    assert.match(response.body, /Event Trail/);
+    assert.match(response.body, /fallbackSourceTrail/);
     assert.match(response.body, /evidenceSummary/);
     assert.match(response.body, /callActionMetadata/);
     assert.match(response.body, /actionDetails/);
@@ -2847,6 +2851,10 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.equal(runtimeFailureConsolePayload.calls.summary.filteredSummary.fallbackArmed, 1);
     assert.equal(runtimeFailureConsoleCall?.evidenceSummary.fallbackMode, "runtime_failure");
     assert.equal(runtimeFailureConsoleCall?.evidenceSummary.fallbackSource, "pipecat_runtime_failure_fail_closed");
+    assert.equal(
+      runtimeFailureConsoleCall?.evidenceSummary.fallbackSourceTrail,
+      `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
+    );
     assert.equal(runtimeFailureConsoleCall?.evidenceSummary.handoffStartedAt, "2026-06-10T14:00:03.000Z");
 
     const toolTimeoutQueue = await requestJson(port, "GET", "/api/queue?fallbackMode=tool_timeout");
