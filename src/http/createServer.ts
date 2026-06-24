@@ -725,6 +725,46 @@ function buildOperatorActionsPayload() {
   };
 }
 
+function isSignalWireEventType(value: unknown): value is "call.started" | "media.transcript" | "call.ended" | "call.error" {
+  return value === "call.started" || value === "media.transcript" || value === "call.ended" || value === "call.error";
+}
+
+function resolveSignalWireCallId(
+  body: Record<string, unknown>,
+  signalWireCallMap: Map<string, string>,
+): string | { error: string } {
+  const callId = getOptionalTrimmedString(body.callId);
+  if (callId) {
+    return callId;
+  }
+
+  const signalWireCallId = getOptionalTrimmedString(body.signalWireCallId) ?? getOptionalTrimmedString(body.callSid);
+  if (!signalWireCallId) {
+    return { error: "signalwire_call_ref_required" };
+  }
+
+  const mappedCallId = signalWireCallMap.get(signalWireCallId);
+  if (!mappedCallId) {
+    return { error: "signalwire_call_ref_not_found" };
+  }
+
+  return mappedCallId;
+}
+
+function buildSignalWireResponse(
+  eventType: "call.started" | "media.transcript" | "call.ended" | "call.error",
+  signalWireCallId: string | null,
+  snapshot: CallSnapshot,
+) {
+  return {
+    ok: true,
+    route: "/api/signalwire/events",
+    eventType,
+    signalWireCallId,
+    call: buildCallPayload(snapshot),
+  };
+}
+
 async function resolveOperatorConsoleCallId(
   body: Record<string, unknown>,
   ingress: InMemoryTelephonyIngress,
@@ -1189,6 +1229,7 @@ async function routeRequest(
   response: ServerResponse,
   config: PocConfig,
   ingress: InMemoryTelephonyIngress,
+  signalWireCallMap: Map<string, string>,
 ): Promise<void> {
   const url = request.url ?? "/";
   const requestUrl = new URL(url, "http://localhost");
@@ -1218,6 +1259,78 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/api/operator/actions") {
     writeJson(response, 200, buildOperatorActionsPayload());
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/signalwire/events") {
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    if (!isSignalWireEventType(body.eventType)) {
+      writeBadRequest(response, "signalwire_event_type_invalid");
+      return;
+    }
+
+    const timestamp = normalizeTimestamp(body.timestamp, "signalwire_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+
+    const signalWireCallId = getOptionalTrimmedString(body.signalWireCallId) ?? getOptionalTrimmedString(body.callSid) ?? null;
+
+    if (body.eventType === "call.started") {
+      const snapshot = await ingress.startCall(config, {
+        openclawSessionId: getOptionalTrimmedString(body.openclawSessionId) ?? (signalWireCallId ? `signalwire-${signalWireCallId}` : undefined),
+        openclawSessionLabel: getOptionalTrimmedString(body.openclawSessionLabel) ?? (signalWireCallId ? `signalwire/${signalWireCallId}` : undefined),
+      });
+
+      if (signalWireCallId) {
+        signalWireCallMap.set(signalWireCallId, snapshot.session.callId);
+      }
+
+      writeJson(response, 201, buildSignalWireResponse(body.eventType, signalWireCallId, snapshot));
+      return;
+    }
+
+    const callId = resolveSignalWireCallId(body, signalWireCallMap);
+    if (typeof callId !== "string") {
+      writeBadRequest(response, callId.error);
+      return;
+    }
+
+    try {
+      if (body.eventType === "media.transcript") {
+        const text = getOptionalTrimmedString(body.text) ?? getOptionalTrimmedString(body.transcript);
+        if (!text) {
+          writeBadRequest(response, "signalwire_transcript_text_required");
+          return;
+        }
+
+        const snapshot = await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config);
+        writeJson(response, 200, buildSignalWireResponse(body.eventType, signalWireCallId, snapshot));
+        return;
+      }
+
+      if (body.eventType === "call.error") {
+        const reason = getOptionalTrimmedString(body.reason) ?? "signalwire_bridge_error";
+        const snapshot = await ingress.triggerFallback(callId, "tool_timeout", timestamp, reason);
+        writeJson(response, 200, buildSignalWireResponse(body.eventType, signalWireCallId, snapshot));
+        return;
+      }
+
+      const snapshot = await ingress.applyOperatorSteer(callId, "end_call", timestamp, "signalwire_call_ended");
+      if (signalWireCallId) {
+        signalWireCallMap.delete(signalWireCallId);
+      }
+      writeJson(response, 200, buildSignalWireResponse(body.eventType, signalWireCallId, snapshot));
+    } catch {
+      writeNotFound(response);
+    }
     return;
   }
 
@@ -1929,9 +2042,10 @@ async function routeRequest(
 
 export function buildHttpServer(config: PocConfig) {
   const ingress = new InMemoryTelephonyIngress();
+  const signalWireCallMap = new Map<string, string>();
 
   return createServer((request, response) => {
-    void routeRequest(request, response, config, ingress).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;

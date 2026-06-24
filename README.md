@@ -140,6 +140,7 @@ The flow enters `policy_hold` before unsafe retention offers, requests operator 
 
 - `GET /health`: service/config/runtime readiness.
 - `POST /api/demo/start`: create a mocked call session.
+- `POST /api/signalwire/events`: exercise the local SignalWire bridge contract for `call.started`, `media.transcript`, `call.ended`, and fail-closed `call.error` events without production credentials.
 - `POST /api/calls/:callId/caller-turn`: append a caller transcript turn and advance the flow.
 - `POST /api/calls/:callId/operator-steer`: apply operator commands or direct actions, including pause/resume, approval, takeover, escalation, and safe call closeout.
 - `POST /api/calls/:callId/operator-note`: record operator notes and optional dispositions into the transcript and proof event trail.
@@ -153,6 +154,20 @@ The flow enters `policy_hold` before unsafe retention offers, requests operator 
 - `GET /api/calls/:callId/latency`: fetch filterable latency evidence.
 - `GET /api/calls/:callId/artifacts`: fetch the OpenClaw artifact manifest for the call, including linked evidence routes and latest evidence counters.
 - `GET /api/calls/:callId/proof`: export a per-call QA proof bundle with transcript, events, operator decisions, runtime mode, latency, fallback/handoff state, OpenClaw artifact links, and demo PII assumptions.
+
+Local SignalWire bridge exercise:
+
+```bash
+curl -s -X POST http://localhost:8026/api/signalwire/events \
+  -H 'content-type: application/json' \
+  -d '{"eventType":"call.started","signalWireCallId":"sw-demo-1"}'
+
+curl -s -X POST http://localhost:8026/api/signalwire/events \
+  -H 'content-type: application/json' \
+  -d '{"eventType":"media.transcript","signalWireCallId":"sw-demo-1","text":"I want to cancel my policy today."}'
+```
+
+The local bridge treats SignalWire as the telephony entrypoint while keeping credentials mocked. `call.error` routes to the existing `tool_timeout` fallback/human handoff path, and `call.ended` safely closes the demo call. Demo recording and consent remain explicit operator responsibilities before connecting real callers.
 
 Common list/queue filters include `callId`, `providerCallId`, `flowState`, `pipecatActiveTool`, `pendingOperatorSteer`, `fallbackArmed`, `attentionRequired`, `attentionSource`, `attentionReason`, `openclawSessionId`, `openclawSessionLabel`, `openclawSessionRef`, `transcriptText`, `minAttentionAgeMs`, `maxAttentionAgeMs`, `latencyStage`, and `latencyOverBudget`.
 
