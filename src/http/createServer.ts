@@ -1285,6 +1285,7 @@ async function routeRequest(
 
     if (body.eventType === "call.started") {
       const snapshot = await ingress.startCall(config, {
+        providerCallId: signalWireCallId ?? undefined,
         openclawSessionId: getOptionalTrimmedString(body.openclawSessionId) ?? (signalWireCallId ? `signalwire-${signalWireCallId}` : undefined),
         openclawSessionLabel: getOptionalTrimmedString(body.openclawSessionLabel) ?? (signalWireCallId ? `signalwire/${signalWireCallId}` : undefined),
       });

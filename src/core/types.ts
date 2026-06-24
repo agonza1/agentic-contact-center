@@ -84,6 +84,7 @@ export interface PocConfig {
 }
 
 export interface StartCallOptions {
+  providerCallId?: string;
   openclawSessionId?: string;
   openclawSessionLabel?: string;
   simulateOpenClawAttachFailure?: boolean;

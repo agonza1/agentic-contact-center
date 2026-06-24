@@ -890,6 +890,7 @@ test("POST /api/signalwire/events maps local SignalWire lifecycle into call runt
     assert.equal(startedPayload.route, "/api/signalwire/events");
     assert.equal(startedPayload.eventType, "call.started");
     assert.equal(startedPayload.signalWireCallId, "sw-call-123");
+    assert.equal(startedPayload.call.session.providerCallId, "sw-call-123");
     assert.equal(startedPayload.call.session.openclawSession.sessionId, "signalwire-sw-call-123");
     assert.equal(startedPayload.call.session.openclawSession.label, "signalwire/sw-call-123");
 
@@ -904,6 +905,7 @@ test("POST /api/signalwire/events maps local SignalWire lifecycle into call runt
     assert.equal(media.statusCode, 200);
     assert.equal(mediaPayload.eventType, "media.transcript");
     assert.equal(mediaPayload.call.session.callId, startedPayload.call.session.callId);
+    assert.equal(mediaPayload.call.session.providerCallId, "sw-call-123");
     assert.equal(mediaPayload.call.transcript.at(-2)?.speaker, "caller");
     assert.equal(mediaPayload.call.transcript.at(-2)?.text, "I want to cancel my policy today.");
 
@@ -920,6 +922,12 @@ test("POST /api/signalwire/events maps local SignalWire lifecycle into call runt
     assert.equal(errorPayload.call.demoFallback.armed, true);
     assert.equal(errorPayload.call.demoFallback.reason, "media websocket timeout");
     assert.equal(errorPayload.call.flowState, "wrap");
+
+    const filtered = await requestJson(port, "GET", "/api/calls?providerCallId=sw-call-123");
+    const filteredPayload = filtered.payload as CallListPayload;
+    assert.equal(filtered.statusCode, 200);
+    assert.equal(filteredPayload.summary.totalCalls, 1);
+    assert.equal(filteredPayload.calls[0]?.session.callId, startedPayload.call.session.callId);
 
     const missingText = await requestJson(port, "POST", "/api/signalwire/events", {
       eventType: "media.transcript",
