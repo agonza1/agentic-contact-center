@@ -236,6 +236,8 @@ function buildOperatorConsoleHtml(): string {
     function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[char]; }); }
     function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
     function callActionMetadata(call, action) {
+      const actionDetail = (call.actionState.actionDetails || []).find(function(entry) { return entry.action === action; });
+      if (actionDetail) return actionDetail;
       const catalogMetadata = state.actionMetadata[action] || {};
       const confirmation = (call.actionState.requiresConfirmationActions || []).find(function(entry) { return entry.action === action; });
       const reason = (call.actionState.requiresReasonActions || []).find(function(entry) { return entry.action === action; });
@@ -293,12 +295,15 @@ function buildOperatorConsoleHtml(): string {
       document.getElementById("selected-title").textContent = call ? call.session.callId : "Select a call";
       const root = document.getElementById("detail");
       if (!call) { root.innerHTML = ""; return; }
+      const actionDetails = Object.fromEntries((call.actionState.actionDetails || []).map(function(entry) { return [entry.action, entry]; }));
       const unavailable = new Set(call.actionState.unavailableActions.map(function(entry) { return entry.action; }));
       const unavailableReasons = Object.fromEntries(call.actionState.unavailableActions.map(function(entry) { return [entry.action, entry.reason]; }));
       const actionHtml = actions.map(function(action) {
+        const actionDetail = actionDetails[action] || {};
         const cssClass = action === "end_call" ? "danger" : action === "approve_offer" ? "primary" : "";
-        const disabled = unavailable.has(action) ? "disabled" : "";
-        const title = unavailableReasons[action] ? ' title="' + escapeHtml(unavailableReasons[action]) + '"' : "";
+        const disabled = actionDetail.enabled === false || unavailable.has(action) ? "disabled" : "";
+        const titleText = actionDetail.disabledReason || unavailableReasons[action];
+        const title = titleText ? ' title="' + escapeHtml(titleText) + '"' : "";
         return '<button type="button" data-action="' + action + '" class="' + cssClass + '" ' + disabled + title + '>' + escapeHtml(labels[action] || action.replace(/_/g, " ")) + '</button>';
       }).join("");
       const transcriptHtml = call.transcript.slice(-10).map(function(turn) {
@@ -409,6 +414,21 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       action: entry.action,
       reason: "pending_operator_steer_required",
     }));
+  const availableActionSet = new Set(
+    operatorActionCatalog
+      .filter((entry) => !entry.requiresPendingCall || snapshot.operatorSteer.pending)
+      .map((entry) => entry.action),
+  );
+  const unavailableReasonByAction = new Map(unavailableActions.map((entry) => [entry.action, entry.reason]));
+  const actionDetails = operatorActionCatalog.map((entry) => ({
+    action: entry.action,
+    enabled: availableActionSet.has(entry.action),
+    disabledReason: unavailableReasonByAction.get(entry.action) ?? null,
+    confirmationRequired: operatorActionRequiresConfirmation(entry.action),
+    confirmationMessage: getOperatorActionConfirmationMessage(entry.action),
+    requiresReason: entry.requiresReason,
+    reasonPrompt: getOperatorActionReasonPrompt(entry.action),
+  }));
   const pendingApprovalDetails = snapshot.operatorSteer.pending
     ? {
         recommendedAction: snapshot.operatorSteer.lastAction,
@@ -450,9 +470,8 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       pendingApprovalDetails,
       fallbackArmed: snapshot.demoFallback.armed,
       nextRecommendedAction,
-      availableActions: operatorActionCatalog
-        .filter((entry) => !entry.requiresPendingCall || snapshot.operatorSteer.pending)
-        .map((entry) => entry.action),
+      actionDetails,
+      availableActions: actionDetails.filter((entry) => entry.enabled).map((entry) => entry.action),
       requiresConfirmationActions: operatorActionCatalog
         .filter((entry) => !entry.requiresPendingCall || snapshot.operatorSteer.pending)
         .filter((entry) => operatorActionRequiresConfirmation(entry.action))

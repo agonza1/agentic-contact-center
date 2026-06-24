@@ -135,6 +135,15 @@ interface OperatorConsolePayload {
           } | null;
           fallbackArmed: boolean;
           nextRecommendedAction: string;
+          actionDetails: Array<{
+            action: string;
+            enabled: boolean;
+            disabledReason: string | null;
+            confirmationRequired: boolean;
+            confirmationMessage: string | null;
+            requiresReason: boolean;
+            reasonPrompt: string | null;
+          }>;
           availableActions: string[];
           requiresConfirmationActions: Array<{ action: string; confirmationMessage: string | null }>;
           requiresReasonActions: Array<{ action: string; reasonPrompt: string | null }>;
@@ -1048,6 +1057,107 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       },
       fallbackArmed: false,
       nextRecommendedAction: "approve_offer",
+      actionDetails: [
+        {
+          action: "pause",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "resume",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "approve_offer",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "deny_offer",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "escalate_to_human",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: true,
+          confirmationMessage: "Escalating hands the caller to a human operator.",
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "takeover",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: true,
+          confirmationMessage: "Takeover gives the operator direct control of the live call.",
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "end_call",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: true,
+          confirmationMessage: "Ending the call closes the active demo session.",
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
+          action: "goto_slide",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: true,
+          reasonPrompt: "Slide or step",
+        },
+        {
+          action: "ask_operator",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: true,
+          reasonPrompt: "Operator question",
+        },
+        {
+          action: "arm_fallback",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: true,
+          confirmationMessage: "Arming fallback changes the live call path until fallback is disarmed.",
+          requiresReason: true,
+          reasonPrompt: "Fallback reason",
+        },
+        {
+          action: "disarm_fallback",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+      ],
       availableActions: [
         "pause",
         "resume",
@@ -1077,6 +1187,17 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     const idleConsoleCall = consolePayload.calls.items[1];
     assert.equal(idleConsoleCall?.actionState.pendingApprovalDetails, null);
     assert.equal(idleConsoleCall?.actionState.nextRecommendedAction, "pause");
+    assert.deepEqual(
+      idleConsoleCall?.actionState.actionDetails
+        .filter((entry) => !entry.enabled)
+        .map((entry) => ({ action: entry.action, disabledReason: entry.disabledReason })),
+      [
+        { action: "resume", disabledReason: "pending_operator_steer_required" },
+        { action: "approve_offer", disabledReason: "pending_operator_steer_required" },
+        { action: "deny_offer", disabledReason: "pending_operator_steer_required" },
+        { action: "escalate_to_human", disabledReason: "pending_operator_steer_required" },
+      ],
+    );
     assert.deepEqual(idleConsoleCall?.actionState.unavailableActions, [
       { action: "resume", reason: "pending_operator_steer_required" },
       { action: "approve_offer", reason: "pending_operator_steer_required" },
@@ -1123,6 +1244,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /confirmationRequired/);
     assert.match(response.body, /confirmationAcknowledged/);
     assert.match(response.body, /callActionMetadata/);
+    assert.match(response.body, /actionDetails/);
+    assert.match(response.body, /disabledReason/);
     assert.match(response.body, /unavailableReasons/);
     assert.match(response.body, /Confirm /);
   });
