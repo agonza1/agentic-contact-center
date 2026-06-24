@@ -203,7 +203,7 @@ function buildOperatorConsoleHtml(): string {
     header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel); }
     h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0; }
     main { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 16px; padding: 16px; }
-    button, input, textarea { font: inherit; }
+    button, input, select, textarea { font: inherit; }
     button { min-height: 36px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); cursor: pointer; }
     button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
     button.danger { color: var(--danger); border-color: #f0b8b2; }
@@ -211,6 +211,8 @@ function buildOperatorConsoleHtml(): string {
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
     .panel h2 { margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 15px; }
     .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line); background: #fbfcfe; }
+    .filter-toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
     .status, .meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
     .call-list { display: grid; }
     .call-item { width: 100%; display: grid; gap: 4px; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; text-align: left; }
@@ -228,8 +230,9 @@ function buildOperatorConsoleHtml(): string {
     .turn b { font-size: 12px; color: var(--muted); text-transform: uppercase; }
     form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
     textarea { min-height: 72px; resize: vertical; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
-    input { min-height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 8px; max-width: 160px; }
-    @media (max-width: 820px) { main { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr; } form { grid-template-columns: 1fr; } input { max-width: none; width: 100%; } }
+    input, select { min-height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 8px; max-width: 180px; background: #fff; }
+    input[type="checkbox"] { min-height: auto; width: 16px; height: 16px; padding: 0; }
+    @media (max-width: 820px) { main { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr; } form { grid-template-columns: 1fr; } input, select { max-width: none; width: 100%; } .filters { align-items: stretch; } .filter-toggle { width: 100%; } }
   </style>
 </head>
 <body>
@@ -238,7 +241,7 @@ function buildOperatorConsoleHtml(): string {
     <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" id="start-demo">Start Demo Call</button><button type="button" id="refresh">Refresh</button></div>
   </header>
   <main>
-    <section class="panel" aria-label="Live calls"><h2>Live Calls</h2><div class="call-list" id="calls"></div></section>
+    <section class="panel" aria-label="Live calls"><h2>Live Calls</h2><div class="filters"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Attention only</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><input id="transcript-filter" placeholder="Transcript search"><button type="button" id="clear-filters">Clear</button></div><div class="call-list" id="calls"></div></section>
     <section class="panel" aria-label="Selected call"><h2 id="selected-title">Select a call</h2><div class="detail" id="detail"></div></section>
   </main>
   <script>
@@ -248,6 +251,15 @@ function buildOperatorConsoleHtml(): string {
     function setStatus(text) { document.getElementById("status").textContent = text; }
     function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[char]; }); }
     function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
+    function operatorConsoleQuery() {
+      const params = new URLSearchParams({ sort: "attentionStartedAt", order: "asc", limit: "25" });
+      if (document.getElementById("attention-filter").checked) params.set("attentionRequired", "true");
+      const flowState = document.getElementById("flow-filter").value;
+      if (flowState) params.set("flowState", flowState);
+      const transcriptText = document.getElementById("transcript-filter").value.trim();
+      if (transcriptText) params.set("transcriptText", transcriptText);
+      return params.toString();
+    }
     function callActionMetadata(call, action) {
       const actionDetail = (call.actionState.actionDetails || []).find(function(entry) { return entry.action === action; });
       if (actionDetail) return actionDetail;
@@ -263,7 +275,7 @@ function buildOperatorConsoleHtml(): string {
     }
     async function refresh() {
       setStatus("Refreshing");
-      const response = await fetch("/api/operator/console?sort=attentionStartedAt&order=asc&limit=25");
+      const response = await fetch("/api/operator/console?" + operatorConsoleQuery());
       if (!response.ok) throw new Error("console_fetch_failed");
       const payload = await response.json();
       state.actionMetadata = Object.fromEntries(payload.controls.actions.map(function(entry) { return [entry.action, entry]; }));
@@ -345,6 +357,10 @@ function buildOperatorConsoleHtml(): string {
     function render() { renderCalls(); renderDetail(); }
     document.getElementById("start-demo").addEventListener("click", function() { startDemoCall().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("refresh").addEventListener("click", function() { refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("attention-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("flow-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("transcript-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("clear-filters").addEventListener("click", function() { document.getElementById("attention-filter").checked = false; document.getElementById("flow-filter").value = ""; document.getElementById("transcript-filter").value = ""; refresh().catch(function(error) { setStatus(error.message); }); });
     refresh().catch(function(error) { setStatus(error.message); });
   </script>
 </body>
