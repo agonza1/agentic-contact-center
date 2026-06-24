@@ -423,6 +423,10 @@ function isAttentionSource(value: string): value is AttentionSource {
   return value === "operator_steer" || value === "fallback" || value === "operator_steer+fallback";
 }
 
+function isFallbackMode(value: string): value is FallbackMode {
+  return value === "tool_timeout" || value === "runtime_failure";
+}
+
 function isTranscriptSpeaker(value: string): value is TranscriptTurn["speaker"] {
   return value === "caller" || value === "agent" || value === "operator" || value === "system";
 }
@@ -1014,6 +1018,7 @@ interface CallListFilters {
   pipecatActiveTool?: string;
   pendingOperatorSteer?: boolean;
   fallbackArmed?: boolean;
+  fallbackMode?: FallbackMode;
   attentionRequired?: boolean;
   attentionSource?: AttentionSource;
   attentionReason?: string;
@@ -1060,6 +1065,11 @@ function parseCallListFilters(
   );
   if (typeof fallbackArmed !== "boolean" && fallbackArmed !== undefined) {
     return fallbackArmed;
+  }
+
+  const fallbackMode = requestUrl.searchParams.get("fallbackMode");
+  if (fallbackMode !== null && !isFallbackMode(fallbackMode)) {
+    return { error: `${invalidPrefix}_fallback_mode_invalid` };
   }
 
   const attentionRequired = parseOptionalBooleanFilter(
@@ -1144,6 +1154,7 @@ function parseCallListFilters(
     pipecatActiveTool: pipecatActiveTool?.trim() || undefined,
     pendingOperatorSteer,
     fallbackArmed,
+    fallbackMode: fallbackMode ?? undefined,
     attentionRequired,
     attentionSource: attentionSource ?? undefined,
     attentionReason: attentionReason?.trim() || undefined,

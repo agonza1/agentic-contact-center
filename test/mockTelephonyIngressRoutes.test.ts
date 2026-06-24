@@ -2177,6 +2177,13 @@ test("GET /api/queue can filter operator summary slices", async () => {
       error: "queue_fallback_armed_invalid",
     });
 
+    const invalidFallbackMode = await requestJson(port, "GET", "/api/queue?fallbackMode=manual_takeover");
+    assert.equal(invalidFallbackMode.statusCode, 400);
+    assert.deepEqual(invalidFallbackMode.payload, {
+      ok: false,
+      error: "queue_fallback_mode_invalid",
+    });
+
     const invalidAttention = await requestJson(port, "GET", "/api/queue?attentionRequired=loudly");
     assert.equal(invalidAttention.statusCode, 400);
     assert.deepEqual(invalidAttention.payload, {
@@ -2817,6 +2824,25 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.equal(runtimeFailureProofPayload.outcome.fallbackSource, "pipecat_runtime_failure_fail_closed");
     assert.equal(runtimeFailureProofPayload.outcome.handoffStarted, true);
     assert.equal(runtimeFailureProofPayload.outcome.handoffStartedAt, "2026-06-10T14:00:03.000Z");
+
+    const runtimeFailureCalls = await requestJson(port, "GET", "/api/calls?fallbackMode=runtime_failure");
+    const runtimeFailureCallsPayload = runtimeFailureCalls.payload as CallListPayload;
+    assert.equal(runtimeFailureCalls.statusCode, 200);
+    assert.deepEqual(runtimeFailureCallsPayload.calls.map((call) => call.session.callId), [runtimeFailureCallId]);
+    assert.equal(runtimeFailureCallsPayload.summary.filteredSummary.fallbackArmed, 1);
+
+    const toolTimeoutQueue = await requestJson(port, "GET", "/api/queue?fallbackMode=tool_timeout");
+    const toolTimeoutQueuePayload = toolTimeoutQueue.payload as QueueSummaryPayload;
+    assert.equal(toolTimeoutQueue.statusCode, 200);
+    assert.equal(toolTimeoutQueuePayload.summary.totalCalls, 1);
+    assert.equal(toolTimeoutQueuePayload.summary.oldestAttentionCallId, callId);
+
+    const invalidFallbackMode = await requestJson(port, "GET", "/api/calls?fallbackMode=manual_takeover");
+    assert.equal(invalidFallbackMode.statusCode, 400);
+    assert.deepEqual(invalidFallbackMode.payload, {
+      ok: false,
+      error: "call_list_fallback_mode_invalid",
+    });
   });
 });
 

@@ -42,6 +42,7 @@ Open `artifacts/demo-proof.json` or `artifacts/demo-proof-latest.json` and confi
 - `summary.queueAttention.attentionRequired` is `1`
 - `proofContract.queueAttentionFilter` scopes queue proof to `attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget`
 - `proofContract.runtimeFailureSourceTrail` is `events?source=pipecat_runtime_failure_fail_closed`
+- `/api/calls?fallbackMode=runtime_failure` returns the runtime-failure drill call for targeted QA review
 - `summary.queueAttention.oldestAttentionSource` is `fallback`
 - `summary.queueAttention.oldestAttentionFlowState` is `wrap`
 - `summary.queueAttention.oldestAttentionAgeMs` is a non-null number for stale-queue polling
