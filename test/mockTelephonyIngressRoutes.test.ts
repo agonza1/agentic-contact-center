@@ -1340,6 +1340,11 @@ test("POST /api/operator/console/action dispatches live call controls", async ()
     assert.equal(sessionRefAction.statusCode, 200);
     assert.equal(sessionRefPayload.call.session.callId, refCall.session.callId);
     assert.equal(sessionRefPayload.call.operatorSteer.lastAction, "takeover");
+    const takeoverAppliedEvent = sessionRefPayload.call.events.find(
+      (event) => event.type === "operator_steer_applied" && event.detail.action === "takeover",
+    );
+    assert.equal(takeoverAppliedEvent?.detail.sourceRoute, "/api/operator/console/action");
+    assert.equal(takeoverAppliedEvent?.detail.confirmationAcknowledged, true);
 
     const transferStarted = await requestJson(port, "POST", "/api/demo/start");
     const transferCallId = (transferStarted.payload as SnapshotPayload).session.callId;

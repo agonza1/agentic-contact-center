@@ -245,6 +245,7 @@ export class InMemoryTelephonyIngress {
     action: OperatorSteerAction,
     timestamp: string,
     reason?: string,
+    audit: { sourceRoute?: string; confirmationAcknowledged?: boolean | null } = {},
   ): Promise<CallSnapshot> {
     const snapshot = this.calls.get(callId);
 
@@ -258,7 +259,7 @@ export class InMemoryTelephonyIngress {
       throw new Error(`Call is not awaiting operator steer: ${callId}`);
     }
 
-    applyOperatorSteer(snapshot, action, timestamp, reason);
+    applyOperatorSteer(snapshot, action, timestamp, reason, audit);
     recordLatencyMark(snapshot, "operator_notified", timestamp, "operatorNotification");
     recordLatencyMark(snapshot, "agent_response_ready", timestamp, "ttsFirstAudio");
 

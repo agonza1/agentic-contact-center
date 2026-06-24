@@ -1453,11 +1453,16 @@ async function routeRequest(
     }
 
     try {
+      const confirmationRequired = operatorActionRequiresConfirmation(parsedSteer.action);
       const snapshot = await ingress.applyOperatorSteer(
         callId,
         parsedSteer.action,
         parsedSteer.timestamp,
         parsedSteer.reason,
+        {
+          sourceRoute: "/api/operator/console/action",
+          confirmationAcknowledged: confirmationRequired ? body.confirmationAcknowledged === true : null,
+        },
       );
       writeJson(response, 200, {
         ok: true,

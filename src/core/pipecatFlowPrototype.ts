@@ -316,6 +316,7 @@ export function applyOperatorSteer(
   action: OperatorSteerAction,
   timestamp: string,
   reason?: string,
+  audit: { sourceRoute?: string; confirmationAcknowledged?: boolean | null } = {},
 ): void {
   snapshot.pipecatFlow.activeTool = "ask_operator";
   const wasPending = snapshot.operatorSteer.pending;
@@ -324,6 +325,8 @@ export function applyOperatorSteer(
   recordEvent(snapshot, "operator_steer_applied", timestamp, {
     action,
     source: "mock_http_route",
+    sourceRoute: audit.sourceRoute ?? null,
+    confirmationAcknowledged: audit.confirmationAcknowledged ?? null,
   });
 
   if (action === "pause") {
