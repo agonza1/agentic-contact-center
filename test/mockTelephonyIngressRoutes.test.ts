@@ -1271,9 +1271,12 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Start Demo Call/);
     assert.match(response.body, /Attention only/);
     assert.match(response.body, /Flow state filter/);
+    assert.match(response.body, /Fallback mode filter/);
+    assert.match(response.body, /All fallback modes/);
     assert.match(response.body, /Transcript search/);
     assert.match(response.body, /operatorConsoleQuery/);
     assert.match(response.body, /attentionRequired/);
+    assert.match(response.body, /fallbackMode/);
     assert.match(response.body, /transcriptText/);
     assert.match(response.body, /\/api\/demo\/start/);
     assert.match(response.body, /caller-turn-form/);
