@@ -29,6 +29,7 @@ const maxEventTrailPageLimit = 100;
 const maxTranscriptPageLimit = 100;
 const maxLatencyMarkPageLimit = 100;
 const maxCallListPageLimit = 100;
+const operatorConsoleRefreshIntervalMs = 5000;
 
 const operatorSteerActions: OperatorSteerAction[] = [
   "approve_offer",
@@ -247,7 +248,7 @@ function buildOperatorConsoleHtml(): string {
     <section class="panel" aria-label="Selected call"><h2 id="selected-title">Select a call</h2><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {} };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: 5000 };
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
     function setStatus(text) { document.getElementById("status").textContent = text; }
@@ -298,10 +299,12 @@ function buildOperatorConsoleHtml(): string {
       const payload = await response.json();
       state.actionMetadata = Object.fromEntries(payload.controls.actions.map(function(entry) { return [entry.action, entry]; }));
       state.scriptedCallerTurns = payload.controls.scriptedCallerTurns || [];
+      state.refreshIntervalMs = payload.refreshIntervalMs || 5000;
       state.calls = payload.calls.items;
       if (!state.calls.some(function(call) { return call.session.callId === state.selectedCallId; })) state.selectedCallId = state.calls[0] ? state.calls[0].session.callId : null;
       render();
       setStatus(new Date().toLocaleTimeString());
+      scheduleRefresh();
     }
     async function postAction(action, reason, confirmed) {
       const call = selectedCall();
@@ -394,6 +397,10 @@ function buildOperatorConsoleHtml(): string {
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
     function render() { renderCalls(); renderDetail(); }
+    function scheduleRefresh() {
+      if (state.refreshTimer) clearTimeout(state.refreshTimer);
+      state.refreshTimer = setTimeout(function() { refresh().catch(function(error) { setStatus(error.message); scheduleRefresh(); }); }, state.refreshIntervalMs || 5000);
+    }
     document.getElementById("start-demo").addEventListener("click", function() { startDemoCall().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("refresh").addEventListener("click", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("attention-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
@@ -1901,6 +1908,7 @@ async function routeRequest(
     writeJson(response, 200, {
       schemaVersion: 1,
       generatedAt: new Date().toISOString(),
+      refreshIntervalMs: operatorConsoleRefreshIntervalMs,
       runtimeHealth: {
         ok: true,
         mode: config.mode,

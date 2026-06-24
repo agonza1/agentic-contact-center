@@ -91,6 +91,8 @@ interface CallListPayload extends QueueSummaryPayload {
 
 interface OperatorConsolePayload {
   schemaVersion: number;
+  generatedAt: string;
+  refreshIntervalMs: number;
   runtimeHealth: { ok: boolean; mode: string; provider: string; pipecatFlow: { ready: boolean } };
   controls: {
     commandWrappers: string[];
@@ -1158,6 +1160,8 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
 
     assert.equal(consoleResponse.statusCode, 200);
     assert.equal(consolePayload.runtimeHealth.ok, true);
+    assert.equal(typeof consolePayload.generatedAt, "string");
+    assert.equal(consolePayload.refreshIntervalMs, 5000);
     assert.equal(consolePayload.runtimeHealth.pipecatFlow.ready, true);
     assert.deepEqual(consolePayload.controls.commandWrappers, ["/operator", "/steer"]);
     assert.deepEqual(consolePayload.controls.callReferenceFields, [
@@ -1483,6 +1487,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /All active tools/);
     assert.match(response.body, /Transcript search/);
     assert.match(response.body, /operatorConsoleQuery/);
+    assert.match(response.body, /refreshIntervalMs/);
+    assert.match(response.body, /scheduleRefresh/);
     assert.match(response.body, /attentionRequired/);
     assert.match(response.body, /latencyOverBudget/);
     assert.match(response.body, /fallbackMode/);
