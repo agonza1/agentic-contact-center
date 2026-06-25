@@ -39,6 +39,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         runtimeFailureSourceTrail: string;
         runtimeFailureQueueFilter: string;
         runtimeFailureCallListFilter: string;
+        runtimeFailureProofBundle: string;
       };
       health: {
         ok: boolean;
@@ -65,6 +66,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           runtimeFailureSourceTrail: string;
           runtimeFailureQueueFilter: string;
           runtimeFailureCallListFilter: string;
+          runtimeFailureProofBundle: string;
         };
         queueAttention: {
           attentionRequired: number;
@@ -118,6 +120,16 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           firstCallId: string;
           firstFallbackMode: string | null;
           firstFlowState: string;
+        };
+        runtimeFailureProofBundle: {
+          route: string;
+          fallbackMode: string | null;
+          fallbackSource: string | null;
+          handoffStarted: boolean;
+          fallbackSourceTrail: string | null;
+          overBudgetLatencyTrail: string | null;
+          summaryEventCount: number;
+          summaryOverBudgetLatencyMarkCount: number;
         };
         healthOk: boolean;
         gitRevision: string | null;
@@ -181,6 +193,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.proofContract.runtimeFailureSourceTrail, "events?source=pipecat_runtime_failure_fail_closed");
     assert.equal(artifact.proofContract.runtimeFailureQueueFilter, "attentionRequired=true&fallbackMode=runtime_failure");
     assert.equal(artifact.proofContract.runtimeFailureCallListFilter, "fallbackMode=runtime_failure&limit=5");
+    assert.equal(artifact.proofContract.runtimeFailureProofBundle, "calls/{runtimeFailureCallId}/proof");
     assert.equal(artifact.summary.schemaVersion, 1);
     assert.deepEqual(artifact.summary.proofContract, artifact.proofContract);
     assert.equal(artifact.health.ok, true);
@@ -241,6 +254,17 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.runtimeFailureCallList.firstCallId, artifact.runtimeFailure.callId);
     assert.equal(artifact.summary.runtimeFailureCallList.firstFallbackMode, "runtime_failure");
     assert.equal(artifact.summary.runtimeFailureCallList.firstFlowState, "wrap");
+    assert.equal(artifact.summary.runtimeFailureProofBundle.route, "calls/" + artifact.runtimeFailure.callId + "/proof");
+    assert.equal(artifact.summary.runtimeFailureProofBundle.fallbackMode, "runtime_failure");
+    assert.equal(artifact.summary.runtimeFailureProofBundle.fallbackSource, "pipecat_runtime_failure_fail_closed");
+    assert.equal(artifact.summary.runtimeFailureProofBundle.handoffStarted, true);
+    assert.equal(
+      artifact.summary.runtimeFailureProofBundle.fallbackSourceTrail,
+      "/api/calls/" + artifact.runtimeFailure.callId + "/events?source=pipecat_runtime_failure_fail_closed",
+    );
+    assert.equal(artifact.summary.runtimeFailureProofBundle.overBudgetLatencyTrail, null);
+    assert.equal(artifact.summary.runtimeFailureProofBundle.summaryEventCount > 0, true);
+    assert.equal(artifact.summary.runtimeFailureProofBundle.summaryOverBudgetLatencyMarkCount, 0);
     assert.equal(artifact.scripted.outcome, "scripted_wrap_complete");
     assert.equal(artifact.scripted.checkpoints.wrapped.pipecatFlow.script.completed, true);
     assert.equal(artifact.summary.scripted.flowState, "wrap");

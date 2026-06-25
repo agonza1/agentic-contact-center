@@ -45,7 +45,9 @@ Open `artifacts/demo-proof.json` or `artifacts/demo-proof-latest.json` and confi
 - `summary.operatorNoteTrail.latestDisposition` is `qa_verified`
 - `proofContract.runtimeFailureSourceTrail` is `events?source=pipecat_runtime_failure_fail_closed`
 - `proofContract.runtimeFailureCallListFilter` is `fallbackMode=runtime_failure&limit=5`
+- `proofContract.runtimeFailureProofBundle` is `calls/{runtimeFailureCallId}/proof`
 - `summary.runtimeFailureCallList.firstCallId` matches the runtime-failure drill call for targeted QA review
+- `summary.runtimeFailureProofBundle.fallbackSourceTrail` points at the runtime-failure handoff source trail
 - `summary.queueAttention.oldestAttentionSource` is `fallback`
 - `summary.queueAttention.oldestAttentionFlowState` is `wrap`
 - `summary.queueAttention.oldestAttentionAgeMs` is a non-null number for stale-queue polling

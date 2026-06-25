@@ -257,6 +257,28 @@ async function getRuntimeFailureCallList(port, callId) {
   };
 }
 
+async function getRuntimeFailureProofBundle(port, callId) {
+  const proof = await requestJson(port, "GET", `/api/calls/${callId}/proof`);
+  assert.equal(proof.statusCode, 200);
+  assert.equal(proof.payload.outcome.fallbackMode, "runtime_failure");
+  assert.equal(proof.payload.outcome.fallbackSource, "pipecat_runtime_failure_fail_closed");
+  assert.equal(
+    proof.payload.evidenceRoutes.fallbackSourceTrail,
+    `/api/calls/${callId}/events?source=pipecat_runtime_failure_fail_closed`,
+  );
+
+  return {
+    route: `calls/${callId}/proof`,
+    fallbackMode: proof.payload.outcome.fallbackMode,
+    fallbackSource: proof.payload.outcome.fallbackSource,
+    handoffStarted: proof.payload.outcome.handoffStarted,
+    fallbackSourceTrail: proof.payload.evidenceRoutes.fallbackSourceTrail,
+    overBudgetLatencyTrail: proof.payload.evidenceRoutes.overBudgetLatencyTrail,
+    summaryEventCount: proof.payload.summary.eventCount,
+    summaryOverBudgetLatencyMarkCount: proof.payload.summary.overBudgetLatencyMarkCount,
+  };
+}
+
 async function getAttentionSortedCallList(port) {
   const list = await requestJson(
     port,
@@ -369,6 +391,7 @@ function summarizeArtifact(artifact) {
     runtimeFailureSourceTrail: artifact.runtimeFailureSourceTrail,
     runtimeFailureQueue: artifact.runtimeFailureQueue,
     runtimeFailureCallList: artifact.runtimeFailureCallList,
+    runtimeFailureProofBundle: artifact.runtimeFailureProofBundle,
     scripted: {
       outcome: artifact.scripted.outcome,
       callId: artifact.scripted.callId,
@@ -417,6 +440,7 @@ async function main() {
     );
     const runtimeFailureQueue = await getRuntimeFailureQueueSummary(port);
     const runtimeFailureCallList = await getRuntimeFailureCallList(port, runtimeFailure.callId);
+    const runtimeFailureProofBundle = await getRuntimeFailureProofBundle(port, runtimeFailure.callId);
 
     return {
       schemaVersion: 1,
@@ -438,6 +462,7 @@ async function main() {
         runtimeFailureSourceTrail: "events?source=pipecat_runtime_failure_fail_closed",
         runtimeFailureQueueFilter: "attentionRequired=true&fallbackMode=runtime_failure",
         runtimeFailureCallListFilter: "fallbackMode=runtime_failure&limit=5",
+        runtimeFailureProofBundle: "calls/{runtimeFailureCallId}/proof",
       },
       health: health.payload,
       operatorNoteTrail,
@@ -447,6 +472,7 @@ async function main() {
       runtimeFailureSourceTrail,
       runtimeFailureQueue,
       runtimeFailureCallList,
+      runtimeFailureProofBundle,
       scripted,
       fallback,
       runtimeFailure,
