@@ -286,6 +286,10 @@ async function getRuntimeFailureArtifactManifest(port, callId) {
   assert.equal(manifest.statusCode, 200);
   assert.equal(manifest.payload.summary.fallbackMode, "runtime_failure");
   assert.equal(manifest.payload.summary.fallbackSource, "pipecat_runtime_failure_fail_closed");
+  assert.equal(manifest.payload.summary.eventTypes.includes("human_handoff_started"), true);
+  assert.equal(manifest.payload.summary.operatorNoteCount, 0);
+  assert.equal(manifest.payload.summary.latestOperatorNoteAt, null);
+  assert.equal(manifest.payload.summary.latestDisposition, null);
   assert.equal(
     manifest.payload.evidenceRoutes.fallbackSourceTrail,
     `/api/calls/${callId}/events?source=pipecat_runtime_failure_fail_closed`,
@@ -297,6 +301,10 @@ async function getRuntimeFailureArtifactManifest(port, callId) {
     runtimeEngine: manifest.payload.runtimeMode.runtimeEngine,
     fallbackMode: manifest.payload.summary.fallbackMode,
     fallbackSource: manifest.payload.summary.fallbackSource,
+    eventTypes: manifest.payload.summary.eventTypes,
+    operatorNoteCount: manifest.payload.summary.operatorNoteCount,
+    latestOperatorNoteAt: manifest.payload.summary.latestOperatorNoteAt,
+    latestDisposition: manifest.payload.summary.latestDisposition,
     handoffStartedAt: manifest.payload.summary.handoffStartedAt,
     fallbackSourceTrail: manifest.payload.evidenceRoutes.fallbackSourceTrail,
     operatorConsole: manifest.payload.evidenceRoutes.operatorConsole,

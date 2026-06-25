@@ -816,6 +816,9 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
   const latestTranscriptTurn = snapshot.transcript.at(-1);
   const latestLatencyMark = snapshot.latencyMarks.at(-1);
   const handoffEvent = snapshot.events.find((event) => event.type === "human_handoff_started");
+  const eventTypes = [...new Set(snapshot.events.map((event) => event.type))];
+  const operatorNoteEvents = snapshot.events.filter((event) => event.type === "operator_note_recorded");
+  const latestOperatorNote = operatorNoteEvents.at(-1);
   const fallbackSource = typeof handoffEvent?.detail.source === "string" ? handoffEvent.detail.source : null;
   const overBudgetLatencyMarkCount = snapshot.latencyMarks.filter(
     (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
@@ -854,6 +857,10 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
     summary: {
       transcriptTurns: snapshot.transcript.length,
       eventCount: snapshot.events.length,
+      eventTypes,
+      operatorNoteCount: operatorNoteEvents.length,
+      latestOperatorNoteAt: latestOperatorNote?.at ?? null,
+      latestDisposition: typeof latestOperatorNote?.detail.disposition === "string" ? latestOperatorNote.detail.disposition : null,
       latencyMarkCount: snapshot.latencyMarks.length,
       overBudgetLatencyMarkCount,
       fallbackMode: snapshot.demoFallback.mode,

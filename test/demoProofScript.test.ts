@@ -140,6 +140,10 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           runtimeEngine: string;
           fallbackMode: string | null;
           fallbackSource: string | null;
+          eventTypes: string[];
+          operatorNoteCount: number;
+          latestOperatorNoteAt: string | null;
+          latestDisposition: string | null;
           handoffStartedAt: string | null;
           fallbackSourceTrail: string | null;
           operatorConsole: string;
@@ -287,6 +291,10 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.runtimeEngine, "pipecat-ai");
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.fallbackMode, "runtime_failure");
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.fallbackSource, "pipecat_runtime_failure_fail_closed");
+    assert.equal(artifact.summary.runtimeFailureArtifactManifest.eventTypes.includes("human_handoff_started"), true);
+    assert.equal(artifact.summary.runtimeFailureArtifactManifest.operatorNoteCount, 0);
+    assert.equal(artifact.summary.runtimeFailureArtifactManifest.latestOperatorNoteAt, null);
+    assert.equal(artifact.summary.runtimeFailureArtifactManifest.latestDisposition, null);
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.handoffStartedAt, "2026-06-11T20:47:02.000Z");
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.fallbackSourceTrail, "/api/calls/" + artifact.runtimeFailure.callId + "/events?source=pipecat_runtime_failure_fail_closed");
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.operatorConsole, "/api/operator/console?callId=" + artifact.runtimeFailure.callId);
