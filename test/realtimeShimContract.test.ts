@@ -4,6 +4,9 @@ import assert from "node:assert/strict";
 import {
   REALTIME_SHIM_RPCS,
   buildLocalSttStartMessage,
+  createRealtimeShimAudioRelayEvent,
+  createRealtimeShimClearRelayEvent,
+  createRealtimeShimCloseRelayEvent,
   createRealtimeShimSessionEnvelope,
   decodeGatewayRelayPcm16,
 } from "../src/core/realtimeShimContract";
@@ -61,4 +64,28 @@ test("gateway relay audio decode rejects empty or malformed pcm16 frames", () =>
   assert.deepEqual(decodeGatewayRelayPcm16(pcm16Frame.toString("base64")), pcm16Frame);
   assert.throws(() => decodeGatewayRelayPcm16("   "), /audioBase64 is required/);
   assert.throws(() => decodeGatewayRelayPcm16(Buffer.from([1]).toString("base64")), /even number of bytes/);
+});
+
+test("gateway relay events preserve correlated session identity", () => {
+  const envelope = createRealtimeShimSessionEnvelope({ relaySessionId: "local-rt-events" });
+  const pcm16Frame = Buffer.from([1, 0, 2, 0]).toString("base64");
+
+  assert.deepEqual(createRealtimeShimAudioRelayEvent(envelope, `  ${pcm16Frame}  `), {
+    relaySessionId: "local-rt-events",
+    sessionId: "local-rt-events",
+    type: "audio",
+    audioBase64: pcm16Frame,
+  });
+  assert.deepEqual(createRealtimeShimClearRelayEvent(envelope, "barge-in"), {
+    relaySessionId: "local-rt-events",
+    sessionId: "local-rt-events",
+    type: "clear",
+    reason: "barge-in",
+  });
+  assert.deepEqual(createRealtimeShimCloseRelayEvent(envelope, "complete"), {
+    relaySessionId: "local-rt-events",
+    sessionId: "local-rt-events",
+    type: "close",
+    reason: "complete",
+  });
 });

@@ -38,6 +38,26 @@ export interface LocalSttStartMessage {
   interim_results: true;
 }
 
+export type RealtimeShimRelayEvent =
+  | {
+      relaySessionId: string;
+      sessionId: string;
+      type: "audio";
+      audioBase64: string;
+    }
+  | {
+      relaySessionId: string;
+      sessionId: string;
+      type: "clear";
+      reason: "barge-in" | "cancelled" | "error";
+    }
+  | {
+      relaySessionId: string;
+      sessionId: string;
+      type: "close";
+      reason: "client" | "complete" | "error";
+    };
+
 export const REALTIME_SHIM_RPCS: RealtimeShimRpc[] = [
   "talk.session.create",
   "talk.session.appendAudio",
@@ -102,4 +122,42 @@ export function decodeGatewayRelayPcm16(audioBase64: string): Buffer {
   }
 
   return decodedAudio;
+}
+
+export function createRealtimeShimAudioRelayEvent(
+  envelope: Pick<RealtimeShimSessionEnvelope, "relaySessionId" | "sessionId">,
+  audioBase64: string,
+): RealtimeShimRelayEvent {
+  decodeGatewayRelayPcm16(audioBase64);
+
+  return {
+    relaySessionId: envelope.relaySessionId,
+    sessionId: envelope.sessionId,
+    type: "audio",
+    audioBase64: audioBase64.trim(),
+  };
+}
+
+export function createRealtimeShimClearRelayEvent(
+  envelope: Pick<RealtimeShimSessionEnvelope, "relaySessionId" | "sessionId">,
+  reason: "barge-in" | "cancelled" | "error" = "cancelled",
+): RealtimeShimRelayEvent {
+  return {
+    relaySessionId: envelope.relaySessionId,
+    sessionId: envelope.sessionId,
+    type: "clear",
+    reason,
+  };
+}
+
+export function createRealtimeShimCloseRelayEvent(
+  envelope: Pick<RealtimeShimSessionEnvelope, "relaySessionId" | "sessionId">,
+  reason: "client" | "complete" | "error" = "client",
+): RealtimeShimRelayEvent {
+  return {
+    relaySessionId: envelope.relaySessionId,
+    sessionId: envelope.sessionId,
+    type: "close",
+    reason,
+  };
 }
