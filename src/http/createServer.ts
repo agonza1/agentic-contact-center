@@ -733,6 +733,16 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
   const overBudgetLatencyMarks = snapshot.latencyMarks.filter(
     (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
   );
+  const fallbackSource = typeof handoffEvent?.detail.source === "string" ? handoffEvent.detail.source : null;
+  const operatorNoteTrail = operatorNoteEvents.length > 0
+    ? snapshot.session.openclawSession.artifactLinks.events + "?type=operator_note_recorded"
+    : null;
+  const fallbackSourceTrail = fallbackSource
+    ? snapshot.session.openclawSession.artifactLinks.events + "?source=" + encodeURIComponent(fallbackSource)
+    : null;
+  const overBudgetLatencyTrail = overBudgetLatencyMarks.length > 0
+    ? snapshot.session.openclawSession.artifactLinks.latencyMarks + "?overBudget=true"
+    : null;
 
   return {
     schemaVersion: 1,
@@ -755,13 +765,21 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       scriptCompleted: snapshot.pipecatFlow.script.completed,
       fallbackArmed: snapshot.demoFallback.armed,
       fallbackMode: snapshot.demoFallback.mode,
-      fallbackSource: typeof handoffEvent?.detail.source === "string" ? handoffEvent.detail.source : null,
+      fallbackSource,
       handoffStarted: handoffEvent !== undefined,
       handoffStartedAt: handoffEvent?.at ?? null,
       attentionRequired: attention.required,
       attentionReason: attention.reason,
     },
     artifacts: snapshot.session.openclawSession.artifactLinks,
+    evidenceRoutes: {
+      transcript: snapshot.session.openclawSession.artifactLinks.transcript,
+      events: snapshot.session.openclawSession.artifactLinks.events,
+      latencyMarks: snapshot.session.openclawSession.artifactLinks.latencyMarks,
+      operatorNoteTrail,
+      fallbackSourceTrail,
+      overBudgetLatencyTrail,
+    },
     summary: {
       transcriptTurns: snapshot.transcript.length,
       eventCount: snapshot.events.length,
@@ -770,17 +788,11 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       operatorNoteCount: operatorNoteEvents.length,
       latestOperatorNoteAt: latestOperatorNote?.at ?? null,
       latestDisposition: typeof latestOperatorNote?.detail.disposition === "string" ? latestOperatorNote.detail.disposition : null,
-      operatorNoteTrail: operatorNoteEvents.length > 0
-        ? snapshot.session.openclawSession.artifactLinks.events + "?type=operator_note_recorded"
-        : null,
-      fallbackSourceTrail: typeof handoffEvent?.detail.source === "string"
-        ? snapshot.session.openclawSession.artifactLinks.events + "?source=" + encodeURIComponent(handoffEvent.detail.source)
-        : null,
+      operatorNoteTrail,
+      fallbackSourceTrail,
       latencyMarkCount: snapshot.latencyMarks.length,
       overBudgetLatencyMarkCount: overBudgetLatencyMarks.length,
-      overBudgetLatencyTrail: overBudgetLatencyMarks.length > 0
-        ? snapshot.session.openclawSession.artifactLinks.latencyMarks + "?overBudget=true"
-        : null,
+      overBudgetLatencyTrail,
       toolCoverage: snapshot.pipecatFlow.toolCoverage,
     },
     session: snapshot.session,

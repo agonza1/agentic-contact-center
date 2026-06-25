@@ -533,6 +533,14 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
         openclawSession: { sessionId: string; label: string; status: string };
       };
       artifacts: { snapshot: string; artifacts: string; proof: string; transcript: string; events: string; latencyMarks: string };
+      evidenceRoutes: {
+        transcript: string;
+        events: string;
+        latencyMarks: string;
+        operatorNoteTrail: string | null;
+        fallbackSourceTrail: string | null;
+        overBudgetLatencyTrail: string | null;
+      };
       pii: { redactionApplied: boolean; assumptions: string };
       outcome: {
         flowState: string;
@@ -575,6 +583,14 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
       transcript: `/api/calls/${callId}/transcript`,
       events: `/api/calls/${callId}/events`,
       latencyMarks: `/api/calls/${callId}/latency`,
+    });
+    assert.deepEqual(payload.evidenceRoutes, {
+      transcript: `/api/calls/${callId}/transcript`,
+      events: `/api/calls/${callId}/events`,
+      latencyMarks: `/api/calls/${callId}/latency`,
+      operatorNoteTrail: null,
+      fallbackSourceTrail: null,
+      overBudgetLatencyTrail: null,
     });
     assert.equal(payload.pii.redactionApplied, false);
     assert.match(payload.pii.assumptions, /mock caller text/);
@@ -1505,6 +1521,7 @@ test("POST /api/calls/:callId/operator-note records operator notes and dispositi
 
     const proof = await requestJson(port, "GET", "/api/calls/" + callId + "/proof");
     const proofPayload = proof.payload as {
+      evidenceRoutes: { operatorNoteTrail: string | null };
       summary: {
         operatorNoteCount: number;
         latestOperatorNoteAt: string | null;
@@ -1520,6 +1537,7 @@ test("POST /api/calls/:callId/operator-note records operator notes and dispositi
     assert.equal(proofPayload.summary.latestOperatorNoteAt, "2026-06-10T14:12:00.000Z");
     assert.equal(proofPayload.summary.latestDisposition, "follow_up_requested");
     assert.equal(proofPayload.summary.operatorNoteTrail, "/api/calls/" + callId + "/events?type=operator_note_recorded");
+    assert.equal(proofPayload.evidenceRoutes.operatorNoteTrail, "/api/calls/" + callId + "/events?type=operator_note_recorded");
 
     const consoleResponse = await requestJson(port, "GET", "/api/operator/console?callId=" + callId);
     const consolePayload = consoleResponse.payload as OperatorConsolePayload;
@@ -2900,6 +2918,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     const runtimeFailureProof = await requestJson(port, "GET", `/api/calls/${runtimeFailureCallId}/proof`);
     const runtimeFailureProofPayload = runtimeFailureProof.payload as {
       outcome: { fallbackMode: string | null; fallbackSource: string | null; handoffStarted: boolean; handoffStartedAt: string | null };
+      evidenceRoutes: { fallbackSourceTrail: string | null; overBudgetLatencyTrail: string | null };
       summary: { fallbackSourceTrail: string | null; overBudgetLatencyTrail: string | null };
     };
 
@@ -2913,6 +2932,11 @@ test("tool timeout fallback fails closed and records the fallback reason", async
       `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
     );
     assert.equal(runtimeFailureProofPayload.summary.overBudgetLatencyTrail, null);
+    assert.equal(
+      runtimeFailureProofPayload.evidenceRoutes.fallbackSourceTrail,
+      `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
+    );
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.overBudgetLatencyTrail, null);
 
     const runtimeFailureCalls = await requestJson(port, "GET", "/api/calls?fallbackMode=runtime_failure");
     const runtimeFailureCallsPayload = runtimeFailureCalls.payload as CallListPayload;
