@@ -477,6 +477,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
     ? `/api/operator/console?fallbackMode=${encodeURIComponent(snapshot.demoFallback.mode)}&limit=1`
     : null;
   const fallbackModeTranscriptTrail = buildFallbackModeTranscriptTrail(snapshot);
+  const fallbackSourceRoutes = buildFallbackSourceRoutes(fallbackSource);
   const fallbackReasonRoutes = buildFallbackReasonRoutes(snapshot);
   const latestEvidenceAt = [latestEvent?.at, latestTranscriptTurn?.timestamp, latestLatencyMark?.recordedAt]
     .filter((timestamp): timestamp is string => timestamp !== undefined)
@@ -551,6 +552,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       fallbackSourceTrail: fallbackSource
         ? `${snapshot.session.openclawSession.artifactLinks.events}?source=${encodeURIComponent(fallbackSource)}`
         : null,
+      ...fallbackSourceRoutes,
       fallbackModeQueue,
       fallbackModeCallList,
       fallbackModeOperatorConsole,
@@ -785,6 +787,27 @@ function buildFallbackReasonRoutes(snapshot: CallSnapshot): {
   };
 }
 
+function buildFallbackSourceRoutes(fallbackSource: string | null): {
+  fallbackSourceQueue: string | null;
+  fallbackSourceCallList: string | null;
+  fallbackSourceOperatorConsole: string | null;
+} {
+  if (!fallbackSource) {
+    return {
+      fallbackSourceQueue: null,
+      fallbackSourceCallList: null,
+      fallbackSourceOperatorConsole: null,
+    };
+  }
+
+  const encodedSource = encodeURIComponent(fallbackSource);
+  return {
+    fallbackSourceQueue: `/api/queue?attentionRequired=true&fallbackSource=${encodedSource}`,
+    fallbackSourceCallList: `/api/calls?fallbackSource=${encodedSource}&limit=5`,
+    fallbackSourceOperatorConsole: `/api/operator/console?fallbackSource=${encodedSource}&limit=1`,
+  };
+}
+
 function buildCallProofBundlePayload(snapshot: CallSnapshot) {
   const attention = getAttentionMetadata(snapshot);
   const eventTypes = [...new Set(snapshot.events.map((event) => event.type))];
@@ -818,6 +841,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
     ? "/api/operator/console?fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode) + "&limit=1"
     : null;
   const fallbackModeTranscriptTrail = buildFallbackModeTranscriptTrail(snapshot);
+  const fallbackSourceRoutes = buildFallbackSourceRoutes(fallbackSource);
   const fallbackReasonRoutes = buildFallbackReasonRoutes(snapshot);
 
   return {
@@ -859,6 +883,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       operatorConsole,
       operatorNoteTrail,
       fallbackSourceTrail,
+      ...fallbackSourceRoutes,
       fallbackModeQueue,
       fallbackModeCallList,
       fallbackModeOperatorConsole,
@@ -876,6 +901,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       latestDisposition: typeof latestOperatorNote?.detail.disposition === "string" ? latestOperatorNote.detail.disposition : null,
       operatorNoteTrail,
       fallbackSourceTrail,
+      ...fallbackSourceRoutes,
       fallbackModeQueue,
       fallbackModeCallList,
       fallbackModeOperatorConsole,
@@ -921,6 +947,7 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
     ? "/api/operator/console?fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode) + "&limit=1"
     : null;
   const fallbackModeTranscriptTrail = buildFallbackModeTranscriptTrail(snapshot);
+  const fallbackSourceRoutes = buildFallbackSourceRoutes(fallbackSource);
   const fallbackReasonRoutes = buildFallbackReasonRoutes(snapshot);
 
   return {
@@ -949,6 +976,7 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
       fallbackSourceTrail: fallbackSource
         ? snapshot.session.openclawSession.artifactLinks.events + "?source=" + encodeURIComponent(fallbackSource)
         : null,
+      ...fallbackSourceRoutes,
       fallbackModeQueue,
       fallbackModeCallList,
       fallbackModeOperatorConsole,

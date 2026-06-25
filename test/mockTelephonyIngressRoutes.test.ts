@@ -129,6 +129,9 @@ interface OperatorConsolePayload {
           fallbackReason: string | null;
           fallbackSource: string | null;
           fallbackSourceTrail: string | null;
+          fallbackSourceQueue: string | null;
+          fallbackSourceCallList: string | null;
+          fallbackSourceOperatorConsole: string | null;
           fallbackModeQueue: string | null;
           fallbackModeCallList: string | null;
           fallbackModeOperatorConsole: string | null;
@@ -221,6 +224,9 @@ interface ArtifactManifestPayload {
     operatorConsole: string;
     operatorNoteTrail: string | null;
     fallbackSourceTrail: string | null;
+    fallbackSourceQueue: string | null;
+    fallbackSourceCallList: string | null;
+    fallbackSourceOperatorConsole: string | null;
     fallbackModeQueue: string | null;
     fallbackModeCallList: string | null;
     fallbackModeOperatorConsole: string | null;
@@ -562,6 +568,9 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
         operatorConsole: string;
         operatorNoteTrail: string | null;
         fallbackSourceTrail: string | null;
+        fallbackSourceQueue: string | null;
+        fallbackSourceCallList: string | null;
+        fallbackSourceOperatorConsole: string | null;
         fallbackModeQueue: string | null;
         fallbackModeCallList: string | null;
         fallbackModeOperatorConsole: string | null;
@@ -629,6 +638,9 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
       operatorConsole: `/api/operator/console?callId=${callId}`,
       operatorNoteTrail: null,
       fallbackSourceTrail: null,
+      fallbackSourceQueue: null,
+      fallbackSourceCallList: null,
+      fallbackSourceOperatorConsole: null,
       fallbackModeQueue: null,
       fallbackModeCallList: null,
       fallbackModeOperatorConsole: null,
@@ -705,6 +717,9 @@ test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", a
       operatorConsole: `/api/operator/console?callId=${callId}`,
       operatorNoteTrail: null,
       fallbackSourceTrail: null,
+      fallbackSourceQueue: null,
+      fallbackSourceCallList: null,
+      fallbackSourceOperatorConsole: null,
       fallbackModeQueue: null,
       fallbackModeCallList: null,
       fallbackModeOperatorConsole: null,
@@ -1180,6 +1195,9 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(operatorConsoleCall.evidenceSummary.fallbackMode, null);
     assert.equal(operatorConsoleCall.evidenceSummary.fallbackSource, null);
     assert.equal(operatorConsoleCall.evidenceSummary.fallbackSourceTrail, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.fallbackSourceQueue, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.fallbackSourceCallList, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.fallbackSourceOperatorConsole, null);
     assert.equal(operatorConsoleCall.evidenceSummary.fallbackModeTranscriptTrail, null);
     assert.equal(operatorConsoleCall.evidenceSummary.handoffStartedAt, null);
     assert.equal(operatorConsoleCall.evidenceSummary.overBudgetLatencyMarkCount, 0);
@@ -3031,6 +3049,9 @@ test("tool timeout fallback fails closed and records the fallback reason", async
       outcome: { fallbackMode: string | null; fallbackReason: string | null; fallbackSource: string | null; handoffStarted: boolean; handoffStartedAt: string | null };
       evidenceRoutes: {
         fallbackSourceTrail: string | null;
+        fallbackSourceQueue: string | null;
+        fallbackSourceCallList: string | null;
+        fallbackSourceOperatorConsole: string | null;
         fallbackModeQueue: string | null;
         fallbackModeCallList: string | null;
         fallbackModeOperatorConsole: string | null;
@@ -3043,6 +3064,9 @@ test("tool timeout fallback fails closed and records the fallback reason", async
       };
       summary: {
         fallbackSourceTrail: string | null;
+        fallbackSourceQueue: string | null;
+        fallbackSourceCallList: string | null;
+        fallbackSourceOperatorConsole: string | null;
         fallbackModeQueue: string | null;
         fallbackModeCallList: string | null;
         fallbackModeOperatorConsole: string | null;
@@ -3065,6 +3089,9 @@ test("tool timeout fallback fails closed and records the fallback reason", async
       runtimeFailureProofPayload.summary.fallbackSourceTrail,
       `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
     );
+    assert.equal(runtimeFailureProofPayload.summary.fallbackSourceQueue, "/api/queue?attentionRequired=true&fallbackSource=pipecat_runtime_failure_fail_closed");
+    assert.equal(runtimeFailureProofPayload.summary.fallbackSourceCallList, "/api/calls?fallbackSource=pipecat_runtime_failure_fail_closed&limit=5");
+    assert.equal(runtimeFailureProofPayload.summary.fallbackSourceOperatorConsole, "/api/operator/console?fallbackSource=pipecat_runtime_failure_fail_closed&limit=1");
     assert.equal(runtimeFailureProofPayload.summary.fallbackModeQueue, "/api/queue?attentionRequired=true&fallbackMode=runtime_failure");
     assert.equal(runtimeFailureProofPayload.summary.fallbackModeCallList, "/api/calls?fallbackMode=runtime_failure&limit=5");
     assert.equal(runtimeFailureProofPayload.summary.fallbackModeOperatorConsole, "/api/operator/console?fallbackMode=runtime_failure&limit=1");
@@ -3077,6 +3104,9 @@ test("tool timeout fallback fails closed and records the fallback reason", async
       runtimeFailureProofPayload.evidenceRoutes.fallbackSourceTrail,
       `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
     );
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackSourceQueue, "/api/queue?attentionRequired=true&fallbackSource=pipecat_runtime_failure_fail_closed");
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackSourceCallList, "/api/calls?fallbackSource=pipecat_runtime_failure_fail_closed&limit=5");
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackSourceOperatorConsole, "/api/operator/console?fallbackSource=pipecat_runtime_failure_fail_closed&limit=1");
     assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackModeQueue, "/api/queue?attentionRequired=true&fallbackMode=runtime_failure");
     assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackModeCallList, "/api/calls?fallbackMode=runtime_failure&limit=5");
     assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackModeOperatorConsole, "/api/operator/console?fallbackMode=runtime_failure&limit=1");
@@ -3162,6 +3192,18 @@ test("tool timeout fallback fails closed and records the fallback reason", async
       runtimeFailureConsoleCall?.evidenceSummary.fallbackSourceTrail,
       `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
     );
+    assert.equal(
+      runtimeFailureConsoleCall?.evidenceSummary.fallbackSourceQueue,
+      "/api/queue?attentionRequired=true&fallbackSource=pipecat_runtime_failure_fail_closed",
+    );
+    assert.equal(
+      runtimeFailureConsoleCall?.evidenceSummary.fallbackSourceCallList,
+      "/api/calls?fallbackSource=pipecat_runtime_failure_fail_closed&limit=5",
+    );
+    assert.equal(
+      runtimeFailureConsoleCall?.evidenceSummary.fallbackSourceOperatorConsole,
+      "/api/operator/console?fallbackSource=pipecat_runtime_failure_fail_closed&limit=1",
+    );
     assert.equal(runtimeFailureConsoleCall?.evidenceSummary.handoffStartedAt, "2026-06-10T14:00:03.000Z");
 
     const runtimeFailureManifest = await requestJson(port, "GET", `/api/calls/${runtimeFailureCallId}/artifacts`);
@@ -3176,6 +3218,9 @@ test("tool timeout fallback fails closed and records the fallback reason", async
       runtimeFailureManifestPayload.evidenceRoutes.fallbackSourceTrail,
       `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
     );
+    assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackSourceQueue, "/api/queue?attentionRequired=true&fallbackSource=pipecat_runtime_failure_fail_closed");
+    assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackSourceCallList, "/api/calls?fallbackSource=pipecat_runtime_failure_fail_closed&limit=5");
+    assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackSourceOperatorConsole, "/api/operator/console?fallbackSource=pipecat_runtime_failure_fail_closed&limit=1");
     assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackModeQueue, "/api/queue?attentionRequired=true&fallbackMode=runtime_failure");
     assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackModeCallList, "/api/calls?fallbackMode=runtime_failure&limit=5");
     assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackModeOperatorConsole, "/api/operator/console?fallbackMode=runtime_failure&limit=1");
