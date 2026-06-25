@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { request } from "node:http";
+import { Script } from "node:vm";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildHttpServer } from "../src/http/createServer";
@@ -1512,6 +1513,12 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /actionDetails/);
     assert.match(response.body, /disabledReason/);
     assert.match(response.body, /unavailableReasons/);
+    const scripts = [...response.body.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
+    assert.ok(scripts.length > 0);
+    for (const script of scripts) {
+      assert.doesNotThrow(() => new Script(script));
+    }
+
     assert.match(response.body, /Confirm /);
   });
 });
