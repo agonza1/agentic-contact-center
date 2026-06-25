@@ -128,6 +128,9 @@ interface OperatorConsolePayload {
           fallbackMode: string | null;
           fallbackSource: string | null;
           fallbackSourceTrail: string | null;
+          fallbackModeQueue: string | null;
+          fallbackModeCallList: string | null;
+          fallbackModeOperatorConsole: string | null;
           handoffStartedAt: string | null;
           overBudgetLatencyMarkCount: number;
           overBudgetLatencyTrail: string | null;
@@ -1339,6 +1342,12 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       overBudgetConsoleCall?.evidenceSummary.overBudgetLatencyTrail,
       `/api/calls/${operatorCallId}/latency?overBudget=true`,
     );
+    assert.equal(overBudgetConsoleCall?.evidenceSummary.fallbackModeQueue, "/api/queue?attentionRequired=true&fallbackMode=tool_timeout");
+    assert.equal(overBudgetConsoleCall?.evidenceSummary.fallbackModeCallList, "/api/calls?fallbackMode=tool_timeout&limit=5");
+    assert.equal(
+      overBudgetConsoleCall?.evidenceSummary.fallbackModeOperatorConsole,
+      "/api/operator/console?fallbackMode=tool_timeout&limit=1",
+    );
 
     const activeToolConsole = await requestJson(port, "GET", "/api/operator/console?pipecatActiveTool=pause_presentation");
     const activeToolPayload = activeToolConsole.payload as OperatorConsolePayload;
@@ -1389,9 +1398,11 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Proof Bundle/);
     assert.match(response.body, /Artifacts/);
     assert.match(response.body, /Event Trail/);
+    assert.match(response.body, /Fallback Queue/);
     assert.match(response.body, /Note Trail/);
     assert.match(response.body, /operatorNoteTrail/);
     assert.match(response.body, /fallbackSourceTrail/);
+    assert.match(response.body, /fallbackModeQueue/);
     assert.match(response.body, /overBudgetLatencyTrail/);
     assert.match(response.body, /Over budget:/);
     assert.match(response.body, /evidenceSummary/);
