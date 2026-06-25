@@ -151,6 +151,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           handoffStarted: boolean;
           fallbackSourceTrail: string | null;
           fallbackModeOperatorConsole: string | null;
+          fallbackModeTranscriptTrail: string | null;
           overBudgetLatencyTrail: string | null;
           operatorConsole: string;
           summaryEventCount: number;
@@ -170,6 +171,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           fallbackSourceTrail: string | null;
           operatorConsole: string;
           fallbackModeOperatorConsole: string | null;
+          fallbackModeTranscriptTrail: string | null;
           overBudgetLatencyTrail: string | null;
           openclawSessionLabel: string;
         };
@@ -322,6 +324,10 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.runtimeFailureProofBundle.fallbackSource, "pipecat_runtime_failure_fail_closed");
     assert.equal(artifact.summary.runtimeFailureProofBundle.operatorConsole, "/api/operator/console?callId=" + artifact.runtimeFailure.callId);
     assert.equal(artifact.summary.runtimeFailureProofBundle.fallbackModeOperatorConsole, "/api/operator/console?fallbackMode=runtime_failure&limit=1");
+    assert.equal(
+      artifact.summary.runtimeFailureProofBundle.fallbackModeTranscriptTrail,
+      "/api/calls/" + artifact.runtimeFailure.callId + "/transcript?speaker=agent&text=runtime%20reported%20a%20failure",
+    );
     assert.equal(artifact.summary.runtimeFailureProofBundle.handoffStarted, true);
     assert.equal(
       artifact.summary.runtimeFailureProofBundle.fallbackSourceTrail,
@@ -343,6 +349,10 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.fallbackSourceTrail, "/api/calls/" + artifact.runtimeFailure.callId + "/events?source=pipecat_runtime_failure_fail_closed");
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.operatorConsole, "/api/operator/console?callId=" + artifact.runtimeFailure.callId);
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.fallbackModeOperatorConsole, "/api/operator/console?fallbackMode=runtime_failure&limit=1");
+    assert.equal(
+      artifact.summary.runtimeFailureArtifactManifest.fallbackModeTranscriptTrail,
+      "/api/calls/" + artifact.runtimeFailure.callId + "/transcript?speaker=agent&text=runtime%20reported%20a%20failure",
+    );
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.overBudgetLatencyTrail, null);
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.openclawSessionLabel, "cluecon-demo/runtime-failure-proof");
     assert.equal(artifact.scripted.outcome, "scripted_wrap_complete");
