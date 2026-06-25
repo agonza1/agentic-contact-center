@@ -229,6 +229,16 @@ async function getQueueAttentionSummary(port) {
   return queue.payload.summary;
 }
 
+async function getRuntimeFailureQueueSummary(port) {
+  const queue = await requestJson(port, "GET", "/api/queue?attentionRequired=true&fallbackMode=runtime_failure");
+  assert.equal(queue.statusCode, 200);
+
+  return {
+    route: "attentionRequired=true&fallbackMode=runtime_failure",
+    ...queue.payload.summary,
+  };
+}
+
 async function getAttentionSortedCallList(port) {
   const list = await requestJson(
     port,
@@ -339,6 +349,7 @@ function summarizeArtifact(artifact) {
     operatorNoteTrail: artifact.operatorNoteTrail,
     fallbackSourceTrail: artifact.fallbackSourceTrail,
     runtimeFailureSourceTrail: artifact.runtimeFailureSourceTrail,
+    runtimeFailureQueue: artifact.runtimeFailureQueue,
     scripted: {
       outcome: artifact.scripted.outcome,
       callId: artifact.scripted.callId,
@@ -385,6 +396,7 @@ async function main() {
       runtimeFailure.callId,
       "pipecat_runtime_failure_fail_closed",
     );
+    const runtimeFailureQueue = await getRuntimeFailureQueueSummary(port);
 
     return {
       schemaVersion: 1,
@@ -404,6 +416,7 @@ async function main() {
         operatorNoteTrail: "events?type=operator_note_recorded",
         fallbackSourceTrail: "events?source=tool_timeout_fail_closed",
         runtimeFailureSourceTrail: "events?source=pipecat_runtime_failure_fail_closed",
+        runtimeFailureQueueFilter: "attentionRequired=true&fallbackMode=runtime_failure",
       },
       health: health.payload,
       operatorNoteTrail,
@@ -411,6 +424,7 @@ async function main() {
       callAttentionList,
       fallbackSourceTrail,
       runtimeFailureSourceTrail,
+      runtimeFailureQueue,
       scripted,
       fallback,
       runtimeFailure,
