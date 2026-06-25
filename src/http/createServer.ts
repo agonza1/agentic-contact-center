@@ -797,6 +797,8 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
     runtimeMode: {
       flow: snapshot.pipecatFlow.prototypeMode,
       pipecatTransport: snapshot.pipecatFlow.transport,
+      runtimeEngine: snapshot.pipecatFlow.runtimeEngine,
+      credentialsMode: snapshot.pipecatFlow.credentialsMode,
       telephony: snapshot.scenario.mode,
       signalWire: snapshot.session.providerName === "signalwire" ? snapshot.scenario.mode : "not_configured",
       openclawSession: snapshot.session.openclawSession,

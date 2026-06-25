@@ -537,6 +537,8 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
       runtimeMode: {
         flow: string;
         pipecatTransport: string;
+        runtimeEngine: string;
+        credentialsMode: string;
         telephony: string;
         signalWire: string;
         openclawSession: { sessionId: string; label: string; status: string };
@@ -582,6 +584,8 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
     assert.equal(payload.session.callId, callId);
     assert.equal(payload.runtimeMode.flow, "pipecat_local_runtime");
     assert.equal(payload.runtimeMode.pipecatTransport, "local_process");
+    assert.equal(payload.runtimeMode.runtimeEngine, "pipecat-ai");
+    assert.equal(payload.runtimeMode.credentialsMode, "mocked");
     assert.equal(payload.runtimeMode.telephony, "mocked_telephony");
     assert.equal(payload.runtimeMode.signalWire, "mocked_telephony");
     assert.equal(payload.runtimeMode.openclawSession.sessionId, "proof-session-42");
