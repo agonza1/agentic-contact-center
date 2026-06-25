@@ -1427,6 +1427,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Flow state filter/);
     assert.match(response.body, /Fallback mode filter/);
     assert.match(response.body, /All fallback modes/);
+    assert.match(response.body, /Fallback reason filter/);
+    assert.match(response.body, /Fallback reason/);
     assert.match(response.body, /Active tool filter/);
     assert.match(response.body, /All active tools/);
     assert.match(response.body, /Transcript search/);
@@ -1434,6 +1436,7 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /attentionRequired/);
     assert.match(response.body, /latencyOverBudget/);
     assert.match(response.body, /fallbackMode/);
+    assert.match(response.body, /fallbackReason/);
     assert.match(response.body, /pipecatActiveTool/);
     assert.match(response.body, /transcriptText/);
     assert.match(response.body, /\/api\/demo\/start/);
