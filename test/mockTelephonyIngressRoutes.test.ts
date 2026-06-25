@@ -3057,6 +3057,24 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.deepEqual(runtimeFailureCallsPayload.calls.map((call) => call.session.callId), [runtimeFailureCallId]);
     assert.equal(runtimeFailureCallsPayload.summary.filteredSummary.fallbackArmed, 1);
 
+    const runtimeFailureReason = encodeURIComponent("pipecat local runtime import failed");
+    const runtimeFailureReasonCalls = await requestJson(port, "GET", "/api/calls?fallbackReason=" + runtimeFailureReason);
+    const runtimeFailureReasonCallsPayload = runtimeFailureReasonCalls.payload as CallListPayload;
+    assert.equal(runtimeFailureReasonCalls.statusCode, 200);
+    assert.deepEqual(runtimeFailureReasonCallsPayload.calls.map((call) => call.session.callId), [runtimeFailureCallId]);
+    assert.equal(runtimeFailureReasonCallsPayload.summary.filteredSummary.fallbackArmed, 1);
+
+    const runtimeFailureReasonQueue = await requestJson(port, "GET", "/api/queue?fallbackReason=" + runtimeFailureReason);
+    const runtimeFailureReasonQueuePayload = runtimeFailureReasonQueue.payload as QueueSummaryPayload;
+    assert.equal(runtimeFailureReasonQueue.statusCode, 200);
+    assert.equal(runtimeFailureReasonQueuePayload.summary.totalCalls, 1);
+    assert.equal(runtimeFailureReasonQueuePayload.summary.oldestAttentionCallId, runtimeFailureCallId);
+
+    const runtimeFailureReasonConsole = await requestJson(port, "GET", "/api/operator/console?fallbackReason=" + runtimeFailureReason);
+    const runtimeFailureReasonConsolePayload = runtimeFailureReasonConsole.payload as OperatorConsolePayload;
+    assert.equal(runtimeFailureReasonConsole.statusCode, 200);
+    assert.deepEqual(runtimeFailureReasonConsolePayload.calls.items.map((call) => call.session.callId), [runtimeFailureCallId]);
+
     const runtimeFailureConsole = await requestJson(port, "GET", "/api/operator/console?fallbackMode=runtime_failure");
     const runtimeFailureConsolePayload = runtimeFailureConsole.payload as OperatorConsolePayload;
     const runtimeFailureConsoleCall = runtimeFailureConsolePayload.calls.items[0];
@@ -3102,6 +3120,13 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.deepEqual(invalidFallbackMode.payload, {
       ok: false,
       error: "call_list_fallback_mode_invalid",
+    });
+
+    const invalidFallbackReason = await requestJson(port, "GET", "/api/queue?fallbackReason=%20%20");
+    assert.equal(invalidFallbackReason.statusCode, 400);
+    assert.deepEqual(invalidFallbackReason.payload, {
+      ok: false,
+      error: "queue_fallback_reason_invalid",
     });
   });
 });

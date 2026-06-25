@@ -326,6 +326,7 @@ export class InMemoryTelephonyIngress {
     pendingOperatorSteer?: boolean;
     fallbackArmed?: boolean;
     fallbackMode?: FallbackMode;
+    fallbackReason?: string;
     fallbackSource?: string;
     attentionRequired?: boolean;
     attentionSource?: AttentionSource;
@@ -350,6 +351,7 @@ export class InMemoryTelephonyIngress {
     pendingOperatorSteer?: boolean;
     fallbackArmed?: boolean;
     fallbackMode?: FallbackMode;
+    fallbackReason?: string;
     fallbackSource?: string;
     attentionRequired?: boolean;
     attentionSource?: AttentionSource;
@@ -378,6 +380,9 @@ export class InMemoryTelephonyIngress {
       )
       .filter((snapshot) =>
         filters.fallbackMode === undefined ? true : snapshot.demoFallback.mode === filters.fallbackMode,
+      )
+      .filter((snapshot) =>
+        filters.fallbackReason === undefined ? true : snapshot.demoFallback.reason === filters.fallbackReason,
       )
       .filter((snapshot) => {
         if (filters.fallbackSource === undefined) {
@@ -477,6 +482,7 @@ export class InMemoryTelephonyIngress {
     pendingOperatorSteer?: boolean;
     fallbackArmed?: boolean;
     fallbackMode?: FallbackMode;
+    fallbackReason?: string;
     fallbackSource?: string;
     attentionRequired?: boolean;
     attentionSource?: AttentionSource;
