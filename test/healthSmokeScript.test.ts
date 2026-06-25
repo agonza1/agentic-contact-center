@@ -193,7 +193,21 @@ test("health smoke script can assert expected health metadata and multiple runti
         operatorChannel: "slack",
         fallbackMode: "tool_timeout",
         runtimeSeams: ["flow engine", "mocked telephony ingress"],
-        pipecatFlow: { ready: true, toolCoverage: ["goto_slide", "approve_offer"], script: { completed: true } },
+        pipecatFlow: {
+          ready: true,
+          prototypeMode: "pipecat_local_runtime",
+          transport: "local_process",
+          runtimeEngine: "pipecat-ai",
+          credentialsMode: "mocked",
+          runtimeCheck: {
+            command: "npm run pipecat:check",
+            installCommand: "python3 -m pip install --target .pipecat-runtime -r requirements-pipecat.txt",
+            liveTelephonyRequired: false,
+          },
+          activeTool: "get_current_slide",
+          toolCoverage: ["goto_slide", "approve_offer"],
+          script: { completed: true },
+        },
       }),
     );
   }, async (port) => {
@@ -220,6 +234,22 @@ test("health smoke script can assert expected health metadata and multiple runti
       "mocked telephony ingress",
       "--expect-pipecat-ready",
       "true",
+      "--expect-pipecat-prototype-mode",
+      "pipecat_local_runtime",
+      "--expect-pipecat-transport",
+      "local_process",
+      "--expect-pipecat-runtime-engine",
+      "pipecat-ai",
+      "--expect-pipecat-credentials-mode",
+      "mocked",
+      "--expect-pipecat-runtime-check-command",
+      "npm run pipecat:check",
+      "--expect-pipecat-runtime-check-install-command",
+      "python3 -m pip install --target .pipecat-runtime -r requirements-pipecat.txt",
+      "--expect-pipecat-runtime-check-live-telephony-required",
+      "false",
+      "--expect-pipecat-active-tool",
+      "get_current_slide",
       "--expect-pipecat-tool",
       "goto_slide",
       "--expect-pipecat-tool",
@@ -484,6 +514,95 @@ test("health smoke script rejects malformed Pipecat readiness expectations befor
   assert.equal(result.code, 1);
   assert.match(result.stderr, /invalid_pipecat_ready_value\("yes"\)/);
   assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
+test("health smoke script reports Pipecat runtime metadata mismatches in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, pipecatFlow: { ready: true, prototypeMode: "deterministic_templates" } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-pipecat-prototype-mode",
+      "pipecat_local_runtime",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_pipecatFlow_prototypeMode_mismatch\(expected="pipecat_local_runtime",actual="deterministic_templates"\)/);
+  });
+});
+
+test("health smoke script reports Pipecat runtime-check mismatches in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        ok: true,
+        pipecatFlow: {
+          runtimeCheck: {
+            command: "npm run pipecat:check",
+            installCommand: "python3 -m pip install --target .pipecat-runtime -r requirements-pipecat.txt",
+            liveTelephonyRequired: false,
+          },
+        },
+      }),
+    );
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-pipecat-runtime-check-command",
+      "npm run pipecat:verify",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_pipecatFlow_runtimeCheck_command_mismatch\(expected="npm run pipecat:verify",actual="npm run pipecat:check"\)/);
+  });
+});
+
+test("health smoke script reports Pipecat active-tool mismatches in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, pipecatFlow: { activeTool: "pause_presentation" } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-pipecat-active-tool",
+      "get_current_slide",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_pipecatFlow_activeTool_mismatch\(expected="get_current_slide",actual="pause_presentation"\)/);
+  });
 });
 
 test("health smoke script reports Pipecat readiness mismatches in the timeout summary", async () => {

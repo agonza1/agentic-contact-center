@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { request } from "node:http";
+import { Script } from "node:vm";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildHttpServer } from "../src/http/createServer";
@@ -40,6 +41,10 @@ interface SnapshotPayload {
     source: string | null;
   };
   pipecatFlow: {
+    prototypeMode: string;
+    transport: string;
+    runtimeEngine: string;
+    credentialsMode: string;
     activeTool: string | null;
     script: { matchedCallerTurns: number; completed: boolean };
   };
@@ -111,6 +116,8 @@ interface OperatorConsolePayload {
       SnapshotPayload & {
         evidenceSummary: {
           latestEventType: string | null;
+          latestEventTrail: string | null;
+          latestLatencyTrail: string | null;
           latestTranscriptSpeaker: string | null;
           latestEvidenceAt: string | null;
           transcriptTurns: number;
@@ -120,7 +127,26 @@ interface OperatorConsolePayload {
           latestOperatorNoteText: string | null;
           latestOperatorNoteAt: string | null;
           latestDisposition: string | null;
+          operatorNoteTrail: string | null;
+          fallbackMode: string | null;
+          fallbackReason: string | null;
+          fallbackSource: string | null;
+          fallbackSourceTrail: string | null;
+          fallbackSourceQueue: string | null;
+          fallbackSourceCallList: string | null;
+          fallbackSourceOperatorConsole: string | null;
+          fallbackModeQueue: string | null;
+          fallbackModeCallList: string | null;
+          fallbackModeOperatorConsole: string | null;
+          fallbackModeTranscriptTrail: string | null;
+          fallbackReasonQueue: string | null;
+          fallbackReasonCallList: string | null;
+          fallbackReasonOperatorConsole: string | null;
+          fallbackReasonEventTrail: string | null;
+          handoffTrail: string | null;
+          handoffStartedAt: string | null;
           overBudgetLatencyMarkCount: number;
+          overBudgetLatencyTrail: string | null;
           links: { transcript: string; events: string; latencyMarks: string; proof: string };
         };
         actionState: {
@@ -165,6 +191,7 @@ interface EventTrailPayload {
     returnedEvents: number;
     filteredType: string | null;
     filteredSource: string | null;
+    filteredDetailKey: string | null;
     filteredDetailText: string | null;
     filteredSince: string | null;
     filteredUntil: string | null;
@@ -194,16 +221,47 @@ interface ArtifactManifestPayload {
     artifactLinks: { snapshot: string; artifacts: string; proof: string; transcript: string; events: string; latencyMarks: string };
   };
   artifacts: { snapshot: string; artifacts: string; proof: string; transcript: string; events: string; latencyMarks: string };
+  runtimeMode: { flow: string; pipecatTransport: string; runtimeEngine: string; credentialsMode: string; runtimeCheck: { command: string; installCommand: string; liveTelephonyRequired: boolean }; telephony: string };
+  evidenceRoutes: {
+    transcript: string;
+    events: string;
+    latencyMarks: string;
+    operatorConsole: string;
+    latestEventTrail: string | null;
+    latestLatencyTrail: string | null;
+    operatorNoteTrail: string | null;
+    fallbackSourceTrail: string | null;
+    fallbackSourceQueue: string | null;
+    fallbackSourceCallList: string | null;
+    fallbackSourceOperatorConsole: string | null;
+    fallbackModeQueue: string | null;
+    fallbackModeCallList: string | null;
+    fallbackModeOperatorConsole: string | null;
+    fallbackModeTranscriptTrail: string | null;
+    fallbackReasonQueue: string | null;
+    fallbackReasonCallList: string | null;
+    fallbackReasonOperatorConsole: string | null;
+    fallbackReasonEventTrail: string | null;
+        handoffTrail: string | null;
+    overBudgetLatencyTrail: string | null;
+  };
   summary: {
     transcriptTurns: number;
     eventCount: number;
     latencyMarkCount: number;
+    overBudgetLatencyMarkCount: number;
+    fallbackMode: string | null;
+    fallbackReason: string | null;
+    fallbackSource: string | null;
+        handoffTrail: string | null;
+    handoffStartedAt: string | null;
     latestEventType: string | null;
     latestEventAt: string | null;
     latestTranscriptSpeaker: string | null;
     latestTranscriptAt: string | null;
     latestLatencyStage: string | null;
     latestLatencyAt: string | null;
+    latestLatencyTrail: string | null;
   };
 }
 
@@ -361,7 +419,14 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
         respondedAt: string | null;
         source: string | null;
       };
-      pipecatFlow: { ready: boolean; toolCoverage: string[] };
+      pipecatFlow: {
+        ready: boolean;
+        prototypeMode: string;
+        transport: string;
+        runtimeEngine: string;
+        credentialsMode: string;
+        toolCoverage: string[];
+      };
       events: Array<{ type: string }>;
       latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
       attention: { required: boolean; source: string | null; reason: string | null; startedAt: string | null; ageMs: number | null };
@@ -385,9 +450,14 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
     assert.equal(startedPayload.scenario.policyProfile, "retention_safe_mode");
     assert.equal(startedPayload.scenario.fallbackMode, "tool_timeout");
     assert.equal(startedPayload.pipecatFlow.ready, true);
+    assert.equal(startedPayload.pipecatFlow.prototypeMode, "pipecat_local_runtime");
+    assert.equal(startedPayload.pipecatFlow.transport, "local_process");
+    assert.equal(startedPayload.pipecatFlow.runtimeEngine, "pipecat-ai");
+    assert.equal(startedPayload.pipecatFlow.credentialsMode, "mocked");
     assert.equal(startedPayload.pipecatFlow.toolCoverage.includes("ask_operator"), true);
-    assert.deepEqual(startedPayload.events.map((event) => event.type).slice(0, 2), [
+    assert.deepEqual(startedPayload.events.map((event) => event.type).slice(0, 3), [
       "call_bootstrapped",
+      "pipecat_runtime_started",
       "openclaw_session_attached",
     ]);
     assert.deepEqual(startedPayload.demoFallback, {
@@ -441,6 +511,7 @@ test("the risky offer boundary parks the flow in policy hold without promising a
     const firstPayload = firstTurn.payload as SnapshotPayload;
     assert.equal(firstTurn.statusCode, 200);
     assert.equal(firstPayload.flowState, "diagnose");
+    assert.equal(firstPayload.events.some((event) => event.type === "pipecat_runtime_turn_processed"), true);
     assert.deepEqual(firstPayload.transcript.map((turn) => turn.speaker), ["caller", "agent"]);
 
     const secondTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
@@ -492,17 +563,45 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
       runtimeMode: {
         flow: string;
         pipecatTransport: string;
+        runtimeEngine: string;
+        credentialsMode: string;
+        runtimeCheck: { command: string; installCommand: string; liveTelephonyRequired: boolean };
         telephony: string;
         signalWire: string;
         openclawSession: { sessionId: string; label: string; status: string };
       };
       artifacts: { snapshot: string; artifacts: string; proof: string; transcript: string; events: string; latencyMarks: string };
+      evidenceRoutes: {
+        transcript: string;
+        events: string;
+        latencyMarks: string;
+        operatorConsole: string;
+        latestEventTrail: string | null;
+        latestLatencyTrail: string | null;
+        operatorNoteTrail: string | null;
+        fallbackSourceTrail: string | null;
+        fallbackSourceQueue: string | null;
+        fallbackSourceCallList: string | null;
+        fallbackSourceOperatorConsole: string | null;
+        fallbackModeQueue: string | null;
+        fallbackModeCallList: string | null;
+        fallbackModeOperatorConsole: string | null;
+        fallbackModeTranscriptTrail: string | null;
+        fallbackReasonQueue: string | null;
+        fallbackReasonCallList: string | null;
+        fallbackReasonOperatorConsole: string | null;
+        fallbackReasonEventTrail: string | null;
+        handoffTrail: string | null;
+        overBudgetLatencyTrail: string | null;
+      };
       pii: { redactionApplied: boolean; assumptions: string };
       outcome: {
         flowState: string;
         scriptCompleted: boolean;
         fallbackArmed: boolean;
+        fallbackSource: string | null;
         handoffStarted: boolean;
+        handoffStartedAt: string | null;
         attentionRequired: boolean;
       };
       summary: {
@@ -524,8 +623,15 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
     assert.equal(payload.schemaVersion, 1);
     assert.equal(payload.callId, callId);
     assert.equal(payload.session.callId, callId);
-    assert.equal(payload.runtimeMode.flow, "deterministic_templates");
-    assert.equal(payload.runtimeMode.pipecatTransport, "adapter_ready");
+    assert.equal(payload.runtimeMode.flow, "pipecat_local_runtime");
+    assert.equal(payload.runtimeMode.pipecatTransport, "local_process");
+    assert.equal(payload.runtimeMode.runtimeEngine, "pipecat-ai");
+    assert.equal(payload.runtimeMode.credentialsMode, "mocked");
+    assert.deepEqual(payload.runtimeMode.runtimeCheck, {
+      command: "npm run pipecat:check",
+      installCommand: "python3 -m pip install --target .pipecat-runtime -r requirements-pipecat.txt",
+      liveTelephonyRequired: false,
+    });
     assert.equal(payload.runtimeMode.telephony, "mocked_telephony");
     assert.equal(payload.runtimeMode.signalWire, "mocked_telephony");
     assert.equal(payload.runtimeMode.openclawSession.sessionId, "proof-session-42");
@@ -538,11 +644,36 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
       events: `/api/calls/${callId}/events`,
       latencyMarks: `/api/calls/${callId}/latency`,
     });
+    assert.deepEqual(payload.evidenceRoutes, {
+      transcript: `/api/calls/${callId}/transcript`,
+      events: `/api/calls/${callId}/events`,
+      latencyMarks: `/api/calls/${callId}/latency`,
+      operatorConsole: `/api/operator/console?callId=${callId}`,
+      latestEventTrail: `/api/calls/${callId}/events?type=agent_turn_appended&limit=1&order=desc`,
+      latestLatencyTrail: `/api/calls/${callId}/latency?stage=agent_response_ready&limit=1&order=desc`,
+      operatorNoteTrail: null,
+      fallbackSourceTrail: null,
+      fallbackSourceQueue: null,
+      fallbackSourceCallList: null,
+      fallbackSourceOperatorConsole: null,
+      fallbackModeQueue: null,
+      fallbackModeCallList: null,
+      fallbackModeOperatorConsole: null,
+      fallbackModeTranscriptTrail: null,
+      fallbackReasonQueue: null,
+      fallbackReasonCallList: null,
+      fallbackReasonOperatorConsole: null,
+      fallbackReasonEventTrail: null,
+      handoffTrail: null,
+      overBudgetLatencyTrail: null,
+    });
     assert.equal(payload.pii.redactionApplied, false);
     assert.match(payload.pii.assumptions, /mock caller text/);
     assert.equal(payload.outcome.flowState, "policy_hold");
     assert.equal(payload.outcome.fallbackArmed, false);
+    assert.equal(payload.outcome.fallbackSource, null);
     assert.equal(payload.outcome.handoffStarted, false);
+    assert.equal(payload.outcome.handoffStartedAt, null);
     assert.equal(payload.outcome.attentionRequired, false);
     assert.equal(payload.summary.transcriptTurns, payload.transcript.length);
     assert.equal(payload.summary.eventCount, payload.events.length);
@@ -583,6 +714,41 @@ test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", a
       events: `/api/calls/${callId}/events`,
       latencyMarks: `/api/calls/${callId}/latency`,
     });
+    assert.deepEqual(payload.runtimeMode, {
+      flow: "pipecat_local_runtime",
+      pipecatTransport: "local_process",
+      runtimeEngine: "pipecat-ai",
+      credentialsMode: "mocked",
+      runtimeCheck: {
+        command: "npm run pipecat:check",
+        installCommand: "python3 -m pip install --target .pipecat-runtime -r requirements-pipecat.txt",
+        liveTelephonyRequired: false,
+      },
+      telephony: "mocked_telephony",
+    });
+    assert.deepEqual(payload.evidenceRoutes, {
+      transcript: `/api/calls/${callId}/transcript`,
+      events: `/api/calls/${callId}/events`,
+      latencyMarks: `/api/calls/${callId}/latency`,
+      operatorConsole: `/api/operator/console?callId=${callId}`,
+      latestEventTrail: `/api/calls/${callId}/events?type=flow_state_transition&limit=1&order=desc`,
+      latestLatencyTrail: `/api/calls/${callId}/latency?stage=agent_response_ready&limit=1&order=desc`,
+      operatorNoteTrail: null,
+      fallbackSourceTrail: null,
+      fallbackSourceQueue: null,
+      fallbackSourceCallList: null,
+      fallbackSourceOperatorConsole: null,
+      fallbackModeQueue: null,
+      fallbackModeCallList: null,
+      fallbackModeOperatorConsole: null,
+      fallbackModeTranscriptTrail: null,
+      fallbackReasonQueue: null,
+      fallbackReasonCallList: null,
+      fallbackReasonOperatorConsole: null,
+      fallbackReasonEventTrail: null,
+      handoffTrail: null,
+      overBudgetLatencyTrail: null,
+    });
     assert.equal(payload.summary.transcriptTurns, 2);
     assert.equal(payload.summary.eventCount > 2, true);
     assert.equal(payload.summary.latencyMarkCount > 1, true);
@@ -590,6 +756,7 @@ test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", a
     assert.equal(payload.summary.latestTranscriptSpeaker, "agent");
     assert.equal(payload.summary.latestTranscriptAt, "2026-06-12T10:00:00.000Z");
     assert.equal(payload.summary.latestLatencyStage, "agent_response_ready");
+    assert.equal(payload.summary.latestLatencyTrail, `/api/calls/${callId}/latency?stage=agent_response_ready&limit=1&order=desc`);
   });
 });
 
@@ -1035,16 +1202,27 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
     const operatorConsoleCall = consolePayload.calls.items[0];
     assert.equal(operatorConsoleCall.evidenceSummary.latestEventType, "agent_turn_appended");
+    assert.equal(operatorConsoleCall.evidenceSummary.latestEventTrail, `/api/calls/${operatorCallId}/events?type=agent_turn_appended&limit=1&order=desc`);
     assert.equal(operatorConsoleCall.evidenceSummary.latestTranscriptSpeaker, "agent");
     assert.equal(operatorConsoleCall.evidenceSummary.latestEvidenceAt, "2026-06-10T14:10:10.000Z");
     assert.equal(operatorConsoleCall.evidenceSummary.transcriptTurns, 6);
-    assert.equal(operatorConsoleCall.evidenceSummary.eventCount, 14);
+    assert.equal(operatorConsoleCall.evidenceSummary.eventCount, 18);
     assert.equal(operatorConsoleCall.evidenceSummary.latencyMarkCount, 9);
     assert.equal(operatorConsoleCall.evidenceSummary.operatorNoteCount, 0);
     assert.equal(operatorConsoleCall.evidenceSummary.latestOperatorNoteText, null);
     assert.equal(operatorConsoleCall.evidenceSummary.latestOperatorNoteAt, null);
     assert.equal(operatorConsoleCall.evidenceSummary.latestDisposition, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.operatorNoteTrail, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.fallbackMode, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.fallbackSource, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.fallbackSourceTrail, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.fallbackSourceQueue, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.fallbackSourceCallList, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.fallbackSourceOperatorConsole, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.fallbackModeTranscriptTrail, null);
+    assert.equal(operatorConsoleCall.evidenceSummary.handoffStartedAt, null);
     assert.equal(operatorConsoleCall.evidenceSummary.overBudgetLatencyMarkCount, 0);
+    assert.equal(operatorConsoleCall.evidenceSummary.overBudgetLatencyTrail, null);
     assert.deepEqual(operatorConsoleCall.evidenceSummary.links, operatorConsoleCall.session.openclawSession.artifactLinks);
     assert.deepEqual(operatorConsoleCall.actionState, {
       attentionRequired: true,
@@ -1234,6 +1412,41 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(filteredPayload.calls.summary.filteredSummary.attentionRequired, 1);
     assert.equal(filteredPayload.calls.summary.page.limit, 1);
 
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/fallback`, {
+      mode: "tool_timeout",
+      reason: "synthetic operator console latency audit",
+      timestamp: "2099-01-01T00:00:00.000Z",
+    });
+    const overBudgetConsole = await requestJson(port, "GET", "/api/operator/console?latencyOverBudget=true");
+    const overBudgetPayload = overBudgetConsole.payload as OperatorConsolePayload;
+    const overBudgetConsoleCall = overBudgetPayload.calls.items.find((call) => call.session.callId === operatorCallId);
+
+    assert.equal(overBudgetConsole.statusCode, 200);
+    assert.equal(overBudgetConsoleCall?.evidenceSummary.overBudgetLatencyMarkCount, 3);
+    assert.equal(
+      overBudgetConsoleCall?.evidenceSummary.overBudgetLatencyTrail,
+      `/api/calls/${operatorCallId}/latency?overBudget=true`,
+    );
+    assert.equal(overBudgetConsoleCall?.evidenceSummary.fallbackModeQueue, "/api/queue?attentionRequired=true&fallbackMode=tool_timeout");
+    assert.equal(overBudgetConsoleCall?.evidenceSummary.fallbackModeCallList, "/api/calls?fallbackMode=tool_timeout&limit=5");
+    assert.equal(
+      overBudgetConsoleCall?.evidenceSummary.fallbackModeOperatorConsole,
+      "/api/operator/console?fallbackMode=tool_timeout&limit=1",
+    );
+
+    const sourceFilteredConsole = await requestJson(port, "GET", "/api/operator/console?fallbackSource=tool_timeout_fail_closed");
+    const sourceFilteredPayload = sourceFilteredConsole.payload as OperatorConsolePayload;
+    assert.equal(sourceFilteredConsole.statusCode, 200);
+    assert.deepEqual(sourceFilteredPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
+    assert.equal(sourceFilteredPayload.calls.summary.filteredSummary.totalCalls, 1);
+
+    const activeToolConsole = await requestJson(port, "GET", "/api/operator/console?pipecatActiveTool=pause_presentation");
+    const activeToolPayload = activeToolConsole.payload as OperatorConsolePayload;
+
+    assert.equal(activeToolConsole.statusCode, 200);
+    assert.deepEqual(activeToolPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
+    assert.equal(activeToolPayload.calls.summary.filteredSummary.attentionRequired, 1);
+
     const invalidFilter = await requestJson(port, "GET", "/api/operator/console?attentionRequired=maybe");
     assert.equal(invalidFilter.statusCode, 400);
     assert.deepEqual(invalidFilter.payload, { ok: false, error: "operator_console_attention_required_invalid" });
@@ -1249,10 +1462,26 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /<title>Operator Console<\/title>/);
     assert.match(response.body, /Start Demo Call/);
     assert.match(response.body, /Attention only/);
+    assert.match(response.body, /Over-budget latency/);
     assert.match(response.body, /Flow state filter/);
+    assert.match(response.body, /Fallback mode filter/);
+    assert.match(response.body, /All fallback modes/);
+    assert.match(response.body, /Fallback source filter/);
+    assert.match(response.body, /All fallback sources/);
+    assert.match(response.body, /tool_timeout_fail_closed/);
+    assert.match(response.body, /pipecat_runtime_failure_fail_closed/);
+    assert.match(response.body, /Fallback reason filter/);
+    assert.match(response.body, /Fallback reason/);
+    assert.match(response.body, /Active tool filter/);
+    assert.match(response.body, /All active tools/);
     assert.match(response.body, /Transcript search/);
     assert.match(response.body, /operatorConsoleQuery/);
     assert.match(response.body, /attentionRequired/);
+    assert.match(response.body, /latencyOverBudget/);
+    assert.match(response.body, /fallbackMode/);
+    assert.match(response.body, /fallbackSource/);
+    assert.match(response.body, /fallbackReason/);
+    assert.match(response.body, /pipecatActiveTool/);
     assert.match(response.body, /transcriptText/);
     assert.match(response.body, /\/api\/demo\/start/);
     assert.match(response.body, /caller-turn-form/);
@@ -1268,11 +1497,29 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Evidence markers/);
     assert.match(response.body, /attentionDetail/);
     assert.match(response.body, /Proof Bundle/);
+    assert.match(response.body, /Artifacts/);
+    assert.match(response.body, /Event Trail/);
+    assert.match(response.body, /Fallback Queue/);
+    assert.match(response.body, /Reason Trail/);
+    assert.match(response.body, /reasonTrailHtml/);
+    assert.match(response.body, /Note Trail/);
+    assert.match(response.body, /operatorNoteTrail/);
+    assert.match(response.body, /fallbackSourceTrail/);
+    assert.match(response.body, /fallbackModeQueue/);
+    assert.match(response.body, /fallbackReasonEventTrail/);
+    assert.match(response.body, /overBudgetLatencyTrail/);
+    assert.match(response.body, /Over budget:/);
     assert.match(response.body, /evidenceSummary/);
     assert.match(response.body, /callActionMetadata/);
     assert.match(response.body, /actionDetails/);
     assert.match(response.body, /disabledReason/);
     assert.match(response.body, /unavailableReasons/);
+    const scripts = [...response.body.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
+    assert.ok(scripts.length > 0);
+    for (const script of scripts) {
+      assert.doesNotThrow(() => new Script(script));
+    }
+
     assert.match(response.body, /Confirm /);
   });
 });
@@ -1418,9 +1665,24 @@ test("POST /api/calls/:callId/operator-note records operator notes and dispositi
     });
 
     const proof = await requestJson(port, "GET", "/api/calls/" + callId + "/proof");
-    const proofPayload = proof.payload as { events: Array<{ type: string }>; transcript: Array<{ speaker: string; text: string }> };
+    const proofPayload = proof.payload as {
+      evidenceRoutes: { operatorNoteTrail: string | null };
+      summary: {
+        operatorNoteCount: number;
+        latestOperatorNoteAt: string | null;
+        latestDisposition: string | null;
+        operatorNoteTrail: string | null;
+      };
+      events: Array<{ type: string }>;
+      transcript: Array<{ speaker: string; text: string }>;
+    };
     assert.equal(proofPayload.events.some((event) => event.type === "operator_note_recorded"), true);
     assert.equal(proofPayload.transcript.some((turn) => turn.speaker === "operator" && turn.text.includes("licensed follow-up")), true);
+    assert.equal(proofPayload.summary.operatorNoteCount, 1);
+    assert.equal(proofPayload.summary.latestOperatorNoteAt, "2026-06-10T14:12:00.000Z");
+    assert.equal(proofPayload.summary.latestDisposition, "follow_up_requested");
+    assert.equal(proofPayload.summary.operatorNoteTrail, "/api/calls/" + callId + "/events?type=operator_note_recorded");
+    assert.equal(proofPayload.evidenceRoutes.operatorNoteTrail, "/api/calls/" + callId + "/events?type=operator_note_recorded");
 
     const consoleResponse = await requestJson(port, "GET", "/api/operator/console?callId=" + callId);
     const consolePayload = consoleResponse.payload as OperatorConsolePayload;
@@ -1431,6 +1693,11 @@ test("POST /api/calls/:callId/operator-note records operator notes and dispositi
     assert.equal(consoleCall.evidenceSummary.latestOperatorNoteText, "Customer asked for licensed follow-up after safe offer review.");
     assert.equal(consoleCall.evidenceSummary.latestOperatorNoteAt, "2026-06-10T14:12:00.000Z");
     assert.equal(consoleCall.evidenceSummary.latestDisposition, "follow_up_requested");
+    assert.equal(consoleCall.evidenceSummary.operatorNoteTrail, `/api/calls/${callId}/events?type=operator_note_recorded`);
+
+    const manifest = await requestJson(port, "GET", "/api/calls/" + callId + "/artifacts");
+    const manifestPayload = manifest.payload as ArtifactManifestPayload;
+    assert.equal(manifestPayload.evidenceRoutes.operatorNoteTrail, `/api/calls/${callId}/events?type=operator_note_recorded`);
 
     const missingText = await requestJson(port, "POST", "/api/calls/" + callId + "/operator-note", { text: "   " });
     assert.equal(missingText.statusCode, 400);
@@ -1683,6 +1950,18 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
       timestamp: "2099-01-01T00:00:00.000Z",
     });
 
+    const byFallbackSource = await requestJson(port, "GET", "/api/calls?fallbackSource=tool_timeout_fail_closed");
+    const byFallbackSourcePayload = byFallbackSource.payload as CallListPayload;
+    assert.equal(byFallbackSource.statusCode, 200);
+    assert.deepEqual(byFallbackSourcePayload.calls.map((call) => call.session.callId), [firstCallId]);
+    assert.equal(byFallbackSourcePayload.summary.filteredSummary.totalCalls, 1);
+
+    const noFallbackSource = await requestJson(port, "GET", "/api/calls?fallbackSource=pipecat_runtime_failure_fail_closed");
+    const noFallbackSourcePayload = noFallbackSource.payload as CallListPayload;
+    assert.equal(noFallbackSource.statusCode, 200);
+    assert.deepEqual(noFallbackSourcePayload.calls.map((call) => call.session.callId), []);
+    assert.equal(noFallbackSourcePayload.summary.filteredSummary.totalCalls, 0);
+
     const mismatchedLatencyFilters = await requestJson(
       port,
       "GET",
@@ -1698,6 +1977,13 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     assert.equal(noLatencyStage.statusCode, 200);
     assert.deepEqual(noLatencyStagePayload.calls.map((call) => call.session.callId), []);
     assert.equal(noLatencyStagePayload.summary.filteredSummary.totalCalls, 0);
+
+    const invalidFallbackSource = await requestJson(port, "GET", "/api/calls?fallbackSource=%20%20%20");
+    assert.equal(invalidFallbackSource.statusCode, 400);
+    assert.deepEqual(invalidFallbackSource.payload, {
+      ok: false,
+      error: "call_list_fallback_source_invalid",
+    });
 
     const invalidLatencyStage = await requestJson(port, "GET", "/api/calls?latencyStage=%20%20%20");
     assert.equal(invalidLatencyStage.statusCode, 400);
@@ -2154,6 +2440,13 @@ test("GET /api/queue can filter operator summary slices", async () => {
     assert.deepEqual(invalidFallback.payload, {
       ok: false,
       error: "queue_fallback_armed_invalid",
+    });
+
+    const invalidFallbackMode = await requestJson(port, "GET", "/api/queue?fallbackMode=manual_takeover");
+    assert.equal(invalidFallbackMode.statusCode, 400);
+    assert.deepEqual(invalidFallbackMode.payload, {
+      ok: false,
+      error: "queue_fallback_mode_invalid",
     });
 
     const invalidAttention = await requestJson(port, "GET", "/api/queue?attentionRequired=loudly");
@@ -2764,6 +3057,249 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.equal(typeof fetchedPayload.attention?.ageMs, "number");
     assert.equal(fetchedPayload.demoFallback.reason, "pipecat tool exceeded latency budget");
     assert.equal(fetchedPayload.demoFallback.mode, "tool_timeout");
+
+    const runtimeFailureStarted = await requestJson(port, "POST", "/api/demo/start");
+    const runtimeFailureCallId = (runtimeFailureStarted.payload as { session: { callId: string } }).session.callId;
+    const runtimeFailure = await requestJson(port, "POST", `/api/calls/${runtimeFailureCallId}/fallback`, {
+      mode: "runtime_failure",
+      reason: "pipecat local runtime import failed",
+      timestamp: "2026-06-10T14:00:03.000Z",
+    });
+    const runtimeFailurePayload = runtimeFailure.payload as SnapshotPayload;
+
+    assert.equal(runtimeFailure.statusCode, 200);
+    assert.equal(runtimeFailurePayload.flowState, "wrap");
+    assert.equal(runtimeFailurePayload.demoFallback.mode, "runtime_failure");
+    assert.equal(runtimeFailurePayload.demoFallback.reason, "pipecat local runtime import failed");
+    const runtimeFailureHandoff = runtimeFailurePayload.events.find((event) => event.type === "human_handoff_started");
+    assert.ok(runtimeFailureHandoff);
+    assert.equal(runtimeFailureHandoff.detail.source, "pipecat_runtime_failure_fail_closed");
+    assert.equal(runtimeFailureHandoff.detail.reason, "pipecat local runtime import failed");
+    const runtimeFailureAgentTurn = [...runtimeFailurePayload.transcript].reverse().find((turn) => turn.speaker === "agent");
+    assert.ok(runtimeFailureAgentTurn);
+    assert.equal(runtimeFailureAgentTurn.text.toLowerCase().includes("runtime reported a failure"), true);
+
+    const runtimeFailureProof = await requestJson(port, "GET", `/api/calls/${runtimeFailureCallId}/proof`);
+    const runtimeFailureProofPayload = runtimeFailureProof.payload as {
+      outcome: { fallbackMode: string | null; fallbackReason: string | null; fallbackSource: string | null; handoffStarted: boolean; handoffStartedAt: string | null };
+      evidenceRoutes: {
+        fallbackSourceTrail: string | null;
+        fallbackSourceQueue: string | null;
+        fallbackSourceCallList: string | null;
+        fallbackSourceOperatorConsole: string | null;
+        fallbackModeQueue: string | null;
+        fallbackModeCallList: string | null;
+        fallbackModeOperatorConsole: string | null;
+        fallbackModeTranscriptTrail: string | null;
+        fallbackReasonQueue: string | null;
+        fallbackReasonCallList: string | null;
+        fallbackReasonOperatorConsole: string | null;
+        fallbackReasonEventTrail: string | null;
+        handoffTrail: string | null;
+        overBudgetLatencyTrail: string | null;
+      };
+      summary: {
+        fallbackSourceTrail: string | null;
+        fallbackSourceQueue: string | null;
+        fallbackSourceCallList: string | null;
+        fallbackSourceOperatorConsole: string | null;
+        fallbackModeQueue: string | null;
+        fallbackModeCallList: string | null;
+        fallbackModeOperatorConsole: string | null;
+        fallbackModeTranscriptTrail: string | null;
+        fallbackReasonQueue: string | null;
+        fallbackReasonCallList: string | null;
+        fallbackReasonOperatorConsole: string | null;
+        fallbackReasonEventTrail: string | null;
+        handoffTrail: string | null;
+        overBudgetLatencyTrail: string | null;
+      };
+    };
+
+    assert.equal(runtimeFailureProof.statusCode, 200);
+    assert.equal(runtimeFailureProofPayload.outcome.fallbackMode, "runtime_failure");
+    assert.equal(runtimeFailureProofPayload.outcome.fallbackReason, "pipecat local runtime import failed");
+    assert.equal(runtimeFailureProofPayload.outcome.fallbackSource, "pipecat_runtime_failure_fail_closed");
+    assert.equal(runtimeFailureProofPayload.outcome.handoffStarted, true);
+    assert.equal(runtimeFailureProofPayload.outcome.handoffStartedAt, "2026-06-10T14:00:03.000Z");
+    assert.equal(runtimeFailureProofPayload.summary.handoffTrail, `/api/calls/${runtimeFailureCallId}/events?type=human_handoff_started&limit=1&order=desc`);
+    assert.equal(
+      runtimeFailureProofPayload.summary.fallbackSourceTrail,
+      `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
+    );
+    assert.equal(runtimeFailureProofPayload.summary.fallbackSourceQueue, "/api/queue?attentionRequired=true&fallbackSource=pipecat_runtime_failure_fail_closed");
+    assert.equal(runtimeFailureProofPayload.summary.fallbackSourceCallList, "/api/calls?fallbackSource=pipecat_runtime_failure_fail_closed&limit=5");
+    assert.equal(runtimeFailureProofPayload.summary.fallbackSourceOperatorConsole, "/api/operator/console?fallbackSource=pipecat_runtime_failure_fail_closed&limit=1");
+    assert.equal(runtimeFailureProofPayload.summary.fallbackModeQueue, "/api/queue?attentionRequired=true&fallbackMode=runtime_failure");
+    assert.equal(runtimeFailureProofPayload.summary.fallbackModeCallList, "/api/calls?fallbackMode=runtime_failure&limit=5");
+    assert.equal(runtimeFailureProofPayload.summary.fallbackModeOperatorConsole, "/api/operator/console?fallbackMode=runtime_failure&limit=1");
+    assert.equal(
+      runtimeFailureProofPayload.summary.fallbackModeTranscriptTrail,
+      `/api/calls/${runtimeFailureCallId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure`,
+    );
+    assert.equal(runtimeFailureProofPayload.summary.overBudgetLatencyTrail, null);
+    assert.equal(
+      runtimeFailureProofPayload.evidenceRoutes.fallbackSourceTrail,
+      `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
+    );
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackSourceQueue, "/api/queue?attentionRequired=true&fallbackSource=pipecat_runtime_failure_fail_closed");
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackSourceCallList, "/api/calls?fallbackSource=pipecat_runtime_failure_fail_closed&limit=5");
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackSourceOperatorConsole, "/api/operator/console?fallbackSource=pipecat_runtime_failure_fail_closed&limit=1");
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackModeQueue, "/api/queue?attentionRequired=true&fallbackMode=runtime_failure");
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackModeCallList, "/api/calls?fallbackMode=runtime_failure&limit=5");
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackModeOperatorConsole, "/api/operator/console?fallbackMode=runtime_failure&limit=1");
+    assert.equal(
+      runtimeFailureProofPayload.evidenceRoutes.fallbackModeTranscriptTrail,
+      `/api/calls/${runtimeFailureCallId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure`,
+    );
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.handoffTrail, `/api/calls/${runtimeFailureCallId}/events?type=human_handoff_started&limit=1&order=desc`);
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.overBudgetLatencyTrail, null);
+
+    const runtimeFailureCalls = await requestJson(port, "GET", "/api/calls?fallbackMode=runtime_failure");
+    const runtimeFailureCallsPayload = runtimeFailureCalls.payload as CallListPayload;
+    assert.equal(runtimeFailureCalls.statusCode, 200);
+    assert.deepEqual(runtimeFailureCallsPayload.calls.map((call) => call.session.callId), [runtimeFailureCallId]);
+    assert.equal(runtimeFailureCallsPayload.summary.filteredSummary.fallbackArmed, 1);
+
+    const runtimeFailureReason = encodeURIComponent("pipecat local runtime import failed");
+    assert.equal(runtimeFailureProofPayload.summary.fallbackReasonQueue, "/api/queue?fallbackReason=" + runtimeFailureReason);
+    assert.equal(runtimeFailureProofPayload.summary.fallbackReasonCallList, "/api/calls?fallbackReason=" + runtimeFailureReason + "&limit=5");
+    assert.equal(
+      runtimeFailureProofPayload.summary.fallbackReasonOperatorConsole,
+      "/api/operator/console?fallbackReason=" + runtimeFailureReason + "&limit=1",
+    );
+    assert.equal(
+      runtimeFailureProofPayload.summary.fallbackReasonEventTrail,
+      `/api/calls/${runtimeFailureCallId}/events?detailText=${runtimeFailureReason}`,
+    );
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackReasonQueue, "/api/queue?fallbackReason=" + runtimeFailureReason);
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackReasonCallList, "/api/calls?fallbackReason=" + runtimeFailureReason + "&limit=5");
+    assert.equal(
+      runtimeFailureProofPayload.evidenceRoutes.fallbackReasonOperatorConsole,
+      "/api/operator/console?fallbackReason=" + runtimeFailureReason + "&limit=1",
+    );
+    assert.equal(
+      runtimeFailureProofPayload.evidenceRoutes.fallbackReasonEventTrail,
+      `/api/calls/${runtimeFailureCallId}/events?detailText=${runtimeFailureReason}`,
+    );
+
+    const runtimeFailureReasonTrail = await requestJson(port, "GET", `/api/calls/${runtimeFailureCallId}/events?detailText=${runtimeFailureReason}`);
+    const runtimeFailureReasonTrailPayload = runtimeFailureReasonTrail.payload as EventTrailPayload;
+    assert.equal(runtimeFailureReasonTrail.statusCode, 200);
+    assert.equal(runtimeFailureReasonTrailPayload.summary.filteredDetailText, "pipecat local runtime import failed");
+    assert.deepEqual(
+      runtimeFailureReasonTrailPayload.events.map((event) => event.type),
+      ["demo_fallback_triggered", "human_handoff_started"],
+    );
+
+    const runtimeFailureReasonCalls = await requestJson(port, "GET", "/api/calls?fallbackReason=" + runtimeFailureReason);
+    const runtimeFailureReasonCallsPayload = runtimeFailureReasonCalls.payload as CallListPayload;
+    assert.equal(runtimeFailureReasonCalls.statusCode, 200);
+    assert.deepEqual(runtimeFailureReasonCallsPayload.calls.map((call) => call.session.callId), [runtimeFailureCallId]);
+    assert.equal(runtimeFailureReasonCallsPayload.summary.filteredSummary.fallbackArmed, 1);
+
+    const runtimeFailureReasonQueue = await requestJson(port, "GET", "/api/queue?fallbackReason=" + runtimeFailureReason);
+    const runtimeFailureReasonQueuePayload = runtimeFailureReasonQueue.payload as QueueSummaryPayload;
+    assert.equal(runtimeFailureReasonQueue.statusCode, 200);
+    assert.equal(runtimeFailureReasonQueuePayload.summary.totalCalls, 1);
+    assert.equal(runtimeFailureReasonQueuePayload.summary.oldestAttentionCallId, runtimeFailureCallId);
+
+    const runtimeFailureReasonConsole = await requestJson(port, "GET", "/api/operator/console?fallbackReason=" + runtimeFailureReason);
+    const runtimeFailureReasonConsolePayload = runtimeFailureReasonConsole.payload as OperatorConsolePayload;
+    assert.equal(runtimeFailureReasonConsole.statusCode, 200);
+    assert.deepEqual(runtimeFailureReasonConsolePayload.calls.items.map((call) => call.session.callId), [runtimeFailureCallId]);
+
+    const runtimeFailureConsole = await requestJson(port, "GET", "/api/operator/console?fallbackMode=runtime_failure");
+    const runtimeFailureConsolePayload = runtimeFailureConsole.payload as OperatorConsolePayload;
+    const runtimeFailureConsoleCall = runtimeFailureConsolePayload.calls.items[0];
+    assert.equal(runtimeFailureConsole.statusCode, 200);
+    assert.equal(runtimeFailureConsolePayload.calls.summary.filteredSummary.fallbackArmed, 1);
+    assert.equal(runtimeFailureConsoleCall?.evidenceSummary.fallbackMode, "runtime_failure");
+    assert.equal(runtimeFailureConsoleCall?.evidenceSummary.fallbackReason, "pipecat local runtime import failed");
+    assert.equal(runtimeFailureConsoleCall?.evidenceSummary.fallbackReasonQueue, "/api/queue?fallbackReason=" + runtimeFailureReason);
+    assert.equal(runtimeFailureConsoleCall?.evidenceSummary.fallbackReasonCallList, "/api/calls?fallbackReason=" + runtimeFailureReason + "&limit=5");
+    assert.equal(
+      runtimeFailureConsoleCall?.evidenceSummary.fallbackReasonOperatorConsole,
+      "/api/operator/console?fallbackReason=" + runtimeFailureReason + "&limit=1",
+    );
+    assert.equal(
+      runtimeFailureConsoleCall?.evidenceSummary.fallbackReasonEventTrail,
+      `/api/calls/${runtimeFailureCallId}/events?detailText=${runtimeFailureReason}`,
+    );
+    assert.equal(runtimeFailureConsoleCall?.evidenceSummary.fallbackSource, "pipecat_runtime_failure_fail_closed");
+    assert.equal(
+      runtimeFailureConsoleCall?.evidenceSummary.fallbackSourceTrail,
+      `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
+    );
+    assert.equal(
+      runtimeFailureConsoleCall?.evidenceSummary.fallbackSourceQueue,
+      "/api/queue?attentionRequired=true&fallbackSource=pipecat_runtime_failure_fail_closed",
+    );
+    assert.equal(
+      runtimeFailureConsoleCall?.evidenceSummary.fallbackSourceCallList,
+      "/api/calls?fallbackSource=pipecat_runtime_failure_fail_closed&limit=5",
+    );
+    assert.equal(
+      runtimeFailureConsoleCall?.evidenceSummary.fallbackSourceOperatorConsole,
+      "/api/operator/console?fallbackSource=pipecat_runtime_failure_fail_closed&limit=1",
+    );
+    assert.equal(runtimeFailureConsoleCall?.evidenceSummary.handoffTrail, `/api/calls/${runtimeFailureCallId}/events?type=human_handoff_started&limit=1&order=desc`);
+    assert.equal(runtimeFailureConsoleCall?.evidenceSummary.handoffStartedAt, "2026-06-10T14:00:03.000Z");
+
+    const runtimeFailureManifest = await requestJson(port, "GET", `/api/calls/${runtimeFailureCallId}/artifacts`);
+    const runtimeFailureManifestPayload = runtimeFailureManifest.payload as ArtifactManifestPayload;
+    assert.equal(runtimeFailureManifest.statusCode, 200);
+    assert.equal(runtimeFailureManifestPayload.runtimeMode.flow, "pipecat_local_runtime");
+    assert.equal(runtimeFailureManifestPayload.summary.fallbackMode, "runtime_failure");
+    assert.equal(runtimeFailureManifestPayload.summary.fallbackReason, "pipecat local runtime import failed");
+    assert.equal(runtimeFailureManifestPayload.summary.fallbackSource, "pipecat_runtime_failure_fail_closed");
+    assert.equal(runtimeFailureManifestPayload.summary.handoffTrail, `/api/calls/${runtimeFailureCallId}/events?type=human_handoff_started&limit=1&order=desc`);
+    assert.equal(runtimeFailureManifestPayload.summary.handoffStartedAt, "2026-06-10T14:00:03.000Z");
+    assert.equal(
+      runtimeFailureManifestPayload.evidenceRoutes.fallbackSourceTrail,
+      `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
+    );
+    assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackSourceQueue, "/api/queue?attentionRequired=true&fallbackSource=pipecat_runtime_failure_fail_closed");
+    assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackSourceCallList, "/api/calls?fallbackSource=pipecat_runtime_failure_fail_closed&limit=5");
+    assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackSourceOperatorConsole, "/api/operator/console?fallbackSource=pipecat_runtime_failure_fail_closed&limit=1");
+    assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackModeQueue, "/api/queue?attentionRequired=true&fallbackMode=runtime_failure");
+    assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackModeCallList, "/api/calls?fallbackMode=runtime_failure&limit=5");
+    assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackModeOperatorConsole, "/api/operator/console?fallbackMode=runtime_failure&limit=1");
+    assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackReasonQueue, "/api/queue?fallbackReason=" + runtimeFailureReason);
+    assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackReasonCallList, "/api/calls?fallbackReason=" + runtimeFailureReason + "&limit=5");
+    assert.equal(
+      runtimeFailureManifestPayload.evidenceRoutes.fallbackReasonOperatorConsole,
+      "/api/operator/console?fallbackReason=" + runtimeFailureReason + "&limit=1",
+    );
+    assert.equal(
+      runtimeFailureManifestPayload.evidenceRoutes.fallbackReasonEventTrail,
+      `/api/calls/${runtimeFailureCallId}/events?detailText=${runtimeFailureReason}`,
+    );
+    assert.equal(
+      runtimeFailureManifestPayload.evidenceRoutes.fallbackModeTranscriptTrail,
+      `/api/calls/${runtimeFailureCallId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure`,
+    );
+    assert.equal(runtimeFailureManifestPayload.evidenceRoutes.handoffTrail, `/api/calls/${runtimeFailureCallId}/events?type=human_handoff_started&limit=1&order=desc`);
+
+    const toolTimeoutQueue = await requestJson(port, "GET", "/api/queue?fallbackMode=tool_timeout");
+    const toolTimeoutQueuePayload = toolTimeoutQueue.payload as QueueSummaryPayload;
+    assert.equal(toolTimeoutQueue.statusCode, 200);
+    assert.equal(toolTimeoutQueuePayload.summary.totalCalls, 1);
+    assert.equal(toolTimeoutQueuePayload.summary.oldestAttentionCallId, callId);
+
+    const invalidFallbackMode = await requestJson(port, "GET", "/api/calls?fallbackMode=manual_takeover");
+    assert.equal(invalidFallbackMode.statusCode, 400);
+    assert.deepEqual(invalidFallbackMode.payload, {
+      ok: false,
+      error: "call_list_fallback_mode_invalid",
+    });
+
+    const invalidFallbackReason = await requestJson(port, "GET", "/api/queue?fallbackReason=%20%20");
+    assert.equal(invalidFallbackReason.statusCode, 400);
+    assert.deepEqual(invalidFallbackReason.payload, {
+      ok: false,
+      error: "queue_fallback_reason_invalid",
+    });
   });
 });
 
@@ -3282,6 +3818,13 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.equal(detailFilteredPayload.summary.filteredDetailText, "operator audit");
     assert.deepEqual(detailFilteredPayload.events.map((event) => event.type), ["demo_fallback_triggered", "human_handoff_started"]);
 
+    const detailKeyFilteredEvents = await requestJson(port, "GET", `/api/calls/${callId}/events?detailKey=source`);
+    const detailKeyFilteredPayload = detailKeyFilteredEvents.payload as EventTrailPayload;
+
+    assert.equal(detailKeyFilteredEvents.statusCode, 200);
+    assert.equal(detailKeyFilteredPayload.summary.filteredDetailKey, "source");
+    assert.deepEqual(detailKeyFilteredPayload.events.map((event) => event.type), ["demo_fallback_triggered", "human_handoff_started"]);
+
     const sourceFilteredEvents = await requestJson(port, "GET", `/api/calls/${callId}/events?source=mock_http_route`);
     const sourceFilteredPayload = sourceFilteredEvents.payload as EventTrailPayload;
 
@@ -3316,6 +3859,13 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.deepEqual(invalidDetailText.payload, {
       ok: false,
       error: "event_detail_text_invalid",
+    });
+
+    const invalidDetailKey = await requestJson(port, "GET", `/api/calls/${callId}/events?detailKey=%20%20`);
+    assert.equal(invalidDetailKey.statusCode, 400);
+    assert.deepEqual(invalidDetailKey.payload, {
+      ok: false,
+      error: "event_detail_key_invalid",
     });
 
     const invalidSince = await requestJson(port, "GET", `/api/calls/${callId}/events?since=not-a-date`);

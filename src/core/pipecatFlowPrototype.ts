@@ -170,8 +170,15 @@ function setOperatorSteerState(
 export function buildPipecatFlowPrototypeStatus(): PipecatFlowPrototypeStatus {
   return {
     ready: true,
-    prototypeMode: "deterministic_templates",
-    transport: "adapter_ready",
+    prototypeMode: "pipecat_local_runtime",
+    transport: "local_process",
+    runtimeEngine: "pipecat-ai",
+    credentialsMode: "mocked",
+    runtimeCheck: {
+      command: "npm run pipecat:check",
+      installCommand: "python3 -m pip install --target .pipecat-runtime -r requirements-pipecat.txt",
+      liveTelephonyRequired: false,
+    },
     activeTool: "get_current_slide",
     toolCoverage: [...PIPECAT_TOOL_COVERAGE],
     script: {
@@ -185,13 +192,17 @@ export function buildPipecatFlowPrototypeStatus(): PipecatFlowPrototypeStatus {
 
 export function getPipecatPrototypeHealth(): Pick<
   PipecatFlowPrototypeStatus,
-  "ready" | "prototypeMode" | "transport" | "toolCoverage"
+  "ready" | "prototypeMode" | "transport" | "runtimeEngine" | "credentialsMode" | "runtimeCheck" | "activeTool" | "toolCoverage"
 > {
   const status = buildPipecatFlowPrototypeStatus();
   return {
     ready: status.ready,
     prototypeMode: status.prototypeMode,
     transport: status.transport,
+    runtimeEngine: status.runtimeEngine,
+    credentialsMode: status.credentialsMode,
+    runtimeCheck: status.runtimeCheck,
+    activeTool: status.activeTool,
     toolCoverage: status.toolCoverage,
   };
 }
@@ -203,6 +214,10 @@ export function triggerFailClosedFallback(
   reason?: string,
 ): void {
   const fallbackReason = reason?.trim() || mode;
+  const handoffSource = mode === "runtime_failure" ? "pipecat_runtime_failure_fail_closed" : "tool_timeout_fail_closed";
+  const agentMessage = mode === "runtime_failure"
+    ? "The local Pipecat runtime reported a failure, so I am failing closed and connecting you to a licensed retention specialist instead of improvising an offer or promising any billing credit."
+    : "A required tool timed out, so I am failing closed and connecting you to a licensed retention specialist instead of improvising an offer or promising any billing credit.";
 
   snapshot.pipecatFlow.activeTool = "pause_presentation";
   setDemoFallback(snapshot, true, timestamp, fallbackReason, mode);
@@ -217,13 +232,9 @@ export function triggerFailClosedFallback(
     operatorChannel: snapshot.scenario.operatorChannel,
     reason: fallbackReason,
     mode,
-    source: "tool_timeout_fail_closed",
+    source: handoffSource,
   });
-  appendAgentTurn(
-    snapshot,
-    "A required tool timed out, so I am failing closed and connecting you to a licensed retention specialist instead of improvising an offer or promising any billing credit.",
-    timestamp,
-  );
+  appendAgentTurn(snapshot, agentMessage, timestamp);
   transitionFlowState(snapshot, "wrap", timestamp, `${mode}_fallback_escalated`);
 }
 

@@ -241,7 +241,7 @@ function buildOperatorConsoleHtml(): string {
     <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" id="start-demo">Start Demo Call</button><button type="button" id="refresh">Refresh</button></div>
   </header>
   <main>
-    <section class="panel" aria-label="Live calls"><h2>Live Calls</h2><div class="filters"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Attention only</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><input id="transcript-filter" placeholder="Transcript search"><button type="button" id="clear-filters">Clear</button></div><div class="call-list" id="calls"></div></section>
+    <section class="panel" aria-label="Live calls"><h2>Live Calls</h2><div class="filters"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Attention only</label><label class="filter-toggle"><input type="checkbox" id="latency-over-budget-filter">Over-budget latency</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><select id="fallback-filter" aria-label="Fallback mode filter"><option value="">All fallback modes</option><option value="tool_timeout">Tool Timeout</option><option value="runtime_failure">Runtime Failure</option></select><select id="fallback-source-filter" aria-label="Fallback source filter"><option value="">All fallback sources</option><option value="tool_timeout_fail_closed">Tool Timeout Source</option><option value="pipecat_runtime_failure_fail_closed">Runtime Failure Source</option></select><input id="fallback-reason-filter" aria-label="Fallback reason filter" placeholder="Fallback reason"><select id="tool-filter" aria-label="Active tool filter"><option value="">All active tools</option><option value="get_current_slide">Get Current Slide</option><option value="goto_slide">Go To Slide</option><option value="pause_presentation">Pause Presentation</option><option value="ask_operator">Ask Operator</option></select><input id="transcript-filter" placeholder="Transcript search"><button type="button" id="clear-filters">Clear</button></div><div class="call-list" id="calls"></div></section>
     <section class="panel" aria-label="Selected call"><h2 id="selected-title">Select a call</h2><div class="detail" id="detail"></div></section>
   </main>
   <script>
@@ -249,13 +249,22 @@ function buildOperatorConsoleHtml(): string {
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
     function setStatus(text) { document.getElementById("status").textContent = text; }
-    function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[char]; }); }
+    function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { if (char === "&") return "&amp;"; if (char === "<") return "&lt;"; if (char === ">") return "&gt;"; return "&quot;"; }); }
     function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
     function operatorConsoleQuery() {
       const params = new URLSearchParams({ sort: "attentionStartedAt", order: "asc", limit: "25" });
       if (document.getElementById("attention-filter").checked) params.set("attentionRequired", "true");
+      if (document.getElementById("latency-over-budget-filter").checked) params.set("latencyOverBudget", "true");
       const flowState = document.getElementById("flow-filter").value;
       if (flowState) params.set("flowState", flowState);
+      const fallbackMode = document.getElementById("fallback-filter").value;
+      if (fallbackMode) params.set("fallbackMode", fallbackMode);
+      const fallbackSource = document.getElementById("fallback-source-filter").value;
+      if (fallbackSource) params.set("fallbackSource", fallbackSource);
+      const fallbackReason = document.getElementById("fallback-reason-filter").value.trim();
+      if (fallbackReason) params.set("fallbackReason", fallbackReason);
+      const activeTool = document.getElementById("tool-filter").value;
+      if (activeTool) params.set("pipecatActiveTool", activeTool);
       const transcriptText = document.getElementById("transcript-filter").value.trim();
       if (transcriptText) params.set("transcriptText", transcriptText);
       return params.toString();
@@ -348,9 +357,18 @@ function buildOperatorConsoleHtml(): string {
       const attentionDetail = call.attention.required ? [call.attention.source, call.attention.reason, call.attention.startedAt].filter(Boolean).join(" | ") : "monitoring";
       const evidence = call.evidenceSummary;
       const evidenceLinks = evidence.links || {};
-      const evidenceHtml = '<div class="evidence" aria-label="Evidence markers"><div class="metric"><span class="meta">Latest Event</span><strong>' + escapeHtml(evidence.latestEventType || "none") + '</strong><span class="meta">' + escapeHtml(evidence.latestEventAt || "not recorded") + '</span></div><div class="metric"><span class="meta">Transcript Turns</span><strong>' + evidence.transcriptTurns + '</strong><a href="' + escapeHtml(evidenceLinks.transcript) + '">Transcript</a></div><div class="metric"><span class="meta">Latency Marks</span><strong>' + evidence.latencyMarkCount + '</strong><a href="' + escapeHtml(evidenceLinks.latencyMarks) + '">Latency</a></div><div class="metric"><span class="meta">Operator Notes</span><strong>' + evidence.operatorNoteCount + '</strong><span class="meta">' + escapeHtml(evidence.latestDisposition || evidence.latestOperatorNoteText || "none") + '</span></div><div class="metric"><span class="meta">Proof Bundle</span><strong>' + evidence.eventCount + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Proof</a></div></div>';
+      const latencyLink = evidence.latestLatencyTrail || evidence.overBudgetLatencyTrail || evidenceLinks.latencyMarks;
+      const latestEventLink = evidence.latestEventTrail || evidenceLinks.events;
+      const fallbackLabel = evidence.fallbackMode ? evidence.fallbackMode.replace(/_/g, " ") : "none";
+      const fallbackTrailLink = evidence.fallbackSourceTrail || evidenceLinks.events;
+      const fallbackReasonLink = evidence.fallbackReasonEventTrail || evidence.fallbackReasonOperatorConsole;
+      const fallbackDetail = evidence.fallbackReason || evidence.fallbackSource || evidence.handoffStartedAt || "no handoff";
+      const fallbackQueueLink = evidence.fallbackModeQueue || evidence.fallbackModeOperatorConsole || evidenceLinks.events;
+      const operatorNoteTrailLink = evidence.operatorNoteTrail || evidenceLinks.events;
+      const reasonTrailHtml = fallbackReasonLink ? '<a href="' + escapeHtml(fallbackReasonLink) + '">Reason Trail</a>' : '';
+      const evidenceHtml = '<div class="evidence" aria-label="Evidence markers"><div class="metric"><span class="meta">Latest Event</span><strong>' + escapeHtml(evidence.latestEventType || "none") + '</strong><span class="meta">' + escapeHtml(evidence.latestEventAt || "not recorded") + '</span><a href="' + escapeHtml(latestEventLink) + '">Event Trail</a></div><div class="metric"><span class="meta">Transcript Turns</span><strong>' + evidence.transcriptTurns + '</strong><a href="' + escapeHtml(evidenceLinks.transcript) + '">Transcript</a></div><div class="metric"><span class="meta">Latency Marks</span><strong>' + evidence.latencyMarkCount + '</strong><span class="meta">Over budget: ' + evidence.overBudgetLatencyMarkCount + '</span><a href="' + escapeHtml(latencyLink) + '">Latency</a></div><div class="metric"><span class="meta">Fallback</span><strong>' + escapeHtml(fallbackLabel) + '</strong><span class="meta">' + escapeHtml(fallbackDetail) + '</span><a href="' + escapeHtml(fallbackTrailLink) + '">Event Trail</a><a href="' + escapeHtml(fallbackQueueLink) + '">Fallback Queue</a>' + reasonTrailHtml + '</div><div class="metric"><span class="meta">Operator Notes</span><strong>' + evidence.operatorNoteCount + '</strong><span class="meta">' + escapeHtml(evidence.latestDisposition || evidence.latestOperatorNoteText || "none") + '</span><a href="' + escapeHtml(operatorNoteTrailLink) + '">Note Trail</a></div><div class="metric"><span class="meta">Proof Bundle</span><strong>' + evidence.eventCount + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Proof</a><a href="' + escapeHtml(evidenceLinks.artifacts) + '">Artifacts</a></div></div>';
       root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + pendingHtml + '</div>' + evidenceHtml + '<div class="actions">' + actionHtml + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
-      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\n\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
+      root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\\n\\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       document.getElementById("caller-turn-form").addEventListener("submit", recordCallerTurn);
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
@@ -358,9 +376,14 @@ function buildOperatorConsoleHtml(): string {
     document.getElementById("start-demo").addEventListener("click", function() { startDemoCall().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("refresh").addEventListener("click", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("attention-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("latency-over-budget-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("flow-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("fallback-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("fallback-source-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("fallback-reason-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("transcript-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
-    document.getElementById("clear-filters").addEventListener("click", function() { document.getElementById("attention-filter").checked = false; document.getElementById("flow-filter").value = ""; document.getElementById("transcript-filter").value = ""; refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("tool-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("clear-filters").addEventListener("click", function() { document.getElementById("attention-filter").checked = false; document.getElementById("latency-over-budget-filter").checked = false; document.getElementById("flow-filter").value = ""; document.getElementById("fallback-filter").value = ""; document.getElementById("fallback-source-filter").value = ""; document.getElementById("fallback-reason-filter").value = ""; document.getElementById("tool-filter").value = ""; document.getElementById("transcript-filter").value = ""; refresh().catch(function(error) { setStatus(error.message); }); });
     refresh().catch(function(error) { setStatus(error.message); });
   </script>
 </body>
@@ -423,6 +446,10 @@ function isAttentionSource(value: string): value is AttentionSource {
   return value === "operator_steer" || value === "fallback" || value === "operator_steer+fallback";
 }
 
+function isFallbackMode(value: string): value is FallbackMode {
+  return value === "tool_timeout" || value === "runtime_failure";
+}
+
 function isTranscriptSpeaker(value: string): value is TranscriptTurn["speaker"] {
   return value === "caller" || value === "agent" || value === "operator" || value === "system";
 }
@@ -434,12 +461,51 @@ function buildCallPayload(snapshot: CallSnapshot) {
   };
 }
 
+function buildLatestLatencyTrail(snapshot: CallSnapshot): string | null {
+  const latestLatencyMark = snapshot.latencyMarks.at(-1);
+  return latestLatencyMark
+    ? snapshot.session.openclawSession.artifactLinks.latencyMarks +
+        "?stage=" +
+        encodeURIComponent(latestLatencyMark.stage) +
+        "&limit=1&order=desc"
+    : null;
+}
+
+function buildHandoffTrail(snapshot: CallSnapshot): string | null {
+  return snapshot.events.some((event) => event.type === "human_handoff_started")
+    ? snapshot.session.openclawSession.artifactLinks.events + "?type=human_handoff_started&limit=1&order=desc"
+    : null;
+}
+
 function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
   const latestEvent = snapshot.events.at(-1);
   const latestTranscriptTurn = snapshot.transcript.at(-1);
   const latestLatencyMark = snapshot.latencyMarks.at(-1);
+  const handoffEvent = snapshot.events.find((event) => event.type === "human_handoff_started");
+  const fallbackSource = typeof handoffEvent?.detail.source === "string" ? handoffEvent.detail.source : null;
   const operatorNoteEvents = snapshot.events.filter((event) => event.type === "operator_note_recorded");
   const latestOperatorNote = operatorNoteEvents.at(-1);
+  const overBudgetLatencyMarkCount = snapshot.latencyMarks.filter(
+    (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
+  ).length;
+  const latestEventTrail = latestEvent
+    ? snapshot.session.openclawSession.artifactLinks.events + "?type=" + encodeURIComponent(latestEvent.type) + "&limit=1&order=desc"
+    : null;
+  const latestLatencyTrail = buildLatestLatencyTrail(snapshot);
+  const handoffTrail = buildHandoffTrail(snapshot);
+  const operatorConsole = "/api/operator/console?callId=" + encodeURIComponent(snapshot.session.callId);
+  const fallbackModeQueue = snapshot.demoFallback.mode
+    ? `/api/queue?attentionRequired=true&fallbackMode=${encodeURIComponent(snapshot.demoFallback.mode)}`
+    : null;
+  const fallbackModeCallList = snapshot.demoFallback.mode
+    ? `/api/calls?fallbackMode=${encodeURIComponent(snapshot.demoFallback.mode)}&limit=5`
+    : null;
+  const fallbackModeOperatorConsole = snapshot.demoFallback.mode
+    ? `/api/operator/console?fallbackMode=${encodeURIComponent(snapshot.demoFallback.mode)}&limit=1`
+    : null;
+  const fallbackModeTranscriptTrail = buildFallbackModeTranscriptTrail(snapshot);
+  const fallbackSourceRoutes = buildFallbackSourceRoutes(fallbackSource);
+  const fallbackReasonRoutes = buildFallbackReasonRoutes(snapshot);
   const latestEvidenceAt = [latestEvent?.at, latestTranscriptTurn?.timestamp, latestLatencyMark?.recordedAt]
     .filter((timestamp): timestamp is string => timestamp !== undefined)
     .sort(compareTimestamps)
@@ -491,11 +557,14 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
     evidenceSummary: {
       latestEventType: latestEvent?.type ?? null,
       latestEventAt: latestEvent?.at ?? null,
+      latestEventTrail,
       latestTranscriptSpeaker: latestTranscriptTurn?.speaker ?? null,
       latestTranscriptAt: latestTranscriptTurn?.timestamp ?? null,
       latestLatencyStage: latestLatencyMark?.stage ?? null,
       latestLatencyAt: latestLatencyMark?.recordedAt ?? null,
+      latestLatencyTrail,
       latestEvidenceAt,
+      operatorConsole,
       transcriptTurns: snapshot.transcript.length,
       eventCount: snapshot.events.length,
       latencyMarkCount: snapshot.latencyMarks.length,
@@ -503,9 +572,27 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       latestOperatorNoteText: typeof latestOperatorNote?.detail.text === "string" ? latestOperatorNote.detail.text : null,
       latestOperatorNoteAt: latestOperatorNote?.at ?? null,
       latestDisposition: typeof latestOperatorNote?.detail.disposition === "string" ? latestOperatorNote.detail.disposition : null,
-      overBudgetLatencyMarkCount: snapshot.latencyMarks.filter(
-        (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
-      ).length,
+      operatorNoteTrail: operatorNoteEvents.length > 0
+        ? `${snapshot.session.openclawSession.artifactLinks.events}?type=operator_note_recorded`
+        : null,
+      fallbackMode: snapshot.demoFallback.mode,
+      fallbackReason: snapshot.demoFallback.reason,
+      fallbackSource,
+      fallbackSourceTrail: fallbackSource
+        ? `${snapshot.session.openclawSession.artifactLinks.events}?source=${encodeURIComponent(fallbackSource)}`
+        : null,
+      ...fallbackSourceRoutes,
+      fallbackModeQueue,
+      fallbackModeCallList,
+      fallbackModeOperatorConsole,
+      fallbackModeTranscriptTrail,
+      ...fallbackReasonRoutes,
+      handoffTrail,
+      handoffStartedAt: handoffEvent?.at ?? null,
+      overBudgetLatencyMarkCount,
+      overBudgetLatencyTrail: overBudgetLatencyMarkCount > 0
+        ? `${snapshot.session.openclawSession.artifactLinks.latencyMarks}?overBudget=true`
+        : null,
       links: snapshot.session.openclawSession.artifactLinks,
     },
     actionState: {
@@ -539,6 +626,7 @@ function buildEventTrailPayload(
   snapshot: CallSnapshot,
   eventType?: string,
   source?: string,
+  detailKey?: string,
   detailText?: string,
   since?: string,
   until?: string,
@@ -550,11 +638,12 @@ function buildEventTrailPayload(
   const filteredEvents = snapshot.events.filter((event) => {
     const matchesType = eventType === undefined || event.type === eventType;
     const matchesSource = source === undefined || event.detail.source === source;
+    const matchesDetailKey = detailKey === undefined || Object.hasOwn(event.detail, detailKey);
     const matchesDetailText =
       normalizedDetailText === undefined || JSON.stringify(event.detail).toLocaleLowerCase().includes(normalizedDetailText);
     const matchesSince = since === undefined || compareTimestamps(event.at, since) >= 0;
     const matchesUntil = until === undefined || compareTimestamps(event.at, until) <= 0;
-    return matchesType && matchesSource && matchesDetailText && matchesSince && matchesUntil;
+    return matchesType && matchesSource && matchesDetailKey && matchesDetailText && matchesSince && matchesUntil;
   });
   const orderedEvents = order === "asc" ? filteredEvents : [...filteredEvents].reverse();
   const events = orderedEvents.slice(offset, limit === undefined ? undefined : offset + limit);
@@ -571,6 +660,7 @@ function buildEventTrailPayload(
       returnedEvents: events.length,
       filteredType: eventType ?? null,
       filteredSource: source ?? null,
+      filteredDetailKey: detailKey ?? null,
       filteredDetailText: detailText ?? null,
       filteredSince: since ?? null,
       filteredUntil: until ?? null,
@@ -694,15 +784,104 @@ function buildLatencyPayload(
   };
 }
 
+function buildFallbackModeTranscriptTrail(snapshot: CallSnapshot): string | null {
+  if (snapshot.demoFallback.mode === "runtime_failure") {
+    return snapshot.session.openclawSession.artifactLinks.transcript + "?speaker=agent&text=runtime%20reported%20a%20failure";
+  }
+
+  if (snapshot.demoFallback.mode === "tool_timeout") {
+    return snapshot.session.openclawSession.artifactLinks.transcript + "?speaker=agent&text=tool%20timed%20out";
+  }
+
+  return null;
+}
+
+function buildFallbackReasonRoutes(snapshot: CallSnapshot): {
+  fallbackReasonQueue: string | null;
+  fallbackReasonCallList: string | null;
+  fallbackReasonOperatorConsole: string | null;
+  fallbackReasonEventTrail: string | null;
+} {
+  if (!snapshot.demoFallback.reason) {
+    return {
+      fallbackReasonQueue: null,
+      fallbackReasonCallList: null,
+      fallbackReasonOperatorConsole: null,
+      fallbackReasonEventTrail: null,
+    };
+  }
+
+  const encodedReason = encodeURIComponent(snapshot.demoFallback.reason);
+  return {
+    fallbackReasonQueue: `/api/queue?fallbackReason=${encodedReason}`,
+    fallbackReasonCallList: `/api/calls?fallbackReason=${encodedReason}&limit=5`,
+    fallbackReasonOperatorConsole: `/api/operator/console?fallbackReason=${encodedReason}&limit=1`,
+    fallbackReasonEventTrail: `${snapshot.session.openclawSession.artifactLinks.events}?detailText=${encodedReason}`,
+  };
+}
+
+function buildFallbackSourceRoutes(fallbackSource: string | null): {
+  fallbackSourceQueue: string | null;
+  fallbackSourceCallList: string | null;
+  fallbackSourceOperatorConsole: string | null;
+} {
+  if (!fallbackSource) {
+    return {
+      fallbackSourceQueue: null,
+      fallbackSourceCallList: null,
+      fallbackSourceOperatorConsole: null,
+    };
+  }
+
+  const encodedSource = encodeURIComponent(fallbackSource);
+  return {
+    fallbackSourceQueue: `/api/queue?attentionRequired=true&fallbackSource=${encodedSource}`,
+    fallbackSourceCallList: `/api/calls?fallbackSource=${encodedSource}&limit=5`,
+    fallbackSourceOperatorConsole: `/api/operator/console?fallbackSource=${encodedSource}&limit=1`,
+  };
+}
+
 function buildCallProofBundlePayload(snapshot: CallSnapshot) {
   const attention = getAttentionMetadata(snapshot);
   const eventTypes = [...new Set(snapshot.events.map((event) => event.type))];
   const operatorActions = snapshot.events.filter((event) =>
     ["operator_steer_applied", "operator_steer_requested", "demo_fallback_triggered", "human_handoff_started"].includes(event.type),
   );
+  const operatorNoteEvents = snapshot.events.filter((event) => event.type === "operator_note_recorded");
+  const latestOperatorNote = operatorNoteEvents.at(-1);
+  const handoffEvent = snapshot.events.find((event) => event.type === "human_handoff_started");
   const overBudgetLatencyMarks = snapshot.latencyMarks.filter(
     (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
   );
+  const fallbackSource = typeof handoffEvent?.detail.source === "string" ? handoffEvent.detail.source : null;
+  const operatorNoteTrail = operatorNoteEvents.length > 0
+    ? snapshot.session.openclawSession.artifactLinks.events + "?type=operator_note_recorded"
+    : null;
+  const fallbackSourceTrail = fallbackSource
+    ? snapshot.session.openclawSession.artifactLinks.events + "?source=" + encodeURIComponent(fallbackSource)
+    : null;
+  const overBudgetLatencyTrail = overBudgetLatencyMarks.length > 0
+    ? snapshot.session.openclawSession.artifactLinks.latencyMarks + "?overBudget=true"
+    : null;
+  const latestEvent = snapshot.events.at(-1);
+  const latestEventTrail = latestEvent
+    ? snapshot.session.openclawSession.artifactLinks.events + "?type=" + encodeURIComponent(latestEvent.type) + "&limit=1&order=desc"
+    : null;
+  const latestLatencyTrail = buildLatestLatencyTrail(snapshot);
+  const handoffTrail = buildHandoffTrail(snapshot);
+  const operatorConsole = "/api/operator/console?callId=" + encodeURIComponent(snapshot.session.callId);
+  const fallbackModeQueue = snapshot.demoFallback.mode
+    ? "/api/queue?attentionRequired=true&fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode)
+    : null;
+  const fallbackModeCallList = snapshot.demoFallback.mode
+    ? "/api/calls?fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode) + "&limit=5"
+    : null;
+  const fallbackModeOperatorConsole = snapshot.demoFallback.mode
+    ? "/api/operator/console?fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode) + "&limit=1"
+    : null;
+  const fallbackModeTranscriptTrail = buildFallbackModeTranscriptTrail(snapshot);
+  const fallbackSourceRoutes = buildFallbackSourceRoutes(fallbackSource);
+  const fallbackReasonRoutes = buildFallbackReasonRoutes(snapshot);
 
   return {
     schemaVersion: 1,
@@ -712,6 +891,9 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
     runtimeMode: {
       flow: snapshot.pipecatFlow.prototypeMode,
       pipecatTransport: snapshot.pipecatFlow.transport,
+      runtimeEngine: snapshot.pipecatFlow.runtimeEngine,
+      credentialsMode: snapshot.pipecatFlow.credentialsMode,
+      runtimeCheck: snapshot.pipecatFlow.runtimeCheck,
       telephony: snapshot.scenario.mode,
       signalWire: snapshot.session.providerName === "signalwire" ? snapshot.scenario.mode : "not_configured",
       openclawSession: snapshot.session.openclawSession,
@@ -725,18 +907,52 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       scriptCompleted: snapshot.pipecatFlow.script.completed,
       fallbackArmed: snapshot.demoFallback.armed,
       fallbackMode: snapshot.demoFallback.mode,
-      handoffStarted: snapshot.events.some((event) => event.type === "human_handoff_started"),
+      fallbackReason: snapshot.demoFallback.reason,
+      fallbackSource,
+      handoffStarted: handoffEvent !== undefined,
+      handoffStartedAt: handoffEvent?.at ?? null,
       attentionRequired: attention.required,
       attentionReason: attention.reason,
     },
     artifacts: snapshot.session.openclawSession.artifactLinks,
+    evidenceRoutes: {
+      transcript: snapshot.session.openclawSession.artifactLinks.transcript,
+      events: snapshot.session.openclawSession.artifactLinks.events,
+      latencyMarks: snapshot.session.openclawSession.artifactLinks.latencyMarks,
+      operatorConsole,
+      latestEventTrail,
+      latestLatencyTrail,
+      operatorNoteTrail,
+      fallbackSourceTrail,
+      ...fallbackSourceRoutes,
+      fallbackModeQueue,
+      fallbackModeCallList,
+      fallbackModeOperatorConsole,
+      fallbackModeTranscriptTrail,
+      ...fallbackReasonRoutes,
+      handoffTrail,
+      overBudgetLatencyTrail,
+    },
     summary: {
       transcriptTurns: snapshot.transcript.length,
       eventCount: snapshot.events.length,
       eventTypes,
       operatorActionCount: operatorActions.length,
+      operatorNoteCount: operatorNoteEvents.length,
+      latestOperatorNoteAt: latestOperatorNote?.at ?? null,
+      latestDisposition: typeof latestOperatorNote?.detail.disposition === "string" ? latestOperatorNote.detail.disposition : null,
+      operatorNoteTrail,
+      fallbackSourceTrail,
+      ...fallbackSourceRoutes,
+      fallbackModeQueue,
+      fallbackModeCallList,
+      fallbackModeOperatorConsole,
+      fallbackModeTranscriptTrail,
+      ...fallbackReasonRoutes,
+      handoffTrail,
       latencyMarkCount: snapshot.latencyMarks.length,
       overBudgetLatencyMarkCount: overBudgetLatencyMarks.length,
+      overBudgetLatencyTrail,
       toolCoverage: snapshot.pipecatFlow.toolCoverage,
     },
     session: snapshot.session,
@@ -755,24 +971,95 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
   const latestEvent = snapshot.events.at(-1);
   const latestTranscriptTurn = snapshot.transcript.at(-1);
   const latestLatencyMark = snapshot.latencyMarks.at(-1);
+  const handoffEvent = snapshot.events.find((event) => event.type === "human_handoff_started");
+  const eventTypes = [...new Set(snapshot.events.map((event) => event.type))];
+  const operatorNoteEvents = snapshot.events.filter((event) => event.type === "operator_note_recorded");
+  const latestOperatorNote = operatorNoteEvents.at(-1);
+  const fallbackSource = typeof handoffEvent?.detail.source === "string" ? handoffEvent.detail.source : null;
+  const overBudgetLatencyMarkCount = snapshot.latencyMarks.filter(
+    (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
+  ).length;
+  const latestEventTrail = latestEvent
+    ? snapshot.session.openclawSession.artifactLinks.events + "?type=" + encodeURIComponent(latestEvent.type) + "&limit=1&order=desc"
+    : null;
+  const latestLatencyTrail = buildLatestLatencyTrail(snapshot);
+  const handoffTrail = buildHandoffTrail(snapshot);
+  const operatorConsole = "/api/operator/console?callId=" + encodeURIComponent(snapshot.session.callId);
+  const fallbackModeQueue = snapshot.demoFallback.mode
+    ? "/api/queue?attentionRequired=true&fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode)
+    : null;
+  const fallbackModeCallList = snapshot.demoFallback.mode
+    ? "/api/calls?fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode) + "&limit=5"
+    : null;
+  const fallbackModeOperatorConsole = snapshot.demoFallback.mode
+    ? "/api/operator/console?fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode) + "&limit=1"
+    : null;
+  const fallbackModeTranscriptTrail = buildFallbackModeTranscriptTrail(snapshot);
+  const fallbackSourceRoutes = buildFallbackSourceRoutes(fallbackSource);
+  const fallbackReasonRoutes = buildFallbackReasonRoutes(snapshot);
 
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     callId: snapshot.session.callId,
     providerCallId: snapshot.session.providerCallId,
+    runtimeMode: {
+      flow: snapshot.pipecatFlow.prototypeMode,
+      pipecatTransport: snapshot.pipecatFlow.transport,
+      runtimeEngine: snapshot.pipecatFlow.runtimeEngine,
+      credentialsMode: snapshot.pipecatFlow.credentialsMode,
+      runtimeCheck: snapshot.pipecatFlow.runtimeCheck,
+      telephony: snapshot.scenario.mode,
+    },
     openclawSession: snapshot.session.openclawSession,
     artifacts: snapshot.session.openclawSession.artifactLinks,
+    evidenceRoutes: {
+      transcript: snapshot.session.openclawSession.artifactLinks.transcript,
+      events: snapshot.session.openclawSession.artifactLinks.events,
+      latencyMarks: snapshot.session.openclawSession.artifactLinks.latencyMarks,
+      operatorConsole,
+      latestEventTrail,
+      latestLatencyTrail,
+      operatorNoteTrail: snapshot.events.some((event) => event.type === "operator_note_recorded")
+        ? snapshot.session.openclawSession.artifactLinks.events + "?type=operator_note_recorded"
+        : null,
+      fallbackSourceTrail: fallbackSource
+        ? snapshot.session.openclawSession.artifactLinks.events + "?source=" + encodeURIComponent(fallbackSource)
+        : null,
+      ...fallbackSourceRoutes,
+      fallbackModeQueue,
+      fallbackModeCallList,
+      fallbackModeOperatorConsole,
+      fallbackModeTranscriptTrail,
+      ...fallbackReasonRoutes,
+      handoffTrail,
+      overBudgetLatencyTrail: overBudgetLatencyMarkCount > 0
+        ? snapshot.session.openclawSession.artifactLinks.latencyMarks + "?overBudget=true"
+        : null,
+    },
     summary: {
       transcriptTurns: snapshot.transcript.length,
       eventCount: snapshot.events.length,
+      eventTypes,
+      operatorNoteCount: operatorNoteEvents.length,
+      latestOperatorNoteAt: latestOperatorNote?.at ?? null,
+      latestDisposition: typeof latestOperatorNote?.detail.disposition === "string" ? latestOperatorNote.detail.disposition : null,
       latencyMarkCount: snapshot.latencyMarks.length,
+      overBudgetLatencyMarkCount,
+      fallbackMode: snapshot.demoFallback.mode,
+      fallbackReason: snapshot.demoFallback.reason,
+      fallbackSource,
+      fallbackModeTranscriptTrail,
+      handoffTrail,
+      handoffStartedAt: handoffEvent?.at ?? null,
       latestEventType: latestEvent?.type ?? null,
       latestEventAt: latestEvent?.at ?? null,
+      latestEventTrail,
       latestTranscriptSpeaker: latestTranscriptTurn?.speaker ?? null,
       latestTranscriptAt: latestTranscriptTurn?.timestamp ?? null,
       latestLatencyStage: latestLatencyMark?.stage ?? null,
       latestLatencyAt: latestLatencyMark?.recordedAt ?? null,
+      latestLatencyTrail,
     },
   };
 }
@@ -1011,6 +1298,9 @@ interface CallListFilters {
   pipecatActiveTool?: string;
   pendingOperatorSteer?: boolean;
   fallbackArmed?: boolean;
+  fallbackMode?: FallbackMode;
+  fallbackReason?: string;
+  fallbackSource?: string;
   attentionRequired?: boolean;
   attentionSource?: AttentionSource;
   attentionReason?: string;
@@ -1057,6 +1347,21 @@ function parseCallListFilters(
   );
   if (typeof fallbackArmed !== "boolean" && fallbackArmed !== undefined) {
     return fallbackArmed;
+  }
+
+  const fallbackMode = requestUrl.searchParams.get("fallbackMode");
+  if (fallbackMode !== null && !isFallbackMode(fallbackMode)) {
+    return { error: `${invalidPrefix}_fallback_mode_invalid` };
+  }
+
+  const fallbackReason = requestUrl.searchParams.get("fallbackReason");
+  if (fallbackReason !== null && !fallbackReason.trim()) {
+    return { error: `${invalidPrefix}_fallback_reason_invalid` };
+  }
+
+  const fallbackSource = requestUrl.searchParams.get("fallbackSource");
+  if (fallbackSource !== null && !fallbackSource.trim()) {
+    return { error: `${invalidPrefix}_fallback_source_invalid` };
   }
 
   const attentionRequired = parseOptionalBooleanFilter(
@@ -1141,6 +1446,9 @@ function parseCallListFilters(
     pipecatActiveTool: pipecatActiveTool?.trim() || undefined,
     pendingOperatorSteer,
     fallbackArmed,
+    fallbackMode: fallbackMode ?? undefined,
+    fallbackReason: fallbackReason?.trim() || undefined,
+    fallbackSource: fallbackSource?.trim() || undefined,
     attentionRequired,
     attentionSource: attentionSource ?? undefined,
     attentionReason: attentionReason?.trim() || undefined,
@@ -1706,7 +2014,7 @@ async function routeRequest(
       return;
     }
 
-    if (mode !== "tool_timeout") {
+    if (mode !== "tool_timeout" && mode !== "runtime_failure") {
       writeBadRequest(response, "fallback_mode_invalid");
       return;
     }
@@ -1979,6 +2287,12 @@ async function routeRequest(
       return;
     }
 
+    const detailKey = requestUrl.searchParams.get("detailKey");
+    if (detailKey !== null && !detailKey.trim()) {
+      writeBadRequest(response, "event_detail_key_invalid");
+      return;
+    }
+
     const sinceParam = requestUrl.searchParams.get("since");
     const since = sinceParam === null ? undefined : normalizeTimestamp(sinceParam, "event_since_invalid");
     if (since !== undefined && typeof since !== "string") {
@@ -2034,6 +2348,7 @@ async function routeRequest(
         snapshot,
         type?.trim() || undefined,
         source?.trim() || undefined,
+        detailKey?.trim() || undefined,
         detailText?.trim() || undefined,
         since,
         until,

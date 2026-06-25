@@ -23,7 +23,7 @@ export type OperatorSteerAction =
   | "arm_fallback"
   | "disarm_fallback";
 
-export type FallbackMode = "tool_timeout";
+export type FallbackMode = "tool_timeout" | "runtime_failure";
 
 export type AttentionSource = "operator_steer" | "fallback" | "operator_steer+fallback";
 
@@ -58,8 +58,15 @@ export interface ScriptProgress {
 
 export interface PipecatFlowPrototypeStatus {
   ready: boolean;
-  prototypeMode: "deterministic_templates";
-  transport: "adapter_ready";
+  prototypeMode: "pipecat_local_runtime" | "deterministic_templates";
+  transport: "local_process" | "adapter_ready";
+  runtimeEngine: "pipecat-ai" | "deterministic_templates";
+  credentialsMode: "mocked";
+  runtimeCheck: {
+    command: string;
+    installCommand: string;
+    liveTelephonyRequired: boolean;
+  };
   activeTool: string | null;
   toolCoverage: string[];
   script: ScriptProgress;

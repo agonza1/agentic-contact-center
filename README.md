@@ -1,16 +1,16 @@
 # Agentic Contact Center
 
-Runnable proof of concept for a ClueCon 2026 contact-center demo. The current implementation is a TypeScript HTTP service that simulates a cancellation-rescue call, pauses at policy-sensitive moments, accepts operator steer, records transcript/event/latency evidence, and can fail closed to a human handoff.
+Runnable proof of concept for a ClueCon 2026 contact-center demo. The current implementation is a TypeScript HTTP service with a local Pipecat runtime path for the seeded cancellation-rescue call, mocked telephony/provider boundaries, operator steer, transcript/event/latency evidence, and fail-closed human handoff.
 
 The authoritative app for the current work is under `src/`. The older FastAPI/static-web prototype under `apps/` is still useful reference material, but it is not the active runtime described below.
 
 ## What It Demonstrates
 
 - Mock telephony ingress for starting calls and appending caller turns.
-- Deterministic Pipecat-style flow state for a cancellation rescue path.
+- Local Pipecat runtime mode for the seeded cancellation-rescue path, with provider credentials and live telephony mocked.
 - Policy hold before risky retention responses.
 - Slack-style operator steer commands such as pause, resume, approve offer, jump slide, ask operator, arm fallback, and escalate.
-- Fail-closed fallback for a `tool_timeout` path.
+- Fail-closed fallback for `tool_timeout` and `runtime_failure` paths.
 - Operator/QA evidence through call snapshots, queue summaries, transcript pages, event trails, latency marks, and proof artifacts.
 
 ## Architecture
@@ -20,7 +20,7 @@ flowchart LR
     driver[Demo driver or QA script] --> api[TypeScript HTTP server]
     api --> state[(In-memory call state)]
     state --> queue[Queue and call snapshot APIs]
-    state --> flow[Deterministic Pipecat-style flow]
+    state --> flow[Local Pipecat runtime path]
     flow --> hold{Policy hold?}
     hold -->|Yes| steer[Operator steer API]
     hold -->|No| response[Scripted safe response]
@@ -34,7 +34,7 @@ Main components:
 - `src/index.ts` starts the Node HTTP server on `PORT` or `8026`.
 - `src/http/createServer.ts` defines the JSON API routes.
 - `src/core/inMemoryTelephonyIngress.ts` owns call state, transcript turns, queue summaries, fallback state, and evidence.
-- `src/core/pipecatFlowPrototype.ts` exposes the deterministic flow contract and supported tool coverage.
+- `src/core/pipecatFlowPrototype.ts` exposes the local Pipecat runtime contract, seeded script behavior, and supported tool coverage.
 - `src/config/loadPocConfig.ts` loads `config/poc.config.example.json`.
 - `scripts/demo-proof.mjs` runs the scripted and fallback scenarios and writes JSON proof.
 - `scripts/health-smoke.mjs` polls `/health` and can assert expected metadata.
@@ -46,7 +46,7 @@ The runtime is intentionally local and in-memory. Restarting the server clears c
 - Node.js 20 or newer.
 - npm.
 - Docker and Docker Compose, only if you want the containerized commands.
-- Python 3.11+ only if you are exploring the legacy `apps/api` prototype.
+- Python 3.11+ for `npm run pipecat:check` or if you are exploring the legacy `apps/api` prototype.
 
 ## Configuration
 
@@ -64,13 +64,22 @@ Environment variables:
 - `POC_CONFIG_PATH`: optional path to a JSON config file; defaults to `config/poc.config.example.json`.
 - `LOCAL_UID` / `LOCAL_GID`: optional Docker proof runner ownership override for Linux bind-mounted artifacts.
 
-There is no `.env` file in the current Node app, and no production credentials are required for the mocked POC.
+There is no `.env` file in the current Node app, and no production credentials are required for the mocked POC. The active runtime reports `pipecat_local_runtime` in `/health`, call snapshots, and proof artifacts; `/health` also names the local `npm run pipecat:check` verification command. SignalWire, CRM, billing, auth, and live telephony remain mocked.
 
 ## Install
 
 ```bash
 npm install
 ```
+
+Optional Pipecat local-runtime check:
+
+```bash
+python3 -m pip install --target .pipecat-runtime -r requirements-pipecat.txt
+npm run pipecat:check
+```
+
+This verifies the local `pipecat-ai` package boundary only. It does not open microphones, start live telephony, or use provider credentials.
 
 ## Run Locally
 
@@ -100,6 +109,13 @@ npm run health:smoke -- \
   --expect-mode mocked_telephony \
   --expect-provider signalwire \
   --expect-pipecat-ready true \
+  --expect-pipecat-prototype-mode pipecat_local_runtime \
+  --expect-pipecat-transport local_process \
+  --expect-pipecat-runtime-engine pipecat-ai \
+  --expect-pipecat-credentials-mode mocked \
+  --expect-pipecat-runtime-check-command "npm run pipecat:check" \
+  --expect-pipecat-runtime-check-live-telephony-required false \
+  --expect-pipecat-active-tool get_current_slide \
   --expect-pipecat-tool goto_slide
 ```
 
@@ -134,7 +150,7 @@ Seeded caller turns for the cancellation-rescue script:
 3. `Okay, what safe options can you review for me?`
 4. `Thanks, please note that follow-up and close the call.`
 
-The flow enters `policy_hold` before unsafe retention offers, requests operator steer, and resumes only after a safe action such as `approve_offer`. The fallback path uses `tool_timeout` to arm a fail-closed human handoff.
+The flow enters `policy_hold` before unsafe retention offers, requests operator steer, and resumes only after a safe action such as `approve_offer`. The fallback path accepts `tool_timeout` and `runtime_failure` modes to arm a fail-closed human handoff.
 
 ## API Overview
 
@@ -144,7 +160,7 @@ The flow enters `policy_hold` before unsafe retention offers, requests operator 
 - `POST /api/calls/:callId/caller-turn`: append a caller transcript turn and advance the flow.
 - `POST /api/calls/:callId/operator-steer`: apply operator commands or direct actions, including pause/resume, approval, takeover, escalation, and safe call closeout.
 - `POST /api/calls/:callId/operator-note`: record operator notes and optional dispositions into the transcript and proof event trail.
-- `POST /api/calls/:callId/fallback`: trigger demo fallback, currently centered on `tool_timeout`.
+- `POST /api/calls/:callId/fallback`: trigger demo fallback with `tool_timeout` or `runtime_failure`.
 - `GET /api/calls`: list active calls with optional queue/operator filters.
 - `GET /api/queue`: return queue summary metadata without full call payloads.
 - `GET /api/operator/actions`: expose the Slack-ready operator action catalog with command examples, reason/pending-call requirements, HTTP body templates, and outcome hints for console buttons.
@@ -169,9 +185,9 @@ curl -s -X POST http://localhost:8026/api/signalwire/events \
 
 The local bridge treats SignalWire as the telephony entrypoint while keeping credentials mocked and persists the SignalWire call id as `providerCallId` for queue lookup/filtering. `call.error` routes to the existing `tool_timeout` fallback/human handoff path, and `call.ended` safely closes the demo call. Demo recording and consent remain explicit operator responsibilities before connecting real callers.
 
-Common list/queue filters include `callId`, `providerCallId`, `flowState`, `pipecatActiveTool`, `pendingOperatorSteer`, `fallbackArmed`, `attentionRequired`, `attentionSource`, `attentionReason`, `openclawSessionId`, `openclawSessionLabel`, `openclawSessionRef`, `transcriptText`, `minAttentionAgeMs`, `maxAttentionAgeMs`, `latencyStage`, and `latencyOverBudget`.
+Common list/queue filters include `callId`, `providerCallId`, `flowState`, `pipecatActiveTool`, `pendingOperatorSteer`, `fallbackArmed`, `attentionRequired`, `attentionSource`, `attentionReason`, `openclawSessionId`, `openclawSessionLabel`, `openclawSessionRef`, `transcriptText`, `minAttentionAgeMs`, `maxAttentionAgeMs`, `latencyStage`, `latencyOverBudget`, `fallbackMode` (`tool_timeout` or `runtime_failure`), `fallbackReason`, and `fallbackSource` such as `tool_timeout_fail_closed`.
 
-Call, transcript, event, and latency routes support pagination with `offset`, `limit`, and `order=asc|desc`. Their max page size is `100`.
+Call, transcript, event, and latency routes support pagination with `offset`, `limit`, and `order=asc|desc`. Event trails also support `detailKey` and `detailText` filters for scoped QA proof lookups. Their max page size is `100`.
 
 Minimal manual exercise:
 
@@ -202,10 +218,10 @@ npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-pro
 The proof runner builds the TypeScript app, starts the server on an ephemeral port, checks `/health`, and collects per-call evidence that matches the same bundle shape exposed by `GET /api/calls/:callId/proof`. It runs:
 
 - the scripted cancellation path through policy hold, operator steer, and wrap
-- the fail-closed `tool_timeout` fallback path
+- the fail-closed `tool_timeout` fallback path; the API route also accepts `runtime_failure` for local Pipecat runtime failure drills
 - queue and evidence lookups used by QA
 
-If `--out` is omitted, the artifact is written to `artifacts/demo-proof-<timestamp>.json`. `--latest-out` keeps a stable pointer for handoff. See [docs/demo-proof-runbook.md](docs/demo-proof-runbook.md) for the QA inspection checklist.
+If `--out` is omitted, the artifact is written to `artifacts/demo-proof-<timestamp>.json`. `--latest-out` keeps a stable pointer for handoff. Use `npm run proof:pipecat -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json` when you want the Pipecat package self-check to gate the proof run. See [docs/demo-proof-runbook.md](docs/demo-proof-runbook.md) for the QA inspection checklist.
 
 ## Scripts
 
@@ -213,6 +229,8 @@ If `--out` is omitted, the artifact is written to `artifacts/demo-proof-<timesta
 - `npm test`: build and run Node tests from `dist/test/*.test.js`.
 - `npm start`: run the compiled server from `dist/src/index.js`.
 - `npm run proof`: build and run `scripts/demo-proof.mjs`.
+- `npm run pipecat:check`: verify the local `pipecat-ai` runtime package boundary without live telephony.
+- `npm run proof:pipecat`: run `pipecat:check` before the proof harness.
 - `npm run health:smoke`: poll `http://127.0.0.1:8026/health`.
 - `npm run docker:app`: build and run the Docker app service in the foreground.
 - `npm run docker:smoke`: run a bounded Docker health probe and clean up.

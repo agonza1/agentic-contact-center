@@ -161,6 +161,18 @@ export class InMemoryTelephonyIngress {
           detail: {
             providerCallId,
             mode: config.mode,
+            pipecatRuntimeMode: "pipecat_local_runtime",
+            credentialsMode: "mocked",
+          },
+        },
+        {
+          type: "pipecat_runtime_started",
+          at: startedAt,
+          detail: {
+            runtimeEngine: "pipecat-ai",
+            transport: "local_process",
+            credentialsMode: "mocked",
+            telephonyMode: config.mode,
           },
         },
         {
@@ -202,6 +214,17 @@ export class InMemoryTelephonyIngress {
       },
     });
     recordLatencyMark(snapshot, "caller_turn_received", turn.timestamp, "asrPartial");
+
+    snapshot.events.push({
+      type: "pipecat_runtime_turn_processed",
+      at: turn.timestamp,
+      detail: {
+        runtimeEngine: snapshot.pipecatFlow.runtimeEngine,
+        runtimeMode: snapshot.pipecatFlow.prototypeMode,
+        transport: snapshot.pipecatFlow.transport,
+        credentialsMode: snapshot.pipecatFlow.credentialsMode,
+      },
+    });
 
     applyDeterministicPipecatFlow(snapshot, config, turn);
 
@@ -302,6 +325,9 @@ export class InMemoryTelephonyIngress {
     pipecatActiveTool?: string;
     pendingOperatorSteer?: boolean;
     fallbackArmed?: boolean;
+    fallbackMode?: FallbackMode;
+    fallbackReason?: string;
+    fallbackSource?: string;
     attentionRequired?: boolean;
     attentionSource?: AttentionSource;
     attentionReason?: string;
@@ -324,6 +350,9 @@ export class InMemoryTelephonyIngress {
     pipecatActiveTool?: string;
     pendingOperatorSteer?: boolean;
     fallbackArmed?: boolean;
+    fallbackMode?: FallbackMode;
+    fallbackReason?: string;
+    fallbackSource?: string;
     attentionRequired?: boolean;
     attentionSource?: AttentionSource;
     attentionReason?: string;
@@ -349,6 +378,21 @@ export class InMemoryTelephonyIngress {
       .filter((snapshot) =>
         filters.fallbackArmed === undefined ? true : snapshot.demoFallback.armed === filters.fallbackArmed,
       )
+      .filter((snapshot) =>
+        filters.fallbackMode === undefined ? true : snapshot.demoFallback.mode === filters.fallbackMode,
+      )
+      .filter((snapshot) =>
+        filters.fallbackReason === undefined ? true : snapshot.demoFallback.reason === filters.fallbackReason,
+      )
+      .filter((snapshot) => {
+        if (filters.fallbackSource === undefined) {
+          return true;
+        }
+
+        return snapshot.events.some(
+          (event) => event.type === "human_handoff_started" && event.detail.source === filters.fallbackSource,
+        );
+      })
       .filter((snapshot) => {
         if (filters.attentionRequired === undefined) {
           return true;
@@ -437,6 +481,9 @@ export class InMemoryTelephonyIngress {
     pipecatActiveTool?: string;
     pendingOperatorSteer?: boolean;
     fallbackArmed?: boolean;
+    fallbackMode?: FallbackMode;
+    fallbackReason?: string;
+    fallbackSource?: string;
     attentionRequired?: boolean;
     attentionSource?: AttentionSource;
     attentionReason?: string;

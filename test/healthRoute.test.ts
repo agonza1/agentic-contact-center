@@ -49,7 +49,16 @@ test("GET /health returns config-backed demo metadata", async () => {
     fallbackMode: string;
     latencyBudgetsMs: { asrPartial: number; policyGate: number; operatorNotification: number; ttsFirstAudio: number };
     runtimeSeams: string[];
-    pipecatFlow: { ready: boolean; toolCoverage: string[] };
+    pipecatFlow: {
+      ready: boolean;
+      prototypeMode: string;
+      transport: string;
+      runtimeEngine: string;
+      credentialsMode: string;
+      runtimeCheck: { command: string; installCommand: string; liveTelephonyRequired: boolean };
+      activeTool: string | null;
+      toolCoverage: string[];
+    };
   };
 
   assert.equal(payload.ok, true);
@@ -61,5 +70,13 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.deepEqual(payload.latencyBudgetsMs, config.latencyBudgetsMs);
   assert.equal(payload.runtimeSeams.includes("flow engine"), true);
   assert.equal(payload.pipecatFlow.ready, true);
+  assert.equal(payload.pipecatFlow.prototypeMode, "pipecat_local_runtime");
+  assert.equal(payload.pipecatFlow.transport, "local_process");
+  assert.equal(payload.pipecatFlow.runtimeEngine, "pipecat-ai");
+  assert.equal(payload.pipecatFlow.credentialsMode, "mocked");
+  assert.equal(payload.pipecatFlow.runtimeCheck.command, "npm run pipecat:check");
+  assert.equal(payload.pipecatFlow.runtimeCheck.liveTelephonyRequired, false);
+  assert.match(payload.pipecatFlow.runtimeCheck.installCommand, /requirements-pipecat\.txt/);
+  assert.equal(payload.pipecatFlow.activeTool, "get_current_slide");
   assert.equal(payload.pipecatFlow.toolCoverage.includes("goto_slide"), true);
 });

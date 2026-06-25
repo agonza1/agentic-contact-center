@@ -11,6 +11,14 @@ function parseArgs(argv) {
     expectOperatorChannel: undefined,
     expectFallbackMode: undefined,
     expectPipecatReady: undefined,
+    expectPipecatPrototypeMode: undefined,
+    expectPipecatTransport: undefined,
+    expectPipecatRuntimeEngine: undefined,
+    expectPipecatCredentialsMode: undefined,
+    expectPipecatRuntimeCheckCommand: undefined,
+    expectPipecatRuntimeCheckInstallCommand: undefined,
+    expectPipecatRuntimeCheckLiveTelephonyRequired: undefined,
+    expectPipecatActiveTool: undefined,
     expectPipecatScriptCompleted: undefined,
     expectRuntimeSeams: [],
     expectPipecatTools: [],
@@ -30,6 +38,14 @@ function parseArgs(argv) {
     '--expect-operator-channel',
     '--expect-fallback-mode',
     '--expect-pipecat-ready',
+    '--expect-pipecat-prototype-mode',
+    '--expect-pipecat-transport',
+    '--expect-pipecat-runtime-engine',
+    '--expect-pipecat-credentials-mode',
+    '--expect-pipecat-runtime-check-command',
+    '--expect-pipecat-runtime-check-install-command',
+    '--expect-pipecat-runtime-check-live-telephony-required',
+    '--expect-pipecat-active-tool',
     '--expect-pipecat-script-completed',
     '--expect-runtime-seam',
     '--expect-pipecat-tool',
@@ -125,6 +141,54 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-pipecat-prototype-mode' && next) {
+      args.expectPipecatPrototypeMode = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-pipecat-transport' && next) {
+      args.expectPipecatTransport = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-pipecat-runtime-engine' && next) {
+      args.expectPipecatRuntimeEngine = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-pipecat-credentials-mode' && next) {
+      args.expectPipecatCredentialsMode = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-pipecat-runtime-check-command' && next) {
+      args.expectPipecatRuntimeCheckCommand = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-pipecat-runtime-check-install-command' && next) {
+      args.expectPipecatRuntimeCheckInstallCommand = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-pipecat-runtime-check-live-telephony-required' && next) {
+      args.expectPipecatRuntimeCheckLiveTelephonyRequired = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-pipecat-active-tool' && next) {
+      args.expectPipecatActiveTool = next;
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-pipecat-script-completed' && next) {
       args.expectPipecatScriptCompleted = next;
       index += 1;
@@ -176,6 +240,14 @@ function hasJsonExpectations(args) {
     args.expectOperatorChannel,
     args.expectFallbackMode,
     args.expectPipecatReady,
+    args.expectPipecatPrototypeMode,
+    args.expectPipecatTransport,
+    args.expectPipecatRuntimeEngine,
+    args.expectPipecatCredentialsMode,
+    args.expectPipecatRuntimeCheckCommand,
+    args.expectPipecatRuntimeCheckInstallCommand,
+    args.expectPipecatRuntimeCheckLiveTelephonyRequired,
+    args.expectPipecatActiveTool,
     args.expectPipecatScriptCompleted,
   ].some((expectedValue) => expectedValue !== undefined)
     || args.expectRuntimeSeams.length > 0
@@ -239,6 +311,7 @@ function validateBooleanExpectations(args) {
   const booleanExpectations = [
     ['pipecat_ready', args.expectPipecatReady],
     ['pipecat_script_completed', args.expectPipecatScriptCompleted],
+    ['pipecat_runtime_check_live_telephony_required', args.expectPipecatRuntimeCheckLiveTelephonyRequired],
   ];
 
   for (const [flagName, rawValue] of booleanExpectations) {
@@ -344,6 +417,29 @@ async function getFailureReason(response, args) {
     }
   }
 
+  const pipecatFlowExpectations = [
+    ['prototypeMode', args.expectPipecatPrototypeMode],
+    ['transport', args.expectPipecatTransport],
+    ['runtimeEngine', args.expectPipecatRuntimeEngine],
+    ['credentialsMode', args.expectPipecatCredentialsMode],
+    ['activeTool', args.expectPipecatActiveTool],
+  ];
+
+  for (const [field, expectedValue] of pipecatFlowExpectations) {
+    if (expectedValue === undefined) {
+      continue;
+    }
+
+    const pipecatFlow = payload.pipecatFlow;
+    const actualValue = pipecatFlow && typeof pipecatFlow === 'object'
+      ? pipecatFlow[field]
+      : undefined;
+
+    if (actualValue !== expectedValue) {
+      return `json_pipecatFlow_${field}_mismatch(expected=${JSON.stringify(expectedValue)},actual=${JSON.stringify(actualValue)})`;
+    }
+  }
+
   for (const expectedPipecatTool of args.expectPipecatTools) {
     const toolCoverage = payload.pipecatFlow && typeof payload.pipecatFlow === 'object'
       ? payload.pipecatFlow.toolCoverage
@@ -351,6 +447,47 @@ async function getFailureReason(response, args) {
 
     if (!Array.isArray(toolCoverage) || !toolCoverage.includes(expectedPipecatTool)) {
       return `json_pipecatFlow_toolCoverage_missing(expected=${JSON.stringify(expectedPipecatTool)},actual=${JSON.stringify(toolCoverage)})`;
+    }
+  }
+
+  const runtimeCheckExpectations = [
+    ['command', args.expectPipecatRuntimeCheckCommand],
+    ['installCommand', args.expectPipecatRuntimeCheckInstallCommand],
+  ];
+
+  for (const [field, expectedValue] of runtimeCheckExpectations) {
+    if (expectedValue === undefined) {
+      continue;
+    }
+
+    const runtimeCheck = payload.pipecatFlow && typeof payload.pipecatFlow === 'object'
+      && payload.pipecatFlow.runtimeCheck && typeof payload.pipecatFlow.runtimeCheck === 'object'
+      ? payload.pipecatFlow.runtimeCheck
+      : undefined;
+    const actualValue = runtimeCheck ? runtimeCheck[field] : undefined;
+
+    if (actualValue !== expectedValue) {
+      return `json_pipecatFlow_runtimeCheck_${field}_mismatch(expected=${JSON.stringify(expectedValue)},actual=${JSON.stringify(actualValue)})`;
+    }
+  }
+
+  if (args.expectPipecatRuntimeCheckLiveTelephonyRequired !== undefined) {
+    const parsedExpectation = parseBooleanExpectation(
+      'pipecat_runtime_check_live_telephony_required',
+      args.expectPipecatRuntimeCheckLiveTelephonyRequired,
+    );
+    if (parsedExpectation.error) {
+      return parsedExpectation.error;
+    }
+
+    const runtimeCheck = payload.pipecatFlow && typeof payload.pipecatFlow === 'object'
+      && payload.pipecatFlow.runtimeCheck && typeof payload.pipecatFlow.runtimeCheck === 'object'
+      ? payload.pipecatFlow.runtimeCheck
+      : undefined;
+    const actualValue = runtimeCheck ? runtimeCheck.liveTelephonyRequired : undefined;
+
+    if (actualValue !== parsedExpectation.expectedValue) {
+      return `json_pipecatFlow_runtimeCheck_liveTelephonyRequired_mismatch(expected=${JSON.stringify(parsedExpectation.expectedValue)},actual=${JSON.stringify(actualValue)})`;
     }
   }
 

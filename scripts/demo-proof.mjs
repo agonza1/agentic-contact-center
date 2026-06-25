@@ -156,6 +156,14 @@ async function runScriptedScenario(port) {
   assert.equal(wrapped.payload.flowState, "wrap");
   assert.equal(wrapped.payload.pipecatFlow.script.completed, true);
 
+  const noted = await requestJson(port, "POST", `/api/calls/${callId}/operator-note`, {
+    text: "QA confirmed safe retention wrap and no billing credit promise.",
+    disposition: "qa_verified",
+    timestamp: "2026-06-11T20:45:16.000Z",
+  });
+  assert.equal(noted.statusCode, 200);
+  assert.equal(noted.payload.events.some((event) => event.type === "operator_note_recorded"), true);
+
   const finalAgentTurn = [...wrapped.payload.transcript].reverse().find((turn) => turn.speaker === "agent");
   assert.ok(finalAgentTurn);
   assert.equal(finalAgentTurn.text.toLowerCase().includes("billing credit"), false);
@@ -167,38 +175,45 @@ async function runScriptedScenario(port) {
       policyHold: policyHoldSnapshot,
       operatorSteerPending: pendingSnapshot,
       approvedSteer: approved.payload,
-      wrapped: wrapped.payload,
+      wrapped: noted.payload,
     },
   };
 }
 
-async function runFallbackScenario(port) {
+async function runFallbackScenario(port, options = {}) {
+  const {
+    mode = "tool_timeout",
+    reason = "pipecat tool exceeded latency budget",
+    label = "cluecon-demo/fallback-proof",
+    timestamp = "2026-06-11T20:46:02.000Z",
+  } = options;
   const started = await requestJson(port, "POST", "/api/demo/start", {
-    openclawSessionLabel: "cluecon-demo/fallback-proof",
+    openclawSessionLabel: label,
   });
   assert.equal(started.statusCode, 201);
 
   const callId = started.payload.session.callId;
   const fallback = await requestJson(port, "POST", `/api/calls/${callId}/fallback`, {
-    mode: "tool_timeout",
-    reason: "pipecat tool exceeded latency budget",
-    timestamp: "2026-06-11T20:46:02.000Z",
+    mode,
+    reason,
+    timestamp,
   });
 
   assert.equal(fallback.statusCode, 200);
   assert.equal(fallback.payload.flowState, "wrap");
   assert.equal(fallback.payload.demoFallback.armed, true);
-  assert.equal(fallback.payload.demoFallback.mode, "tool_timeout");
+  assert.equal(fallback.payload.demoFallback.mode, mode);
   assert.equal(fallback.payload.events.some((event) => event.type === "demo_fallback_triggered"), true);
   assert.equal(fallback.payload.events.some((event) => event.type === "human_handoff_started"), true);
 
   const finalAgentTurn = [...fallback.payload.transcript].reverse().find((turn) => turn.speaker === "agent");
   assert.ok(finalAgentTurn);
-  assert.equal(finalAgentTurn.text.toLowerCase().includes("tool timed out"), true);
+  const expectedMessageFragment = mode === "runtime_failure" ? "runtime reported a failure" : "tool timed out";
+  assert.equal(finalAgentTurn.text.toLowerCase().includes(expectedMessageFragment), true);
 
   return {
     callId,
-    outcome: "fail_closed_handoff",
+    outcome: mode === "runtime_failure" ? "runtime_failure_fail_closed_handoff" : "fail_closed_handoff",
     checkpoint: fallback.payload,
   };
 }
@@ -212,6 +227,202 @@ async function getQueueAttentionSummary(port) {
   assert.equal(queue.statusCode, 200);
 
   return queue.payload.summary;
+}
+
+async function getRuntimeFailureQueueSummary(port) {
+  const queue = await requestJson(port, "GET", "/api/queue?attentionRequired=true&fallbackMode=runtime_failure");
+  assert.equal(queue.statusCode, 200);
+
+  return {
+    route: "attentionRequired=true&fallbackMode=runtime_failure",
+    ...queue.payload.summary,
+  };
+}
+
+async function getRuntimeFailureCallList(port, callId) {
+  const calls = await requestJson(port, "GET", "/api/calls?fallbackMode=runtime_failure&limit=5");
+  assert.equal(calls.statusCode, 200);
+  assert.equal(calls.payload.summary.filteredCalls, 1);
+  assert.equal(calls.payload.calls.length, 1);
+  assert.equal(calls.payload.calls[0].session.callId, callId);
+  assert.equal(calls.payload.calls[0].demoFallback.mode, "runtime_failure");
+
+  return {
+    route: "fallbackMode=runtime_failure&limit=5",
+    returnedCalls: calls.payload.summary.returnedCalls,
+    filteredCalls: calls.payload.summary.filteredCalls,
+    firstCallId: calls.payload.calls[0].session.callId,
+    firstFallbackMode: calls.payload.calls[0].demoFallback.mode,
+    firstFlowState: calls.payload.calls[0].flowState,
+  };
+}
+
+async function getRuntimeFailureOperatorConsole(port, callId) {
+  const consoleResponse = await requestJson(port, "GET", "/api/operator/console?fallbackMode=runtime_failure&limit=1");
+  assert.equal(consoleResponse.statusCode, 200);
+  assert.equal(consoleResponse.payload.calls.summary.filteredSummary.totalCalls, 1);
+  assert.equal(consoleResponse.payload.calls.items.length, 1);
+
+  const consoleCall = consoleResponse.payload.calls.items[0];
+  assert.equal(consoleCall.session.callId, callId);
+  assert.equal(consoleCall.evidenceSummary.fallbackMode, "runtime_failure");
+  assert.equal(consoleCall.evidenceSummary.fallbackSource, "pipecat_runtime_failure_fail_closed");
+  assert.equal(
+    consoleCall.evidenceSummary.fallbackSourceTrail,
+    `/api/calls/${callId}/events?source=pipecat_runtime_failure_fail_closed`,
+  );
+
+  return {
+    route: "fallbackMode=runtime_failure&limit=1",
+    returnedCalls: consoleResponse.payload.calls.summary.returnedCalls,
+    filteredCalls: consoleResponse.payload.calls.summary.filteredSummary.totalCalls,
+    firstCallId: consoleCall.session.callId,
+    firstFallbackMode: consoleCall.evidenceSummary.fallbackMode,
+    firstFallbackSource: consoleCall.evidenceSummary.fallbackSource,
+    firstFallbackSourceTrail: consoleCall.evidenceSummary.fallbackSourceTrail,
+  };
+}
+
+async function getRuntimeFailureReasonEvidence(port, callId) {
+  const reason = "pipecat local runtime import failed";
+  const encodedReason = encodeURIComponent(reason);
+  const queue = await requestJson(port, "GET", `/api/queue?fallbackReason=${encodedReason}`);
+  assert.equal(queue.statusCode, 200);
+  assert.equal(queue.payload.summary.oldestAttentionCallId, callId);
+
+  const calls = await requestJson(port, "GET", `/api/calls?fallbackReason=${encodedReason}&limit=5`);
+  assert.equal(calls.statusCode, 200);
+  assert.equal(calls.payload.summary.filteredCalls, 1);
+  assert.equal(calls.payload.calls[0].session.callId, callId);
+
+  const consoleResponse = await requestJson(port, "GET", `/api/operator/console?fallbackReason=${encodedReason}&limit=1`);
+  assert.equal(consoleResponse.statusCode, 200);
+  assert.equal(consoleResponse.payload.calls.items[0].session.callId, callId);
+
+  const eventTrail = await requestJson(port, "GET", `/api/calls/${callId}/events?detailText=${encodedReason}`);
+  assert.equal(eventTrail.statusCode, 200);
+  assert.equal(eventTrail.payload.summary.filteredDetailText, reason);
+  assert.deepEqual(
+    eventTrail.payload.events.map((event) => event.type),
+    ["demo_fallback_triggered", "human_handoff_started"],
+  );
+
+  return {
+    reason,
+    queueRoute: `fallbackReason=${encodedReason}`,
+    queueTotalCalls: queue.payload.summary.totalCalls,
+    queueOldestAttentionCallId: queue.payload.summary.oldestAttentionCallId,
+    callListRoute: `fallbackReason=${encodedReason}&limit=5`,
+    callListReturnedCalls: calls.payload.summary.returnedCalls,
+    callListFilteredCalls: calls.payload.summary.filteredCalls,
+    operatorConsoleRoute: `fallbackReason=${encodedReason}&limit=1`,
+    operatorConsoleReturnedCalls: consoleResponse.payload.calls.summary.returnedCalls,
+    eventTrailRoute: `calls/${callId}/events?detailText=${encodedReason}`,
+    eventTrailReturnedEvents: eventTrail.payload.summary.returnedEvents,
+    eventTrailEventTypes: eventTrail.payload.events.map((event) => event.type),
+  };
+}
+async function getRuntimeFailureTranscript(port, callId) {
+  const transcript = await requestJson(port, "GET", `/api/calls/${callId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure`);
+  assert.equal(transcript.statusCode, 200);
+  assert.equal(transcript.payload.summary.filteredSpeaker, "agent");
+  assert.equal(transcript.payload.transcript.length > 0, true);
+
+  const finalAgentTurn = transcript.payload.transcript.at(-1);
+  assert.equal(finalAgentTurn.speaker, "agent");
+  assert.equal(finalAgentTurn.text.toLowerCase().includes("runtime reported a failure"), true);
+
+  return {
+    route: `calls/${callId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure`,
+    returnedTurns: transcript.payload.summary.returnedTurns,
+    filteredSpeaker: transcript.payload.summary.filteredSpeaker,
+    finalSpeaker: finalAgentTurn.speaker,
+    finalTextIncludesRuntimeFailure: finalAgentTurn.text.toLowerCase().includes("runtime reported a failure"),
+  };
+}
+
+async function getRuntimeFailureProofBundle(port, callId) {
+  const proof = await requestJson(port, "GET", `/api/calls/${callId}/proof`);
+  assert.equal(proof.statusCode, 200);
+  assert.equal(proof.payload.outcome.fallbackMode, "runtime_failure");
+  assert.equal(proof.payload.outcome.fallbackReason, "pipecat local runtime import failed");
+  assert.equal(proof.payload.evidenceRoutes.operatorConsole, `/api/operator/console?callId=${callId}`);
+  assert.equal(proof.payload.outcome.fallbackSource, "pipecat_runtime_failure_fail_closed");
+  assert.equal(
+    proof.payload.evidenceRoutes.fallbackSourceTrail,
+    `/api/calls/${callId}/events?source=pipecat_runtime_failure_fail_closed`,
+  );
+
+  return {
+    route: `calls/${callId}/proof`,
+    fallbackMode: proof.payload.outcome.fallbackMode,
+    fallbackReason: proof.payload.outcome.fallbackReason,
+    fallbackSource: proof.payload.outcome.fallbackSource,
+    handoffStarted: proof.payload.outcome.handoffStarted,
+    fallbackSourceTrail: proof.payload.evidenceRoutes.fallbackSourceTrail,
+    fallbackModeOperatorConsole: proof.payload.evidenceRoutes.fallbackModeOperatorConsole,
+    fallbackModeTranscriptTrail: proof.payload.evidenceRoutes.fallbackModeTranscriptTrail,
+    fallbackReasonEventTrail: proof.payload.evidenceRoutes.fallbackReasonEventTrail,
+    operatorConsole: proof.payload.evidenceRoutes.operatorConsole,
+    latestLatencyTrail: proof.payload.evidenceRoutes.latestLatencyTrail,
+    overBudgetLatencyTrail: proof.payload.evidenceRoutes.overBudgetLatencyTrail,
+    summaryEventCount: proof.payload.summary.eventCount,
+    summaryOverBudgetLatencyMarkCount: proof.payload.summary.overBudgetLatencyMarkCount,
+  };
+}
+
+async function getRuntimeFailureHandoffTrail(port, callId) {
+  const trail = await requestJson(port, "GET", `/api/calls/${callId}/events?type=human_handoff_started&limit=1&order=desc`);
+  assert.equal(trail.statusCode, 200);
+  assert.equal(trail.payload.summary.filteredType, "human_handoff_started");
+  assert.equal(trail.payload.summary.returnedEvents, 1);
+  assert.equal(trail.payload.events[0].detail.source, "pipecat_runtime_failure_fail_closed");
+
+  return {
+    route: `calls/${callId}/events?type=human_handoff_started&limit=1&order=desc`,
+    returnedEvents: trail.payload.summary.returnedEvents,
+    filteredType: trail.payload.summary.filteredType,
+    latestSource: trail.payload.events[0].detail.source,
+    latestReason: trail.payload.events[0].detail.reason,
+  };
+}
+
+async function getRuntimeFailureArtifactManifest(port, callId) {
+  const manifest = await requestJson(port, "GET", `/api/calls/${callId}/artifacts`);
+  assert.equal(manifest.statusCode, 200);
+  assert.equal(manifest.payload.summary.fallbackMode, "runtime_failure");
+  assert.equal(manifest.payload.summary.fallbackReason, "pipecat local runtime import failed");
+  assert.equal(manifest.payload.summary.fallbackSource, "pipecat_runtime_failure_fail_closed");
+  assert.equal(manifest.payload.summary.eventTypes.includes("human_handoff_started"), true);
+  assert.equal(manifest.payload.summary.operatorNoteCount, 0);
+  assert.equal(manifest.payload.summary.latestOperatorNoteAt, null);
+  assert.equal(manifest.payload.summary.latestDisposition, null);
+  assert.equal(
+    manifest.payload.evidenceRoutes.fallbackSourceTrail,
+    `/api/calls/${callId}/events?source=pipecat_runtime_failure_fail_closed`,
+  );
+
+  return {
+    route: `calls/${callId}/artifacts`,
+    runtimeFlow: manifest.payload.runtimeMode.flow,
+    runtimeEngine: manifest.payload.runtimeMode.runtimeEngine,
+    fallbackMode: manifest.payload.summary.fallbackMode,
+    fallbackReason: manifest.payload.summary.fallbackReason,
+    fallbackSource: manifest.payload.summary.fallbackSource,
+    eventTypes: manifest.payload.summary.eventTypes,
+    operatorNoteCount: manifest.payload.summary.operatorNoteCount,
+    latestOperatorNoteAt: manifest.payload.summary.latestOperatorNoteAt,
+    latestDisposition: manifest.payload.summary.latestDisposition,
+    handoffStartedAt: manifest.payload.summary.handoffStartedAt,
+    fallbackSourceTrail: manifest.payload.evidenceRoutes.fallbackSourceTrail,
+    fallbackModeOperatorConsole: manifest.payload.evidenceRoutes.fallbackModeOperatorConsole,
+    fallbackModeTranscriptTrail: manifest.payload.evidenceRoutes.fallbackModeTranscriptTrail,
+    fallbackReasonEventTrail: manifest.payload.evidenceRoutes.fallbackReasonEventTrail,
+    operatorConsole: manifest.payload.evidenceRoutes.operatorConsole,
+    latestLatencyTrail: manifest.payload.evidenceRoutes.latestLatencyTrail,
+    overBudgetLatencyTrail: manifest.payload.evidenceRoutes.overBudgetLatencyTrail,
+    openclawSessionLabel: manifest.payload.openclawSession.label,
+  };
 }
 
 async function getAttentionSortedCallList(port) {
@@ -232,19 +443,37 @@ async function getAttentionSortedCallList(port) {
   };
 }
 
-async function getFallbackSourceTrail(port, callId) {
-  const trail = await requestJson(port, "GET", `/api/calls/${callId}/events?source=tool_timeout_fail_closed`);
+async function getFallbackSourceTrail(port, callId, source = "tool_timeout_fail_closed") {
+  const trail = await requestJson(port, "GET", `/api/calls/${callId}/events?source=${source}`);
   assert.equal(trail.statusCode, 200);
-  assert.equal(trail.payload.summary.filteredSource, "tool_timeout_fail_closed");
+  assert.equal(trail.payload.summary.filteredSource, source);
   assert.deepEqual(
     trail.payload.events.map((event) => event.type),
     ["human_handoff_started"],
   );
 
   return {
-    route: `calls/${callId}/events?source=tool_timeout_fail_closed`,
+    route: `calls/${callId}/events?source=${source}`,
     returnedEvents: trail.payload.summary.returnedEvents,
     filteredSource: trail.payload.summary.filteredSource,
+    eventTypes: trail.payload.events.map((event) => event.type),
+  };
+}
+
+async function getOperatorNoteTrail(port, callId) {
+  const trail = await requestJson(port, "GET", `/api/calls/${callId}/events?type=operator_note_recorded`);
+  assert.equal(trail.statusCode, 200);
+  assert.equal(trail.payload.summary.filteredType, "operator_note_recorded");
+  assert.deepEqual(
+    trail.payload.events.map((event) => event.type),
+    ["operator_note_recorded"],
+  );
+
+  return {
+    route: `calls/${callId}/events?type=operator_note_recorded`,
+    returnedEvents: trail.payload.summary.returnedEvents,
+    filteredType: trail.payload.summary.filteredType,
+    latestDisposition: trail.payload.events.at(-1).detail.disposition,
     eventTypes: trail.payload.events.map((event) => event.type),
   };
 }
@@ -280,6 +509,16 @@ function summarizeArtifact(artifact) {
     schemaVersion: artifact.schemaVersion,
     healthOk: artifact.health.ok,
     gitRevision: artifact.gitRevision,
+    pipecatRuntime: {
+      ready: artifact.health.pipecatFlow.ready,
+      prototypeMode: artifact.health.pipecatFlow.prototypeMode,
+      transport: artifact.health.pipecatFlow.transport,
+      runtimeEngine: artifact.health.pipecatFlow.runtimeEngine,
+      credentialsMode: artifact.health.pipecatFlow.credentialsMode,
+      runtimeCheck: artifact.health.pipecatFlow.runtimeCheck,
+      activeTool: artifact.health.pipecatFlow.activeTool,
+      toolCoverage: artifact.health.pipecatFlow.toolCoverage,
+    },
     runtimeSeams: artifact.health.runtimeSeams,
     proofContract: artifact.proofContract,
     queueAttention: {
@@ -294,7 +533,17 @@ function summarizeArtifact(artifact) {
       oldestAttentionSource: artifact.queueAttention.oldestAttentionSource,
     },
     callAttentionList: artifact.callAttentionList,
+    operatorNoteTrail: artifact.operatorNoteTrail,
     fallbackSourceTrail: artifact.fallbackSourceTrail,
+    runtimeFailureSourceTrail: artifact.runtimeFailureSourceTrail,
+    runtimeFailureQueue: artifact.runtimeFailureQueue,
+    runtimeFailureCallList: artifact.runtimeFailureCallList,
+    runtimeFailureOperatorConsole: artifact.runtimeFailureOperatorConsole,
+    runtimeFailureReasonEvidence: artifact.runtimeFailureReasonEvidence,
+    runtimeFailureTranscript: artifact.runtimeFailureTranscript,
+    runtimeFailureProofBundle: artifact.runtimeFailureProofBundle,
+    runtimeFailureHandoffTrail: artifact.runtimeFailureHandoffTrail,
+    runtimeFailureArtifactManifest: artifact.runtimeFailureArtifactManifest,
     scripted: {
       outcome: artifact.scripted.outcome,
       callId: artifact.scripted.callId,
@@ -307,6 +556,13 @@ function summarizeArtifact(artifact) {
       reason: fallbackCheckpoint.demoFallback.reason,
       ...summarizeScenario(fallbackCheckpoint),
     },
+    runtimeFailure: {
+      outcome: artifact.runtimeFailure.outcome,
+      callId: artifact.runtimeFailure.callId,
+      mode: artifact.runtimeFailure.checkpoint.demoFallback.mode,
+      reason: artifact.runtimeFailure.checkpoint.demoFallback.reason,
+      ...summarizeScenario(artifact.runtimeFailure.checkpoint),
+    },
   };
 }
 
@@ -318,10 +574,30 @@ async function main() {
     assert.equal(health.statusCode, 200);
 
     const scripted = await runScriptedScenario(port);
+    const operatorNoteTrail = await getOperatorNoteTrail(port, scripted.callId);
     const fallback = await runFallbackScenario(port);
     const queueAttention = await getQueueAttentionSummary(port);
     const callAttentionList = await getAttentionSortedCallList(port);
     const fallbackSourceTrail = await getFallbackSourceTrail(port, fallback.callId);
+    const runtimeFailure = await runFallbackScenario(port, {
+      mode: "runtime_failure",
+      reason: "pipecat local runtime import failed",
+      label: "cluecon-demo/runtime-failure-proof",
+      timestamp: "2026-06-11T20:47:02.000Z",
+    });
+    const runtimeFailureSourceTrail = await getFallbackSourceTrail(
+      port,
+      runtimeFailure.callId,
+      "pipecat_runtime_failure_fail_closed",
+    );
+    const runtimeFailureQueue = await getRuntimeFailureQueueSummary(port);
+    const runtimeFailureCallList = await getRuntimeFailureCallList(port, runtimeFailure.callId);
+    const runtimeFailureOperatorConsole = await getRuntimeFailureOperatorConsole(port, runtimeFailure.callId);
+    const runtimeFailureReasonEvidence = await getRuntimeFailureReasonEvidence(port, runtimeFailure.callId);
+    const runtimeFailureTranscript = await getRuntimeFailureTranscript(port, runtimeFailure.callId);
+    const runtimeFailureProofBundle = await getRuntimeFailureProofBundle(port, runtimeFailure.callId);
+    const runtimeFailureHandoffTrail = await getRuntimeFailureHandoffTrail(port, runtimeFailure.callId);
+    const runtimeFailureArtifactManifest = await getRuntimeFailureArtifactManifest(port, runtimeFailure.callId);
 
     return {
       schemaVersion: 1,
@@ -330,18 +606,48 @@ async function main() {
       demoName: config.demoName,
       provider: config.provider.name,
       proofContract: {
-        requiredOutcomes: ["scripted_wrap_complete", "fail_closed_handoff"],
+        requiredOutcomes: [
+          "scripted_wrap_complete",
+          "fail_closed_handoff",
+          "runtime_failure_fail_closed_handoff",
+        ],
         requiredEventTypes: ["policy_hold_entered", "demo_fallback_triggered", "human_handoff_started"],
         queueAttentionFilter: "attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget",
         callAttentionSort: "attentionRequired=true&sort=attentionStartedAt&limit=1",
+        operatorNoteTrail: "events?type=operator_note_recorded",
         fallbackSourceTrail: "events?source=tool_timeout_fail_closed",
+        runtimeFailureSourceTrail: "events?source=pipecat_runtime_failure_fail_closed",
+        runtimeFailureQueueFilter: "attentionRequired=true&fallbackMode=runtime_failure",
+        runtimeFailureCallListFilter: "fallbackMode=runtime_failure&limit=5",
+        runtimeFailureOperatorConsoleFilter: "fallbackMode=runtime_failure&limit=1",
+        runtimeFailureReasonQueueFilter: "fallbackReason=pipecat%20local%20runtime%20import%20failed",
+        runtimeFailureReasonCallListFilter: "fallbackReason=pipecat%20local%20runtime%20import%20failed&limit=5",
+        runtimeFailureReasonOperatorConsoleFilter: "fallbackReason=pipecat%20local%20runtime%20import%20failed&limit=1",
+        runtimeFailureReasonEventTrail: "calls/{runtimeFailureCallId}/events?detailText=pipecat%20local%20runtime%20import%20failed",
+        runtimeFailureTranscriptFilter: "speaker=agent&text=runtime%20reported%20a%20failure",
+        runtimeFailureFallbackModeTranscriptTrail:
+          "calls/{runtimeFailureCallId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure",
+        runtimeFailureHandoffTrail: "calls/{runtimeFailureCallId}/events?type=human_handoff_started&limit=1&order=desc",
+        runtimeFailureProofBundle: "calls/{runtimeFailureCallId}/proof",
+        runtimeFailureArtifactManifest: "calls/{runtimeFailureCallId}/artifacts",
       },
       health: health.payload,
+      operatorNoteTrail,
       queueAttention,
       callAttentionList,
       fallbackSourceTrail,
+      runtimeFailureSourceTrail,
+      runtimeFailureQueue,
+      runtimeFailureCallList,
+      runtimeFailureOperatorConsole,
+      runtimeFailureReasonEvidence,
+      runtimeFailureTranscript,
+      runtimeFailureProofBundle,
+      runtimeFailureHandoffTrail,
+      runtimeFailureArtifactManifest,
       scripted,
       fallback,
+      runtimeFailure,
     };
   });
 
@@ -366,6 +672,7 @@ async function main() {
       {
         scriptedOutcome: artifact.scripted.outcome,
         fallbackOutcome: artifact.fallback.outcome,
+        runtimeFailureOutcome: artifact.runtimeFailure.outcome,
       },
       null,
       2,

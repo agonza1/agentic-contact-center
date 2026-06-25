@@ -16,14 +16,17 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(dockerfile, /FROM node:20-bookworm-slim AS runtime/);
   assert.match(dockerfile, /ENV PORT=8026/);
   assert.match(dockerfile, /EXPOSE 8026/);
-  assert.match(dockerfile, /HEALTHCHECK[\s\S]*fetch\('http:\/\/127\.0\.0\.1:' \+ \(process\.env\.PORT \|\| '8026'\) \+ '\/health'\)/);
-  assert.match(dockerfile, /payload\.ok !== true/);
+  assert.match(dockerfile, /HEALTHCHECK[\s\S]*scripts\/health-smoke\.mjs/);
+  assert.match(dockerfile, /--expect-pipecat-prototype-mode pipecat_local_runtime/);
+  assert.match(dockerfile, /--expect-pipecat-runtime-check-command "npm run pipecat:check"/);
   assert.match(dockerfile, /CMD \["node", "dist\/src\/index\.js"\]/);
 
   assert.match(compose, /app:\n[\s\S]*target: runtime/);
   assert.match(compose, /app:\n[\s\S]*ports:\n[\s\S]*- "8026:8026"/);
   assert.match(compose, /app:\n[\s\S]*healthcheck:/);
-  assert.match(compose, /app:\n[\s\S]*payload\.ok!==true/);
+  assert.match(compose, /app:\n[\s\S]*scripts\/health-smoke\.mjs/);
+  assert.match(compose, /app:\n[\s\S]*--expect-pipecat-prototype-mode/);
+  assert.match(compose, /app:\n[\s\S]*npm run pipecat:check/);
   assert.match(compose, /proof:\n[\s\S]*profiles: \["proof"\]/);
   assert.match(compose, /proof:\n[\s\S]*scripts\/demo-proof\.mjs/);
   assert.match(compose, /proof:\n[\s\S]*artifacts\/demo-proof-docker\.json/);
