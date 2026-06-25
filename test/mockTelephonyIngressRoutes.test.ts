@@ -1337,6 +1337,13 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       `/api/calls/${operatorCallId}/latency?overBudget=true`,
     );
 
+    const activeToolConsole = await requestJson(port, "GET", "/api/operator/console?pipecatActiveTool=pause_presentation");
+    const activeToolPayload = activeToolConsole.payload as OperatorConsolePayload;
+
+    assert.equal(activeToolConsole.statusCode, 200);
+    assert.deepEqual(activeToolPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
+    assert.equal(activeToolPayload.calls.summary.filteredSummary.attentionRequired, 1);
+
     const invalidFilter = await requestJson(port, "GET", "/api/operator/console?attentionRequired=maybe");
     assert.equal(invalidFilter.statusCode, 400);
     assert.deepEqual(invalidFilter.payload, { ok: false, error: "operator_console_attention_required_invalid" });
@@ -1355,10 +1362,13 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Flow state filter/);
     assert.match(response.body, /Fallback mode filter/);
     assert.match(response.body, /All fallback modes/);
+    assert.match(response.body, /Active tool filter/);
+    assert.match(response.body, /All active tools/);
     assert.match(response.body, /Transcript search/);
     assert.match(response.body, /operatorConsoleQuery/);
     assert.match(response.body, /attentionRequired/);
     assert.match(response.body, /fallbackMode/);
+    assert.match(response.body, /pipecatActiveTool/);
     assert.match(response.body, /transcriptText/);
     assert.match(response.body, /\/api\/demo\/start/);
     assert.match(response.body, /caller-turn-form/);
