@@ -142,6 +142,7 @@ interface OperatorConsolePayload {
           fallbackReasonCallList: string | null;
           fallbackReasonOperatorConsole: string | null;
           fallbackReasonEventTrail: string | null;
+          handoffTrail: string | null;
           handoffStartedAt: string | null;
           overBudgetLatencyMarkCount: number;
           overBudgetLatencyTrail: string | null;
@@ -239,6 +240,7 @@ interface ArtifactManifestPayload {
     fallbackReasonCallList: string | null;
     fallbackReasonOperatorConsole: string | null;
     fallbackReasonEventTrail: string | null;
+        handoffTrail: string | null;
     overBudgetLatencyTrail: string | null;
   };
   summary: {
@@ -249,6 +251,7 @@ interface ArtifactManifestPayload {
     fallbackMode: string | null;
     fallbackReason: string | null;
     fallbackSource: string | null;
+        handoffTrail: string | null;
     handoffStartedAt: string | null;
     latestEventType: string | null;
     latestEventAt: string | null;
@@ -586,6 +589,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
         fallbackReasonCallList: string | null;
         fallbackReasonOperatorConsole: string | null;
         fallbackReasonEventTrail: string | null;
+        handoffTrail: string | null;
         overBudgetLatencyTrail: string | null;
       };
       pii: { redactionApplied: boolean; assumptions: string };
@@ -658,6 +662,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
       fallbackReasonCallList: null,
       fallbackReasonOperatorConsole: null,
       fallbackReasonEventTrail: null,
+      handoffTrail: null,
       overBudgetLatencyTrail: null,
     });
     assert.equal(payload.pii.redactionApplied, false);
@@ -739,6 +744,7 @@ test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", a
       fallbackReasonCallList: null,
       fallbackReasonOperatorConsole: null,
       fallbackReasonEventTrail: null,
+      handoffTrail: null,
       overBudgetLatencyTrail: null,
     });
     assert.equal(payload.summary.transcriptTurns, 2);
@@ -3081,6 +3087,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
         fallbackReasonCallList: string | null;
         fallbackReasonOperatorConsole: string | null;
         fallbackReasonEventTrail: string | null;
+        handoffTrail: string | null;
         overBudgetLatencyTrail: string | null;
       };
       summary: {
@@ -3096,6 +3103,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
         fallbackReasonCallList: string | null;
         fallbackReasonOperatorConsole: string | null;
         fallbackReasonEventTrail: string | null;
+        handoffTrail: string | null;
         overBudgetLatencyTrail: string | null;
       };
     };
@@ -3106,6 +3114,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.equal(runtimeFailureProofPayload.outcome.fallbackSource, "pipecat_runtime_failure_fail_closed");
     assert.equal(runtimeFailureProofPayload.outcome.handoffStarted, true);
     assert.equal(runtimeFailureProofPayload.outcome.handoffStartedAt, "2026-06-10T14:00:03.000Z");
+    assert.equal(runtimeFailureProofPayload.summary.handoffTrail, `/api/calls/${runtimeFailureCallId}/events?type=human_handoff_started&limit=1&order=desc`);
     assert.equal(
       runtimeFailureProofPayload.summary.fallbackSourceTrail,
       `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
@@ -3135,6 +3144,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
       runtimeFailureProofPayload.evidenceRoutes.fallbackModeTranscriptTrail,
       `/api/calls/${runtimeFailureCallId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure`,
     );
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.handoffTrail, `/api/calls/${runtimeFailureCallId}/events?type=human_handoff_started&limit=1&order=desc`);
     assert.equal(runtimeFailureProofPayload.evidenceRoutes.overBudgetLatencyTrail, null);
 
     const runtimeFailureCalls = await requestJson(port, "GET", "/api/calls?fallbackMode=runtime_failure");
@@ -3225,6 +3235,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
       runtimeFailureConsoleCall?.evidenceSummary.fallbackSourceOperatorConsole,
       "/api/operator/console?fallbackSource=pipecat_runtime_failure_fail_closed&limit=1",
     );
+    assert.equal(runtimeFailureConsoleCall?.evidenceSummary.handoffTrail, `/api/calls/${runtimeFailureCallId}/events?type=human_handoff_started&limit=1&order=desc`);
     assert.equal(runtimeFailureConsoleCall?.evidenceSummary.handoffStartedAt, "2026-06-10T14:00:03.000Z");
 
     const runtimeFailureManifest = await requestJson(port, "GET", `/api/calls/${runtimeFailureCallId}/artifacts`);
@@ -3234,6 +3245,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.equal(runtimeFailureManifestPayload.summary.fallbackMode, "runtime_failure");
     assert.equal(runtimeFailureManifestPayload.summary.fallbackReason, "pipecat local runtime import failed");
     assert.equal(runtimeFailureManifestPayload.summary.fallbackSource, "pipecat_runtime_failure_fail_closed");
+    assert.equal(runtimeFailureManifestPayload.summary.handoffTrail, `/api/calls/${runtimeFailureCallId}/events?type=human_handoff_started&limit=1&order=desc`);
     assert.equal(runtimeFailureManifestPayload.summary.handoffStartedAt, "2026-06-10T14:00:03.000Z");
     assert.equal(
       runtimeFailureManifestPayload.evidenceRoutes.fallbackSourceTrail,
@@ -3259,6 +3271,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
       runtimeFailureManifestPayload.evidenceRoutes.fallbackModeTranscriptTrail,
       `/api/calls/${runtimeFailureCallId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure`,
     );
+    assert.equal(runtimeFailureManifestPayload.evidenceRoutes.handoffTrail, `/api/calls/${runtimeFailureCallId}/events?type=human_handoff_started&limit=1&order=desc`);
 
     const toolTimeoutQueue = await requestJson(port, "GET", "/api/queue?fallbackMode=tool_timeout");
     const toolTimeoutQueuePayload = toolTimeoutQueue.payload as QueueSummaryPayload;

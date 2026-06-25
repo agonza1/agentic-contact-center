@@ -471,6 +471,12 @@ function buildLatestLatencyTrail(snapshot: CallSnapshot): string | null {
     : null;
 }
 
+function buildHandoffTrail(snapshot: CallSnapshot): string | null {
+  return snapshot.events.some((event) => event.type === "human_handoff_started")
+    ? snapshot.session.openclawSession.artifactLinks.events + "?type=human_handoff_started&limit=1&order=desc"
+    : null;
+}
+
 function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
   const latestEvent = snapshot.events.at(-1);
   const latestTranscriptTurn = snapshot.transcript.at(-1);
@@ -486,6 +492,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
     ? snapshot.session.openclawSession.artifactLinks.events + "?type=" + encodeURIComponent(latestEvent.type) + "&limit=1&order=desc"
     : null;
   const latestLatencyTrail = buildLatestLatencyTrail(snapshot);
+  const handoffTrail = buildHandoffTrail(snapshot);
   const operatorConsole = "/api/operator/console?callId=" + encodeURIComponent(snapshot.session.callId);
   const fallbackModeQueue = snapshot.demoFallback.mode
     ? `/api/queue?attentionRequired=true&fallbackMode=${encodeURIComponent(snapshot.demoFallback.mode)}`
@@ -580,6 +587,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       fallbackModeOperatorConsole,
       fallbackModeTranscriptTrail,
       ...fallbackReasonRoutes,
+      handoffTrail,
       handoffStartedAt: handoffEvent?.at ?? null,
       overBudgetLatencyMarkCount,
       overBudgetLatencyTrail: overBudgetLatencyMarkCount > 0
@@ -857,6 +865,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
     ? snapshot.session.openclawSession.artifactLinks.events + "?type=" + encodeURIComponent(latestEvent.type) + "&limit=1&order=desc"
     : null;
   const latestLatencyTrail = buildLatestLatencyTrail(snapshot);
+  const handoffTrail = buildHandoffTrail(snapshot);
   const operatorConsole = "/api/operator/console?callId=" + encodeURIComponent(snapshot.session.callId);
   const fallbackModeQueue = snapshot.demoFallback.mode
     ? "/api/queue?attentionRequired=true&fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode)
@@ -918,6 +927,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       fallbackModeOperatorConsole,
       fallbackModeTranscriptTrail,
       ...fallbackReasonRoutes,
+      handoffTrail,
       overBudgetLatencyTrail,
     },
     summary: {
@@ -936,6 +946,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       fallbackModeOperatorConsole,
       fallbackModeTranscriptTrail,
       ...fallbackReasonRoutes,
+      handoffTrail,
       latencyMarkCount: snapshot.latencyMarks.length,
       overBudgetLatencyMarkCount: overBudgetLatencyMarks.length,
       overBudgetLatencyTrail,
@@ -969,6 +980,7 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
     ? snapshot.session.openclawSession.artifactLinks.events + "?type=" + encodeURIComponent(latestEvent.type) + "&limit=1&order=desc"
     : null;
   const latestLatencyTrail = buildLatestLatencyTrail(snapshot);
+  const handoffTrail = buildHandoffTrail(snapshot);
   const operatorConsole = "/api/operator/console?callId=" + encodeURIComponent(snapshot.session.callId);
   const fallbackModeQueue = snapshot.demoFallback.mode
     ? "/api/queue?attentionRequired=true&fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode)
@@ -1017,6 +1029,7 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
       fallbackModeOperatorConsole,
       fallbackModeTranscriptTrail,
       ...fallbackReasonRoutes,
+      handoffTrail,
       overBudgetLatencyTrail: overBudgetLatencyMarkCount > 0
         ? snapshot.session.openclawSession.artifactLinks.latencyMarks + "?overBudget=true"
         : null,
@@ -1034,6 +1047,7 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
       fallbackReason: snapshot.demoFallback.reason,
       fallbackSource,
       fallbackModeTranscriptTrail,
+      handoffTrail,
       handoffStartedAt: handoffEvent?.at ?? null,
       latestEventType: latestEvent?.type ?? null,
       latestEventAt: latestEvent?.at ?? null,
