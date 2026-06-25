@@ -209,6 +209,7 @@ interface ArtifactManifestPayload {
     transcript: string;
     events: string;
     latencyMarks: string;
+    operatorConsole: string;
     operatorNoteTrail: string | null;
     fallbackSourceTrail: string | null;
     overBudgetLatencyTrail: string | null;
@@ -537,6 +538,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
         transcript: string;
         events: string;
         latencyMarks: string;
+        operatorConsole: string;
         operatorNoteTrail: string | null;
         fallbackSourceTrail: string | null;
         overBudgetLatencyTrail: string | null;
@@ -588,6 +590,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
       transcript: `/api/calls/${callId}/transcript`,
       events: `/api/calls/${callId}/events`,
       latencyMarks: `/api/calls/${callId}/latency`,
+      operatorConsole: `/api/operator/console?callId=${callId}`,
       operatorNoteTrail: null,
       fallbackSourceTrail: null,
       overBudgetLatencyTrail: null,
@@ -650,6 +653,7 @@ test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", a
       transcript: `/api/calls/${callId}/transcript`,
       events: `/api/calls/${callId}/events`,
       latencyMarks: `/api/calls/${callId}/latency`,
+      operatorConsole: `/api/operator/console?callId=${callId}`,
       operatorNoteTrail: null,
       fallbackSourceTrail: null,
       overBudgetLatencyTrail: null,

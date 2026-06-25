@@ -457,6 +457,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
   const overBudgetLatencyMarkCount = snapshot.latencyMarks.filter(
     (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
   ).length;
+  const operatorConsole = "/api/operator/console?callId=" + encodeURIComponent(snapshot.session.callId);
   const latestEvidenceAt = [latestEvent?.at, latestTranscriptTurn?.timestamp, latestLatencyMark?.recordedAt]
     .filter((timestamp): timestamp is string => timestamp !== undefined)
     .sort(compareTimestamps)
@@ -513,6 +514,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       latestLatencyStage: latestLatencyMark?.stage ?? null,
       latestLatencyAt: latestLatencyMark?.recordedAt ?? null,
       latestEvidenceAt,
+      operatorConsole,
       transcriptTurns: snapshot.transcript.length,
       eventCount: snapshot.events.length,
       latencyMarkCount: snapshot.latencyMarks.length,
@@ -743,6 +745,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
   const overBudgetLatencyTrail = overBudgetLatencyMarks.length > 0
     ? snapshot.session.openclawSession.artifactLinks.latencyMarks + "?overBudget=true"
     : null;
+  const operatorConsole = "/api/operator/console?callId=" + encodeURIComponent(snapshot.session.callId);
 
   return {
     schemaVersion: 1,
@@ -776,6 +779,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       transcript: snapshot.session.openclawSession.artifactLinks.transcript,
       events: snapshot.session.openclawSession.artifactLinks.events,
       latencyMarks: snapshot.session.openclawSession.artifactLinks.latencyMarks,
+      operatorConsole,
       operatorNoteTrail,
       fallbackSourceTrail,
       overBudgetLatencyTrail,
@@ -816,6 +820,7 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
   const overBudgetLatencyMarkCount = snapshot.latencyMarks.filter(
     (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
   ).length;
+  const operatorConsole = "/api/operator/console?callId=" + encodeURIComponent(snapshot.session.callId);
 
   return {
     schemaVersion: 1,
@@ -835,6 +840,7 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
       transcript: snapshot.session.openclawSession.artifactLinks.transcript,
       events: snapshot.session.openclawSession.artifactLinks.events,
       latencyMarks: snapshot.session.openclawSession.artifactLinks.latencyMarks,
+      operatorConsole,
       operatorNoteTrail: snapshot.events.some((event) => event.type === "operator_note_recorded")
         ? snapshot.session.openclawSession.artifactLinks.events + "?type=operator_note_recorded"
         : null,

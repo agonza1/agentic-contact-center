@@ -261,6 +261,7 @@ async function getRuntimeFailureProofBundle(port, callId) {
   const proof = await requestJson(port, "GET", `/api/calls/${callId}/proof`);
   assert.equal(proof.statusCode, 200);
   assert.equal(proof.payload.outcome.fallbackMode, "runtime_failure");
+  assert.equal(proof.payload.evidenceRoutes.operatorConsole, `/api/operator/console?callId=${callId}`);
   assert.equal(proof.payload.outcome.fallbackSource, "pipecat_runtime_failure_fail_closed");
   assert.equal(
     proof.payload.evidenceRoutes.fallbackSourceTrail,
@@ -273,6 +274,7 @@ async function getRuntimeFailureProofBundle(port, callId) {
     fallbackSource: proof.payload.outcome.fallbackSource,
     handoffStarted: proof.payload.outcome.handoffStarted,
     fallbackSourceTrail: proof.payload.evidenceRoutes.fallbackSourceTrail,
+    operatorConsole: proof.payload.evidenceRoutes.operatorConsole,
     overBudgetLatencyTrail: proof.payload.evidenceRoutes.overBudgetLatencyTrail,
     summaryEventCount: proof.payload.summary.eventCount,
     summaryOverBudgetLatencyMarkCount: proof.payload.summary.overBudgetLatencyMarkCount,

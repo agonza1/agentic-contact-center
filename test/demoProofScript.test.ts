@@ -128,6 +128,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           handoffStarted: boolean;
           fallbackSourceTrail: string | null;
           overBudgetLatencyTrail: string | null;
+          operatorConsole: string;
           summaryEventCount: number;
           summaryOverBudgetLatencyMarkCount: number;
         };
@@ -257,6 +258,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.runtimeFailureProofBundle.route, "calls/" + artifact.runtimeFailure.callId + "/proof");
     assert.equal(artifact.summary.runtimeFailureProofBundle.fallbackMode, "runtime_failure");
     assert.equal(artifact.summary.runtimeFailureProofBundle.fallbackSource, "pipecat_runtime_failure_fail_closed");
+    assert.equal(artifact.summary.runtimeFailureProofBundle.operatorConsole, "/api/operator/console?callId=" + artifact.runtimeFailure.callId);
     assert.equal(artifact.summary.runtimeFailureProofBundle.handoffStarted, true);
     assert.equal(
       artifact.summary.runtimeFailureProofBundle.fallbackSourceTrail,
