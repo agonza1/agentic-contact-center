@@ -47,6 +47,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         runtimeFailureTranscriptFilter: string;
         runtimeFailureFallbackModeTranscriptTrail: string;
         runtimeFailureProofBundle: string;
+        runtimeFailureHandoffTrail: string;
         runtimeFailureArtifactManifest: string;
       };
       health: {
@@ -83,6 +84,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           runtimeFailureTranscriptFilter: string;
           runtimeFailureFallbackModeTranscriptTrail: string;
           runtimeFailureProofBundle: string;
+          runtimeFailureHandoffTrail: string;
           runtimeFailureArtifactManifest: string;
         };
         queueAttention: {
@@ -183,6 +185,13 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           summaryEventCount: number;
           summaryOverBudgetLatencyMarkCount: number;
         };
+        runtimeFailureHandoffTrail: {
+          route: string;
+          returnedEvents: number;
+          filteredType: string | null;
+          latestSource: string | null;
+          latestReason: string | null;
+        };
         runtimeFailureArtifactManifest: {
           route: string;
           runtimeFlow: string;
@@ -279,6 +288,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
       artifact.proofContract.runtimeFailureFallbackModeTranscriptTrail,
       "calls/{runtimeFailureCallId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure",
     );
+    assert.equal(artifact.proofContract.runtimeFailureHandoffTrail, "calls/{runtimeFailureCallId}/events?type=human_handoff_started&limit=1&order=desc");
     assert.equal(artifact.proofContract.runtimeFailureProofBundle, "calls/{runtimeFailureCallId}/proof");
     assert.equal(artifact.proofContract.runtimeFailureArtifactManifest, "calls/{runtimeFailureCallId}/artifacts");
     assert.equal(artifact.summary.schemaVersion, 1);
@@ -401,6 +411,11 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.runtimeFailureProofBundle.overBudgetLatencyTrail, null);
     assert.equal(artifact.summary.runtimeFailureProofBundle.summaryEventCount > 0, true);
     assert.equal(artifact.summary.runtimeFailureProofBundle.summaryOverBudgetLatencyMarkCount, 0);
+    assert.equal(artifact.summary.runtimeFailureHandoffTrail.route, "calls/" + artifact.runtimeFailure.callId + "/events?type=human_handoff_started&limit=1&order=desc");
+    assert.equal(artifact.summary.runtimeFailureHandoffTrail.returnedEvents, 1);
+    assert.equal(artifact.summary.runtimeFailureHandoffTrail.filteredType, "human_handoff_started");
+    assert.equal(artifact.summary.runtimeFailureHandoffTrail.latestSource, "pipecat_runtime_failure_fail_closed");
+    assert.equal(artifact.summary.runtimeFailureHandoffTrail.latestReason, "pipecat local runtime import failed");
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.route, "calls/" + artifact.runtimeFailure.callId + "/artifacts");
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.runtimeFlow, "pipecat_local_runtime");
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.runtimeEngine, "pipecat-ai");

@@ -371,6 +371,22 @@ async function getRuntimeFailureProofBundle(port, callId) {
   };
 }
 
+async function getRuntimeFailureHandoffTrail(port, callId) {
+  const trail = await requestJson(port, "GET", `/api/calls/${callId}/events?type=human_handoff_started&limit=1&order=desc`);
+  assert.equal(trail.statusCode, 200);
+  assert.equal(trail.payload.summary.filteredType, "human_handoff_started");
+  assert.equal(trail.payload.summary.returnedEvents, 1);
+  assert.equal(trail.payload.events[0].detail.source, "pipecat_runtime_failure_fail_closed");
+
+  return {
+    route: `calls/${callId}/events?type=human_handoff_started&limit=1&order=desc`,
+    returnedEvents: trail.payload.summary.returnedEvents,
+    filteredType: trail.payload.summary.filteredType,
+    latestSource: trail.payload.events[0].detail.source,
+    latestReason: trail.payload.events[0].detail.reason,
+  };
+}
+
 async function getRuntimeFailureArtifactManifest(port, callId) {
   const manifest = await requestJson(port, "GET", `/api/calls/${callId}/artifacts`);
   assert.equal(manifest.statusCode, 200);
@@ -526,6 +542,7 @@ function summarizeArtifact(artifact) {
     runtimeFailureReasonEvidence: artifact.runtimeFailureReasonEvidence,
     runtimeFailureTranscript: artifact.runtimeFailureTranscript,
     runtimeFailureProofBundle: artifact.runtimeFailureProofBundle,
+    runtimeFailureHandoffTrail: artifact.runtimeFailureHandoffTrail,
     runtimeFailureArtifactManifest: artifact.runtimeFailureArtifactManifest,
     scripted: {
       outcome: artifact.scripted.outcome,
@@ -579,6 +596,7 @@ async function main() {
     const runtimeFailureReasonEvidence = await getRuntimeFailureReasonEvidence(port, runtimeFailure.callId);
     const runtimeFailureTranscript = await getRuntimeFailureTranscript(port, runtimeFailure.callId);
     const runtimeFailureProofBundle = await getRuntimeFailureProofBundle(port, runtimeFailure.callId);
+    const runtimeFailureHandoffTrail = await getRuntimeFailureHandoffTrail(port, runtimeFailure.callId);
     const runtimeFailureArtifactManifest = await getRuntimeFailureArtifactManifest(port, runtimeFailure.callId);
 
     return {
@@ -609,6 +627,7 @@ async function main() {
         runtimeFailureTranscriptFilter: "speaker=agent&text=runtime%20reported%20a%20failure",
         runtimeFailureFallbackModeTranscriptTrail:
           "calls/{runtimeFailureCallId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure",
+        runtimeFailureHandoffTrail: "calls/{runtimeFailureCallId}/events?type=human_handoff_started&limit=1&order=desc",
         runtimeFailureProofBundle: "calls/{runtimeFailureCallId}/proof",
         runtimeFailureArtifactManifest: "calls/{runtimeFailureCallId}/artifacts",
       },
@@ -624,6 +643,7 @@ async function main() {
       runtimeFailureReasonEvidence,
       runtimeFailureTranscript,
       runtimeFailureProofBundle,
+      runtimeFailureHandoffTrail,
       runtimeFailureArtifactManifest,
       scripted,
       fallback,
