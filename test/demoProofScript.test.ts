@@ -41,6 +41,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         runtimeFailureCallListFilter: string;
         runtimeFailureOperatorConsoleFilter: string;
         runtimeFailureTranscriptFilter: string;
+        runtimeFailureFallbackModeTranscriptTrail: string;
         runtimeFailureProofBundle: string;
         runtimeFailureArtifactManifest: string;
       };
@@ -72,6 +73,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           runtimeFailureCallListFilter: string;
           runtimeFailureOperatorConsoleFilter: string;
           runtimeFailureTranscriptFilter: string;
+          runtimeFailureFallbackModeTranscriptTrail: string;
           runtimeFailureProofBundle: string;
           runtimeFailureArtifactManifest: string;
         };
@@ -240,6 +242,10 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.proofContract.runtimeFailureCallListFilter, "fallbackMode=runtime_failure&limit=5");
     assert.equal(artifact.proofContract.runtimeFailureOperatorConsoleFilter, "fallbackMode=runtime_failure&limit=1");
     assert.equal(artifact.proofContract.runtimeFailureTranscriptFilter, "speaker=agent&text=runtime%20reported%20a%20failure");
+    assert.equal(
+      artifact.proofContract.runtimeFailureFallbackModeTranscriptTrail,
+      "calls/{runtimeFailureCallId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure",
+    );
     assert.equal(artifact.proofContract.runtimeFailureProofBundle, "calls/{runtimeFailureCallId}/proof");
     assert.equal(artifact.proofContract.runtimeFailureArtifactManifest, "calls/{runtimeFailureCallId}/artifacts");
     assert.equal(artifact.summary.schemaVersion, 1);

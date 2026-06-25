@@ -554,6 +554,8 @@ async function main() {
         runtimeFailureCallListFilter: "fallbackMode=runtime_failure&limit=5",
         runtimeFailureOperatorConsoleFilter: "fallbackMode=runtime_failure&limit=1",
         runtimeFailureTranscriptFilter: "speaker=agent&text=runtime%20reported%20a%20failure",
+        runtimeFailureFallbackModeTranscriptTrail:
+          "calls/{runtimeFailureCallId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure",
         runtimeFailureProofBundle: "calls/{runtimeFailureCallId}/proof",
         runtimeFailureArtifactManifest: "calls/{runtimeFailureCallId}/artifacts",
       },

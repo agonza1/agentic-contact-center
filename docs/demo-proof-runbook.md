@@ -48,10 +48,12 @@ Open `artifacts/demo-proof.json` or `artifacts/demo-proof-latest.json` and confi
 - `proofContract.runtimeFailureOperatorConsoleFilter` is `fallbackMode=runtime_failure&limit=1`
 - `proofContract.runtimeFailureProofBundle` is `calls/{runtimeFailureCallId}/proof`
 - `proofContract.runtimeFailureArtifactManifest` is `calls/{runtimeFailureCallId}/artifacts`
+- `proofContract.runtimeFailureFallbackModeTranscriptTrail` is `calls/{runtimeFailureCallId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure`
 - `summary.runtimeFailureCallList.firstCallId` matches the runtime-failure drill call for targeted QA review
 - `summary.runtimeFailureOperatorConsole.firstCallId` matches the same runtime-failure drill call in the operator console filter
 - `summary.runtimeFailureProofBundle.fallbackSourceTrail` points at the runtime-failure handoff source trail
 - `summary.runtimeFailureArtifactManifest.fallbackSourceTrail` points at the same runtime-failure handoff source trail from the artifact manifest
+- `summary.runtimeFailureProofBundle.fallbackModeTranscriptTrail` and `summary.runtimeFailureArtifactManifest.fallbackModeTranscriptTrail` point at the runtime-failure transcript evidence route
 - `summary.runtimeFailureProofBundle.fallbackModeOperatorConsole` and `summary.runtimeFailureArtifactManifest.fallbackModeOperatorConsole` point at `/api/operator/console?fallbackMode=runtime_failure&limit=1`
 - `summary.queueAttention.oldestAttentionSource` is `fallback`
 - `summary.queueAttention.oldestAttentionFlowState` is `wrap`
