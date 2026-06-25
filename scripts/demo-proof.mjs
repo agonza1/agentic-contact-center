@@ -281,6 +281,30 @@ async function getRuntimeFailureProofBundle(port, callId) {
   };
 }
 
+async function getRuntimeFailureArtifactManifest(port, callId) {
+  const manifest = await requestJson(port, "GET", `/api/calls/${callId}/artifacts`);
+  assert.equal(manifest.statusCode, 200);
+  assert.equal(manifest.payload.summary.fallbackMode, "runtime_failure");
+  assert.equal(manifest.payload.summary.fallbackSource, "pipecat_runtime_failure_fail_closed");
+  assert.equal(
+    manifest.payload.evidenceRoutes.fallbackSourceTrail,
+    `/api/calls/${callId}/events?source=pipecat_runtime_failure_fail_closed`,
+  );
+
+  return {
+    route: `calls/${callId}/artifacts`,
+    runtimeFlow: manifest.payload.runtimeMode.flow,
+    runtimeEngine: manifest.payload.runtimeMode.runtimeEngine,
+    fallbackMode: manifest.payload.summary.fallbackMode,
+    fallbackSource: manifest.payload.summary.fallbackSource,
+    handoffStartedAt: manifest.payload.summary.handoffStartedAt,
+    fallbackSourceTrail: manifest.payload.evidenceRoutes.fallbackSourceTrail,
+    operatorConsole: manifest.payload.evidenceRoutes.operatorConsole,
+    overBudgetLatencyTrail: manifest.payload.evidenceRoutes.overBudgetLatencyTrail,
+    openclawSessionLabel: manifest.payload.openclawSession.label,
+  };
+}
+
 async function getAttentionSortedCallList(port) {
   const list = await requestJson(
     port,
@@ -394,6 +418,7 @@ function summarizeArtifact(artifact) {
     runtimeFailureQueue: artifact.runtimeFailureQueue,
     runtimeFailureCallList: artifact.runtimeFailureCallList,
     runtimeFailureProofBundle: artifact.runtimeFailureProofBundle,
+    runtimeFailureArtifactManifest: artifact.runtimeFailureArtifactManifest,
     scripted: {
       outcome: artifact.scripted.outcome,
       callId: artifact.scripted.callId,
@@ -443,6 +468,7 @@ async function main() {
     const runtimeFailureQueue = await getRuntimeFailureQueueSummary(port);
     const runtimeFailureCallList = await getRuntimeFailureCallList(port, runtimeFailure.callId);
     const runtimeFailureProofBundle = await getRuntimeFailureProofBundle(port, runtimeFailure.callId);
+    const runtimeFailureArtifactManifest = await getRuntimeFailureArtifactManifest(port, runtimeFailure.callId);
 
     return {
       schemaVersion: 1,
@@ -465,6 +491,7 @@ async function main() {
         runtimeFailureQueueFilter: "attentionRequired=true&fallbackMode=runtime_failure",
         runtimeFailureCallListFilter: "fallbackMode=runtime_failure&limit=5",
         runtimeFailureProofBundle: "calls/{runtimeFailureCallId}/proof",
+        runtimeFailureArtifactManifest: "calls/{runtimeFailureCallId}/artifacts",
       },
       health: health.payload,
       operatorNoteTrail,
@@ -475,6 +502,7 @@ async function main() {
       runtimeFailureQueue,
       runtimeFailureCallList,
       runtimeFailureProofBundle,
+      runtimeFailureArtifactManifest,
       scripted,
       fallback,
       runtimeFailure,
