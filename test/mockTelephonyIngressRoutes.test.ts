@@ -136,6 +136,7 @@ interface OperatorConsolePayload {
           fallbackReasonQueue: string | null;
           fallbackReasonCallList: string | null;
           fallbackReasonOperatorConsole: string | null;
+          fallbackReasonEventTrail: string | null;
           handoffStartedAt: string | null;
           overBudgetLatencyMarkCount: number;
           overBudgetLatencyTrail: string | null;
@@ -227,6 +228,7 @@ interface ArtifactManifestPayload {
     fallbackReasonQueue: string | null;
     fallbackReasonCallList: string | null;
     fallbackReasonOperatorConsole: string | null;
+    fallbackReasonEventTrail: string | null;
     overBudgetLatencyTrail: string | null;
   };
   summary: {
@@ -567,6 +569,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
         fallbackReasonQueue: string | null;
         fallbackReasonCallList: string | null;
         fallbackReasonOperatorConsole: string | null;
+        fallbackReasonEventTrail: string | null;
         overBudgetLatencyTrail: string | null;
       };
       pii: { redactionApplied: boolean; assumptions: string };
@@ -633,6 +636,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
       fallbackReasonQueue: null,
       fallbackReasonCallList: null,
       fallbackReasonOperatorConsole: null,
+      fallbackReasonEventTrail: null,
       overBudgetLatencyTrail: null,
     });
     assert.equal(payload.pii.redactionApplied, false);
@@ -708,6 +712,7 @@ test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", a
       fallbackReasonQueue: null,
       fallbackReasonCallList: null,
       fallbackReasonOperatorConsole: null,
+      fallbackReasonEventTrail: null,
       overBudgetLatencyTrail: null,
     });
     assert.equal(payload.summary.transcriptTurns, 2);
@@ -3030,6 +3035,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
         fallbackReasonQueue: string | null;
         fallbackReasonCallList: string | null;
         fallbackReasonOperatorConsole: string | null;
+        fallbackReasonEventTrail: string | null;
         overBudgetLatencyTrail: string | null;
       };
       summary: {
@@ -3041,6 +3047,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
         fallbackReasonQueue: string | null;
         fallbackReasonCallList: string | null;
         fallbackReasonOperatorConsole: string | null;
+        fallbackReasonEventTrail: string | null;
         overBudgetLatencyTrail: string | null;
       };
     };
@@ -3089,11 +3096,28 @@ test("tool timeout fallback fails closed and records the fallback reason", async
       runtimeFailureProofPayload.summary.fallbackReasonOperatorConsole,
       "/api/operator/console?fallbackReason=" + runtimeFailureReason + "&limit=1",
     );
+    assert.equal(
+      runtimeFailureProofPayload.summary.fallbackReasonEventTrail,
+      `/api/calls/${runtimeFailureCallId}/events?detailText=${runtimeFailureReason}`,
+    );
     assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackReasonQueue, "/api/queue?fallbackReason=" + runtimeFailureReason);
     assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackReasonCallList, "/api/calls?fallbackReason=" + runtimeFailureReason + "&limit=5");
     assert.equal(
       runtimeFailureProofPayload.evidenceRoutes.fallbackReasonOperatorConsole,
       "/api/operator/console?fallbackReason=" + runtimeFailureReason + "&limit=1",
+    );
+    assert.equal(
+      runtimeFailureProofPayload.evidenceRoutes.fallbackReasonEventTrail,
+      `/api/calls/${runtimeFailureCallId}/events?detailText=${runtimeFailureReason}`,
+    );
+
+    const runtimeFailureReasonTrail = await requestJson(port, "GET", `/api/calls/${runtimeFailureCallId}/events?detailText=${runtimeFailureReason}`);
+    const runtimeFailureReasonTrailPayload = runtimeFailureReasonTrail.payload as EventTrailPayload;
+    assert.equal(runtimeFailureReasonTrail.statusCode, 200);
+    assert.equal(runtimeFailureReasonTrailPayload.summary.filteredDetailText, "pipecat local runtime import failed");
+    assert.deepEqual(
+      runtimeFailureReasonTrailPayload.events.map((event) => event.type),
+      ["demo_fallback_triggered", "human_handoff_started"],
     );
 
     const runtimeFailureReasonCalls = await requestJson(port, "GET", "/api/calls?fallbackReason=" + runtimeFailureReason);
@@ -3126,6 +3150,10 @@ test("tool timeout fallback fails closed and records the fallback reason", async
       runtimeFailureConsoleCall?.evidenceSummary.fallbackReasonOperatorConsole,
       "/api/operator/console?fallbackReason=" + runtimeFailureReason + "&limit=1",
     );
+    assert.equal(
+      runtimeFailureConsoleCall?.evidenceSummary.fallbackReasonEventTrail,
+      `/api/calls/${runtimeFailureCallId}/events?detailText=${runtimeFailureReason}`,
+    );
     assert.equal(runtimeFailureConsoleCall?.evidenceSummary.fallbackSource, "pipecat_runtime_failure_fail_closed");
     assert.equal(
       runtimeFailureConsoleCall?.evidenceSummary.fallbackSourceTrail,
@@ -3153,6 +3181,10 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.equal(
       runtimeFailureManifestPayload.evidenceRoutes.fallbackReasonOperatorConsole,
       "/api/operator/console?fallbackReason=" + runtimeFailureReason + "&limit=1",
+    );
+    assert.equal(
+      runtimeFailureManifestPayload.evidenceRoutes.fallbackReasonEventTrail,
+      `/api/calls/${runtimeFailureCallId}/events?detailText=${runtimeFailureReason}`,
     );
     assert.equal(
       runtimeFailureManifestPayload.evidenceRoutes.fallbackModeTranscriptTrail,

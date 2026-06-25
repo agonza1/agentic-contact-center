@@ -154,6 +154,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           fallbackSourceTrail: string | null;
           fallbackModeOperatorConsole: string | null;
           fallbackModeTranscriptTrail: string | null;
+          fallbackReasonEventTrail: string | null;
           overBudgetLatencyTrail: string | null;
           operatorConsole: string;
           summaryEventCount: number;
@@ -174,6 +175,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           operatorConsole: string;
           fallbackModeOperatorConsole: string | null;
           fallbackModeTranscriptTrail: string | null;
+          fallbackReasonEventTrail: string | null;
           overBudgetLatencyTrail: string | null;
           openclawSessionLabel: string;
         };
@@ -334,6 +336,10 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
       artifact.summary.runtimeFailureProofBundle.fallbackModeTranscriptTrail,
       "/api/calls/" + artifact.runtimeFailure.callId + "/transcript?speaker=agent&text=runtime%20reported%20a%20failure",
     );
+    assert.equal(
+      artifact.summary.runtimeFailureProofBundle.fallbackReasonEventTrail,
+      "/api/calls/" + artifact.runtimeFailure.callId + "/events?detailText=pipecat%20local%20runtime%20import%20failed",
+    );
     assert.equal(artifact.summary.runtimeFailureProofBundle.handoffStarted, true);
     assert.equal(
       artifact.summary.runtimeFailureProofBundle.fallbackSourceTrail,
@@ -355,6 +361,10 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.fallbackSourceTrail, "/api/calls/" + artifact.runtimeFailure.callId + "/events?source=pipecat_runtime_failure_fail_closed");
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.operatorConsole, "/api/operator/console?callId=" + artifact.runtimeFailure.callId);
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.fallbackModeOperatorConsole, "/api/operator/console?fallbackMode=runtime_failure&limit=1");
+    assert.equal(
+      artifact.summary.runtimeFailureArtifactManifest.fallbackReasonEventTrail,
+      "/api/calls/" + artifact.runtimeFailure.callId + "/events?detailText=pipecat%20local%20runtime%20import%20failed",
+    );
     assert.equal(
       artifact.summary.runtimeFailureArtifactManifest.fallbackModeTranscriptTrail,
       "/api/calls/" + artifact.runtimeFailure.callId + "/transcript?speaker=agent&text=runtime%20reported%20a%20failure",

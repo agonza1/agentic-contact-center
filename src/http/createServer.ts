@@ -762,12 +762,14 @@ function buildFallbackReasonRoutes(snapshot: CallSnapshot): {
   fallbackReasonQueue: string | null;
   fallbackReasonCallList: string | null;
   fallbackReasonOperatorConsole: string | null;
+  fallbackReasonEventTrail: string | null;
 } {
   if (!snapshot.demoFallback.reason) {
     return {
       fallbackReasonQueue: null,
       fallbackReasonCallList: null,
       fallbackReasonOperatorConsole: null,
+      fallbackReasonEventTrail: null,
     };
   }
 
@@ -776,6 +778,7 @@ function buildFallbackReasonRoutes(snapshot: CallSnapshot): {
     fallbackReasonQueue: `/api/queue?fallbackReason=${encodedReason}`,
     fallbackReasonCallList: `/api/calls?fallbackReason=${encodedReason}&limit=5`,
     fallbackReasonOperatorConsole: `/api/operator/console?fallbackReason=${encodedReason}&limit=1`,
+    fallbackReasonEventTrail: `${snapshot.session.openclawSession.artifactLinks.events}?detailText=${encodedReason}`,
   };
 }
 
