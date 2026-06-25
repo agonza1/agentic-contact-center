@@ -755,6 +755,9 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
   const fallbackModeCallList = snapshot.demoFallback.mode
     ? "/api/calls?fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode) + "&limit=5"
     : null;
+  const fallbackModeOperatorConsole = snapshot.demoFallback.mode
+    ? "/api/operator/console?fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode) + "&limit=1"
+    : null;
 
   return {
     schemaVersion: 1,
@@ -793,6 +796,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       fallbackSourceTrail,
       fallbackModeQueue,
       fallbackModeCallList,
+      fallbackModeOperatorConsole,
       overBudgetLatencyTrail,
     },
     summary: {
@@ -807,6 +811,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       fallbackSourceTrail,
       fallbackModeQueue,
       fallbackModeCallList,
+      fallbackModeOperatorConsole,
       latencyMarkCount: snapshot.latencyMarks.length,
       overBudgetLatencyMarkCount: overBudgetLatencyMarks.length,
       overBudgetLatencyTrail,
@@ -843,6 +848,9 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
   const fallbackModeCallList = snapshot.demoFallback.mode
     ? "/api/calls?fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode) + "&limit=5"
     : null;
+  const fallbackModeOperatorConsole = snapshot.demoFallback.mode
+    ? "/api/operator/console?fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode) + "&limit=1"
+    : null;
 
   return {
     schemaVersion: 1,
@@ -871,6 +879,7 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
         : null,
       fallbackModeQueue,
       fallbackModeCallList,
+      fallbackModeOperatorConsole,
       overBudgetLatencyTrail: overBudgetLatencyMarkCount > 0
         ? snapshot.session.openclawSession.artifactLinks.latencyMarks + "?overBudget=true"
         : null,

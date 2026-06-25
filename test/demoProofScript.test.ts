@@ -141,6 +141,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           fallbackSource: string | null;
           handoffStarted: boolean;
           fallbackSourceTrail: string | null;
+          fallbackModeOperatorConsole: string | null;
           overBudgetLatencyTrail: string | null;
           operatorConsole: string;
           summaryEventCount: number;
@@ -159,6 +160,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           handoffStartedAt: string | null;
           fallbackSourceTrail: string | null;
           operatorConsole: string;
+          fallbackModeOperatorConsole: string | null;
           overBudgetLatencyTrail: string | null;
           openclawSessionLabel: string;
         };
@@ -304,6 +306,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.runtimeFailureProofBundle.fallbackMode, "runtime_failure");
     assert.equal(artifact.summary.runtimeFailureProofBundle.fallbackSource, "pipecat_runtime_failure_fail_closed");
     assert.equal(artifact.summary.runtimeFailureProofBundle.operatorConsole, "/api/operator/console?callId=" + artifact.runtimeFailure.callId);
+    assert.equal(artifact.summary.runtimeFailureProofBundle.fallbackModeOperatorConsole, "/api/operator/console?fallbackMode=runtime_failure&limit=1");
     assert.equal(artifact.summary.runtimeFailureProofBundle.handoffStarted, true);
     assert.equal(
       artifact.summary.runtimeFailureProofBundle.fallbackSourceTrail,
@@ -324,6 +327,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.handoffStartedAt, "2026-06-11T20:47:02.000Z");
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.fallbackSourceTrail, "/api/calls/" + artifact.runtimeFailure.callId + "/events?source=pipecat_runtime_failure_fail_closed");
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.operatorConsole, "/api/operator/console?callId=" + artifact.runtimeFailure.callId);
+    assert.equal(artifact.summary.runtimeFailureArtifactManifest.fallbackModeOperatorConsole, "/api/operator/console?fallbackMode=runtime_failure&limit=1");
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.overBudgetLatencyTrail, null);
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.openclawSessionLabel, "cluecon-demo/runtime-failure-proof");
     assert.equal(artifact.scripted.outcome, "scripted_wrap_complete");

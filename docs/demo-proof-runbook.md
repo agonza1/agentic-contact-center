@@ -52,6 +52,7 @@ Open `artifacts/demo-proof.json` or `artifacts/demo-proof-latest.json` and confi
 - `summary.runtimeFailureOperatorConsole.firstCallId` matches the same runtime-failure drill call in the operator console filter
 - `summary.runtimeFailureProofBundle.fallbackSourceTrail` points at the runtime-failure handoff source trail
 - `summary.runtimeFailureArtifactManifest.fallbackSourceTrail` points at the same runtime-failure handoff source trail from the artifact manifest
+- `summary.runtimeFailureProofBundle.fallbackModeOperatorConsole` and `summary.runtimeFailureArtifactManifest.fallbackModeOperatorConsole` point at `/api/operator/console?fallbackMode=runtime_failure&limit=1`
 - `summary.queueAttention.oldestAttentionSource` is `fallback`
 - `summary.queueAttention.oldestAttentionFlowState` is `wrap`
 - `summary.queueAttention.oldestAttentionAgeMs` is a non-null number for stale-queue polling

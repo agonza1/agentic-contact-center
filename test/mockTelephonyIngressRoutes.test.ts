@@ -214,6 +214,7 @@ interface ArtifactManifestPayload {
     fallbackSourceTrail: string | null;
     fallbackModeQueue: string | null;
     fallbackModeCallList: string | null;
+    fallbackModeOperatorConsole: string | null;
     overBudgetLatencyTrail: string | null;
   };
   summary: {
@@ -597,6 +598,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
       fallbackSourceTrail: null,
       fallbackModeQueue: null,
       fallbackModeCallList: null,
+      fallbackModeOperatorConsole: null,
       overBudgetLatencyTrail: null,
     });
     assert.equal(payload.pii.redactionApplied, false);
@@ -662,6 +664,7 @@ test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", a
       fallbackSourceTrail: null,
       fallbackModeQueue: null,
       fallbackModeCallList: null,
+      fallbackModeOperatorConsole: null,
       overBudgetLatencyTrail: null,
     });
     assert.equal(payload.summary.transcriptTurns, 2);
@@ -2943,12 +2946,14 @@ test("tool timeout fallback fails closed and records the fallback reason", async
         fallbackSourceTrail: string | null;
         fallbackModeQueue: string | null;
         fallbackModeCallList: string | null;
+        fallbackModeOperatorConsole: string | null;
         overBudgetLatencyTrail: string | null;
       };
       summary: {
         fallbackSourceTrail: string | null;
         fallbackModeQueue: string | null;
         fallbackModeCallList: string | null;
+        fallbackModeOperatorConsole: string | null;
         overBudgetLatencyTrail: string | null;
       };
     };
@@ -2964,6 +2969,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     );
     assert.equal(runtimeFailureProofPayload.summary.fallbackModeQueue, "/api/queue?attentionRequired=true&fallbackMode=runtime_failure");
     assert.equal(runtimeFailureProofPayload.summary.fallbackModeCallList, "/api/calls?fallbackMode=runtime_failure&limit=5");
+    assert.equal(runtimeFailureProofPayload.summary.fallbackModeOperatorConsole, "/api/operator/console?fallbackMode=runtime_failure&limit=1");
     assert.equal(runtimeFailureProofPayload.summary.overBudgetLatencyTrail, null);
     assert.equal(
       runtimeFailureProofPayload.evidenceRoutes.fallbackSourceTrail,
@@ -2971,6 +2977,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     );
     assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackModeQueue, "/api/queue?attentionRequired=true&fallbackMode=runtime_failure");
     assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackModeCallList, "/api/calls?fallbackMode=runtime_failure&limit=5");
+    assert.equal(runtimeFailureProofPayload.evidenceRoutes.fallbackModeOperatorConsole, "/api/operator/console?fallbackMode=runtime_failure&limit=1");
     assert.equal(runtimeFailureProofPayload.evidenceRoutes.overBudgetLatencyTrail, null);
 
     const runtimeFailureCalls = await requestJson(port, "GET", "/api/calls?fallbackMode=runtime_failure");
@@ -3005,6 +3012,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     );
     assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackModeQueue, "/api/queue?attentionRequired=true&fallbackMode=runtime_failure");
     assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackModeCallList, "/api/calls?fallbackMode=runtime_failure&limit=5");
+    assert.equal(runtimeFailureManifestPayload.evidenceRoutes.fallbackModeOperatorConsole, "/api/operator/console?fallbackMode=runtime_failure&limit=1");
 
     const toolTimeoutQueue = await requestJson(port, "GET", "/api/queue?fallbackMode=tool_timeout");
     const toolTimeoutQueuePayload = toolTimeoutQueue.payload as QueueSummaryPayload;
