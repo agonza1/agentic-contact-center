@@ -115,6 +115,7 @@ interface OperatorConsolePayload {
       SnapshotPayload & {
         evidenceSummary: {
           latestEventType: string | null;
+          latestEventTrail: string | null;
           latestTranscriptSpeaker: string | null;
           latestEvidenceAt: string | null;
           transcriptTurns: number;
@@ -222,6 +223,7 @@ interface ArtifactManifestPayload {
     events: string;
     latencyMarks: string;
     operatorConsole: string;
+    latestEventTrail: string | null;
     operatorNoteTrail: string | null;
     fallbackSourceTrail: string | null;
     fallbackSourceQueue: string | null;
@@ -566,6 +568,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
         events: string;
         latencyMarks: string;
         operatorConsole: string;
+        latestEventTrail: string | null;
         operatorNoteTrail: string | null;
         fallbackSourceTrail: string | null;
         fallbackSourceQueue: string | null;
@@ -636,6 +639,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
       events: `/api/calls/${callId}/events`,
       latencyMarks: `/api/calls/${callId}/latency`,
       operatorConsole: `/api/operator/console?callId=${callId}`,
+      latestEventTrail: `/api/calls/${callId}/events?type=agent_turn_appended&limit=1&order=desc`,
       operatorNoteTrail: null,
       fallbackSourceTrail: null,
       fallbackSourceQueue: null,
@@ -715,6 +719,7 @@ test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", a
       events: `/api/calls/${callId}/events`,
       latencyMarks: `/api/calls/${callId}/latency`,
       operatorConsole: `/api/operator/console?callId=${callId}`,
+      latestEventTrail: `/api/calls/${callId}/events?type=flow_state_transition&limit=1&order=desc`,
       operatorNoteTrail: null,
       fallbackSourceTrail: null,
       fallbackSourceQueue: null,
@@ -1182,6 +1187,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
     const operatorConsoleCall = consolePayload.calls.items[0];
     assert.equal(operatorConsoleCall.evidenceSummary.latestEventType, "agent_turn_appended");
+    assert.equal(operatorConsoleCall.evidenceSummary.latestEventTrail, `/api/calls/${operatorCallId}/events?type=agent_turn_appended&limit=1&order=desc`);
     assert.equal(operatorConsoleCall.evidenceSummary.latestTranscriptSpeaker, "agent");
     assert.equal(operatorConsoleCall.evidenceSummary.latestEvidenceAt, "2026-06-10T14:10:10.000Z");
     assert.equal(operatorConsoleCall.evidenceSummary.transcriptTurns, 6);
