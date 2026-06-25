@@ -38,6 +38,7 @@ Main components:
 - `src/config/loadPocConfig.ts` loads `config/poc.config.example.json`.
 - `scripts/demo-proof.mjs` runs the scripted and fallback scenarios and writes JSON proof.
 - `scripts/health-smoke.mjs` polls `/health` and can assert expected metadata.
+- `docs/realtime-shim-contract.md` maps the OpenAI Realtime-style web voice lifecycle to the local `rtc-asr` / Local STT v1 sidecar contract.
 
 The runtime is intentionally local and in-memory. Restarting the server clears calls.
 
