@@ -1349,6 +1349,12 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       "/api/operator/console?fallbackMode=tool_timeout&limit=1",
     );
 
+    const sourceFilteredConsole = await requestJson(port, "GET", "/api/operator/console?fallbackSource=tool_timeout_fail_closed");
+    const sourceFilteredPayload = sourceFilteredConsole.payload as OperatorConsolePayload;
+    assert.equal(sourceFilteredConsole.statusCode, 200);
+    assert.deepEqual(sourceFilteredPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
+    assert.equal(sourceFilteredPayload.calls.summary.filteredSummary.totalCalls, 1);
+
     const activeToolConsole = await requestJson(port, "GET", "/api/operator/console?pipecatActiveTool=pause_presentation");
     const activeToolPayload = activeToolConsole.payload as OperatorConsolePayload;
 
@@ -1842,6 +1848,18 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
       timestamp: "2099-01-01T00:00:00.000Z",
     });
 
+    const byFallbackSource = await requestJson(port, "GET", "/api/calls?fallbackSource=tool_timeout_fail_closed");
+    const byFallbackSourcePayload = byFallbackSource.payload as CallListPayload;
+    assert.equal(byFallbackSource.statusCode, 200);
+    assert.deepEqual(byFallbackSourcePayload.calls.map((call) => call.session.callId), [firstCallId]);
+    assert.equal(byFallbackSourcePayload.summary.filteredSummary.totalCalls, 1);
+
+    const noFallbackSource = await requestJson(port, "GET", "/api/calls?fallbackSource=pipecat_runtime_failure_fail_closed");
+    const noFallbackSourcePayload = noFallbackSource.payload as CallListPayload;
+    assert.equal(noFallbackSource.statusCode, 200);
+    assert.deepEqual(noFallbackSourcePayload.calls.map((call) => call.session.callId), []);
+    assert.equal(noFallbackSourcePayload.summary.filteredSummary.totalCalls, 0);
+
     const mismatchedLatencyFilters = await requestJson(
       port,
       "GET",
@@ -1857,6 +1875,13 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     assert.equal(noLatencyStage.statusCode, 200);
     assert.deepEqual(noLatencyStagePayload.calls.map((call) => call.session.callId), []);
     assert.equal(noLatencyStagePayload.summary.filteredSummary.totalCalls, 0);
+
+    const invalidFallbackSource = await requestJson(port, "GET", "/api/calls?fallbackSource=%20%20%20");
+    assert.equal(invalidFallbackSource.statusCode, 400);
+    assert.deepEqual(invalidFallbackSource.payload, {
+      ok: false,
+      error: "call_list_fallback_source_invalid",
+    });
 
     const invalidLatencyStage = await requestJson(port, "GET", "/api/calls?latencyStage=%20%20%20");
     assert.equal(invalidLatencyStage.statusCode, 400);

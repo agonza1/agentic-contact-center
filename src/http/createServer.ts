@@ -1156,6 +1156,7 @@ interface CallListFilters {
   pendingOperatorSteer?: boolean;
   fallbackArmed?: boolean;
   fallbackMode?: FallbackMode;
+  fallbackSource?: string;
   attentionRequired?: boolean;
   attentionSource?: AttentionSource;
   attentionReason?: string;
@@ -1207,6 +1208,11 @@ function parseCallListFilters(
   const fallbackMode = requestUrl.searchParams.get("fallbackMode");
   if (fallbackMode !== null && !isFallbackMode(fallbackMode)) {
     return { error: `${invalidPrefix}_fallback_mode_invalid` };
+  }
+
+  const fallbackSource = requestUrl.searchParams.get("fallbackSource");
+  if (fallbackSource !== null && !fallbackSource.trim()) {
+    return { error: `${invalidPrefix}_fallback_source_invalid` };
   }
 
   const attentionRequired = parseOptionalBooleanFilter(
@@ -1292,6 +1298,7 @@ function parseCallListFilters(
     pendingOperatorSteer,
     fallbackArmed,
     fallbackMode: fallbackMode ?? undefined,
+    fallbackSource: fallbackSource?.trim() || undefined,
     attentionRequired,
     attentionSource: attentionSource ?? undefined,
     attentionReason: attentionReason?.trim() || undefined,
