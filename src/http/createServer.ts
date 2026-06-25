@@ -746,6 +746,12 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
     ? snapshot.session.openclawSession.artifactLinks.latencyMarks + "?overBudget=true"
     : null;
   const operatorConsole = "/api/operator/console?callId=" + encodeURIComponent(snapshot.session.callId);
+  const fallbackModeQueue = snapshot.demoFallback.mode
+    ? "/api/queue?attentionRequired=true&fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode)
+    : null;
+  const fallbackModeCallList = snapshot.demoFallback.mode
+    ? "/api/calls?fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode) + "&limit=5"
+    : null;
 
   return {
     schemaVersion: 1,
@@ -782,6 +788,8 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       operatorConsole,
       operatorNoteTrail,
       fallbackSourceTrail,
+      fallbackModeQueue,
+      fallbackModeCallList,
       overBudgetLatencyTrail,
     },
     summary: {
@@ -794,6 +802,8 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       latestDisposition: typeof latestOperatorNote?.detail.disposition === "string" ? latestOperatorNote.detail.disposition : null,
       operatorNoteTrail,
       fallbackSourceTrail,
+      fallbackModeQueue,
+      fallbackModeCallList,
       latencyMarkCount: snapshot.latencyMarks.length,
       overBudgetLatencyMarkCount: overBudgetLatencyMarks.length,
       overBudgetLatencyTrail,
@@ -824,6 +834,12 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
     (mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs,
   ).length;
   const operatorConsole = "/api/operator/console?callId=" + encodeURIComponent(snapshot.session.callId);
+  const fallbackModeQueue = snapshot.demoFallback.mode
+    ? "/api/queue?attentionRequired=true&fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode)
+    : null;
+  const fallbackModeCallList = snapshot.demoFallback.mode
+    ? "/api/calls?fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode) + "&limit=5"
+    : null;
 
   return {
     schemaVersion: 1,
@@ -850,6 +866,8 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
       fallbackSourceTrail: fallbackSource
         ? snapshot.session.openclawSession.artifactLinks.events + "?source=" + encodeURIComponent(fallbackSource)
         : null,
+      fallbackModeQueue,
+      fallbackModeCallList,
       overBudgetLatencyTrail: overBudgetLatencyMarkCount > 0
         ? snapshot.session.openclawSession.artifactLinks.latencyMarks + "?overBudget=true"
         : null,
