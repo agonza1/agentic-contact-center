@@ -283,6 +283,45 @@ async function getRuntimeFailureOperatorConsole(port, callId) {
   };
 }
 
+async function getRuntimeFailureReasonEvidence(port, callId) {
+  const reason = "pipecat local runtime import failed";
+  const encodedReason = encodeURIComponent(reason);
+  const queue = await requestJson(port, "GET", `/api/queue?fallbackReason=${encodedReason}`);
+  assert.equal(queue.statusCode, 200);
+  assert.equal(queue.payload.summary.oldestAttentionCallId, callId);
+
+  const calls = await requestJson(port, "GET", `/api/calls?fallbackReason=${encodedReason}&limit=5`);
+  assert.equal(calls.statusCode, 200);
+  assert.equal(calls.payload.summary.filteredCalls, 1);
+  assert.equal(calls.payload.calls[0].session.callId, callId);
+
+  const consoleResponse = await requestJson(port, "GET", `/api/operator/console?fallbackReason=${encodedReason}&limit=1`);
+  assert.equal(consoleResponse.statusCode, 200);
+  assert.equal(consoleResponse.payload.calls.items[0].session.callId, callId);
+
+  const eventTrail = await requestJson(port, "GET", `/api/calls/${callId}/events?detailText=${encodedReason}`);
+  assert.equal(eventTrail.statusCode, 200);
+  assert.equal(eventTrail.payload.summary.filteredDetailText, reason);
+  assert.deepEqual(
+    eventTrail.payload.events.map((event) => event.type),
+    ["demo_fallback_triggered", "human_handoff_started"],
+  );
+
+  return {
+    reason,
+    queueRoute: `fallbackReason=${encodedReason}`,
+    queueTotalCalls: queue.payload.summary.totalCalls,
+    queueOldestAttentionCallId: queue.payload.summary.oldestAttentionCallId,
+    callListRoute: `fallbackReason=${encodedReason}&limit=5`,
+    callListReturnedCalls: calls.payload.summary.returnedCalls,
+    callListFilteredCalls: calls.payload.summary.filteredCalls,
+    operatorConsoleRoute: `fallbackReason=${encodedReason}&limit=1`,
+    operatorConsoleReturnedCalls: consoleResponse.payload.calls.summary.returnedCalls,
+    eventTrailRoute: `calls/${callId}/events?detailText=${encodedReason}`,
+    eventTrailReturnedEvents: eventTrail.payload.summary.returnedEvents,
+    eventTrailEventTypes: eventTrail.payload.events.map((event) => event.type),
+  };
+}
 async function getRuntimeFailureTranscript(port, callId) {
   const transcript = await requestJson(port, "GET", `/api/calls/${callId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure`);
   assert.equal(transcript.statusCode, 200);
@@ -482,6 +521,7 @@ function summarizeArtifact(artifact) {
     runtimeFailureQueue: artifact.runtimeFailureQueue,
     runtimeFailureCallList: artifact.runtimeFailureCallList,
     runtimeFailureOperatorConsole: artifact.runtimeFailureOperatorConsole,
+    runtimeFailureReasonEvidence: artifact.runtimeFailureReasonEvidence,
     runtimeFailureTranscript: artifact.runtimeFailureTranscript,
     runtimeFailureProofBundle: artifact.runtimeFailureProofBundle,
     runtimeFailureArtifactManifest: artifact.runtimeFailureArtifactManifest,
@@ -534,6 +574,7 @@ async function main() {
     const runtimeFailureQueue = await getRuntimeFailureQueueSummary(port);
     const runtimeFailureCallList = await getRuntimeFailureCallList(port, runtimeFailure.callId);
     const runtimeFailureOperatorConsole = await getRuntimeFailureOperatorConsole(port, runtimeFailure.callId);
+    const runtimeFailureReasonEvidence = await getRuntimeFailureReasonEvidence(port, runtimeFailure.callId);
     const runtimeFailureTranscript = await getRuntimeFailureTranscript(port, runtimeFailure.callId);
     const runtimeFailureProofBundle = await getRuntimeFailureProofBundle(port, runtimeFailure.callId);
     const runtimeFailureArtifactManifest = await getRuntimeFailureArtifactManifest(port, runtimeFailure.callId);
@@ -559,6 +600,10 @@ async function main() {
         runtimeFailureQueueFilter: "attentionRequired=true&fallbackMode=runtime_failure",
         runtimeFailureCallListFilter: "fallbackMode=runtime_failure&limit=5",
         runtimeFailureOperatorConsoleFilter: "fallbackMode=runtime_failure&limit=1",
+        runtimeFailureReasonQueueFilter: "fallbackReason=pipecat%20local%20runtime%20import%20failed",
+        runtimeFailureReasonCallListFilter: "fallbackReason=pipecat%20local%20runtime%20import%20failed&limit=5",
+        runtimeFailureReasonOperatorConsoleFilter: "fallbackReason=pipecat%20local%20runtime%20import%20failed&limit=1",
+        runtimeFailureReasonEventTrail: "calls/{runtimeFailureCallId}/events?detailText=pipecat%20local%20runtime%20import%20failed",
         runtimeFailureTranscriptFilter: "speaker=agent&text=runtime%20reported%20a%20failure",
         runtimeFailureFallbackModeTranscriptTrail:
           "calls/{runtimeFailureCallId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure",
@@ -574,6 +619,7 @@ async function main() {
       runtimeFailureQueue,
       runtimeFailureCallList,
       runtimeFailureOperatorConsole,
+      runtimeFailureReasonEvidence,
       runtimeFailureTranscript,
       runtimeFailureProofBundle,
       runtimeFailureArtifactManifest,

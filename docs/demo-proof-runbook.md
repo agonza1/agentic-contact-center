@@ -47,11 +47,14 @@ Open `artifacts/demo-proof.json` or `artifacts/demo-proof-latest.json` and confi
 - `proofContract.runtimeFailureSourceTrail` is `events?source=pipecat_runtime_failure_fail_closed`
 - `proofContract.runtimeFailureCallListFilter` is `fallbackMode=runtime_failure&limit=5`
 - `proofContract.runtimeFailureOperatorConsoleFilter` is `fallbackMode=runtime_failure&limit=1`
+- `proofContract.runtimeFailureReasonQueueFilter`, `runtimeFailureReasonCallListFilter`, and `runtimeFailureReasonOperatorConsoleFilter` pin the fallback-reason QA filters for the runtime-failure drill
+- `proofContract.runtimeFailureReasonEventTrail` points at the reason-filtered event trail for the runtime-failure drill
 - `proofContract.runtimeFailureProofBundle` is `calls/{runtimeFailureCallId}/proof`
 - `proofContract.runtimeFailureArtifactManifest` is `calls/{runtimeFailureCallId}/artifacts`
 - `proofContract.runtimeFailureFallbackModeTranscriptTrail` is `calls/{runtimeFailureCallId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure`
 - `summary.runtimeFailureCallList.firstCallId` matches the runtime-failure drill call for targeted QA review
 - `summary.runtimeFailureOperatorConsole.firstCallId` matches the same runtime-failure drill call in the operator console filter
+- `summary.runtimeFailureReasonEvidence` proves the fallback-reason queue, call-list, operator-console, and event-trail filters all isolate the runtime-failure drill
 - `summary.runtimeFailureProofBundle.fallbackReason` is `pipecat local runtime import failed`
 - `summary.runtimeFailureProofBundle.fallbackSourceTrail` points at the runtime-failure handoff source trail
 - `summary.runtimeFailureArtifactManifest.fallbackReason` is `pipecat local runtime import failed`

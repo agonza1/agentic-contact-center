@@ -40,6 +40,10 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         runtimeFailureQueueFilter: string;
         runtimeFailureCallListFilter: string;
         runtimeFailureOperatorConsoleFilter: string;
+        runtimeFailureReasonQueueFilter: string;
+        runtimeFailureReasonCallListFilter: string;
+        runtimeFailureReasonOperatorConsoleFilter: string;
+        runtimeFailureReasonEventTrail: string;
         runtimeFailureTranscriptFilter: string;
         runtimeFailureFallbackModeTranscriptTrail: string;
         runtimeFailureProofBundle: string;
@@ -72,6 +76,10 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           runtimeFailureQueueFilter: string;
           runtimeFailureCallListFilter: string;
           runtimeFailureOperatorConsoleFilter: string;
+          runtimeFailureReasonQueueFilter: string;
+          runtimeFailureReasonCallListFilter: string;
+          runtimeFailureReasonOperatorConsoleFilter: string;
+          runtimeFailureReasonEventTrail: string;
           runtimeFailureTranscriptFilter: string;
           runtimeFailureFallbackModeTranscriptTrail: string;
           runtimeFailureProofBundle: string;
@@ -138,6 +146,20 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           firstFallbackMode: string | null;
           firstFallbackSource: string | null;
           firstFallbackSourceTrail: string | null;
+        };
+        runtimeFailureReasonEvidence: {
+          reason: string;
+          queueRoute: string;
+          queueTotalCalls: number;
+          queueOldestAttentionCallId: string | null;
+          callListRoute: string;
+          callListReturnedCalls: number;
+          callListFilteredCalls: number;
+          operatorConsoleRoute: string;
+          operatorConsoleReturnedCalls: number;
+          eventTrailRoute: string;
+          eventTrailReturnedEvents: number;
+          eventTrailEventTypes: string[];
         };
         runtimeFailureTranscript: {
           route: string;
@@ -243,6 +265,13 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.proofContract.runtimeFailureQueueFilter, "attentionRequired=true&fallbackMode=runtime_failure");
     assert.equal(artifact.proofContract.runtimeFailureCallListFilter, "fallbackMode=runtime_failure&limit=5");
     assert.equal(artifact.proofContract.runtimeFailureOperatorConsoleFilter, "fallbackMode=runtime_failure&limit=1");
+    assert.equal(artifact.proofContract.runtimeFailureReasonQueueFilter, "fallbackReason=pipecat%20local%20runtime%20import%20failed");
+    assert.equal(artifact.proofContract.runtimeFailureReasonCallListFilter, "fallbackReason=pipecat%20local%20runtime%20import%20failed&limit=5");
+    assert.equal(artifact.proofContract.runtimeFailureReasonOperatorConsoleFilter, "fallbackReason=pipecat%20local%20runtime%20import%20failed&limit=1");
+    assert.equal(
+      artifact.proofContract.runtimeFailureReasonEventTrail,
+      "calls/{runtimeFailureCallId}/events?detailText=pipecat%20local%20runtime%20import%20failed",
+    );
     assert.equal(artifact.proofContract.runtimeFailureTranscriptFilter, "speaker=agent&text=runtime%20reported%20a%20failure");
     assert.equal(
       artifact.proofContract.runtimeFailureFallbackModeTranscriptTrail,
@@ -322,6 +351,24 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
       artifact.summary.runtimeFailureOperatorConsole.firstFallbackSourceTrail,
       "/api/calls/" + artifact.runtimeFailure.callId + "/events?source=pipecat_runtime_failure_fail_closed",
     );
+    assert.equal(artifact.summary.runtimeFailureReasonEvidence.reason, "pipecat local runtime import failed");
+    assert.equal(artifact.summary.runtimeFailureReasonEvidence.queueRoute, artifact.proofContract.runtimeFailureReasonQueueFilter);
+    assert.equal(artifact.summary.runtimeFailureReasonEvidence.queueTotalCalls, 1);
+    assert.equal(artifact.summary.runtimeFailureReasonEvidence.queueOldestAttentionCallId, artifact.runtimeFailure.callId);
+    assert.equal(artifact.summary.runtimeFailureReasonEvidence.callListRoute, artifact.proofContract.runtimeFailureReasonCallListFilter);
+    assert.equal(artifact.summary.runtimeFailureReasonEvidence.callListReturnedCalls, 1);
+    assert.equal(artifact.summary.runtimeFailureReasonEvidence.callListFilteredCalls, 1);
+    assert.equal(
+      artifact.summary.runtimeFailureReasonEvidence.operatorConsoleRoute,
+      artifact.proofContract.runtimeFailureReasonOperatorConsoleFilter,
+    );
+    assert.equal(artifact.summary.runtimeFailureReasonEvidence.operatorConsoleReturnedCalls, 1);
+    assert.equal(
+      artifact.summary.runtimeFailureReasonEvidence.eventTrailRoute,
+      "calls/" + artifact.runtimeFailure.callId + "/events?detailText=pipecat%20local%20runtime%20import%20failed",
+    );
+    assert.equal(artifact.summary.runtimeFailureReasonEvidence.eventTrailReturnedEvents, 2);
+    assert.deepEqual(artifact.summary.runtimeFailureReasonEvidence.eventTrailEventTypes, ["demo_fallback_triggered", "human_handoff_started"]);
     assert.equal(artifact.summary.runtimeFailureTranscript.route, "calls/" + artifact.runtimeFailure.callId + "/transcript?speaker=agent&text=runtime%20reported%20a%20failure");
     assert.equal(artifact.summary.runtimeFailureTranscript.returnedTurns, 1);
     assert.equal(artifact.summary.runtimeFailureTranscript.filteredSpeaker, "agent");
