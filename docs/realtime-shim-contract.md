@@ -46,6 +46,38 @@ OpenClaw Web sends microphone chunks as Gateway RPC payloads, not directly over 
 
 The shim decodes these chunks to PCM16, resamples to the Local STT hot path when needed, and talks to `rtc-asr` over Local STT v1 at `ws://.../v1/stt/stream`. The sidecar path must use binary PCM16 websocket messages for audio; base64 is only the OpenClaw Gateway relay boundary.
 
+### Gateway Relay RPC Contract
+
+The first shim proof should keep the browser-facing RPCs identical to the current Gateway relay provider and implement these handlers behind the Gateway boundary:
+
+| RPC | Required request fields | Required behavior |
+| --- | --- | --- |
+| `talk.session.create` | `mode: "realtime"`, `transport: "gateway-relay"`, optional `brain` | Allocate a relay session, initialize empty input/output state, return the session envelope above, and emit a single `ready` diagnostic. |
+| `talk.session.appendAudio` | `sessionId`, `audioBase64`, optional `timestamp` | Decode PCM16, start Local STT v1 lazily on the first non-empty chunk, stream binary frames, and keep the RPC bounded even if STT transcript output arrives later. |
+| `talk.session.cancelOutput` | `sessionId`, optional `reason` | Abort active LLM/TTS work, clear pending audio, emit relay `clear`, and keep input capture alive for barge-in audio. |
+| `talk.session.submitToolResult` | `sessionId`, `toolCallId`, `result` | Accept and record the tool result for parity with the existing UI path; the first local proof may return `not_applicable` when no local tool call is pending. |
+| `talk.session.close` | `sessionId` | Idempotently close STT, LLM, and TTS resources, then emit one terminal relay `close`. |
+
+The shim must correlate every asynchronous event with both `relaySessionId` and `sessionId` when both are known. Unknown or already-closed sessions return a bounded RPC error instead of creating an implicit session.
+
+### Sidecar State Machine
+
+For the local proof, one relay session owns at most one active STT stream and one active assistant output at a time:
+
+```text
+idle -> listening -> finalizing -> responding -> speaking -> listening
+  |        |            |             |            |
+  |        +-- cancel --+             +-- cancelOutput --+
+  +------------------------------ close/error -----------> closed
+```
+
+- `idle` begins after `talk.session.create` and before the first audio chunk.
+- `listening` begins when the shim sends Local STT v1 `start` and first binary PCM16 frames.
+- `finalizing` begins after `finalize`; only a final transcript may advance to `responding`.
+- `responding` owns the local LLM request and queues text for Kokoro.
+- `speaking` owns Kokoro PCM chunks and browser relay `audio` events.
+- `closed` is terminal and suppresses all stale transcript, text, and audio events.
+
 ## Audio And Event Mapping
 
 | OpenClaw / Realtime-style intent | Shim behavior | Local STT v1 behavior |
