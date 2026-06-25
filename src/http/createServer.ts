@@ -773,8 +773,14 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       operatorNoteTrail: operatorNoteEvents.length > 0
         ? snapshot.session.openclawSession.artifactLinks.events + "?type=operator_note_recorded"
         : null,
+      fallbackSourceTrail: typeof handoffEvent?.detail.source === "string"
+        ? snapshot.session.openclawSession.artifactLinks.events + "?source=" + encodeURIComponent(handoffEvent.detail.source)
+        : null,
       latencyMarkCount: snapshot.latencyMarks.length,
       overBudgetLatencyMarkCount: overBudgetLatencyMarks.length,
+      overBudgetLatencyTrail: overBudgetLatencyMarks.length > 0
+        ? snapshot.session.openclawSession.artifactLinks.latencyMarks + "?overBudget=true"
+        : null,
       toolCoverage: snapshot.pipecatFlow.toolCoverage,
     },
     session: snapshot.session,

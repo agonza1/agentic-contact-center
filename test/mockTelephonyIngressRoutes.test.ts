@@ -2900,6 +2900,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     const runtimeFailureProof = await requestJson(port, "GET", `/api/calls/${runtimeFailureCallId}/proof`);
     const runtimeFailureProofPayload = runtimeFailureProof.payload as {
       outcome: { fallbackMode: string | null; fallbackSource: string | null; handoffStarted: boolean; handoffStartedAt: string | null };
+      summary: { fallbackSourceTrail: string | null; overBudgetLatencyTrail: string | null };
     };
 
     assert.equal(runtimeFailureProof.statusCode, 200);
@@ -2907,6 +2908,11 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.equal(runtimeFailureProofPayload.outcome.fallbackSource, "pipecat_runtime_failure_fail_closed");
     assert.equal(runtimeFailureProofPayload.outcome.handoffStarted, true);
     assert.equal(runtimeFailureProofPayload.outcome.handoffStartedAt, "2026-06-10T14:00:03.000Z");
+    assert.equal(
+      runtimeFailureProofPayload.summary.fallbackSourceTrail,
+      `/api/calls/${runtimeFailureCallId}/events?source=pipecat_runtime_failure_fail_closed`,
+    );
+    assert.equal(runtimeFailureProofPayload.summary.overBudgetLatencyTrail, null);
 
     const runtimeFailureCalls = await requestJson(port, "GET", "/api/calls?fallbackMode=runtime_failure");
     const runtimeFailureCallsPayload = runtimeFailureCalls.payload as CallListPayload;
