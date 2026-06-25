@@ -38,6 +38,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         fallbackSourceTrail: string;
         runtimeFailureSourceTrail: string;
         runtimeFailureQueueFilter: string;
+        runtimeFailureCallListFilter: string;
       };
       health: {
         ok: boolean;
@@ -63,6 +64,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           fallbackSourceTrail: string;
           runtimeFailureSourceTrail: string;
           runtimeFailureQueueFilter: string;
+          runtimeFailureCallListFilter: string;
         };
         queueAttention: {
           attentionRequired: number;
@@ -108,6 +110,14 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           oldestAttentionFlowState: string | null;
           oldestAttentionReason: string | null;
           oldestAttentionSource: string | null;
+        };
+        runtimeFailureCallList: {
+          route: string;
+          returnedCalls: number;
+          filteredCalls: number;
+          firstCallId: string;
+          firstFallbackMode: string | null;
+          firstFlowState: string;
         };
         healthOk: boolean;
         gitRevision: string | null;
@@ -170,6 +180,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.proofContract.fallbackSourceTrail, "events?source=tool_timeout_fail_closed");
     assert.equal(artifact.proofContract.runtimeFailureSourceTrail, "events?source=pipecat_runtime_failure_fail_closed");
     assert.equal(artifact.proofContract.runtimeFailureQueueFilter, "attentionRequired=true&fallbackMode=runtime_failure");
+    assert.equal(artifact.proofContract.runtimeFailureCallListFilter, "fallbackMode=runtime_failure&limit=5");
     assert.equal(artifact.summary.schemaVersion, 1);
     assert.deepEqual(artifact.summary.proofContract, artifact.proofContract);
     assert.equal(artifact.health.ok, true);
@@ -224,6 +235,12 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.runtimeFailureQueue.oldestAttentionFlowState, "wrap");
     assert.equal(artifact.summary.runtimeFailureQueue.oldestAttentionReason, "pipecat local runtime import failed");
     assert.equal(artifact.summary.runtimeFailureQueue.oldestAttentionSource, "fallback");
+    assert.equal(artifact.summary.runtimeFailureCallList.route, artifact.proofContract.runtimeFailureCallListFilter);
+    assert.equal(artifact.summary.runtimeFailureCallList.returnedCalls, 1);
+    assert.equal(artifact.summary.runtimeFailureCallList.filteredCalls, 1);
+    assert.equal(artifact.summary.runtimeFailureCallList.firstCallId, artifact.runtimeFailure.callId);
+    assert.equal(artifact.summary.runtimeFailureCallList.firstFallbackMode, "runtime_failure");
+    assert.equal(artifact.summary.runtimeFailureCallList.firstFlowState, "wrap");
     assert.equal(artifact.scripted.outcome, "scripted_wrap_complete");
     assert.equal(artifact.scripted.checkpoints.wrapped.pipecatFlow.script.completed, true);
     assert.equal(artifact.summary.scripted.flowState, "wrap");

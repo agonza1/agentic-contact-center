@@ -239,6 +239,24 @@ async function getRuntimeFailureQueueSummary(port) {
   };
 }
 
+async function getRuntimeFailureCallList(port, callId) {
+  const calls = await requestJson(port, "GET", "/api/calls?fallbackMode=runtime_failure&limit=5");
+  assert.equal(calls.statusCode, 200);
+  assert.equal(calls.payload.summary.filteredCalls, 1);
+  assert.equal(calls.payload.calls.length, 1);
+  assert.equal(calls.payload.calls[0].session.callId, callId);
+  assert.equal(calls.payload.calls[0].demoFallback.mode, "runtime_failure");
+
+  return {
+    route: "fallbackMode=runtime_failure&limit=5",
+    returnedCalls: calls.payload.summary.returnedCalls,
+    filteredCalls: calls.payload.summary.filteredCalls,
+    firstCallId: calls.payload.calls[0].session.callId,
+    firstFallbackMode: calls.payload.calls[0].demoFallback.mode,
+    firstFlowState: calls.payload.calls[0].flowState,
+  };
+}
+
 async function getAttentionSortedCallList(port) {
   const list = await requestJson(
     port,
@@ -350,6 +368,7 @@ function summarizeArtifact(artifact) {
     fallbackSourceTrail: artifact.fallbackSourceTrail,
     runtimeFailureSourceTrail: artifact.runtimeFailureSourceTrail,
     runtimeFailureQueue: artifact.runtimeFailureQueue,
+    runtimeFailureCallList: artifact.runtimeFailureCallList,
     scripted: {
       outcome: artifact.scripted.outcome,
       callId: artifact.scripted.callId,
@@ -397,6 +416,7 @@ async function main() {
       "pipecat_runtime_failure_fail_closed",
     );
     const runtimeFailureQueue = await getRuntimeFailureQueueSummary(port);
+    const runtimeFailureCallList = await getRuntimeFailureCallList(port, runtimeFailure.callId);
 
     return {
       schemaVersion: 1,
@@ -417,6 +437,7 @@ async function main() {
         fallbackSourceTrail: "events?source=tool_timeout_fail_closed",
         runtimeFailureSourceTrail: "events?source=pipecat_runtime_failure_fail_closed",
         runtimeFailureQueueFilter: "attentionRequired=true&fallbackMode=runtime_failure",
+        runtimeFailureCallListFilter: "fallbackMode=runtime_failure&limit=5",
       },
       health: health.payload,
       operatorNoteTrail,
@@ -425,6 +446,7 @@ async function main() {
       fallbackSourceTrail,
       runtimeFailureSourceTrail,
       runtimeFailureQueue,
+      runtimeFailureCallList,
       scripted,
       fallback,
       runtimeFailure,
