@@ -177,6 +177,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           fallbackModeOperatorConsole: string | null;
           fallbackModeTranscriptTrail: string | null;
           fallbackReasonEventTrail: string | null;
+          latestLatencyTrail: string | null;
           overBudgetLatencyTrail: string | null;
           operatorConsole: string;
           summaryEventCount: number;
@@ -198,6 +199,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           fallbackModeOperatorConsole: string | null;
           fallbackModeTranscriptTrail: string | null;
           fallbackReasonEventTrail: string | null;
+          latestLatencyTrail: string | null;
           overBudgetLatencyTrail: string | null;
           openclawSessionLabel: string;
         };
@@ -392,6 +394,10 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
       artifact.summary.runtimeFailureProofBundle.fallbackSourceTrail,
       "/api/calls/" + artifact.runtimeFailure.callId + "/events?source=pipecat_runtime_failure_fail_closed",
     );
+    assert.equal(
+      artifact.summary.runtimeFailureProofBundle.latestLatencyTrail,
+      "/api/calls/" + artifact.runtimeFailure.callId + "/latency?stage=agent_response_ready&limit=1&order=desc",
+    );
     assert.equal(artifact.summary.runtimeFailureProofBundle.overBudgetLatencyTrail, null);
     assert.equal(artifact.summary.runtimeFailureProofBundle.summaryEventCount > 0, true);
     assert.equal(artifact.summary.runtimeFailureProofBundle.summaryOverBudgetLatencyMarkCount, 0);
@@ -415,6 +421,10 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(
       artifact.summary.runtimeFailureArtifactManifest.fallbackModeTranscriptTrail,
       "/api/calls/" + artifact.runtimeFailure.callId + "/transcript?speaker=agent&text=runtime%20reported%20a%20failure",
+    );
+    assert.equal(
+      artifact.summary.runtimeFailureArtifactManifest.latestLatencyTrail,
+      "/api/calls/" + artifact.runtimeFailure.callId + "/latency?stage=agent_response_ready&limit=1&order=desc",
     );
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.overBudgetLatencyTrail, null);
     assert.equal(artifact.summary.runtimeFailureArtifactManifest.openclawSessionLabel, "cluecon-demo/runtime-failure-proof");

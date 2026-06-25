@@ -364,6 +364,7 @@ async function getRuntimeFailureProofBundle(port, callId) {
     fallbackModeTranscriptTrail: proof.payload.evidenceRoutes.fallbackModeTranscriptTrail,
     fallbackReasonEventTrail: proof.payload.evidenceRoutes.fallbackReasonEventTrail,
     operatorConsole: proof.payload.evidenceRoutes.operatorConsole,
+    latestLatencyTrail: proof.payload.evidenceRoutes.latestLatencyTrail,
     overBudgetLatencyTrail: proof.payload.evidenceRoutes.overBudgetLatencyTrail,
     summaryEventCount: proof.payload.summary.eventCount,
     summaryOverBudgetLatencyMarkCount: proof.payload.summary.overBudgetLatencyMarkCount,
@@ -402,6 +403,7 @@ async function getRuntimeFailureArtifactManifest(port, callId) {
     fallbackModeTranscriptTrail: manifest.payload.evidenceRoutes.fallbackModeTranscriptTrail,
     fallbackReasonEventTrail: manifest.payload.evidenceRoutes.fallbackReasonEventTrail,
     operatorConsole: manifest.payload.evidenceRoutes.operatorConsole,
+    latestLatencyTrail: manifest.payload.evidenceRoutes.latestLatencyTrail,
     overBudgetLatencyTrail: manifest.payload.evidenceRoutes.overBudgetLatencyTrail,
     openclawSessionLabel: manifest.payload.openclawSession.label,
   };

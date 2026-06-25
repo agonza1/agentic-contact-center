@@ -357,7 +357,7 @@ function buildOperatorConsoleHtml(): string {
       const attentionDetail = call.attention.required ? [call.attention.source, call.attention.reason, call.attention.startedAt].filter(Boolean).join(" | ") : "monitoring";
       const evidence = call.evidenceSummary;
       const evidenceLinks = evidence.links || {};
-      const latencyLink = evidence.overBudgetLatencyTrail || evidenceLinks.latencyMarks;
+      const latencyLink = evidence.latestLatencyTrail || evidence.overBudgetLatencyTrail || evidenceLinks.latencyMarks;
       const latestEventLink = evidence.latestEventTrail || evidenceLinks.events;
       const fallbackLabel = evidence.fallbackMode ? evidence.fallbackMode.replace(/_/g, " ") : "none";
       const fallbackTrailLink = evidence.fallbackSourceTrail || evidenceLinks.events;
@@ -461,6 +461,16 @@ function buildCallPayload(snapshot: CallSnapshot) {
   };
 }
 
+function buildLatestLatencyTrail(snapshot: CallSnapshot): string | null {
+  const latestLatencyMark = snapshot.latencyMarks.at(-1);
+  return latestLatencyMark
+    ? snapshot.session.openclawSession.artifactLinks.latencyMarks +
+        "?stage=" +
+        encodeURIComponent(latestLatencyMark.stage) +
+        "&limit=1&order=desc"
+    : null;
+}
+
 function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
   const latestEvent = snapshot.events.at(-1);
   const latestTranscriptTurn = snapshot.transcript.at(-1);
@@ -475,6 +485,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
   const latestEventTrail = latestEvent
     ? snapshot.session.openclawSession.artifactLinks.events + "?type=" + encodeURIComponent(latestEvent.type) + "&limit=1&order=desc"
     : null;
+  const latestLatencyTrail = buildLatestLatencyTrail(snapshot);
   const operatorConsole = "/api/operator/console?callId=" + encodeURIComponent(snapshot.session.callId);
   const fallbackModeQueue = snapshot.demoFallback.mode
     ? `/api/queue?attentionRequired=true&fallbackMode=${encodeURIComponent(snapshot.demoFallback.mode)}`
@@ -544,6 +555,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       latestTranscriptAt: latestTranscriptTurn?.timestamp ?? null,
       latestLatencyStage: latestLatencyMark?.stage ?? null,
       latestLatencyAt: latestLatencyMark?.recordedAt ?? null,
+      latestLatencyTrail,
       latestEvidenceAt,
       operatorConsole,
       transcriptTurns: snapshot.transcript.length,
@@ -844,6 +856,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
   const latestEventTrail = latestEvent
     ? snapshot.session.openclawSession.artifactLinks.events + "?type=" + encodeURIComponent(latestEvent.type) + "&limit=1&order=desc"
     : null;
+  const latestLatencyTrail = buildLatestLatencyTrail(snapshot);
   const operatorConsole = "/api/operator/console?callId=" + encodeURIComponent(snapshot.session.callId);
   const fallbackModeQueue = snapshot.demoFallback.mode
     ? "/api/queue?attentionRequired=true&fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode)
@@ -896,6 +909,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       latencyMarks: snapshot.session.openclawSession.artifactLinks.latencyMarks,
       operatorConsole,
       latestEventTrail,
+      latestLatencyTrail,
       operatorNoteTrail,
       fallbackSourceTrail,
       ...fallbackSourceRoutes,
@@ -954,6 +968,7 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
   const latestEventTrail = latestEvent
     ? snapshot.session.openclawSession.artifactLinks.events + "?type=" + encodeURIComponent(latestEvent.type) + "&limit=1&order=desc"
     : null;
+  const latestLatencyTrail = buildLatestLatencyTrail(snapshot);
   const operatorConsole = "/api/operator/console?callId=" + encodeURIComponent(snapshot.session.callId);
   const fallbackModeQueue = snapshot.demoFallback.mode
     ? "/api/queue?attentionRequired=true&fallbackMode=" + encodeURIComponent(snapshot.demoFallback.mode)
@@ -989,6 +1004,7 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
       latencyMarks: snapshot.session.openclawSession.artifactLinks.latencyMarks,
       operatorConsole,
       latestEventTrail,
+      latestLatencyTrail,
       operatorNoteTrail: snapshot.events.some((event) => event.type === "operator_note_recorded")
         ? snapshot.session.openclawSession.artifactLinks.events + "?type=operator_note_recorded"
         : null,
@@ -1026,6 +1042,7 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
       latestTranscriptAt: latestTranscriptTurn?.timestamp ?? null,
       latestLatencyStage: latestLatencyMark?.stage ?? null,
       latestLatencyAt: latestLatencyMark?.recordedAt ?? null,
+      latestLatencyTrail,
     },
   };
 }

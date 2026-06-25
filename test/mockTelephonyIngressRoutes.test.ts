@@ -116,6 +116,7 @@ interface OperatorConsolePayload {
         evidenceSummary: {
           latestEventType: string | null;
           latestEventTrail: string | null;
+          latestLatencyTrail: string | null;
           latestTranscriptSpeaker: string | null;
           latestEvidenceAt: string | null;
           transcriptTurns: number;
@@ -224,6 +225,7 @@ interface ArtifactManifestPayload {
     latencyMarks: string;
     operatorConsole: string;
     latestEventTrail: string | null;
+    latestLatencyTrail: string | null;
     operatorNoteTrail: string | null;
     fallbackSourceTrail: string | null;
     fallbackSourceQueue: string | null;
@@ -254,6 +256,7 @@ interface ArtifactManifestPayload {
     latestTranscriptAt: string | null;
     latestLatencyStage: string | null;
     latestLatencyAt: string | null;
+    latestLatencyTrail: string | null;
   };
 }
 
@@ -569,6 +572,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
         latencyMarks: string;
         operatorConsole: string;
         latestEventTrail: string | null;
+        latestLatencyTrail: string | null;
         operatorNoteTrail: string | null;
         fallbackSourceTrail: string | null;
         fallbackSourceQueue: string | null;
@@ -640,6 +644,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
       latencyMarks: `/api/calls/${callId}/latency`,
       operatorConsole: `/api/operator/console?callId=${callId}`,
       latestEventTrail: `/api/calls/${callId}/events?type=agent_turn_appended&limit=1&order=desc`,
+      latestLatencyTrail: `/api/calls/${callId}/latency?stage=agent_response_ready&limit=1&order=desc`,
       operatorNoteTrail: null,
       fallbackSourceTrail: null,
       fallbackSourceQueue: null,
@@ -720,6 +725,7 @@ test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", a
       latencyMarks: `/api/calls/${callId}/latency`,
       operatorConsole: `/api/operator/console?callId=${callId}`,
       latestEventTrail: `/api/calls/${callId}/events?type=flow_state_transition&limit=1&order=desc`,
+      latestLatencyTrail: `/api/calls/${callId}/latency?stage=agent_response_ready&limit=1&order=desc`,
       operatorNoteTrail: null,
       fallbackSourceTrail: null,
       fallbackSourceQueue: null,
@@ -742,6 +748,7 @@ test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", a
     assert.equal(payload.summary.latestTranscriptSpeaker, "agent");
     assert.equal(payload.summary.latestTranscriptAt, "2026-06-12T10:00:00.000Z");
     assert.equal(payload.summary.latestLatencyStage, "agent_response_ready");
+    assert.equal(payload.summary.latestLatencyTrail, `/api/calls/${callId}/latency?stage=agent_response_ready&limit=1&order=desc`);
   });
 });
 
