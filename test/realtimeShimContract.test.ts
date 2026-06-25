@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 
 import {
   REALTIME_SHIM_RPCS,
+  buildLocalSttCancelMessage,
+  buildLocalSttCloseMessage,
+  buildLocalSttFinalizeMessage,
   buildLocalSttStartMessage,
   createRealtimeShimAudioRelayEvent,
   createRealtimeShimClearRelayEvent,
@@ -56,6 +59,12 @@ test("local STT start message uses binary pcm16 framing details", () => {
     },
     interim_results: true,
   });
+});
+
+test("local STT control messages map commit, input cancel, and shutdown", () => {
+  assert.deepEqual(buildLocalSttFinalizeMessage(), { type: "finalize" });
+  assert.deepEqual(buildLocalSttCancelMessage(), { type: "cancel" });
+  assert.deepEqual(buildLocalSttCloseMessage(), { type: "close" });
 });
 
 test("gateway relay audio decode rejects empty or malformed pcm16 frames", () => {

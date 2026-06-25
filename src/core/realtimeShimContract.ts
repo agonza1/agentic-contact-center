@@ -38,6 +38,11 @@ export interface LocalSttStartMessage {
   interim_results: true;
 }
 
+export type LocalSttControlMessage =
+  | { type: "finalize" }
+  | { type: "cancel" }
+  | { type: "close" };
+
 export type RealtimeShimRelayEvent =
   | {
       relaySessionId: string;
@@ -102,6 +107,18 @@ export function buildLocalSttStartMessage(): LocalSttStartMessage {
     },
     interim_results: true,
   };
+}
+
+export function buildLocalSttFinalizeMessage(): LocalSttControlMessage {
+  return { type: "finalize" };
+}
+
+export function buildLocalSttCancelMessage(): LocalSttControlMessage {
+  return { type: "cancel" };
+}
+
+export function buildLocalSttCloseMessage(): LocalSttControlMessage {
+  return { type: "close" };
 }
 
 export function decodeGatewayRelayPcm16(audioBase64: string): Buffer {
