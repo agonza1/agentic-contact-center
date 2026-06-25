@@ -283,6 +283,25 @@ async function getRuntimeFailureOperatorConsole(port, callId) {
   };
 }
 
+async function getRuntimeFailureTranscript(port, callId) {
+  const transcript = await requestJson(port, "GET", `/api/calls/${callId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure`);
+  assert.equal(transcript.statusCode, 200);
+  assert.equal(transcript.payload.summary.filteredSpeaker, "agent");
+  assert.equal(transcript.payload.transcript.length > 0, true);
+
+  const finalAgentTurn = transcript.payload.transcript.at(-1);
+  assert.equal(finalAgentTurn.speaker, "agent");
+  assert.equal(finalAgentTurn.text.toLowerCase().includes("runtime reported a failure"), true);
+
+  return {
+    route: `calls/${callId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure`,
+    returnedTurns: transcript.payload.summary.returnedTurns,
+    filteredSpeaker: transcript.payload.summary.filteredSpeaker,
+    finalSpeaker: finalAgentTurn.speaker,
+    finalTextIncludesRuntimeFailure: finalAgentTurn.text.toLowerCase().includes("runtime reported a failure"),
+  };
+}
+
 async function getRuntimeFailureProofBundle(port, callId) {
   const proof = await requestJson(port, "GET", `/api/calls/${callId}/proof`);
   assert.equal(proof.statusCode, 200);
@@ -455,6 +474,7 @@ function summarizeArtifact(artifact) {
     runtimeFailureQueue: artifact.runtimeFailureQueue,
     runtimeFailureCallList: artifact.runtimeFailureCallList,
     runtimeFailureOperatorConsole: artifact.runtimeFailureOperatorConsole,
+    runtimeFailureTranscript: artifact.runtimeFailureTranscript,
     runtimeFailureProofBundle: artifact.runtimeFailureProofBundle,
     runtimeFailureArtifactManifest: artifact.runtimeFailureArtifactManifest,
     scripted: {
@@ -506,6 +526,7 @@ async function main() {
     const runtimeFailureQueue = await getRuntimeFailureQueueSummary(port);
     const runtimeFailureCallList = await getRuntimeFailureCallList(port, runtimeFailure.callId);
     const runtimeFailureOperatorConsole = await getRuntimeFailureOperatorConsole(port, runtimeFailure.callId);
+    const runtimeFailureTranscript = await getRuntimeFailureTranscript(port, runtimeFailure.callId);
     const runtimeFailureProofBundle = await getRuntimeFailureProofBundle(port, runtimeFailure.callId);
     const runtimeFailureArtifactManifest = await getRuntimeFailureArtifactManifest(port, runtimeFailure.callId);
 
@@ -530,6 +551,7 @@ async function main() {
         runtimeFailureQueueFilter: "attentionRequired=true&fallbackMode=runtime_failure",
         runtimeFailureCallListFilter: "fallbackMode=runtime_failure&limit=5",
         runtimeFailureOperatorConsoleFilter: "fallbackMode=runtime_failure&limit=1",
+        runtimeFailureTranscriptFilter: "speaker=agent&text=runtime%20reported%20a%20failure",
         runtimeFailureProofBundle: "calls/{runtimeFailureCallId}/proof",
         runtimeFailureArtifactManifest: "calls/{runtimeFailureCallId}/artifacts",
       },
@@ -542,6 +564,7 @@ async function main() {
       runtimeFailureQueue,
       runtimeFailureCallList,
       runtimeFailureOperatorConsole,
+      runtimeFailureTranscript,
       runtimeFailureProofBundle,
       runtimeFailureArtifactManifest,
       scripted,

@@ -40,6 +40,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
         runtimeFailureQueueFilter: string;
         runtimeFailureCallListFilter: string;
         runtimeFailureOperatorConsoleFilter: string;
+        runtimeFailureTranscriptFilter: string;
         runtimeFailureProofBundle: string;
         runtimeFailureArtifactManifest: string;
       };
@@ -70,8 +71,9 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           runtimeFailureQueueFilter: string;
           runtimeFailureCallListFilter: string;
           runtimeFailureOperatorConsoleFilter: string;
+          runtimeFailureTranscriptFilter: string;
           runtimeFailureProofBundle: string;
-        runtimeFailureArtifactManifest: string;
+          runtimeFailureArtifactManifest: string;
         };
         queueAttention: {
           attentionRequired: number;
@@ -134,6 +136,13 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           firstFallbackMode: string | null;
           firstFallbackSource: string | null;
           firstFallbackSourceTrail: string | null;
+        };
+        runtimeFailureTranscript: {
+          route: string;
+          returnedTurns: number;
+          filteredSpeaker: string | null;
+          finalSpeaker: string;
+          finalTextIncludesRuntimeFailure: boolean;
         };
         runtimeFailureProofBundle: {
           route: string;
@@ -228,6 +237,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.proofContract.runtimeFailureQueueFilter, "attentionRequired=true&fallbackMode=runtime_failure");
     assert.equal(artifact.proofContract.runtimeFailureCallListFilter, "fallbackMode=runtime_failure&limit=5");
     assert.equal(artifact.proofContract.runtimeFailureOperatorConsoleFilter, "fallbackMode=runtime_failure&limit=1");
+    assert.equal(artifact.proofContract.runtimeFailureTranscriptFilter, "speaker=agent&text=runtime%20reported%20a%20failure");
     assert.equal(artifact.proofContract.runtimeFailureProofBundle, "calls/{runtimeFailureCallId}/proof");
     assert.equal(artifact.proofContract.runtimeFailureArtifactManifest, "calls/{runtimeFailureCallId}/artifacts");
     assert.equal(artifact.summary.schemaVersion, 1);
@@ -302,6 +312,11 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
       artifact.summary.runtimeFailureOperatorConsole.firstFallbackSourceTrail,
       "/api/calls/" + artifact.runtimeFailure.callId + "/events?source=pipecat_runtime_failure_fail_closed",
     );
+    assert.equal(artifact.summary.runtimeFailureTranscript.route, "calls/" + artifact.runtimeFailure.callId + "/transcript?speaker=agent&text=runtime%20reported%20a%20failure");
+    assert.equal(artifact.summary.runtimeFailureTranscript.returnedTurns, 1);
+    assert.equal(artifact.summary.runtimeFailureTranscript.filteredSpeaker, "agent");
+    assert.equal(artifact.summary.runtimeFailureTranscript.finalSpeaker, "agent");
+    assert.equal(artifact.summary.runtimeFailureTranscript.finalTextIncludesRuntimeFailure, true);
     assert.equal(artifact.summary.runtimeFailureProofBundle.route, "calls/" + artifact.runtimeFailure.callId + "/proof");
     assert.equal(artifact.summary.runtimeFailureProofBundle.fallbackMode, "runtime_failure");
     assert.equal(artifact.summary.runtimeFailureProofBundle.fallbackSource, "pipecat_runtime_failure_fail_closed");
