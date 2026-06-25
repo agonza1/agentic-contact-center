@@ -38,6 +38,7 @@ Open `artifacts/demo-proof.json` or `artifacts/demo-proof-latest.json` and confi
 - `summary.fallback.eventTypes` includes `human_handoff_started`
 - `summary.runtimeFailure.outcome` is `runtime_failure_fail_closed_handoff`
 - `summary.runtimeFailure.mode` is `runtime_failure`
+- `summary.runtimeFailure.reason` is `pipecat local runtime import failed`
 - `summary.runtimeFailureSourceTrail.filteredSource` is `pipecat_runtime_failure_fail_closed`
 - `summary.queueAttention.attentionRequired` is `1`
 - `proofContract.queueAttentionFilter` scopes queue proof to `attentionRequired=true&attentionReason=pipecat%20tool%20exceeded%20latency%20budget`
@@ -51,7 +52,9 @@ Open `artifacts/demo-proof.json` or `artifacts/demo-proof-latest.json` and confi
 - `proofContract.runtimeFailureFallbackModeTranscriptTrail` is `calls/{runtimeFailureCallId}/transcript?speaker=agent&text=runtime%20reported%20a%20failure`
 - `summary.runtimeFailureCallList.firstCallId` matches the runtime-failure drill call for targeted QA review
 - `summary.runtimeFailureOperatorConsole.firstCallId` matches the same runtime-failure drill call in the operator console filter
+- `summary.runtimeFailureProofBundle.fallbackReason` is `pipecat local runtime import failed`
 - `summary.runtimeFailureProofBundle.fallbackSourceTrail` points at the runtime-failure handoff source trail
+- `summary.runtimeFailureArtifactManifest.fallbackReason` is `pipecat local runtime import failed`
 - `summary.runtimeFailureArtifactManifest.fallbackSourceTrail` points at the same runtime-failure handoff source trail from the artifact manifest
 - `summary.runtimeFailureProofBundle.fallbackModeTranscriptTrail` and `summary.runtimeFailureArtifactManifest.fallbackModeTranscriptTrail` point at the runtime-failure transcript evidence route
 - `summary.runtimeFailureProofBundle.fallbackModeOperatorConsole` and `summary.runtimeFailureArtifactManifest.fallbackModeOperatorConsole` point at `/api/operator/console?fallbackMode=runtime_failure&limit=1`

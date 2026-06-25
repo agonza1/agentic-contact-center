@@ -126,6 +126,7 @@ interface OperatorConsolePayload {
           latestDisposition: string | null;
           operatorNoteTrail: string | null;
           fallbackMode: string | null;
+          fallbackReason: string | null;
           fallbackSource: string | null;
           fallbackSourceTrail: string | null;
           fallbackModeQueue: string | null;
@@ -228,6 +229,7 @@ interface ArtifactManifestPayload {
     latencyMarkCount: number;
     overBudgetLatencyMarkCount: number;
     fallbackMode: string | null;
+    fallbackReason: string | null;
     fallbackSource: string | null;
     handoffStartedAt: string | null;
     latestEventType: string | null;
@@ -2999,7 +3001,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
 
     const runtimeFailureProof = await requestJson(port, "GET", `/api/calls/${runtimeFailureCallId}/proof`);
     const runtimeFailureProofPayload = runtimeFailureProof.payload as {
-      outcome: { fallbackMode: string | null; fallbackSource: string | null; handoffStarted: boolean; handoffStartedAt: string | null };
+      outcome: { fallbackMode: string | null; fallbackReason: string | null; fallbackSource: string | null; handoffStarted: boolean; handoffStartedAt: string | null };
       evidenceRoutes: {
         fallbackSourceTrail: string | null;
         fallbackModeQueue: string | null;
@@ -3020,6 +3022,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
 
     assert.equal(runtimeFailureProof.statusCode, 200);
     assert.equal(runtimeFailureProofPayload.outcome.fallbackMode, "runtime_failure");
+    assert.equal(runtimeFailureProofPayload.outcome.fallbackReason, "pipecat local runtime import failed");
     assert.equal(runtimeFailureProofPayload.outcome.fallbackSource, "pipecat_runtime_failure_fail_closed");
     assert.equal(runtimeFailureProofPayload.outcome.handoffStarted, true);
     assert.equal(runtimeFailureProofPayload.outcome.handoffStartedAt, "2026-06-10T14:00:03.000Z");
@@ -3060,6 +3063,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.equal(runtimeFailureConsole.statusCode, 200);
     assert.equal(runtimeFailureConsolePayload.calls.summary.filteredSummary.fallbackArmed, 1);
     assert.equal(runtimeFailureConsoleCall?.evidenceSummary.fallbackMode, "runtime_failure");
+    assert.equal(runtimeFailureConsoleCall?.evidenceSummary.fallbackReason, "pipecat local runtime import failed");
     assert.equal(runtimeFailureConsoleCall?.evidenceSummary.fallbackSource, "pipecat_runtime_failure_fail_closed");
     assert.equal(
       runtimeFailureConsoleCall?.evidenceSummary.fallbackSourceTrail,
@@ -3072,6 +3076,7 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.equal(runtimeFailureManifest.statusCode, 200);
     assert.equal(runtimeFailureManifestPayload.runtimeMode.flow, "pipecat_local_runtime");
     assert.equal(runtimeFailureManifestPayload.summary.fallbackMode, "runtime_failure");
+    assert.equal(runtimeFailureManifestPayload.summary.fallbackReason, "pipecat local runtime import failed");
     assert.equal(runtimeFailureManifestPayload.summary.fallbackSource, "pipecat_runtime_failure_fail_closed");
     assert.equal(runtimeFailureManifestPayload.summary.handoffStartedAt, "2026-06-10T14:00:03.000Z");
     assert.equal(

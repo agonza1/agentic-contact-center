@@ -306,6 +306,7 @@ async function getRuntimeFailureProofBundle(port, callId) {
   const proof = await requestJson(port, "GET", `/api/calls/${callId}/proof`);
   assert.equal(proof.statusCode, 200);
   assert.equal(proof.payload.outcome.fallbackMode, "runtime_failure");
+  assert.equal(proof.payload.outcome.fallbackReason, "pipecat local runtime import failed");
   assert.equal(proof.payload.evidenceRoutes.operatorConsole, `/api/operator/console?callId=${callId}`);
   assert.equal(proof.payload.outcome.fallbackSource, "pipecat_runtime_failure_fail_closed");
   assert.equal(
@@ -316,6 +317,7 @@ async function getRuntimeFailureProofBundle(port, callId) {
   return {
     route: `calls/${callId}/proof`,
     fallbackMode: proof.payload.outcome.fallbackMode,
+    fallbackReason: proof.payload.outcome.fallbackReason,
     fallbackSource: proof.payload.outcome.fallbackSource,
     handoffStarted: proof.payload.outcome.handoffStarted,
     fallbackSourceTrail: proof.payload.evidenceRoutes.fallbackSourceTrail,
@@ -332,6 +334,7 @@ async function getRuntimeFailureArtifactManifest(port, callId) {
   const manifest = await requestJson(port, "GET", `/api/calls/${callId}/artifacts`);
   assert.equal(manifest.statusCode, 200);
   assert.equal(manifest.payload.summary.fallbackMode, "runtime_failure");
+  assert.equal(manifest.payload.summary.fallbackReason, "pipecat local runtime import failed");
   assert.equal(manifest.payload.summary.fallbackSource, "pipecat_runtime_failure_fail_closed");
   assert.equal(manifest.payload.summary.eventTypes.includes("human_handoff_started"), true);
   assert.equal(manifest.payload.summary.operatorNoteCount, 0);
@@ -347,6 +350,7 @@ async function getRuntimeFailureArtifactManifest(port, callId) {
     runtimeFlow: manifest.payload.runtimeMode.flow,
     runtimeEngine: manifest.payload.runtimeMode.runtimeEngine,
     fallbackMode: manifest.payload.summary.fallbackMode,
+    fallbackReason: manifest.payload.summary.fallbackReason,
     fallbackSource: manifest.payload.summary.fallbackSource,
     eventTypes: manifest.payload.summary.eventTypes,
     operatorNoteCount: manifest.payload.summary.operatorNoteCount,

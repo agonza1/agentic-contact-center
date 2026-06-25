@@ -542,6 +542,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
         ? `${snapshot.session.openclawSession.artifactLinks.events}?type=operator_note_recorded`
         : null,
       fallbackMode: snapshot.demoFallback.mode,
+      fallbackReason: snapshot.demoFallback.reason,
       fallbackSource,
       fallbackSourceTrail: fallbackSource
         ? `${snapshot.session.openclawSession.artifactLinks.events}?source=${encodeURIComponent(fallbackSource)}`
@@ -813,6 +814,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       scriptCompleted: snapshot.pipecatFlow.script.completed,
       fallbackArmed: snapshot.demoFallback.armed,
       fallbackMode: snapshot.demoFallback.mode,
+      fallbackReason: snapshot.demoFallback.reason,
       fallbackSource,
       handoffStarted: handoffEvent !== undefined,
       handoffStartedAt: handoffEvent?.at ?? null,
@@ -932,6 +934,7 @@ function buildCallArtifactManifestPayload(snapshot: CallSnapshot) {
       latencyMarkCount: snapshot.latencyMarks.length,
       overBudgetLatencyMarkCount,
       fallbackMode: snapshot.demoFallback.mode,
+      fallbackReason: snapshot.demoFallback.reason,
       fallbackSource,
       fallbackModeTranscriptTrail,
       handoffStartedAt: handoffEvent?.at ?? null,
