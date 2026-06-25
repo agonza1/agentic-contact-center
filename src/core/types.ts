@@ -62,6 +62,11 @@ export interface PipecatFlowPrototypeStatus {
   transport: "local_process" | "adapter_ready";
   runtimeEngine: "pipecat-ai" | "deterministic_templates";
   credentialsMode: "mocked";
+  runtimeCheck: {
+    command: string;
+    installCommand: string;
+    liveTelephonyRequired: boolean;
+  };
   activeTool: string | null;
   toolCoverage: string[];
   script: ScriptProgress;

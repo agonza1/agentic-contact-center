@@ -64,7 +64,7 @@ Environment variables:
 - `POC_CONFIG_PATH`: optional path to a JSON config file; defaults to `config/poc.config.example.json`.
 - `LOCAL_UID` / `LOCAL_GID`: optional Docker proof runner ownership override for Linux bind-mounted artifacts.
 
-There is no `.env` file in the current Node app, and no production credentials are required for the mocked POC. The active runtime reports `pipecat_local_runtime` in `/health`, call snapshots, and proof artifacts; SignalWire, CRM, billing, auth, and live telephony remain mocked.
+There is no `.env` file in the current Node app, and no production credentials are required for the mocked POC. The active runtime reports `pipecat_local_runtime` in `/health`, call snapshots, and proof artifacts; `/health` also names the local `npm run pipecat:check` verification command. SignalWire, CRM, billing, auth, and live telephony remain mocked.
 
 ## Install
 

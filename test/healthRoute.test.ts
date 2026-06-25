@@ -55,6 +55,7 @@ test("GET /health returns config-backed demo metadata", async () => {
       transport: string;
       runtimeEngine: string;
       credentialsMode: string;
+      runtimeCheck: { command: string; installCommand: string; liveTelephonyRequired: boolean };
       activeTool: string | null;
       toolCoverage: string[];
     };
@@ -73,6 +74,9 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.pipecatFlow.transport, "local_process");
   assert.equal(payload.pipecatFlow.runtimeEngine, "pipecat-ai");
   assert.equal(payload.pipecatFlow.credentialsMode, "mocked");
+  assert.equal(payload.pipecatFlow.runtimeCheck.command, "npm run pipecat:check");
+  assert.equal(payload.pipecatFlow.runtimeCheck.liveTelephonyRequired, false);
+  assert.match(payload.pipecatFlow.runtimeCheck.installCommand, /requirements-pipecat\.txt/);
   assert.equal(payload.pipecatFlow.activeTool, "get_current_slide");
   assert.equal(payload.pipecatFlow.toolCoverage.includes("goto_slide"), true);
 });

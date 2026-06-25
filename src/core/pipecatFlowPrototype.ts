@@ -174,6 +174,11 @@ export function buildPipecatFlowPrototypeStatus(): PipecatFlowPrototypeStatus {
     transport: "local_process",
     runtimeEngine: "pipecat-ai",
     credentialsMode: "mocked",
+    runtimeCheck: {
+      command: "npm run pipecat:check",
+      installCommand: "python3 -m pip install --target .pipecat-runtime -r requirements-pipecat.txt",
+      liveTelephonyRequired: false,
+    },
     activeTool: "get_current_slide",
     toolCoverage: [...PIPECAT_TOOL_COVERAGE],
     script: {
@@ -187,7 +192,7 @@ export function buildPipecatFlowPrototypeStatus(): PipecatFlowPrototypeStatus {
 
 export function getPipecatPrototypeHealth(): Pick<
   PipecatFlowPrototypeStatus,
-  "ready" | "prototypeMode" | "transport" | "runtimeEngine" | "credentialsMode" | "activeTool" | "toolCoverage"
+  "ready" | "prototypeMode" | "transport" | "runtimeEngine" | "credentialsMode" | "runtimeCheck" | "activeTool" | "toolCoverage"
 > {
   const status = buildPipecatFlowPrototypeStatus();
   return {
@@ -196,6 +201,7 @@ export function getPipecatPrototypeHealth(): Pick<
     transport: status.transport,
     runtimeEngine: status.runtimeEngine,
     credentialsMode: status.credentialsMode,
+    runtimeCheck: status.runtimeCheck,
     activeTool: status.activeTool,
     toolCoverage: status.toolCoverage,
   };

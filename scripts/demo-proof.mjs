@@ -429,6 +429,7 @@ function summarizeArtifact(artifact) {
       transport: artifact.health.pipecatFlow.transport,
       runtimeEngine: artifact.health.pipecatFlow.runtimeEngine,
       credentialsMode: artifact.health.pipecatFlow.credentialsMode,
+      runtimeCheck: artifact.health.pipecatFlow.runtimeCheck,
       activeTool: artifact.health.pipecatFlow.activeTool,
       toolCoverage: artifact.health.pipecatFlow.toolCoverage,
     },

@@ -51,6 +51,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           transport: string;
           runtimeEngine: string;
           credentialsMode: string;
+          runtimeCheck: { command: string; installCommand: string; liveTelephonyRequired: boolean };
           activeTool: string | null;
           toolCoverage: string[];
         };
@@ -169,6 +170,7 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
           transport: string;
           runtimeEngine: string;
           credentialsMode: string;
+          runtimeCheck: { command: string; installCommand: string; liveTelephonyRequired: boolean };
           activeTool: string | null;
           toolCoverage: string[];
         };
@@ -239,6 +241,8 @@ test("demo proof runner writes a reviewable artifact for scripted and fallback f
     assert.equal(artifact.summary.pipecatRuntime.transport, "local_process");
     assert.equal(artifact.summary.pipecatRuntime.runtimeEngine, "pipecat-ai");
     assert.equal(artifact.summary.pipecatRuntime.credentialsMode, "mocked");
+    assert.equal(artifact.summary.pipecatRuntime.runtimeCheck.command, "npm run pipecat:check");
+    assert.equal(artifact.summary.pipecatRuntime.runtimeCheck.liveTelephonyRequired, false);
     assert.equal(artifact.summary.pipecatRuntime.activeTool, "get_current_slide");
     assert.equal(artifact.summary.pipecatRuntime.toolCoverage.includes("ask_operator"), true);
     assert.match(artifact.gitRevision ?? "", /^[0-9a-f]{7,12}$/);
