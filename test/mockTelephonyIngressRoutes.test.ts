@@ -208,7 +208,7 @@ interface ArtifactManifestPayload {
     artifactLinks: { snapshot: string; artifacts: string; proof: string; transcript: string; events: string; latencyMarks: string };
   };
   artifacts: { snapshot: string; artifacts: string; proof: string; transcript: string; events: string; latencyMarks: string };
-  runtimeMode: { flow: string; pipecatTransport: string; runtimeEngine: string; credentialsMode: string; telephony: string };
+  runtimeMode: { flow: string; pipecatTransport: string; runtimeEngine: string; credentialsMode: string; runtimeCheck: { command: string; installCommand: string; liveTelephonyRequired: boolean }; telephony: string };
   evidenceRoutes: {
     transcript: string;
     events: string;
@@ -539,6 +539,7 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
         pipecatTransport: string;
         runtimeEngine: string;
         credentialsMode: string;
+        runtimeCheck: { command: string; installCommand: string; liveTelephonyRequired: boolean };
         telephony: string;
         signalWire: string;
         openclawSession: { sessionId: string; label: string; status: string };
@@ -586,6 +587,11 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
     assert.equal(payload.runtimeMode.pipecatTransport, "local_process");
     assert.equal(payload.runtimeMode.runtimeEngine, "pipecat-ai");
     assert.equal(payload.runtimeMode.credentialsMode, "mocked");
+    assert.deepEqual(payload.runtimeMode.runtimeCheck, {
+      command: "npm run pipecat:check",
+      installCommand: "python3 -m pip install --target .pipecat-runtime -r requirements-pipecat.txt",
+      liveTelephonyRequired: false,
+    });
     assert.equal(payload.runtimeMode.telephony, "mocked_telephony");
     assert.equal(payload.runtimeMode.signalWire, "mocked_telephony");
     assert.equal(payload.runtimeMode.openclawSession.sessionId, "proof-session-42");
@@ -663,6 +669,11 @@ test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", a
       pipecatTransport: "local_process",
       runtimeEngine: "pipecat-ai",
       credentialsMode: "mocked",
+      runtimeCheck: {
+        command: "npm run pipecat:check",
+        installCommand: "python3 -m pip install --target .pipecat-runtime -r requirements-pipecat.txt",
+        liveTelephonyRequired: false,
+      },
       telephony: "mocked_telephony",
     });
     assert.deepEqual(payload.evidenceRoutes, {
