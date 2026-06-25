@@ -257,6 +257,32 @@ async function getRuntimeFailureCallList(port, callId) {
   };
 }
 
+async function getRuntimeFailureOperatorConsole(port, callId) {
+  const consoleResponse = await requestJson(port, "GET", "/api/operator/console?fallbackMode=runtime_failure&limit=1");
+  assert.equal(consoleResponse.statusCode, 200);
+  assert.equal(consoleResponse.payload.calls.summary.filteredSummary.totalCalls, 1);
+  assert.equal(consoleResponse.payload.calls.items.length, 1);
+
+  const consoleCall = consoleResponse.payload.calls.items[0];
+  assert.equal(consoleCall.session.callId, callId);
+  assert.equal(consoleCall.evidenceSummary.fallbackMode, "runtime_failure");
+  assert.equal(consoleCall.evidenceSummary.fallbackSource, "pipecat_runtime_failure_fail_closed");
+  assert.equal(
+    consoleCall.evidenceSummary.fallbackSourceTrail,
+    `/api/calls/${callId}/events?source=pipecat_runtime_failure_fail_closed`,
+  );
+
+  return {
+    route: "fallbackMode=runtime_failure&limit=1",
+    returnedCalls: consoleResponse.payload.calls.summary.returnedCalls,
+    filteredCalls: consoleResponse.payload.calls.summary.filteredSummary.totalCalls,
+    firstCallId: consoleCall.session.callId,
+    firstFallbackMode: consoleCall.evidenceSummary.fallbackMode,
+    firstFallbackSource: consoleCall.evidenceSummary.fallbackSource,
+    firstFallbackSourceTrail: consoleCall.evidenceSummary.fallbackSourceTrail,
+  };
+}
+
 async function getRuntimeFailureProofBundle(port, callId) {
   const proof = await requestJson(port, "GET", `/api/calls/${callId}/proof`);
   assert.equal(proof.statusCode, 200);
@@ -425,6 +451,7 @@ function summarizeArtifact(artifact) {
     runtimeFailureSourceTrail: artifact.runtimeFailureSourceTrail,
     runtimeFailureQueue: artifact.runtimeFailureQueue,
     runtimeFailureCallList: artifact.runtimeFailureCallList,
+    runtimeFailureOperatorConsole: artifact.runtimeFailureOperatorConsole,
     runtimeFailureProofBundle: artifact.runtimeFailureProofBundle,
     runtimeFailureArtifactManifest: artifact.runtimeFailureArtifactManifest,
     scripted: {
@@ -475,6 +502,7 @@ async function main() {
     );
     const runtimeFailureQueue = await getRuntimeFailureQueueSummary(port);
     const runtimeFailureCallList = await getRuntimeFailureCallList(port, runtimeFailure.callId);
+    const runtimeFailureOperatorConsole = await getRuntimeFailureOperatorConsole(port, runtimeFailure.callId);
     const runtimeFailureProofBundle = await getRuntimeFailureProofBundle(port, runtimeFailure.callId);
     const runtimeFailureArtifactManifest = await getRuntimeFailureArtifactManifest(port, runtimeFailure.callId);
 
@@ -498,6 +526,7 @@ async function main() {
         runtimeFailureSourceTrail: "events?source=pipecat_runtime_failure_fail_closed",
         runtimeFailureQueueFilter: "attentionRequired=true&fallbackMode=runtime_failure",
         runtimeFailureCallListFilter: "fallbackMode=runtime_failure&limit=5",
+        runtimeFailureOperatorConsoleFilter: "fallbackMode=runtime_failure&limit=1",
         runtimeFailureProofBundle: "calls/{runtimeFailureCallId}/proof",
         runtimeFailureArtifactManifest: "calls/{runtimeFailureCallId}/artifacts",
       },
@@ -509,6 +538,7 @@ async function main() {
       runtimeFailureSourceTrail,
       runtimeFailureQueue,
       runtimeFailureCallList,
+      runtimeFailureOperatorConsole,
       runtimeFailureProofBundle,
       runtimeFailureArtifactManifest,
       scripted,
