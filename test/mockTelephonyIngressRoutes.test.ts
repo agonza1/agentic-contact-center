@@ -1349,6 +1349,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /attentionDetail/);
     assert.match(response.body, /Proof Bundle/);
     assert.match(response.body, /Event Trail/);
+    assert.match(response.body, /Note Trail/);
+    assert.match(response.body, /operatorNoteTrail/);
     assert.match(response.body, /fallbackSourceTrail/);
     assert.match(response.body, /overBudgetLatencyTrail/);
     assert.match(response.body, /Over budget:/);
