@@ -14,17 +14,22 @@ test("Realtime shim contract documents the Local STT v1 lifecycle mapping", () =
   assert.match(backlog, /CUE-008 Realtime shim adapter contract/);
 
   for (const requiredPhrase of [
+    "1c94e2b0-6c84-4af4-9cb8-66a549266f25",
+    "toggleRealtimeTalk()",
+    "talk.session.create",
+    "talk.session.appendAudio",
+    "talk.session.cancelOutput",
     "input_audio_buffer.append",
     "input_audio_buffer.commit",
     "input_audio_buffer.clear",
-    "response.cancel",
     "Local STT v1",
     "binary PCM16",
+    "output.audio.delta",
     "finalize",
     "cancel",
     "error",
     "closed",
-    "rtc-asr` issue `#203`",
+    "rtc-asr#203",
   ]) {
     assert.ok(contract.includes(requiredPhrase), `missing contract phrase: ${requiredPhrase}`);
   }
