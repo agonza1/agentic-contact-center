@@ -191,6 +191,7 @@ interface EventTrailPayload {
     returnedEvents: number;
     filteredType: string | null;
     filteredSource: string | null;
+    filteredDetailKey: string | null;
     filteredDetailText: string | null;
     filteredSince: string | null;
     filteredUntil: string | null;
@@ -3817,6 +3818,13 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.equal(detailFilteredPayload.summary.filteredDetailText, "operator audit");
     assert.deepEqual(detailFilteredPayload.events.map((event) => event.type), ["demo_fallback_triggered", "human_handoff_started"]);
 
+    const detailKeyFilteredEvents = await requestJson(port, "GET", `/api/calls/${callId}/events?detailKey=source`);
+    const detailKeyFilteredPayload = detailKeyFilteredEvents.payload as EventTrailPayload;
+
+    assert.equal(detailKeyFilteredEvents.statusCode, 200);
+    assert.equal(detailKeyFilteredPayload.summary.filteredDetailKey, "source");
+    assert.deepEqual(detailKeyFilteredPayload.events.map((event) => event.type), ["demo_fallback_triggered", "human_handoff_started"]);
+
     const sourceFilteredEvents = await requestJson(port, "GET", `/api/calls/${callId}/events?source=mock_http_route`);
     const sourceFilteredPayload = sourceFilteredEvents.payload as EventTrailPayload;
 
@@ -3851,6 +3859,13 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     assert.deepEqual(invalidDetailText.payload, {
       ok: false,
       error: "event_detail_text_invalid",
+    });
+
+    const invalidDetailKey = await requestJson(port, "GET", `/api/calls/${callId}/events?detailKey=%20%20`);
+    assert.equal(invalidDetailKey.statusCode, 400);
+    assert.deepEqual(invalidDetailKey.payload, {
+      ok: false,
+      error: "event_detail_key_invalid",
     });
 
     const invalidSince = await requestJson(port, "GET", `/api/calls/${callId}/events?since=not-a-date`);

@@ -187,7 +187,7 @@ The local bridge treats SignalWire as the telephony entrypoint while keeping cre
 
 Common list/queue filters include `callId`, `providerCallId`, `flowState`, `pipecatActiveTool`, `pendingOperatorSteer`, `fallbackArmed`, `attentionRequired`, `attentionSource`, `attentionReason`, `openclawSessionId`, `openclawSessionLabel`, `openclawSessionRef`, `transcriptText`, `minAttentionAgeMs`, `maxAttentionAgeMs`, `latencyStage`, `latencyOverBudget`, `fallbackMode` (`tool_timeout` or `runtime_failure`), `fallbackReason`, and `fallbackSource` such as `tool_timeout_fail_closed`.
 
-Call, transcript, event, and latency routes support pagination with `offset`, `limit`, and `order=asc|desc`. Their max page size is `100`.
+Call, transcript, event, and latency routes support pagination with `offset`, `limit`, and `order=asc|desc`. Event trails also support `detailKey` and `detailText` filters for scoped QA proof lookups. Their max page size is `100`.
 
 Minimal manual exercise:
 

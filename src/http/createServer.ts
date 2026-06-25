@@ -626,6 +626,7 @@ function buildEventTrailPayload(
   snapshot: CallSnapshot,
   eventType?: string,
   source?: string,
+  detailKey?: string,
   detailText?: string,
   since?: string,
   until?: string,
@@ -637,11 +638,12 @@ function buildEventTrailPayload(
   const filteredEvents = snapshot.events.filter((event) => {
     const matchesType = eventType === undefined || event.type === eventType;
     const matchesSource = source === undefined || event.detail.source === source;
+    const matchesDetailKey = detailKey === undefined || Object.hasOwn(event.detail, detailKey);
     const matchesDetailText =
       normalizedDetailText === undefined || JSON.stringify(event.detail).toLocaleLowerCase().includes(normalizedDetailText);
     const matchesSince = since === undefined || compareTimestamps(event.at, since) >= 0;
     const matchesUntil = until === undefined || compareTimestamps(event.at, until) <= 0;
-    return matchesType && matchesSource && matchesDetailText && matchesSince && matchesUntil;
+    return matchesType && matchesSource && matchesDetailKey && matchesDetailText && matchesSince && matchesUntil;
   });
   const orderedEvents = order === "asc" ? filteredEvents : [...filteredEvents].reverse();
   const events = orderedEvents.slice(offset, limit === undefined ? undefined : offset + limit);
@@ -658,6 +660,7 @@ function buildEventTrailPayload(
       returnedEvents: events.length,
       filteredType: eventType ?? null,
       filteredSource: source ?? null,
+      filteredDetailKey: detailKey ?? null,
       filteredDetailText: detailText ?? null,
       filteredSince: since ?? null,
       filteredUntil: until ?? null,
@@ -2284,6 +2287,12 @@ async function routeRequest(
       return;
     }
 
+    const detailKey = requestUrl.searchParams.get("detailKey");
+    if (detailKey !== null && !detailKey.trim()) {
+      writeBadRequest(response, "event_detail_key_invalid");
+      return;
+    }
+
     const sinceParam = requestUrl.searchParams.get("since");
     const since = sinceParam === null ? undefined : normalizeTimestamp(sinceParam, "event_since_invalid");
     if (since !== undefined && typeof since !== "string") {
@@ -2339,6 +2348,7 @@ async function routeRequest(
         snapshot,
         type?.trim() || undefined,
         source?.trim() || undefined,
+        detailKey?.trim() || undefined,
         detailText?.trim() || undefined,
         since,
         until,
