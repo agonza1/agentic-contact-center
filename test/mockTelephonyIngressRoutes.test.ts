@@ -1510,6 +1510,10 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /operatorConsoleQuery/);
     assert.match(response.body, /refreshIntervalMs/);
     assert.match(response.body, /scheduleRefresh/);
+    assert.match(response.body, /hasDirtyDetailInput/);
+    assert.match(response.body, /Refresh paused while editing/);
+    assert.match(response.body, /refresh\(\{ auto: true \}\)/);
+    assert.match(response.body, /throw new Error\(message\)/);
     assert.match(response.body, /document.hidden/);
     assert.match(response.body, /visibilitychange/);
     assert.match(response.body, /attentionRequired/);
