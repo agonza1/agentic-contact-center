@@ -43,6 +43,13 @@ export type LocalSttControlMessage =
   | { type: "cancel" }
   | { type: "close" };
 
+export interface RealtimeShimAppendAudioRequest {
+  sessionId: string;
+  audioBase64: string;
+  timestamp?: number;
+  pcm16: Buffer;
+}
+
 export type RealtimeShimRelayEvent =
   | {
       relaySessionId: string;
@@ -143,6 +150,34 @@ export function decodeGatewayRelayPcm16(audioBase64: string): Buffer {
   }
 
   return decodedAudio;
+}
+
+export function createRealtimeShimAppendAudioRequest(options: {
+  sessionId: string;
+  audioBase64: string;
+  timestamp?: number;
+}): RealtimeShimAppendAudioRequest {
+  const sessionId = options.sessionId.trim();
+
+  if (!sessionId) {
+    throw new Error("sessionId is required");
+  }
+
+  if (
+    options.timestamp !== undefined &&
+    (!Number.isFinite(options.timestamp) || options.timestamp < 0)
+  ) {
+    throw new Error("timestamp must be a non-negative finite number");
+  }
+
+  const audioBase64 = options.audioBase64.trim();
+
+  return {
+    sessionId,
+    audioBase64,
+    timestamp: options.timestamp,
+    pcm16: decodeGatewayRelayPcm16(audioBase64),
+  };
 }
 
 export function createRealtimeShimAudioRelayEvent(

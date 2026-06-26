@@ -7,6 +7,7 @@ import {
   buildLocalSttCloseMessage,
   buildLocalSttFinalizeMessage,
   buildLocalSttStartMessage,
+  createRealtimeShimAppendAudioRequest,
   createRealtimeShimAudioRelayEvent,
   createRealtimeShimClearRelayEvent,
   createRealtimeShimCloseRelayEvent,
@@ -74,6 +75,33 @@ test("gateway relay audio decode rejects empty or malformed pcm16 frames", () =>
   assert.throws(() => decodeGatewayRelayPcm16("   "), /audioBase64 is required/);
   assert.throws(() => decodeGatewayRelayPcm16("not base64"), /valid base64/);
   assert.throws(() => decodeGatewayRelayPcm16(Buffer.from([1]).toString("base64")), /even number of bytes/);
+});
+
+test("gateway relay append audio requests validate bounded gateway payloads", () => {
+  const pcm16Frame = Buffer.from([3, 0, 4, 0]);
+  const audioBase64 = pcm16Frame.toString("base64");
+
+  assert.deepEqual(
+    createRealtimeShimAppendAudioRequest({
+      sessionId: " local-rt-append ",
+      audioBase64: `  ${audioBase64}  `,
+      timestamp: 1234,
+    }),
+    {
+    sessionId: "local-rt-append",
+    audioBase64,
+    timestamp: 1234,
+      pcm16: pcm16Frame,
+    },
+  );
+  assert.throws(
+    () => createRealtimeShimAppendAudioRequest({ sessionId: " ", audioBase64 }),
+    /sessionId is required/,
+  );
+  assert.throws(
+    () => createRealtimeShimAppendAudioRequest({ sessionId: "local-rt-append", audioBase64, timestamp: -1 }),
+    /timestamp/,
+  );
 });
 
 test("gateway relay events preserve correlated session identity", () => {
