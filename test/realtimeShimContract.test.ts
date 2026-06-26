@@ -9,6 +9,9 @@ import {
   buildLocalSttStartMessage,
   createRealtimeShimAppendAudioRequest,
   createRealtimeShimAudioRelayEvent,
+  createRealtimeShimCancelOutputRequest,
+  createRealtimeShimCloseRequest,
+  createRealtimeShimToolResultRequest,
   createRealtimeShimClearRelayEvent,
   createRealtimeShimCloseRelayEvent,
   createRealtimeShimSessionEnvelope,
@@ -101,6 +104,50 @@ test("gateway relay append audio requests validate bounded gateway payloads", ()
   assert.throws(
     () => createRealtimeShimAppendAudioRequest({ sessionId: "local-rt-append", audioBase64, timestamp: -1 }),
     /timestamp/,
+  );
+});
+
+test("gateway relay control requests validate bounded RPC payloads", () => {
+  assert.deepEqual(createRealtimeShimCancelOutputRequest({ sessionId: " local-rt-control ", reason: "barge-in" }), {
+    sessionId: "local-rt-control",
+    reason: "barge-in",
+  });
+  assert.deepEqual(createRealtimeShimCancelOutputRequest({ sessionId: "local-rt-control" }), {
+    sessionId: "local-rt-control",
+    reason: "cancelled",
+  });
+  assert.deepEqual(
+    createRealtimeShimToolResultRequest({
+      sessionId: " local-rt-tool ",
+      toolCallId: " tool-1 ",
+      result: { status: "not_applicable" },
+    }),
+    {
+      sessionId: "local-rt-tool",
+      toolCallId: "tool-1",
+      result: { status: "not_applicable" },
+    },
+  );
+  assert.deepEqual(createRealtimeShimCloseRequest({ sessionId: " local-rt-close ", reason: "complete" }), {
+    sessionId: "local-rt-close",
+    reason: "complete",
+  });
+  assert.deepEqual(createRealtimeShimCloseRequest({ sessionId: "local-rt-close" }), {
+    sessionId: "local-rt-close",
+    reason: "client",
+  });
+
+  assert.throws(
+    () => createRealtimeShimCancelOutputRequest({ sessionId: " " }),
+    /sessionId is required/,
+  );
+  assert.throws(
+    () => createRealtimeShimToolResultRequest({ sessionId: "local-rt-tool", toolCallId: " ", result: null }),
+    /toolCallId is required/,
+  );
+  assert.throws(
+    () => createRealtimeShimCloseRequest({ sessionId: " " }),
+    /sessionId is required/,
   );
 });
 

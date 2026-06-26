@@ -50,6 +50,22 @@ export interface RealtimeShimAppendAudioRequest {
   pcm16: Buffer;
 }
 
+export interface RealtimeShimCancelOutputRequest {
+  sessionId: string;
+  reason: "barge-in" | "cancelled" | "error";
+}
+
+export interface RealtimeShimToolResultRequest {
+  sessionId: string;
+  toolCallId: string;
+  result: unknown;
+}
+
+export interface RealtimeShimCloseRequest {
+  sessionId: string;
+  reason: "client" | "complete" | "error";
+}
+
 export type RealtimeShimRelayEvent =
   | {
       relaySessionId: string;
@@ -157,11 +173,7 @@ export function createRealtimeShimAppendAudioRequest(options: {
   audioBase64: string;
   timestamp?: number;
 }): RealtimeShimAppendAudioRequest {
-  const sessionId = options.sessionId.trim();
-
-  if (!sessionId) {
-    throw new Error("sessionId is required");
-  }
+  const sessionId = normalizeRealtimeShimRequiredString(options.sessionId, "sessionId");
 
   if (
     options.timestamp !== undefined &&
@@ -177,6 +189,38 @@ export function createRealtimeShimAppendAudioRequest(options: {
     audioBase64,
     timestamp: options.timestamp,
     pcm16: decodeGatewayRelayPcm16(audioBase64),
+  };
+}
+
+export function createRealtimeShimCancelOutputRequest(options: {
+  sessionId: string;
+  reason?: "barge-in" | "cancelled" | "error";
+}): RealtimeShimCancelOutputRequest {
+  return {
+    sessionId: normalizeRealtimeShimRequiredString(options.sessionId, "sessionId"),
+    reason: options.reason ?? "cancelled",
+  };
+}
+
+export function createRealtimeShimToolResultRequest(options: {
+  sessionId: string;
+  toolCallId: string;
+  result: unknown;
+}): RealtimeShimToolResultRequest {
+  return {
+    sessionId: normalizeRealtimeShimRequiredString(options.sessionId, "sessionId"),
+    toolCallId: normalizeRealtimeShimRequiredString(options.toolCallId, "toolCallId"),
+    result: options.result,
+  };
+}
+
+export function createRealtimeShimCloseRequest(options: {
+  sessionId: string;
+  reason?: "client" | "complete" | "error";
+}): RealtimeShimCloseRequest {
+  return {
+    sessionId: normalizeRealtimeShimRequiredString(options.sessionId, "sessionId"),
+    reason: options.reason ?? "client",
   };
 }
 
@@ -216,4 +260,14 @@ export function createRealtimeShimCloseRelayEvent(
     type: "close",
     reason,
   };
+}
+
+function normalizeRealtimeShimRequiredString(value: string, fieldName: string): string {
+  const normalizedValue = value.trim();
+
+  if (!normalizedValue) {
+    throw new Error(`${fieldName} is required`);
+  }
+
+  return normalizedValue;
 }

@@ -54,9 +54,9 @@ The first shim proof should keep the browser-facing RPCs identical to the curren
 | --- | --- | --- |
 | `talk.session.create` | `mode: "realtime"`, `transport: "gateway-relay"`, optional `brain` | Allocate a relay session, initialize empty input/output state, return the session envelope above, and emit a single `ready` diagnostic. |
 | `talk.session.appendAudio` | `sessionId`, `audioBase64`, optional `timestamp` | Decode PCM16, start Local STT v1 lazily on the first non-empty chunk, stream binary frames, and keep the RPC bounded even if STT transcript output arrives later. |
-| `talk.session.cancelOutput` | `sessionId`, optional `reason` | Abort active LLM/TTS work, clear pending audio, emit relay `clear`, and keep input capture alive for barge-in audio. |
-| `talk.session.submitToolResult` | `sessionId`, `toolCallId`, `result` | Accept and record the tool result for parity with the existing UI path; the first local proof may return `not_applicable` when no local tool call is pending. |
-| `talk.session.close` | `sessionId` | Idempotently close STT, LLM, and TTS resources, then emit one terminal relay `close`. |
+| `talk.session.cancelOutput` | `sessionId`, optional `reason` (`barge-in`, `cancelled`, or `error`) | Validate the target session, abort active LLM/TTS work, clear pending audio, emit relay `clear`, and keep input capture alive for barge-in audio. |
+| `talk.session.submitToolResult` | `sessionId`, `toolCallId`, `result` | Validate the target session and tool call id, then accept and record the tool result for parity with the existing UI path; the first local proof may return `not_applicable` when no local tool call is pending. |
+| `talk.session.close` | `sessionId`, optional `reason` (`client`, `complete`, or `error`) | Validate the target session, idempotently close STT, LLM, and TTS resources, then emit one terminal relay `close`. |
 
 The shim must correlate every asynchronous event with both `relaySessionId` and `sessionId` when both are known. Unknown or already-closed sessions return a bounded RPC error instead of creating an implicit session.
 
