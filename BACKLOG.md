@@ -49,6 +49,13 @@ Acceptance criteria:
 - Repo-local docs explain how QA or reviewers can reproduce and inspect the evidence.
 Status: implemented on issue `#8` with `npm run proof`, deterministic JSON proof artifacts, `test/demoProofScript.test.ts`, and `docs/demo-proof-runbook.md`.
 
+### CUE-008 Realtime shim adapter contract
+Acceptance criteria:
+- Document the session, websocket, audio, interruption, error, and close semantics needed to preserve a Realtime-style web voice UI.
+- Map input audio buffer append, commit, and cancel behavior to the Local STT v1 `start`, binary PCM16 audio, `finalize`, and `cancel` lifecycle.
+- Identify the smallest follow-up proof required from `rtc-asr` without adding production OpenClaw code.
+Status: started on issue `#84` with `docs/realtime-shim-contract.md` and a docs contract test.
+
 ## QA handoff for issue #7
 
 - Run `npm test` from the repo root.
