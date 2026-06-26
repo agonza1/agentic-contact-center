@@ -128,6 +128,10 @@ export function decodeGatewayRelayPcm16(audioBase64: string): Buffer {
     throw new Error("audioBase64 is required");
   }
 
+  if (!/^(?:[A-Za-z0-9+\/]{4})*(?:[A-Za-z0-9+\/]{2}==|[A-Za-z0-9+\/]{3}=)?$/.test(normalizedAudio)) {
+    throw new Error("audioBase64 must be valid base64");
+  }
+
   const decodedAudio = Buffer.from(normalizedAudio, "base64");
 
   if (decodedAudio.length === 0) {

@@ -72,6 +72,7 @@ test("gateway relay audio decode rejects empty or malformed pcm16 frames", () =>
 
   assert.deepEqual(decodeGatewayRelayPcm16(pcm16Frame.toString("base64")), pcm16Frame);
   assert.throws(() => decodeGatewayRelayPcm16("   "), /audioBase64 is required/);
+  assert.throws(() => decodeGatewayRelayPcm16("not base64"), /valid base64/);
   assert.throws(() => decodeGatewayRelayPcm16(Buffer.from([1]).toString("base64")), /even number of bytes/);
 });
 
