@@ -43,6 +43,29 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
       "output.audio.done",
     ],
   );
+  assert.deepEqual(
+    evidence.timeline.map((event) => [event.sequence, event.source, event.type]),
+    [
+      [1, "diagnostic", "ready"],
+      [2, "local-stt", "start"],
+      [3, "local-stt", "audio"],
+      [4, "diagnostic", "input.audio.delta"],
+      [5, "local-stt", "finalize"],
+      [6, "diagnostic", "transcript.delta"],
+      [7, "diagnostic", "transcript.done"],
+      [8, "diagnostic", "output.text.done"],
+      [9, "diagnostic", "output.audio.started"],
+      [10, "relay", "audio"],
+      [11, "diagnostic", "output.audio.done"],
+    ],
+  );
+  assert.deepEqual(evidence.timeline.find((event) => event.type === "audio"), {
+    sequence: 3,
+    source: "local-stt",
+    type: "audio",
+    byteLength: 8,
+  });
+  assert.equal(evidence.timeline.find((event) => event.type === "transcript.done")?.final, true);
   assert.deepEqual(evidence.relayEvents, [
     {
       relaySessionId: "local-rt-proof",
@@ -73,6 +96,18 @@ test("local realtime shim prototype models barge-in clear and idempotent close",
     },
   ]);
   assert.equal(cancelled.diagnostics.at(-1)?.type, "turn.cancelled");
+  assert.deepEqual(cancelled.timeline.at(-2), {
+    sequence: 5,
+    source: "relay",
+    type: "clear",
+    reason: "barge-in",
+  });
+  assert.deepEqual(cancelled.timeline.at(-1), {
+    sequence: 6,
+    source: "diagnostic",
+    type: "turn.cancelled",
+    reason: "barge-in",
+  });
 
   const closed = shim.closeSession({ sessionId: envelope.sessionId, reason: "complete" });
   const closedAgain = shim.closeSession({ sessionId: envelope.sessionId, reason: "client" });

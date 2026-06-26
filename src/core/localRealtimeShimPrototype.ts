@@ -35,11 +35,22 @@ export type LocalRealtimeShimDiagnostic =
   | { type: "turn.cancelled"; sessionId: string; relaySessionId: string; reason: "barge-in" | "cancelled" | "error" }
   | { type: "session.closed"; sessionId: string; relaySessionId: string; reason: "client" | "complete" | "error" };
 
+export interface LocalRealtimeShimTimelineEntry {
+  sequence: number;
+  source: "diagnostic" | "local-stt" | "relay";
+  type: string;
+  byteLength?: number;
+  text?: string;
+  final?: boolean;
+  reason?: "barge-in" | "cancelled" | "error" | "client" | "complete";
+}
+
 export interface LocalRealtimeShimEvidence {
   envelope: RealtimeShimSessionEnvelope;
   state: LocalRealtimeShimState;
   diagnostics: LocalRealtimeShimDiagnostic[];
   relayEvents: RealtimeShimRelayEvent[];
+  timeline: LocalRealtimeShimTimelineEntry[];
   localSttMessages: Array<LocalSttStartMessage | LocalSttControlMessage | { type: "audio"; byteLength: number }>;
   mockedPieces: string[];
   limitations: string[];
@@ -53,6 +64,7 @@ interface LocalRealtimeShimSession {
   outputCancelled: boolean;
   diagnostics: LocalRealtimeShimDiagnostic[];
   relayEvents: RealtimeShimRelayEvent[];
+  timeline: LocalRealtimeShimTimelineEntry[];
   localSttMessages: LocalRealtimeShimEvidence["localSttMessages"];
 }
 
@@ -71,10 +83,11 @@ export class LocalRealtimeShimPrototype {
       outputCancelled: false,
       diagnostics: [],
       relayEvents: [],
+      timeline: [],
       localSttMessages: [],
     };
 
-    session.diagnostics.push({
+    this.recordDiagnostic(session, {
       type: "ready",
       sessionId: envelope.sessionId,
       relaySessionId: envelope.relaySessionId,
@@ -90,14 +103,14 @@ export class LocalRealtimeShimPrototype {
     const session = this.requireOpenSession(request.sessionId);
 
     if (!session.sttStarted) {
-      session.localSttMessages.push(buildLocalSttStartMessage());
+      this.recordLocalSttMessage(session, buildLocalSttStartMessage());
       session.sttStarted = true;
       session.state = "listening";
     }
 
     session.audioBytesReceived += request.pcm16.length;
-    session.localSttMessages.push({ type: "audio", byteLength: request.pcm16.length });
-    session.diagnostics.push({
+    this.recordLocalSttMessage(session, { type: "audio", byteLength: request.pcm16.length });
+    this.recordDiagnostic(session, {
       type: "input.audio.delta",
       sessionId: session.envelope.sessionId,
       relaySessionId: session.envelope.relaySessionId,
@@ -112,22 +125,22 @@ export class LocalRealtimeShimPrototype {
     const session = this.requireOpenSession(options.sessionId);
 
     if (!session.sttStarted) {
-      session.localSttMessages.push(buildLocalSttStartMessage());
+      this.recordLocalSttMessage(session, buildLocalSttStartMessage());
       session.sttStarted = true;
     }
 
     session.state = "finalizing";
-    session.localSttMessages.push(buildLocalSttFinalizeMessage());
+    this.recordLocalSttMessage(session, buildLocalSttFinalizeMessage());
 
     const transcriptText = options.transcriptText?.trim() || "I need help with my account.";
-    session.diagnostics.push({
+    this.recordDiagnostic(session, {
       type: "transcript.delta",
       sessionId: session.envelope.sessionId,
       relaySessionId: session.envelope.relaySessionId,
       text: transcriptText,
       final: false,
     });
-    session.diagnostics.push({
+    this.recordDiagnostic(session, {
       type: "transcript.done",
       sessionId: session.envelope.sessionId,
       relaySessionId: session.envelope.relaySessionId,
@@ -137,7 +150,7 @@ export class LocalRealtimeShimPrototype {
 
     session.state = "responding";
     const assistantText = `Local prototype response: I heard "${transcriptText}" and will keep the flow in a safe handoff lane.`;
-    session.diagnostics.push({
+    this.recordDiagnostic(session, {
       type: "output.text.done",
       sessionId: session.envelope.sessionId,
       relaySessionId: session.envelope.relaySessionId,
@@ -146,14 +159,14 @@ export class LocalRealtimeShimPrototype {
 
     if (!session.outputCancelled) {
       session.state = "speaking";
-      session.diagnostics.push({
+      this.recordDiagnostic(session, {
         type: "output.audio.started",
         sessionId: session.envelope.sessionId,
         relaySessionId: session.envelope.relaySessionId,
       });
       const audioBase64 = Buffer.from([0, 0, 1, 0, 2, 0, 3, 0]).toString("base64");
-      session.relayEvents.push(createRealtimeShimAudioRelayEvent(session.envelope, audioBase64));
-      session.diagnostics.push({
+      this.recordRelayEvent(session, createRealtimeShimAudioRelayEvent(session.envelope, audioBase64));
+      this.recordDiagnostic(session, {
         type: "output.audio.done",
         sessionId: session.envelope.sessionId,
         relaySessionId: session.envelope.relaySessionId,
@@ -170,8 +183,8 @@ export class LocalRealtimeShimPrototype {
 
     session.outputCancelled = true;
     session.state = "listening";
-    session.relayEvents.push(createRealtimeShimClearRelayEvent(session.envelope, request.reason));
-    session.diagnostics.push({
+    this.recordRelayEvent(session, createRealtimeShimClearRelayEvent(session.envelope, request.reason));
+    this.recordDiagnostic(session, {
       type: "turn.cancelled",
       sessionId: session.envelope.sessionId,
       relaySessionId: session.envelope.relaySessionId,
@@ -183,7 +196,7 @@ export class LocalRealtimeShimPrototype {
 
   cancelInput(options: { sessionId: string }): LocalRealtimeShimEvidence {
     const session = this.requireOpenSession(options.sessionId);
-    session.localSttMessages.push(buildLocalSttCancelMessage());
+    this.recordLocalSttMessage(session, buildLocalSttCancelMessage());
     session.state = "idle";
     return this.getEvidence(options.sessionId);
   }
@@ -197,10 +210,10 @@ export class LocalRealtimeShimPrototype {
     }
 
     if (session.state !== "closed") {
-      session.localSttMessages.push(buildLocalSttCloseMessage());
+      this.recordLocalSttMessage(session, buildLocalSttCloseMessage());
       session.state = "closed";
-      session.relayEvents.push(createRealtimeShimCloseRelayEvent(session.envelope, request.reason));
-      session.diagnostics.push({
+      this.recordRelayEvent(session, createRealtimeShimCloseRelayEvent(session.envelope, request.reason));
+      this.recordDiagnostic(session, {
         type: "session.closed",
         sessionId: session.envelope.sessionId,
         relaySessionId: session.envelope.relaySessionId,
@@ -223,6 +236,7 @@ export class LocalRealtimeShimPrototype {
       state: session.state,
       diagnostics: [...session.diagnostics],
       relayEvents: [...session.relayEvents],
+      timeline: [...session.timeline],
       localSttMessages: [...session.localSttMessages],
       mockedPieces: ["local LLM response text", "Kokoro PCM output audio"],
       limitations: [
@@ -244,4 +258,51 @@ export class LocalRealtimeShimPrototype {
 
     return session;
   }
+
+  private recordDiagnostic(session: LocalRealtimeShimSession, diagnostic: LocalRealtimeShimDiagnostic): void {
+    session.diagnostics.push(diagnostic);
+    session.timeline.push({
+      sequence: session.timeline.length + 1,
+      source: "diagnostic",
+      type: diagnostic.type,
+      ...pickTimelineDetails(diagnostic),
+    });
+  }
+
+  private recordRelayEvent(session: LocalRealtimeShimSession, relayEvent: RealtimeShimRelayEvent): void {
+    session.relayEvents.push(relayEvent);
+    session.timeline.push({
+      sequence: session.timeline.length + 1,
+      source: "relay",
+      type: relayEvent.type,
+      ...pickTimelineDetails(relayEvent),
+    });
+  }
+
+  private recordLocalSttMessage(
+    session: LocalRealtimeShimSession,
+    message: LocalRealtimeShimEvidence["localSttMessages"][number],
+  ): void {
+    session.localSttMessages.push(message);
+    session.timeline.push({
+      sequence: session.timeline.length + 1,
+      source: "local-stt",
+      type: message.type,
+      ...pickTimelineDetails(message),
+    });
+  }
+}
+
+function pickTimelineDetails(
+  event:
+    | LocalRealtimeShimDiagnostic
+    | RealtimeShimRelayEvent
+    | LocalRealtimeShimEvidence["localSttMessages"][number],
+): Omit<LocalRealtimeShimTimelineEntry, "sequence" | "source" | "type"> {
+  return {
+    ...("byteLength" in event ? { byteLength: event.byteLength } : {}),
+    ...("text" in event ? { text: event.text } : {}),
+    ...("final" in event ? { final: event.final } : {}),
+    ...("reason" in event ? { reason: event.reason } : {}),
+  };
 }
