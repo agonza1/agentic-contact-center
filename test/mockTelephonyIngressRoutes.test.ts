@@ -91,11 +91,14 @@ interface CallListPayload extends QueueSummaryPayload {
 
 interface OperatorConsolePayload {
   schemaVersion: number;
+  generatedAt: string;
+  refreshIntervalMs: number;
   runtimeHealth: { ok: boolean; mode: string; provider: string; pipecatFlow: { ready: boolean } };
   controls: {
     commandWrappers: string[];
     callReferenceFields: string[];
     routes: { startDemoCall: string; callerTurn: string; steerCall: string; noteCall: string; consoleAction: string };
+    scriptedCallerTurns: string[];
     actions: Array<{
       action: string;
       method: string;
@@ -161,6 +164,13 @@ interface OperatorConsolePayload {
           } | null;
           fallbackArmed: boolean;
           nextRecommendedAction: string;
+          scriptedCallerTurnState: {
+            matchedTurns: number;
+            totalTurns: number;
+            nextTurnIndex: number | null;
+            nextTurnText: string | null;
+            completed: boolean;
+          };
           actionDetails: Array<{
             action: string;
             enabled: boolean;
@@ -1157,6 +1167,8 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
 
     assert.equal(consoleResponse.statusCode, 200);
     assert.equal(consolePayload.runtimeHealth.ok, true);
+    assert.equal(typeof consolePayload.generatedAt, "string");
+    assert.equal(consolePayload.refreshIntervalMs, 5000);
     assert.equal(consolePayload.runtimeHealth.pipecatFlow.ready, true);
     assert.deepEqual(consolePayload.controls.commandWrappers, ["/operator", "/steer"]);
     assert.deepEqual(consolePayload.controls.callReferenceFields, [
@@ -1173,6 +1185,12 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
     });
+    assert.deepEqual(consolePayload.controls.scriptedCallerTurns, [
+      "I want to cancel my policy today.",
+      "The renewal increase is too high.",
+      "Okay, what safe options can you review for me?",
+      "Thanks, please note that follow-up and close the call.",
+    ]);
     const approveOfferAction = consolePayload.controls.actions.find((entry) => entry.action === "approve_offer");
     assert.deepEqual(approveOfferAction, {
       action: "approve_offer",
@@ -1236,6 +1254,13 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       },
       fallbackArmed: false,
       nextRecommendedAction: "approve_offer",
+      scriptedCallerTurnState: {
+        matchedTurns: 3,
+        totalTurns: 4,
+        nextTurnIndex: 3,
+        nextTurnText: "Thanks, please note that follow-up and close the call.",
+        completed: false,
+      },
       actionDetails: [
         {
           action: "pause",
@@ -1377,6 +1402,13 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     const idleConsoleCall = consolePayload.calls.items[1];
     assert.equal(idleConsoleCall?.actionState.pendingApprovalDetails, null);
     assert.equal(idleConsoleCall?.actionState.nextRecommendedAction, "pause");
+    assert.deepEqual(idleConsoleCall?.actionState.scriptedCallerTurnState, {
+      matchedTurns: 0,
+      totalTurns: 4,
+      nextTurnIndex: 0,
+      nextTurnText: "I want to cancel my policy today.",
+      completed: false,
+    });
     assert.deepEqual(
       idleConsoleCall?.actionState.actionDetails
         .filter((entry) => !entry.enabled)
@@ -1476,6 +1508,14 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /All active tools/);
     assert.match(response.body, /Transcript search/);
     assert.match(response.body, /operatorConsoleQuery/);
+    assert.match(response.body, /refreshIntervalMs/);
+    assert.match(response.body, /scheduleRefresh/);
+    assert.match(response.body, /hasDirtyDetailInput/);
+    assert.match(response.body, /Refresh paused while editing/);
+    assert.match(response.body, /refresh\(\{ auto: true \}\)/);
+    assert.match(response.body, /throw new Error\(message\)/);
+    assert.match(response.body, /document.hidden/);
+    assert.match(response.body, /visibilitychange/);
     assert.match(response.body, /attentionRequired/);
     assert.match(response.body, /latencyOverBudget/);
     assert.match(response.body, /fallbackMode/);
@@ -1486,6 +1526,10 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /\/api\/demo\/start/);
     assert.match(response.body, /caller-turn-form/);
     assert.match(response.body, /Caller transcript turn/);
+    assert.match(response.body, /scripted-turns/);
+    assert.match(response.body, /Scripted Turns/);
+    assert.match(response.body, /data-scripted-turn/);
+    assert.match(response.body, /postScriptedTurn/);
     assert.match(response.body, /\/caller-turn/);
     assert.match(response.body, /"goto_slide"/);
     assert.match(response.body, /"ask_operator"/);
