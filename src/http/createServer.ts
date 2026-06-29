@@ -37,6 +37,7 @@ function buildRealtimeShimProofPayload(): object {
   const envelope = shim.createSession({ relaySessionId: "local-rt-http-proof" });
   const interruptEnvelope = shim.createSession({ relaySessionId: "local-rt-http-interrupt-proof" });
   const inputCancelEnvelope = shim.createSession({ relaySessionId: "local-rt-http-input-cancel-proof" });
+  const errorEnvelope = shim.createSession({ relaySessionId: "local-rt-http-error-proof" });
   const audioBase64 = Buffer.from([0, 0, 1, 0, 2, 0, 3, 0]).toString("base64");
 
   shim.appendAudio({ sessionId: envelope.sessionId, audioBase64, timestamp: 42 });
@@ -62,6 +63,19 @@ function buildRealtimeShimProofPayload(): object {
   shim.appendAudio({ sessionId: inputCancelEnvelope.sessionId, audioBase64, timestamp: 126 });
   const inputCancelEvidence = shim.cancelInput({ sessionId: inputCancelEnvelope.sessionId });
 
+  shim.appendAudio({ sessionId: errorEnvelope.sessionId, audioBase64, timestamp: 168 });
+  shim.recordLocalSttError({
+    sessionId: errorEnvelope.sessionId,
+    code: "stream_warning",
+    message: "local stt partial frame arrived late",
+    retryable: true,
+  });
+  const errorEvidence = shim.recordLocalSttError({
+    sessionId: errorEnvelope.sessionId,
+    code: "stt_disconnected",
+    message: "local stt websocket closed before final transcript",
+  });
+
   return {
     ok: true,
     route: "/api/realtime-shim/proof",
@@ -72,6 +86,7 @@ function buildRealtimeShimProofPayload(): object {
     closeEvidence,
     interruptionEvidence,
     inputCancelEvidence,
+    errorEvidence,
   };
 }
 

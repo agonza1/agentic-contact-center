@@ -73,6 +73,13 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         diagnostics: Array<{ type: string; reason?: string; relaySessionId: string; sessionId: string }>;
         timeline: Array<{ source: string; type: string; reason?: string }>;
       };
+      errorEvidence: {
+        state: string;
+        envelope: { relaySessionId: string; sessionId: string };
+        relayEvents: Array<{ type: string; code?: string; message?: string; retryable?: boolean; reason?: string }>;
+        diagnostics: Array<{ type: string; code?: string; message?: string; retryable?: boolean; relaySessionId: string; sessionId: string; reason?: string }>;
+        timeline: Array<{ source: string; type: string; code?: string; reason?: string }>;
+      };
     };
 
     assert.equal(payload.ok, true);
@@ -175,6 +182,40 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       [
         ["local-stt", "cancel", undefined],
         ["diagnostic", "input.cancelled", "client"],
+      ],
+    );
+    assert.equal(payload.errorEvidence.state, "closed");
+    assert.equal(payload.errorEvidence.envelope.relaySessionId, "local-rt-http-error-proof");
+    assert.deepEqual(
+      payload.errorEvidence.relayEvents.map((event) => [event.type, event.code ?? event.reason, event.retryable]),
+      [
+        ["error", "stream_warning", true],
+        ["error", "stt_disconnected", false],
+        ["close", "error", undefined],
+      ],
+    );
+    assert.deepEqual(payload.errorEvidence.diagnostics.at(-2), {
+      type: "session.error",
+      sessionId: "local-rt-http-error-proof",
+      relaySessionId: "local-rt-http-error-proof",
+      code: "stt_disconnected",
+      message: "local stt websocket closed before final transcript",
+      retryable: false,
+    });
+    assert.deepEqual(payload.errorEvidence.diagnostics.at(-1), {
+      type: "session.closed",
+      sessionId: "local-rt-http-error-proof",
+      relaySessionId: "local-rt-http-error-proof",
+      reason: "error",
+    });
+    assert.deepEqual(
+      payload.errorEvidence.timeline.slice(-5).map((event) => [event.source, event.type, event.code ?? event.reason]),
+      [
+        ["relay", "error", "stt_disconnected"],
+        ["diagnostic", "session.error", "stt_disconnected"],
+        ["local-stt", "close", undefined],
+        ["relay", "close", "error"],
+        ["diagnostic", "session.closed", "error"],
       ],
     );
   } finally {
