@@ -35,12 +35,23 @@ const operatorConsoleRefreshIntervalMs = 5000;
 function buildRealtimeShimProofPayload(): object {
   const shim = new LocalRealtimeShimPrototype();
   const envelope = shim.createSession({ relaySessionId: "local-rt-http-proof" });
+  const interruptEnvelope = shim.createSession({ relaySessionId: "local-rt-http-interrupt-proof" });
   const audioBase64 = Buffer.from([0, 0, 1, 0, 2, 0, 3, 0]).toString("base64");
 
   shim.appendAudio({ sessionId: envelope.sessionId, audioBase64, timestamp: 42 });
   const evidence = shim.finalizeTurn({
     sessionId: envelope.sessionId,
     transcriptText: "Can I get a retention credit?",
+  });
+
+  shim.appendAudio({ sessionId: interruptEnvelope.sessionId, audioBase64, timestamp: 84 });
+  shim.finalizeTurn({
+    sessionId: interruptEnvelope.sessionId,
+    transcriptText: "Actually, I need to interrupt.",
+  });
+  const interruptionEvidence = shim.cancelOutput({
+    sessionId: interruptEnvelope.sessionId,
+    reason: "barge-in",
   });
 
   return {
@@ -50,6 +61,7 @@ function buildRealtimeShimProofPayload(): object {
     rpcBoundary: "gateway-relay",
     localSttContract: "local-stt.v1",
     evidence,
+    interruptionEvidence,
   };
 }
 
