@@ -42,6 +42,29 @@ function proofActionTrace(proof) {
   }));
 }
 
+function latencyEvidence(proof) {
+  function marksFor(flow, checkpoint) {
+    return checkpoint.latencyMarks.map((mark) => ({
+      flow,
+      stage: mark.stage,
+      observedMs: mark.elapsedMs,
+      budgetMs: mark.budgetMs,
+      overBudget: typeof mark.budgetMs === "number" && mark.elapsedMs > mark.budgetMs,
+      at: mark.recordedAt,
+    }));
+  }
+
+  return {
+    runtimeMode: proof.health.pipecatFlow.prototypeMode,
+    budgets: proof.health.latencyBudgetsMs,
+    marks: [
+      ...marksFor("scripted", proof.scripted.checkpoints.wrapped),
+      ...marksFor("fallback", proof.fallback.checkpoint),
+      ...marksFor("runtime_failure", proof.runtimeFailure.checkpoint),
+    ],
+  };
+}
+
 function finalState(proof) {
   return {
     complete: true,
@@ -325,6 +348,7 @@ async function main() {
   const transcriptText = proofTranscriptText(proof);
   const transcriptPath = path.join(outDir, "transcript.txt");
   const actionTracePath = path.join(outDir, "action-trace.json");
+  const latencyEvidencePath = path.join(outDir, "latency-evidence.json");
   const finalStatePath = path.join(outDir, "final-state.json");
   const bundledProofPath = path.join(outDir, "proof.json");
   const audioPath = path.join(mediaDir, "caller-capture.wav");
@@ -335,6 +359,7 @@ async function main() {
 
   await writeFile(transcriptPath, transcriptText, "utf8");
   await writeJsonArtifact(actionTracePath, proofActionTrace(proof));
+  await writeJsonArtifact(latencyEvidencePath, latencyEvidence(proof));
   await writeJsonArtifact(finalStatePath, finalState(proof));
   await writeJsonArtifact(bundledProofPath, proof);
   await writeFile(audioPath, wavBuffer({ transcriptText }));
@@ -409,6 +434,11 @@ async function main() {
         mimeType: "application/json",
       }),
       additional_artifacts: [
+        await buildArtifactPointer(latencyEvidencePath, {
+          artifactId: "agentic-call-center-latency-evidence",
+          kind: "report",
+          mimeType: "application/json",
+        }),
         await buildArtifactPointer(localSttEvidencePath, {
           artifactId: "local-stt-v1-contract-evidence",
           kind: "manifest",
@@ -479,6 +509,7 @@ async function main() {
       proof: relativeArtifactPath(bundledProofPath),
       transcript: relativeArtifactPath(transcriptPath),
       actionTrace: relativeArtifactPath(actionTracePath),
+      latencyEvidence: relativeArtifactPath(latencyEvidencePath),
       finalState: relativeArtifactPath(finalStatePath),
       audioCapture: relativeArtifactPath(audioPath),
       screenshots: [relativeArtifactPath(policyHoldScreenshotPath), relativeArtifactPath(wrapScreenshotPath)],

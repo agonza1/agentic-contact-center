@@ -33,14 +33,24 @@ test("agentic call center proof bundle emits ConversationAgentEvals-ready media 
 
     const manifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
       runtimeModeLabels: { flow: string; credentialsMode: string; localAsr: string };
-      artifacts: { audioCapture: string; screenshots: string[]; videoRecording: string; conversationAgentEvalsRequest: string };
+      artifacts: { audioCapture: string; screenshots: string[]; videoRecording: string; latencyEvidence: string; conversationAgentEvalsRequest: string };
       limitations: string[];
     };
     assert.equal(manifest.runtimeModeLabels.flow, "pipecat_local_runtime");
     assert.equal(manifest.runtimeModeLabels.credentialsMode, "mocked");
     assert.match(manifest.runtimeModeLabels.localAsr, /local-stt\.v1/);
     assert.equal(manifest.artifacts.screenshots.length, 2);
+    assert.match(manifest.artifacts.latencyEvidence, /latency-evidence\.json$/);
     assert.ok(manifest.limitations.some((limitation) => limitation.includes("No production credentials")));
+
+    const latencyEvidence = JSON.parse(await readFile(path.join(outDir, "latency-evidence.json"), "utf8")) as {
+      runtimeMode: string;
+      marks: Array<{ flow: string; stage: string; overBudget: boolean }>;
+    };
+    assert.equal(latencyEvidence.runtimeMode, "pipecat_local_runtime");
+    assert.ok(latencyEvidence.marks.some((mark) => mark.flow === "scripted" && mark.stage === "policy_hold_entered"));
+    assert.ok(latencyEvidence.marks.some((mark) => mark.flow === "fallback" && mark.stage === "operator_notified"));
+    assert.ok(latencyEvidence.marks.some((mark) => mark.flow === "runtime_failure" && mark.stage === "operator_notified"));
 
     const wav = await readFile(path.join(outDir, "media", "caller-capture.wav"));
     assert.equal(wav.subarray(0, 4).toString("ascii"), "RIFF");
@@ -53,7 +63,7 @@ test("agentic call center proof bundle emits ConversationAgentEvals-ready media 
 
     const assertRequest = JSON.parse(await readFile(path.join(outDir, "conversation-agent-evals-assert-request.json"), "utf8")) as {
       spec_ref: { spec_id: string; spec_kind: string; spec_version: string };
-      evidence: { transcript: unknown; call_media: Array<{ artifact_id: string; kind: string; readiness: string }>; assert_bundle: unknown; additional_artifacts: unknown[] };
+      evidence: { transcript: unknown; call_media: Array<{ artifact_id: string; kind: string; readiness: string }>; assert_bundle: unknown; additional_artifacts: Array<{ artifact_id: string; kind: string; readiness: string }> };
       runtime_config: { invocation_target: { transport: string; base_url: string } };
       platform_metadata: { labels: string[] };
     };
@@ -73,6 +83,12 @@ test("agentic call center proof bundle emits ConversationAgentEvals-ready media 
       ],
     );
     assert.ok(assertRequest.evidence.call_media.every((artifact) => artifact.kind === "call_media" && artifact.readiness === "ready"));
+    assert.deepEqual(
+      assertRequest.evidence.additional_artifacts.map((artifact) => artifact.artifact_id),
+      ["agentic-call-center-latency-evidence", "local-stt-v1-contract-evidence"],
+    );
+    assert.equal(assertRequest.evidence.additional_artifacts[0].kind, "report");
+    assert.ok(assertRequest.evidence.additional_artifacts.every((artifact) => artifact.readiness === "ready"));
     assert.ok(assertRequest.platform_metadata.labels.includes("local-stt-v1"));
   } finally {
     await rm(tempDir, { recursive: true, force: true });
