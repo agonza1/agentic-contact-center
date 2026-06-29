@@ -75,6 +75,25 @@ For deeper review, the full artifact also contains:
 - seeded latency marks
 - final call snapshots for scripted wrap, fallback handoff, and runtime-failure handoff
 
+
+## Generate proof bundle for ConversationAgentEvals
+
+After the Pipecat-gated proof run, create the evaluable bundle:
+
+```bash
+npm run proof:pipecat -- --out artifacts/agentic-call-center-demo/source-proof.json --latest-out artifacts/demo-proof-latest.json
+npm run proof:bundle -- --proof artifacts/agentic-call-center-demo/source-proof.json --out-dir artifacts/agentic-call-center-demo
+```
+
+Inspect `artifacts/agentic-call-center-demo/proof-bundle-manifest.json` and confirm it names:
+
+- runtime labels: `pipecat_local_runtime`, `pipecat-ai`, `local_process`, `mocked`, and `rtc-asr local-stt.v1 contract replay`
+- media artifacts: `media/caller-capture.wav`, both operator-console SVG screenshots, and `recordings/operator-console-demo.gif`
+- evaluator ingress: `conversation-agent-evals-assert-request.json` shaped as an `AssertRunCreateRequest`
+- limits: no production credentials, no live telephony, seeded local audio capture, and Local STT v1 contract replay unless `RTC_ASR_WS_URL` is supplied
+
+Use the request JSON as the handoff artifact for ConversationAgentEvals. It includes transcript, conversation, call media, action trace, final state, the full proof bundle, and Local STT v1 evidence.
+
 ## QA handoff notes
 
 Attach the stable `artifacts/demo-proof-latest.json` file to PR review or demo notes when you want a deterministic pointer. Keep timestamped artifacts when you need a point-in-time audit trail for multiple runs.

@@ -224,6 +224,15 @@ The proof runner builds the TypeScript app, starts the server on an ephemeral po
 
 If `--out` is omitted, the artifact is written to `artifacts/demo-proof-<timestamp>.json`. `--latest-out` keeps a stable pointer for handoff. Use `npm run proof:pipecat -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json` when you want the Pipecat package self-check to gate the proof run. See [docs/demo-proof-runbook.md](docs/demo-proof-runbook.md) for the QA inspection checklist.
 
+Generate a ConversationAgentEvals-ready proof bundle with media artifacts:
+
+```bash
+npm run proof:pipecat -- --out artifacts/agentic-call-center-demo/source-proof.json --latest-out artifacts/demo-proof-latest.json
+npm run proof:bundle -- --proof artifacts/agentic-call-center-demo/source-proof.json --out-dir artifacts/agentic-call-center-demo
+```
+
+The bundle writes `proof-bundle-manifest.json`, `conversation-agent-evals-assert-request.json`, transcript/action/final-state files, a seeded local WAV caller capture, SVG operator-console screenshots, an animated GIF recording, and Local STT v1 framing evidence for the `rtc-asr` boundary. It remains local and mocked: live telephony and provider credentials are not used. Set `RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream` for a later live local `rtc-asr` sidecar run.
+
 ## Scripts
 
 - `npm run build`: compile TypeScript to `dist/`.
@@ -232,6 +241,7 @@ If `--out` is omitted, the artifact is written to `artifacts/demo-proof-<timesta
 - `npm run proof`: build and run `scripts/demo-proof.mjs`.
 - `npm run pipecat:check`: verify the local `pipecat-ai` runtime package boundary without live telephony.
 - `npm run proof:pipecat`: run `pipecat:check` before the proof harness.
+- `npm run proof:bundle`: convert a proof JSON file into a ConversationAgentEvals-ready evidence bundle with media artifacts.
 - `npm run health:smoke`: poll `http://127.0.0.1:8026/health`.
 - `npm run docker:app`: build and run the Docker app service in the foreground.
 - `npm run docker:smoke`: run a bounded Docker health probe and clean up.
