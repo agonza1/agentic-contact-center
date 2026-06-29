@@ -33,7 +33,7 @@ test("agentic call center proof bundle emits ConversationAgentEvals-ready media 
 
     const manifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
       runtimeModeLabels: { flow: string; credentialsMode: string; localAsr: string };
-      artifacts: { audioCapture: string; screenshots: string[]; videoRecording: string; latencyEvidence: string; conversationAgentEvalsRequest: string };
+      artifacts: { audioCapture: string; screenshots: string[]; videoRecording: string; latencyEvidence: string; validationReport: string; conversationAgentEvalsRequest: string };
       artifactIntegrity: Array<{ artifactId: string; kind: string; path: string; sha256: string; sizeBytes: number; readiness: string }>;
       limitations: string[];
     };
@@ -42,7 +42,8 @@ test("agentic call center proof bundle emits ConversationAgentEvals-ready media 
     assert.match(manifest.runtimeModeLabels.localAsr, /local-stt\.v1/);
     assert.equal(manifest.artifacts.screenshots.length, 2);
     assert.match(manifest.artifacts.latencyEvidence, /latency-evidence\.json$/);
-    assert.equal(manifest.artifactIntegrity.length, 12);
+    assert.match(manifest.artifacts.validationReport, /bundle-validation-report\.json$/);
+    assert.equal(manifest.artifactIntegrity.length, 13);
     assert.ok(
       manifest.artifactIntegrity.every(
         (artifact) => artifact.readiness === "ready" && artifact.sha256.match(/^[a-f0-9]{64}$/) && artifact.sizeBytes > 0,
@@ -50,6 +51,7 @@ test("agentic call center proof bundle emits ConversationAgentEvals-ready media 
     );
     assert.ok(manifest.artifactIntegrity.some((artifact) => artifact.artifactId === "conversation-agent-evals-assert-request" && artifact.kind === "assert_request"));
     assert.ok(manifest.artifactIntegrity.some((artifact) => artifact.path.endsWith("media/caller-capture.wav")));
+    assert.ok(manifest.artifactIntegrity.some((artifact) => artifact.artifactId === "agentic-call-center-bundle-validation-report" && artifact.kind === "report"));
     assert.ok(manifest.limitations.some((limitation) => limitation.includes("No production credentials")));
 
     const latencyEvidence = JSON.parse(await readFile(path.join(outDir, "latency-evidence.json"), "utf8")) as {
@@ -60,6 +62,15 @@ test("agentic call center proof bundle emits ConversationAgentEvals-ready media 
     assert.ok(latencyEvidence.marks.some((mark) => mark.flow === "scripted" && mark.stage === "policy_hold_entered"));
     assert.ok(latencyEvidence.marks.some((mark) => mark.flow === "fallback" && mark.stage === "operator_notified"));
     assert.ok(latencyEvidence.marks.some((mark) => mark.flow === "runtime_failure" && mark.stage === "operator_notified"));
+
+    const validationReport = JSON.parse(await readFile(path.join(outDir, "bundle-validation-report.json"), "utf8")) as {
+      status: string;
+      checks: Record<string, boolean>;
+      constraints: { liveTelephony: string; providerCredentials: string; localAsr: string };
+    };
+    assert.equal(validationReport.status, "ready_for_conversation_agent_evals");
+    assert.ok(Object.values(validationReport.checks).every(Boolean));
+    assert.equal(validationReport.constraints.liveTelephony, "mocked_not_used");
 
     const wav = await readFile(path.join(outDir, "media", "caller-capture.wav"));
     assert.equal(wav.subarray(0, 4).toString("ascii"), "RIFF");
@@ -94,7 +105,7 @@ test("agentic call center proof bundle emits ConversationAgentEvals-ready media 
     assert.ok(assertRequest.evidence.call_media.every((artifact) => artifact.kind === "call_media" && artifact.readiness === "ready"));
     assert.deepEqual(
       assertRequest.evidence.additional_artifacts.map((artifact) => artifact.artifact_id),
-      ["agentic-call-center-latency-evidence", "local-stt-v1-contract-evidence"],
+      ["agentic-call-center-latency-evidence", "local-stt-v1-contract-evidence", "agentic-call-center-bundle-validation-report"],
     );
     assert.equal(assertRequest.evidence.additional_artifacts[0].kind, "report");
     assert.ok(assertRequest.evidence.additional_artifacts.every((artifact) => artifact.readiness === "ready"));

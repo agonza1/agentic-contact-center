@@ -340,6 +340,36 @@ function localSttEvidence({ audioPath, transcriptText }) {
   };
 }
 
+function bundleValidationReport(proof, transcriptText) {
+  const scriptedMarks = proof.scripted.checkpoints.wrapped.latencyMarks;
+  const fallbackMarks = proof.fallback.checkpoint.latencyMarks;
+  const runtimeFailureMarks = proof.runtimeFailure.checkpoint.latencyMarks;
+
+  return {
+    schemaVersion: 1,
+    status: "ready_for_conversation_agent_evals",
+    checks: {
+      scriptedWrapComplete: proof.summary.scripted.outcome === "scripted_wrap_complete",
+      failClosedFallbackComplete: proof.summary.fallback.outcome === "fail_closed_handoff",
+      runtimeFailureFallbackComplete: proof.summary.runtimeFailure.outcome === "runtime_failure_fail_closed_handoff",
+      mockedCredentialsOnly: proof.health.pipecatFlow.credentialsMode === "mocked",
+      localRuntimeMode: proof.health.pipecatFlow.prototypeMode === "pipecat_local_runtime",
+      transcriptHasCallerTurns: transcriptText.includes("CALLER:"),
+      latencyEvidenceCoversAllFlows: scriptedMarks.length > 0 && fallbackMarks.length > 0 && runtimeFailureMarks.length > 0,
+    },
+    handoffReadiness: {
+      conversationAgentEvalsRequest: "conversation-agent-evals-assert-request.json",
+      expectedTransport: "http_sidecar",
+      expectedLocalBaseUrl: "http://127.0.0.1:8091",
+    },
+    constraints: {
+      liveTelephony: "mocked_not_used",
+      providerCredentials: "not_used",
+      localAsr: "contract_replay_with_seeded_transcript",
+    },
+  };
+}
+
 async function main() {
   const proofPath = path.resolve(process.cwd(), argValue("--proof") || "artifacts/demo-proof-latest.json");
   const outDir = path.resolve(process.cwd(), argValue("--out-dir") || "artifacts/agentic-call-center-demo");
@@ -368,6 +398,7 @@ async function main() {
   const wrapScreenshotPath = path.join(screenshotDir, "operator-console-wrap.svg");
   const recordingPath = path.join(recordingDir, "operator-console-demo.gif");
   const localSttEvidencePath = path.join(outDir, "local-stt-v1-evidence.json");
+  const validationReportPath = path.join(outDir, "bundle-validation-report.json");
 
   await writeFile(transcriptPath, transcriptText, "utf8");
   await writeJsonArtifact(actionTracePath, proofActionTrace(proof));
@@ -379,6 +410,7 @@ async function main() {
   await writeFile(wrapScreenshotPath, screenshotSvg({ title: "Operator Console - Wrapped Call", proof, call: proof.scripted.checkpoints.wrapped }), "utf8");
   await writeFile(recordingPath, gifBuffer());
   await writeJsonArtifact(localSttEvidencePath, localSttEvidence({ audioPath, transcriptText }));
+  await writeJsonArtifact(validationReportPath, bundleValidationReport(proof, transcriptText));
 
   const assertRunCreateRequest = {
     spec_ref: {
@@ -456,6 +488,11 @@ async function main() {
           kind: "manifest",
           mimeType: "application/json",
         }),
+        await buildArtifactPointer(validationReportPath, {
+          artifactId: "agentic-call-center-bundle-validation-report",
+          kind: "report",
+          mimeType: "application/json",
+        }),
       ],
       provenance: {
         source_repo: "agonza1/agentic-contact-center",
@@ -527,6 +564,7 @@ async function main() {
       screenshots: [relativeArtifactPath(policyHoldScreenshotPath), relativeArtifactPath(wrapScreenshotPath)],
       videoRecording: relativeArtifactPath(recordingPath),
       localSttEvidence: relativeArtifactPath(localSttEvidencePath),
+      validationReport: relativeArtifactPath(validationReportPath),
       conversationAgentEvalsRequest: relativeArtifactPath(assertRequestPath),
     },
     artifactIntegrity: [
@@ -541,6 +579,7 @@ async function main() {
       await buildManifestArtifact(wrapScreenshotPath, { artifactId: "operator-console-wrap-screenshot", kind: "call_media" }),
       await buildManifestArtifact(recordingPath, { artifactId: "operator-console-demo-recording", kind: "call_media" }),
       await buildManifestArtifact(localSttEvidencePath, { artifactId: "local-stt-v1-contract-evidence", kind: "manifest" }),
+      await buildManifestArtifact(validationReportPath, { artifactId: "agentic-call-center-bundle-validation-report", kind: "report" }),
       await buildManifestArtifact(assertRequestPath, { artifactId: "conversation-agent-evals-assert-request", kind: "assert_request" }),
     ],
     outcomes: proof.summary,
