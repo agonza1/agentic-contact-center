@@ -50,12 +50,14 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         localSttMessages: Array<{ type: string; version?: string; byteLength?: number }>;
         relayEvents: Array<{ type: string; audioBase64?: string }>;
         diagnostics: Array<{ type: string; relaySessionId: string; sessionId: string }>;
+        latencyMarks: Array<{ name: string; elapsedMs: number; budgetMs: number; withinBudget: boolean }>;
       };
       closeEvidence: {
         state: string;
         relayEvents: Array<{ type: string; reason?: string }>;
         localSttMessages: Array<{ type: string }>;
         diagnostics: Array<{ type: string; sessionId: string; relaySessionId: string; reason?: string }>;
+        latencyMarks: Array<{ name: string; elapsedMs: number; budgetMs: number; withinBudget: boolean }>;
       };
       interruptionEvidence: {
         state: string;
@@ -82,6 +84,14 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
     assert.equal(payload.evidence.localSttMessages[0].version, "local-stt.v1");
     assert.equal(payload.evidence.localSttMessages[1].byteLength, 8);
     assert.deepEqual(payload.evidence.relayEvents.map((event) => event.type), ["audio"]);
+    assert.deepEqual(
+      payload.evidence.latencyMarks.map((mark) => [mark.name, mark.withinBudget]),
+      [
+        ["audio_ingested", true],
+        ["transcript_final", true],
+        ["output_first_audio", true],
+      ],
+    );
     assert.ok(
       payload.evidence.diagnostics.every(
         (event) => event.relaySessionId === "local-rt-http-proof" && event.sessionId === "local-rt-http-proof",
@@ -103,6 +113,12 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       sessionId: "local-rt-http-proof",
       relaySessionId: "local-rt-http-proof",
       reason: "complete",
+    });
+    assert.deepEqual(payload.closeEvidence.latencyMarks.at(-1), {
+      name: "session_closed",
+      elapsedMs: 150,
+      budgetMs: 1000,
+      withinBudget: true,
     });
     assert.equal(payload.interruptionEvidence.state, "listening");
     assert.equal(payload.interruptionEvidence.envelope.relaySessionId, "local-rt-http-interrupt-proof");

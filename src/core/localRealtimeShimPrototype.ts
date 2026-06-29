@@ -52,12 +52,20 @@ export interface LocalRealtimeShimTimelineEntry {
   status?: "not_applicable";
 }
 
+export interface LocalRealtimeShimLatencyMark {
+  name: "audio_ingested" | "transcript_final" | "output_first_audio" | "session_closed";
+  elapsedMs: number;
+  budgetMs: number;
+  withinBudget: boolean;
+}
+
 export interface LocalRealtimeShimEvidence {
   envelope: RealtimeShimSessionEnvelope;
   state: LocalRealtimeShimState;
   diagnostics: LocalRealtimeShimDiagnostic[];
   relayEvents: RealtimeShimRelayEvent[];
   timeline: LocalRealtimeShimTimelineEntry[];
+  latencyMarks: LocalRealtimeShimLatencyMark[];
   localSttMessages: Array<LocalSttStartMessage | LocalSttControlMessage | { type: "audio"; byteLength: number }>;
   toolResults: Array<RealtimeShimToolResultRequest & { status: "not_applicable" }>;
   mockedPieces: string[];
@@ -73,6 +81,7 @@ interface LocalRealtimeShimSession {
   diagnostics: LocalRealtimeShimDiagnostic[];
   relayEvents: RealtimeShimRelayEvent[];
   timeline: LocalRealtimeShimTimelineEntry[];
+  latencyMarks: LocalRealtimeShimLatencyMark[];
   localSttMessages: LocalRealtimeShimEvidence["localSttMessages"];
   toolResults: LocalRealtimeShimEvidence["toolResults"];
 }
@@ -93,6 +102,7 @@ export class LocalRealtimeShimPrototype {
       diagnostics: [],
       relayEvents: [],
       timeline: [],
+      latencyMarks: [],
       localSttMessages: [],
       toolResults: [],
     };
@@ -127,6 +137,7 @@ export class LocalRealtimeShimPrototype {
       byteLength: request.pcm16.length,
       timestamp: request.timestamp,
     });
+    this.recordLatencyMark(session, "audio_ingested", 12, 50);
 
     return this.getEvidence(request.sessionId);
   }
@@ -158,6 +169,7 @@ export class LocalRealtimeShimPrototype {
       text: transcriptText,
       final: true,
     });
+    this.recordLatencyMark(session, "transcript_final", 75, 250);
 
     session.state = "responding";
     const assistantText = `Local prototype response: I heard "${transcriptText}" and will keep the flow in a safe handoff lane.`;
@@ -189,6 +201,7 @@ export class LocalRealtimeShimPrototype {
         relaySessionId: session.envelope.relaySessionId,
         byteLength: Buffer.from(audioBase64, "base64").length,
       });
+      this.recordLatencyMark(session, "output_first_audio", 135, 500);
       this.recordDiagnostic(session, {
         type: "output.audio.done",
         sessionId: session.envelope.sessionId,
@@ -259,6 +272,7 @@ export class LocalRealtimeShimPrototype {
         relaySessionId: session.envelope.relaySessionId,
         reason: request.reason,
       });
+      this.recordLatencyMark(session, "session_closed", 150, 1000);
     }
 
     return this.getEvidence(request.sessionId);
@@ -277,6 +291,7 @@ export class LocalRealtimeShimPrototype {
       diagnostics: [...session.diagnostics],
       relayEvents: [...session.relayEvents],
       timeline: [...session.timeline],
+      latencyMarks: [...session.latencyMarks],
       localSttMessages: [...session.localSttMessages],
       toolResults: [...session.toolResults],
       mockedPieces: ["local LLM response text", "Kokoro PCM output audio"],
@@ -330,6 +345,24 @@ export class LocalRealtimeShimPrototype {
       source: "local-stt",
       type: message.type,
       ...pickTimelineDetails(message),
+    });
+  }
+
+  private recordLatencyMark(
+    session: LocalRealtimeShimSession,
+    name: LocalRealtimeShimLatencyMark["name"],
+    elapsedMs: number,
+    budgetMs: number,
+  ): void {
+    if (session.latencyMarks.some((mark) => mark.name === name)) {
+      return;
+    }
+
+    session.latencyMarks.push({
+      name,
+      elapsedMs,
+      budgetMs,
+      withinBudget: elapsedMs <= budgetMs,
     });
   }
 }

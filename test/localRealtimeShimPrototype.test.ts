@@ -71,6 +71,11 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
   });
   assert.equal(evidence.timeline.find((event) => event.type === "transcript.done")?.final, true);
   assert.equal(evidence.timeline.find((event) => event.type === "output.audio.delta")?.byteLength, 8);
+  assert.deepEqual(evidence.latencyMarks, [
+    { name: "audio_ingested", elapsedMs: 12, budgetMs: 50, withinBudget: true },
+    { name: "transcript_final", elapsedMs: 75, budgetMs: 250, withinBudget: true },
+    { name: "output_first_audio", elapsedMs: 135, budgetMs: 500, withinBudget: true },
+  ]);
   assert.deepEqual(evidence.relayEvents, [
     {
       relaySessionId: "local-rt-proof",
@@ -165,6 +170,13 @@ test("local realtime shim prototype models barge-in clear and idempotent close",
 
   assert.equal(closed.state, "closed");
   assert.equal(closed.relayEvents.filter((event) => event.type === "close").length, 1);
+  assert.deepEqual(closed.latencyMarks.at(-1), {
+    name: "session_closed",
+    elapsedMs: 150,
+    budgetMs: 1000,
+    withinBudget: true,
+  });
+  assert.deepEqual(closedAgain.latencyMarks, closed.latencyMarks);
   assert.deepEqual(closedAgain.relayEvents, closed.relayEvents);
   assert.throws(() => shim.appendAudio({ sessionId: envelope.sessionId, audioBase64 }), /closed/);
 });
