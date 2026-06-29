@@ -31,6 +31,7 @@ export type LocalRealtimeShimDiagnostic =
   | { type: "input.audio.delta"; sessionId: string; relaySessionId: string; byteLength: number; timestamp?: number }
   | { type: "transcript.delta"; sessionId: string; relaySessionId: string; text: string; final: false }
   | { type: "transcript.done"; sessionId: string; relaySessionId: string; text: string; final: true }
+  | { type: "output.text.delta"; sessionId: string; relaySessionId: string; text: string }
   | { type: "output.text.done"; sessionId: string; relaySessionId: string; text: string }
   | { type: "output.audio.started"; sessionId: string; relaySessionId: string }
   | { type: "output.audio.delta"; sessionId: string; relaySessionId: string; byteLength: number }
@@ -160,6 +161,12 @@ export class LocalRealtimeShimPrototype {
 
     session.state = "responding";
     const assistantText = `Local prototype response: I heard "${transcriptText}" and will keep the flow in a safe handoff lane.`;
+    this.recordDiagnostic(session, {
+      type: "output.text.delta",
+      sessionId: session.envelope.sessionId,
+      relaySessionId: session.envelope.relaySessionId,
+      text: assistantText,
+    });
     this.recordDiagnostic(session, {
       type: "output.text.done",
       sessionId: session.envelope.sessionId,
