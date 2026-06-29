@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 
 import { compareTimestamps, getAttentionMetadata } from "../core/attention";
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
+import { LocalRealtimeShimPrototype } from "../core/localRealtimeShimPrototype";
 import { getPipecatPrototypeHealth, SCRIPTED_CALLER_TURNS } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
 import type {
@@ -30,6 +31,27 @@ const maxTranscriptPageLimit = 100;
 const maxLatencyMarkPageLimit = 100;
 const maxCallListPageLimit = 100;
 const operatorConsoleRefreshIntervalMs = 5000;
+
+function buildRealtimeShimProofPayload(): object {
+  const shim = new LocalRealtimeShimPrototype();
+  const envelope = shim.createSession({ relaySessionId: "local-rt-http-proof" });
+  const audioBase64 = Buffer.from([0, 0, 1, 0, 2, 0, 3, 0]).toString("base64");
+
+  shim.appendAudio({ sessionId: envelope.sessionId, audioBase64, timestamp: 42 });
+  const evidence = shim.finalizeTurn({
+    sessionId: envelope.sessionId,
+    transcriptText: "Can I get a retention credit?",
+  });
+
+  return {
+    ok: true,
+    route: "/api/realtime-shim/proof",
+    issue: "agonza1/agentic-contact-center#85",
+    rpcBoundary: "gateway-relay",
+    localSttContract: "local-stt.v1",
+    evidence,
+  };
+}
 
 const operatorSteerActions: OperatorSteerAction[] = [
   "approve_offer",
@@ -1719,6 +1741,11 @@ async function routeRequest(
       runtimeSeams,
       pipecatFlow: getPipecatPrototypeHealth(),
     });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/realtime-shim/proof") {
+    writeJson(response, 200, buildRealtimeShimProofPayload());
     return;
   }
 
