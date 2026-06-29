@@ -67,6 +67,14 @@ export interface LocalRealtimeShimLatencyMark {
 export interface LocalRealtimeShimEvidence {
   envelope: RealtimeShimSessionEnvelope;
   state: LocalRealtimeShimState;
+  audioInput: {
+    relayEncoding: RealtimeShimSessionEnvelope["audio"]["inputEncoding"];
+    relaySampleRateHz: RealtimeShimSessionEnvelope["audio"]["inputSampleRateHz"];
+    localSttSampleRateHz: LocalSttStartMessage["audio"]["sample_rate"];
+    chunks: number;
+    bytesReceived: number;
+    lastTimestamp?: number;
+  };
   diagnostics: LocalRealtimeShimDiagnostic[];
   relayEvents: RealtimeShimRelayEvent[];
   timeline: LocalRealtimeShimTimelineEntry[];
@@ -81,6 +89,8 @@ interface LocalRealtimeShimSession {
   envelope: RealtimeShimSessionEnvelope;
   state: LocalRealtimeShimState;
   audioBytesReceived: number;
+  audioChunksReceived: number;
+  lastAudioTimestamp?: number;
   sttStarted: boolean;
   outputCancelled: boolean;
   diagnostics: LocalRealtimeShimDiagnostic[];
@@ -102,6 +112,7 @@ export class LocalRealtimeShimPrototype {
       envelope,
       state: "idle",
       audioBytesReceived: 0,
+      audioChunksReceived: 0,
       sttStarted: false,
       outputCancelled: false,
       diagnostics: [],
@@ -134,6 +145,8 @@ export class LocalRealtimeShimPrototype {
     }
 
     session.audioBytesReceived += request.pcm16.length;
+    session.audioChunksReceived += 1;
+    session.lastAudioTimestamp = request.timestamp;
     this.recordLocalSttMessage(session, { type: "audio", byteLength: request.pcm16.length });
     this.recordDiagnostic(session, {
       type: "input.audio.delta",
@@ -323,6 +336,14 @@ export class LocalRealtimeShimPrototype {
     return {
       envelope: session.envelope,
       state: session.state,
+      audioInput: {
+        relayEncoding: session.envelope.audio.inputEncoding,
+        relaySampleRateHz: session.envelope.audio.inputSampleRateHz,
+        localSttSampleRateHz: buildLocalSttStartMessage().audio.sample_rate,
+        chunks: session.audioChunksReceived,
+        bytesReceived: session.audioBytesReceived,
+        ...(session.lastAudioTimestamp !== undefined ? { lastTimestamp: session.lastAudioTimestamp } : {}),
+      },
       diagnostics: [...session.diagnostics],
       relayEvents: [...session.relayEvents],
       timeline: [...session.timeline],

@@ -47,6 +47,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       evidence: {
         state: string;
         envelope: { provider: string; transport: string; relaySessionId: string; sessionId: string };
+        audioInput: { relayEncoding: string; relaySampleRateHz: number; localSttSampleRateHz: number; chunks: number; bytesReceived: number; lastTimestamp?: number };
         localSttMessages: Array<{ type: string; version?: string; byteLength?: number }>;
         relayEvents: Array<{ type: string; audioBase64?: string }>;
         diagnostics: Array<{ type: string; relaySessionId: string; sessionId: string }>;
@@ -77,6 +78,14 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
     assert.equal(payload.evidence.envelope.provider, "local-realtime-shim");
     assert.equal(payload.evidence.envelope.transport, "gateway-relay");
     assert.equal(payload.evidence.envelope.relaySessionId, "local-rt-http-proof");
+    assert.deepEqual(payload.evidence.audioInput, {
+      relayEncoding: "pcm16",
+      relaySampleRateHz: 24000,
+      localSttSampleRateHz: 16000,
+      chunks: 1,
+      bytesReceived: 8,
+      lastTimestamp: 42,
+    });
     assert.deepEqual(
       payload.evidence.localSttMessages.map((message) => message.type),
       ["start", "audio", "finalize"],

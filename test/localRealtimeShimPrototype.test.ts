@@ -15,6 +15,14 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
   });
 
   assert.equal(evidence.state, "speaking");
+  assert.deepEqual(evidence.audioInput, {
+    relayEncoding: "pcm16",
+    relaySampleRateHz: 24000,
+    localSttSampleRateHz: 16000,
+    chunks: 1,
+    bytesReceived: 8,
+    lastTimestamp: 42,
+  });
   assert.deepEqual(evidence.localSttMessages.slice(0, 3), [
     {
       type: "start",
@@ -162,6 +170,13 @@ test("local realtime shim prototype models barge-in clear and idempotent close",
   const resumed = shim.finalizeTurn({ sessionId: envelope.sessionId, transcriptText: "I am still here" });
 
   assert.equal(resumed.state, "speaking");
+  assert.deepEqual(resumed.audioInput, {
+    relayEncoding: "pcm16",
+    relaySampleRateHz: 24000,
+    localSttSampleRateHz: 16000,
+    chunks: 2,
+    bytesReceived: 8,
+  });
   assert.equal(resumed.relayEvents.filter((event) => event.type === "audio").length, 1);
   assert.equal(resumed.diagnostics.at(-2)?.type, "output.audio.delta");
 
