@@ -180,3 +180,73 @@ test("local realtime shim prototype models barge-in clear and idempotent close",
   assert.deepEqual(closedAgain.relayEvents, closed.relayEvents);
   assert.throws(() => shim.appendAudio({ sessionId: envelope.sessionId, audioBase64 }), /closed/);
 });
+
+test("local realtime shim prototype emits bounded Local STT error evidence", () => {
+  const shim = new LocalRealtimeShimPrototype();
+  const envelope = shim.createSession({ relaySessionId: "local-rt-error" });
+  const audioBase64 = Buffer.from([7, 0, 8, 0]).toString("base64");
+
+  shim.appendAudio({ sessionId: envelope.sessionId, audioBase64 });
+  const retryable = shim.recordLocalSttError({
+    sessionId: envelope.sessionId,
+    code: "stream_warning",
+    message: "local stt partial frame arrived late",
+    retryable: true,
+  });
+
+  assert.equal(retryable.state, "listening");
+  assert.deepEqual(retryable.relayEvents.at(-1), {
+    relaySessionId: "local-rt-error",
+    sessionId: "local-rt-error",
+    type: "error",
+    code: "stream_warning",
+    message: "local stt partial frame arrived late",
+    retryable: true,
+  });
+  assert.deepEqual(retryable.diagnostics.at(-1), {
+    type: "session.error",
+    sessionId: "local-rt-error",
+    relaySessionId: "local-rt-error",
+    code: "stream_warning",
+    message: "local stt partial frame arrived late",
+    retryable: true,
+  });
+
+  const fatal = shim.recordLocalSttError({
+    sessionId: envelope.sessionId,
+    code: "stt_disconnected",
+    message: "local stt websocket closed before final transcript",
+  });
+
+  assert.equal(fatal.state, "closed");
+  assert.deepEqual(fatal.relayEvents.slice(-2), [
+    {
+      relaySessionId: "local-rt-error",
+      sessionId: "local-rt-error",
+      type: "error",
+      code: "stt_disconnected",
+      message: "local stt websocket closed before final transcript",
+      retryable: false,
+    },
+    {
+      relaySessionId: "local-rt-error",
+      sessionId: "local-rt-error",
+      type: "close",
+      reason: "error",
+    },
+  ]);
+  assert.deepEqual(
+    fatal.timeline.slice(-5).map((event) => [event.source, event.type, event.code ?? event.reason]),
+    [
+      ["relay", "error", "stt_disconnected"],
+      ["diagnostic", "session.error", "stt_disconnected"],
+      ["local-stt", "close", undefined],
+      ["relay", "close", "error"],
+      ["diagnostic", "session.closed", "error"],
+    ],
+  );
+  assert.throws(
+    () => shim.recordLocalSttError({ sessionId: envelope.sessionId, code: "again", message: "closed" }),
+    /closed/,
+  );
+});

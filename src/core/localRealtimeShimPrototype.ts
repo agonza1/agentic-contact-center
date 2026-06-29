@@ -9,6 +9,7 @@ import {
   createRealtimeShimClearRelayEvent,
   createRealtimeShimCloseRelayEvent,
   createRealtimeShimCloseRequest,
+  createRealtimeShimErrorRelayEvent,
   createRealtimeShimToolResultRequest,
   createRealtimeShimSessionEnvelope,
   type LocalSttControlMessage,
@@ -38,6 +39,7 @@ export type LocalRealtimeShimDiagnostic =
   | { type: "output.audio.done"; sessionId: string; relaySessionId: string; chunks: number }
   | { type: "tool.result.received"; sessionId: string; relaySessionId: string; toolCallId: string; status: "not_applicable" }
   | { type: "turn.cancelled"; sessionId: string; relaySessionId: string; reason: "barge-in" | "cancelled" | "error" }
+  | { type: "session.error"; sessionId: string; relaySessionId: string; code: string; message: string; retryable: boolean }
   | { type: "session.closed"; sessionId: string; relaySessionId: string; reason: "client" | "complete" | "error" };
 
 export interface LocalRealtimeShimTimelineEntry {
@@ -50,6 +52,9 @@ export interface LocalRealtimeShimTimelineEntry {
   reason?: "barge-in" | "cancelled" | "error" | "client" | "complete";
   toolCallId?: string;
   status?: "not_applicable";
+  code?: string;
+  message?: string;
+  retryable?: boolean;
 }
 
 export interface LocalRealtimeShimLatencyMark {
@@ -254,6 +259,36 @@ export class LocalRealtimeShimPrototype {
     return this.getEvidence(options.sessionId);
   }
 
+  recordLocalSttError(options: {
+    sessionId: string;
+    code: string;
+    message: string;
+    retryable?: boolean;
+  }): LocalRealtimeShimEvidence {
+    const session = this.requireOpenSession(options.sessionId);
+    const relayError = createRealtimeShimErrorRelayEvent(session.envelope, options);
+
+    if (relayError.type !== "error") {
+      throw new Error("Expected realtime shim error relay event");
+    }
+
+    this.recordRelayEvent(session, relayError);
+    this.recordDiagnostic(session, {
+      type: "session.error",
+      sessionId: session.envelope.sessionId,
+      relaySessionId: session.envelope.relaySessionId,
+      code: relayError.code,
+      message: relayError.message,
+      retryable: relayError.retryable,
+    });
+
+    if (!relayError.retryable) {
+      this.closeSession({ sessionId: options.sessionId, reason: "error" });
+    }
+
+    return this.getEvidence(options.sessionId);
+  }
+
   closeSession(options: { sessionId: string; reason?: "client" | "complete" | "error" }): LocalRealtimeShimEvidence {
     const request = createRealtimeShimCloseRequest(options);
     const session = this.sessions.get(request.sessionId);
@@ -380,5 +415,8 @@ function pickTimelineDetails(
     ...("reason" in event ? { reason: event.reason } : {}),
     ...("toolCallId" in event ? { toolCallId: event.toolCallId } : {}),
     ...("status" in event ? { status: event.status } : {}),
+    ...("code" in event ? { code: event.code } : {}),
+    ...("message" in event ? { message: event.message } : {}),
+    ...("retryable" in event ? { retryable: event.retryable } : {}),
   };
 }

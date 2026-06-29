@@ -84,6 +84,14 @@ export type RealtimeShimRelayEvent =
       sessionId: string;
       type: "close";
       reason: "client" | "complete" | "error";
+    }
+  | {
+      relaySessionId: string;
+      sessionId: string;
+      type: "error";
+      code: string;
+      message: string;
+      retryable: boolean;
     };
 
 export const REALTIME_SHIM_RPCS: RealtimeShimRpc[] = [
@@ -259,6 +267,20 @@ export function createRealtimeShimCloseRelayEvent(
     sessionId: envelope.sessionId,
     type: "close",
     reason,
+  };
+}
+
+export function createRealtimeShimErrorRelayEvent(
+  envelope: Pick<RealtimeShimSessionEnvelope, "relaySessionId" | "sessionId">,
+  options: { code: string; message: string; retryable?: boolean },
+): RealtimeShimRelayEvent {
+  return {
+    relaySessionId: envelope.relaySessionId,
+    sessionId: envelope.sessionId,
+    type: "error",
+    code: normalizeRealtimeShimRequiredString(options.code, "code"),
+    message: normalizeRealtimeShimRequiredString(options.message, "message"),
+    retryable: options.retryable ?? false,
   };
 }
 
