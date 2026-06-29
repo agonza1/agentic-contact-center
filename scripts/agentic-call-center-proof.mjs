@@ -11,6 +11,18 @@ function argValue(flag) {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
+function generatedAtTimestamp() {
+  const explicitValue = argValue("--generated-at") || process.env.SOURCE_DATE_EPOCH;
+  if (!explicitValue) {
+    return new Date().toISOString();
+  }
+
+  const parsedValue = /^\d+$/.test(explicitValue) ? Number(explicitValue) * 1000 : explicitValue;
+  const date = new Date(parsedValue);
+  assert.ok(!Number.isNaN(date.valueOf()), "--generated-at or SOURCE_DATE_EPOCH must be an ISO timestamp or Unix epoch seconds");
+  return date.toISOString();
+}
+
 function relativeArtifactPath(filePath) {
   return path.relative(repoRoot, filePath).replaceAll(path.sep, "/");
 }
@@ -373,6 +385,7 @@ function bundleValidationReport(proof, transcriptText) {
 async function main() {
   const proofPath = path.resolve(process.cwd(), argValue("--proof") || "artifacts/demo-proof-latest.json");
   const outDir = path.resolve(process.cwd(), argValue("--out-dir") || "artifacts/agentic-call-center-demo");
+  const generatedAt = generatedAtTimestamp();
   const proof = JSON.parse(await readFile(proofPath, "utf8"));
 
   assert.equal(proof.summary.scripted.outcome, "scripted_wrap_complete");
@@ -533,7 +546,7 @@ async function main() {
 
   const manifest = {
     schemaVersion: 1,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     workboardCard: "5b0f0dd6-fc5f-4806-a2ed-438fe722e9da",
     githubIssue: "agonza1/agentic-contact-center#60",
     coordinatedProofIssue: "agonza1/agentic-contact-center#64",

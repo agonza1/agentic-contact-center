@@ -22,7 +22,7 @@ test("agentic call center proof bundle emits ConversationAgentEvals-ready media 
 
     const { stdout } = await execFileAsync(
       process.execPath,
-      ["scripts/agentic-call-center-proof.mjs", "--proof", sourceProofPath, "--out-dir", outDir],
+      ["scripts/agentic-call-center-proof.mjs", "--proof", sourceProofPath, "--out-dir", outDir, "--generated-at", "2026-06-29T17:00:00.000Z"],
       { cwd: repoRoot },
     );
 
@@ -32,11 +32,13 @@ test("agentic call center proof bundle emits ConversationAgentEvals-ready media 
     assert.match(scriptSummary.videoRecording, /operator-console-demo\.gif$/);
 
     const manifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
+      generatedAt: string;
       runtimeModeLabels: { flow: string; credentialsMode: string; localAsr: string };
       artifacts: { audioCapture: string; screenshots: string[]; videoRecording: string; latencyEvidence: string; validationReport: string; conversationAgentEvalsRequest: string };
       artifactIntegrity: Array<{ artifactId: string; kind: string; path: string; sha256: string; sizeBytes: number; readiness: string }>;
       limitations: string[];
     };
+    assert.equal(manifest.generatedAt, "2026-06-29T17:00:00.000Z");
     assert.equal(manifest.runtimeModeLabels.flow, "pipecat_local_runtime");
     assert.equal(manifest.runtimeModeLabels.credentialsMode, "mocked");
     assert.match(manifest.runtimeModeLabels.localAsr, /local-stt\.v1/);

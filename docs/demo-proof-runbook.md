@@ -85,6 +85,8 @@ npm run proof:pipecat -- --out artifacts/agentic-call-center-demo/source-proof.j
 npm run proof:bundle -- --proof artifacts/agentic-call-center-demo/source-proof.json --out-dir artifacts/agentic-call-center-demo
 ```
 
+For a reproducible QA handoff timestamp, add `--generated-at 2026-06-29T17:00:00.000Z` or set `SOURCE_DATE_EPOCH` before running `npm run proof:bundle`.
+
 Inspect `artifacts/agentic-call-center-demo/proof-bundle-manifest.json` and confirm it names:
 
 - runtime labels: `pipecat_local_runtime`, `pipecat-ai`, `local_process`, `mocked`, and `rtc-asr local-stt.v1 contract replay`
