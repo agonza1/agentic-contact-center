@@ -13,7 +13,8 @@
     "health:smoke": "node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health",
     "docker:smoke": "sh -c 'cleanup(){ docker compose down --remove-orphans; }; trap cleanup EXIT; docker compose up --build -d app && node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health'",
     "pipecat:check": "python3 scripts/pipecat-local-runtime.py --self-test",
-    "proof:pipecat": "npm run pipecat:check && npm run proof --"
+    "proof:pipecat": "npm run pipecat:check && npm run proof --",
+    "proof:bundle": "node scripts/agentic-call-center-proof.mjs"
   },
   "engines": {
     "node": ">=20"
