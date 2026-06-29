@@ -33,6 +33,7 @@ export type LocalRealtimeShimDiagnostic =
   | { type: "transcript.done"; sessionId: string; relaySessionId: string; text: string; final: true }
   | { type: "output.text.done"; sessionId: string; relaySessionId: string; text: string }
   | { type: "output.audio.started"; sessionId: string; relaySessionId: string }
+  | { type: "output.audio.delta"; sessionId: string; relaySessionId: string; byteLength: number }
   | { type: "output.audio.done"; sessionId: string; relaySessionId: string; chunks: number }
   | { type: "tool.result.received"; sessionId: string; relaySessionId: string; toolCallId: string; status: "not_applicable" }
   | { type: "turn.cancelled"; sessionId: string; relaySessionId: string; reason: "barge-in" | "cancelled" | "error" }
@@ -137,6 +138,7 @@ export class LocalRealtimeShimPrototype {
       session.sttStarted = true;
     }
 
+    session.outputCancelled = false;
     session.state = "finalizing";
     this.recordLocalSttMessage(session, buildLocalSttFinalizeMessage());
 
@@ -174,6 +176,12 @@ export class LocalRealtimeShimPrototype {
       });
       const audioBase64 = Buffer.from([0, 0, 1, 0, 2, 0, 3, 0]).toString("base64");
       this.recordRelayEvent(session, createRealtimeShimAudioRelayEvent(session.envelope, audioBase64));
+      this.recordDiagnostic(session, {
+        type: "output.audio.delta",
+        sessionId: session.envelope.sessionId,
+        relaySessionId: session.envelope.relaySessionId,
+        byteLength: Buffer.from(audioBase64, "base64").length,
+      });
       this.recordDiagnostic(session, {
         type: "output.audio.done",
         sessionId: session.envelope.sessionId,
