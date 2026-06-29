@@ -38,6 +38,7 @@ export type LocalRealtimeShimDiagnostic =
   | { type: "output.audio.delta"; sessionId: string; relaySessionId: string; byteLength: number }
   | { type: "output.audio.done"; sessionId: string; relaySessionId: string; chunks: number }
   | { type: "tool.result.received"; sessionId: string; relaySessionId: string; toolCallId: string; status: "not_applicable" }
+  | { type: "input.cancelled"; sessionId: string; relaySessionId: string; reason: "client" }
   | { type: "turn.cancelled"; sessionId: string; relaySessionId: string; reason: "barge-in" | "cancelled" | "error" }
   | { type: "session.error"; sessionId: string; relaySessionId: string; code: string; message: string; retryable: boolean }
   | { type: "session.closed"; sessionId: string; relaySessionId: string; reason: "client" | "complete" | "error" };
@@ -269,6 +270,12 @@ export class LocalRealtimeShimPrototype {
     const session = this.requireOpenSession(options.sessionId);
     this.recordLocalSttMessage(session, buildLocalSttCancelMessage());
     session.state = "idle";
+    this.recordDiagnostic(session, {
+      type: "input.cancelled",
+      sessionId: session.envelope.sessionId,
+      relaySessionId: session.envelope.relaySessionId,
+      reason: "client",
+    });
     return this.getEvidence(options.sessionId);
   }
 

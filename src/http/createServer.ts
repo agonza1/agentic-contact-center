@@ -36,6 +36,7 @@ function buildRealtimeShimProofPayload(): object {
   const shim = new LocalRealtimeShimPrototype();
   const envelope = shim.createSession({ relaySessionId: "local-rt-http-proof" });
   const interruptEnvelope = shim.createSession({ relaySessionId: "local-rt-http-interrupt-proof" });
+  const inputCancelEnvelope = shim.createSession({ relaySessionId: "local-rt-http-input-cancel-proof" });
   const audioBase64 = Buffer.from([0, 0, 1, 0, 2, 0, 3, 0]).toString("base64");
 
   shim.appendAudio({ sessionId: envelope.sessionId, audioBase64, timestamp: 42 });
@@ -58,6 +59,9 @@ function buildRealtimeShimProofPayload(): object {
     reason: "barge-in",
   });
 
+  shim.appendAudio({ sessionId: inputCancelEnvelope.sessionId, audioBase64, timestamp: 126 });
+  const inputCancelEvidence = shim.cancelInput({ sessionId: inputCancelEnvelope.sessionId });
+
   return {
     ok: true,
     route: "/api/realtime-shim/proof",
@@ -67,6 +71,7 @@ function buildRealtimeShimProofPayload(): object {
     evidence,
     closeEvidence,
     interruptionEvidence,
+    inputCancelEvidence,
   };
 }
 

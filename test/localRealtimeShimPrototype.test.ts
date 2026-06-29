@@ -196,6 +196,30 @@ test("local realtime shim prototype models barge-in clear and idempotent close",
   assert.throws(() => shim.appendAudio({ sessionId: envelope.sessionId, audioBase64 }), /closed/);
 });
 
+test("local realtime shim prototype cancels input without final transcript dispatch", () => {
+  const shim = new LocalRealtimeShimPrototype();
+  const envelope = shim.createSession({ relaySessionId: "local-rt-input-cancel" });
+  const audioBase64 = Buffer.from([9, 0, 10, 0]).toString("base64");
+
+  shim.appendAudio({ sessionId: envelope.sessionId, audioBase64 });
+  const cancelled = shim.cancelInput({ sessionId: envelope.sessionId });
+
+  assert.equal(cancelled.state, "idle");
+  assert.deepEqual(cancelled.localSttMessages.map((message) => message.type), ["start", "audio", "cancel"]);
+  assert.equal(cancelled.diagnostics.some((event) => event.type === "transcript.done"), false);
+  assert.equal(cancelled.diagnostics.some((event) => event.type === "output.text.done"), false);
+  assert.deepEqual(cancelled.diagnostics.at(-1), {
+    type: "input.cancelled",
+    sessionId: "local-rt-input-cancel",
+    relaySessionId: "local-rt-input-cancel",
+    reason: "client",
+  });
+  assert.deepEqual(cancelled.timeline.slice(-2), [
+    { sequence: 5, source: "local-stt", type: "cancel" },
+    { sequence: 6, source: "diagnostic", type: "input.cancelled", reason: "client" },
+  ]);
+});
+
 test("local realtime shim prototype emits bounded Local STT error evidence", () => {
   const shim = new LocalRealtimeShimPrototype();
   const envelope = shim.createSession({ relaySessionId: "local-rt-error" });

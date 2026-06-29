@@ -67,6 +67,12 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         diagnostics: Array<{ type: string; reason?: string; relaySessionId: string; sessionId: string }>;
         timeline: Array<{ source: string; type: string; reason?: string }>;
       };
+      inputCancelEvidence: {
+        state: string;
+        localSttMessages: Array<{ type: string }>;
+        diagnostics: Array<{ type: string; reason?: string; relaySessionId: string; sessionId: string }>;
+        timeline: Array<{ source: string; type: string; reason?: string }>;
+      };
     };
 
     assert.equal(payload.ok, true);
@@ -149,6 +155,26 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       [
         ["relay", "clear", "barge-in"],
         ["diagnostic", "turn.cancelled", "barge-in"],
+      ],
+    );
+    assert.equal(payload.inputCancelEvidence.state, "idle");
+    assert.deepEqual(payload.inputCancelEvidence.localSttMessages.map((message) => message.type), [
+      "start",
+      "audio",
+      "cancel",
+    ]);
+    assert.equal(payload.inputCancelEvidence.diagnostics.some((event) => event.type === "transcript.done"), false);
+    assert.deepEqual(payload.inputCancelEvidence.diagnostics.at(-1), {
+      type: "input.cancelled",
+      sessionId: "local-rt-http-input-cancel-proof",
+      relaySessionId: "local-rt-http-input-cancel-proof",
+      reason: "client",
+    });
+    assert.deepEqual(
+      payload.inputCancelEvidence.timeline.slice(-2).map((event) => [event.source, event.type, event.reason]),
+      [
+        ["local-stt", "cancel", undefined],
+        ["diagnostic", "input.cancelled", "client"],
       ],
     );
   } finally {
