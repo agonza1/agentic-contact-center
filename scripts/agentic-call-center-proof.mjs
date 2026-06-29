@@ -292,6 +292,18 @@ async function buildArtifactPointer(filePath, { artifactId, kind, mimeType, meta
   };
 }
 
+async function buildManifestArtifact(filePath, { artifactId, kind }) {
+  const stats = await stat(filePath);
+  return {
+    artifactId,
+    kind,
+    path: relativeArtifactPath(filePath),
+    sha256: await sha256File(filePath),
+    sizeBytes: stats.size,
+    readiness: "ready",
+  };
+}
+
 function localSttEvidence({ audioPath, transcriptText }) {
   const frameBytes = 640;
   const audioBytes = 16000 * 2 * 10;
@@ -517,6 +529,20 @@ async function main() {
       localSttEvidence: relativeArtifactPath(localSttEvidencePath),
       conversationAgentEvalsRequest: relativeArtifactPath(assertRequestPath),
     },
+    artifactIntegrity: [
+      await buildManifestArtifact(proofPath, { artifactId: "source-proof", kind: "source_proof" }),
+      await buildManifestArtifact(bundledProofPath, { artifactId: "agentic-call-center-proof-bundle", kind: "assert_bundle" }),
+      await buildManifestArtifact(transcriptPath, { artifactId: "agentic-call-center-transcript", kind: "transcript" }),
+      await buildManifestArtifact(actionTracePath, { artifactId: "agentic-call-center-action-trace", kind: "action_trace" }),
+      await buildManifestArtifact(latencyEvidencePath, { artifactId: "agentic-call-center-latency-evidence", kind: "report" }),
+      await buildManifestArtifact(finalStatePath, { artifactId: "agentic-call-center-final-state", kind: "final_state" }),
+      await buildManifestArtifact(audioPath, { artifactId: "caller-audio-capture-wav", kind: "call_media" }),
+      await buildManifestArtifact(policyHoldScreenshotPath, { artifactId: "operator-console-policy-hold-screenshot", kind: "call_media" }),
+      await buildManifestArtifact(wrapScreenshotPath, { artifactId: "operator-console-wrap-screenshot", kind: "call_media" }),
+      await buildManifestArtifact(recordingPath, { artifactId: "operator-console-demo-recording", kind: "call_media" }),
+      await buildManifestArtifact(localSttEvidencePath, { artifactId: "local-stt-v1-contract-evidence", kind: "manifest" }),
+      await buildManifestArtifact(assertRequestPath, { artifactId: "conversation-agent-evals-assert-request", kind: "assert_request" }),
+    ],
     outcomes: proof.summary,
     limitations: [
       "No production credentials or live telephony are used.",

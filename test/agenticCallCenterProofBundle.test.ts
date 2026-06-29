@@ -34,6 +34,7 @@ test("agentic call center proof bundle emits ConversationAgentEvals-ready media 
     const manifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
       runtimeModeLabels: { flow: string; credentialsMode: string; localAsr: string };
       artifacts: { audioCapture: string; screenshots: string[]; videoRecording: string; latencyEvidence: string; conversationAgentEvalsRequest: string };
+      artifactIntegrity: Array<{ artifactId: string; kind: string; path: string; sha256: string; sizeBytes: number; readiness: string }>;
       limitations: string[];
     };
     assert.equal(manifest.runtimeModeLabels.flow, "pipecat_local_runtime");
@@ -41,6 +42,14 @@ test("agentic call center proof bundle emits ConversationAgentEvals-ready media 
     assert.match(manifest.runtimeModeLabels.localAsr, /local-stt\.v1/);
     assert.equal(manifest.artifacts.screenshots.length, 2);
     assert.match(manifest.artifacts.latencyEvidence, /latency-evidence\.json$/);
+    assert.equal(manifest.artifactIntegrity.length, 12);
+    assert.ok(
+      manifest.artifactIntegrity.every(
+        (artifact) => artifact.readiness === "ready" && artifact.sha256.match(/^[a-f0-9]{64}$/) && artifact.sizeBytes > 0,
+      ),
+    );
+    assert.ok(manifest.artifactIntegrity.some((artifact) => artifact.artifactId === "conversation-agent-evals-assert-request" && artifact.kind === "assert_request"));
+    assert.ok(manifest.artifactIntegrity.some((artifact) => artifact.path.endsWith("media/caller-capture.wav")));
     assert.ok(manifest.limitations.some((limitation) => limitation.includes("No production credentials")));
 
     const latencyEvidence = JSON.parse(await readFile(path.join(outDir, "latency-evidence.json"), "utf8")) as {
