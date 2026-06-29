@@ -9,11 +9,13 @@ import {
   createRealtimeShimClearRelayEvent,
   createRealtimeShimCloseRelayEvent,
   createRealtimeShimCloseRequest,
+  createRealtimeShimToolResultRequest,
   createRealtimeShimSessionEnvelope,
   type LocalSttControlMessage,
   type LocalSttStartMessage,
   type RealtimeShimRelayEvent,
   type RealtimeShimSessionEnvelope,
+  type RealtimeShimToolResultRequest,
 } from "./realtimeShimContract";
 
 export type LocalRealtimeShimState =
@@ -32,6 +34,7 @@ export type LocalRealtimeShimDiagnostic =
   | { type: "output.text.done"; sessionId: string; relaySessionId: string; text: string }
   | { type: "output.audio.started"; sessionId: string; relaySessionId: string }
   | { type: "output.audio.done"; sessionId: string; relaySessionId: string; chunks: number }
+  | { type: "tool.result.received"; sessionId: string; relaySessionId: string; toolCallId: string; status: "not_applicable" }
   | { type: "turn.cancelled"; sessionId: string; relaySessionId: string; reason: "barge-in" | "cancelled" | "error" }
   | { type: "session.closed"; sessionId: string; relaySessionId: string; reason: "client" | "complete" | "error" };
 
@@ -43,6 +46,8 @@ export interface LocalRealtimeShimTimelineEntry {
   text?: string;
   final?: boolean;
   reason?: "barge-in" | "cancelled" | "error" | "client" | "complete";
+  toolCallId?: string;
+  status?: "not_applicable";
 }
 
 export interface LocalRealtimeShimEvidence {
@@ -52,6 +57,7 @@ export interface LocalRealtimeShimEvidence {
   relayEvents: RealtimeShimRelayEvent[];
   timeline: LocalRealtimeShimTimelineEntry[];
   localSttMessages: Array<LocalSttStartMessage | LocalSttControlMessage | { type: "audio"; byteLength: number }>;
+  toolResults: Array<RealtimeShimToolResultRequest & { status: "not_applicable" }>;
   mockedPieces: string[];
   limitations: string[];
 }
@@ -66,6 +72,7 @@ interface LocalRealtimeShimSession {
   relayEvents: RealtimeShimRelayEvent[];
   timeline: LocalRealtimeShimTimelineEntry[];
   localSttMessages: LocalRealtimeShimEvidence["localSttMessages"];
+  toolResults: LocalRealtimeShimEvidence["toolResults"];
 }
 
 export class LocalRealtimeShimPrototype {
@@ -85,6 +92,7 @@ export class LocalRealtimeShimPrototype {
       relayEvents: [],
       timeline: [],
       localSttMessages: [],
+      toolResults: [],
     };
 
     this.recordDiagnostic(session, {
@@ -194,6 +202,23 @@ export class LocalRealtimeShimPrototype {
     return this.getEvidence(request.sessionId);
   }
 
+  submitToolResult(options: { sessionId: string; toolCallId: string; result: unknown }): LocalRealtimeShimEvidence {
+    const request = createRealtimeShimToolResultRequest(options);
+    const session = this.requireOpenSession(request.sessionId);
+    const toolResult = { ...request, status: "not_applicable" as const };
+
+    session.toolResults.push(toolResult);
+    this.recordDiagnostic(session, {
+      type: "tool.result.received",
+      sessionId: session.envelope.sessionId,
+      relaySessionId: session.envelope.relaySessionId,
+      toolCallId: request.toolCallId,
+      status: toolResult.status,
+    });
+
+    return this.getEvidence(request.sessionId);
+  }
+
   cancelInput(options: { sessionId: string }): LocalRealtimeShimEvidence {
     const session = this.requireOpenSession(options.sessionId);
     this.recordLocalSttMessage(session, buildLocalSttCancelMessage());
@@ -238,6 +263,7 @@ export class LocalRealtimeShimPrototype {
       relayEvents: [...session.relayEvents],
       timeline: [...session.timeline],
       localSttMessages: [...session.localSttMessages],
+      toolResults: [...session.toolResults],
       mockedPieces: ["local LLM response text", "Kokoro PCM output audio"],
       limitations: [
         "rtc-asr websocket is represented by Local STT v1 message evidence, not a live sidecar connection",
@@ -304,5 +330,7 @@ function pickTimelineDetails(
     ...("text" in event ? { text: event.text } : {}),
     ...("final" in event ? { final: event.final } : {}),
     ...("reason" in event ? { reason: event.reason } : {}),
+    ...("toolCallId" in event ? { toolCallId: event.toolCallId } : {}),
+    ...("status" in event ? { status: event.status } : {}),
   };
 }

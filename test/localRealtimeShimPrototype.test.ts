@@ -76,6 +76,45 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
   ]);
   assert.deepEqual(evidence.mockedPieces, ["local LLM response text", "Kokoro PCM output audio"]);
   assert.match(evidence.limitations.join("\n"), /not a live sidecar connection/);
+  assert.deepEqual(evidence.toolResults, []);
+});
+
+test("local realtime shim prototype accepts gateway relay tool results as not applicable evidence", () => {
+  const shim = new LocalRealtimeShimPrototype();
+  const envelope = shim.createSession({ relaySessionId: "local-rt-tool" });
+
+  const evidence = shim.submitToolResult({
+    sessionId: envelope.sessionId,
+    toolCallId: "tool-call-1",
+    result: { approved: true },
+  });
+
+  assert.deepEqual(evidence.toolResults, [
+    {
+      sessionId: "local-rt-tool",
+      toolCallId: "tool-call-1",
+      result: { approved: true },
+      status: "not_applicable",
+    },
+  ]);
+  assert.deepEqual(evidence.diagnostics.at(-1), {
+    type: "tool.result.received",
+    sessionId: "local-rt-tool",
+    relaySessionId: "local-rt-tool",
+    toolCallId: "tool-call-1",
+    status: "not_applicable",
+  });
+  assert.deepEqual(evidence.timeline.at(-1), {
+    sequence: 2,
+    source: "diagnostic",
+    type: "tool.result.received",
+    toolCallId: "tool-call-1",
+    status: "not_applicable",
+  });
+  assert.throws(
+    () => shim.submitToolResult({ sessionId: envelope.sessionId, toolCallId: " ", result: null }),
+    /toolCallId is required/,
+  );
 });
 
 test("local realtime shim prototype models barge-in clear and idempotent close", () => {
