@@ -51,6 +51,12 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         relayEvents: Array<{ type: string; audioBase64?: string }>;
         diagnostics: Array<{ type: string; relaySessionId: string; sessionId: string }>;
       };
+      closeEvidence: {
+        state: string;
+        relayEvents: Array<{ type: string; reason?: string }>;
+        localSttMessages: Array<{ type: string }>;
+        diagnostics: Array<{ type: string; sessionId: string; relaySessionId: string; reason?: string }>;
+      };
       interruptionEvidence: {
         state: string;
         envelope: { relaySessionId: string; sessionId: string };
@@ -81,6 +87,23 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         (event) => event.relaySessionId === "local-rt-http-proof" && event.sessionId === "local-rt-http-proof",
       ),
     );
+    assert.equal(payload.closeEvidence.state, "closed");
+    assert.deepEqual(payload.closeEvidence.localSttMessages.map((message) => message.type), [
+      "start",
+      "audio",
+      "finalize",
+      "close",
+    ]);
+    assert.deepEqual(payload.closeEvidence.relayEvents.map((event) => [event.type, event.reason]), [
+      ["audio", undefined],
+      ["close", "complete"],
+    ]);
+    assert.deepEqual(payload.closeEvidence.diagnostics.at(-1), {
+      type: "session.closed",
+      sessionId: "local-rt-http-proof",
+      relaySessionId: "local-rt-http-proof",
+      reason: "complete",
+    });
     assert.equal(payload.interruptionEvidence.state, "listening");
     assert.equal(payload.interruptionEvidence.envelope.relaySessionId, "local-rt-http-interrupt-proof");
     assert.deepEqual(

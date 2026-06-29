@@ -43,6 +43,10 @@ function buildRealtimeShimProofPayload(): object {
     sessionId: envelope.sessionId,
     transcriptText: "Can I get a retention credit?",
   });
+  const closeEvidence = shim.closeSession({
+    sessionId: envelope.sessionId,
+    reason: "complete",
+  });
 
   shim.appendAudio({ sessionId: interruptEnvelope.sessionId, audioBase64, timestamp: 84 });
   shim.finalizeTurn({
@@ -61,6 +65,7 @@ function buildRealtimeShimProofPayload(): object {
     rpcBoundary: "gateway-relay",
     localSttContract: "local-stt.v1",
     evidence,
+    closeEvidence,
     interruptionEvidence,
   };
 }
