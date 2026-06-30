@@ -53,7 +53,18 @@ async function sipLogEvidence(filePath) {
     const parsed = JSON.parse(raw);
     entries = Array.isArray(parsed) ? parsed : [parsed];
   } catch {
-    entries = [];
+    entries = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .flatMap((line) => {
+        try {
+          const parsed = JSON.parse(line);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          return [];
+        }
+      });
   }
   const startLines = entries
     .map((entry) => typeof entry?.startLine === "string" ? entry.startLine : "")
