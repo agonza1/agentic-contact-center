@@ -112,6 +112,105 @@ function buildRealtimeShimProofPayload(): object {
   };
 }
 
+function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: unknown): object {
+  if (!isRecord(body)) {
+    return { ok: false, error: "json_object_required" };
+  }
+
+  const method = getOptionalTrimmedString(body.method);
+  const params = body.params === undefined ? {} : body.params;
+
+  if (!method) {
+    return { ok: false, error: "realtime_shim_method_required" };
+  }
+
+  if (!isRecord(params)) {
+    return { ok: false, error: "realtime_shim_params_object_required" };
+  }
+
+  try {
+    if (method === "talk.session.create") {
+      const mode = getOptionalTrimmedString(params.mode) ?? "realtime";
+      const transport = getOptionalTrimmedString(params.transport) ?? "gateway-relay";
+
+      if (mode !== "realtime" || transport !== "gateway-relay") {
+        return { ok: false, error: "realtime_shim_session_shape_invalid" };
+      }
+
+      return {
+        ok: true,
+        method,
+        result: shim.createSession({
+          brain: getOptionalTrimmedString(params.brain),
+          relaySessionId: getOptionalTrimmedString(params.relaySessionId),
+        }),
+      };
+    }
+
+    if (method === "talk.session.appendAudio") {
+      return {
+        ok: true,
+        method,
+        result: shim.appendAudio({
+          sessionId: getOptionalTrimmedString(params.sessionId) ?? "",
+          audioBase64: getOptionalTrimmedString(params.audioBase64) ?? "",
+          timestamp: typeof params.timestamp === "number" ? params.timestamp : undefined,
+        }),
+      };
+    }
+
+    if (method === "talk.session.cancelOutput") {
+      return {
+        ok: true,
+        method,
+        result: shim.cancelOutput({
+          sessionId: getOptionalTrimmedString(params.sessionId) ?? "",
+          reason: parseRealtimeShimCancelReason(params.reason),
+        }),
+      };
+    }
+
+    if (method === "talk.session.submitToolResult") {
+      return {
+        ok: true,
+        method,
+        result: shim.submitToolResult({
+          sessionId: getOptionalTrimmedString(params.sessionId) ?? "",
+          toolCallId: getOptionalTrimmedString(params.toolCallId) ?? "",
+          result: params.result,
+        }),
+      };
+    }
+
+    if (method === "talk.session.close") {
+      return {
+        ok: true,
+        method,
+        result: shim.closeSession({
+          sessionId: getOptionalTrimmedString(params.sessionId) ?? "",
+          reason: parseRealtimeShimCloseReason(params.reason),
+        }),
+      };
+    }
+
+    return { ok: false, error: "realtime_shim_method_unsupported" };
+  } catch (error) {
+    return {
+      ok: false,
+      error: "realtime_shim_rpc_error",
+      message: error instanceof Error ? error.message : "Realtime shim RPC failed",
+    };
+  }
+}
+
+function parseRealtimeShimCancelReason(value: unknown): "barge-in" | "cancelled" | "error" | undefined {
+  return value === "barge-in" || value === "cancelled" || value === "error" ? value : undefined;
+}
+
+function parseRealtimeShimCloseReason(value: unknown): "client" | "complete" | "error" | undefined {
+  return value === "client" || value === "complete" || value === "error" ? value : undefined;
+}
+
 const operatorSteerActions: OperatorSteerAction[] = [
   "approve_offer",
   "deny_offer",
@@ -1781,6 +1880,7 @@ async function routeRequest(
   config: PocConfig,
   ingress: InMemoryTelephonyIngress,
   signalWireCallMap: Map<string, string>,
+  realtimeShim: LocalRealtimeShimPrototype,
 ): Promise<void> {
   const url = request.url ?? "/";
   const requestUrl = new URL(url, "http://localhost");
@@ -1805,6 +1905,13 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/api/realtime-shim/proof") {
     writeJson(response, 200, buildRealtimeShimProofPayload());
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/realtime-shim/rpc") {
+    const body = await readJsonBody<unknown>(request);
+    const payload = buildRealtimeShimRpcResponse(realtimeShim, body) as { ok?: boolean };
+    writeJson(response, payload.ok === false ? 400 : 200, payload);
     return;
   }
 
@@ -2613,9 +2720,10 @@ async function routeRequest(
 export function buildHttpServer(config: PocConfig) {
   const ingress = new InMemoryTelephonyIngress();
   const signalWireCallMap = new Map<string, string>();
+  const realtimeShim = new LocalRealtimeShimPrototype();
 
   return createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, realtimeShim).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;
