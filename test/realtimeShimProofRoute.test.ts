@@ -57,6 +57,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         logs: string[];
         latencyMarks: Array<{ name: string; elapsedMs: number; budgetMs: number; withinBudget: boolean }>;
         qaChecklist: Record<string, boolean>;
+        pipelineStages: Array<{ stage: string; status: string; mocked: boolean; evidence: string }>;
       };
       closeEvidence: {
         state: string;
@@ -157,6 +158,12 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         ["output_first_audio", true],
       ],
     );
+    assert.deepEqual(payload.evidence.pipelineStages.map((stage) => [stage.stage, stage.status, stage.mocked]), [
+      ["gateway_relay", "active", false],
+      ["local_stt", "active", true],
+      ["local_llm", "mocked", true],
+      ["kokoro_tts", "mocked", true],
+    ]);
     assert.deepEqual(payload.evidence.eventTranscript.slice(0, 4), [
       "1. diagnostic:ready",
       "2. local-stt:start",
