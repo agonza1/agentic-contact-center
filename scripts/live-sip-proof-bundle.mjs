@@ -244,11 +244,11 @@ function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidence
     requiredLabels,
     missingLabels: requiredLabels.filter((label) => !labels.includes(label)),
     checks,
-    failureReasons: reviewGateFailureReasons(checks),
+    failureReasons: reviewGateFailureReasons(checks, { rtcAsrEvidence: rtcAsrEvidenceResult }),
   };
 }
 
-function reviewGateFailureReasons(checks) {
+function reviewGateFailureReasons(checks, details = {}) {
   const reasons = {
     acceptedInvite: "No accepted local SIP INVITE was recorded.",
     sipLogHasInvite: "SIP log does not include an INVITE entry, so the source manifest cannot prove a local SIP call.",
@@ -257,7 +257,9 @@ function reviewGateFailureReasons(checks) {
     callerAudioWavValid: "Caller audio artifact is not a non-empty RIFF/WAVE file with captured audio payload.",
     liveCapture: "Media is not labeled live_capture; rerun with a real local SIP/FreeSWITCH softphone call.",
     rtcAsrLive: "rtc-asr is not labeled rtc_asr_live; start rtc-asr and set RTC_ASR_WS_URL before rerunning.",
-    rtcAsrEvidenceValid: "rtc-asr live transcript evidence is missing, invalid, empty, or not final.",
+    rtcAsrEvidenceValid: details.rtcAsrEvidence?.reason
+      ? `rtc-asr live transcript evidence failed validation: ${details.rtcAsrEvidence.reason}`
+      : "rtc-asr live transcript evidence is missing, invalid, empty, or not final.",
     artifactsPresent: "One or more required proof artifacts are missing or empty.",
     sourceArtifactIntegrityReady: "Source live proof manifest reports blocked, missing, or changed artifacts.",
     sourceManifestReviewReady: "Source live proof manifest is not review-ready; inspect its blockers before submitting the bundle.",
