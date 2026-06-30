@@ -144,6 +144,7 @@ async function main() {
   const liveManifest = JSON.parse(await readFile(liveManifestPath, "utf8"));
   const audioPath = path.resolve(repoRoot, liveManifest.artifacts.audioWav);
   const sipLogPath = path.resolve(repoRoot, liveManifest.artifacts.sipLog);
+  const rtcAsrEvidencePath = liveManifest.artifacts.rtcAsrEvidence ? path.resolve(repoRoot, liveManifest.artifacts.rtcAsrEvidence) : null;
   const runtimeTracePath = path.join(outDir, "runtime-event-trace.json");
   const blockerPath = path.join(outDir, "rtc-asr-blocker.json");
   const labels = [
@@ -179,6 +180,7 @@ async function main() {
         await artifact(sipLogPath, "local-sip-and-freeswitch-sip-log", "sip_log", "application/json"),
         await artifact(runtimeTracePath, "agentic-contact-center-runtime-event-trace", "action_trace", "application/json"),
         await artifact(blockerPath, "rtc-asr-live-status", "manifest", "application/json"),
+        ...(rtcAsrEvidencePath ? [await artifact(rtcAsrEvidencePath, "rtc-asr-transcript-evidence", "transcript_evidence", "application/json")] : []),
       ],
       provenance: {
         source_repo: "agonza1/agentic-contact-center",
@@ -210,6 +212,7 @@ async function main() {
     await integrity(runtimeTracePath, "agentic-contact-center-runtime-event-trace", "action_trace"),
     await integrity(blockerPath, "rtc-asr-live-status", "manifest"),
     await integrity(assertRequestPath, "conversation-agent-evals-assert-request", "assert_request"),
+    ...(rtcAsrEvidencePath ? [await integrity(rtcAsrEvidencePath, "rtc-asr-transcript-evidence", "transcript_evidence")] : []),
   ];
   const gate = reviewGate(liveManifest, artifactIntegrity);
   const validationSummary = {
@@ -232,6 +235,7 @@ async function main() {
       runtimeEventTrace: rel(runtimeTracePath),
       rtcAsrStatus: rel(blockerPath),
       conversationAgentEvalsRequest: rel(assertRequestPath),
+      rtcAsrEvidence: rtcAsrEvidencePath ? rel(rtcAsrEvidencePath) : null,
     },
     artifactIntegrity,
     reviewGate: gate,

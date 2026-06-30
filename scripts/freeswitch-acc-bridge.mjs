@@ -51,6 +51,7 @@ function parseHeaders(block) {
 export async function buildFreeswitchLiveProofManifest(options) {
   const audioStats = await stat(options.wavPath).catch(() => null);
   const logStats = await stat(options.logPath).catch(() => null);
+  const rtcAsrEvidenceStats = options.rtcAsrEvidencePath ? await stat(options.rtcAsrEvidencePath).catch(() => null) : null;
   const audioBytes = audioStats?.size ?? 0;
   const generatedMedia = false;
   const rtpPacketCountEstimate = audioBytes > 44 ? Math.floor((audioBytes - 44) / 320) : 0;
@@ -70,6 +71,8 @@ export async function buildFreeswitchLiveProofManifest(options) {
   if (!logStats || logStats.size === 0) blockers.push("FreeSWITCH ESL event log is missing or empty.");
   if (!options.rtcAsrUrl) blockers.push("RTC_ASR_WS_URL was not set, so rtc-asr live transcription was not attempted.");
   if (options.rtcAsrUrl && !options.rtcAsrEvidencePath) blockers.push("rtc-asr URL was configured, but no transcript/evidence path was attached to this FreeSWITCH proof.");
+  if (options.rtcAsrEvidencePath && !rtcAsrEvidenceStats) blockers.push("rtc-asr transcript/evidence path was configured, but the evidence file is missing.");
+  if (rtcAsrEvidenceStats && rtcAsrEvidenceStats.size === 0) blockers.push("rtc-asr transcript/evidence file is empty.");
 
   const nextActions = [];
   if (rtpPacketCountEstimate === 0) {
@@ -80,6 +83,12 @@ export async function buildFreeswitchLiveProofManifest(options) {
   }
   if (options.rtcAsrUrl && !options.rtcAsrEvidencePath) {
     nextActions.push("Attach rtc-asr transcript evidence with --rtc-asr-evidence before marking the FreeSWITCH proof review-ready.");
+  }
+  if (options.rtcAsrEvidencePath && !rtcAsrEvidenceStats) {
+    nextActions.push("Write the rtc-asr transcript evidence file before rerunning the FreeSWITCH bridge proof.");
+  }
+  if (rtcAsrEvidenceStats && rtcAsrEvidenceStats.size === 0) {
+    nextActions.push("Rerun rtc-asr until transcript evidence is non-empty before marking the proof review-ready.");
   }
 
   const artifactIntegrity = [];
@@ -103,6 +112,16 @@ export async function buildFreeswitchLiveProofManifest(options) {
       readiness: logStats.size > 0 ? "ready" : "blocked",
     });
   }
+  if (rtcAsrEvidenceStats && options.rtcAsrEvidencePath) {
+    artifactIntegrity.push({
+      artifactId: "rtc-asr-transcript-evidence",
+      kind: "transcript_evidence",
+      path: options.rtcAsrEvidencePath,
+      sha256: await sha256File(options.rtcAsrEvidencePath),
+      sizeBytes: rtcAsrEvidenceStats.size,
+      readiness: rtcAsrEvidenceStats.size > 0 ? "ready" : "blocked",
+    });
+  }
 
   return {
     schemaVersion: 1,
@@ -120,9 +139,9 @@ export async function buildFreeswitchLiveProofManifest(options) {
       remoteRtp: null,
       freeswitchRecordingPath: options.wavPath,
     },
-    artifacts: { audioWav: options.wavPath, sipLog: options.logPath },
+    artifacts: { audioWav: options.wavPath, sipLog: options.logPath, rtcAsrEvidence: options.rtcAsrEvidencePath ?? null },
     artifactIntegrity,
-    reviewReady: blockers.length === 0 && runtimeModeLabels.telephony === "local_sip" && Boolean(options.rtcAsrEvidencePath) && !generatedMedia,
+    reviewReady: blockers.length === 0 && runtimeModeLabels.telephony === "local_sip" && Boolean(rtcAsrEvidenceStats) && !generatedMedia,
     reviewGate: {
       requiredLabels: requiredReviewLabels,
       missingLabels: missingReviewLabels,
