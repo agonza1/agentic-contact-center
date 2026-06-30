@@ -84,6 +84,13 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
     { name: "transcript_final", elapsedMs: 75, budgetMs: 250, withinBudget: true },
     { name: "output_first_audio", elapsedMs: 135, budgetMs: 500, withinBudget: true },
   ]);
+  assert.deepEqual(evidence.eventTranscript.slice(0, 4), [
+    "1. diagnostic:ready",
+    "2. local-stt:start",
+    "3. local-stt:audio (8b)",
+    "4. diagnostic:input.audio.delta (8b)",
+  ]);
+  assert.equal(evidence.eventTranscript.at(-1), "13. diagnostic:output.audio.done");
   assert.deepEqual(evidence.relayEvents, [
     {
       relaySessionId: "local-rt-proof",
@@ -344,5 +351,9 @@ test("local realtime shim prototype records malformed gateway audio without star
       message: "audioBase64 must be valid base64",
       retryable: true,
     },
+  ]);
+  assert.deepEqual(result.evidence.eventTranscript.slice(-2), [
+    "2. relay:error (code=invalid_audio_frame, retryable=true)",
+    "3. diagnostic:session.error (code=invalid_audio_frame, retryable=true)",
   ]);
 });

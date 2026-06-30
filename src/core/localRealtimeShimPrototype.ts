@@ -79,6 +79,7 @@ export interface LocalRealtimeShimEvidence {
   diagnostics: LocalRealtimeShimDiagnostic[];
   relayEvents: RealtimeShimRelayEvent[];
   timeline: LocalRealtimeShimTimelineEntry[];
+  eventTranscript: string[];
   latencyMarks: LocalRealtimeShimLatencyMark[];
   localSttMessages: Array<LocalSttStartMessage | LocalSttControlMessage | { type: "audio"; byteLength: number }>;
   toolResults: Array<RealtimeShimToolResultRequest & { status: "not_applicable" }>;
@@ -396,6 +397,7 @@ export class LocalRealtimeShimPrototype {
       diagnostics: [...session.diagnostics],
       relayEvents: [...session.relayEvents],
       timeline: [...session.timeline],
+      eventTranscript: session.timeline.map(formatTimelineEntry),
       latencyMarks: [...session.latencyMarks],
       localSttMessages: [...session.localSttMessages],
       toolResults: [...session.toolResults],
@@ -489,4 +491,23 @@ function pickTimelineDetails(
     ...("message" in event ? { message: event.message } : {}),
     ...("retryable" in event ? { retryable: event.retryable } : {}),
   };
+}
+
+function formatTimelineEntry(entry: LocalRealtimeShimTimelineEntry): string {
+  const details = [
+    entry.byteLength !== undefined ? `${entry.byteLength}b` : undefined,
+    entry.final !== undefined ? `final=${entry.final}` : undefined,
+    entry.reason ? `reason=${entry.reason}` : undefined,
+    entry.code ? `code=${entry.code}` : undefined,
+    entry.retryable !== undefined ? `retryable=${entry.retryable}` : undefined,
+    entry.toolCallId ? `tool=${entry.toolCallId}` : undefined,
+    entry.status ? `status=${entry.status}` : undefined,
+  ].filter(Boolean);
+
+  return [
+    `${entry.sequence}. ${entry.source}:${entry.type}`,
+    details.length > 0 ? `(${details.join(", ")})` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }

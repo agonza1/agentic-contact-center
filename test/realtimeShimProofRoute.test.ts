@@ -51,6 +51,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         localSttMessages: Array<{ type: string; version?: string; byteLength?: number }>;
         relayEvents: Array<{ type: string; audioBase64?: string }>;
         diagnostics: Array<{ type: string; relaySessionId: string; sessionId: string }>;
+        eventTranscript: string[];
         latencyMarks: Array<{ name: string; elapsedMs: number; budgetMs: number; withinBudget: boolean }>;
       };
       closeEvidence: {
@@ -66,12 +67,14 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         relayEvents: Array<{ type: string; reason?: string }>;
         diagnostics: Array<{ type: string; reason?: string; relaySessionId: string; sessionId: string }>;
         timeline: Array<{ source: string; type: string; reason?: string }>;
+        eventTranscript: string[];
       };
       inputCancelEvidence: {
         state: string;
         localSttMessages: Array<{ type: string }>;
         diagnostics: Array<{ type: string; reason?: string; relaySessionId: string; sessionId: string }>;
         timeline: Array<{ source: string; type: string; reason?: string }>;
+        eventTranscript: string[];
       };
       errorEvidence: {
         state: string;
@@ -79,6 +82,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         relayEvents: Array<{ type: string; code?: string; message?: string; retryable?: boolean; reason?: string }>;
         diagnostics: Array<{ type: string; code?: string; message?: string; retryable?: boolean; relaySessionId: string; sessionId: string; reason?: string }>;
         timeline: Array<{ source: string; type: string; code?: string; reason?: string }>;
+        eventTranscript: string[];
       };
       invalidAudioResult: {
         ok: boolean;
@@ -127,6 +131,12 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         ["output_first_audio", true],
       ],
     );
+    assert.deepEqual(payload.evidence.eventTranscript.slice(0, 4), [
+      "1. diagnostic:ready",
+      "2. local-stt:start",
+      "3. local-stt:audio (8b)",
+      "4. diagnostic:input.audio.delta (8b)",
+    ]);
     assert.ok(
       payload.evidence.diagnostics.every(
         (event) => event.relaySessionId === "local-rt-http-proof" && event.sessionId === "local-rt-http-proof",
