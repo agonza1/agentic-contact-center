@@ -104,11 +104,24 @@ async function wavEvidence(filePath) {
   const riffHeader = buffer.subarray(0, 4).toString("ascii");
   const waveHeader = buffer.subarray(8, 12).toString("ascii");
   const hasRiffWaveHeader = riffHeader === "RIFF" && waveHeader === "WAVE";
-  const hasAudioPayload = buffer.length > 44;
+  let declaredDataBytes = 0;
+  let dataChunkEnd = 0;
+  for (let offset = 12; offset + 8 <= buffer.length;) {
+    const chunkId = buffer.subarray(offset, offset + 4).toString("ascii");
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    if (chunkId === "data") {
+      declaredDataBytes = chunkSize;
+      dataChunkEnd = offset + 8 + chunkSize;
+      break;
+    }
+    offset += 8 + chunkSize + (chunkSize % 2);
+  }
+  const hasAudioPayload = declaredDataBytes > 0 && buffer.length >= dataChunkEnd;
   return {
     ready: hasRiffWaveHeader && hasAudioPayload,
     hasRiffWaveHeader,
     hasAudioPayload,
+    declaredDataBytes,
     sizeBytes: buffer.length,
   };
 }

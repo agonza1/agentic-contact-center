@@ -96,7 +96,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
       labels: string[];
       artifactIntegrity: Array<{ artifactId: string; kind: string; sha256: string; sizeBytes: number; readiness: string }>;
       reviewGate: { passed: boolean; requiredLabels: string[]; missingLabels: string[]; checks: Record<string, boolean>; failureReasons: Record<string, string> };
-      validationSummary: { status: string; checks: Record<string, boolean>; blockers: string[]; nextActions: string[]; callerAudioEvidence: { ready: boolean; hasRiffWaveHeader: boolean; hasAudioPayload: boolean; sizeBytes: number }; sipLogEvidence: { entryCount: number; hasInvite: boolean; hasAcceptedInviteResponse: boolean } };
+      validationSummary: { status: string; checks: Record<string, boolean>; blockers: string[]; nextActions: string[]; callerAudioEvidence: { ready: boolean; hasRiffWaveHeader: boolean; hasAudioPayload: boolean; declaredDataBytes: number; sizeBytes: number }; sipLogEvidence: { entryCount: number; hasInvite: boolean; hasAcceptedInviteResponse: boolean } };
     };
     assert.equal(bundleManifest.reviewReady, false);
     assert.ok(bundleManifest.labels.includes("generated_media"));
@@ -119,7 +119,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     assert.equal(bundleManifest.validationSummary.checks.liveCapture, false);
     assert.equal(bundleManifest.validationSummary.checks.rtcAsrLive, false);
     assert.deepEqual(Object.keys(bundleManifest.reviewGate.failureReasons), ["liveCapture", "rtcAsrLive", "sourceManifestReviewReady"]);
-    assert.deepEqual(bundleManifest.validationSummary.callerAudioEvidence, { ready: true, hasRiffWaveHeader: true, hasAudioPayload: true, sizeBytes: 48 });
+    assert.deepEqual(bundleManifest.validationSummary.callerAudioEvidence, { ready: true, hasRiffWaveHeader: true, hasAudioPayload: true, declaredDataBytes: 4, sizeBytes: 48 });
     assert.deepEqual(bundleManifest.validationSummary.sipLogEvidence, { entryCount: 2, hasInvite: true, hasAcceptedInviteResponse: true });
     assert.match(bundleManifest.reviewGate.failureReasons.liveCapture, /real local SIP/);
     assert.match(bundleManifest.reviewGate.failureReasons.rtcAsrLive, /RTC_ASR_WS_URL/);
@@ -246,11 +246,78 @@ test("live SIP proof bundle blocks malformed caller WAV evidence", async () => {
 
     const bundleManifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
       reviewGate: { checks: Record<string, boolean>; failureReasons: Record<string, string> };
-      validationSummary: { callerAudioEvidence: { ready: boolean; hasRiffWaveHeader: boolean; hasAudioPayload: boolean; sizeBytes: number } };
+      validationSummary: { callerAudioEvidence: { ready: boolean; hasRiffWaveHeader: boolean; hasAudioPayload: boolean; declaredDataBytes: number; sizeBytes: number } };
     };
     assert.equal(bundleManifest.reviewGate.checks.callerAudioWavValid, false);
     assert.match(bundleManifest.reviewGate.failureReasons.callerAudioWavValid, /RIFF\/WAVE/);
-    assert.deepEqual(bundleManifest.validationSummary.callerAudioEvidence, { ready: false, hasRiffWaveHeader: false, hasAudioPayload: false, sizeBytes: 15 });
+    assert.deepEqual(bundleManifest.validationSummary.callerAudioEvidence, { ready: false, hasRiffWaveHeader: false, hasAudioPayload: false, declaredDataBytes: 0, sizeBytes: 15 });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("live SIP proof bundle blocks WAV evidence with an empty data chunk", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-empty-wav-"));
+  const audioPath = path.join(tempDir, "caller-capture.wav");
+  const sipLogPath = path.join(tempDir, "sip.log.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+  const manifestPath = path.join(tempDir, "local-sip-live-proof-manifest.json");
+  const outDir = path.join(tempDir, "bundle");
+
+  try {
+    const emptyDataWav = Buffer.concat([validWavFixture().subarray(0, 44), Buffer.alloc(8)]);
+    emptyDataWav.writeUInt32LE(0, 40);
+    await writeFile(audioPath, emptyDataWav);
+    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: "I need billing help.", final: true })}\n`, "utf8");
+    await writeFile(sipLogPath, `${JSON.stringify([{ startLine: "INVITE sip:8600@127.0.0.1 SIP/2.0" }, { startLine: "SIP/2.0 200 OK" }])}\n`, "utf8");
+    const manifest = {
+      schemaVersion: 1,
+      generatedAt: "2026-06-30T10:00:00.000Z",
+      workboardCard: "872af947-ef57-47bd-a4f3-3750f54e1948",
+      callId: "call-live-sip-1",
+      sipCallId: "sip-proof-1",
+      runtimeModeLabels: {
+        telephony: "local_sip",
+        media: "live_capture",
+        rtcAsr: "rtc_asr_live",
+        credentialsMode: "mocked",
+      },
+      localSip: {
+        bind: "sip:127.0.0.1:5066",
+        rtpPort: 40000,
+        acceptedInvite: true,
+        rtpPacketCount: 4,
+      },
+      artifacts: { audioWav: audioPath, sipLog: sipLogPath, rtcAsrEvidence: rtcAsrEvidencePath },
+      artifactIntegrity: [],
+      reviewGate: {
+        requiredLabels: ["local_sip", "live_capture", "rtc_asr_live"],
+        missingLabels: [],
+        nextActions: [],
+      },
+      reviewReady: true,
+      blockers: [],
+    };
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      ["scripts/live-sip-proof-bundle.mjs", "--live-manifest", manifestPath, "--out-dir", outDir],
+      { cwd: repoRoot },
+    );
+
+    const summary = JSON.parse(stdout) as { reviewGatePassed: boolean; validationStatus: string };
+    assert.equal(summary.reviewGatePassed, false);
+    assert.equal(summary.validationStatus, "blocked_before_review");
+
+    const bundleManifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
+      reviewGate: { checks: Record<string, boolean>; failureReasons: Record<string, string> };
+      validationSummary: { callerAudioEvidence: { ready: boolean; hasRiffWaveHeader: boolean; hasAudioPayload: boolean; declaredDataBytes: number; sizeBytes: number } };
+    };
+    assert.equal(bundleManifest.reviewGate.checks.callerAudioWavValid, false);
+    assert.match(bundleManifest.reviewGate.failureReasons.callerAudioWavValid, /captured audio payload/);
+    assert.deepEqual(bundleManifest.validationSummary.callerAudioEvidence, { ready: false, hasRiffWaveHeader: true, hasAudioPayload: false, declaredDataBytes: 0, sizeBytes: 52 });
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -310,7 +377,7 @@ test("live SIP proof bundle blocks manifests whose SIP log has no INVITE", async
 
     const bundleManifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
       reviewGate: { checks: Record<string, boolean>; failureReasons: Record<string, string> };
-      validationSummary: { callerAudioEvidence: { ready: boolean; hasRiffWaveHeader: boolean; hasAudioPayload: boolean; sizeBytes: number }; sipLogEvidence: { entryCount: number; hasInvite: boolean; hasAcceptedInviteResponse: boolean } };
+      validationSummary: { callerAudioEvidence: { ready: boolean; hasRiffWaveHeader: boolean; hasAudioPayload: boolean; declaredDataBytes: number; sizeBytes: number }; sipLogEvidence: { entryCount: number; hasInvite: boolean; hasAcceptedInviteResponse: boolean } };
     };
     assert.equal(bundleManifest.reviewGate.checks.acceptedInvite, true);
     assert.equal(bundleManifest.reviewGate.checks.sipLogHasInvite, false);
@@ -384,9 +451,9 @@ test("live SIP proof bundle accepts newline-delimited SIP log evidence", async (
     assert.equal(summary.validationStatus, "ready_for_review");
 
     const bundleManifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
-      validationSummary: { callerAudioEvidence: { ready: boolean; hasRiffWaveHeader: boolean; hasAudioPayload: boolean; sizeBytes: number }; sipLogEvidence: { entryCount: number; hasInvite: boolean; hasAcceptedInviteResponse: boolean } };
+      validationSummary: { callerAudioEvidence: { ready: boolean; hasRiffWaveHeader: boolean; hasAudioPayload: boolean; declaredDataBytes: number; sizeBytes: number }; sipLogEvidence: { entryCount: number; hasInvite: boolean; hasAcceptedInviteResponse: boolean } };
     };
-    assert.deepEqual(bundleManifest.validationSummary.callerAudioEvidence, { ready: true, hasRiffWaveHeader: true, hasAudioPayload: true, sizeBytes: 48 });
+    assert.deepEqual(bundleManifest.validationSummary.callerAudioEvidence, { ready: true, hasRiffWaveHeader: true, hasAudioPayload: true, declaredDataBytes: 4, sizeBytes: 48 });
     assert.deepEqual(bundleManifest.validationSummary.sipLogEvidence, { entryCount: 2, hasInvite: true, hasAcceptedInviteResponse: true });
   } finally {
     await rm(tempDir, { recursive: true, force: true });
