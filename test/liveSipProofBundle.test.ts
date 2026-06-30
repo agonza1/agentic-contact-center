@@ -69,7 +69,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
       reviewReady: boolean;
       labels: string[];
       artifactIntegrity: Array<{ artifactId: string; kind: string; sha256: string; sizeBytes: number; readiness: string }>;
-      reviewGate: { passed: boolean; requiredLabels: string[]; missingLabels: string[]; checks: Record<string, boolean> };
+      reviewGate: { passed: boolean; requiredLabels: string[]; missingLabels: string[]; checks: Record<string, boolean>; failureReasons: Record<string, string> };
       validationSummary: { status: string; checks: Record<string, boolean>; blockers: string[]; nextActions: string[] };
     };
     assert.equal(bundleManifest.reviewReady, false);
@@ -89,6 +89,9 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     assert.equal(bundleManifest.validationSummary.checks.artifactsPresent, true);
     assert.equal(bundleManifest.validationSummary.checks.liveCapture, false);
     assert.equal(bundleManifest.validationSummary.checks.rtcAsrLive, false);
+    assert.deepEqual(Object.keys(bundleManifest.reviewGate.failureReasons), ["liveCapture", "rtcAsrLive"]);
+    assert.match(bundleManifest.reviewGate.failureReasons.liveCapture, /real local SIP/);
+    assert.match(bundleManifest.reviewGate.failureReasons.rtcAsrLive, /RTC_ASR_WS_URL/);
     assert.equal(bundleManifest.validationSummary.blockers.length, 2);
     assert.deepEqual(bundleManifest.validationSummary.nextActions, [
       "Place a real local SIP/FreeSWITCH softphone call and rerun the live proof without --self-test.",
@@ -107,6 +110,9 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     assert.match(reviewGateReport, /Missing runtime labels: live_capture, rtc_asr_live/);
     assert.match(reviewGateReport, /- \[x\] acceptedInvite/);
     assert.match(reviewGateReport, /- \[ \] liveCapture/);
+    assert.match(reviewGateReport, /## Failed Check Reasons/);
+    assert.match(reviewGateReport, /liveCapture: Media is not labeled live_capture/);
+    assert.match(reviewGateReport, /rtcAsrLive: rtc-asr is not labeled rtc_asr_live/);
 
     await assert.rejects(
       execFileAsync(

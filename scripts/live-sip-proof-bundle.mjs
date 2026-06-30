@@ -79,7 +79,19 @@ function reviewGate(liveManifest, artifactIntegrity) {
     requiredLabels,
     missingLabels: requiredLabels.filter((label) => !labels.includes(label)),
     checks,
+    failureReasons: reviewGateFailureReasons(checks),
   };
+}
+
+function reviewGateFailureReasons(checks) {
+  const reasons = {
+    acceptedInvite: "No accepted local SIP INVITE was recorded.",
+    capturedRtp: "No RTP packets were captured for caller audio.",
+    liveCapture: "Media is not labeled live_capture; rerun with a real local SIP/FreeSWITCH softphone call.",
+    rtcAsrLive: "rtc-asr is not labeled rtc_asr_live; start rtc-asr and set RTC_ASR_WS_URL before rerunning.",
+    artifactsPresent: "One or more required proof artifacts are missing or empty.",
+  };
+  return Object.fromEntries(Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => [name, reasons[name]]));
 }
 
 function markdownChecklist(checks) {
@@ -95,6 +107,9 @@ function reviewGateReport(bundleManifest) {
     : "- No follow-up actions required.";
   const missingLabels = gate.missingLabels.length > 0 ? gate.missingLabels.join(", ") : "none";
   const blockers = bundleManifest.blockers.length > 0 ? bundleManifest.blockers.map((blocker) => `- ${blocker}`).join("\n") : "- none";
+  const failedChecks = Object.entries(gate.failureReasons).length > 0
+    ? Object.entries(gate.failureReasons).map(([name, reason]) => `- ${name}: ${reason}`).join("\n")
+    : "- none";
 
   return [
     "# Local SIP Review Gate",
@@ -106,6 +121,10 @@ function reviewGateReport(bundleManifest) {
     "## Checks",
     "",
     markdownChecklist(gate.checks),
+    "",
+    "## Failed Check Reasons",
+    "",
+    failedChecks,
     "",
     "## Blockers",
     "",
