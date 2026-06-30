@@ -64,3 +64,50 @@ test("local SIP self-test writes an honest blocked manifest and fails review-rea
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("local SIP live-caller gate exits nonzero when no caller arrives", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-local-sip-timeout-"));
+  const portBase = 47000 + Math.floor(Math.random() * 1000) * 4;
+
+  try {
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        [
+          "scripts/local-sip-live-proof.mjs",
+          "--require-live-caller",
+          "--listen-seconds",
+          "0",
+          "--sip-port",
+          String(portBase),
+          "--rtp-port",
+          String(portBase + 1),
+          "--out-dir",
+          tempDir,
+        ],
+        { cwd: repoRoot, timeout: 10_000, encoding: "utf8" },
+      ),
+      (error: any) => {
+        assert.equal(error.code, 2);
+        const summary = JSON.parse(error.stdout.slice(error.stdout.indexOf("{")).trim()) as { reviewReady: boolean; blockers: string[] };
+        assert.equal(summary.reviewReady, false);
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("No RTP packets")));
+        return true;
+      },
+    );
+
+    const manifest = JSON.parse(await readFile(path.join(tempDir, "local-sip-live-proof-manifest.json"), "utf8")) as {
+      reviewReady: boolean;
+      runtimeModeLabels: { media: string; rtcAsr: string };
+      localSip: { acceptedInvite: boolean; rtpPacketCount: number };
+    };
+    assert.equal(manifest.reviewReady, false);
+    assert.equal(manifest.runtimeModeLabels.media, "live_capture");
+    assert.equal(manifest.runtimeModeLabels.rtcAsr, "rtc_asr_blocked");
+    assert.equal(manifest.localSip.acceptedInvite, false);
+    assert.equal(manifest.localSip.rtpPacketCount, 0);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});

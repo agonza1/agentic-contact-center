@@ -303,6 +303,7 @@ class LocalSipProofServer {
       reviewReady: blockers.length === 0 && !this.options.generatedMedia,
       blockers,
     };
+    this.lastManifest = manifest;
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     console.log(JSON.stringify({ manifest: manifestPath, reviewReady: manifest.reviewReady, blockers }, null, 2));
   }
@@ -406,7 +407,7 @@ async function main() {
   await new Promise((resolve) => setTimeout(resolve, listenSeconds * 1000));
   await server.finish(hasFlag("--self-test") ? "self_test_complete" : "listen_timeout");
   await server.stop();
-  if (hasFlag("--require-live-caller") && server.options.generatedMedia) process.exitCode = 2;
+  if (hasFlag("--require-live-caller") && server.lastManifest?.reviewReady !== true) process.exitCode = 2;
 }
 
 main().catch((error) => {
