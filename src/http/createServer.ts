@@ -679,6 +679,18 @@ function normalizeTimestamp(timestamp: unknown, error: string): string | { error
   return timestamp;
 }
 
+function parseOptionalNonNegativeInteger(value: unknown, error: string): number | null | { error: string } {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    return { error };
+  }
+
+  return value;
+}
+
 function isFlowState(value: string): value is FlowState {
   return flowStates.has(value as FlowState);
 }
@@ -2137,13 +2149,19 @@ async function routeRequest(
       }
 
       if (eventType === "media.capture") {
+        const rtpPacketCount = parseOptionalNonNegativeInteger(body.rtpPacketCount, "live_sip_rtp_packet_count_invalid");
+        if (rtpPacketCount !== null && typeof rtpPacketCount === "object") {
+          writeBadRequest(response, rtpPacketCount.error);
+          return;
+        }
+
         const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
           eventType: "media_capture_attached",
           timestamp,
           detail: {
             audioWavPath: getOptionalTrimmedString(body.audioWavPath) ?? null,
             sipLogPath: getOptionalTrimmedString(body.sipLogPath) ?? null,
-            rtpPacketCount: typeof body.rtpPacketCount === "number" ? body.rtpPacketCount : null,
+            rtpPacketCount,
             generatedMedia: body.generatedMedia === true,
           },
         });
@@ -2172,12 +2190,18 @@ async function routeRequest(
         return;
       }
 
+      const durationSeconds = parseOptionalNonNegativeInteger(body.durationSeconds, "live_sip_duration_seconds_invalid");
+      if (durationSeconds !== null && typeof durationSeconds === "object") {
+        writeBadRequest(response, durationSeconds.error);
+        return;
+      }
+
       const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
         eventType: "sip_call_ended",
         timestamp,
         detail: {
           hangupCause: getOptionalTrimmedString(body.hangupCause) ?? null,
-          durationSeconds: typeof body.durationSeconds === "number" ? body.durationSeconds : null,
+          durationSeconds,
         },
       });
       liveSipCallMap.delete(sipCallId);

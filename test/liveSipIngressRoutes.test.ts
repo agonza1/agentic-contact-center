@@ -67,6 +67,15 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
     assert.equal(capture.statusCode, 200);
     assert.equal(capture.payload.call.events.some((event: any) => event.type === "media_capture_attached" && event.detail.rtpPacketCount === 42), true);
 
+    const invalidCapture = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.capture",
+      timestamp: "2026-06-30T10:00:02.500Z",
+      sipCallId: "sip-proof-1",
+      rtpPacketCount: -1,
+    });
+    assert.equal(invalidCapture.statusCode, 400);
+    assert.equal(invalidCapture.payload.error, "live_sip_rtp_packet_count_invalid");
+
     const blocked = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "rtc_asr.blocked",
       timestamp: "2026-06-30T10:00:03.000Z",
@@ -86,6 +95,15 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
     assert.equal(transcript.statusCode, 200);
     assert.equal(transcript.payload.call.events.some((event: any) => event.type === "rtc_asr_transcript" && event.detail.transcriptText === "I need help with a billing question."), true);
     assert.equal(transcript.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "I need help with a billing question."), true);
+
+    const invalidEnded = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.ended",
+      timestamp: "2026-06-30T10:00:05.000Z",
+      sipCallId: "sip-proof-1",
+      durationSeconds: 2.5,
+    });
+    assert.equal(invalidEnded.statusCode, 400);
+    assert.equal(invalidEnded.payload.error, "live_sip_duration_seconds_invalid");
 
     const consoleResponse = await requestJson(address.port, "GET", "/api/operator/console?callId=" + started.payload.call.session.callId);
     assert.equal(consoleResponse.statusCode, 200);
