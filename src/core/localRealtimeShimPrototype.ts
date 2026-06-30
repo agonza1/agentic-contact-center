@@ -84,6 +84,15 @@ export interface LocalRealtimeShimEvidence {
   latencyMarks: LocalRealtimeShimLatencyMark[];
   localSttMessages: Array<LocalSttStartMessage | LocalSttControlMessage | { type: "audio"; byteLength: number }>;
   toolResults: Array<RealtimeShimToolResultRequest & { status: "not_applicable" }>;
+  qaChecklist: {
+    oneTurnEvidence: boolean;
+    interruptionEvidence: boolean;
+    inputCancelEvidence: boolean;
+    boundedErrorEvidence: boolean;
+    eventTranscriptEvidence: boolean;
+    logEvidence: boolean;
+    mockedPiecesNamed: boolean;
+  };
   mockedPieces: string[];
   limitations: string[];
 }
@@ -384,6 +393,13 @@ export class LocalRealtimeShimPrototype {
       throw new Error(`Unknown realtime shim session: ${sessionId}`);
     }
 
+    const mockedPieces = ["local LLM response text", "Kokoro PCM output audio"];
+    const limitations = [
+      "rtc-asr websocket is represented by Local STT v1 message evidence, not a live sidecar connection",
+      "turn endpointing is explicit through finalizeTurn for the first deterministic proof",
+    ];
+    const timeline = [...session.timeline];
+
     return {
       envelope: session.envelope,
       state: session.state,
@@ -397,17 +413,15 @@ export class LocalRealtimeShimPrototype {
       },
       diagnostics: [...session.diagnostics],
       relayEvents: [...session.relayEvents],
-      timeline: [...session.timeline],
-      eventTranscript: session.timeline.map(formatTimelineEntry),
-      logs: session.timeline.map(formatLogEntry),
+      timeline,
+      eventTranscript: timeline.map(formatTimelineEntry),
+      logs: timeline.map(formatLogEntry),
       latencyMarks: [...session.latencyMarks],
       localSttMessages: [...session.localSttMessages],
       toolResults: [...session.toolResults],
-      mockedPieces: ["local LLM response text", "Kokoro PCM output audio"],
-      limitations: [
-        "rtc-asr websocket is represented by Local STT v1 message evidence, not a live sidecar connection",
-        "turn endpointing is explicit through finalizeTurn for the first deterministic proof",
-      ],
+      qaChecklist: buildQaChecklist(session, mockedPieces),
+      mockedPieces,
+      limitations,
     };
   }
 
@@ -474,6 +488,29 @@ export class LocalRealtimeShimPrototype {
       withinBudget: elapsedMs <= budgetMs,
     });
   }
+}
+
+function buildQaChecklist(
+  session: LocalRealtimeShimSession,
+  mockedPieces: string[],
+): LocalRealtimeShimEvidence["qaChecklist"] {
+  return {
+    oneTurnEvidence:
+      session.diagnostics.some((event) => event.type === "transcript.done") &&
+      session.diagnostics.some((event) => event.type === "output.audio.done"),
+    interruptionEvidence:
+      session.relayEvents.some((event) => event.type === "clear") &&
+      session.diagnostics.some((event) => event.type === "turn.cancelled"),
+    inputCancelEvidence:
+      session.localSttMessages.some((message) => message.type === "cancel") &&
+      !session.diagnostics.some((event) => event.type === "output.text.done"),
+    boundedErrorEvidence:
+      session.relayEvents.some((event) => event.type === "error") &&
+      session.diagnostics.some((event) => event.type === "session.error"),
+    eventTranscriptEvidence: session.timeline.length > 0,
+    logEvidence: session.timeline.length > 0,
+    mockedPiecesNamed: mockedPieces.length > 0,
+  };
 }
 
 function pickTimelineDetails(

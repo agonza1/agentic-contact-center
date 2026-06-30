@@ -105,6 +105,15 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
       audioBase64,
     },
   ]);
+  assert.deepEqual(evidence.qaChecklist, {
+    oneTurnEvidence: true,
+    interruptionEvidence: false,
+    inputCancelEvidence: false,
+    boundedErrorEvidence: false,
+    eventTranscriptEvidence: true,
+    logEvidence: true,
+    mockedPiecesNamed: true,
+  });
   assert.deepEqual(evidence.mockedPieces, ["local LLM response text", "Kokoro PCM output audio"]);
   assert.match(evidence.limitations.join("\n"), /not a live sidecar connection/);
   assert.deepEqual(evidence.toolResults, []);
@@ -166,6 +175,7 @@ test("local realtime shim prototype models barge-in clear and idempotent close",
     },
   ]);
   assert.equal(cancelled.diagnostics.at(-1)?.type, "turn.cancelled");
+  assert.equal(cancelled.qaChecklist.interruptionEvidence, true);
   assert.deepEqual(cancelled.timeline.at(-2), {
     sequence: 5,
     source: "relay",
@@ -221,6 +231,7 @@ test("local realtime shim prototype cancels input without final transcript dispa
   assert.deepEqual(cancelled.localSttMessages.map((message) => message.type), ["start", "audio", "cancel"]);
   assert.equal(cancelled.diagnostics.some((event) => event.type === "transcript.done"), false);
   assert.equal(cancelled.diagnostics.some((event) => event.type === "output.text.done"), false);
+  assert.equal(cancelled.qaChecklist.inputCancelEvidence, true);
   assert.deepEqual(cancelled.diagnostics.at(-1), {
     type: "input.cancelled",
     sessionId: "local-rt-input-cancel",
@@ -271,6 +282,7 @@ test("local realtime shim prototype emits bounded Local STT error evidence", () 
   });
 
   assert.equal(fatal.state, "closed");
+  assert.equal(fatal.qaChecklist.boundedErrorEvidence, true);
   assert.deepEqual(fatal.relayEvents.slice(-2), [
     {
       relaySessionId: "local-rt-error",

@@ -54,6 +54,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         eventTranscript: string[];
         logs: string[];
         latencyMarks: Array<{ name: string; elapsedMs: number; budgetMs: number; withinBudget: boolean }>;
+        qaChecklist: Record<string, boolean>;
       };
       closeEvidence: {
         state: string;
@@ -69,6 +70,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         diagnostics: Array<{ type: string; reason?: string; relaySessionId: string; sessionId: string }>;
         timeline: Array<{ source: string; type: string; reason?: string }>;
         eventTranscript: string[];
+        qaChecklist: Record<string, boolean>;
       };
       inputCancelEvidence: {
         state: string;
@@ -76,6 +78,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         diagnostics: Array<{ type: string; reason?: string; relaySessionId: string; sessionId: string }>;
         timeline: Array<{ source: string; type: string; reason?: string }>;
         eventTranscript: string[];
+        qaChecklist: Record<string, boolean>;
       };
       errorEvidence: {
         state: string;
@@ -84,6 +87,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         diagnostics: Array<{ type: string; code?: string; message?: string; retryable?: boolean; relaySessionId: string; sessionId: string; reason?: string }>;
         timeline: Array<{ source: string; type: string; code?: string; reason?: string }>;
         eventTranscript: string[];
+        qaChecklist: Record<string, boolean>;
       };
       invalidAudioResult: {
         ok: boolean;
@@ -96,6 +100,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
           localSttMessages: Array<{ type: string }>;
           relayEvents: Array<{ type: string; code?: string; message?: string; retryable?: boolean }>;
           diagnostics: Array<{ type: string; code?: string; message?: string; retryable?: boolean; relaySessionId: string; sessionId: string }>;
+          qaChecklist: Record<string, boolean>;
         };
       };
     };
@@ -106,6 +111,15 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
     assert.equal(payload.rpcBoundary, "gateway-relay");
     assert.equal(payload.localSttContract, "local-stt.v1");
     assert.equal(payload.evidence.state, "speaking");
+    assert.deepEqual(payload.evidence.qaChecklist, {
+      oneTurnEvidence: true,
+      interruptionEvidence: false,
+      inputCancelEvidence: false,
+      boundedErrorEvidence: false,
+      eventTranscriptEvidence: true,
+      logEvidence: true,
+      mockedPiecesNamed: true,
+    });
     assert.equal(payload.evidence.envelope.provider, "local-realtime-shim");
     assert.equal(payload.evidence.envelope.transport, "gateway-relay");
     assert.equal(payload.evidence.envelope.relaySessionId, "local-rt-http-proof");
@@ -173,6 +187,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       withinBudget: true,
     });
     assert.equal(payload.interruptionEvidence.state, "listening");
+    assert.equal(payload.interruptionEvidence.qaChecklist.interruptionEvidence, true);
     assert.equal(payload.interruptionEvidence.envelope.relaySessionId, "local-rt-http-interrupt-proof");
     assert.deepEqual(
       payload.interruptionEvidence.relayEvents.map((event) => [event.type, event.reason]),
@@ -195,6 +210,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       ],
     );
     assert.equal(payload.inputCancelEvidence.state, "idle");
+    assert.equal(payload.inputCancelEvidence.qaChecklist.inputCancelEvidence, true);
     assert.deepEqual(payload.inputCancelEvidence.localSttMessages.map((message) => message.type), [
       "start",
       "audio",
@@ -215,6 +231,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       ],
     );
     assert.equal(payload.errorEvidence.state, "closed");
+    assert.equal(payload.errorEvidence.qaChecklist.boundedErrorEvidence, true);
     assert.equal(payload.errorEvidence.envelope.relaySessionId, "local-rt-http-error-proof");
     assert.deepEqual(
       payload.errorEvidence.relayEvents.map((event) => [event.type, event.code ?? event.reason, event.retryable]),
@@ -251,6 +268,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
     assert.equal(payload.invalidAudioResult.ok, false);
     assert.equal(payload.invalidAudioResult.code, "invalid_audio_frame");
     assert.equal(payload.invalidAudioResult.evidence.state, "idle");
+    assert.equal(payload.invalidAudioResult.evidence.qaChecklist.boundedErrorEvidence, true);
     assert.equal(payload.invalidAudioResult.evidence.envelope.relaySessionId, "local-rt-http-invalid-audio-proof");
     assert.deepEqual(payload.invalidAudioResult.evidence.audioInput, {
       relayEncoding: "pcm16",
