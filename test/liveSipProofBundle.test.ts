@@ -89,9 +89,10 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     assert.equal(bundleManifest.validationSummary.checks.artifactsPresent, true);
     assert.equal(bundleManifest.validationSummary.checks.liveCapture, false);
     assert.equal(bundleManifest.validationSummary.checks.rtcAsrLive, false);
-    assert.deepEqual(Object.keys(bundleManifest.reviewGate.failureReasons), ["liveCapture", "rtcAsrLive"]);
+    assert.deepEqual(Object.keys(bundleManifest.reviewGate.failureReasons), ["liveCapture", "rtcAsrLive", "sourceManifestReviewReady"]);
     assert.match(bundleManifest.reviewGate.failureReasons.liveCapture, /real local SIP/);
     assert.match(bundleManifest.reviewGate.failureReasons.rtcAsrLive, /RTC_ASR_WS_URL/);
+    assert.match(bundleManifest.reviewGate.failureReasons.sourceManifestReviewReady, /Source live proof manifest is not review-ready/);
     assert.equal(bundleManifest.validationSummary.blockers.length, 2);
     assert.deepEqual(bundleManifest.validationSummary.nextActions, [
       "Place a real local SIP/FreeSWITCH softphone call and rerun the live proof without --self-test.",
@@ -113,6 +114,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     assert.match(reviewGateReport, /## Failed Check Reasons/);
     assert.match(reviewGateReport, /liveCapture: Media is not labeled live_capture/);
     assert.match(reviewGateReport, /rtcAsrLive: rtc-asr is not labeled rtc_asr_live/);
+    assert.match(reviewGateReport, /sourceManifestReviewReady: Source live proof manifest is not review-ready/);
 
     await assert.rejects(
       execFileAsync(

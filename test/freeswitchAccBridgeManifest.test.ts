@@ -85,12 +85,17 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
 
     const bundleManifest = JSON.parse(await readFile(path.join(bundleDir, "proof-bundle-manifest.json"), "utf8")) as {
       artifacts: { audioCapture: string; sipLogs: string; rtcAsrEvidence: string | null };
-      validationSummary: { blockers: string[] };
+      reviewGate: { failureReasons: Record<string, string> };
+      validationSummary: { blockers: string[]; nextActions: string[] };
     };
     assert.equal(bundleManifest.artifacts.audioCapture, path.relative(repoRoot, audioPath).replaceAll(path.sep, "/"));
     assert.equal(bundleManifest.artifacts.sipLogs, path.relative(repoRoot, logPath).replaceAll(path.sep, "/"));
     assert.equal(bundleManifest.artifacts.rtcAsrEvidence, null);
     assert.ok(bundleManifest.validationSummary.blockers.some((blocker) => blocker.includes("no transcript/evidence path")));
+    assert.match(bundleManifest.reviewGate.failureReasons.sourceManifestReviewReady, /Source live proof manifest is not review-ready/);
+    assert.deepEqual(bundleManifest.validationSummary.nextActions, [
+      "Attach rtc-asr transcript evidence with --rtc-asr-evidence before marking the FreeSWITCH proof review-ready.",
+    ]);
 
     const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
     await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: "hello from local sip", final: true })}\n`, "utf8");

@@ -57,6 +57,9 @@ function reviewNextActions(liveManifest) {
   if (Number(liveManifest.localSip?.rtpPacketCount ?? 0) <= 0) {
     actions.push("Verify RTP routing and rerun until caller audio packets are captured.");
   }
+  for (const action of liveManifest.reviewGate?.nextActions ?? []) {
+    if (!actions.includes(action)) actions.push(action);
+  }
   return actions;
 }
 
@@ -67,6 +70,7 @@ function reviewGate(liveManifest, artifactIntegrity) {
     liveCapture: liveManifest.runtimeModeLabels?.media === "live_capture",
     rtcAsrLive: liveManifest.runtimeModeLabels?.rtcAsr === "rtc_asr_live",
     artifactsPresent: artifactIntegrity.every((artifact) => artifact.readiness === "ready"),
+    sourceManifestReviewReady: liveManifest.reviewReady === true,
   };
   const requiredLabels = ["local_sip", "live_capture", "rtc_asr_live"];
   const labels = [
@@ -90,6 +94,7 @@ function reviewGateFailureReasons(checks) {
     liveCapture: "Media is not labeled live_capture; rerun with a real local SIP/FreeSWITCH softphone call.",
     rtcAsrLive: "rtc-asr is not labeled rtc_asr_live; start rtc-asr and set RTC_ASR_WS_URL before rerunning.",
     artifactsPresent: "One or more required proof artifacts are missing or empty.",
+    sourceManifestReviewReady: "Source live proof manifest is not review-ready; inspect its blockers before submitting the bundle.",
   };
   return Object.fromEntries(Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => [name, reasons[name]]));
 }
