@@ -248,6 +248,22 @@ class LocalSipProofServer {
     if (this.options.generatedMedia) blockers.push("Self-test generated RTP audio; rerun with a real local SIP softphone call before review.");
     if (this.rtpPacketCount === 0) blockers.push("No RTP packets were captured.");
     if (!this.options.rtcAsrUrl) blockers.push("RTC_ASR_WS_URL was not set, so rtc-asr live transcription was not attempted.");
+    const runtimeModeLabels = {
+      telephony: "local_sip",
+      media: this.options.generatedMedia ? "generated_media" : "live_capture",
+      rtcAsr: this.options.rtcAsrUrl ? "rtc_asr_live" : "rtc_asr_blocked",
+      credentialsMode: "mocked",
+    };
+    const requiredReviewLabels = ["local_sip", "live_capture", "rtc_asr_live"];
+    const presentReviewLabels = new Set(Object.values(runtimeModeLabels));
+    const missingReviewLabels = requiredReviewLabels.filter((label) => !presentReviewLabels.has(label));
+    const nextActions = [];
+    if (this.options.generatedMedia || this.rtpPacketCount === 0) {
+      nextActions.push("Place a real local SIP/FreeSWITCH softphone call and rerun the live proof without --self-test.");
+    }
+    if (!this.options.rtcAsrUrl) {
+      nextActions.push("Start rtc-asr, set RTC_ASR_WS_URL, and rerun the live proof to capture a websocket-backed transcript.");
+    }
 
     await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
       eventType: "media.capture",
@@ -282,12 +298,7 @@ class LocalSipProofServer {
       workboardCard: "872af947-ef57-47bd-a4f3-3750f54e1948",
       callId: this.accCallId,
       sipCallId: this.callId,
-      runtimeModeLabels: {
-        telephony: "local_sip",
-        media: this.options.generatedMedia ? "generated_media" : "live_capture",
-        rtcAsr: this.options.rtcAsrUrl ? "rtc_asr_live" : "rtc_asr_blocked",
-        credentialsMode: "mocked",
-      },
+      runtimeModeLabels,
       localSip: {
         bind: `sip:${this.options.host}:${this.options.sipPort}`,
         rtpPort: this.options.rtpPort,
@@ -301,6 +312,11 @@ class LocalSipProofServer {
         { artifactId: "local-sip-sip-log", kind: "sip_log", path: sipLogPath, sha256: await sha256File(sipLogPath), sizeBytes: (await stat(sipLogPath)).size, readiness: "ready" },
       ],
       reviewReady: blockers.length === 0 && !this.options.generatedMedia,
+      reviewGate: {
+        requiredLabels: requiredReviewLabels,
+        missingLabels: missingReviewLabels,
+        nextActions,
+      },
       blockers,
     };
     this.lastManifest = manifest;

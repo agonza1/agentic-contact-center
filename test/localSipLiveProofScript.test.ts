@@ -49,6 +49,7 @@ test("local SIP self-test writes an honest blocked manifest and fails review-rea
       runtimeModeLabels: { telephony: string; media: string; rtcAsr: string; credentialsMode: string };
       localSip: { acceptedInvite: boolean; rtpPacketCount: number };
       artifactIntegrity: Array<{ readiness: string; sizeBytes: number }>;
+      reviewGate: { requiredLabels: string[]; missingLabels: string[]; nextActions: string[] };
     };
     assert.equal(manifest.reviewReady, false);
     assert.deepEqual(manifest.runtimeModeLabels, {
@@ -60,6 +61,12 @@ test("local SIP self-test writes an honest blocked manifest and fails review-rea
     assert.equal(manifest.localSip.acceptedInvite, true);
     assert.ok(manifest.localSip.rtpPacketCount > 0);
     assert.ok(manifest.artifactIntegrity.every((artifact) => artifact.readiness === "ready" && artifact.sizeBytes > 0));
+    assert.deepEqual(manifest.reviewGate.requiredLabels, ["local_sip", "live_capture", "rtc_asr_live"]);
+    assert.deepEqual(manifest.reviewGate.missingLabels, ["live_capture", "rtc_asr_live"]);
+    assert.deepEqual(manifest.reviewGate.nextActions, [
+      "Place a real local SIP/FreeSWITCH softphone call and rerun the live proof without --self-test.",
+      "Start rtc-asr, set RTC_ASR_WS_URL, and rerun the live proof to capture a websocket-backed transcript.",
+    ]);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -101,12 +108,18 @@ test("local SIP live-caller gate exits nonzero when no caller arrives", async ()
       reviewReady: boolean;
       runtimeModeLabels: { media: string; rtcAsr: string };
       localSip: { acceptedInvite: boolean; rtpPacketCount: number };
+      reviewGate: { missingLabels: string[]; nextActions: string[] };
     };
     assert.equal(manifest.reviewReady, false);
     assert.equal(manifest.runtimeModeLabels.media, "live_capture");
     assert.equal(manifest.runtimeModeLabels.rtcAsr, "rtc_asr_blocked");
     assert.equal(manifest.localSip.acceptedInvite, false);
     assert.equal(manifest.localSip.rtpPacketCount, 0);
+    assert.deepEqual(manifest.reviewGate.missingLabels, ["rtc_asr_live"]);
+    assert.deepEqual(manifest.reviewGate.nextActions, [
+      "Place a real local SIP/FreeSWITCH softphone call and rerun the live proof without --self-test.",
+      "Start rtc-asr, set RTC_ASR_WS_URL, and rerun the live proof to capture a websocket-backed transcript.",
+    ]);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
