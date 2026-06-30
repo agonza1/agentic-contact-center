@@ -9,6 +9,24 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
+function validWavFixture(packetCount = 4) {
+  const payloadBytes = packetCount * 320;
+  const buffer = Buffer.alloc(44 + payloadBytes, 1);
+  buffer.write("RIFF", 0, "ascii");
+  buffer.writeUInt32LE(36 + payloadBytes, 4);
+  buffer.write("WAVEfmt ", 8, "ascii");
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(8000, 24);
+  buffer.writeUInt32LE(16000, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36, "ascii");
+  buffer.writeUInt32LE(payloadBytes, 40);
+  return buffer;
+}
+
 test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-bridge-"));
@@ -16,7 +34,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
   const logPath = path.join(tempDir, "freeswitch-esl-events.json");
 
   try {
-    await writeFile(audioPath, Buffer.concat([Buffer.alloc(44), Buffer.alloc(320 * 4, 1)]));
+    await writeFile(audioPath, validWavFixture());
     await writeFile(logPath, `${JSON.stringify({ events: [{ headers: { "Event-Name": "CHANNEL_ANSWER" } }] })}\n`, "utf8");
 
     const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;

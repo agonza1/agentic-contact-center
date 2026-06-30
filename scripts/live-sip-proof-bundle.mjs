@@ -99,6 +99,20 @@ async function rtcAsrEvidence(filePath) {
   return { required: true, ready: true, transcriptChars: transcript.length };
 }
 
+async function wavEvidence(filePath) {
+  const buffer = await readFile(filePath);
+  const riffHeader = buffer.subarray(0, 4).toString("ascii");
+  const waveHeader = buffer.subarray(8, 12).toString("ascii");
+  const hasRiffWaveHeader = riffHeader === "RIFF" && waveHeader === "WAVE";
+  const hasAudioPayload = buffer.length > 44;
+  return {
+    ready: hasRiffWaveHeader && hasAudioPayload,
+    hasRiffWaveHeader,
+    hasAudioPayload,
+    sizeBytes: buffer.length,
+  };
+}
+
 function reviewNextActions(liveManifest) {
   const actions = [];
   if (liveManifest.runtimeModeLabels?.media !== "live_capture") {
@@ -116,12 +130,13 @@ function reviewNextActions(liveManifest) {
   return actions;
 }
 
-function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult) {
+function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, wavEvidenceResult) {
   const checks = {
     acceptedInvite: liveManifest.localSip?.acceptedInvite === true,
     sipLogHasInvite: sipEvidence.hasInvite,
     sipLogHasAcceptedInvite: sipEvidence.hasAcceptedInviteResponse,
     capturedRtp: Number(liveManifest.localSip?.rtpPacketCount ?? 0) > 0,
+    callerAudioWavValid: wavEvidenceResult.ready === true,
     liveCapture: liveManifest.runtimeModeLabels?.media === "live_capture",
     rtcAsrLive: liveManifest.runtimeModeLabels?.rtcAsr === "rtc_asr_live",
     rtcAsrEvidenceValid: liveManifest.runtimeModeLabels?.rtcAsr !== "rtc_asr_live" || rtcAsrEvidenceResult.ready === true,
@@ -149,6 +164,7 @@ function reviewGateFailureReasons(checks) {
     sipLogHasInvite: "SIP log does not include an INVITE entry, so the source manifest cannot prove a local SIP call.",
     sipLogHasAcceptedInvite: "SIP log does not include an accepted INVITE response or FreeSWITCH CHANNEL_ANSWER event.",
     capturedRtp: "No RTP packets were captured for caller audio.",
+    callerAudioWavValid: "Caller audio artifact is not a non-empty RIFF/WAVE file with captured audio payload.",
     liveCapture: "Media is not labeled live_capture; rerun with a real local SIP/FreeSWITCH softphone call.",
     rtcAsrLive: "rtc-asr is not labeled rtc_asr_live; start rtc-asr and set RTC_ASR_WS_URL before rerunning.",
     rtcAsrEvidenceValid: "rtc-asr live transcript evidence is missing, invalid, empty, or not final.",
@@ -320,12 +336,14 @@ async function main() {
   ];
   const sipEvidence = await sipLogEvidence(sipLogPath);
   const rtcAsrEvidenceResult = await rtcAsrEvidence(rtcAsrEvidencePath);
-  const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult);
+  const wavEvidenceResult = await wavEvidence(audioPath);
+  const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, wavEvidenceResult);
   const validationSummary = {
     status: gate.passed ? "ready_for_review" : "blocked_before_review",
     checks: gate.checks,
     blockers: liveManifest.blockers,
     nextActions: reviewNextActions(liveManifest),
+    callerAudioEvidence: wavEvidenceResult,
     sipLogEvidence: sipEvidence,
     rtcAsrEvidence: rtcAsrEvidenceResult,
   };
