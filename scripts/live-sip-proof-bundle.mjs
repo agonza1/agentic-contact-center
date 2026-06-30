@@ -113,17 +113,51 @@ async function wavEvidence(filePath) {
   };
 }
 
-function sourceArtifactIntegrityEvidence(liveManifest) {
+async function sourceArtifactIntegrityEvidence(liveManifest) {
   const artifacts = Array.isArray(liveManifest.artifactIntegrity) ? liveManifest.artifactIntegrity : [];
-  const blockedArtifacts = artifacts.filter((artifact) => artifact?.readiness && artifact.readiness !== "ready");
+  const checkedArtifacts = await Promise.all(artifacts.map(async (artifact) => {
+    const artifactPath = artifact?.path ?? artifact?.uri ?? null;
+    const resolvedPath = artifactPath ? path.resolve(repoRoot, artifactPath) : null;
+    const currentStats = resolvedPath ? await stat(resolvedPath).catch(() => null) : null;
+    const currentSha256 = currentStats && resolvedPath ? await sha256File(resolvedPath) : null;
+    const expectedSha256 = artifact?.sha256 ?? null;
+    const expectedSizeBytes = Number.isFinite(Number(artifact?.sizeBytes ?? artifact?.size_bytes)) ? Number(artifact?.sizeBytes ?? artifact?.size_bytes) : null;
+    const sha256Matches = !expectedSha256 || currentSha256 === expectedSha256;
+    const sizeMatches = expectedSizeBytes === null || currentStats?.size === expectedSizeBytes;
+    return {
+      artifactId: artifact?.artifactId ?? artifact?.artifact_id ?? "unknown",
+      readiness: artifact?.readiness ?? "unknown",
+      path: artifactPath,
+      exists: currentStats !== null,
+      expectedSha256,
+      currentSha256,
+      sha256Matches,
+      expectedSizeBytes,
+      currentSizeBytes: currentStats?.size ?? null,
+      sizeMatches,
+    };
+  }));
+  const blockedArtifacts = checkedArtifacts.filter((artifact) => artifact.readiness && artifact.readiness !== "ready");
+  const changedArtifacts = checkedArtifacts.filter((artifact) => !artifact.exists || !artifact.sha256Matches || !artifact.sizeMatches);
   return {
     checked: artifacts.length,
     blocked: blockedArtifacts.map((artifact) => ({
-      artifactId: artifact.artifactId ?? artifact.artifact_id ?? "unknown",
+      artifactId: artifact.artifactId,
       readiness: artifact.readiness,
-      path: artifact.path ?? artifact.uri ?? null,
+      path: artifact.path,
     })),
-    ready: blockedArtifacts.length === 0,
+    changed: changedArtifacts.map((artifact) => ({
+      artifactId: artifact.artifactId,
+      path: artifact.path,
+      exists: artifact.exists,
+      expectedSha256: artifact.expectedSha256,
+      currentSha256: artifact.currentSha256,
+      sha256Matches: artifact.sha256Matches,
+      expectedSizeBytes: artifact.expectedSizeBytes,
+      currentSizeBytes: artifact.currentSizeBytes,
+      sizeMatches: artifact.sizeMatches,
+    })),
+    ready: blockedArtifacts.length === 0 && changedArtifacts.length === 0,
   };
 }
 
@@ -184,7 +218,7 @@ function reviewGateFailureReasons(checks) {
     rtcAsrLive: "rtc-asr is not labeled rtc_asr_live; start rtc-asr and set RTC_ASR_WS_URL before rerunning.",
     rtcAsrEvidenceValid: "rtc-asr live transcript evidence is missing, invalid, empty, or not final.",
     artifactsPresent: "One or more required proof artifacts are missing or empty.",
-    sourceArtifactIntegrityReady: "Source live proof manifest reports one or more blocked artifacts.",
+    sourceArtifactIntegrityReady: "Source live proof manifest reports blocked, missing, or changed artifacts.",
     sourceManifestReviewReady: "Source live proof manifest is not review-ready; inspect its blockers before submitting the bundle.",
   };
   return Object.fromEntries(Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => [name, reasons[name]]));
@@ -353,7 +387,7 @@ async function main() {
   const sipEvidence = await sipLogEvidence(sipLogPath);
   const rtcAsrEvidenceResult = await rtcAsrEvidence(rtcAsrEvidencePath);
   const wavEvidenceResult = await wavEvidence(audioPath);
-  const sourceArtifactIntegrityResult = sourceArtifactIntegrityEvidence(liveManifest);
+  const sourceArtifactIntegrityResult = await sourceArtifactIntegrityEvidence(liveManifest);
   const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult);
   const validationSummary = {
     status: gate.passed ? "ready_for_review" : "blocked_before_review",
