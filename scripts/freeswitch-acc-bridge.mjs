@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import net from "node:net";
 import http from "node:http";
-import { mkdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 function argValue(flag, fallback = undefined) {
   const index = process.argv.indexOf(flag);
@@ -12,6 +14,10 @@ function argValue(flag, fallback = undefined) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+async function sha256File(filePath) {
+  return createHash("sha256").update(await readFile(filePath)).digest("hex");
 }
 
 async function postJson(baseUrl, route, body) {
@@ -40,6 +46,90 @@ function parseHeaders(block) {
     if (index > 0) headers.set(line.slice(0, index).trim(), decodeURIComponent(line.slice(index + 1).trim().replaceAll("+", "%20")));
   }
   return headers;
+}
+
+export async function buildFreeswitchLiveProofManifest(options) {
+  const audioStats = await stat(options.wavPath).catch(() => null);
+  const logStats = await stat(options.logPath).catch(() => null);
+  const audioBytes = audioStats?.size ?? 0;
+  const generatedMedia = false;
+  const rtpPacketCountEstimate = audioBytes > 44 ? Math.floor((audioBytes - 44) / 320) : 0;
+  const runtimeModeLabels = {
+    telephony: options.telephonyMode,
+    media: "live_capture",
+    rtcAsr: options.rtcAsrUrl ? "rtc_asr_live" : "rtc_asr_blocked",
+    credentialsMode: options.telephonyMode === "signalwire_live" ? "signalwire_live" : "mocked",
+  };
+  const requiredReviewLabels = ["local_sip", "live_capture", "rtc_asr_live"];
+  const presentReviewLabels = new Set(Object.values(runtimeModeLabels));
+  const missingReviewLabels = requiredReviewLabels.filter((label) => !presentReviewLabels.has(label));
+  const blockers = [];
+
+  if (!audioStats || audioBytes === 0) blockers.push("FreeSWITCH did not write a caller WAV for this call.");
+  if (rtpPacketCountEstimate === 0) blockers.push("Captured WAV is empty or too small to prove RTP caller audio.");
+  if (!logStats || logStats.size === 0) blockers.push("FreeSWITCH ESL event log is missing or empty.");
+  if (!options.rtcAsrUrl) blockers.push("RTC_ASR_WS_URL was not set, so rtc-asr live transcription was not attempted.");
+  if (options.rtcAsrUrl && !options.rtcAsrEvidencePath) blockers.push("rtc-asr URL was configured, but no transcript/evidence path was attached to this FreeSWITCH proof.");
+
+  const nextActions = [];
+  if (rtpPacketCountEstimate === 0) {
+    nextActions.push("Place a real local SIP/FreeSWITCH softphone call, speak into the call, and rerun until caller audio is captured.");
+  }
+  if (!options.rtcAsrUrl) {
+    nextActions.push("Start rtc-asr, set RTC_ASR_WS_URL, and rerun the FreeSWITCH bridge proof to capture a websocket-backed transcript.");
+  }
+  if (options.rtcAsrUrl && !options.rtcAsrEvidencePath) {
+    nextActions.push("Attach rtc-asr transcript evidence with --rtc-asr-evidence before marking the FreeSWITCH proof review-ready.");
+  }
+
+  const artifactIntegrity = [];
+  if (audioStats) {
+    artifactIntegrity.push({
+      artifactId: "freeswitch-caller-capture-wav",
+      kind: "call_media",
+      path: options.wavPath,
+      sha256: await sha256File(options.wavPath),
+      sizeBytes: audioStats.size,
+      readiness: audioStats.size > 0 ? "ready" : "blocked",
+    });
+  }
+  if (logStats) {
+    artifactIntegrity.push({
+      artifactId: "freeswitch-esl-event-log",
+      kind: "sip_log",
+      path: options.logPath,
+      sha256: await sha256File(options.logPath),
+      sizeBytes: logStats.size,
+      readiness: logStats.size > 0 ? "ready" : "blocked",
+    });
+  }
+
+  return {
+    schemaVersion: 1,
+    generatedAt: nowIso(),
+    workboardCard: "872af947-ef57-47bd-a4f3-3750f54e1948",
+    callId: options.accCallId ?? null,
+    sipCallId: options.uuid,
+    fsUuid: options.uuid,
+    runtimeModeLabels,
+    localSip: {
+      bind: options.telephonyMode === "signalwire_live" ? "signalwire_sip_trunk_to_freeswitch" : "sip:1000@127.0.0.1:5060",
+      destination: options.destination ?? "8600",
+      acceptedInvite: true,
+      rtpPacketCount: rtpPacketCountEstimate,
+      remoteRtp: null,
+      freeswitchRecordingPath: options.wavPath,
+    },
+    artifacts: { audioWav: options.wavPath, sipLog: options.logPath },
+    artifactIntegrity,
+    reviewReady: blockers.length === 0 && runtimeModeLabels.telephony === "local_sip" && Boolean(options.rtcAsrEvidencePath) && !generatedMedia,
+    reviewGate: {
+      requiredLabels: requiredReviewLabels,
+      missingLabels: missingReviewLabels,
+      nextActions,
+    },
+    blockers,
+  };
 }
 
 class EslBridge {
@@ -101,7 +191,7 @@ class EslBridge {
     if (this.callMap.has(uuid)) return;
     const destination = headers.get("Caller-Destination-Number") ?? "8600";
     const wavPath = path.join(this.options.recordingDir, `${uuid}.wav`);
-    await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
+    const response = await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
       eventType: "call.started",
       timestamp: nowIso(),
       sipCallId: uuid,
@@ -111,7 +201,7 @@ class EslBridge {
       rtcAsrMode: this.options.rtcAsrUrl ? "rtc_asr_live" : "rtc_asr_blocked",
       destination,
     });
-    this.callMap.set(uuid, { wavPath, startedAt: Date.now() });
+    this.callMap.set(uuid, { wavPath, startedAt: Date.now(), destination, accCallId: response?.body?.call?.session?.callId ?? null });
     this.send(`api uuid_record ${uuid} start ${wavPath}`);
   }
 
@@ -137,6 +227,19 @@ class EslBridge {
         nextAction: "Start rtc-asr and set RTC_ASR_WS_URL before rerunning FreeSWITCH bridge proof.",
       });
     }
+    await this.flushLog();
+    const manifest = await buildFreeswitchLiveProofManifest({
+      uuid,
+      accCallId: call.accCallId,
+      destination: call.destination,
+      wavPath: call.wavPath,
+      logPath: this.options.logPath,
+      rtcAsrUrl: this.options.rtcAsrUrl,
+      rtcAsrEvidencePath: this.options.rtcAsrEvidencePath,
+      telephonyMode: this.options.telephonyMode,
+    });
+    await mkdir(path.dirname(this.options.manifestPath), { recursive: true });
+    await writeFile(this.options.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   }
 
   async onHangup(uuid, headers) {
@@ -166,14 +269,18 @@ async function main() {
     accBaseUrl: argValue("--acc-url", process.env.ACC_BASE_URL || "http://127.0.0.1:8026"),
     recordingDir: path.resolve(process.cwd(), argValue("--recording-dir", "artifacts/freeswitch-live/media")),
     logPath: path.resolve(process.cwd(), argValue("--log", "artifacts/freeswitch-live/freeswitch-esl-events.json")),
+    manifestPath: path.resolve(process.cwd(), argValue("--manifest", "artifacts/freeswitch-live/freeswitch-live-proof-manifest.json")),
     rtcAsrUrl: argValue("--rtc-asr-url", process.env.RTC_ASR_WS_URL),
+    rtcAsrEvidencePath: argValue("--rtc-asr-evidence", process.env.RTC_ASR_EVIDENCE_PATH),
     telephonyMode: argValue("--telephony-mode", process.env.ACC_TELEPHONY_MODE || "local_sip"),
   });
   await bridge.start();
   console.log(`FreeSWITCH ACC bridge connected target ${bridge.options.eslHost}:${bridge.options.eslPort}; ACC ${bridge.options.accBaseUrl}`);
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.stack || error.message : String(error));
-  process.exitCode = 1;
-});
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.stack || error.message : String(error));
+    process.exitCode = 1;
+  });
+}

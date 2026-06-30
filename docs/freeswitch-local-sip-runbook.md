@@ -48,6 +48,14 @@ docker compose --profile freeswitch up --build app freeswitch
 ACC_BASE_URL=http://127.0.0.1:8026 node scripts/freeswitch-acc-bridge.mjs --recording-dir artifacts/freeswitch-live/media --log artifacts/freeswitch-live/freeswitch-esl-events.json
 ```
 
+The bridge also writes a bundle-compatible manifest by default:
+
+```text
+artifacts/freeswitch-live/freeswitch-live-proof-manifest.json
+```
+
+Override it with `--manifest <path>` if needed. If rtc-asr is running and you have a transcript/evidence JSON path, pass `--rtc-asr-evidence <path>` so the manifest can distinguish a configured websocket from attached ASR proof.
+
 4. Register a local SIP softphone:
 
 ```text
@@ -63,6 +71,7 @@ Dial: 8600
 ```sh
 ls -lh artifacts/freeswitch-live/media/*.wav artifacts/freeswitch-live/freeswitch-esl-events.json
 curl http://127.0.0.1:8026/api/calls?limit=5
+npm run proof:live-sip-bundle -- --live-manifest artifacts/freeswitch-live/freeswitch-live-proof-manifest.json --out-dir artifacts/freeswitch-live-bundle
 ```
 
 ## rtc-asr live transcript
