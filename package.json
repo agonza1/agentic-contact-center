@@ -14,7 +14,12 @@
     "docker:smoke": "sh -c 'cleanup(){ docker compose down --remove-orphans; }; trap cleanup EXIT; docker compose up --build -d app && node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health'",
     "pipecat:check": "python3 scripts/pipecat-local-runtime.py --self-test",
     "proof:pipecat": "npm run pipecat:check && npm run proof --",
-    "proof:bundle": "node scripts/agentic-call-center-proof.mjs"
+    "proof:bundle": "node scripts/agentic-call-center-proof.mjs",
+    "sip:local-proof": "node scripts/local-sip-live-proof.mjs",
+    "sip:self-test": "node scripts/local-sip-live-proof.mjs --self-test --out-dir artifacts/local-sip-selftest",
+    "freeswitch:bridge": "node scripts/freeswitch-acc-bridge.mjs",
+    "docker:freeswitch": "docker compose --profile freeswitch up --build app freeswitch",
+    "proof:live-sip-bundle": "node scripts/live-sip-proof-bundle.mjs"
   },
   "engines": {
     "node": ">=20"

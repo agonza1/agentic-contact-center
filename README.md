@@ -272,3 +272,28 @@ The bundle writes `proof-bundle-manifest.json`, `conversation-agent-evals-assert
 - State is in-memory and process-local.
 - Telephony, OpenClaw, Pipecat, Slack, CRM, billing, and authentication are mocked or represented as deterministic contracts.
 - `apps/api` and `apps/web` are not covered by the root npm scripts or Docker runtime.
+
+## FreeSWITCH and Local SIP Live Capture
+
+This repo now has a local SIP live-capture path for workboard card `872af947-ef57-47bd-a4f3-3750f54e1948`. It does not require or store production SignalWire credentials.
+
+Quick local harness self-test, marked `generated_media` and not review-ready:
+
+```sh
+npm run build
+PORT=8026 npm start
+npm run sip:self-test -- --acc-url http://127.0.0.1:8026
+npm run proof:live-sip-bundle -- --live-manifest artifacts/local-sip-selftest/local-sip-live-proof-manifest.json --out-dir artifacts/local-sip-selftest-bundle
+```
+
+FreeSWITCH local SIP target:
+
+- SIP account: `1000` / `local-sip-pass` at `127.0.0.1:5060` UDP
+- Dial: `8600`
+- ESL bridge: `npm run freeswitch:bridge -- --acc-url http://127.0.0.1:8026`
+- Docker profile: `npm run docker:freeswitch` when Docker is available
+- Runbook: `docs/freeswitch-local-sip-runbook.md`
+
+Review release requires a real local SIP softphone call with `live_capture`, not the generated self-test. If `RTC_ASR_WS_URL` is not set, the bundle emits an explicit `rtc_asr_blocked` artifact and blocker instead of a fake transcript.
+
+The operator/demo UI for this path is `/operator/console`. Select the live SIP call to see the visible run/session id, SIP/FreeSWITCH/SignalWire runtime labels, audio WAV and SIP log paths, live transcript or rtc-asr blocker state, proof/eval links, caveats, and operator controls for fallback, takeover, transfer, or end-call handoff.

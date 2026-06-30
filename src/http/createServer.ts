@@ -403,6 +403,15 @@ function buildOperatorConsoleHtml(): string {
     .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
     .metric { border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fbfcfe; }
     .metric strong { display: block; font-size: 18px; }
+    .proof-panel { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #f8fafc; }
+    .proof-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .proof-header h3 { margin: 0; font-size: 15px; }
+    .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .badge { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--muted); font-size: 12px; }
+    .badge.live { color: #0f5f58; border-color: #8fd6cd; background: #eefaf7; }
+    .badge.warn { color: #8a3d13; border-color: #f5bf8f; background: #fff7ed; }
+    .proof-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+    .caveats { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12px; }
     .evidence { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
     .evidence a { color: var(--accent); font-weight: 700; text-decoration: none; }
     .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
@@ -430,9 +439,13 @@ function buildOperatorConsoleHtml(): string {
   <script>
     const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs} };
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
+    const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
     const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
     function setStatus(text) { document.getElementById("status").textContent = text; }
     function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { if (char === "&") return "&amp;"; if (char === "<") return "&lt;"; if (char === ">") return "&gt;"; return "&quot;"; }); }
+    function humanLabel(value) { return String(value || "none").replace(/_/g, " "); }
+    function linkHtml(href, text) { return href ? '<a href="' + escapeHtml(href) + '">' + escapeHtml(text) + '</a>' : '<span class="meta">' + escapeHtml(text) + ': unavailable</span>'; }
+    function pathHtml(path, label) { return path ? '<span class="meta">' + escapeHtml(label) + ': ' + escapeHtml(path) + '</span>' : '<span class="meta">' + escapeHtml(label) + ': not attached</span>'; }
     function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
     function operatorConsoleQuery() {
       const params = new URLSearchParams({ sort: "attentionStartedAt", order: "asc", limit: "25" });
@@ -532,7 +545,9 @@ function buildOperatorConsoleHtml(): string {
     function renderCalls() {
       const root = document.getElementById("calls");
       root.innerHTML = state.calls.map(function(call) {
-        return '<button type="button" class="call-item" aria-selected="' + (call.session.callId === state.selectedCallId) + '" data-call-id="' + escapeHtml(call.session.callId) + '"><span class="call-id">' + escapeHtml(call.session.callId) + '</span><span class="meta">' + escapeHtml(call.flowState) + ' | ' + (call.attention.required ? "attention" : "monitoring") + '</span><span class="meta">' + escapeHtml(call.session.openclawSession.label) + '</span></button>';
+        const labels = call.liveProof ? call.liveProof.labels : call.session.runtimeModeLabels;
+        const labelText = labels ? [labels.telephony, labels.media, labels.rtcAsr].filter(Boolean).join(" | ") : "runtime labels unavailable";
+        return '<button type="button" class="call-item" aria-selected="' + (call.session.callId === state.selectedCallId) + '" data-call-id="' + escapeHtml(call.session.callId) + '"><span class="call-id">' + escapeHtml(call.session.callId) + '</span><span class="meta">' + escapeHtml(call.flowState) + ' | ' + (call.attention.required ? "attention" : "monitoring") + '</span><span class="meta">' + escapeHtml(labelText) + '</span><span class="meta">' + escapeHtml(call.session.openclawSession.label) + '</span></button>';
       }).join("") || '<div class="meta" style="padding:14px">No active calls</div>';
       root.querySelectorAll("button[data-call-id]").forEach(function(button) { button.addEventListener("click", function() { state.selectedCallId = button.dataset.callId; render(); }); });
     }
@@ -568,6 +583,14 @@ function buildOperatorConsoleHtml(): string {
       const fallbackQueueLink = evidence.fallbackModeQueue || evidence.fallbackModeOperatorConsole || evidenceLinks.events;
       const operatorNoteTrailLink = evidence.operatorNoteTrail || evidenceLinks.events;
       const reasonTrailHtml = fallbackReasonLink ? '<a href="' + escapeHtml(fallbackReasonLink) + '">Reason Trail</a>' : '';
+      const liveProof = call.liveProof || {};
+      const runtimeLabels = liveProof.labels || call.session.runtimeModeLabels || {};
+      const isLiveProofReady = liveProof.eval && liveProof.eval.reviewReady;
+      const badgeClass = isLiveProofReady ? "badge live" : "badge warn";
+      const labelBadges = [runtimeLabels.telephony, runtimeLabels.media, runtimeLabels.rtcAsr, runtimeLabels.credentialsMode].filter(Boolean).map(function(label) { return '<span class="badge">' + escapeHtml(label) + '</span>'; }).join("");
+      const caveatsHtml = (liveProof.caveats || []).length ? '<ul class="caveats">' + liveProof.caveats.map(function(caveat) { return '<li>' + escapeHtml(caveat) + '</li>'; }).join("") + '</ul>' : '<span class="meta">No caveats recorded for this run.</span>';
+      const asrDetail = liveProof.asr && (liveProof.asr.latestTranscriptText || liveProof.asr.blocker || liveProof.asr.nextAction) ? (liveProof.asr.latestTranscriptText || liveProof.asr.blocker || liveProof.asr.nextAction) : "no ASR events yet";
+      const liveProofHtml = '<section class="proof-panel" aria-label="Live SIP proof"><div class="proof-header"><h3>Live SIP proof</h3><div class="badges"><span class="' + badgeClass + '">' + escapeHtml(liveProof.eval ? liveProof.eval.status : "not_review_ready") + '</span>' + labelBadges + '</div></div><div class="proof-grid"><div class="metric"><span class="meta">Run / Session</span><strong>' + escapeHtml((liveProof.run && liveProof.run.sessionId) || call.session.openclawSession.sessionId) + '</strong><span class="meta">Call: ' + escapeHtml((liveProof.run && liveProof.run.callId) || call.session.callId) + '</span><span class="meta">Provider: ' + escapeHtml((liveProof.run && liveProof.run.providerCallId) || call.session.providerCallId) + '</span></div><div class="metric"><span class="meta">Audio Capture</span><strong>' + escapeHtml(humanLabel(liveProof.audioCapture && liveProof.audioCapture.status)) + '</strong>' + pathHtml(liveProof.audioCapture && liveProof.audioCapture.audioWavPath, "WAV") + pathHtml(liveProof.audioCapture && liveProof.audioCapture.sipLogPath, "SIP log") + linkHtml(liveProof.audioCapture && liveProof.audioCapture.eventTrail, "Capture Events") + '</div><div class="metric"><span class="meta">Transcript / ASR</span><strong>' + escapeHtml(humanLabel(liveProof.asr && liveProof.asr.status)) + '</strong><span class="meta">' + escapeHtml(asrDetail) + '</span>' + pathHtml(liveProof.asr && liveProof.asr.evidencePath, "ASR evidence") + linkHtml(liveProof.asr && liveProof.asr.eventTrail, "ASR Events") + '</div><div class="metric"><span class="meta">Artifacts / Eval</span><strong>' + escapeHtml(isLiveProofReady ? "Reviewable" : "Blocked") + '</strong>' + linkHtml(liveProof.eval && liveProof.eval.proofRoute, "Proof") + linkHtml(liveProof.eval && liveProof.eval.artifactManifestRoute, "Artifacts") + linkHtml(liveProof.eval && liveProof.eval.transcriptRoute, "Transcript") + '</div><div class="metric"><span class="meta">Handoff State</span><strong>' + escapeHtml(humanLabel(liveProof.operator && liveProof.operator.handoffState)) + '</strong><span class="meta">Attention: ' + escapeHtml(liveProof.operator && liveProof.operator.attentionRequired ? "required" : "clear") + '</span><span class="meta">Pending: ' + escapeHtml((liveProof.operator && liveProof.operator.pendingAction) || "none") + '</span></div></div>' + caveatsHtml + '</section>';
       const evidenceHtml = '<div class="evidence" aria-label="Evidence markers"><div class="metric"><span class="meta">Latest Event</span><strong>' + escapeHtml(evidence.latestEventType || "none") + '</strong><span class="meta">' + escapeHtml(evidence.latestEventAt || "not recorded") + '</span><a href="' + escapeHtml(latestEventLink) + '">Event Trail</a></div><div class="metric"><span class="meta">Transcript Turns</span><strong>' + evidence.transcriptTurns + '</strong><a href="' + escapeHtml(evidenceLinks.transcript) + '">Transcript</a></div><div class="metric"><span class="meta">Latency Marks</span><strong>' + evidence.latencyMarkCount + '</strong><span class="meta">Over budget: ' + evidence.overBudgetLatencyMarkCount + '</span><a href="' + escapeHtml(latencyLink) + '">Latency</a></div><div class="metric"><span class="meta">Fallback</span><strong>' + escapeHtml(fallbackLabel) + '</strong><span class="meta">' + escapeHtml(fallbackDetail) + '</span><a href="' + escapeHtml(fallbackTrailLink) + '">Event Trail</a><a href="' + escapeHtml(fallbackQueueLink) + '">Fallback Queue</a>' + reasonTrailHtml + '</div><div class="metric"><span class="meta">Operator Notes</span><strong>' + evidence.operatorNoteCount + '</strong><span class="meta">' + escapeHtml(evidence.latestDisposition || evidence.latestOperatorNoteText || "none") + '</span><a href="' + escapeHtml(operatorNoteTrailLink) + '">Note Trail</a></div><div class="metric"><span class="meta">Proof Bundle</span><strong>' + evidence.eventCount + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Proof</a><a href="' + escapeHtml(evidenceLinks.artifacts) + '">Artifacts</a></div></div>';
       const scriptedState = call.actionState.scriptedCallerTurnState || { matchedTurns: 0, totalTurns: (state.scriptedCallerTurns || []).length, nextTurnIndex: 0, nextTurnText: null, completed: false };
       const scriptedTurns = (state.scriptedCallerTurns || []).map(function(text, index) {
@@ -578,7 +601,7 @@ function buildOperatorConsoleHtml(): string {
         return '<button type="button" data-scripted-turn="' + index + '" ' + disabled + '><span class="meta">' + status + ' | Turn ' + (index + 1) + '</span><br>' + escapeHtml(text) + '</button>';
       }).join("");
       const scriptedMetric = '<div class="metric"><span class="meta">Scripted Turns</span><strong>' + scriptedState.matchedTurns + '/' + scriptedState.totalTurns + '</strong><span class="meta">' + escapeHtml(scriptedState.completed ? "complete" : scriptedState.nextTurnText || "queued") + '</span></div>';
-      root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + scriptedMetric + pendingHtml + '</div>' + evidenceHtml + '<div class="actions">' + actionHtml + '</div><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
+      root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + scriptedMetric + pendingHtml + '</div>' + liveProofHtml + evidenceHtml + '<div class="actions">' + actionHtml + '</div><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\\n\\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       root.querySelectorAll("button[data-scripted-turn]").forEach(function(button) { button.addEventListener("click", function() { const text = state.scriptedCallerTurns[Number(button.dataset.scriptedTurn)]; if (text) postScriptedTurn(text).catch(function(error) { setStatus(error.message); }); }); });
       document.getElementById("caller-turn-form").addEventListener("submit", recordCallerTurn);
@@ -695,6 +718,119 @@ function buildHandoffTrail(snapshot: CallSnapshot): string | null {
     : null;
 }
 
+function getLatestEvent(snapshot: CallSnapshot, eventType: string) {
+  return [...snapshot.events].reverse().find((event) => event.type === eventType) ?? null;
+}
+
+function getOptionalEventString(value: string | number | boolean | null | undefined): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function buildLiveProofSummary(snapshot: CallSnapshot) {
+  const labels = snapshot.session.runtimeModeLabels;
+  const mediaCaptureEvent = getLatestEvent(snapshot, "media_capture_attached");
+  const asrTranscriptEvent = getLatestEvent(snapshot, "rtc_asr_transcript");
+  const asrBlockedEvent = getLatestEvent(snapshot, "rtc_asr_blocked");
+  const endedEvent = getLatestEvent(snapshot, "sip_call_ended");
+  const handoffEvent = getLatestEvent(snapshot, "human_handoff_started");
+  const audioWavPath = getOptionalEventString(mediaCaptureEvent?.detail.audioWavPath);
+  const sipLogPath = getOptionalEventString(mediaCaptureEvent?.detail.sipLogPath);
+  const rtcAsrEvidencePath = getOptionalEventString(asrTranscriptEvent?.detail.evidencePath ?? asrBlockedEvent?.detail.evidencePath);
+  const generatedMedia = mediaCaptureEvent?.detail.generatedMedia === true || labels.media === "generated_media";
+  const hasLiveAudioCapture = Boolean(mediaCaptureEvent && labels.media === "live_capture" && !generatedMedia);
+  const hasLiveTelephony = labels.telephony === "local_sip" || labels.telephony === "signalwire_live";
+  const asrStatus = asrTranscriptEvent
+    ? "transcript_received"
+    : asrBlockedEvent
+      ? "blocked"
+      : labels.rtcAsr === "rtc_asr_live"
+        ? "waiting_for_events"
+        : labels.rtcAsr;
+  const audioStatus = mediaCaptureEvent
+    ? generatedMedia
+      ? "generated_media"
+      : "live_capture_attached"
+    : labels.media === "live_capture"
+      ? "waiting_for_capture"
+      : "generated_media";
+  const evalStatus = hasLiveTelephony && hasLiveAudioCapture && asrTranscriptEvent
+    ? "ready_for_conversation_agent_evals"
+    : hasLiveTelephony && hasLiveAudioCapture && asrBlockedEvent
+      ? "ready_with_rtc_asr_blocker"
+      : "not_review_ready";
+  const caveats = [
+    !hasLiveTelephony ? "Telephony is mocked; run a local SIP or SignalWire live call before review." : null,
+    !hasLiveAudioCapture ? "No real caller WAV is attached yet." : null,
+    generatedMedia ? "Generated media is present and cannot satisfy the live-capture acceptance bar." : null,
+    asrBlockedEvent ? getOptionalEventString(asrBlockedEvent.detail.blocker) ?? "rtc-asr is blocked; see evidence path or event trail." : null,
+    labels.telephony === "signalwire_live" && labels.credentialsMode !== "signalwire_live" ? "SignalWire credentials/DID routing are not active." : null,
+  ].filter((caveat): caveat is string => caveat !== null);
+  const handoffState = handoffEvent
+    ? "handoff_started"
+    : snapshot.operatorSteer.pending
+      ? "operator_review_required"
+      : snapshot.demoFallback.armed
+        ? "fallback_armed"
+        : endedEvent
+          ? "call_ended"
+          : "monitoring";
+
+  return {
+    run: {
+      callId: snapshot.session.callId,
+      providerCallId: snapshot.session.providerCallId,
+      sessionId: snapshot.session.openclawSession.sessionId,
+      sessionLabel: snapshot.session.openclawSession.label,
+      startedAt: snapshot.session.startedAt,
+    },
+    labels,
+    audioCapture: {
+      status: audioStatus,
+      attachedAt: mediaCaptureEvent?.at ?? null,
+      audioWavPath,
+      sipLogPath,
+      rtpPacketCount: typeof mediaCaptureEvent?.detail.rtpPacketCount === "number" ? mediaCaptureEvent.detail.rtpPacketCount : null,
+      generatedMedia,
+      eventTrail: mediaCaptureEvent ? snapshot.session.openclawSession.artifactLinks.events + "?type=media_capture_attached&limit=1&order=desc" : null,
+    },
+    asr: {
+      status: asrStatus,
+      mode: labels.rtcAsr,
+      latestTranscriptText: getOptionalEventString(asrTranscriptEvent?.detail.transcriptText),
+      blocker: getOptionalEventString(asrBlockedEvent?.detail.blocker),
+      nextAction: getOptionalEventString(asrBlockedEvent?.detail.nextAction),
+      evidencePath: rtcAsrEvidencePath,
+      eventTrail: asrTranscriptEvent
+        ? snapshot.session.openclawSession.artifactLinks.events + "?type=rtc_asr_transcript&limit=1&order=desc"
+        : asrBlockedEvent
+          ? snapshot.session.openclawSession.artifactLinks.events + "?type=rtc_asr_blocked&limit=1&order=desc"
+          : null,
+    },
+    sip: {
+      endedAt: endedEvent?.at ?? null,
+      hangupCause: getOptionalEventString(endedEvent?.detail.hangupCause),
+      durationSeconds: typeof endedEvent?.detail.durationSeconds === "number" ? endedEvent.detail.durationSeconds : null,
+      eventTrail: snapshot.session.openclawSession.artifactLinks.events,
+    },
+    eval: {
+      status: evalStatus,
+      reviewReady: evalStatus === "ready_for_conversation_agent_evals" || evalStatus === "ready_with_rtc_asr_blocker",
+      assertRequestExpected: hasLiveTelephony && hasLiveAudioCapture,
+      proofRoute: snapshot.session.openclawSession.artifactLinks.proof,
+      artifactManifestRoute: snapshot.session.openclawSession.artifactLinks.artifacts,
+      transcriptRoute: snapshot.session.openclawSession.artifactLinks.transcript,
+      eventsRoute: snapshot.session.openclawSession.artifactLinks.events,
+    },
+    operator: {
+      handoffState,
+      attentionRequired: getAttentionMetadata(snapshot).required,
+      pendingAction: snapshot.operatorSteer.lastAction,
+      fallbackArmed: snapshot.demoFallback.armed,
+    },
+    caveats,
+  };
+}
+
 function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
   const latestEvent = snapshot.events.at(-1);
   const latestTranscriptTurn = snapshot.transcript.at(-1);
@@ -777,6 +913,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
 
   return {
     ...buildCallPayload(snapshot),
+    liveProof: buildLiveProofSummary(snapshot),
     evidenceSummary: {
       latestEventType: latestEvent?.type ?? null,
       latestEventAt: latestEvent?.at ?? null,
@@ -1880,6 +2017,7 @@ async function routeRequest(
   config: PocConfig,
   ingress: InMemoryTelephonyIngress,
   signalWireCallMap: Map<string, string>,
+  liveSipCallMap: Map<string, string>,
   realtimeShim: LocalRealtimeShimPrototype,
 ): Promise<void> {
   const url = request.url ?? "/";
@@ -1925,6 +2063,131 @@ async function routeRequest(
     return;
   }
 
+  if (request.method === "POST" && pathname === "/api/live-sip/events") {
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const eventType = getOptionalTrimmedString(body.eventType);
+    if (!eventType || !["call.started", "media.capture", "media.transcript", "rtc_asr.blocked", "call.ended", "call.error"].includes(eventType)) {
+      writeBadRequest(response, "live_sip_event_type_invalid");
+      return;
+    }
+
+    const timestamp = normalizeTimestamp(body.timestamp, "live_sip_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+
+    const sipCallId = getOptionalTrimmedString(body.sipCallId) ?? getOptionalTrimmedString(body.fsUuid) ?? getOptionalTrimmedString(body.callId);
+    if (!sipCallId) {
+      writeBadRequest(response, "live_sip_call_id_required");
+      return;
+    }
+
+    if (eventType === "call.started") {
+      const telephonyMode = body.telephonyMode === "signalwire_live" ? "signalwire_live" : "local_sip";
+      const snapshot = await ingress.startCall(config, {
+        providerName: telephonyMode === "signalwire_live" ? "signalwire" : "freeswitch-local-sip",
+        providerCallId: sipCallId,
+        openclawSessionId: `live-sip-${sipCallId}`,
+        openclawSessionLabel: `${telephonyMode}/${sipCallId}`,
+        source: getOptionalTrimmedString(body.source) === "freeswitch_esl" ? "freeswitch_esl" : "local_sip_harness",
+        runtimeModeLabels: {
+          telephony: telephonyMode,
+          media: "live_capture",
+          rtcAsr: body.rtcAsrMode === "rtc_asr_live" ? "rtc_asr_live" : "rtc_asr_blocked",
+          credentialsMode: telephonyMode === "signalwire_live" ? "signalwire_live" : "mocked",
+        },
+      });
+      liveSipCallMap.set(sipCallId, snapshot.session.callId);
+      writeJson(response, 201, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+      return;
+    }
+
+    const callId = liveSipCallMap.get(sipCallId);
+    if (!callId) {
+      writeBadRequest(response, "live_sip_call_not_started");
+      return;
+    }
+
+    try {
+      if (eventType === "media.transcript") {
+        const text = getOptionalTrimmedString(body.text) ?? getOptionalTrimmedString(body.transcript);
+        if (!text) {
+          writeBadRequest(response, "live_sip_transcript_text_required");
+          return;
+        }
+        await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config);
+        const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+          eventType: "rtc_asr_transcript",
+          timestamp,
+          detail: {
+            provider: "rtc-asr",
+            transcriptText: text,
+            evidencePath: getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+          },
+        });
+        writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+        return;
+      }
+
+      if (eventType === "media.capture") {
+        const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+          eventType: "media_capture_attached",
+          timestamp,
+          detail: {
+            audioWavPath: getOptionalTrimmedString(body.audioWavPath) ?? null,
+            sipLogPath: getOptionalTrimmedString(body.sipLogPath) ?? null,
+            rtpPacketCount: typeof body.rtpPacketCount === "number" ? body.rtpPacketCount : null,
+            generatedMedia: body.generatedMedia === true,
+          },
+        });
+        writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+        return;
+      }
+
+      if (eventType === "rtc_asr.blocked") {
+        const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+          eventType: "rtc_asr_blocked",
+          timestamp,
+          detail: {
+            blocker: getOptionalTrimmedString(body.blocker) ?? "rtc_asr_unavailable",
+            nextAction: getOptionalTrimmedString(body.nextAction) ?? "Start rtc-asr and set RTC_ASR_WS_URL before rerunning live SIP proof.",
+            evidencePath: getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+          },
+        });
+        writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+        return;
+      }
+
+      if (eventType === "call.error") {
+        const reason = getOptionalTrimmedString(body.reason) ?? "live_sip_bridge_error";
+        const snapshot = await ingress.triggerFallback(callId, "tool_timeout", timestamp, reason);
+        writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+        return;
+      }
+
+      const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+        eventType: "sip_call_ended",
+        timestamp,
+        detail: {
+          hangupCause: getOptionalTrimmedString(body.hangupCause) ?? null,
+          durationSeconds: typeof body.durationSeconds === "number" ? body.durationSeconds : null,
+        },
+      });
+      liveSipCallMap.delete(sipCallId);
+      writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+    } catch {
+      writeNotFound(response);
+    }
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/api/signalwire/events") {
     const body = await readJsonBody<unknown>(request);
 
@@ -1947,10 +2210,15 @@ async function routeRequest(
     const signalWireCallId = getOptionalTrimmedString(body.signalWireCallId) ?? getOptionalTrimmedString(body.callSid) ?? null;
 
     if (body.eventType === "call.started") {
+      const signalWireLive = body.telephonyMode === "signalwire_live" || body.credentialsMode === "signalwire_live";
       const snapshot = await ingress.startCall(config, {
         providerCallId: signalWireCallId ?? undefined,
         openclawSessionId: getOptionalTrimmedString(body.openclawSessionId) ?? (signalWireCallId ? `signalwire-${signalWireCallId}` : undefined),
         openclawSessionLabel: getOptionalTrimmedString(body.openclawSessionLabel) ?? (signalWireCallId ? `signalwire/${signalWireCallId}` : undefined),
+        source: "signalwire_webhook",
+        runtimeModeLabels: signalWireLive
+          ? { telephony: "signalwire_live", media: "live_capture", rtcAsr: "rtc_asr_blocked", credentialsMode: "signalwire_live" }
+          : undefined,
       });
 
       if (signalWireCallId) {
@@ -2720,10 +2988,11 @@ async function routeRequest(
 export function buildHttpServer(config: PocConfig) {
   const ingress = new InMemoryTelephonyIngress();
   const signalWireCallMap = new Map<string, string>();
+  const liveSipCallMap = new Map<string, string>();
   const realtimeShim = new LocalRealtimeShimPrototype();
 
   return createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, realtimeShim).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, realtimeShim).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;

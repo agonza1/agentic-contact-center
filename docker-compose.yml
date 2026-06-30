@@ -54,3 +54,22 @@ services:
       - artifacts/demo-proof-latest.json
     volumes:
       - ./artifacts:/app/artifacts
+
+
+  freeswitch:
+    image: signalwire/freeswitch:1.10
+    profiles: ["freeswitch"]
+    depends_on:
+      - app
+    ports:
+      - "127.0.0.1:5060:5060/udp"
+      - "127.0.0.1:5060:5060/tcp"
+      - "127.0.0.1:8021:8021/tcp"
+      - "127.0.0.1:16384-16484:16384-16484/udp"
+    volumes:
+      - ./freeswitch/conf/dialplan/default/acc_local_sip.xml:/etc/freeswitch/dialplan/default/acc_local_sip.xml:ro
+      - ./freeswitch/conf/directory/default/1000.xml:/etc/freeswitch/directory/default/1000.xml:ro
+      - ./freeswitch/conf/autoload_configs/event_socket.conf.xml:/etc/freeswitch/autoload_configs/event_socket.conf.xml:ro
+      - ./artifacts/freeswitch-live:/var/log/freeswitch/acc
+    environment:
+      ACC_BASE_URL: http://app:8026
