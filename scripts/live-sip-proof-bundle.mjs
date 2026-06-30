@@ -143,11 +143,21 @@ async function wavEvidence(filePath) {
   const riffHeader = buffer.subarray(0, 4).toString("ascii");
   const waveHeader = buffer.subarray(8, 12).toString("ascii");
   const hasRiffWaveHeader = riffHeader === "RIFF" && waveHeader === "WAVE";
+  let audioFormat = null;
+  let channelCount = null;
+  let sampleRateHz = null;
+  let bitsPerSample = null;
   let declaredDataBytes = 0;
   let dataChunkEnd = 0;
   for (let offset = 12; offset + 8 <= buffer.length;) {
     const chunkId = buffer.subarray(offset, offset + 4).toString("ascii");
     const chunkSize = buffer.readUInt32LE(offset + 4);
+    if (chunkId === "fmt " && offset + 8 + chunkSize <= buffer.length && chunkSize >= 16) {
+      audioFormat = buffer.readUInt16LE(offset + 8);
+      channelCount = buffer.readUInt16LE(offset + 10);
+      sampleRateHz = buffer.readUInt32LE(offset + 12);
+      bitsPerSample = buffer.readUInt16LE(offset + 22);
+    }
     if (chunkId === "data") {
       declaredDataBytes = chunkSize;
       dataChunkEnd = offset + 8 + chunkSize;
@@ -155,11 +165,17 @@ async function wavEvidence(filePath) {
     }
     offset += 8 + chunkSize + (chunkSize % 2);
   }
+  const hasPcmFormat = audioFormat === 1 && Number(channelCount) > 0 && Number(sampleRateHz) > 0 && Number(bitsPerSample) > 0;
   const hasAudioPayload = declaredDataBytes > 0 && buffer.length >= dataChunkEnd;
   return {
-    ready: hasRiffWaveHeader && hasAudioPayload,
+    ready: hasRiffWaveHeader && hasPcmFormat && hasAudioPayload,
     hasRiffWaveHeader,
+    hasPcmFormat,
     hasAudioPayload,
+    audioFormat,
+    channelCount,
+    sampleRateHz,
+    bitsPerSample,
     declaredDataBytes,
     sizeBytes: buffer.length,
   };
@@ -265,7 +281,7 @@ function reviewGateFailureReasons(checks, details = {}) {
     sipLogHasInvite: "SIP log does not include an INVITE entry, so the source manifest cannot prove a local SIP call.",
     sipLogHasAcceptedInvite: "SIP log does not include an accepted INVITE response or FreeSWITCH CHANNEL_ANSWER event.",
     capturedRtp: "No RTP packets were captured for caller audio.",
-    callerAudioWavValid: "Caller audio artifact is not a non-empty RIFF/WAVE file with captured audio payload.",
+    callerAudioWavValid: "Caller audio artifact is not a non-empty PCM RIFF/WAVE file with captured audio payload.",
     liveCapture: "Media is not labeled live_capture; rerun with a real local SIP/FreeSWITCH softphone call.",
     rtcAsrLive: "rtc-asr is not labeled rtc_asr_live; start rtc-asr and set RTC_ASR_WS_URL before rerunning.",
     rtcAsrEvidenceValid: details.rtcAsrEvidence?.reason
