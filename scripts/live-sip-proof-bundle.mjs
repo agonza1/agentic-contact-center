@@ -115,6 +115,12 @@ function reviewGateReport(bundleManifest) {
   const failedChecks = Object.entries(gate.failureReasons).length > 0
     ? Object.entries(gate.failureReasons).map(([name, reason]) => `- ${name}: ${reason}`).join("\n")
     : "- none";
+  const sourceGateMissingLabels = bundleManifest.sourceManifestReviewGate?.missingLabels?.length > 0
+    ? bundleManifest.sourceManifestReviewGate.missingLabels.join(", ")
+    : "none";
+  const sourceGateNextActions = bundleManifest.sourceManifestReviewGate?.nextActions?.length > 0
+    ? bundleManifest.sourceManifestReviewGate.nextActions.map((action) => `- ${action}`).join("\n")
+    : "- none";
 
   return [
     "# Local SIP Review Gate",
@@ -130,6 +136,13 @@ function reviewGateReport(bundleManifest) {
     "## Failed Check Reasons",
     "",
     failedChecks,
+    "",
+    "## Source Manifest Review Gate",
+    "",
+    `Missing runtime labels: ${sourceGateMissingLabels}`,
+    "",
+    "Next actions:",
+    sourceGateNextActions,
     "",
     "## Blockers",
     "",
@@ -156,6 +169,7 @@ function reviewGateReportJson(bundleManifest) {
     failureReasons: bundleManifest.reviewGate.failureReasons,
     blockers: bundleManifest.validationSummary.blockers,
     nextActions: bundleManifest.validationSummary.nextActions,
+    sourceManifestReviewGate: bundleManifest.sourceManifestReviewGate,
     artifacts: bundleManifest.artifacts,
     artifactIntegrity: bundleManifest.artifactIntegrity.map((artifact) => ({
       artifactId: artifact.artifactId,
@@ -270,6 +284,7 @@ async function main() {
     },
     artifactIntegrity,
     reviewGate: gate,
+    sourceManifestReviewGate: liveManifest.reviewGate ?? null,
     validationSummary,
     blockers: liveManifest.blockers,
   };

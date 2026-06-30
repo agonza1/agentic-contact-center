@@ -42,6 +42,14 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
         },
         artifacts: { audioWav: audioPath, sipLog: sipLogPath },
         artifactIntegrity: [],
+        reviewGate: {
+          requiredLabels: ["local_sip", "live_capture", "rtc_asr_live"],
+          missingLabels: ["live_capture", "rtc_asr_live"],
+          nextActions: [
+            "Place a real local SIP/FreeSWITCH softphone call and rerun the live proof without --self-test.",
+            "Start rtc-asr, set RTC_ASR_WS_URL, and rerun the live proof to capture a websocket-backed transcript.",
+          ],
+        },
         reviewReady: false,
         blockers: [
           "Self-test generated RTP audio; rerun with a real local SIP softphone call before review.",
@@ -113,6 +121,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
       failureReasons: Record<string, string>;
       artifacts: { conversationAgentEvalsRequest: string };
       artifactIntegrity: Array<{ artifactId: string; readiness: string }>;
+      sourceManifestReviewGate: { missingLabels: string[]; nextActions: string[] };
     };
     assert.equal(reviewGateReportJson.status, "blocked_before_review");
     assert.equal(reviewGateReportJson.reviewGatePassed, false);
@@ -120,6 +129,11 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     assert.match(reviewGateReportJson.failureReasons.sourceManifestReviewReady, /Source live proof manifest is not review-ready/);
     assert.match(reviewGateReportJson.artifacts.conversationAgentEvalsRequest, /conversation-agent-evals-assert-request\.json$/);
     assert.ok(reviewGateReportJson.artifactIntegrity.some((artifact) => artifact.artifactId === "conversation-agent-evals-assert-request" && artifact.readiness === "ready"));
+    assert.deepEqual(reviewGateReportJson.sourceManifestReviewGate.missingLabels, ["live_capture", "rtc_asr_live"]);
+    assert.deepEqual(reviewGateReportJson.sourceManifestReviewGate.nextActions, [
+      "Place a real local SIP/FreeSWITCH softphone call and rerun the live proof without --self-test.",
+      "Start rtc-asr, set RTC_ASR_WS_URL, and rerun the live proof to capture a websocket-backed transcript.",
+    ]);
 
     const reviewGateReport = await readFile(path.join(outDir, "review-gate-report.md"), "utf8");
     assert.match(reviewGateReport, /Status: blocked_before_review/);
@@ -131,6 +145,9 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     assert.match(reviewGateReport, /liveCapture: Media is not labeled live_capture/);
     assert.match(reviewGateReport, /rtcAsrLive: rtc-asr is not labeled rtc_asr_live/);
     assert.match(reviewGateReport, /sourceManifestReviewReady: Source live proof manifest is not review-ready/);
+    assert.match(reviewGateReport, /## Source Manifest Review Gate/);
+    assert.match(reviewGateReport, /Missing runtime labels: live_capture, rtc_asr_live/);
+    assert.match(reviewGateReport, /Place a real local SIP\/FreeSWITCH softphone call/);
 
     await assert.rejects(
       execFileAsync(
