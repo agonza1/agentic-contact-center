@@ -57,12 +57,13 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
       { cwd: repoRoot },
     );
 
-    const summary = JSON.parse(stdout) as { manifest: string; reviewGateReport: string; reviewReady: boolean; reviewGatePassed: boolean; validationStatus: string; blockers: string[] };
+    const summary = JSON.parse(stdout) as { manifest: string; reviewGateReport: string; reviewGateReportJson: string; reviewReady: boolean; reviewGatePassed: boolean; validationStatus: string; blockers: string[] };
     assert.equal(summary.reviewReady, false);
     assert.equal(summary.reviewGatePassed, false);
     assert.equal(summary.validationStatus, "blocked_before_review");
     assert.match(summary.manifest, /proof-bundle-manifest\.json$/);
     assert.match(summary.reviewGateReport, /review-gate-report\.md$/);
+    assert.match(summary.reviewGateReportJson, /review-gate-report\.json$/);
     assert.equal(summary.blockers.length, 2);
 
     const bundleManifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
@@ -104,6 +105,21 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     };
     assert.match(assertRequest.platform_metadata.notes, /Not review-ready/);
     assert.ok(assertRequest.platform_metadata.labels.includes("mocked_telephony"));
+
+    const reviewGateReportJson = JSON.parse(await readFile(path.join(outDir, "review-gate-report.json"), "utf8")) as {
+      status: string;
+      reviewGatePassed: boolean;
+      missingLabels: string[];
+      failureReasons: Record<string, string>;
+      artifacts: { conversationAgentEvalsRequest: string };
+      artifactIntegrity: Array<{ artifactId: string; readiness: string }>;
+    };
+    assert.equal(reviewGateReportJson.status, "blocked_before_review");
+    assert.equal(reviewGateReportJson.reviewGatePassed, false);
+    assert.deepEqual(reviewGateReportJson.missingLabels, ["live_capture", "rtc_asr_live"]);
+    assert.match(reviewGateReportJson.failureReasons.sourceManifestReviewReady, /Source live proof manifest is not review-ready/);
+    assert.match(reviewGateReportJson.artifacts.conversationAgentEvalsRequest, /conversation-agent-evals-assert-request\.json$/);
+    assert.ok(reviewGateReportJson.artifactIntegrity.some((artifact) => artifact.artifactId === "conversation-agent-evals-assert-request" && artifact.readiness === "ready"));
 
     const reviewGateReport = await readFile(path.join(outDir, "review-gate-report.md"), "utf8");
     assert.match(reviewGateReport, /Status: blocked_before_review/);

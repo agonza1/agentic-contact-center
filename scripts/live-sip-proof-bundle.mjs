@@ -142,6 +142,32 @@ function reviewGateReport(bundleManifest) {
   ].join("\n");
 }
 
+function reviewGateReportJson(bundleManifest) {
+  return {
+    schemaVersion: 1,
+    generatedAt: bundleManifest.generatedAt,
+    workboardCard: bundleManifest.workboardCard,
+    status: bundleManifest.validationSummary.status,
+    reviewReady: bundleManifest.reviewReady,
+    reviewGatePassed: bundleManifest.reviewGate.passed,
+    requiredLabels: bundleManifest.reviewGate.requiredLabels,
+    missingLabels: bundleManifest.reviewGate.missingLabels,
+    checks: bundleManifest.reviewGate.checks,
+    failureReasons: bundleManifest.reviewGate.failureReasons,
+    blockers: bundleManifest.validationSummary.blockers,
+    nextActions: bundleManifest.validationSummary.nextActions,
+    artifacts: bundleManifest.artifacts,
+    artifactIntegrity: bundleManifest.artifactIntegrity.map((artifact) => ({
+      artifactId: artifact.artifactId,
+      kind: artifact.kind,
+      path: artifact.path,
+      readiness: artifact.readiness,
+      sizeBytes: artifact.sizeBytes,
+      sha256: artifact.sha256,
+    })),
+  };
+}
+
 async function main() {
   const liveManifestPath = path.resolve(repoRoot, argValue("--live-manifest") || "artifacts/local-sip-selftest/local-sip-live-proof-manifest.json");
   const outDir = path.resolve(repoRoot, argValue("--out-dir") || "artifacts/live-sip-proof-bundle");
@@ -251,9 +277,12 @@ async function main() {
   await writeFile(bundleManifestPath, `${JSON.stringify(bundleManifest, null, 2)}\n`, "utf8");
   const reviewGateReportPath = path.join(outDir, "review-gate-report.md");
   await writeFile(reviewGateReportPath, reviewGateReport(bundleManifest), "utf8");
+  const reviewGateReportJsonPath = path.join(outDir, "review-gate-report.json");
+  await writeFile(reviewGateReportJsonPath, JSON.stringify(reviewGateReportJson(bundleManifest), null, 2) + "\n", "utf8");
   console.log(JSON.stringify({
     manifest: rel(bundleManifestPath),
     reviewGateReport: rel(reviewGateReportPath),
+    reviewGateReportJson: rel(reviewGateReportJsonPath),
     reviewReady: bundleManifest.reviewReady,
     reviewGatePassed: bundleManifest.reviewGate.passed,
     validationStatus: bundleManifest.validationSummary.status,

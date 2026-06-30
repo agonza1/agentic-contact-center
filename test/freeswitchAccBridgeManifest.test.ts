@@ -130,7 +130,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
       ["scripts/live-sip-proof-bundle.mjs", "--live-manifest", readyManifestPath, "--out-dir", readyBundleDir],
       { cwd: repoRoot, encoding: "utf8" },
     );
-    const readyBundleSummary = JSON.parse(readyBundle.stdout) as { reviewGatePassed: boolean; validationStatus: string };
+    const readyBundleSummary = JSON.parse(readyBundle.stdout) as { reviewGateReportJson: string; reviewGatePassed: boolean; validationStatus: string };
     assert.equal(readyBundleSummary.reviewGatePassed, true);
     assert.equal(readyBundleSummary.validationStatus, "ready_for_review");
     const readyBundleManifest = JSON.parse(await readFile(path.join(readyBundleDir, "proof-bundle-manifest.json"), "utf8")) as {
@@ -139,6 +139,19 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     };
     assert.equal(readyBundleManifest.artifacts.rtcAsrEvidence, path.relative(repoRoot, rtcAsrEvidencePath).replaceAll(path.sep, "/"));
     assert.ok(readyBundleManifest.artifactIntegrity.some((artifact) => artifact.artifactId === "rtc-asr-transcript-evidence" && artifact.readiness === "ready"));
+    assert.match(readyBundleSummary.reviewGateReportJson, /review-gate-report\.json$/);
+    const readyReviewGateReport = JSON.parse(await readFile(path.join(readyBundleDir, "review-gate-report.json"), "utf8")) as {
+      status: string;
+      reviewGatePassed: boolean;
+      missingLabels: string[];
+      failureReasons: Record<string, string>;
+      nextActions: string[];
+    };
+    assert.equal(readyReviewGateReport.status, "ready_for_review");
+    assert.equal(readyReviewGateReport.reviewGatePassed, true);
+    assert.deepEqual(readyReviewGateReport.missingLabels, []);
+    assert.deepEqual(readyReviewGateReport.failureReasons, {});
+    assert.deepEqual(readyReviewGateReport.nextActions, []);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
