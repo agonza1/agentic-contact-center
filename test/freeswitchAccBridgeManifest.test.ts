@@ -97,6 +97,31 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
       "Attach rtc-asr transcript evidence with --rtc-asr-evidence before marking the FreeSWITCH proof review-ready.",
     ]);
 
+    const invalidRtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence-empty.json");
+    await writeFile(invalidRtcAsrEvidencePath, `${JSON.stringify({ transcript: "   ", final: true })}\n`, "utf8");
+    const invalidEvidenceScript = `
+      const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
+      const manifest = await buildFreeswitchLiveProofManifest({
+        uuid: "fs-proof-invalid-evidence",
+        accCallId: "demo-call-invalid-evidence",
+        destination: "8600",
+        wavPath: ${JSON.stringify(audioPath)},
+        logPath: ${JSON.stringify(logPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(invalidRtcAsrEvidencePath)},
+        telephonyMode: "local_sip"
+      });
+      console.log(JSON.stringify(manifest));
+    `;
+    const invalidEvidenceResult = await execFileAsync(process.execPath, ["--input-type=module", "--eval", invalidEvidenceScript], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const invalidEvidenceManifest = JSON.parse(invalidEvidenceResult.stdout) as typeof manifest;
+    assert.equal(invalidEvidenceManifest.reviewReady, false);
+    assert.ok(invalidEvidenceManifest.blockers.some((blocker) => blocker.includes("non-empty transcript")));
+    assert.ok(invalidEvidenceManifest.artifactIntegrity.some((artifact) => artifact.artifactId === "rtc-asr-transcript-evidence" && artifact.readiness === "blocked"));
+
     const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
     await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: "hello from local sip", final: true })}\n`, "utf8");
     const readyScript = `

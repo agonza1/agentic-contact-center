@@ -16,6 +16,42 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+async function inspectRtcAsrEvidence(filePath, stats) {
+  if (!filePath || !stats || stats.size === 0) return { ready: false };
+  let parsed;
+  try {
+    parsed = JSON.parse(await readFile(filePath, "utf8"));
+  } catch {
+    return {
+      ready: false,
+      blocker: "rtc-asr transcript/evidence file is not valid JSON.",
+      nextAction: "Write valid rtc-asr transcript evidence JSON before marking the FreeSWITCH proof review-ready.",
+    };
+  }
+
+  const transcript = [
+    typeof parsed.transcript === "string" ? parsed.transcript : "",
+    typeof parsed.text === "string" ? parsed.text : "",
+    ...(Array.isArray(parsed.segments) ? parsed.segments.map((segment) => typeof segment?.text === "string" ? segment.text : "") : []),
+  ].join(" ").trim();
+  const final = parsed.final === true || parsed.isFinal === true || parsed.status === "final";
+  if (!transcript) {
+    return {
+      ready: false,
+      blocker: "rtc-asr transcript/evidence JSON does not contain a non-empty transcript.",
+      nextAction: "Rerun rtc-asr until transcript evidence includes non-empty final text before marking the proof review-ready.",
+    };
+  }
+  if (!final) {
+    return {
+      ready: false,
+      blocker: "rtc-asr transcript/evidence JSON is missing a final transcript marker.",
+      nextAction: "Rerun rtc-asr until transcript evidence is final before marking the proof review-ready.",
+    };
+  }
+  return { ready: true };
+}
+
 async function sha256File(filePath) {
   return createHash("sha256").update(await readFile(filePath)).digest("hex");
 }
@@ -52,6 +88,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
   const audioStats = await stat(options.wavPath).catch(() => null);
   const logStats = await stat(options.logPath).catch(() => null);
   const rtcAsrEvidenceStats = options.rtcAsrEvidencePath ? await stat(options.rtcAsrEvidencePath).catch(() => null) : null;
+  const rtcAsrEvidenceInspection = await inspectRtcAsrEvidence(options.rtcAsrEvidencePath, rtcAsrEvidenceStats);
   const audioBytes = audioStats?.size ?? 0;
   const generatedMedia = false;
   const rtpPacketCountEstimate = audioBytes > 44 ? Math.floor((audioBytes - 44) / 320) : 0;
@@ -73,6 +110,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
   if (options.rtcAsrUrl && !options.rtcAsrEvidencePath) blockers.push("rtc-asr URL was configured, but no transcript/evidence path was attached to this FreeSWITCH proof.");
   if (options.rtcAsrEvidencePath && !rtcAsrEvidenceStats) blockers.push("rtc-asr transcript/evidence path was configured, but the evidence file is missing.");
   if (rtcAsrEvidenceStats && rtcAsrEvidenceStats.size === 0) blockers.push("rtc-asr transcript/evidence file is empty.");
+  if (rtcAsrEvidenceInspection.blocker) blockers.push(rtcAsrEvidenceInspection.blocker);
 
   const nextActions = [];
   if (rtpPacketCountEstimate === 0) {
@@ -90,6 +128,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
   if (rtcAsrEvidenceStats && rtcAsrEvidenceStats.size === 0) {
     nextActions.push("Rerun rtc-asr until transcript evidence is non-empty before marking the proof review-ready.");
   }
+  if (rtcAsrEvidenceInspection.nextAction) nextActions.push(rtcAsrEvidenceInspection.nextAction);
 
   const artifactIntegrity = [];
   if (audioStats) {
@@ -119,7 +158,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
       path: options.rtcAsrEvidencePath,
       sha256: await sha256File(options.rtcAsrEvidencePath),
       sizeBytes: rtcAsrEvidenceStats.size,
-      readiness: rtcAsrEvidenceStats.size > 0 ? "ready" : "blocked",
+      readiness: rtcAsrEvidenceInspection.ready ? "ready" : "blocked",
     });
   }
 
@@ -141,7 +180,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
     },
     artifacts: { audioWav: options.wavPath, sipLog: options.logPath, rtcAsrEvidence: options.rtcAsrEvidencePath ?? null },
     artifactIntegrity,
-    reviewReady: blockers.length === 0 && runtimeModeLabels.telephony === "local_sip" && Boolean(rtcAsrEvidenceStats) && !generatedMedia,
+    reviewReady: blockers.length === 0 && runtimeModeLabels.telephony === "local_sip" && rtcAsrEvidenceInspection.ready && !generatedMedia,
     reviewGate: {
       requiredLabels: requiredReviewLabels,
       missingLabels: missingReviewLabels,
