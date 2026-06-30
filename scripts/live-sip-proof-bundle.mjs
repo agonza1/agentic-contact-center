@@ -90,6 +90,7 @@ function reviewGate(liveManifest, artifactIntegrity, sipEvidence) {
   const checks = {
     acceptedInvite: liveManifest.localSip?.acceptedInvite === true,
     sipLogHasInvite: sipEvidence.hasInvite,
+    sipLogHasAcceptedInvite: sipEvidence.hasAcceptedInviteResponse,
     capturedRtp: Number(liveManifest.localSip?.rtpPacketCount ?? 0) > 0,
     liveCapture: liveManifest.runtimeModeLabels?.media === "live_capture",
     rtcAsrLive: liveManifest.runtimeModeLabels?.rtcAsr === "rtc_asr_live",
@@ -115,6 +116,7 @@ function reviewGateFailureReasons(checks) {
   const reasons = {
     acceptedInvite: "No accepted local SIP INVITE was recorded.",
     sipLogHasInvite: "SIP log does not include an INVITE entry, so the source manifest cannot prove a local SIP call.",
+    sipLogHasAcceptedInvite: "SIP log does not include an accepted INVITE response or FreeSWITCH CHANNEL_ANSWER event.",
     capturedRtp: "No RTP packets were captured for caller audio.",
     liveCapture: "Media is not labeled live_capture; rerun with a real local SIP/FreeSWITCH softphone call.",
     rtcAsrLive: "rtc-asr is not labeled rtc_asr_live; start rtc-asr and set RTC_ASR_WS_URL before rerunning.",
