@@ -113,6 +113,20 @@ async function wavEvidence(filePath) {
   };
 }
 
+function sourceArtifactIntegrityEvidence(liveManifest) {
+  const artifacts = Array.isArray(liveManifest.artifactIntegrity) ? liveManifest.artifactIntegrity : [];
+  const blockedArtifacts = artifacts.filter((artifact) => artifact?.readiness && artifact.readiness !== "ready");
+  return {
+    checked: artifacts.length,
+    blocked: blockedArtifacts.map((artifact) => ({
+      artifactId: artifact.artifactId ?? artifact.artifact_id ?? "unknown",
+      readiness: artifact.readiness,
+      path: artifact.path ?? artifact.uri ?? null,
+    })),
+    ready: blockedArtifacts.length === 0,
+  };
+}
+
 function reviewNextActions(liveManifest) {
   const actions = [];
   if (liveManifest.runtimeModeLabels?.media !== "live_capture") {
@@ -130,7 +144,7 @@ function reviewNextActions(liveManifest) {
   return actions;
 }
 
-function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, wavEvidenceResult) {
+function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult) {
   const checks = {
     acceptedInvite: liveManifest.localSip?.acceptedInvite === true,
     sipLogHasInvite: sipEvidence.hasInvite,
@@ -141,6 +155,7 @@ function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidence
     rtcAsrLive: liveManifest.runtimeModeLabels?.rtcAsr === "rtc_asr_live",
     rtcAsrEvidenceValid: liveManifest.runtimeModeLabels?.rtcAsr !== "rtc_asr_live" || rtcAsrEvidenceResult.ready === true,
     artifactsPresent: artifactIntegrity.every((artifact) => artifact.readiness === "ready"),
+    sourceArtifactIntegrityReady: sourceArtifactIntegrityResult.ready === true,
     sourceManifestReviewReady: liveManifest.reviewReady === true,
   };
   const requiredLabels = ["local_sip", "live_capture", "rtc_asr_live"];
@@ -169,6 +184,7 @@ function reviewGateFailureReasons(checks) {
     rtcAsrLive: "rtc-asr is not labeled rtc_asr_live; start rtc-asr and set RTC_ASR_WS_URL before rerunning.",
     rtcAsrEvidenceValid: "rtc-asr live transcript evidence is missing, invalid, empty, or not final.",
     artifactsPresent: "One or more required proof artifacts are missing or empty.",
+    sourceArtifactIntegrityReady: "Source live proof manifest reports one or more blocked artifacts.",
     sourceManifestReviewReady: "Source live proof manifest is not review-ready; inspect its blockers before submitting the bundle.",
   };
   return Object.fromEntries(Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => [name, reasons[name]]));
@@ -337,7 +353,8 @@ async function main() {
   const sipEvidence = await sipLogEvidence(sipLogPath);
   const rtcAsrEvidenceResult = await rtcAsrEvidence(rtcAsrEvidencePath);
   const wavEvidenceResult = await wavEvidence(audioPath);
-  const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, wavEvidenceResult);
+  const sourceArtifactIntegrityResult = sourceArtifactIntegrityEvidence(liveManifest);
+  const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult);
   const validationSummary = {
     status: gate.passed ? "ready_for_review" : "blocked_before_review",
     checks: gate.checks,
@@ -346,6 +363,7 @@ async function main() {
     callerAudioEvidence: wavEvidenceResult,
     sipLogEvidence: sipEvidence,
     rtcAsrEvidence: rtcAsrEvidenceResult,
+    sourceArtifactIntegrityEvidence: sourceArtifactIntegrityResult,
   };
   const bundleManifest = {
     schemaVersion: 1,
