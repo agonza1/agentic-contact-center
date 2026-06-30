@@ -60,6 +60,28 @@ function reviewNextActions(liveManifest) {
   return actions;
 }
 
+function reviewGate(liveManifest, artifactIntegrity) {
+  const checks = {
+    acceptedInvite: liveManifest.localSip?.acceptedInvite === true,
+    capturedRtp: Number(liveManifest.localSip?.rtpPacketCount ?? 0) > 0,
+    liveCapture: liveManifest.runtimeModeLabels?.media === "live_capture",
+    rtcAsrLive: liveManifest.runtimeModeLabels?.rtcAsr === "rtc_asr_live",
+    artifactsPresent: artifactIntegrity.every((artifact) => artifact.readiness === "ready"),
+  };
+  const requiredLabels = ["local_sip", "live_capture", "rtc_asr_live"];
+  const labels = [
+    liveManifest.runtimeModeLabels?.telephony,
+    liveManifest.runtimeModeLabels?.media,
+    liveManifest.runtimeModeLabels?.rtcAsr,
+  ].filter(Boolean);
+  return {
+    passed: Object.values(checks).every(Boolean) && liveManifest.reviewReady === true,
+    requiredLabels,
+    missingLabels: requiredLabels.filter((label) => !labels.includes(label)),
+    checks,
+  };
+}
+
 async function main() {
   const liveManifestPath = path.resolve(repoRoot, argValue("--live-manifest") || "artifacts/local-sip-selftest/local-sip-live-proof-manifest.json");
   const outDir = path.resolve(repoRoot, argValue("--out-dir") || "artifacts/live-sip-proof-bundle");
@@ -134,15 +156,10 @@ async function main() {
     await integrity(blockerPath, "rtc-asr-live-status", "manifest"),
     await integrity(assertRequestPath, "conversation-agent-evals-assert-request", "assert_request"),
   ];
+  const gate = reviewGate(liveManifest, artifactIntegrity);
   const validationSummary = {
-    status: liveManifest.reviewReady === true ? "ready_for_review" : "blocked_before_review",
-    checks: {
-      acceptedInvite: liveManifest.localSip?.acceptedInvite === true,
-      capturedRtp: Number(liveManifest.localSip?.rtpPacketCount ?? 0) > 0,
-      liveCapture: liveManifest.runtimeModeLabels?.media === "live_capture",
-      rtcAsrLive: liveManifest.runtimeModeLabels?.rtcAsr === "rtc_asr_live",
-      artifactsPresent: artifactIntegrity.every((artifact) => artifact.readiness === "ready"),
-    },
+    status: gate.passed ? "ready_for_review" : "blocked_before_review",
+    checks: gate.checks,
     blockers: liveManifest.blockers,
     nextActions: reviewNextActions(liveManifest),
   };
@@ -162,6 +179,7 @@ async function main() {
       conversationAgentEvalsRequest: rel(assertRequestPath),
     },
     artifactIntegrity,
+    reviewGate: gate,
     validationSummary,
     blockers: liveManifest.blockers,
   };

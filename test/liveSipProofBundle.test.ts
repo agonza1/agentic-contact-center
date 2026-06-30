@@ -66,6 +66,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
       reviewReady: boolean;
       labels: string[];
       artifactIntegrity: Array<{ artifactId: string; kind: string; sha256: string; sizeBytes: number; readiness: string }>;
+      reviewGate: { passed: boolean; requiredLabels: string[]; missingLabels: string[]; checks: Record<string, boolean> };
       validationSummary: { status: string; checks: Record<string, boolean>; blockers: string[]; nextActions: string[] };
     };
     assert.equal(bundleManifest.reviewReady, false);
@@ -76,6 +77,9 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     assert.ok(bundleManifest.artifactIntegrity.every((artifact) => artifact.sizeBytes > 0));
     assert.ok(bundleManifest.artifactIntegrity.every((artifact) => artifact.readiness === "ready"));
     assert.ok(bundleManifest.artifactIntegrity.some((artifact) => artifact.artifactId === "conversation-agent-evals-assert-request" && artifact.kind === "assert_request"));
+    assert.equal(bundleManifest.reviewGate.passed, false);
+    assert.deepEqual(bundleManifest.reviewGate.requiredLabels, ["local_sip", "live_capture", "rtc_asr_live"]);
+    assert.deepEqual(bundleManifest.reviewGate.missingLabels, ["live_capture", "rtc_asr_live"]);
     assert.equal(bundleManifest.validationSummary.status, "blocked_before_review");
     assert.equal(bundleManifest.validationSummary.checks.acceptedInvite, true);
     assert.equal(bundleManifest.validationSummary.checks.capturedRtp, true);
