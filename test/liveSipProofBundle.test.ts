@@ -79,7 +79,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
       labels: string[];
       artifactIntegrity: Array<{ artifactId: string; kind: string; sha256: string; sizeBytes: number; readiness: string }>;
       reviewGate: { passed: boolean; requiredLabels: string[]; missingLabels: string[]; checks: Record<string, boolean>; failureReasons: Record<string, string> };
-      validationSummary: { status: string; checks: Record<string, boolean>; blockers: string[]; nextActions: string[] };
+      validationSummary: { status: string; checks: Record<string, boolean>; blockers: string[]; nextActions: string[]; sipLogEvidence: { entryCount: number; hasInvite: boolean; hasAcceptedInviteResponse: boolean } };
     };
     assert.equal(bundleManifest.reviewReady, false);
     assert.ok(bundleManifest.labels.includes("generated_media"));
@@ -94,11 +94,13 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     assert.deepEqual(bundleManifest.reviewGate.missingLabels, ["live_capture", "rtc_asr_live"]);
     assert.equal(bundleManifest.validationSummary.status, "blocked_before_review");
     assert.equal(bundleManifest.validationSummary.checks.acceptedInvite, true);
+    assert.equal(bundleManifest.validationSummary.checks.sipLogHasInvite, true);
     assert.equal(bundleManifest.validationSummary.checks.capturedRtp, true);
     assert.equal(bundleManifest.validationSummary.checks.artifactsPresent, true);
     assert.equal(bundleManifest.validationSummary.checks.liveCapture, false);
     assert.equal(bundleManifest.validationSummary.checks.rtcAsrLive, false);
     assert.deepEqual(Object.keys(bundleManifest.reviewGate.failureReasons), ["liveCapture", "rtcAsrLive", "sourceManifestReviewReady"]);
+    assert.deepEqual(bundleManifest.validationSummary.sipLogEvidence, { entryCount: 1, hasInvite: true, hasAcceptedInviteResponse: false });
     assert.match(bundleManifest.reviewGate.failureReasons.liveCapture, /real local SIP/);
     assert.match(bundleManifest.reviewGate.failureReasons.rtcAsrLive, /RTC_ASR_WS_URL/);
     assert.match(bundleManifest.reviewGate.failureReasons.sourceManifestReviewReady, /Source live proof manifest is not review-ready/);
@@ -140,6 +142,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     assert.match(reviewGateReport, /Review ready: no/);
     assert.match(reviewGateReport, /Missing runtime labels: live_capture, rtc_asr_live/);
     assert.match(reviewGateReport, /- \[x\] acceptedInvite/);
+    assert.match(reviewGateReport, /- \[x\] sipLogHasInvite/);
     assert.match(reviewGateReport, /- \[ \] liveCapture/);
     assert.match(reviewGateReport, /## Failed Check Reasons/);
     assert.match(reviewGateReport, /liveCapture: Media is not labeled live_capture/);
@@ -161,6 +164,71 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
         return true;
       },
     );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("live SIP proof bundle blocks manifests whose SIP log has no INVITE", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-empty-log-"));
+  const audioPath = path.join(tempDir, "caller-capture.wav");
+  const sipLogPath = path.join(tempDir, "sip.log.json");
+  const manifestPath = path.join(tempDir, "local-sip-live-proof-manifest.json");
+  const outDir = path.join(tempDir, "bundle");
+
+  try {
+    await writeFile(audioPath, Buffer.from("RIFFtestWAVE", "ascii"));
+    await writeFile(sipLogPath, "[]\n", "utf8");
+    const manifest = {
+      schemaVersion: 1,
+      generatedAt: "2026-06-30T10:00:00.000Z",
+      workboardCard: "872af947-ef57-47bd-a4f3-3750f54e1948",
+      callId: "call-live-sip-1",
+      sipCallId: "sip-proof-1",
+      runtimeModeLabels: {
+        telephony: "local_sip",
+        media: "live_capture",
+        rtcAsr: "rtc_asr_live",
+        credentialsMode: "mocked",
+      },
+      localSip: {
+        bind: "sip:127.0.0.1:5066",
+        rtpPort: 40000,
+        acceptedInvite: true,
+        rtpPacketCount: 4,
+      },
+      artifacts: { audioWav: audioPath, sipLog: sipLogPath },
+      artifactIntegrity: [],
+      reviewGate: {
+        requiredLabels: ["local_sip", "live_capture", "rtc_asr_live"],
+        missingLabels: [],
+        nextActions: [],
+      },
+      reviewReady: true,
+      blockers: [],
+    };
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      ["scripts/live-sip-proof-bundle.mjs", "--live-manifest", manifestPath, "--out-dir", outDir],
+      { cwd: repoRoot },
+    );
+
+    const summary = JSON.parse(stdout) as { reviewReady: boolean; reviewGatePassed: boolean; validationStatus: string };
+    assert.equal(summary.reviewReady, true);
+    assert.equal(summary.reviewGatePassed, false);
+    assert.equal(summary.validationStatus, "blocked_before_review");
+
+    const bundleManifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
+      reviewGate: { checks: Record<string, boolean>; failureReasons: Record<string, string> };
+      validationSummary: { sipLogEvidence: { entryCount: number; hasInvite: boolean; hasAcceptedInviteResponse: boolean } };
+    };
+    assert.equal(bundleManifest.reviewGate.checks.acceptedInvite, true);
+    assert.equal(bundleManifest.reviewGate.checks.sipLogHasInvite, false);
+    assert.match(bundleManifest.reviewGate.failureReasons.sipLogHasInvite, /SIP log does not include an INVITE/);
+    assert.deepEqual(bundleManifest.validationSummary.sipLogEvidence, { entryCount: 0, hasInvite: false, hasAcceptedInviteResponse: false });
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

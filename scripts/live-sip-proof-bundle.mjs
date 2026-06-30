@@ -46,6 +46,29 @@ async function integrity(filePath, artifactId, kind) {
   };
 }
 
+async function sipLogEvidence(filePath) {
+  const raw = await readFile(filePath, "utf8");
+  let entries = [];
+  try {
+    const parsed = JSON.parse(raw);
+    entries = Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    entries = [];
+  }
+  const startLines = entries
+    .map((entry) => typeof entry?.startLine === "string" ? entry.startLine : "")
+    .filter(Boolean);
+  const eventNames = entries
+    .flatMap((entry) => Array.isArray(entry?.events) ? entry.events : [entry])
+    .map((entry) => typeof entry?.headers?.["Event-Name"] === "string" ? entry.headers["Event-Name"] : "")
+    .filter(Boolean);
+  return {
+    entryCount: entries.length,
+    hasInvite: startLines.some((line) => line.startsWith("INVITE ")) || eventNames.includes("CHANNEL_ANSWER"),
+    hasAcceptedInviteResponse: startLines.some((line) => line.startsWith("SIP/2.0 200")) || eventNames.includes("CHANNEL_ANSWER"),
+  };
+}
+
 function reviewNextActions(liveManifest) {
   const actions = [];
   if (liveManifest.runtimeModeLabels?.media !== "live_capture") {
@@ -63,9 +86,10 @@ function reviewNextActions(liveManifest) {
   return actions;
 }
 
-function reviewGate(liveManifest, artifactIntegrity) {
+function reviewGate(liveManifest, artifactIntegrity, sipEvidence) {
   const checks = {
     acceptedInvite: liveManifest.localSip?.acceptedInvite === true,
+    sipLogHasInvite: sipEvidence.hasInvite,
     capturedRtp: Number(liveManifest.localSip?.rtpPacketCount ?? 0) > 0,
     liveCapture: liveManifest.runtimeModeLabels?.media === "live_capture",
     rtcAsrLive: liveManifest.runtimeModeLabels?.rtcAsr === "rtc_asr_live",
@@ -90,6 +114,7 @@ function reviewGate(liveManifest, artifactIntegrity) {
 function reviewGateFailureReasons(checks) {
   const reasons = {
     acceptedInvite: "No accepted local SIP INVITE was recorded.",
+    sipLogHasInvite: "SIP log does not include an INVITE entry, so the source manifest cannot prove a local SIP call.",
     capturedRtp: "No RTP packets were captured for caller audio.",
     liveCapture: "Media is not labeled live_capture; rerun with a real local SIP/FreeSWITCH softphone call.",
     rtcAsrLive: "rtc-asr is not labeled rtc_asr_live; start rtc-asr and set RTC_ASR_WS_URL before rerunning.",
@@ -259,12 +284,14 @@ async function main() {
     await integrity(assertRequestPath, "conversation-agent-evals-assert-request", "assert_request"),
     ...(rtcAsrEvidencePath ? [await integrity(rtcAsrEvidencePath, "rtc-asr-transcript-evidence", "transcript_evidence")] : []),
   ];
-  const gate = reviewGate(liveManifest, artifactIntegrity);
+  const sipEvidence = await sipLogEvidence(sipLogPath);
+  const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence);
   const validationSummary = {
     status: gate.passed ? "ready_for_review" : "blocked_before_review",
     checks: gate.checks,
     blockers: liveManifest.blockers,
     nextActions: reviewNextActions(liveManifest),
+    sipLogEvidence: sipEvidence,
   };
   const bundleManifest = {
     schemaVersion: 1,
