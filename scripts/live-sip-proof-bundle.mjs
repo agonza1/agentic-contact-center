@@ -82,21 +82,49 @@ async function sipLogEvidence(filePath) {
 
 async function rtcAsrEvidence(filePath) {
   if (!filePath) return { required: false, ready: false, reason: "rtc-asr transcript evidence is not attached." };
-  let parsed;
-  try {
-    parsed = JSON.parse(await readFile(filePath, "utf8"));
-  } catch {
+  const raw = await readFile(filePath, "utf8");
+  const parsed = parseJsonOrJsonLines(raw);
+  if (parsed.length === 0) {
     return { required: true, ready: false, reason: "rtc-asr transcript evidence is not valid JSON." };
   }
-  const transcript = [
-    typeof parsed.transcript === "string" ? parsed.transcript : "",
-    typeof parsed.text === "string" ? parsed.text : "",
-    ...(Array.isArray(parsed.segments) ? parsed.segments.map((segment) => typeof segment?.text === "string" ? segment.text : "") : []),
-  ].join(" ").trim();
-  const final = parsed.final === true || parsed.isFinal === true || parsed.status === "final";
+  const transcript = parsed.flatMap(transcriptFragments).join(" ").trim();
+  const final = parsed.some(isFinalTranscriptEvidence);
   if (!transcript) return { required: true, ready: false, reason: "rtc-asr transcript evidence has no non-empty transcript text." };
   if (!final) return { required: true, ready: false, reason: "rtc-asr transcript evidence is missing a final transcript marker." };
-  return { required: true, ready: true, transcriptChars: transcript.length };
+  return { required: true, ready: true, transcriptChars: transcript.length, eventCount: parsed.length };
+}
+
+function parseJsonOrJsonLines(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .flatMap((line) => {
+        try {
+          const parsed = JSON.parse(line);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          return [];
+        }
+      });
+  }
+}
+
+function transcriptFragments(entry) {
+  return [
+    typeof entry?.transcript === "string" ? entry.transcript : "",
+    typeof entry?.text === "string" ? entry.text : "",
+    typeof entry?.alternatives?.[0]?.transcript === "string" ? entry.alternatives[0].transcript : "",
+    ...(Array.isArray(entry?.segments) ? entry.segments.map((segment) => typeof segment?.text === "string" ? segment.text : "") : []),
+  ].filter(Boolean);
+}
+
+function isFinalTranscriptEvidence(entry) {
+  return entry?.final === true || entry?.isFinal === true || entry?.status === "final" || entry?.type === "transcript.final";
 }
 
 async function wavEvidence(filePath) {

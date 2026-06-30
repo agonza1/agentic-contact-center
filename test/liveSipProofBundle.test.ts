@@ -390,7 +390,7 @@ test("live SIP proof bundle blocks manifests whose SIP log has no INVITE", async
   }
 });
 
-test("live SIP proof bundle accepts newline-delimited SIP log evidence", async () => {
+test("live SIP proof bundle accepts newline-delimited SIP and rtc-asr evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-ndjson-log-"));
   const audioPath = path.join(tempDir, "caller-capture.wav");
@@ -401,7 +401,14 @@ test("live SIP proof bundle accepts newline-delimited SIP log evidence", async (
 
   try {
     await writeFile(audioPath, validWavFixture());
-    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: "I need billing help.", final: true })}\n`, "utf8");
+    await writeFile(
+      rtcAsrEvidencePath,
+      [
+        JSON.stringify({ type: "transcript.delta", text: "I need" }),
+        JSON.stringify({ type: "transcript.final", alternatives: [{ transcript: "billing help." }] }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
     await writeFile(
       sipLogPath,
       [
@@ -451,10 +458,11 @@ test("live SIP proof bundle accepts newline-delimited SIP log evidence", async (
     assert.equal(summary.validationStatus, "ready_for_review");
 
     const bundleManifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
-      validationSummary: { callerAudioEvidence: { ready: boolean; hasRiffWaveHeader: boolean; hasAudioPayload: boolean; declaredDataBytes: number; sizeBytes: number }; sipLogEvidence: { entryCount: number; hasInvite: boolean; hasAcceptedInviteResponse: boolean } };
+      validationSummary: { callerAudioEvidence: { ready: boolean; hasRiffWaveHeader: boolean; hasAudioPayload: boolean; declaredDataBytes: number; sizeBytes: number }; sipLogEvidence: { entryCount: number; hasInvite: boolean; hasAcceptedInviteResponse: boolean }; rtcAsrEvidence: { ready: boolean; transcriptChars: number; eventCount: number } };
     };
     assert.deepEqual(bundleManifest.validationSummary.callerAudioEvidence, { ready: true, hasRiffWaveHeader: true, hasAudioPayload: true, declaredDataBytes: 4, sizeBytes: 48 });
     assert.deepEqual(bundleManifest.validationSummary.sipLogEvidence, { entryCount: 2, hasInvite: true, hasAcceptedInviteResponse: true });
+    assert.deepEqual(bundleManifest.validationSummary.rtcAsrEvidence, { required: true, ready: true, transcriptChars: 20, eventCount: 2 });
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

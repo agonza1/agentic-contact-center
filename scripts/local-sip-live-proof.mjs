@@ -113,22 +113,17 @@ async function sha256File(filePath) {
 
 async function inspectRtcAsrEvidence(filePath) {
   if (!filePath) return { ready: false };
-  let parsed;
-  try {
-    parsed = JSON.parse(await readFile(filePath, "utf8"));
-  } catch {
+  const raw = await readFile(filePath, "utf8").catch(() => null);
+  const parsed = raw ? parseJsonOrJsonLines(raw) : [];
+  if (parsed.length === 0) {
     return {
       ready: false,
       blocker: "rtc-asr transcript/evidence file is missing or is not valid JSON.",
       nextAction: "Attach valid rtc-asr transcript evidence with --rtc-asr-evidence before marking the proof review-ready.",
     };
   }
-  const transcript = [
-    typeof parsed.transcript === "string" ? parsed.transcript : "",
-    typeof parsed.text === "string" ? parsed.text : "",
-    ...(Array.isArray(parsed.segments) ? parsed.segments.map((segment) => typeof segment?.text === "string" ? segment.text : "") : []),
-  ].join(" ").trim();
-  const final = parsed.final === true || parsed.isFinal === true || parsed.status === "final";
+  const transcript = parsed.flatMap(transcriptFragments).join(" ").trim();
+  const final = parsed.some(isFinalTranscriptEvidence);
   if (!transcript) {
     return {
       ready: false,
@@ -143,7 +138,40 @@ async function inspectRtcAsrEvidence(filePath) {
       nextAction: "Rerun rtc-asr until transcript evidence is final before marking the proof review-ready.",
     };
   }
-  return { ready: true };
+  return { ready: true, eventCount: parsed.length };
+}
+
+function parseJsonOrJsonLines(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .flatMap((line) => {
+        try {
+          const parsed = JSON.parse(line);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          return [];
+        }
+      });
+  }
+}
+
+function transcriptFragments(entry) {
+  return [
+    typeof entry?.transcript === "string" ? entry.transcript : "",
+    typeof entry?.text === "string" ? entry.text : "",
+    typeof entry?.alternatives?.[0]?.transcript === "string" ? entry.alternatives[0].transcript : "",
+    ...(Array.isArray(entry?.segments) ? entry.segments.map((segment) => typeof segment?.text === "string" ? segment.text : "") : []),
+  ].filter(Boolean);
+}
+
+function isFinalTranscriptEvidence(entry) {
+  return entry?.final === true || entry?.isFinal === true || entry?.status === "final" || entry?.type === "transcript.final";
 }
 
 async function postJson(baseUrl, route, body) {
