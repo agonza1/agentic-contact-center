@@ -27,6 +27,49 @@ function validWavFixture(packetCount = 4) {
   return buffer;
 }
 
+
+test("FreeSWITCH ESL frames keep content-length event bodies attached", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+  const script = `
+    const { nextEslFrame } = await import(${JSON.stringify(moduleUrl)});
+    const body = ["Event-Name: CHANNEL_ANSWER", "Unique-ID: fs-call-123", "Caller-Destination-Number: 8600", ""].join("\\n");
+    const raw = ["Content-Type: text/event-plain", "Content-Length: " + Buffer.byteLength(body), "", body + "Content-Type: command/reply", "Reply-Text: +OK", "", ""].join("\\n");
+    const first = nextEslFrame(raw);
+    const second = nextEslFrame(first.rest);
+    console.log(JSON.stringify({ first, second }));
+  `;
+  const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  const parsed = JSON.parse(stdout) as {
+    first: { block: string; rest: string };
+    second: { block: string; rest: string };
+  };
+  assert.match(parsed.first.block, /Content-Type: text\/event-plain/);
+  assert.match(parsed.first.block, /Event-Name: CHANNEL_ANSWER/);
+  assert.match(parsed.first.block, /Unique-ID: fs-call-123/);
+  assert.match(parsed.second.block, /Content-Type: command\/reply/);
+  assert.equal(parsed.second.rest, "");
+});
+
+test("FreeSWITCH recording path maps host artifacts to a container-visible mount", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+  const script = `
+    const { visibleRecordingPath } = await import(${JSON.stringify(moduleUrl)});
+    console.log(JSON.stringify(visibleRecordingPath("/workspace/repo/artifacts/freeswitch-live/media", "/var/log/freeswitch/acc", "fs-call-123")));
+  `;
+  const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  const paths = JSON.parse(stdout) as { hostPath: string; freeswitchPath: string };
+  assert.equal(paths.hostPath, "/workspace/repo/artifacts/freeswitch-live/media/fs-call-123.wav");
+  assert.equal(paths.freeswitchPath, "/var/log/freeswitch/acc/fs-call-123.wav");
+});
+
 test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-bridge-"));

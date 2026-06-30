@@ -122,6 +122,40 @@ function parseHeaders(block) {
   return headers;
 }
 
+function headerSeparatorIndex(raw) {
+  const crlfIndex = raw.indexOf("\r\n\r\n");
+  const lfIndex = raw.indexOf("\n\n");
+  if (crlfIndex === -1) return lfIndex;
+  if (lfIndex === -1) return crlfIndex;
+  return Math.min(crlfIndex, lfIndex);
+}
+
+function separatorLength(raw, index) {
+  return raw.slice(index, index + 4) === "\r\n\r\n" ? 4 : 2;
+}
+
+export function nextEslFrame(raw) {
+  const index = headerSeparatorIndex(raw);
+  if (index === -1) return null;
+  const length = separatorLength(raw, index);
+  const envelope = raw.slice(0, index);
+  const headers = parseHeaders(envelope);
+  const contentLength = Number(headers.get("Content-Length") ?? 0);
+  const bodyStart = index + length;
+  if (Number.isFinite(contentLength) && contentLength > 0) {
+    const bodyEnd = bodyStart + contentLength;
+    if (raw.length < bodyEnd) return null;
+    return { block: `${envelope}\n${raw.slice(bodyStart, bodyEnd)}`, rest: raw.slice(bodyEnd) };
+  }
+  return { block: envelope, rest: raw.slice(bodyStart) };
+}
+
+export function visibleRecordingPath(recordingDir, freeswitchRecordingDir, uuid) {
+  const hostPath = path.join(recordingDir, `${uuid}.wav`);
+  const freeswitchPath = freeswitchRecordingDir ? path.posix.join(freeswitchRecordingDir, `${uuid}.wav`) : hostPath;
+  return { hostPath, freeswitchPath };
+}
+
 export async function buildFreeswitchLiveProofManifest(options) {
   const audioStats = await stat(options.wavPath).catch(() => null);
   const logStats = await stat(options.logPath).catch(() => null);
@@ -254,11 +288,11 @@ class EslBridge {
 
   async handleData(chunk) {
     this.buffer += chunk;
-    while (this.buffer.includes("\n\n")) {
-      const index = this.buffer.indexOf("\n\n");
-      const block = this.buffer.slice(0, index);
-      this.buffer = this.buffer.slice(index + 2);
-      await this.handleBlock(block);
+    while (true) {
+      const frame = nextEslFrame(this.buffer);
+      if (!frame) return;
+      this.buffer = frame.rest;
+      await this.handleBlock(frame.block);
     }
   }
 
@@ -286,7 +320,7 @@ class EslBridge {
   async onAnswer(uuid, headers) {
     if (this.callMap.has(uuid)) return;
     const destination = headers.get("Caller-Destination-Number") ?? "8600";
-    const wavPath = path.join(this.options.recordingDir, `${uuid}.wav`);
+    const { hostPath: wavPath, freeswitchPath } = visibleRecordingPath(this.options.recordingDir, this.options.freeswitchRecordingDir, uuid);
     const response = await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
       eventType: "call.started",
       timestamp: nowIso(),
@@ -297,8 +331,8 @@ class EslBridge {
       rtcAsrMode: this.options.rtcAsrUrl ? "rtc_asr_live" : "rtc_asr_blocked",
       destination,
     });
-    this.callMap.set(uuid, { wavPath, startedAt: Date.now(), destination, accCallId: response?.body?.call?.session?.callId ?? null });
-    this.send(`api uuid_record ${uuid} start ${wavPath}`);
+    this.callMap.set(uuid, { wavPath, freeswitchPath, startedAt: Date.now(), destination, accCallId: response?.body?.call?.session?.callId ?? null });
+    this.send(`api uuid_record ${uuid} start ${freeswitchPath}`);
   }
 
   async onRecordStop(uuid) {
@@ -364,6 +398,7 @@ async function main() {
     password: argValue("--esl-password", process.env.FREESWITCH_ESL_PASSWORD || "ClueCon"),
     accBaseUrl: argValue("--acc-url", process.env.ACC_BASE_URL || "http://127.0.0.1:8026"),
     recordingDir: path.resolve(process.cwd(), argValue("--recording-dir", "artifacts/freeswitch-live/media")),
+    freeswitchRecordingDir: argValue("--freeswitch-recording-dir", process.env.FREESWITCH_RECORDING_DIR),
     logPath: path.resolve(process.cwd(), argValue("--log", "artifacts/freeswitch-live/freeswitch-esl-events.json")),
     manifestPath: path.resolve(process.cwd(), argValue("--manifest", "artifacts/freeswitch-live/freeswitch-live-proof-manifest.json")),
     rtcAsrUrl: argValue("--rtc-asr-url", process.env.RTC_ASR_WS_URL),
