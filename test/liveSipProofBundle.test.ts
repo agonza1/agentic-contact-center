@@ -66,7 +66,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
       reviewReady: boolean;
       labels: string[];
       artifactIntegrity: Array<{ artifactId: string; kind: string; sha256: string; sizeBytes: number; readiness: string }>;
-      validationSummary: { status: string; checks: Record<string, boolean>; blockers: string[] };
+      validationSummary: { status: string; checks: Record<string, boolean>; blockers: string[]; nextActions: string[] };
     };
     assert.equal(bundleManifest.reviewReady, false);
     assert.ok(bundleManifest.labels.includes("generated_media"));
@@ -83,6 +83,10 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     assert.equal(bundleManifest.validationSummary.checks.liveCapture, false);
     assert.equal(bundleManifest.validationSummary.checks.rtcAsrLive, false);
     assert.equal(bundleManifest.validationSummary.blockers.length, 2);
+    assert.deepEqual(bundleManifest.validationSummary.nextActions, [
+      "Place a real local SIP/FreeSWITCH softphone call and rerun the live proof without --self-test.",
+      "Start rtc-asr, set RTC_ASR_WS_URL, and rerun the live proof to capture a websocket-backed transcript.",
+    ]);
 
     const assertRequest = JSON.parse(await readFile(path.join(outDir, "conversation-agent-evals-assert-request.json"), "utf8")) as {
       platform_metadata: { notes: string; labels: string[] };

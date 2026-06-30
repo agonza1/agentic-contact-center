@@ -46,6 +46,20 @@ async function integrity(filePath, artifactId, kind) {
   };
 }
 
+function reviewNextActions(liveManifest) {
+  const actions = [];
+  if (liveManifest.runtimeModeLabels?.media !== "live_capture") {
+    actions.push("Place a real local SIP/FreeSWITCH softphone call and rerun the live proof without --self-test.");
+  }
+  if (liveManifest.runtimeModeLabels?.rtcAsr !== "rtc_asr_live") {
+    actions.push("Start rtc-asr, set RTC_ASR_WS_URL, and rerun the live proof to capture a websocket-backed transcript.");
+  }
+  if (Number(liveManifest.localSip?.rtpPacketCount ?? 0) <= 0) {
+    actions.push("Verify RTP routing and rerun until caller audio packets are captured.");
+  }
+  return actions;
+}
+
 async function main() {
   const liveManifestPath = path.resolve(repoRoot, argValue("--live-manifest") || "artifacts/local-sip-selftest/local-sip-live-proof-manifest.json");
   const outDir = path.resolve(repoRoot, argValue("--out-dir") || "artifacts/live-sip-proof-bundle");
@@ -130,6 +144,7 @@ async function main() {
       artifactsPresent: artifactIntegrity.every((artifact) => artifact.readiness === "ready"),
     },
     blockers: liveManifest.blockers,
+    nextActions: reviewNextActions(liveManifest),
   };
   const bundleManifest = {
     schemaVersion: 1,
