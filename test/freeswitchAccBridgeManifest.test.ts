@@ -141,7 +141,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     assert.ok(invalidEvidenceManifest.artifactIntegrity.some((artifact) => artifact.artifactId === "rtc-asr-transcript-evidence" && artifact.readiness === "blocked"));
 
     const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
-    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: "hello from local sip", final: true })}\n`, "utf8");
+    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: { text: "hello from local sip", final: true } })}\n`, "utf8");
     const readyScript = `
       const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
       const manifest = await buildFreeswitchLiveProofManifest({

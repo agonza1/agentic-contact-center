@@ -18,10 +18,8 @@ function nowIso() {
 
 async function inspectRtcAsrEvidence(filePath, stats) {
   if (!filePath || !stats || stats.size === 0) return { ready: false };
-  let parsed;
-  try {
-    parsed = JSON.parse(await readFile(filePath, "utf8"));
-  } catch {
+  const parsed = parseJsonOrJsonLines(await readFile(filePath, "utf8"));
+  if (parsed.length === 0) {
     return {
       ready: false,
       blocker: "rtc-asr transcript/evidence file is not valid JSON.",
@@ -29,12 +27,8 @@ async function inspectRtcAsrEvidence(filePath, stats) {
     };
   }
 
-  const transcript = [
-    typeof parsed.transcript === "string" ? parsed.transcript : "",
-    typeof parsed.text === "string" ? parsed.text : "",
-    ...(Array.isArray(parsed.segments) ? parsed.segments.map((segment) => typeof segment?.text === "string" ? segment.text : "") : []),
-  ].join(" ").trim();
-  const final = parsed.final === true || parsed.isFinal === true || parsed.status === "final";
+  const transcript = parsed.flatMap(transcriptFragments).join(" ").trim();
+  const final = parsed.some(isFinalTranscriptEvidence);
   if (!transcript) {
     return {
       ready: false,
@@ -49,7 +43,51 @@ async function inspectRtcAsrEvidence(filePath, stats) {
       nextAction: "Rerun rtc-asr until transcript evidence is final before marking the proof review-ready.",
     };
   }
-  return { ready: true };
+  return { ready: true, eventCount: parsed.length };
+}
+
+function parseJsonOrJsonLines(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .flatMap((line) => {
+        try {
+          const parsed = JSON.parse(line);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          return [];
+        }
+      });
+  }
+}
+
+function transcriptFragments(entry) {
+  return [
+    typeof entry?.transcript === "string" ? entry.transcript : "",
+    typeof entry?.transcript?.text === "string" ? entry.transcript.text : "",
+    typeof entry?.text === "string" ? entry.text : "",
+    typeof entry?.result?.text === "string" ? entry.result.text : "",
+    typeof entry?.result?.transcript === "string" ? entry.result.transcript : "",
+    typeof entry?.alternatives?.[0]?.transcript === "string" ? entry.alternatives[0].transcript : "",
+    typeof entry?.channel?.alternatives?.[0]?.transcript === "string" ? entry.channel.alternatives[0].transcript : "",
+    ...(Array.isArray(entry?.segments) ? entry.segments.map((segment) => typeof segment?.text === "string" ? segment.text : "") : []),
+  ].filter(Boolean);
+}
+
+function isFinalTranscriptEvidence(entry) {
+  return entry?.final === true
+    || entry?.isFinal === true
+    || entry?.is_final === true
+    || entry?.transcript?.final === true
+    || entry?.result?.final === true
+    || entry?.speech_final === true
+    || entry?.status === "final"
+    || entry?.type === "transcript.final";
 }
 
 async function sha256File(filePath) {

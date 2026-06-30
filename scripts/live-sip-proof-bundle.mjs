@@ -117,14 +117,25 @@ function parseJsonOrJsonLines(raw) {
 function transcriptFragments(entry) {
   return [
     typeof entry?.transcript === "string" ? entry.transcript : "",
+    typeof entry?.transcript?.text === "string" ? entry.transcript.text : "",
     typeof entry?.text === "string" ? entry.text : "",
+    typeof entry?.result?.text === "string" ? entry.result.text : "",
+    typeof entry?.result?.transcript === "string" ? entry.result.transcript : "",
     typeof entry?.alternatives?.[0]?.transcript === "string" ? entry.alternatives[0].transcript : "",
+    typeof entry?.channel?.alternatives?.[0]?.transcript === "string" ? entry.channel.alternatives[0].transcript : "",
     ...(Array.isArray(entry?.segments) ? entry.segments.map((segment) => typeof segment?.text === "string" ? segment.text : "") : []),
   ].filter(Boolean);
 }
 
 function isFinalTranscriptEvidence(entry) {
-  return entry?.final === true || entry?.isFinal === true || entry?.status === "final" || entry?.type === "transcript.final";
+  return entry?.final === true
+    || entry?.isFinal === true
+    || entry?.is_final === true
+    || entry?.transcript?.final === true
+    || entry?.result?.final === true
+    || entry?.speech_final === true
+    || entry?.status === "final"
+    || entry?.type === "transcript.final";
 }
 
 async function wavEvidence(filePath) {
