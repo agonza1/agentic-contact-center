@@ -82,24 +82,27 @@ function buildRealtimeShimProofPayload(): object {
     timestamp: 210,
   });
 
+  const acceptanceSummary = {
+    oneLocalVoiceTurn: evidence.qaChecklist.oneTurnEvidence && closeEvidence.state === "closed",
+    adapterContract: evidence.envelope.transport === "gateway-relay" && evidence.envelope.provider === "local-realtime-shim",
+    interruptionCancelBehavior:
+      interruptionEvidence.qaChecklist.interruptionEvidence && inputCancelEvidence.qaChecklist.inputCancelEvidence,
+    qaEvidence:
+      evidence.qaChecklist.eventTranscriptEvidence && evidence.qaChecklist.logEvidence && evidence.latencyMarks.length > 0,
+    mockedPiecesIsolated:
+      evidence.qaChecklist.mockedPiecesNamed && evidence.mockedPieces.length > 0 && evidence.limitations.length > 0,
+    boundedErrorEvidence:
+      errorEvidence.qaChecklist.boundedErrorEvidence && invalidAudioResult.evidence.qaChecklist.boundedErrorEvidence,
+  };
+
   return {
     ok: true,
     route: "/api/realtime-shim/proof",
     issue: "agonza1/agentic-contact-center#85",
     rpcBoundary: "gateway-relay",
     localSttContract: "local-stt.v1",
-    acceptanceSummary: {
-      oneLocalVoiceTurn: evidence.qaChecklist.oneTurnEvidence && closeEvidence.state === "closed",
-      adapterContract: evidence.envelope.transport === "gateway-relay" && evidence.envelope.provider === "local-realtime-shim",
-      interruptionCancelBehavior:
-        interruptionEvidence.qaChecklist.interruptionEvidence && inputCancelEvidence.qaChecklist.inputCancelEvidence,
-      qaEvidence:
-        evidence.qaChecklist.eventTranscriptEvidence && evidence.qaChecklist.logEvidence && evidence.latencyMarks.length > 0,
-      mockedPiecesIsolated:
-        evidence.qaChecklist.mockedPiecesNamed && evidence.mockedPieces.length > 0 && evidence.limitations.length > 0,
-      boundedErrorEvidence:
-        errorEvidence.qaChecklist.boundedErrorEvidence && invalidAudioResult.evidence.qaChecklist.boundedErrorEvidence,
-    },
+    acceptanceSummary,
+    readyForIssue85Review: Object.values(acceptanceSummary).every(Boolean),
     evidence,
     closeEvidence,
     interruptionEvidence,

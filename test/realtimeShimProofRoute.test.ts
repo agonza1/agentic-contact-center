@@ -45,6 +45,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       rpcBoundary: string;
       localSttContract: string;
       acceptanceSummary: Record<string, boolean>;
+      readyForIssue85Review: boolean;
       evidence: {
         state: string;
         envelope: { provider: string; transport: string; relaySessionId: string; sessionId: string };
@@ -119,6 +120,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       mockedPiecesIsolated: true,
       boundedErrorEvidence: true,
     });
+    assert.equal(payload.readyForIssue85Review, true);
     assert.equal(payload.evidence.state, "speaking");
     assert.deepEqual(payload.evidence.qaChecklist, {
       oneTurnEvidence: true,
