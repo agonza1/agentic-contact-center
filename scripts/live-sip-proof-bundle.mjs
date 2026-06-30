@@ -34,6 +34,18 @@ async function artifact(filePath, artifactId, kind, mimeType) {
   };
 }
 
+async function integrity(filePath, artifactId, kind) {
+  const stats = await stat(filePath);
+  return {
+    artifactId,
+    kind,
+    path: rel(filePath),
+    sha256: await sha256File(filePath),
+    sizeBytes: stats.size,
+    readiness: stats.size > 0 ? "ready" : "blocked",
+  };
+}
+
 async function main() {
   const liveManifestPath = path.resolve(repoRoot, argValue("--live-manifest") || "artifacts/local-sip-selftest/local-sip-live-proof-manifest.json");
   const outDir = path.resolve(repoRoot, argValue("--out-dir") || "artifacts/live-sip-proof-bundle");
@@ -100,6 +112,25 @@ async function main() {
   };
   const assertRequestPath = path.join(outDir, "conversation-agent-evals-assert-request.json");
   await writeFile(assertRequestPath, `${JSON.stringify(assertRequest, null, 2)}\n`, "utf8");
+  const artifactIntegrity = [
+    await integrity(liveManifestPath, "local-sip-live-proof-manifest", "manifest"),
+    await integrity(audioPath, "local-sip-real-caller-audio-wav", "call_media"),
+    await integrity(sipLogPath, "local-sip-and-freeswitch-sip-log", "sip_log"),
+    await integrity(runtimeTracePath, "agentic-contact-center-runtime-event-trace", "action_trace"),
+    await integrity(blockerPath, "rtc-asr-live-status", "manifest"),
+    await integrity(assertRequestPath, "conversation-agent-evals-assert-request", "assert_request"),
+  ];
+  const validationSummary = {
+    status: liveManifest.reviewReady === true ? "ready_for_review" : "blocked_before_review",
+    checks: {
+      acceptedInvite: liveManifest.localSip?.acceptedInvite === true,
+      capturedRtp: Number(liveManifest.localSip?.rtpPacketCount ?? 0) > 0,
+      liveCapture: liveManifest.runtimeModeLabels?.media === "live_capture",
+      rtcAsrLive: liveManifest.runtimeModeLabels?.rtcAsr === "rtc_asr_live",
+      artifactsPresent: artifactIntegrity.every((artifact) => artifact.readiness === "ready"),
+    },
+    blockers: liveManifest.blockers,
+  };
   const bundleManifest = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
@@ -115,6 +146,8 @@ async function main() {
       rtcAsrStatus: rel(blockerPath),
       conversationAgentEvalsRequest: rel(assertRequestPath),
     },
+    artifactIntegrity,
+    validationSummary,
     blockers: liveManifest.blockers,
   };
   const bundleManifestPath = path.join(outDir, "proof-bundle-manifest.json");
