@@ -84,6 +84,13 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
     { name: "transcript_final", elapsedMs: 75, budgetMs: 250, withinBudget: true },
     { name: "output_first_audio", elapsedMs: 135, budgetMs: 500, withinBudget: true },
   ]);
+  assert.deepEqual(evidence.pipelineStages.map((stage) => [stage.stage, stage.status, stage.mocked]), [
+    ["gateway_relay", "active", false],
+    ["local_stt", "active", true],
+    ["local_llm", "mocked", true],
+    ["kokoro_tts", "mocked", true],
+  ]);
+  assert.match(evidence.pipelineStages[0].evidence, /1 relay event\(s\) recorded/);
   assert.deepEqual(evidence.eventTranscript.slice(0, 4), [
     "1. diagnostic:ready",
     "2. local-stt:start",

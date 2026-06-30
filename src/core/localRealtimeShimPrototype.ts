@@ -65,6 +65,13 @@ export interface LocalRealtimeShimLatencyMark {
   withinBudget: boolean;
 }
 
+export interface LocalRealtimeShimPipelineStage {
+  stage: "gateway_relay" | "local_stt" | "local_llm" | "kokoro_tts";
+  status: "ready" | "active" | "mocked";
+  mocked: boolean;
+  evidence: string;
+}
+
 export interface LocalRealtimeShimEvidence {
   envelope: RealtimeShimSessionEnvelope;
   state: LocalRealtimeShimState;
@@ -82,6 +89,7 @@ export interface LocalRealtimeShimEvidence {
   eventTranscript: string[];
   logs: string[];
   latencyMarks: LocalRealtimeShimLatencyMark[];
+  pipelineStages: LocalRealtimeShimPipelineStage[];
   localSttMessages: Array<LocalSttStartMessage | LocalSttControlMessage | { type: "audio"; byteLength: number }>;
   toolResults: Array<RealtimeShimToolResultRequest & { status: "not_applicable" }>;
   qaChecklist: {
@@ -417,6 +425,7 @@ export class LocalRealtimeShimPrototype {
       eventTranscript: timeline.map(formatTimelineEntry),
       logs: timeline.map(formatLogEntry),
       latencyMarks: [...session.latencyMarks],
+      pipelineStages: buildPipelineStages(session),
       localSttMessages: [...session.localSttMessages],
       toolResults: [...session.toolResults],
       qaChecklist: buildQaChecklist(session, mockedPieces),
@@ -488,6 +497,45 @@ export class LocalRealtimeShimPrototype {
       withinBudget: elapsedMs <= budgetMs,
     });
   }
+}
+
+function buildPipelineStages(session: LocalRealtimeShimSession): LocalRealtimeShimPipelineStage[] {
+  const sawFinalTranscript = session.diagnostics.some((event) => event.type === "transcript.done");
+  const sawAssistantText = session.diagnostics.some((event) => event.type === "output.text.done");
+  const sawOutputAudio = session.diagnostics.some((event) => event.type === "output.audio.done");
+
+  return [
+    {
+      stage: "gateway_relay",
+      status: session.relayEvents.length > 0 ? "active" : "ready",
+      mocked: false,
+      evidence: String(session.relayEvents.length) + " relay event(s) recorded for the OpenAI Realtime-compatible boundary",
+    },
+    {
+      stage: "local_stt",
+      status: session.sttStarted ? "active" : "ready",
+      mocked: true,
+      evidence: sawFinalTranscript
+        ? "Local STT v1 start/audio/finalize messages produced a final transcript"
+        : "Local STT v1 control messages are recorded; live rtc-asr websocket remains optional",
+    },
+    {
+      stage: "local_llm",
+      status: sawAssistantText ? "mocked" : "ready",
+      mocked: true,
+      evidence: sawAssistantText
+        ? "Deterministic local response text stands in for the local LLM turn"
+        : "Local LLM response is not invoked until a transcript is finalized",
+    },
+    {
+      stage: "kokoro_tts",
+      status: sawOutputAudio ? "mocked" : "ready",
+      mocked: true,
+      evidence: sawOutputAudio
+        ? "Seeded PCM16 output audio stands in for Kokoro TTS first-audio evidence"
+        : "Kokoro TTS output is not emitted until response text is available",
+    },
+  ];
 }
 
 function buildQaChecklist(
