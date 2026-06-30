@@ -57,8 +57,10 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
       { cwd: repoRoot },
     );
 
-    const summary = JSON.parse(stdout) as { manifest: string; reviewReady: boolean; blockers: string[] };
+    const summary = JSON.parse(stdout) as { manifest: string; reviewReady: boolean; reviewGatePassed: boolean; validationStatus: string; blockers: string[] };
     assert.equal(summary.reviewReady, false);
+    assert.equal(summary.reviewGatePassed, false);
+    assert.equal(summary.validationStatus, "blocked_before_review");
     assert.match(summary.manifest, /proof-bundle-manifest\.json$/);
     assert.equal(summary.blockers.length, 2);
 
@@ -97,6 +99,19 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     };
     assert.match(assertRequest.platform_metadata.notes, /Not review-ready/);
     assert.ok(assertRequest.platform_metadata.labels.includes("mocked_telephony"));
+
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        ["scripts/live-sip-proof-bundle.mjs", "--live-manifest", manifestPath, "--out-dir", path.join(tempDir, "bundle-require-ready"), "--require-review-ready"],
+        { cwd: repoRoot, encoding: "utf8" },
+      ),
+      (error: any) => {
+        assert.equal(error.code, 2);
+        assert.equal(JSON.parse(error.stdout).reviewGatePassed, false);
+        return true;
+      },
+    );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

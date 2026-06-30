@@ -185,8 +185,14 @@ async function main() {
   };
   const bundleManifestPath = path.join(outDir, "proof-bundle-manifest.json");
   await writeFile(bundleManifestPath, `${JSON.stringify(bundleManifest, null, 2)}\n`, "utf8");
-  console.log(JSON.stringify({ manifest: rel(bundleManifestPath), reviewReady: bundleManifest.reviewReady, blockers: bundleManifest.blockers }, null, 2));
-  if (!bundleManifest.reviewReady && process.argv.includes("--require-review-ready")) process.exitCode = 2;
+  console.log(JSON.stringify({
+    manifest: rel(bundleManifestPath),
+    reviewReady: bundleManifest.reviewReady,
+    reviewGatePassed: bundleManifest.reviewGate.passed,
+    validationStatus: bundleManifest.validationSummary.status,
+    blockers: bundleManifest.blockers,
+  }, null, 2));
+  if (!bundleManifest.reviewGate.passed && process.argv.includes("--require-review-ready")) process.exitCode = 2;
 }
 
 main().catch((error) => {
