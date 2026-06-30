@@ -57,11 +57,12 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
       { cwd: repoRoot },
     );
 
-    const summary = JSON.parse(stdout) as { manifest: string; reviewReady: boolean; reviewGatePassed: boolean; validationStatus: string; blockers: string[] };
+    const summary = JSON.parse(stdout) as { manifest: string; reviewGateReport: string; reviewReady: boolean; reviewGatePassed: boolean; validationStatus: string; blockers: string[] };
     assert.equal(summary.reviewReady, false);
     assert.equal(summary.reviewGatePassed, false);
     assert.equal(summary.validationStatus, "blocked_before_review");
     assert.match(summary.manifest, /proof-bundle-manifest\.json$/);
+    assert.match(summary.reviewGateReport, /review-gate-report\.md$/);
     assert.equal(summary.blockers.length, 2);
 
     const bundleManifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
@@ -99,6 +100,13 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     };
     assert.match(assertRequest.platform_metadata.notes, /Not review-ready/);
     assert.ok(assertRequest.platform_metadata.labels.includes("mocked_telephony"));
+
+    const reviewGateReport = await readFile(path.join(outDir, "review-gate-report.md"), "utf8");
+    assert.match(reviewGateReport, /Status: blocked_before_review/);
+    assert.match(reviewGateReport, /Review ready: no/);
+    assert.match(reviewGateReport, /Missing runtime labels: live_capture, rtc_asr_live/);
+    assert.match(reviewGateReport, /- \[x\] acceptedInvite/);
+    assert.match(reviewGateReport, /- \[ \] liveCapture/);
 
     await assert.rejects(
       execFileAsync(

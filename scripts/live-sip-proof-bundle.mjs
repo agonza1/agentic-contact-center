@@ -82,6 +82,42 @@ function reviewGate(liveManifest, artifactIntegrity) {
   };
 }
 
+function markdownChecklist(checks) {
+  return Object.entries(checks)
+    .map(([name, passed]) => `- [${passed ? "x" : " "}] ${name}`)
+    .join("\n");
+}
+
+function reviewGateReport(bundleManifest) {
+  const gate = bundleManifest.reviewGate;
+  const nextActions = bundleManifest.validationSummary.nextActions.length > 0
+    ? bundleManifest.validationSummary.nextActions.map((action) => `- ${action}`).join("\n")
+    : "- No follow-up actions required.";
+  const missingLabels = gate.missingLabels.length > 0 ? gate.missingLabels.join(", ") : "none";
+  const blockers = bundleManifest.blockers.length > 0 ? bundleManifest.blockers.map((blocker) => `- ${blocker}`).join("\n") : "- none";
+
+  return [
+    "# Local SIP Review Gate",
+    "",
+    `Status: ${bundleManifest.validationSummary.status}`,
+    `Review ready: ${bundleManifest.reviewReady ? "yes" : "no"}`,
+    `Missing runtime labels: ${missingLabels}`,
+    "",
+    "## Checks",
+    "",
+    markdownChecklist(gate.checks),
+    "",
+    "## Blockers",
+    "",
+    blockers,
+    "",
+    "## Next Actions",
+    "",
+    nextActions,
+    "",
+  ].join("\n");
+}
+
 async function main() {
   const liveManifestPath = path.resolve(repoRoot, argValue("--live-manifest") || "artifacts/local-sip-selftest/local-sip-live-proof-manifest.json");
   const outDir = path.resolve(repoRoot, argValue("--out-dir") || "artifacts/live-sip-proof-bundle");
@@ -185,8 +221,11 @@ async function main() {
   };
   const bundleManifestPath = path.join(outDir, "proof-bundle-manifest.json");
   await writeFile(bundleManifestPath, `${JSON.stringify(bundleManifest, null, 2)}\n`, "utf8");
+  const reviewGateReportPath = path.join(outDir, "review-gate-report.md");
+  await writeFile(reviewGateReportPath, reviewGateReport(bundleManifest), "utf8");
   console.log(JSON.stringify({
     manifest: rel(bundleManifestPath),
+    reviewGateReport: rel(reviewGateReportPath),
     reviewReady: bundleManifest.reviewReady,
     reviewGatePassed: bundleManifest.reviewGate.passed,
     validationStatus: bundleManifest.validationSummary.status,
