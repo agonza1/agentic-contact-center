@@ -362,6 +362,12 @@ function reviewGateReportJson(bundleManifest) {
     missingLabels: bundleManifest.reviewGate.missingLabels,
     checks: bundleManifest.reviewGate.checks,
     failureReasons: bundleManifest.reviewGate.failureReasons,
+    evidence: {
+      callerAudio: bundleManifest.validationSummary.callerAudioEvidence,
+      sipLog: bundleManifest.validationSummary.sipLogEvidence,
+      rtcAsr: bundleManifest.validationSummary.rtcAsrEvidence,
+      sourceArtifactIntegrity: bundleManifest.validationSummary.sourceArtifactIntegrityEvidence,
+    },
     blockers: bundleManifest.validationSummary.blockers,
     nextActions: bundleManifest.validationSummary.nextActions,
     sourceManifestReviewGate: bundleManifest.sourceManifestReviewGate,

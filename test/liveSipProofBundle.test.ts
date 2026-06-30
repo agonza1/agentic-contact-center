@@ -143,6 +143,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
       failureReasons: Record<string, string>;
       artifacts: { conversationAgentEvalsRequest: string };
       artifactIntegrity: Array<{ artifactId: string; readiness: string }>;
+      evidence: { callerAudio: { ready: boolean }; sipLog: { hasInvite: boolean; hasAcceptedInviteResponse: boolean }; rtcAsr: { required: boolean; ready: boolean }; sourceArtifactIntegrity: { ready: boolean } };
       sourceManifestReviewGate: { missingLabels: string[]; nextActions: string[] };
     };
     assert.equal(reviewGateReportJson.status, "blocked_before_review");
@@ -151,6 +152,10 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     assert.match(reviewGateReportJson.failureReasons.sourceManifestReviewReady, /Source live proof manifest is not review-ready/);
     assert.match(reviewGateReportJson.artifacts.conversationAgentEvalsRequest, /conversation-agent-evals-assert-request\.json$/);
     assert.ok(reviewGateReportJson.artifactIntegrity.some((artifact) => artifact.artifactId === "conversation-agent-evals-assert-request" && artifact.readiness === "ready"));
+    assert.deepEqual(reviewGateReportJson.evidence.callerAudio.ready, true);
+    assert.deepEqual(reviewGateReportJson.evidence.sipLog, { entryCount: 2, hasInvite: true, hasAcceptedInviteResponse: true });
+    assert.deepEqual(reviewGateReportJson.evidence.rtcAsr, { required: false, ready: false, reason: "rtc-asr transcript evidence is not attached." });
+    assert.deepEqual(reviewGateReportJson.evidence.sourceArtifactIntegrity, { checked: 0, blocked: [], changed: [], ready: true });
     assert.deepEqual(reviewGateReportJson.sourceManifestReviewGate.missingLabels, ["live_capture", "rtc_asr_live"]);
     assert.deepEqual(reviewGateReportJson.sourceManifestReviewGate.nextActions, [
       "Place a real local SIP/FreeSWITCH softphone call and rerun the live proof without --self-test.",
