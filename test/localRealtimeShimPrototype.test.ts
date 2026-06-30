@@ -289,3 +289,60 @@ test("local realtime shim prototype emits bounded Local STT error evidence", () 
     /closed/,
   );
 });
+
+test("local realtime shim prototype records malformed gateway audio without starting STT", () => {
+  const shim = new LocalRealtimeShimPrototype();
+  const envelope = shim.createSession({ relaySessionId: "local-rt-invalid-audio" });
+
+  const result = shim.appendAudioWithErrorEvidence({
+    sessionId: envelope.sessionId,
+    audioBase64: "AQI",
+    timestamp: 42,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "invalid_audio_frame");
+  assert.equal(result.evidence.state, "idle");
+  assert.deepEqual(result.evidence.audioInput, {
+    relayEncoding: "pcm16",
+    relaySampleRateHz: 24000,
+    localSttSampleRateHz: 16000,
+    chunks: 0,
+    bytesReceived: 0,
+  });
+  assert.deepEqual(result.evidence.localSttMessages, []);
+  assert.deepEqual(result.evidence.relayEvents.at(-1), {
+    relaySessionId: "local-rt-invalid-audio",
+    sessionId: "local-rt-invalid-audio",
+    type: "error",
+    code: "invalid_audio_frame",
+    message: "audioBase64 must be valid base64",
+    retryable: true,
+  });
+  assert.deepEqual(result.evidence.diagnostics.at(-1), {
+    type: "session.error",
+    sessionId: "local-rt-invalid-audio",
+    relaySessionId: "local-rt-invalid-audio",
+    code: "invalid_audio_frame",
+    message: "audioBase64 must be valid base64",
+    retryable: true,
+  });
+  assert.deepEqual(result.evidence.timeline.slice(-2), [
+    {
+      sequence: 2,
+      source: "relay",
+      type: "error",
+      code: "invalid_audio_frame",
+      message: "audioBase64 must be valid base64",
+      retryable: true,
+    },
+    {
+      sequence: 3,
+      source: "diagnostic",
+      type: "session.error",
+      code: "invalid_audio_frame",
+      message: "audioBase64 must be valid base64",
+      retryable: true,
+    },
+  ]);
+});

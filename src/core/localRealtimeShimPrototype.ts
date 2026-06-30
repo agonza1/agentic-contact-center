@@ -161,6 +161,48 @@ export class LocalRealtimeShimPrototype {
     return this.getEvidence(request.sessionId);
   }
 
+  appendAudioWithErrorEvidence(options: {
+    sessionId: string;
+    audioBase64: string;
+    timestamp?: number;
+  }):
+    | { ok: true; evidence: LocalRealtimeShimEvidence }
+    | { ok: false; code: string; message: string; evidence: LocalRealtimeShimEvidence } {
+    const session = this.requireOpenSession(options.sessionId);
+
+    try {
+      return { ok: true, evidence: this.appendAudio(options) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Invalid gateway relay audio frame";
+      const relayError = createRealtimeShimErrorRelayEvent(session.envelope, {
+        code: "invalid_audio_frame",
+        message,
+        retryable: true,
+      });
+
+      if (relayError.type !== "error") {
+        throw new Error("Expected realtime shim error relay event");
+      }
+
+      this.recordRelayEvent(session, relayError);
+      this.recordDiagnostic(session, {
+        type: "session.error",
+        sessionId: session.envelope.sessionId,
+        relaySessionId: session.envelope.relaySessionId,
+        code: relayError.code,
+        message: relayError.message,
+        retryable: relayError.retryable,
+      });
+
+      return {
+        ok: false,
+        code: relayError.code,
+        message: relayError.message,
+        evidence: this.getEvidence(options.sessionId),
+      };
+    }
+  }
+
   finalizeTurn(options: { sessionId: string; transcriptText?: string }): LocalRealtimeShimEvidence {
     const session = this.requireOpenSession(options.sessionId);
 

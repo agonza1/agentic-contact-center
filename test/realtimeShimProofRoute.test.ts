@@ -80,6 +80,19 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         diagnostics: Array<{ type: string; code?: string; message?: string; retryable?: boolean; relaySessionId: string; sessionId: string; reason?: string }>;
         timeline: Array<{ source: string; type: string; code?: string; reason?: string }>;
       };
+      invalidAudioResult: {
+        ok: boolean;
+        code: string;
+        message: string;
+        evidence: {
+          state: string;
+          envelope: { relaySessionId: string; sessionId: string };
+          audioInput: { chunks: number; bytesReceived: number };
+          localSttMessages: Array<{ type: string }>;
+          relayEvents: Array<{ type: string; code?: string; message?: string; retryable?: boolean }>;
+          diagnostics: Array<{ type: string; code?: string; message?: string; retryable?: boolean; relaySessionId: string; sessionId: string }>;
+        };
+      };
     };
 
     assert.equal(payload.ok, true);
@@ -218,6 +231,34 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         ["diagnostic", "session.closed", "error"],
       ],
     );
+    assert.equal(payload.invalidAudioResult.ok, false);
+    assert.equal(payload.invalidAudioResult.code, "invalid_audio_frame");
+    assert.equal(payload.invalidAudioResult.evidence.state, "idle");
+    assert.equal(payload.invalidAudioResult.evidence.envelope.relaySessionId, "local-rt-http-invalid-audio-proof");
+    assert.deepEqual(payload.invalidAudioResult.evidence.audioInput, {
+      relayEncoding: "pcm16",
+      relaySampleRateHz: 24000,
+      localSttSampleRateHz: 16000,
+      chunks: 0,
+      bytesReceived: 0,
+    });
+    assert.deepEqual(payload.invalidAudioResult.evidence.localSttMessages, []);
+    assert.deepEqual(payload.invalidAudioResult.evidence.relayEvents.at(-1), {
+      relaySessionId: "local-rt-http-invalid-audio-proof",
+      sessionId: "local-rt-http-invalid-audio-proof",
+      type: "error",
+      code: "invalid_audio_frame",
+      message: "audioBase64 must be valid base64",
+      retryable: true,
+    });
+    assert.deepEqual(payload.invalidAudioResult.evidence.diagnostics.at(-1), {
+      type: "session.error",
+      sessionId: "local-rt-http-invalid-audio-proof",
+      relaySessionId: "local-rt-http-invalid-audio-proof",
+      code: "invalid_audio_frame",
+      message: "audioBase64 must be valid base64",
+      retryable: true,
+    });
   } finally {
     server.close();
   }

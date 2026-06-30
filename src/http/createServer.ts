@@ -38,6 +38,7 @@ function buildRealtimeShimProofPayload(): object {
   const interruptEnvelope = shim.createSession({ relaySessionId: "local-rt-http-interrupt-proof" });
   const inputCancelEnvelope = shim.createSession({ relaySessionId: "local-rt-http-input-cancel-proof" });
   const errorEnvelope = shim.createSession({ relaySessionId: "local-rt-http-error-proof" });
+  const invalidAudioEnvelope = shim.createSession({ relaySessionId: "local-rt-http-invalid-audio-proof" });
   const audioBase64 = Buffer.from([0, 0, 1, 0, 2, 0, 3, 0]).toString("base64");
 
   shim.appendAudio({ sessionId: envelope.sessionId, audioBase64, timestamp: 42 });
@@ -75,6 +76,11 @@ function buildRealtimeShimProofPayload(): object {
     code: "stt_disconnected",
     message: "local stt websocket closed before final transcript",
   });
+  const invalidAudioResult = shim.appendAudioWithErrorEvidence({
+    sessionId: invalidAudioEnvelope.sessionId,
+    audioBase64: "AQI",
+    timestamp: 210,
+  });
 
   return {
     ok: true,
@@ -87,6 +93,7 @@ function buildRealtimeShimProofPayload(): object {
     interruptionEvidence,
     inputCancelEvidence,
     errorEvidence,
+    invalidAudioResult,
   };
 }
 
