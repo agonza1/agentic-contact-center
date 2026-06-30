@@ -85,6 +85,13 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
     assert.equal(blocked.statusCode, 200);
     assert.equal(blocked.payload.call.events.some((event: any) => event.type === "rtc_asr_blocked" && event.detail.blocker === "rtc-asr sidecar not running"), true);
 
+    const blockedConsoleResponse = await requestJson(address.port, "GET", "/api/operator/console?callId=" + started.payload.call.session.callId);
+    assert.equal(blockedConsoleResponse.statusCode, 200);
+    const blockedLiveProof = blockedConsoleResponse.payload.calls.items[0].liveProof;
+    assert.equal(blockedLiveProof.eval.status, "ready_with_rtc_asr_blocker");
+    assert.equal(blockedLiveProof.eval.reviewReady, false);
+    assert.equal(blockedLiveProof.eval.assertRequestExpected, true);
+
     const transcript = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.transcript",
       timestamp: "2026-06-30T10:00:04.000Z",

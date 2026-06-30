@@ -826,7 +826,7 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
     },
     eval: {
       status: evalStatus,
-      reviewReady: evalStatus === "ready_for_conversation_agent_evals" || evalStatus === "ready_with_rtc_asr_blocker",
+      reviewReady: evalStatus === "ready_for_conversation_agent_evals",
       assertRequestExpected: hasLiveTelephony && hasLiveAudioCapture,
       proofRoute: snapshot.session.openclawSession.artifactLinks.proof,
       artifactManifestRoute: snapshot.session.openclawSession.artifactLinks.artifacts,
