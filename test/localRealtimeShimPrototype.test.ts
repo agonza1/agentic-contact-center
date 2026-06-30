@@ -91,6 +91,12 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
     "4. diagnostic:input.audio.delta (8b)",
   ]);
   assert.equal(evidence.eventTranscript.at(-1), "13. diagnostic:output.audio.done");
+  assert.deepEqual(evidence.logs.slice(0, 4), [
+    "local-realtime-shim seq=1 source=diagnostic event=ready",
+    "local-realtime-shim seq=2 source=local-stt event=start",
+    "local-realtime-shim seq=3 source=local-stt event=audio bytes=8",
+    "local-realtime-shim seq=4 source=diagnostic event=input.audio.delta bytes=8",
+  ]);
   assert.deepEqual(evidence.relayEvents, [
     {
       relaySessionId: "local-rt-proof",

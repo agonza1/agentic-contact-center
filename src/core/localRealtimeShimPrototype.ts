@@ -80,6 +80,7 @@ export interface LocalRealtimeShimEvidence {
   relayEvents: RealtimeShimRelayEvent[];
   timeline: LocalRealtimeShimTimelineEntry[];
   eventTranscript: string[];
+  logs: string[];
   latencyMarks: LocalRealtimeShimLatencyMark[];
   localSttMessages: Array<LocalSttStartMessage | LocalSttControlMessage | { type: "audio"; byteLength: number }>;
   toolResults: Array<RealtimeShimToolResultRequest & { status: "not_applicable" }>;
@@ -398,6 +399,7 @@ export class LocalRealtimeShimPrototype {
       relayEvents: [...session.relayEvents],
       timeline: [...session.timeline],
       eventTranscript: session.timeline.map(formatTimelineEntry),
+      logs: session.timeline.map(formatLogEntry),
       latencyMarks: [...session.latencyMarks],
       localSttMessages: [...session.localSttMessages],
       toolResults: [...session.toolResults],
@@ -510,4 +512,23 @@ function formatTimelineEntry(entry: LocalRealtimeShimTimelineEntry): string {
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+function formatLogEntry(entry: LocalRealtimeShimTimelineEntry): string {
+  const details = [
+    entry.byteLength !== undefined ? "bytes=" + entry.byteLength : undefined,
+    entry.final !== undefined ? "final=" + entry.final : undefined,
+    entry.reason ? "reason=" + entry.reason : undefined,
+    entry.code ? "code=" + entry.code : undefined,
+    entry.retryable !== undefined ? "retryable=" + entry.retryable : undefined,
+    entry.toolCallId ? "toolCallId=" + entry.toolCallId : undefined,
+    entry.status ? "status=" + entry.status : undefined,
+  ].filter(Boolean);
+
+  return [
+    "local-realtime-shim seq=" + entry.sequence,
+    "source=" + entry.source,
+    "event=" + entry.type,
+    ...details,
+  ].join(" ");
 }

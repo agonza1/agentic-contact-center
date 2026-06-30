@@ -52,6 +52,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         relayEvents: Array<{ type: string; audioBase64?: string }>;
         diagnostics: Array<{ type: string; relaySessionId: string; sessionId: string }>;
         eventTranscript: string[];
+        logs: string[];
         latencyMarks: Array<{ name: string; elapsedMs: number; budgetMs: number; withinBudget: boolean }>;
       };
       closeEvidence: {
@@ -136,6 +137,12 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       "2. local-stt:start",
       "3. local-stt:audio (8b)",
       "4. diagnostic:input.audio.delta (8b)",
+    ]);
+    assert.deepEqual(payload.evidence.logs.slice(0, 4), [
+      "local-realtime-shim seq=1 source=diagnostic event=ready",
+      "local-realtime-shim seq=2 source=local-stt event=start",
+      "local-realtime-shim seq=3 source=local-stt event=audio bytes=8",
+      "local-realtime-shim seq=4 source=diagnostic event=input.audio.delta bytes=8",
     ]);
     assert.ok(
       payload.evidence.diagnostics.every(
