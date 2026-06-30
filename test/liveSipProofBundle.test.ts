@@ -243,11 +243,13 @@ test("live SIP proof bundle accepts newline-delimited SIP log evidence", async (
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-ndjson-log-"));
   const audioPath = path.join(tempDir, "caller-capture.wav");
   const sipLogPath = path.join(tempDir, "sip.log.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
   const manifestPath = path.join(tempDir, "local-sip-live-proof-manifest.json");
   const outDir = path.join(tempDir, "bundle");
 
   try {
     await writeFile(audioPath, Buffer.from("RIFFtestWAVE", "ascii"));
+    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: "I need billing help.", final: true })}\n`, "utf8");
     await writeFile(
       sipLogPath,
       [
@@ -274,7 +276,7 @@ test("live SIP proof bundle accepts newline-delimited SIP log evidence", async (
         acceptedInvite: true,
         rtpPacketCount: 4,
       },
-      artifacts: { audioWav: audioPath, sipLog: sipLogPath },
+      artifacts: { audioWav: audioPath, sipLog: sipLogPath, rtcAsrEvidence: rtcAsrEvidencePath },
       artifactIntegrity: [],
       reviewGate: {
         requiredLabels: ["local_sip", "live_capture", "rtc_asr_live"],

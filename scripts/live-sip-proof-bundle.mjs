@@ -80,6 +80,25 @@ async function sipLogEvidence(filePath) {
   };
 }
 
+async function rtcAsrEvidence(filePath) {
+  if (!filePath) return { required: false, ready: false, reason: "rtc-asr transcript evidence is not attached." };
+  let parsed;
+  try {
+    parsed = JSON.parse(await readFile(filePath, "utf8"));
+  } catch {
+    return { required: true, ready: false, reason: "rtc-asr transcript evidence is not valid JSON." };
+  }
+  const transcript = [
+    typeof parsed.transcript === "string" ? parsed.transcript : "",
+    typeof parsed.text === "string" ? parsed.text : "",
+    ...(Array.isArray(parsed.segments) ? parsed.segments.map((segment) => typeof segment?.text === "string" ? segment.text : "") : []),
+  ].join(" ").trim();
+  const final = parsed.final === true || parsed.isFinal === true || parsed.status === "final";
+  if (!transcript) return { required: true, ready: false, reason: "rtc-asr transcript evidence has no non-empty transcript text." };
+  if (!final) return { required: true, ready: false, reason: "rtc-asr transcript evidence is missing a final transcript marker." };
+  return { required: true, ready: true, transcriptChars: transcript.length };
+}
+
 function reviewNextActions(liveManifest) {
   const actions = [];
   if (liveManifest.runtimeModeLabels?.media !== "live_capture") {
@@ -97,7 +116,7 @@ function reviewNextActions(liveManifest) {
   return actions;
 }
 
-function reviewGate(liveManifest, artifactIntegrity, sipEvidence) {
+function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult) {
   const checks = {
     acceptedInvite: liveManifest.localSip?.acceptedInvite === true,
     sipLogHasInvite: sipEvidence.hasInvite,
@@ -105,6 +124,7 @@ function reviewGate(liveManifest, artifactIntegrity, sipEvidence) {
     capturedRtp: Number(liveManifest.localSip?.rtpPacketCount ?? 0) > 0,
     liveCapture: liveManifest.runtimeModeLabels?.media === "live_capture",
     rtcAsrLive: liveManifest.runtimeModeLabels?.rtcAsr === "rtc_asr_live",
+    rtcAsrEvidenceValid: liveManifest.runtimeModeLabels?.rtcAsr !== "rtc_asr_live" || rtcAsrEvidenceResult.ready === true,
     artifactsPresent: artifactIntegrity.every((artifact) => artifact.readiness === "ready"),
     sourceManifestReviewReady: liveManifest.reviewReady === true,
   };
@@ -131,6 +151,7 @@ function reviewGateFailureReasons(checks) {
     capturedRtp: "No RTP packets were captured for caller audio.",
     liveCapture: "Media is not labeled live_capture; rerun with a real local SIP/FreeSWITCH softphone call.",
     rtcAsrLive: "rtc-asr is not labeled rtc_asr_live; start rtc-asr and set RTC_ASR_WS_URL before rerunning.",
+    rtcAsrEvidenceValid: "rtc-asr live transcript evidence is missing, invalid, empty, or not final.",
     artifactsPresent: "One or more required proof artifacts are missing or empty.",
     sourceManifestReviewReady: "Source live proof manifest is not review-ready; inspect its blockers before submitting the bundle.",
   };
@@ -298,13 +319,15 @@ async function main() {
     ...(rtcAsrEvidencePath ? [await integrity(rtcAsrEvidencePath, "rtc-asr-transcript-evidence", "transcript_evidence")] : []),
   ];
   const sipEvidence = await sipLogEvidence(sipLogPath);
-  const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence);
+  const rtcAsrEvidenceResult = await rtcAsrEvidence(rtcAsrEvidencePath);
+  const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult);
   const validationSummary = {
     status: gate.passed ? "ready_for_review" : "blocked_before_review",
     checks: gate.checks,
     blockers: liveManifest.blockers,
     nextActions: reviewNextActions(liveManifest),
     sipLogEvidence: sipEvidence,
+    rtcAsrEvidence: rtcAsrEvidenceResult,
   };
   const bundleManifest = {
     schemaVersion: 1,
