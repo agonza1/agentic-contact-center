@@ -111,6 +111,41 @@ async function sha256File(filePath) {
   return createHash("sha256").update(content).digest("hex");
 }
 
+async function inspectRtcAsrEvidence(filePath) {
+  if (!filePath) return { ready: false };
+  let parsed;
+  try {
+    parsed = JSON.parse(await readFile(filePath, "utf8"));
+  } catch {
+    return {
+      ready: false,
+      blocker: "rtc-asr transcript/evidence file is missing or is not valid JSON.",
+      nextAction: "Attach valid rtc-asr transcript evidence with --rtc-asr-evidence before marking the proof review-ready.",
+    };
+  }
+  const transcript = [
+    typeof parsed.transcript === "string" ? parsed.transcript : "",
+    typeof parsed.text === "string" ? parsed.text : "",
+    ...(Array.isArray(parsed.segments) ? parsed.segments.map((segment) => typeof segment?.text === "string" ? segment.text : "") : []),
+  ].join(" ").trim();
+  const final = parsed.final === true || parsed.isFinal === true || parsed.status === "final";
+  if (!transcript) {
+    return {
+      ready: false,
+      blocker: "rtc-asr transcript/evidence JSON does not contain a non-empty transcript.",
+      nextAction: "Rerun rtc-asr until transcript evidence includes non-empty final text before marking the proof review-ready.",
+    };
+  }
+  if (!final) {
+    return {
+      ready: false,
+      blocker: "rtc-asr transcript/evidence JSON is missing a final transcript marker.",
+      nextAction: "Rerun rtc-asr until transcript evidence is final before marking the proof review-ready.",
+    };
+  }
+  return { ready: true };
+}
+
 async function postJson(baseUrl, route, body) {
   if (!baseUrl) return null;
   const url = new URL(route, baseUrl);
@@ -245,9 +280,12 @@ class LocalSipProofServer {
     await writeFile(wavPath, Buffer.concat([wavHeader(pcm.length), pcm]));
 
     const blockers = [];
+    const rtcAsrEvidenceInspection = await inspectRtcAsrEvidence(this.options.rtcAsrEvidencePath);
     if (this.options.generatedMedia) blockers.push("Self-test generated RTP audio; rerun with a real local SIP softphone call before review.");
     if (this.rtpPacketCount === 0) blockers.push("No RTP packets were captured.");
     if (!this.options.rtcAsrUrl) blockers.push("RTC_ASR_WS_URL was not set, so rtc-asr live transcription was not attempted.");
+    if (this.options.rtcAsrUrl && !this.options.rtcAsrEvidencePath) blockers.push("rtc-asr URL was configured, but no transcript/evidence path was attached to this local SIP proof.");
+    if (rtcAsrEvidenceInspection.blocker) blockers.push(rtcAsrEvidenceInspection.blocker);
     const runtimeModeLabels = {
       telephony: "local_sip",
       media: this.options.generatedMedia ? "generated_media" : "live_capture",
@@ -264,6 +302,10 @@ class LocalSipProofServer {
     if (!this.options.rtcAsrUrl) {
       nextActions.push("Start rtc-asr, set RTC_ASR_WS_URL, and rerun the live proof to capture a websocket-backed transcript.");
     }
+    if (this.options.rtcAsrUrl && !this.options.rtcAsrEvidencePath) {
+      nextActions.push("Attach rtc-asr transcript evidence with --rtc-asr-evidence before marking the local SIP proof review-ready.");
+    }
+    if (rtcAsrEvidenceInspection.nextAction) nextActions.push(rtcAsrEvidenceInspection.nextAction);
 
     await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
       eventType: "media.capture",
@@ -306,12 +348,20 @@ class LocalSipProofServer {
         rtpPacketCount: this.rtpPacketCount,
         remoteRtp: this.remoteRtp,
       },
-      artifacts: { audioWav: wavPath, sipLog: sipLogPath },
+      artifacts: { audioWav: wavPath, sipLog: sipLogPath, rtcAsrEvidence: this.options.rtcAsrEvidencePath ?? null },
       artifactIntegrity: [
         { artifactId: "local-sip-caller-capture-wav", kind: "call_media", path: wavPath, sha256: await sha256File(wavPath), sizeBytes: audioStats.size, readiness: this.rtpPacketCount > 0 ? "ready" : "blocked" },
         { artifactId: "local-sip-sip-log", kind: "sip_log", path: sipLogPath, sha256: await sha256File(sipLogPath), sizeBytes: (await stat(sipLogPath)).size, readiness: "ready" },
+        ...(this.options.rtcAsrEvidencePath ? [{
+          artifactId: "rtc-asr-transcript-evidence",
+          kind: "transcript_evidence",
+          path: this.options.rtcAsrEvidencePath,
+          sha256: await sha256File(this.options.rtcAsrEvidencePath).catch(() => null),
+          sizeBytes: (await stat(this.options.rtcAsrEvidencePath).catch(() => ({ size: 0 }))).size,
+          readiness: rtcAsrEvidenceInspection.ready ? "ready" : "blocked",
+        }] : []),
       ],
-      reviewReady: blockers.length === 0 && !this.options.generatedMedia,
+      reviewReady: blockers.length === 0 && !this.options.generatedMedia && rtcAsrEvidenceInspection.ready,
       reviewGate: {
         requiredLabels: requiredReviewLabels,
         missingLabels: missingReviewLabels,
@@ -413,6 +463,7 @@ async function main() {
     outDir,
     accBaseUrl: argValue("--acc-url", process.env.ACC_BASE_URL),
     rtcAsrUrl: argValue("--rtc-asr-url", process.env.RTC_ASR_WS_URL),
+    rtcAsrEvidencePath: argValue("--rtc-asr-evidence", process.env.RTC_ASR_EVIDENCE_PATH),
     generatedMedia: hasFlag("--self-test"),
   });
   await server.start();

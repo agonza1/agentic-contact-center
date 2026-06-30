@@ -72,6 +72,61 @@ test("local SIP self-test writes an honest blocked manifest and fails review-rea
   }
 });
 
+test("local SIP review gate blocks rtc-asr live mode without attached evidence", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-local-sip-rtc-asr-"));
+  const portBase = 48000 + Math.floor(Math.random() * 1000) * 4;
+
+  try {
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        [
+          "scripts/local-sip-live-proof.mjs",
+          "--self-test",
+          "--require-live-caller",
+          "--listen-seconds",
+          "0",
+          "--duration-ms",
+          "120",
+          "--sip-port",
+          String(portBase),
+          "--rtp-port",
+          String(portBase + 1),
+          "--rtc-asr-url",
+          "ws://127.0.0.1:8080/v1/stt/stream",
+          "--out-dir",
+          tempDir,
+        ],
+        { cwd: repoRoot, timeout: 10_000, encoding: "utf8" },
+      ),
+      (error: any) => {
+        assert.equal(error.code, 2);
+        const summary = JSON.parse(error.stdout.slice(error.stdout.indexOf("{")).trim()) as { reviewReady: boolean; blockers: string[] };
+        assert.equal(summary.reviewReady, false);
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("no transcript/evidence path")));
+        return true;
+      },
+    );
+
+    const manifest = JSON.parse(await readFile(path.join(tempDir, "local-sip-live-proof-manifest.json"), "utf8")) as {
+      reviewReady: boolean;
+      runtimeModeLabels: { media: string; rtcAsr: string };
+      artifacts: { rtcAsrEvidence: string | null };
+      artifactIntegrity: Array<{ artifactId: string }>;
+      reviewGate: { missingLabels: string[]; nextActions: string[] };
+    };
+    assert.equal(manifest.reviewReady, false);
+    assert.equal(manifest.runtimeModeLabels.rtcAsr, "rtc_asr_live");
+    assert.equal(manifest.artifacts.rtcAsrEvidence, null);
+    assert.ok(!manifest.artifactIntegrity.some((artifact) => artifact.artifactId === "rtc-asr-transcript-evidence"));
+    assert.deepEqual(manifest.reviewGate.missingLabels, ["live_capture"]);
+    assert.ok(manifest.reviewGate.nextActions.some((action) => action.includes("--rtc-asr-evidence")));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("local SIP live-caller gate exits nonzero when no caller arrives", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-local-sip-timeout-"));
