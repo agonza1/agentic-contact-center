@@ -15,6 +15,14 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
   });
 
   assert.equal(evidence.state, "speaking");
+  assert.deepEqual(evidence.audioInput, {
+    relayEncoding: "pcm16",
+    relaySampleRateHz: 24000,
+    localSttSampleRateHz: 16000,
+    chunks: 1,
+    bytesReceived: 8,
+    lastTimestamp: 42,
+  });
   assert.deepEqual(evidence.localSttMessages.slice(0, 3), [
     {
       type: "start",
@@ -76,6 +84,19 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
     { name: "transcript_final", elapsedMs: 75, budgetMs: 250, withinBudget: true },
     { name: "output_first_audio", elapsedMs: 135, budgetMs: 500, withinBudget: true },
   ]);
+  assert.deepEqual(evidence.eventTranscript.slice(0, 4), [
+    "1. diagnostic:ready",
+    "2. local-stt:start",
+    "3. local-stt:audio (8b)",
+    "4. diagnostic:input.audio.delta (8b)",
+  ]);
+  assert.equal(evidence.eventTranscript.at(-1), "13. diagnostic:output.audio.done");
+  assert.deepEqual(evidence.logs.slice(0, 4), [
+    "local-realtime-shim seq=1 source=diagnostic event=ready",
+    "local-realtime-shim seq=2 source=local-stt event=start",
+    "local-realtime-shim seq=3 source=local-stt event=audio bytes=8",
+    "local-realtime-shim seq=4 source=diagnostic event=input.audio.delta bytes=8",
+  ]);
   assert.deepEqual(evidence.relayEvents, [
     {
       relaySessionId: "local-rt-proof",
@@ -84,6 +105,15 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
       audioBase64,
     },
   ]);
+  assert.deepEqual(evidence.qaChecklist, {
+    oneTurnEvidence: true,
+    interruptionEvidence: false,
+    inputCancelEvidence: false,
+    boundedErrorEvidence: false,
+    eventTranscriptEvidence: true,
+    logEvidence: true,
+    mockedPiecesNamed: true,
+  });
   assert.deepEqual(evidence.mockedPieces, ["local LLM response text", "Kokoro PCM output audio"]);
   assert.match(evidence.limitations.join("\n"), /not a live sidecar connection/);
   assert.deepEqual(evidence.toolResults, []);
@@ -145,6 +175,7 @@ test("local realtime shim prototype models barge-in clear and idempotent close",
     },
   ]);
   assert.equal(cancelled.diagnostics.at(-1)?.type, "turn.cancelled");
+  assert.equal(cancelled.qaChecklist.interruptionEvidence, true);
   assert.deepEqual(cancelled.timeline.at(-2), {
     sequence: 5,
     source: "relay",
@@ -162,6 +193,13 @@ test("local realtime shim prototype models barge-in clear and idempotent close",
   const resumed = shim.finalizeTurn({ sessionId: envelope.sessionId, transcriptText: "I am still here" });
 
   assert.equal(resumed.state, "speaking");
+  assert.deepEqual(resumed.audioInput, {
+    relayEncoding: "pcm16",
+    relaySampleRateHz: 24000,
+    localSttSampleRateHz: 16000,
+    chunks: 2,
+    bytesReceived: 8,
+  });
   assert.equal(resumed.relayEvents.filter((event) => event.type === "audio").length, 1);
   assert.equal(resumed.diagnostics.at(-2)?.type, "output.audio.delta");
 
@@ -179,4 +217,161 @@ test("local realtime shim prototype models barge-in clear and idempotent close",
   assert.deepEqual(closedAgain.latencyMarks, closed.latencyMarks);
   assert.deepEqual(closedAgain.relayEvents, closed.relayEvents);
   assert.throws(() => shim.appendAudio({ sessionId: envelope.sessionId, audioBase64 }), /closed/);
+});
+
+test("local realtime shim prototype cancels input without final transcript dispatch", () => {
+  const shim = new LocalRealtimeShimPrototype();
+  const envelope = shim.createSession({ relaySessionId: "local-rt-input-cancel" });
+  const audioBase64 = Buffer.from([9, 0, 10, 0]).toString("base64");
+
+  shim.appendAudio({ sessionId: envelope.sessionId, audioBase64 });
+  const cancelled = shim.cancelInput({ sessionId: envelope.sessionId });
+
+  assert.equal(cancelled.state, "idle");
+  assert.deepEqual(cancelled.localSttMessages.map((message) => message.type), ["start", "audio", "cancel"]);
+  assert.equal(cancelled.diagnostics.some((event) => event.type === "transcript.done"), false);
+  assert.equal(cancelled.diagnostics.some((event) => event.type === "output.text.done"), false);
+  assert.equal(cancelled.qaChecklist.inputCancelEvidence, true);
+  assert.deepEqual(cancelled.diagnostics.at(-1), {
+    type: "input.cancelled",
+    sessionId: "local-rt-input-cancel",
+    relaySessionId: "local-rt-input-cancel",
+    reason: "client",
+  });
+  assert.deepEqual(cancelled.timeline.slice(-2), [
+    { sequence: 5, source: "local-stt", type: "cancel" },
+    { sequence: 6, source: "diagnostic", type: "input.cancelled", reason: "client" },
+  ]);
+});
+
+test("local realtime shim prototype emits bounded Local STT error evidence", () => {
+  const shim = new LocalRealtimeShimPrototype();
+  const envelope = shim.createSession({ relaySessionId: "local-rt-error" });
+  const audioBase64 = Buffer.from([7, 0, 8, 0]).toString("base64");
+
+  shim.appendAudio({ sessionId: envelope.sessionId, audioBase64 });
+  const retryable = shim.recordLocalSttError({
+    sessionId: envelope.sessionId,
+    code: "stream_warning",
+    message: "local stt partial frame arrived late",
+    retryable: true,
+  });
+
+  assert.equal(retryable.state, "listening");
+  assert.deepEqual(retryable.relayEvents.at(-1), {
+    relaySessionId: "local-rt-error",
+    sessionId: "local-rt-error",
+    type: "error",
+    code: "stream_warning",
+    message: "local stt partial frame arrived late",
+    retryable: true,
+  });
+  assert.deepEqual(retryable.diagnostics.at(-1), {
+    type: "session.error",
+    sessionId: "local-rt-error",
+    relaySessionId: "local-rt-error",
+    code: "stream_warning",
+    message: "local stt partial frame arrived late",
+    retryable: true,
+  });
+
+  const fatal = shim.recordLocalSttError({
+    sessionId: envelope.sessionId,
+    code: "stt_disconnected",
+    message: "local stt websocket closed before final transcript",
+  });
+
+  assert.equal(fatal.state, "closed");
+  assert.equal(fatal.qaChecklist.boundedErrorEvidence, true);
+  assert.deepEqual(fatal.relayEvents.slice(-2), [
+    {
+      relaySessionId: "local-rt-error",
+      sessionId: "local-rt-error",
+      type: "error",
+      code: "stt_disconnected",
+      message: "local stt websocket closed before final transcript",
+      retryable: false,
+    },
+    {
+      relaySessionId: "local-rt-error",
+      sessionId: "local-rt-error",
+      type: "close",
+      reason: "error",
+    },
+  ]);
+  assert.deepEqual(
+    fatal.timeline.slice(-5).map((event) => [event.source, event.type, event.code ?? event.reason]),
+    [
+      ["relay", "error", "stt_disconnected"],
+      ["diagnostic", "session.error", "stt_disconnected"],
+      ["local-stt", "close", undefined],
+      ["relay", "close", "error"],
+      ["diagnostic", "session.closed", "error"],
+    ],
+  );
+  assert.throws(
+    () => shim.recordLocalSttError({ sessionId: envelope.sessionId, code: "again", message: "closed" }),
+    /closed/,
+  );
+});
+
+test("local realtime shim prototype records malformed gateway audio without starting STT", () => {
+  const shim = new LocalRealtimeShimPrototype();
+  const envelope = shim.createSession({ relaySessionId: "local-rt-invalid-audio" });
+
+  const result = shim.appendAudioWithErrorEvidence({
+    sessionId: envelope.sessionId,
+    audioBase64: "AQI",
+    timestamp: 42,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "invalid_audio_frame");
+  assert.equal(result.evidence.state, "idle");
+  assert.deepEqual(result.evidence.audioInput, {
+    relayEncoding: "pcm16",
+    relaySampleRateHz: 24000,
+    localSttSampleRateHz: 16000,
+    chunks: 0,
+    bytesReceived: 0,
+  });
+  assert.deepEqual(result.evidence.localSttMessages, []);
+  assert.deepEqual(result.evidence.relayEvents.at(-1), {
+    relaySessionId: "local-rt-invalid-audio",
+    sessionId: "local-rt-invalid-audio",
+    type: "error",
+    code: "invalid_audio_frame",
+    message: "audioBase64 must be valid base64",
+    retryable: true,
+  });
+  assert.deepEqual(result.evidence.diagnostics.at(-1), {
+    type: "session.error",
+    sessionId: "local-rt-invalid-audio",
+    relaySessionId: "local-rt-invalid-audio",
+    code: "invalid_audio_frame",
+    message: "audioBase64 must be valid base64",
+    retryable: true,
+  });
+  assert.deepEqual(result.evidence.timeline.slice(-2), [
+    {
+      sequence: 2,
+      source: "relay",
+      type: "error",
+      code: "invalid_audio_frame",
+      message: "audioBase64 must be valid base64",
+      retryable: true,
+    },
+    {
+      sequence: 3,
+      source: "diagnostic",
+      type: "session.error",
+      code: "invalid_audio_frame",
+      message: "audioBase64 must be valid base64",
+      retryable: true,
+    },
+  ]);
+  assert.deepEqual(result.evidence.eventTranscript.slice(-2), [
+    "2. relay:error (code=invalid_audio_frame, retryable=true)",
+    "3. diagnostic:session.error (code=invalid_audio_frame, retryable=true)",
+  ]);
 });

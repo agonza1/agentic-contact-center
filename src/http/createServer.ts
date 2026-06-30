@@ -36,6 +36,9 @@ function buildRealtimeShimProofPayload(): object {
   const shim = new LocalRealtimeShimPrototype();
   const envelope = shim.createSession({ relaySessionId: "local-rt-http-proof" });
   const interruptEnvelope = shim.createSession({ relaySessionId: "local-rt-http-interrupt-proof" });
+  const inputCancelEnvelope = shim.createSession({ relaySessionId: "local-rt-http-input-cancel-proof" });
+  const errorEnvelope = shim.createSession({ relaySessionId: "local-rt-http-error-proof" });
+  const invalidAudioEnvelope = shim.createSession({ relaySessionId: "local-rt-http-invalid-audio-proof" });
   const audioBase64 = Buffer.from([0, 0, 1, 0, 2, 0, 3, 0]).toString("base64");
 
   shim.appendAudio({ sessionId: envelope.sessionId, audioBase64, timestamp: 42 });
@@ -58,15 +61,54 @@ function buildRealtimeShimProofPayload(): object {
     reason: "barge-in",
   });
 
+  shim.appendAudio({ sessionId: inputCancelEnvelope.sessionId, audioBase64, timestamp: 126 });
+  const inputCancelEvidence = shim.cancelInput({ sessionId: inputCancelEnvelope.sessionId });
+
+  shim.appendAudio({ sessionId: errorEnvelope.sessionId, audioBase64, timestamp: 168 });
+  shim.recordLocalSttError({
+    sessionId: errorEnvelope.sessionId,
+    code: "stream_warning",
+    message: "local stt partial frame arrived late",
+    retryable: true,
+  });
+  const errorEvidence = shim.recordLocalSttError({
+    sessionId: errorEnvelope.sessionId,
+    code: "stt_disconnected",
+    message: "local stt websocket closed before final transcript",
+  });
+  const invalidAudioResult = shim.appendAudioWithErrorEvidence({
+    sessionId: invalidAudioEnvelope.sessionId,
+    audioBase64: "AQI",
+    timestamp: 210,
+  });
+
+  const acceptanceSummary = {
+    oneLocalVoiceTurn: evidence.qaChecklist.oneTurnEvidence && closeEvidence.state === "closed",
+    adapterContract: evidence.envelope.transport === "gateway-relay" && evidence.envelope.provider === "local-realtime-shim",
+    interruptionCancelBehavior:
+      interruptionEvidence.qaChecklist.interruptionEvidence && inputCancelEvidence.qaChecklist.inputCancelEvidence,
+    qaEvidence:
+      evidence.qaChecklist.eventTranscriptEvidence && evidence.qaChecklist.logEvidence && evidence.latencyMarks.length > 0,
+    mockedPiecesIsolated:
+      evidence.qaChecklist.mockedPiecesNamed && evidence.mockedPieces.length > 0 && evidence.limitations.length > 0,
+    boundedErrorEvidence:
+      errorEvidence.qaChecklist.boundedErrorEvidence && invalidAudioResult.evidence.qaChecklist.boundedErrorEvidence,
+  };
+
   return {
     ok: true,
     route: "/api/realtime-shim/proof",
     issue: "agonza1/agentic-contact-center#85",
     rpcBoundary: "gateway-relay",
     localSttContract: "local-stt.v1",
+    acceptanceSummary,
+    readyForIssue85Review: Object.values(acceptanceSummary).every(Boolean),
     evidence,
     closeEvidence,
     interruptionEvidence,
+    inputCancelEvidence,
+    errorEvidence,
+    invalidAudioResult,
   };
 }
 

@@ -9,6 +9,7 @@ import {
   createRealtimeShimClearRelayEvent,
   createRealtimeShimCloseRelayEvent,
   createRealtimeShimCloseRequest,
+  createRealtimeShimErrorRelayEvent,
   createRealtimeShimToolResultRequest,
   createRealtimeShimSessionEnvelope,
   type LocalSttControlMessage,
@@ -37,7 +38,9 @@ export type LocalRealtimeShimDiagnostic =
   | { type: "output.audio.delta"; sessionId: string; relaySessionId: string; byteLength: number }
   | { type: "output.audio.done"; sessionId: string; relaySessionId: string; chunks: number }
   | { type: "tool.result.received"; sessionId: string; relaySessionId: string; toolCallId: string; status: "not_applicable" }
+  | { type: "input.cancelled"; sessionId: string; relaySessionId: string; reason: "client" }
   | { type: "turn.cancelled"; sessionId: string; relaySessionId: string; reason: "barge-in" | "cancelled" | "error" }
+  | { type: "session.error"; sessionId: string; relaySessionId: string; code: string; message: string; retryable: boolean }
   | { type: "session.closed"; sessionId: string; relaySessionId: string; reason: "client" | "complete" | "error" };
 
 export interface LocalRealtimeShimTimelineEntry {
@@ -50,6 +53,9 @@ export interface LocalRealtimeShimTimelineEntry {
   reason?: "barge-in" | "cancelled" | "error" | "client" | "complete";
   toolCallId?: string;
   status?: "not_applicable";
+  code?: string;
+  message?: string;
+  retryable?: boolean;
 }
 
 export interface LocalRealtimeShimLatencyMark {
@@ -62,12 +68,31 @@ export interface LocalRealtimeShimLatencyMark {
 export interface LocalRealtimeShimEvidence {
   envelope: RealtimeShimSessionEnvelope;
   state: LocalRealtimeShimState;
+  audioInput: {
+    relayEncoding: RealtimeShimSessionEnvelope["audio"]["inputEncoding"];
+    relaySampleRateHz: RealtimeShimSessionEnvelope["audio"]["inputSampleRateHz"];
+    localSttSampleRateHz: LocalSttStartMessage["audio"]["sample_rate"];
+    chunks: number;
+    bytesReceived: number;
+    lastTimestamp?: number;
+  };
   diagnostics: LocalRealtimeShimDiagnostic[];
   relayEvents: RealtimeShimRelayEvent[];
   timeline: LocalRealtimeShimTimelineEntry[];
+  eventTranscript: string[];
+  logs: string[];
   latencyMarks: LocalRealtimeShimLatencyMark[];
   localSttMessages: Array<LocalSttStartMessage | LocalSttControlMessage | { type: "audio"; byteLength: number }>;
   toolResults: Array<RealtimeShimToolResultRequest & { status: "not_applicable" }>;
+  qaChecklist: {
+    oneTurnEvidence: boolean;
+    interruptionEvidence: boolean;
+    inputCancelEvidence: boolean;
+    boundedErrorEvidence: boolean;
+    eventTranscriptEvidence: boolean;
+    logEvidence: boolean;
+    mockedPiecesNamed: boolean;
+  };
   mockedPieces: string[];
   limitations: string[];
 }
@@ -76,6 +101,8 @@ interface LocalRealtimeShimSession {
   envelope: RealtimeShimSessionEnvelope;
   state: LocalRealtimeShimState;
   audioBytesReceived: number;
+  audioChunksReceived: number;
+  lastAudioTimestamp?: number;
   sttStarted: boolean;
   outputCancelled: boolean;
   diagnostics: LocalRealtimeShimDiagnostic[];
@@ -97,6 +124,7 @@ export class LocalRealtimeShimPrototype {
       envelope,
       state: "idle",
       audioBytesReceived: 0,
+      audioChunksReceived: 0,
       sttStarted: false,
       outputCancelled: false,
       diagnostics: [],
@@ -129,6 +157,8 @@ export class LocalRealtimeShimPrototype {
     }
 
     session.audioBytesReceived += request.pcm16.length;
+    session.audioChunksReceived += 1;
+    session.lastAudioTimestamp = request.timestamp;
     this.recordLocalSttMessage(session, { type: "audio", byteLength: request.pcm16.length });
     this.recordDiagnostic(session, {
       type: "input.audio.delta",
@@ -140,6 +170,48 @@ export class LocalRealtimeShimPrototype {
     this.recordLatencyMark(session, "audio_ingested", 12, 50);
 
     return this.getEvidence(request.sessionId);
+  }
+
+  appendAudioWithErrorEvidence(options: {
+    sessionId: string;
+    audioBase64: string;
+    timestamp?: number;
+  }):
+    | { ok: true; evidence: LocalRealtimeShimEvidence }
+    | { ok: false; code: string; message: string; evidence: LocalRealtimeShimEvidence } {
+    const session = this.requireOpenSession(options.sessionId);
+
+    try {
+      return { ok: true, evidence: this.appendAudio(options) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Invalid gateway relay audio frame";
+      const relayError = createRealtimeShimErrorRelayEvent(session.envelope, {
+        code: "invalid_audio_frame",
+        message,
+        retryable: true,
+      });
+
+      if (relayError.type !== "error") {
+        throw new Error("Expected realtime shim error relay event");
+      }
+
+      this.recordRelayEvent(session, relayError);
+      this.recordDiagnostic(session, {
+        type: "session.error",
+        sessionId: session.envelope.sessionId,
+        relaySessionId: session.envelope.relaySessionId,
+        code: relayError.code,
+        message: relayError.message,
+        retryable: relayError.retryable,
+      });
+
+      return {
+        ok: false,
+        code: relayError.code,
+        message: relayError.message,
+        evidence: this.getEvidence(options.sessionId),
+      };
+    }
   }
 
   finalizeTurn(options: { sessionId: string; transcriptText?: string }): LocalRealtimeShimEvidence {
@@ -251,6 +323,42 @@ export class LocalRealtimeShimPrototype {
     const session = this.requireOpenSession(options.sessionId);
     this.recordLocalSttMessage(session, buildLocalSttCancelMessage());
     session.state = "idle";
+    this.recordDiagnostic(session, {
+      type: "input.cancelled",
+      sessionId: session.envelope.sessionId,
+      relaySessionId: session.envelope.relaySessionId,
+      reason: "client",
+    });
+    return this.getEvidence(options.sessionId);
+  }
+
+  recordLocalSttError(options: {
+    sessionId: string;
+    code: string;
+    message: string;
+    retryable?: boolean;
+  }): LocalRealtimeShimEvidence {
+    const session = this.requireOpenSession(options.sessionId);
+    const relayError = createRealtimeShimErrorRelayEvent(session.envelope, options);
+
+    if (relayError.type !== "error") {
+      throw new Error("Expected realtime shim error relay event");
+    }
+
+    this.recordRelayEvent(session, relayError);
+    this.recordDiagnostic(session, {
+      type: "session.error",
+      sessionId: session.envelope.sessionId,
+      relaySessionId: session.envelope.relaySessionId,
+      code: relayError.code,
+      message: relayError.message,
+      retryable: relayError.retryable,
+    });
+
+    if (!relayError.retryable) {
+      this.closeSession({ sessionId: options.sessionId, reason: "error" });
+    }
+
     return this.getEvidence(options.sessionId);
   }
 
@@ -285,20 +393,35 @@ export class LocalRealtimeShimPrototype {
       throw new Error(`Unknown realtime shim session: ${sessionId}`);
     }
 
+    const mockedPieces = ["local LLM response text", "Kokoro PCM output audio"];
+    const limitations = [
+      "rtc-asr websocket is represented by Local STT v1 message evidence, not a live sidecar connection",
+      "turn endpointing is explicit through finalizeTurn for the first deterministic proof",
+    ];
+    const timeline = [...session.timeline];
+
     return {
       envelope: session.envelope,
       state: session.state,
+      audioInput: {
+        relayEncoding: session.envelope.audio.inputEncoding,
+        relaySampleRateHz: session.envelope.audio.inputSampleRateHz,
+        localSttSampleRateHz: buildLocalSttStartMessage().audio.sample_rate,
+        chunks: session.audioChunksReceived,
+        bytesReceived: session.audioBytesReceived,
+        ...(session.lastAudioTimestamp !== undefined ? { lastTimestamp: session.lastAudioTimestamp } : {}),
+      },
       diagnostics: [...session.diagnostics],
       relayEvents: [...session.relayEvents],
-      timeline: [...session.timeline],
+      timeline,
+      eventTranscript: timeline.map(formatTimelineEntry),
+      logs: timeline.map(formatLogEntry),
       latencyMarks: [...session.latencyMarks],
       localSttMessages: [...session.localSttMessages],
       toolResults: [...session.toolResults],
-      mockedPieces: ["local LLM response text", "Kokoro PCM output audio"],
-      limitations: [
-        "rtc-asr websocket is represented by Local STT v1 message evidence, not a live sidecar connection",
-        "turn endpointing is explicit through finalizeTurn for the first deterministic proof",
-      ],
+      qaChecklist: buildQaChecklist(session, mockedPieces),
+      mockedPieces,
+      limitations,
     };
   }
 
@@ -367,6 +490,29 @@ export class LocalRealtimeShimPrototype {
   }
 }
 
+function buildQaChecklist(
+  session: LocalRealtimeShimSession,
+  mockedPieces: string[],
+): LocalRealtimeShimEvidence["qaChecklist"] {
+  return {
+    oneTurnEvidence:
+      session.diagnostics.some((event) => event.type === "transcript.done") &&
+      session.diagnostics.some((event) => event.type === "output.audio.done"),
+    interruptionEvidence:
+      session.relayEvents.some((event) => event.type === "clear") &&
+      session.diagnostics.some((event) => event.type === "turn.cancelled"),
+    inputCancelEvidence:
+      session.localSttMessages.some((message) => message.type === "cancel") &&
+      !session.diagnostics.some((event) => event.type === "output.text.done"),
+    boundedErrorEvidence:
+      session.relayEvents.some((event) => event.type === "error") &&
+      session.diagnostics.some((event) => event.type === "session.error"),
+    eventTranscriptEvidence: session.timeline.length > 0,
+    logEvidence: session.timeline.length > 0,
+    mockedPiecesNamed: mockedPieces.length > 0,
+  };
+}
+
 function pickTimelineDetails(
   event:
     | LocalRealtimeShimDiagnostic
@@ -380,5 +526,46 @@ function pickTimelineDetails(
     ...("reason" in event ? { reason: event.reason } : {}),
     ...("toolCallId" in event ? { toolCallId: event.toolCallId } : {}),
     ...("status" in event ? { status: event.status } : {}),
+    ...("code" in event ? { code: event.code } : {}),
+    ...("message" in event ? { message: event.message } : {}),
+    ...("retryable" in event ? { retryable: event.retryable } : {}),
   };
+}
+
+function formatTimelineEntry(entry: LocalRealtimeShimTimelineEntry): string {
+  const details = [
+    entry.byteLength !== undefined ? `${entry.byteLength}b` : undefined,
+    entry.final !== undefined ? `final=${entry.final}` : undefined,
+    entry.reason ? `reason=${entry.reason}` : undefined,
+    entry.code ? `code=${entry.code}` : undefined,
+    entry.retryable !== undefined ? `retryable=${entry.retryable}` : undefined,
+    entry.toolCallId ? `tool=${entry.toolCallId}` : undefined,
+    entry.status ? `status=${entry.status}` : undefined,
+  ].filter(Boolean);
+
+  return [
+    `${entry.sequence}. ${entry.source}:${entry.type}`,
+    details.length > 0 ? `(${details.join(", ")})` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function formatLogEntry(entry: LocalRealtimeShimTimelineEntry): string {
+  const details = [
+    entry.byteLength !== undefined ? "bytes=" + entry.byteLength : undefined,
+    entry.final !== undefined ? "final=" + entry.final : undefined,
+    entry.reason ? "reason=" + entry.reason : undefined,
+    entry.code ? "code=" + entry.code : undefined,
+    entry.retryable !== undefined ? "retryable=" + entry.retryable : undefined,
+    entry.toolCallId ? "toolCallId=" + entry.toolCallId : undefined,
+    entry.status ? "status=" + entry.status : undefined,
+  ].filter(Boolean);
+
+  return [
+    "local-realtime-shim seq=" + entry.sequence,
+    "source=" + entry.source,
+    "event=" + entry.type,
+    ...details,
+  ].join(" ");
 }
