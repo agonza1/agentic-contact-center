@@ -54,6 +54,31 @@ test("FreeSWITCH ESL frames keep content-length event bodies attached", async ()
   assert.equal(parsed.second.rest, "");
 });
 
+test("FreeSWITCH ESL frame parser waits for a complete CRLF content-length body", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+  const script = `
+    const { nextEslFrame } = await import(${JSON.stringify(moduleUrl)});
+    const body = ["Event-Name: RECORD_STOP", "Unique-ID: fs-call-456", "Record-File-Path: /var/log/freeswitch/acc/fs-call-456.wav", ""].join("\\r\\n");
+    const header = ["Content-Type: text/event-plain", "Content-Length: " + Buffer.byteLength(body), "", ""].join("\\r\\n");
+    const partial = nextEslFrame(header + body.slice(0, -5));
+    const complete = nextEslFrame(header + body);
+    console.log(JSON.stringify({ partial, complete }));
+  `;
+  const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  const parsed = JSON.parse(stdout) as {
+    partial: null;
+    complete: { block: string; rest: string };
+  };
+  assert.equal(parsed.partial, null);
+  assert.match(parsed.complete.block, /Event-Name: RECORD_STOP/);
+  assert.match(parsed.complete.block, /Record-File-Path: \/var\/log\/freeswitch\/acc\/fs-call-456\.wav/);
+  assert.equal(parsed.complete.rest, "");
+});
+
 test("FreeSWITCH recording path maps host artifacts to a container-visible mount", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
