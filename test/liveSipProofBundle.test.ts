@@ -816,7 +816,7 @@ test("live SIP proof bundle blocks stale source artifact hash and size claims", 
   }
 });
 
-test("live SIP proof bundle counts nested FreeSWITCH event-log entries", async () => {
+test("live SIP proof bundle counts FreeSWITCH event-log name variants", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-fs-events-"));
   const audioPath = path.join(tempDir, "caller-capture.wav");
@@ -833,8 +833,8 @@ test("live SIP proof bundle counts nested FreeSWITCH event-log entries", async (
       JSON.stringify({
         generatedAt: "2026-06-30T10:00:00.000Z",
         events: [
-          { at: "2026-06-30T10:00:01.000Z", headers: { "Event-Name": "CHANNEL_ANSWER" } },
-          { at: "2026-06-30T10:00:05.000Z", headers: { "Event-Name": "RECORD_STOP" } },
+          { at: "2026-06-30T10:00:01.000Z", event_name: "CHANNEL_ANSWER" },
+          { at: "2026-06-30T10:00:05.000Z", headers: { "event-name": "RECORD_STOP" } },
         ],
       }) + "\n",
       "utf8",
