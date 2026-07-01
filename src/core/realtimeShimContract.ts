@@ -1,6 +1,7 @@
 export type RealtimeShimRpc =
   | "talk.session.create"
   | "talk.session.appendAudio"
+  | "talk.session.finalizeTurn"
   | "talk.session.cancelOutput"
   | "talk.session.submitToolResult"
   | "talk.session.close";
@@ -97,6 +98,7 @@ export type RealtimeShimRelayEvent =
 export const REALTIME_SHIM_RPCS: RealtimeShimRpc[] = [
   "talk.session.create",
   "talk.session.appendAudio",
+  "talk.session.finalizeTurn",
   "talk.session.cancelOutput",
   "talk.session.submitToolResult",
   "talk.session.close",

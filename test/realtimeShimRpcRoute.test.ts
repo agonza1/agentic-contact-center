@@ -94,6 +94,24 @@ test("POST /api/realtime-shim/rpc preserves session state across Gateway relay R
       lastTimestamp: 25,
     });
 
+    const finalized = await postRpc(address.port, {
+      method: "talk.session.finalizeTurn",
+      params: { sessionId: "local-rt-rpc", transcriptText: "Need a retention credit" },
+    });
+
+    assert.equal(finalized.statusCode, 200);
+    assert.equal(finalized.payload.ok, true);
+    assert.equal(finalized.payload.result.state, "speaking");
+    assert.deepEqual(finalized.payload.result.localSttMessages.map((message: { type: string }) => message.type), [
+      "start",
+      "audio",
+      "finalize",
+    ]);
+    assert.equal(finalized.payload.result.diagnostics.at(-3).type, "transcript.delta");
+    assert.equal(finalized.payload.result.diagnostics.at(-2).type, "transcript.done");
+    assert.equal(finalized.payload.result.diagnostics.at(-1).type, "output.audio.done");
+    assert.equal(finalized.payload.result.qaChecklist.oneTurnEvidence, true);
+
     const cancelled = await postRpc(address.port, {
       method: "talk.session.cancelOutput",
       params: { sessionId: "local-rt-rpc", reason: "barge-in" },
@@ -156,7 +174,7 @@ test("POST /api/realtime-shim/rpc returns bounded errors for unsupported payload
     assert.equal(missingMethod.statusCode, 400);
     assert.deepEqual(missingMethod.payload, { ok: false, error: "realtime_shim_method_required" });
 
-    const unsupported = await postRpc(address.port, { method: "talk.session.finalize", params: {} });
+    const unsupported = await postRpc(address.port, { method: "talk.session.flush", params: {} });
     assert.equal(unsupported.statusCode, 400);
     assert.deepEqual(unsupported.payload, { ok: false, error: "realtime_shim_method_unsupported" });
 

@@ -159,6 +159,17 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       };
     }
 
+    if (method === "talk.session.finalizeTurn") {
+      return {
+        ok: true,
+        method,
+        result: shim.finalizeTurn({
+          sessionId: getOptionalTrimmedString(params.sessionId) ?? "",
+          transcriptText: getOptionalTrimmedString(params.transcriptText),
+        }),
+      };
+    }
+
     if (method === "talk.session.cancelOutput") {
       return {
         ok: true,
