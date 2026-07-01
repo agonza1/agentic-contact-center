@@ -462,7 +462,7 @@ test("live SIP proof bundle accepts newline-delimited SIP and rtc-asr evidence",
       rtcAsrEvidencePath,
       [
         JSON.stringify({ type: "transcript.delta", text: "I need" }),
-        JSON.stringify({ type: "transcript.final", transcript: { text: "billing help.", final: true } }),
+        JSON.stringify({ type: "conversation.item.input_audio_transcription.completed", transcript: "billing help." }),
       ].join("\n") + "\n",
       "utf8",
     );

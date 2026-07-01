@@ -133,9 +133,11 @@ function isFinalTranscriptEvidence(entry) {
     || entry?.is_final === true
     || entry?.transcript?.final === true
     || entry?.result?.final === true
+    || entry?.result?.is_final === true
     || entry?.speech_final === true
     || entry?.status === "final"
-    || entry?.type === "transcript.final";
+    || entry?.type === "transcript.final"
+    || entry?.type === "conversation.item.input_audio_transcription.completed";
 }
 
 async function wavEvidence(filePath) {
