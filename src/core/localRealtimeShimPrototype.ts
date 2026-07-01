@@ -75,6 +75,14 @@ export interface LocalRealtimeShimPipelineStage {
 export interface LocalRealtimeShimEvidence {
   envelope: RealtimeShimSessionEnvelope;
   state: LocalRealtimeShimState;
+  browserRelayCompatibility: {
+    openClawSurface: "RealtimeTalkSession gateway-relay";
+    uiRewriteRequired: false;
+    requiredRpcs: string[];
+    inputAudio: "pcm16 base64 chunks at 24kHz";
+    outputAudio: "pcm16 base64 relay audio at 24kHz";
+    status: "ready_for_browser_flow" | "awaiting_audio";
+  };
   audioInput: {
     relayEncoding: RealtimeShimSessionEnvelope["audio"]["inputEncoding"];
     relaySampleRateHz: RealtimeShimSessionEnvelope["audio"]["inputSampleRateHz"];
@@ -415,6 +423,7 @@ export class LocalRealtimeShimPrototype {
     return {
       envelope: session.envelope,
       state: session.state,
+      browserRelayCompatibility: buildBrowserRelayCompatibility(session),
       audioInput: {
         relayEncoding: session.envelope.audio.inputEncoding,
         relaySampleRateHz: session.envelope.audio.inputSampleRateHz,
@@ -501,6 +510,29 @@ export class LocalRealtimeShimPrototype {
       withinBudget: elapsedMs <= budgetMs,
     });
   }
+}
+
+function buildBrowserRelayCompatibility(
+  session: LocalRealtimeShimSession,
+): LocalRealtimeShimEvidence["browserRelayCompatibility"] {
+  const oneTurnCompleted =
+    session.diagnostics.some((event) => event.type === "transcript.done") &&
+    session.relayEvents.some((event) => event.type === "audio");
+
+  return {
+    openClawSurface: "RealtimeTalkSession gateway-relay",
+    uiRewriteRequired: false,
+    requiredRpcs: [
+      "talk.session.create",
+      "talk.session.appendAudio",
+      "talk.session.cancelOutput",
+      "talk.session.submitToolResult",
+      "talk.session.close",
+    ],
+    inputAudio: "pcm16 base64 chunks at 24kHz",
+    outputAudio: "pcm16 base64 relay audio at 24kHz",
+    status: oneTurnCompleted ? "ready_for_browser_flow" : "awaiting_audio",
+  };
 }
 
 function buildPipelineStages(session: LocalRealtimeShimSession): LocalRealtimeShimPipelineStage[] {

@@ -15,6 +15,20 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
   });
 
   assert.equal(evidence.state, "speaking");
+  assert.deepEqual(evidence.browserRelayCompatibility, {
+    openClawSurface: "RealtimeTalkSession gateway-relay",
+    uiRewriteRequired: false,
+    requiredRpcs: [
+      "talk.session.create",
+      "talk.session.appendAudio",
+      "talk.session.cancelOutput",
+      "talk.session.submitToolResult",
+      "talk.session.close",
+    ],
+    inputAudio: "pcm16 base64 chunks at 24kHz",
+    outputAudio: "pcm16 base64 relay audio at 24kHz",
+    status: "ready_for_browser_flow",
+  });
   assert.deepEqual(evidence.audioInput, {
     relayEncoding: "pcm16",
     relaySampleRateHz: 24000,
