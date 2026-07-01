@@ -113,6 +113,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
         accCallId: "demo-call-0001",
         destination: "8600",
         wavPath: ${JSON.stringify(audioPath)},
+        freeswitchRecordingPath: "/var/log/freeswitch/acc/media/fs-proof-1.wav",
         logPath: ${JSON.stringify(logPath)},
         rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
         telephonyMode: "local_sip"
@@ -127,7 +128,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     const manifest = JSON.parse(stdout) as {
       reviewReady: boolean;
       runtimeModeLabels: { telephony: string; media: string; rtcAsr: string; credentialsMode: string };
-      localSip: { acceptedInvite: boolean; rtpPacketCount: number; destination: string };
+      localSip: { acceptedInvite: boolean; rtpPacketCount: number; destination: string; hostRecordingPath: string; freeswitchRecordingPath: string };
       artifacts: { audioWav: string; sipLog: string; rtcAsrEvidence: string | null };
       artifactIntegrity: Array<{ artifactId: string; readiness: string; sha256: string; sizeBytes: number }>;
       blockers: string[];
@@ -144,6 +145,8 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     assert.equal(manifest.localSip.acceptedInvite, true);
     assert.equal(manifest.localSip.destination, "8600");
     assert.equal(manifest.localSip.rtpPacketCount, 4);
+    assert.equal(manifest.localSip.hostRecordingPath, audioPath);
+    assert.equal(manifest.localSip.freeswitchRecordingPath, "/var/log/freeswitch/acc/media/fs-proof-1.wav");
     assert.equal(manifest.artifacts.audioWav, audioPath);
     assert.equal(manifest.artifacts.sipLog, logPath);
     assert.equal(manifest.artifacts.rtcAsrEvidence, null);
