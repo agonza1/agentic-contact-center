@@ -374,10 +374,11 @@ test("FreeSWITCH bridge manifest accepts nested OpenAI realtime transcript evide
     await writeFile(
       rtcAsrEvidencePath,
       `${JSON.stringify({
-        type: "response.output_text.done",
+        type: "response.audio_transcript.done",
+        delta: "hello from",
         response: {
           output: [
-            { content: [{ type: "output_text", text: "hello from local sip" }] },
+            { content: [{ type: "output_text", delta: "local sip" }] },
           ],
         },
       })}\n`,
