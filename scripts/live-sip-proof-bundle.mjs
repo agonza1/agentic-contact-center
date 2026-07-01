@@ -67,7 +67,7 @@ async function sipLogEvidence(filePath) {
       });
   }
   const eventEntries = entries.flatMap((entry) => Array.isArray(entry?.events) ? entry.events : [entry]);
-  const startLines = entries
+  const startLines = [...entries, ...eventEntries]
     .flatMap(sipStartLineValues)
     .flatMap((line) => line.split(/\r?\n/))
     .map((line) => line.trim())
