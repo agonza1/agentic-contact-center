@@ -267,3 +267,59 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+
+test("FreeSWITCH bridge manifest accepts nested OpenAI realtime transcript evidence", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-openai-realtime-"));
+  const audioPath = path.join(tempDir, "fs-call.wav");
+  const logPath = path.join(tempDir, "freeswitch-esl-events.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+
+  try {
+    await writeFile(audioPath, validWavFixture());
+    await writeFile(logPath, `${JSON.stringify({ events: [{ headers: { "Event-Name": "CHANNEL_ANSWER" } }] })}\n`, "utf8");
+    await writeFile(
+      rtcAsrEvidencePath,
+      `${JSON.stringify({
+        type: "response.output_text.done",
+        response: {
+          output: [
+            { content: [{ type: "output_text", text: "hello from local sip" }] },
+          ],
+        },
+      })}\n`,
+      "utf8",
+    );
+
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = `
+      const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
+      const manifest = await buildFreeswitchLiveProofManifest({
+        uuid: "fs-proof-openai-realtime",
+        accCallId: "demo-call-openai-realtime",
+        destination: "8600",
+        wavPath: ${JSON.stringify(audioPath)},
+        logPath: ${JSON.stringify(logPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
+        telephonyMode: "local_sip"
+      });
+      console.log(JSON.stringify(manifest));
+    `;
+    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const manifest = JSON.parse(stdout) as {
+      reviewReady: boolean;
+      artifactIntegrity: Array<{ artifactId: string; readiness: string }>;
+      blockers: string[];
+    };
+    assert.equal(manifest.reviewReady, true);
+    assert.deepEqual(manifest.blockers, []);
+    assert.ok(manifest.artifactIntegrity.some((artifact) => artifact.artifactId === "rtc-asr-transcript-evidence" && artifact.readiness === "ready"));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
