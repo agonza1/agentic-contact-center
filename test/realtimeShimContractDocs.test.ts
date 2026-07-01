@@ -18,6 +18,7 @@ test("Realtime shim contract documents the Local STT v1 lifecycle mapping", () =
     "toggleRealtimeTalk()",
     "talk.session.create",
     "talk.session.appendAudio",
+    "talk.session.getEvidence",
     "talk.session.cancelOutput",
     "talk.session.submitToolResult",
     "talk.session.close",

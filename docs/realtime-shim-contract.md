@@ -11,7 +11,7 @@ Read-only inspection used `agonza1/openclaw` at commit `7a750100`.
 - The browser entrypoint is `ui/src/ui/app.ts`: `toggleRealtimeTalk()` builds `RealtimeTalkLaunchOptions`, calls `new RealtimeTalkSession(...)`, and exposes only `onStatus` plus `onTranscript` callbacks to the chat UI.
 - The composer control is `ui/src/ui/views/chat.ts`: the Talk button starts/stops the same session and shows `Connecting Talk...`, `Talk live`, or `Asking OpenClaw...` based on session status.
 - `ui/src/ui/chat/realtime-talk.ts` first calls `talk.client.create`; for `gateway-relay` it falls back to `talk.session.create({ mode: "realtime", transport: "gateway-relay", brain: "agent-consult" })`.
-- The local shim should integrate as a Gateway-owned `gateway-relay` provider, not as a browser WebRTC replacement. The browser then keeps using `talk.session.appendAudio`, `talk.session.cancelOutput`, `talk.session.submitToolResult`, and `talk.session.close`.
+- The local shim should integrate as a Gateway-owned `gateway-relay` provider, not as a browser WebRTC replacement. The browser then keeps using `talk.session.appendAudio`, `talk.session.cancelOutput`, `talk.session.submitToolResult`, and `talk.session.close`; QA harnesses may also call `talk.session.getEvidence` for a read-only timeline snapshot.
 - `GatewayRelayRealtimeTalkTransport` records microphone audio with `getUserMedia`, converts float samples to little-endian PCM16, sends `audioBase64` chunks through `talk.session.appendAudio`, plays returned PCM16 `audioBase64`, and detects barge-in locally while output is playing.
 
 ## Session And Transport
@@ -54,6 +54,7 @@ The first shim proof should keep the browser-facing RPCs identical to the curren
 | --- | --- | --- |
 | `talk.session.create` | `mode: "realtime"`, `transport: "gateway-relay"`, optional `brain` | Allocate a relay session, initialize empty input/output state, return the session envelope above, and emit a single `ready` diagnostic. |
 | `talk.session.appendAudio` | `sessionId`, `audioBase64`, optional `timestamp` | Decode PCM16, start Local STT v1 lazily on the first non-empty chunk, stream binary frames, and keep the RPC bounded even if STT transcript output arrives later. |
+| `talk.session.getEvidence` | `sessionId` | Return the current diagnostics, relay events, timeline, latency marks, and named mocked pieces without mutating session state. |
 | `talk.session.cancelOutput` | `sessionId`, optional `reason` (`barge-in`, `cancelled`, or `error`) | Validate the target session, abort active LLM/TTS work, clear pending audio, emit relay `clear`, and keep input capture alive for barge-in audio. |
 | `talk.session.submitToolResult` | `sessionId`, `toolCallId`, `result` | Validate the target session and tool call id, then accept and record the tool result for parity with the existing UI path; the first local proof may return `not_applicable` when no local tool call is pending. |
 | `talk.session.close` | `sessionId`, optional `reason` (`client`, `complete`, or `error`) | Validate the target session, idempotently close STT, LLM, and TTS resources, then emit one terminal relay `close`. |

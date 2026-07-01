@@ -170,6 +170,14 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       };
     }
 
+    if (method === "talk.session.getEvidence") {
+      return {
+        ok: true,
+        method,
+        result: shim.getEvidence(getOptionalTrimmedString(params.sessionId) ?? ""),
+      };
+    }
+
     if (method === "talk.session.cancelOutput") {
       return {
         ok: true,
