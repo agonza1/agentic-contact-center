@@ -269,6 +269,73 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
 });
 
 
+test("FreeSWITCH bridge forwards attached rtc-asr evidence to ACC", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-forward-rtc-asr-"));
+  const audioPath = path.join(tempDir, "fs-call.wav");
+  const logPath = path.join(tempDir, "freeswitch-esl-events.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+  const manifestPath = path.join(tempDir, "freeswitch-live-proof-manifest.json");
+  const receivedEvents: any[] = [];
+
+  const server = await new Promise<import("node:http").Server>((resolve) => {
+    const http = require("node:http") as typeof import("node:http");
+    const instance = http.createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk) => chunks.push(chunk));
+      request.on("end", () => {
+        const body = chunks.length > 0 ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
+        receivedEvents.push(body);
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ ok: true, call: { session: { callId: "acc-call-123" } } }));
+      });
+    });
+    instance.listen(0, "127.0.0.1", () => resolve(instance));
+  });
+
+  try {
+    await writeFile(audioPath, validWavFixture());
+    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ type: "response.audio_transcript.done", transcript: "I need billing help." })}\n`, "utf8");
+
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = `
+      const { EslBridge } = await import(${JSON.stringify(moduleUrl)});
+      const bridge = new EslBridge({
+        accBaseUrl: ${JSON.stringify(`http://127.0.0.1:${(server.address() as any).port}`)},
+        logPath: ${JSON.stringify(logPath)},
+        manifestPath: ${JSON.stringify(manifestPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
+        telephonyMode: "local_sip"
+      });
+      bridge.events = [{ at: "2026-06-30T10:00:00.000Z", headers: { "Event-Name": "CHANNEL_ANSWER" } }];
+      bridge.callMap.set("fs-call-forward", {
+        wavPath: ${JSON.stringify(audioPath)},
+        freeswitchPath: ${JSON.stringify(audioPath)},
+        startedAt: Date.now(),
+        destination: "8600",
+        accCallId: "acc-call-123"
+      });
+      await bridge.onRecordStop("fs-call-forward");
+    `;
+    await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+
+    assert.equal(receivedEvents.some((event) => event.eventType === "media.capture"), true);
+    const transcriptEvent = receivedEvents.find((event) => event.eventType === "media.transcript");
+    assert.equal(transcriptEvent?.text, "I need billing help.");
+    assert.equal(transcriptEvent?.rtcAsrEvidencePath, rtcAsrEvidencePath);
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { reviewReady: boolean };
+    assert.equal(manifest.reviewReady, true);
+  } finally {
+    server.close();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+
 test("FreeSWITCH bridge manifest accepts nested OpenAI realtime transcript evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-openai-realtime-"));

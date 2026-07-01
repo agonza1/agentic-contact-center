@@ -43,7 +43,7 @@ async function inspectRtcAsrEvidence(filePath, stats) {
       nextAction: "Rerun rtc-asr until transcript evidence is final before marking the proof review-ready.",
     };
   }
-  return { ready: true, eventCount: parsed.length };
+  return { ready: true, eventCount: parsed.length, transcript };
 }
 
 function parseJsonOrJsonLines(raw) {
@@ -278,7 +278,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
   };
 }
 
-class EslBridge {
+export class EslBridge {
   constructor(options) {
     this.options = options;
     this.buffer = "";
@@ -372,6 +372,18 @@ class EslBridge {
         blocker: "RTC_ASR_WS_URL unset or rtc-asr sidecar unavailable",
         nextAction: "Start rtc-asr and set RTC_ASR_WS_URL before rerunning FreeSWITCH bridge proof.",
       });
+    } else if (this.options.rtcAsrEvidencePath) {
+      const evidence = await inspectRtcAsrEvidence(this.options.rtcAsrEvidencePath, await stat(this.options.rtcAsrEvidencePath).catch(() => null));
+      if (evidence.ready && evidence.transcript) {
+        await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
+          eventType: "media.transcript",
+          timestamp: nowIso(),
+          sipCallId: uuid,
+          fsUuid: uuid,
+          text: evidence.transcript,
+          rtcAsrEvidencePath: this.options.rtcAsrEvidencePath,
+        });
+      }
     }
     await this.flushLog();
     const manifest = await buildFreeswitchLiveProofManifest({

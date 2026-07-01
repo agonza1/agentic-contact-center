@@ -45,7 +45,7 @@ docker compose --profile freeswitch up --build app freeswitch
 3. Start the ESL bridge from another terminal:
 
 ```sh
-ACC_BASE_URL=http://127.0.0.1:8026 node scripts/freeswitch-acc-bridge.mjs --recording-dir artifacts/freeswitch-live/media --log artifacts/freeswitch-live/freeswitch-esl-events.json
+ACC_BASE_URL=http://127.0.0.1:8026 node scripts/freeswitch-acc-bridge.mjs --recording-dir artifacts/freeswitch-live/media --freeswitch-recording-dir /var/log/freeswitch/acc/media --log artifacts/freeswitch-live/freeswitch-esl-events.json
 ```
 
 The bridge also writes a bundle-compatible manifest by default:
