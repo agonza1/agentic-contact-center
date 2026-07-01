@@ -189,6 +189,16 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       };
     }
 
+    if (method === "talk.session.cancelInput") {
+      return {
+        ok: true,
+        method,
+        result: shim.cancelInput({
+          sessionId: getOptionalTrimmedString(params.sessionId) ?? "",
+        }),
+      };
+    }
+
     if (method === "talk.session.submitToolResult") {
       return {
         ok: true,

@@ -47,6 +47,7 @@ test("realtime shim contract lists the browser-facing gateway relay RPCs", () =>
     "talk.session.finalizeTurn",
     "talk.session.getEvidence",
     "talk.session.cancelOutput",
+    "talk.session.cancelInput",
     "talk.session.submitToolResult",
     "talk.session.close",
   ]);

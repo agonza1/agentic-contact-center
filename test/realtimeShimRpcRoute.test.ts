@@ -143,6 +143,34 @@ test("POST /api/realtime-shim/rpc preserves session state across Gateway relay R
     assert.equal(cancelled.payload.result.relayEvents.at(-1).type, "clear");
     assert.equal(cancelled.payload.result.qaChecklist.interruptionEvidence, true);
 
+    const inputSession = await postRpc(address.port, {
+      method: "talk.session.create",
+      params: { mode: "realtime", transport: "gateway-relay", relaySessionId: "local-rt-rpc-input-cancel" },
+    });
+
+    assert.equal(inputSession.statusCode, 200);
+    assert.equal(inputSession.payload.ok, true);
+
+    const inputAudio = await postRpc(address.port, {
+      method: "talk.session.appendAudio",
+      params: { sessionId: "local-rt-rpc-input-cancel", audioBase64, timestamp: 50 },
+    });
+
+    assert.equal(inputAudio.statusCode, 200);
+    assert.equal(inputAudio.payload.result.state, "listening");
+
+    const inputCancelled = await postRpc(address.port, {
+      method: "talk.session.cancelInput",
+      params: { sessionId: "local-rt-rpc-input-cancel" },
+    });
+
+    assert.equal(inputCancelled.statusCode, 200);
+    assert.equal(inputCancelled.payload.ok, true);
+    assert.equal(inputCancelled.payload.result.state, "idle");
+    assert.equal(inputCancelled.payload.result.localSttMessages.at(-1).type, "cancel");
+    assert.equal(inputCancelled.payload.result.diagnostics.at(-1).type, "input.cancelled");
+    assert.equal(inputCancelled.payload.result.qaChecklist.inputCancelEvidence, true);
+
     const toolResult = await postRpc(address.port, {
       method: "talk.session.submitToolResult",
       params: { sessionId: "local-rt-rpc", toolCallId: "tool-1", result: { approved: false } },

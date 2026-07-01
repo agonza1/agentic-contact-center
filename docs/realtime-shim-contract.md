@@ -56,6 +56,7 @@ The first shim proof should keep the browser-facing RPCs identical to the curren
 | `talk.session.appendAudio` | `sessionId`, `audioBase64`, optional `timestamp` | Decode PCM16, start Local STT v1 lazily on the first non-empty chunk, stream binary frames, and keep the RPC bounded even if STT transcript output arrives later. |
 | `talk.session.getEvidence` | `sessionId` | Return the current diagnostics, relay events, timeline, latency marks, and named mocked pieces without mutating session state. |
 | `talk.session.cancelOutput` | `sessionId`, optional `reason` (`barge-in`, `cancelled`, or `error`) | Validate the target session, abort active LLM/TTS work, clear pending audio, emit relay `clear`, and keep input capture alive for barge-in audio. |
+| `talk.session.cancelInput` | `sessionId` | Validate the target session, discard uncommitted user audio, send Local STT `cancel`, and return input-cancel evidence without closing the relay session. |
 | `talk.session.submitToolResult` | `sessionId`, `toolCallId`, `result` | Validate the target session and tool call id, then accept and record the tool result for parity with the existing UI path; the first local proof may return `not_applicable` when no local tool call is pending. |
 | `talk.session.close` | `sessionId`, optional `reason` (`client`, `complete`, or `error`) | Validate the target session, idempotently close STT, LLM, and TTS resources, then emit one terminal relay `close`. |
 
@@ -130,7 +131,7 @@ The first proof can be a local Gateway relay shim harness with mocked LLM text a
 3. A deterministic endpointer or explicit test hook sends Local STT v1 `finalize`, converts the final transcript into one local assistant text response, and emits `transcript.done` plus `output.text.done`.
 4. The shim emits one `audio` relay event and matching `output.audio.delta`/`output.audio.done` diagnostics.
 5. `talk.session.cancelOutput` during playback emits `clear`, aborts the active assistant response, and prevents stale Kokoro audio from playing.
-6. Input cancel uses Local STT v1 `cancel` and proves no final transcript or LLM dispatch occurs.
+6. `talk.session.cancelInput` discards uncommitted user audio, emits `input.cancelled`, sends Local STT v1 `cancel`, and leaves the relay session reusable for the next utterance.
 7. Local STT v1 `error` and `close` paths produce bounded relay `error`/`close` events instead of a hanging Talk status.
 
 This confirms `rtc-asr#203` is the right upstream support card: it should add a generic Local STT v1 contract check for `start`, binary PCM16 audio, partial/final `transcript`, `finalize`, `cancel`, `error`, and `close` without OpenClaw-specific code.
