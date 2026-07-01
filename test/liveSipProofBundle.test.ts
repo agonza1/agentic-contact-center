@@ -830,10 +830,11 @@ test("live SIP proof bundle accepts nested OpenAI realtime transcript evidence",
     await writeFile(sipLogPath, JSON.stringify([{ startLine: "INVITE sip:8600@127.0.0.1 SIP/2.0" }, { startLine: "SIP/2.0 200 OK" }]) + "\n", "utf8");
     await writeFile(
       rtcAsrEvidencePath,
-      JSON.stringify({
-        type: "response.audio_transcript.done",
-        transcript: "I need billing help.",
-      }) + "\n",
+      [
+        JSON.stringify({ type: "response.audio_transcript.delta", delta: "I need" }),
+        JSON.stringify({ type: "response.audio_transcript.delta", response: { output: [{ content: [{ delta: "billing help." }] }] } }),
+        JSON.stringify({ type: "response.audio_transcript.done" }),
+      ].join("\n") + "\n",
       "utf8",
     );
     const manifest = {
@@ -865,7 +866,7 @@ test("live SIP proof bundle accepts nested OpenAI realtime transcript evidence",
     const bundleManifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
       validationSummary: { rtcAsrEvidence: { required: boolean; ready: boolean; transcriptChars: number; eventCount: number } };
     };
-    assert.deepEqual(bundleManifest.validationSummary.rtcAsrEvidence, { required: true, ready: true, transcriptChars: 20, eventCount: 1 });
+    assert.deepEqual(bundleManifest.validationSummary.rtcAsrEvidence, { required: true, ready: true, transcriptChars: 20, eventCount: 3 });
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

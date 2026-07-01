@@ -138,8 +138,9 @@ test("local SIP review gate accepts OpenAI realtime transcript evidence shapes",
     await writeFile(
       evidencePath,
       [
-        JSON.stringify({ type: "response.audio_transcript.delta", response: { output: [{ content: [{ transcript: "I need" }] }] } }),
-        JSON.stringify({ type: "conversation.item.input_audio_transcription.completed", item: { content: [{ transcript: "billing help." }] } }),
+        JSON.stringify({ type: "response.audio_transcript.delta", delta: "I need" }),
+        JSON.stringify({ type: "response.audio_transcript.delta", item: { content: [{ delta: "billing help." }] } }),
+        JSON.stringify({ type: "response.audio_transcript.done" }),
       ].join("\n") + "\n",
       "utf8",
     );

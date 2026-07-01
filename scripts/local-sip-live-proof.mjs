@@ -173,6 +173,7 @@ function transcriptFragments(entry) {
     typeof entry?.transcript === "string" ? entry.transcript : "",
     typeof entry?.transcript?.text === "string" ? entry.transcript.text : "",
     typeof entry?.text === "string" ? entry.text : "",
+    typeof entry?.delta === "string" ? entry.delta : "",
     typeof entry?.result?.text === "string" ? entry.result.text : "",
     typeof entry?.result?.transcript === "string" ? entry.result.transcript : "",
     typeof entry?.alternatives?.[0]?.transcript === "string" ? entry.alternatives[0].transcript : "",
@@ -180,6 +181,7 @@ function transcriptFragments(entry) {
     ...contentItems.flatMap((content) => [
       typeof content?.transcript === "string" ? content.transcript : "",
       typeof content?.text === "string" ? content.text : "",
+      typeof content?.delta === "string" ? content.delta : "",
     ]),
     ...(Array.isArray(entry?.segments) ? entry.segments.map((segment) => typeof segment?.text === "string" ? segment.text : "") : []),
   ].filter(Boolean);
