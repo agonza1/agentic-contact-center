@@ -87,11 +87,11 @@ async function sipLogEvidence(filePath) {
     .filter((name) => typeof name === "string")
     .map((name) => name.trim().toUpperCase().replaceAll("-", "_"));
   const inviteEntries = [...entries, ...eventEntries]
-    .filter((entry) => sipStartLineValues(entry).some((line) => /^INVITE\s/im.test(line)));
+    .filter((entry) => sipStartLineValues(entry).some((line) => /^INVITE\s/im.test(line)) || sipMethodValues(entry).some((method) => method === "INVITE"));
   const inviteCallIds = new Set(inviteEntries.flatMap(callIdValues));
   const hasSipInvite = inviteEntries.length > 0;
   const responseEntries = [...entries, ...eventEntries]
-    .filter((entry) => sipStartLineValues(entry).some((line) => /^SIP\/2\.0\s+2\d\d\b/im.test(line)));
+    .filter((entry) => sipStartLineValues(entry).some((line) => /^SIP\/2\.0\s+2\d\d\b/im.test(line)) || sipStatusCodeValues(entry).some((statusCode) => statusCode >= 200 && statusCode < 300));
   const hasAcceptedSipInviteResponse = responseEntries.some((entry) => {
     const cseqMethods = cseqMethodValues(entry);
     const responseCallIds = callIdValues(entry);
@@ -116,6 +116,42 @@ function sipStartLineValues(entry) {
     .flatMap((part) => [part?.startLine, part?.line, part?.message, part?.raw, part?.data])
     .filter((line) => typeof line === "string");
   return [...directLines, ...nestedLines];
+}
+
+function sipMethodValues(entry) {
+  return [
+    entry?.method,
+    entry?.sipMethod,
+    entry?.requestMethod,
+    entry?.request?.method,
+    entry?.sip?.method,
+    entry?.sip?.request?.method,
+    entry?.headers?.Method,
+    entry?.headers?.method,
+  ]
+    .filter((value) => typeof value === "string")
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function sipStatusCodeValues(entry) {
+  return [
+    entry?.statusCode,
+    entry?.status,
+    entry?.responseStatus,
+    entry?.response?.statusCode,
+    entry?.response?.status,
+    entry?.sip?.statusCode,
+    entry?.sip?.response?.statusCode,
+    entry?.sip?.response?.status,
+  ]
+    .map((value) => {
+      if (typeof value === "number") return value;
+      if (typeof value !== "string") return null;
+      const match = value.trim().match(/^(?:SIP\/2\.0\s+)?(\d{3})\b/);
+      return match ? Number(match[1]) : null;
+    })
+    .filter((value) => Number.isInteger(value));
 }
 
 function cseqMethodValues(entry) {
