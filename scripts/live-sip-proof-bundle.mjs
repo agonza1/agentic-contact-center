@@ -86,12 +86,19 @@ async function sipLogEvidence(filePath) {
     ])
     .filter((name) => typeof name === "string")
     .map((name) => name.trim().toUpperCase().replaceAll("-", "_"));
-  const hasSipInvite = startLines.some((line) => /^INVITE\s/i.test(line));
+  const inviteEntries = [...entries, ...eventEntries]
+    .filter((entry) => sipStartLineValues(entry).some((line) => /^INVITE\s/im.test(line)));
+  const inviteCallIds = new Set(inviteEntries.flatMap(callIdValues));
+  const hasSipInvite = inviteEntries.length > 0;
   const responseEntries = [...entries, ...eventEntries]
     .filter((entry) => sipStartLineValues(entry).some((line) => /^SIP\/2\.0\s+2\d\d\b/im.test(line)));
   const hasAcceptedSipInviteResponse = responseEntries.some((entry) => {
     const cseqMethods = cseqMethodValues(entry);
-    return cseqMethods.length === 0 || cseqMethods.some((method) => method.toUpperCase() === "INVITE");
+    const responseCallIds = callIdValues(entry);
+    const matchesInviteCallId = inviteCallIds.size === 0
+      || responseCallIds.length === 0
+      || responseCallIds.some((callId) => inviteCallIds.has(callId));
+    return matchesInviteCallId && (cseqMethods.length === 0 || cseqMethods.some((method) => method.toUpperCase() === "INVITE"));
   });
   const hasAnsweredFreeSwitchChannel = eventNames.includes("CHANNEL_ANSWER");
   return {
@@ -127,6 +134,32 @@ function cseqMethodValues(entry) {
   return candidates
     .filter((value) => typeof value === "string")
     .map((value) => value.trim().split(/\s+/).at(-1) ?? "")
+    .filter(Boolean);
+}
+
+function callIdValues(entry) {
+  return [
+    entry?.callId,
+    entry?.call_id,
+    entry?.CallID,
+    entry?.CallId,
+    entry?.["Call-ID"],
+    entry?.headers?.callId,
+    entry?.headers?.call_id,
+    entry?.headers?.CallID,
+    entry?.headers?.CallId,
+    entry?.headers?.["Call-ID"],
+    entry?.headers?.["call-id"],
+    entry?.sip?.callId,
+    entry?.sip?.headers?.callId,
+    entry?.sip?.headers?.["Call-ID"],
+    entry?.request?.headers?.callId,
+    entry?.request?.headers?.["Call-ID"],
+    entry?.response?.headers?.callId,
+    entry?.response?.headers?.["Call-ID"],
+  ]
+    .filter((value) => typeof value === "string")
+    .map((value) => value.trim())
     .filter(Boolean);
 }
 
