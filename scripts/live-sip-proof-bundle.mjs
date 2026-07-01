@@ -87,7 +87,12 @@ async function sipLogEvidence(filePath) {
     .filter((name) => typeof name === "string")
     .map((name) => name.trim().toUpperCase().replaceAll("-", "_"));
   const hasSipInvite = startLines.some((line) => /^INVITE\s/i.test(line));
-  const hasAcceptedSipInviteResponse = startLines.some((line) => /^SIP\/2\.0\s+2\d\d\b/i.test(line));
+  const responseEntries = [...entries, ...eventEntries]
+    .filter((entry) => sipStartLineValues(entry).some((line) => /^SIP\/2\.0\s+2\d\d\b/im.test(line)));
+  const hasAcceptedSipInviteResponse = responseEntries.some((entry) => {
+    const cseqMethods = cseqMethodValues(entry);
+    return cseqMethods.length === 0 || cseqMethods.some((method) => method.toUpperCase() === "INVITE");
+  });
   const hasAnsweredFreeSwitchChannel = eventNames.includes("CHANNEL_ANSWER");
   return {
     entryCount: eventEntries.length,
@@ -104,6 +109,25 @@ function sipStartLineValues(entry) {
     .flatMap((part) => [part?.startLine, part?.line, part?.message, part?.raw, part?.data])
     .filter((line) => typeof line === "string");
   return [...directLines, ...nestedLines];
+}
+
+function cseqMethodValues(entry) {
+  const candidates = [
+    entry?.cseq,
+    entry?.CSeq,
+    entry?.headers?.cseq,
+    entry?.headers?.CSeq,
+    entry?.headers?.["CSeq"],
+    entry?.headers?.["cseq"],
+    entry?.sip?.headers?.cseq,
+    entry?.sip?.headers?.CSeq,
+    entry?.response?.headers?.cseq,
+    entry?.response?.headers?.CSeq,
+  ];
+  return candidates
+    .filter((value) => typeof value === "string")
+    .map((value) => value.trim().split(/\s+/).at(-1) ?? "")
+    .filter(Boolean);
 }
 
 async function rtcAsrEvidence(filePath) {
