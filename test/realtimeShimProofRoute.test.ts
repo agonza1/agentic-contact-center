@@ -44,6 +44,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       issue: string;
       rpcBoundary: string;
       localSttContract: string;
+      rpcCompatibility: { route: string; supportedRpcs: string[]; statefulSession: boolean; boundedErrors: boolean };
       acceptanceSummary: Record<string, boolean>;
       acceptanceDetails: Record<string, { status: string; evidence: string; routes: string[] }>;
       readyForIssue85Review: boolean;
@@ -114,6 +115,21 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
     assert.equal(payload.issue, "agonza1/agentic-contact-center#85");
     assert.equal(payload.rpcBoundary, "gateway-relay");
     assert.equal(payload.localSttContract, "local-stt.v1");
+    assert.deepEqual(payload.rpcCompatibility, {
+      route: "POST /api/realtime-shim/rpc",
+      supportedRpcs: [
+        "talk.session.create",
+        "talk.session.appendAudio",
+        "talk.session.finalizeTurn",
+        "talk.session.getEvidence",
+        "talk.session.cancelOutput",
+        "talk.session.cancelInput",
+        "talk.session.submitToolResult",
+        "talk.session.close",
+      ],
+      statefulSession: true,
+      boundedErrors: true,
+    });
     assert.deepEqual(payload.acceptanceSummary, {
       oneLocalVoiceTurn: true,
       adapterContract: true,
