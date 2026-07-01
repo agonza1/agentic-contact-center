@@ -235,6 +235,13 @@ test("local realtime shim prototype cancels input without final transcript dispa
   const cancelled = shim.cancelInput({ sessionId: envelope.sessionId });
 
   assert.equal(cancelled.state, "idle");
+  assert.deepEqual(cancelled.audioInput, {
+    relayEncoding: "pcm16",
+    relaySampleRateHz: 24000,
+    localSttSampleRateHz: 16000,
+    chunks: 0,
+    bytesReceived: 0,
+  });
   assert.deepEqual(cancelled.localSttMessages.map((message) => message.type), ["start", "audio", "cancel"]);
   assert.equal(cancelled.diagnostics.some((event) => event.type === "transcript.done"), false);
   assert.equal(cancelled.diagnostics.some((event) => event.type === "output.text.done"), false);
@@ -248,6 +255,23 @@ test("local realtime shim prototype cancels input without final transcript dispa
   assert.deepEqual(cancelled.timeline.slice(-2), [
     { sequence: 5, source: "local-stt", type: "cancel" },
     { sequence: 6, source: "diagnostic", type: "input.cancelled", reason: "client" },
+  ]);
+
+  const resumed = shim.appendAudio({ sessionId: envelope.sessionId, audioBase64, timestamp: 27 });
+
+  assert.deepEqual(resumed.audioInput, {
+    relayEncoding: "pcm16",
+    relaySampleRateHz: 24000,
+    localSttSampleRateHz: 16000,
+    chunks: 1,
+    bytesReceived: 4,
+    lastTimestamp: 27,
+  });
+  assert.deepEqual(resumed.localSttMessages.map((message) => message.type), ["start", "audio", "cancel", "start", "audio"]);
+  assert.deepEqual(resumed.timeline.slice(-3), [
+    { sequence: 7, source: "local-stt", type: "start" },
+    { sequence: 8, source: "local-stt", type: "audio", byteLength: 4 },
+    { sequence: 9, source: "diagnostic", type: "input.audio.delta", byteLength: 4 },
   ]);
 });
 
