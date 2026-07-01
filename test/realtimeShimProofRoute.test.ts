@@ -45,6 +45,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       rpcBoundary: string;
       localSttContract: string;
       acceptanceSummary: Record<string, boolean>;
+      acceptanceDetails: Record<string, { status: string; evidence: string; routes: string[] }>;
       readyForIssue85Review: boolean;
       evidence: {
         state: string;
@@ -121,6 +122,22 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       mockedPiecesIsolated: true,
       boundedErrorEvidence: true,
     });
+    assert.deepEqual(
+      Object.fromEntries(Object.entries(payload.acceptanceDetails).map(([key, detail]) => [key, detail.status])),
+      {
+        oneLocalVoiceTurn: "passed",
+        adapterContract: "passed",
+        interruptionCancelBehavior: "passed",
+        qaEvidence: "passed",
+        mockedPiecesIsolated: "passed",
+        boundedErrorEvidence: "passed",
+      },
+    );
+    assert.match(payload.acceptanceDetails.adapterContract.evidence, /local-realtime-shim over gateway-relay with local-stt\.v1/);
+    assert.deepEqual(payload.acceptanceDetails.oneLocalVoiceTurn.routes, [
+      "GET /api/realtime-shim/proof",
+      "POST /api/realtime-shim/rpc",
+    ]);
     assert.equal(payload.readyForIssue85Review, true);
     assert.equal(payload.evidence.state, "speaking");
     assert.deepEqual(payload.evidence.qaChecklist, {

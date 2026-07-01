@@ -94,6 +94,42 @@ function buildRealtimeShimProofPayload(): object {
     boundedErrorEvidence:
       errorEvidence.qaChecklist.boundedErrorEvidence && invalidAudioResult.evidence.qaChecklist.boundedErrorEvidence,
   };
+  const localSttStartMessage = evidence.localSttMessages.find((message) => message.type === "start");
+  const localSttVersion = localSttStartMessage && "version" in localSttStartMessage
+    ? localSttStartMessage.version
+    : "unknown-local-stt";
+  const acceptanceDetails = {
+    oneLocalVoiceTurn: {
+      status: acceptanceSummary.oneLocalVoiceTurn ? "passed" : "failed",
+      evidence: "Gateway relay session accepted microphone audio, finalized a transcript, emitted output audio, and closed cleanly.",
+      routes: ["GET /api/realtime-shim/proof", "POST /api/realtime-shim/rpc"],
+    },
+    adapterContract: {
+      status: acceptanceSummary.adapterContract ? "passed" : "failed",
+      evidence: `${evidence.envelope.provider} over ${evidence.envelope.transport} with ${localSttVersion}`,
+      routes: ["POST /api/realtime-shim/rpc"],
+    },
+    interruptionCancelBehavior: {
+      status: acceptanceSummary.interruptionCancelBehavior ? "passed" : "failed",
+      evidence: "Barge-in emits relay clear evidence and input cancel drops buffered STT audio without dispatching a final transcript.",
+      routes: ["GET /api/realtime-shim/proof", "POST /api/realtime-shim/rpc"],
+    },
+    qaEvidence: {
+      status: acceptanceSummary.qaEvidence ? "passed" : "failed",
+      evidence: "Proof payload includes logs, event transcript, timeline, latency marks, and pipeline stage evidence.",
+      routes: ["GET /api/realtime-shim/proof"],
+    },
+    mockedPiecesIsolated: {
+      status: acceptanceSummary.mockedPiecesIsolated ? "passed" : "failed",
+      evidence: evidence.mockedPieces.join(", "),
+      routes: ["GET /api/realtime-shim/proof"],
+    },
+    boundedErrorEvidence: {
+      status: acceptanceSummary.boundedErrorEvidence ? "passed" : "failed",
+      evidence: "Local STT disconnects and malformed relay audio return bounded error evidence with retryability.",
+      routes: ["GET /api/realtime-shim/proof", "POST /api/realtime-shim/rpc"],
+    },
+  };
 
   return {
     ok: true,
@@ -102,6 +138,7 @@ function buildRealtimeShimProofPayload(): object {
     rpcBoundary: "gateway-relay",
     localSttContract: "local-stt.v1",
     acceptanceSummary,
+    acceptanceDetails,
     readyForIssue85Review: Object.values(acceptanceSummary).every(Boolean),
     evidence,
     closeEvidence,
