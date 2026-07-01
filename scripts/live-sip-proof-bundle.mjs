@@ -167,6 +167,7 @@ function callIdValues(entry) {
 
 function sipHeaderValues(entry, headerName) {
   const normalizedHeaderName = headerName.toLowerCase();
+  const compactHeaderNames = normalizedHeaderName === "call-id" ? new Set(["i"]) : new Set();
   return sipStartLineValues(entry)
     .flatMap((value) => value.split(/\r?\n/))
     .map((line) => line.trim())
@@ -174,7 +175,7 @@ function sipHeaderValues(entry, headerName) {
       const separator = line.indexOf(":");
       if (separator < 0) return null;
       const name = line.slice(0, separator).trim().toLowerCase();
-      return name === normalizedHeaderName ? line.slice(separator + 1).trim() : null;
+      return name === normalizedHeaderName || compactHeaderNames.has(name) ? line.slice(separator + 1).trim() : null;
     })
     .filter(Boolean);
 }
