@@ -390,6 +390,7 @@ function reviewNextActions(liveManifest) {
 
 function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult) {
   const checks = {
+    localSipMode: liveManifest.runtimeModeLabels?.telephony === "local_sip",
     acceptedInvite: liveManifest.localSip?.acceptedInvite === true,
     sipLogHasInvite: sipEvidence.hasInvite,
     sipLogHasAcceptedInvite: sipEvidence.hasAcceptedInviteResponse,
@@ -419,6 +420,7 @@ function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidence
 
 function reviewGateFailureReasons(checks, details = {}) {
   const reasons = {
+    localSipMode: "Telephony is not labeled local_sip, so the source manifest cannot prove the local SIP lane.",
     acceptedInvite: "No accepted local SIP INVITE was recorded.",
     sipLogHasInvite: "SIP log does not include an INVITE entry, so the source manifest cannot prove a local SIP call.",
     sipLogHasAcceptedInvite: "SIP log does not include an accepted INVITE response or FreeSWITCH CHANNEL_ANSWER event.",
