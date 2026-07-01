@@ -130,6 +130,7 @@ function cseqMethodValues(entry) {
     entry?.sip?.headers?.CSeq,
     entry?.response?.headers?.cseq,
     entry?.response?.headers?.CSeq,
+    ...sipHeaderValues(entry, "cseq"),
   ];
   return candidates
     .filter((value) => typeof value === "string")
@@ -157,9 +158,24 @@ function callIdValues(entry) {
     entry?.request?.headers?.["Call-ID"],
     entry?.response?.headers?.callId,
     entry?.response?.headers?.["Call-ID"],
+    ...sipHeaderValues(entry, "call-id"),
   ]
     .filter((value) => typeof value === "string")
     .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function sipHeaderValues(entry, headerName) {
+  const normalizedHeaderName = headerName.toLowerCase();
+  return sipStartLineValues(entry)
+    .flatMap((value) => value.split(/\r?\n/))
+    .map((line) => line.trim())
+    .map((line) => {
+      const separator = line.indexOf(":");
+      if (separator < 0) return null;
+      const name = line.slice(0, separator).trim().toLowerCase();
+      return name === normalizedHeaderName ? line.slice(separator + 1).trim() : null;
+    })
     .filter(Boolean);
 }
 
