@@ -66,6 +66,7 @@ async function sipLogEvidence(filePath) {
         }
       });
   }
+  const eventEntries = entries.flatMap((entry) => Array.isArray(entry?.events) ? entry.events : [entry]);
   const startLines = entries
     .flatMap((entry) => {
       if (typeof entry === "string") return [entry];
@@ -74,15 +75,14 @@ async function sipLogEvidence(filePath) {
     .flatMap((line) => line.split(/\r?\n/))
     .map((line) => line.trim())
     .filter(Boolean);
-  const eventNames = entries
-    .flatMap((entry) => Array.isArray(entry?.events) ? entry.events : [entry])
+  const eventNames = eventEntries
     .map((entry) => typeof entry?.headers?.["Event-Name"] === "string" ? entry.headers["Event-Name"] : "")
     .filter(Boolean);
   const hasSipInvite = startLines.some((line) => /^INVITE\s/i.test(line));
   const hasAcceptedSipInviteResponse = startLines.some((line) => /^SIP\/2\.0\s+2\d\d\b/i.test(line));
   const hasAnsweredFreeSwitchChannel = eventNames.includes("CHANNEL_ANSWER");
   return {
-    entryCount: entries.length,
+    entryCount: eventEntries.length,
     hasInvite: hasSipInvite || hasAnsweredFreeSwitchChannel,
     hasAcceptedInviteResponse: hasAcceptedSipInviteResponse || hasAnsweredFreeSwitchChannel,
   };
