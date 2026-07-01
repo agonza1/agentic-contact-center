@@ -67,7 +67,12 @@ async function sipLogEvidence(filePath) {
       });
   }
   const startLines = entries
-    .map((entry) => typeof entry?.startLine === "string" ? entry.startLine : "")
+    .flatMap((entry) => {
+      if (typeof entry === "string") return [entry];
+      return [entry?.startLine, entry?.line, entry?.message, entry?.raw, entry?.data].filter((line) => typeof line === "string");
+    })
+    .flatMap((line) => line.split(/\r?\n/))
+    .map((line) => line.trim())
     .filter(Boolean);
   const eventNames = entries
     .flatMap((entry) => Array.isArray(entry?.events) ? entry.events : [entry])

@@ -469,8 +469,8 @@ test("live SIP proof bundle accepts newline-delimited SIP and rtc-asr evidence",
     await writeFile(
       sipLogPath,
       [
-        JSON.stringify({ startLine: "INVITE sip:8600@127.0.0.1 SIP/2.0" }),
-        JSON.stringify({ startLine: "SIP/2.0 200 OK" }),
+        JSON.stringify({ message: "2026-06-30T10:00:00Z inbound\nINVITE sip:8600@127.0.0.1 SIP/2.0" }),
+        JSON.stringify({ raw: "SIP/2.0 200 OK\r\nVia: SIP/2.0/UDP 127.0.0.1:5066" }),
       ].join("\n") + "\n",
       "utf8",
     );
