@@ -19,6 +19,10 @@ async function sha256File(filePath) {
   return createHash("sha256").update(await readFile(filePath)).digest("hex");
 }
 
+async function fileExists(filePath) {
+  return Boolean(filePath) && await stat(filePath).then(() => true, () => false);
+}
+
 async function artifact(filePath, artifactId, kind, mimeType) {
   const stats = await stat(filePath);
   return {
@@ -104,7 +108,12 @@ function sipStartLineValues(entry) {
 
 async function rtcAsrEvidence(filePath) {
   if (!filePath) return { required: false, ready: false, reason: "rtc-asr transcript evidence is not attached." };
-  const raw = await readFile(filePath, "utf8");
+  let raw;
+  try {
+    raw = await readFile(filePath, "utf8");
+  } catch {
+    return { required: true, ready: false, reason: "rtc-asr transcript evidence file is missing or unreadable." };
+  }
   const parsed = parseJsonOrJsonLines(raw);
   if (parsed.length === 0) {
     return { required: true, ready: false, reason: "rtc-asr transcript evidence is not valid JSON." };
@@ -431,6 +440,7 @@ async function main() {
   const audioPath = path.resolve(repoRoot, liveManifest.artifacts.audioWav);
   const sipLogPath = path.resolve(repoRoot, liveManifest.artifacts.sipLog);
   const rtcAsrEvidencePath = liveManifest.artifacts.rtcAsrEvidence ? path.resolve(repoRoot, liveManifest.artifacts.rtcAsrEvidence) : null;
+  const rtcAsrEvidencePathExists = await fileExists(rtcAsrEvidencePath);
   const runtimeTracePath = path.join(outDir, "runtime-event-trace.json");
   const blockerPath = path.join(outDir, "rtc-asr-blocker.json");
   const labels = [
@@ -466,7 +476,7 @@ async function main() {
         await artifact(sipLogPath, "local-sip-and-freeswitch-sip-log", "sip_log", "application/json"),
         await artifact(runtimeTracePath, "agentic-contact-center-runtime-event-trace", "action_trace", "application/json"),
         await artifact(blockerPath, "rtc-asr-live-status", "manifest", "application/json"),
-        ...(rtcAsrEvidencePath ? [await artifact(rtcAsrEvidencePath, "rtc-asr-transcript-evidence", "transcript_evidence", "application/json")] : []),
+        ...(rtcAsrEvidencePathExists ? [await artifact(rtcAsrEvidencePath, "rtc-asr-transcript-evidence", "transcript_evidence", "application/json")] : []),
       ],
       provenance: {
         source_repo: "agonza1/agentic-contact-center",
@@ -498,7 +508,7 @@ async function main() {
     await integrity(runtimeTracePath, "agentic-contact-center-runtime-event-trace", "action_trace"),
     await integrity(blockerPath, "rtc-asr-live-status", "manifest"),
     await integrity(assertRequestPath, "conversation-agent-evals-assert-request", "assert_request"),
-    ...(rtcAsrEvidencePath ? [await integrity(rtcAsrEvidencePath, "rtc-asr-transcript-evidence", "transcript_evidence")] : []),
+    ...(rtcAsrEvidencePathExists ? [await integrity(rtcAsrEvidencePath, "rtc-asr-transcript-evidence", "transcript_evidence")] : []),
   ];
   const sipEvidence = await sipLogEvidence(sipLogPath);
   const rtcAsrEvidenceResult = await rtcAsrEvidence(rtcAsrEvidencePath);
