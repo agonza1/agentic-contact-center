@@ -68,10 +68,7 @@ async function sipLogEvidence(filePath) {
   }
   const eventEntries = entries.flatMap((entry) => Array.isArray(entry?.events) ? entry.events : [entry]);
   const startLines = entries
-    .flatMap((entry) => {
-      if (typeof entry === "string") return [entry];
-      return [entry?.startLine, entry?.line, entry?.message, entry?.raw, entry?.data].filter((line) => typeof line === "string");
-    })
+    .flatMap(sipStartLineValues)
     .flatMap((line) => line.split(/\r?\n/))
     .map((line) => line.trim())
     .filter(Boolean);
@@ -92,6 +89,16 @@ async function sipLogEvidence(filePath) {
     hasInvite: hasSipInvite || hasAnsweredFreeSwitchChannel,
     hasAcceptedInviteResponse: hasAcceptedSipInviteResponse || hasAnsweredFreeSwitchChannel,
   };
+}
+
+function sipStartLineValues(entry) {
+  if (typeof entry === "string") return [entry];
+  const directLines = [entry?.startLine, entry?.line, entry?.message, entry?.raw, entry?.data]
+    .filter((line) => typeof line === "string");
+  const nestedLines = [entry?.sip, entry?.request, entry?.response, entry?.sip?.request, entry?.sip?.response]
+    .flatMap((part) => [part?.startLine, part?.line, part?.message, part?.raw, part?.data])
+    .filter((line) => typeof line === "string");
+  return [...directLines, ...nestedLines];
 }
 
 async function rtcAsrEvidence(filePath) {
