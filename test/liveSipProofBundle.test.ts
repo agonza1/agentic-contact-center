@@ -1310,3 +1310,60 @@ test("live SIP proof bundle accepts nested OpenAI realtime transcript evidence",
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("live SIP proof bundle accepts wrapped rtc-asr evidence payloads", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-wrapped-evidence-"));
+  const audioPath = path.join(tempDir, "caller-capture.wav");
+  const sipLogPath = path.join(tempDir, "sip.log.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.jsonl");
+  const manifestPath = path.join(tempDir, "local-sip-live-proof-manifest.json");
+  const outDir = path.join(tempDir, "bundle");
+
+  try {
+    await writeFile(audioPath, validWavFixture());
+    await writeFile(sipLogPath, JSON.stringify([
+      { raw: "INVITE sip:8600@127.0.0.1 SIP/2.0\r\nCall-ID: caller-a\r\nCSeq: 1 INVITE\r\n" },
+      { raw: "SIP/2.0 200 OK\r\nCall-ID: caller-a\r\nCSeq: 1 INVITE\r\n" },
+    ]) + "\n", "utf8");
+    await writeFile(
+      rtcAsrEvidencePath,
+      [
+        JSON.stringify({ event: { type: "response.audio_transcript.delta", delta: "I need billing" } }),
+        JSON.stringify({ message: JSON.stringify({ type: "response.audio_transcript.done", transcript: " help." }) }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+    await writeFile(manifestPath, JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: "2026-06-30T10:00:00.000Z",
+      workboardCard: "872af947-ef57-47bd-a4f3-3750f54e1948",
+      callId: "call-live-sip-1",
+      sipCallId: "sip-proof-1",
+      runtimeModeLabels: { telephony: "local_sip", media: "live_capture", rtcAsr: "rtc_asr_live", credentialsMode: "mocked" },
+      localSip: { bind: "sip:127.0.0.1:5066", rtpPort: 40000, acceptedInvite: true, rtpPacketCount: 4 },
+      artifacts: { audioWav: audioPath, sipLog: sipLogPath, rtcAsrEvidence: rtcAsrEvidencePath },
+      artifactIntegrity: [],
+      reviewGate: { requiredLabels: ["local_sip", "live_capture", "rtc_asr_live"], missingLabels: [], nextActions: [] },
+      reviewReady: true,
+      blockers: [],
+    }, null, 2) + "\n", "utf8");
+
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      ["scripts/live-sip-proof-bundle.mjs", "--live-manifest", manifestPath, "--out-dir", outDir],
+      { cwd: repoRoot },
+    );
+
+    const summary = JSON.parse(stdout) as { reviewGatePassed: boolean; validationStatus: string };
+    assert.equal(summary.reviewGatePassed, true);
+    assert.equal(summary.validationStatus, "ready_for_review");
+
+    const bundleManifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
+      validationSummary: { rtcAsrEvidence: { required: boolean; ready: boolean; transcriptChars: number; eventCount: number } };
+    };
+    assert.deepEqual(bundleManifest.validationSummary.rtcAsrEvidence, { required: true, ready: true, transcriptChars: 21, eventCount: 4 });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});

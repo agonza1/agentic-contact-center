@@ -115,15 +115,16 @@ async function inspectRtcAsrEvidence(filePath) {
   if (!filePath) return { ready: false };
   const raw = await readFile(filePath, "utf8").catch(() => null);
   const parsed = raw ? parseJsonOrJsonLines(raw) : [];
-  if (parsed.length === 0) {
+  const evidence = parsed.flatMap(expandEvidenceEntries);
+  if (evidence.length === 0) {
     return {
       ready: false,
       blocker: "rtc-asr transcript/evidence file is missing or is not valid JSON.",
       nextAction: "Attach valid rtc-asr transcript evidence with --rtc-asr-evidence before marking the proof review-ready.",
     };
   }
-  const transcript = parsed.flatMap(transcriptFragments).join(" ").trim();
-  const final = parsed.some(isFinalTranscriptEvidence);
+  const transcript = evidence.flatMap(transcriptFragments).join(" ").trim();
+  const final = evidence.some(isFinalTranscriptEvidence);
   if (!transcript) {
     return {
       ready: false,
@@ -138,7 +139,7 @@ async function inspectRtcAsrEvidence(filePath) {
       nextAction: "Rerun rtc-asr until transcript evidence is final before marking the proof review-ready.",
     };
   }
-  return { ready: true, eventCount: parsed.length };
+  return { ready: true, eventCount: evidence.length };
 }
 
 function parseJsonOrJsonLines(raw) {
@@ -159,6 +160,24 @@ function parseJsonOrJsonLines(raw) {
         }
       });
   }
+}
+
+function expandEvidenceEntries(entry, depth = 0) {
+  if (depth > 4 || entry === null || typeof entry !== "object") return [];
+  const wrappedEntries = [entry?.event, entry?.data, entry?.payload, entry?.message]
+    .flatMap((value) => {
+      if (value === null || value === undefined) return [];
+      if (typeof value === "string") {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          return [];
+        }
+      }
+      return typeof value === "object" ? [value] : [];
+    });
+  return [entry, ...wrappedEntries.flatMap((value) => expandEvidenceEntries(value, depth + 1))];
 }
 
 function transcriptFragments(entry) {

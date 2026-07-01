@@ -188,14 +188,15 @@ async function rtcAsrEvidence(filePath) {
     return { required: true, ready: false, reason: "rtc-asr transcript evidence file is missing or unreadable." };
   }
   const parsed = parseJsonOrJsonLines(raw);
-  if (parsed.length === 0) {
+  const evidence = parsed.flatMap(expandEvidenceEntries);
+  if (evidence.length === 0) {
     return { required: true, ready: false, reason: "rtc-asr transcript evidence is not valid JSON." };
   }
-  const transcript = parsed.flatMap(transcriptFragments).join(" ").trim();
-  const final = parsed.some(isFinalTranscriptEvidence);
+  const transcript = evidence.flatMap(transcriptFragments).join(" ").trim();
+  const final = evidence.some(isFinalTranscriptEvidence);
   if (!transcript) return { required: true, ready: false, reason: "rtc-asr transcript evidence has no non-empty transcript text." };
   if (!final) return { required: true, ready: false, reason: "rtc-asr transcript evidence is missing a final transcript marker." };
-  return { required: true, ready: true, transcriptChars: transcript.length, eventCount: parsed.length };
+  return { required: true, ready: true, transcriptChars: transcript.length, eventCount: evidence.length };
 }
 
 function parseJsonOrJsonLines(raw) {
@@ -216,6 +217,24 @@ function parseJsonOrJsonLines(raw) {
         }
       });
   }
+}
+
+function expandEvidenceEntries(entry, depth = 0) {
+  if (depth > 4 || entry === null || typeof entry !== "object") return [];
+  const wrappedEntries = [entry?.event, entry?.data, entry?.payload, entry?.message]
+    .flatMap((value) => {
+      if (value === null || value === undefined) return [];
+      if (typeof value === "string") {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          return [];
+        }
+      }
+      return typeof value === "object" ? [value] : [];
+    });
+  return [entry, ...wrappedEntries.flatMap((value) => expandEvidenceEntries(value, depth + 1))];
 }
 
 function transcriptFragments(entry) {

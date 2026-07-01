@@ -249,3 +249,63 @@ test("local SIP live-caller gate exits nonzero when no caller arrives", async ()
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("local SIP review gate accepts wrapped rtc-asr evidence payloads", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-local-sip-wrapped-evidence-"));
+  const evidencePath = path.join(tempDir, "rtc-asr-evidence.jsonl");
+  const portBase = 50000 + Math.floor(Math.random() * 1000) * 4;
+
+  try {
+    await writeFile(
+      evidencePath,
+      [
+        JSON.stringify({ payload: { type: "response.audio_transcript.delta", delta: "I need billing" } }),
+        JSON.stringify({ data: JSON.stringify({ type: "response.audio_transcript.done", transcript: " help." }) }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        [
+          "scripts/local-sip-live-proof.mjs",
+          "--self-test",
+          "--require-live-caller",
+          "--listen-seconds",
+          "0",
+          "--duration-ms",
+          "120",
+          "--sip-port",
+          String(portBase),
+          "--rtp-port",
+          String(portBase + 1),
+          "--rtc-asr-url",
+          "ws://127.0.0.1:8080/v1/stt/stream",
+          "--rtc-asr-evidence",
+          evidencePath,
+          "--out-dir",
+          tempDir,
+        ],
+        { cwd: repoRoot, timeout: 10_000, encoding: "utf8" },
+      ),
+      (error: any) => {
+        assert.equal(error.code, 2);
+        const summary = JSON.parse(error.stdout.slice(error.stdout.indexOf("{")).trim()) as { blockers: string[] };
+        assert.ok(!summary.blockers.some((blocker) => blocker.includes("rtc-asr transcript/evidence")));
+        return true;
+      },
+    );
+
+    const manifest = JSON.parse(await readFile(path.join(tempDir, "local-sip-live-proof-manifest.json"), "utf8")) as {
+      artifactIntegrity: Array<{ artifactId: string; readiness: string }>;
+      reviewGate: { missingLabels: string[]; nextActions: string[] };
+    };
+    assert.ok(manifest.artifactIntegrity.some((artifact) => artifact.artifactId === "rtc-asr-transcript-evidence" && artifact.readiness === "ready"));
+    assert.deepEqual(manifest.reviewGate.missingLabels, ["live_capture"]);
+    assert.ok(!manifest.reviewGate.nextActions.some((action) => action.includes("--rtc-asr-evidence")));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
