@@ -492,6 +492,7 @@ function reviewGateReport(bundleManifest) {
 }
 
 function reviewGateReportJson(bundleManifest) {
+  const failedChecks = Object.keys(bundleManifest.reviewGate.failureReasons);
   return {
     schemaVersion: 1,
     generatedAt: bundleManifest.generatedAt,
@@ -501,6 +502,7 @@ function reviewGateReportJson(bundleManifest) {
     reviewGatePassed: bundleManifest.reviewGate.passed,
     requiredLabels: bundleManifest.reviewGate.requiredLabels,
     missingLabels: bundleManifest.reviewGate.missingLabels,
+    failedChecks,
     checks: bundleManifest.reviewGate.checks,
     failureReasons: bundleManifest.reviewGate.failureReasons,
     evidence: {
@@ -651,6 +653,7 @@ async function main() {
     reviewGateReportJson: rel(reviewGateReportJsonPath),
     reviewReady: bundleManifest.reviewReady,
     reviewGatePassed: bundleManifest.reviewGate.passed,
+    failedChecks: Object.keys(bundleManifest.reviewGate.failureReasons),
     validationStatus: bundleManifest.validationSummary.status,
     blockers: bundleManifest.blockers,
   }, null, 2));

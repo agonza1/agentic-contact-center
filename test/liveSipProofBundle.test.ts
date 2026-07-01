@@ -82,10 +82,12 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
       { cwd: repoRoot },
     );
 
-    const summary = JSON.parse(stdout) as { manifest: string; reviewGateReport: string; reviewGateReportJson: string; reviewReady: boolean; reviewGatePassed: boolean; validationStatus: string; blockers: string[] };
+    const summary = JSON.parse(stdout) as { manifest: string; reviewGateReport: string; reviewGateReportJson: string; reviewReady: boolean; reviewGatePassed: boolean; failedChecks: string[]; validationStatus: string; blockers: string[] };
     assert.equal(summary.reviewReady, false);
     assert.equal(summary.reviewGatePassed, false);
     assert.equal(summary.validationStatus, "blocked_before_review");
+    assert.ok(summary.failedChecks.includes("liveCapture"));
+    assert.ok(summary.failedChecks.includes("rtcAsrLive"));
     assert.match(summary.manifest, /proof-bundle-manifest\.json$/);
     assert.match(summary.reviewGateReport, /review-gate-report\.md$/);
     assert.match(summary.reviewGateReportJson, /review-gate-report\.json$/);
@@ -140,6 +142,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
       status: string;
       reviewGatePassed: boolean;
       missingLabels: string[];
+      failedChecks: string[];
       failureReasons: Record<string, string>;
       artifacts: { conversationAgentEvalsRequest: string };
       artifactIntegrity: Array<{ artifactId: string; readiness: string }>;
@@ -149,6 +152,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     assert.equal(reviewGateReportJson.status, "blocked_before_review");
     assert.equal(reviewGateReportJson.reviewGatePassed, false);
     assert.deepEqual(reviewGateReportJson.missingLabels, ["live_capture", "rtc_asr_live"]);
+    assert.ok(reviewGateReportJson.failedChecks.includes("sourceManifestReviewReady"));
     assert.match(reviewGateReportJson.failureReasons.sourceManifestReviewReady, /Source live proof manifest is not review-ready/);
     assert.match(reviewGateReportJson.artifacts.conversationAgentEvalsRequest, /conversation-agent-evals-assert-request\.json$/);
     assert.ok(reviewGateReportJson.artifactIntegrity.some((artifact) => artifact.artifactId === "conversation-agent-evals-assert-request" && artifact.readiness === "ready"));
