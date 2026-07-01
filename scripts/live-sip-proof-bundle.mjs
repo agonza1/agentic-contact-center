@@ -149,6 +149,8 @@ function isFinalTranscriptEvidence(entry) {
     || entry?.status === "final"
     || entry?.status === "completed"
     || entry?.type === "transcript.final"
+    || entry?.type === "response.audio_transcript.done"
+    || entry?.type === "response.output_text.done"
     || entry?.type === "conversation.item.input_audio_transcription.completed";
 }
 

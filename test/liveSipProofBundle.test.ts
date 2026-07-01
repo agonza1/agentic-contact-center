@@ -766,11 +766,8 @@ test("live SIP proof bundle accepts nested OpenAI realtime transcript evidence",
     await writeFile(
       rtcAsrEvidencePath,
       JSON.stringify({
-        type: "response.output_item.done",
-        status: "completed",
-        response: {
-          output: [{ content: [{ type: "input_audio_transcription", transcript: "I need billing help." }] }],
-        },
+        type: "response.audio_transcript.done",
+        transcript: "I need billing help.",
       }) + "\n",
       "utf8",
     );
