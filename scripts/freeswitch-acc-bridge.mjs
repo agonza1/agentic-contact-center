@@ -74,6 +74,15 @@ function transcriptFragments(entry) {
       ? entry.response.output.flatMap((output) => Array.isArray(output?.content) ? output.content : [])
       : []),
   ];
+  const channelAlternatives = [
+    ...(Array.isArray(entry?.channel?.alternatives) ? entry.channel.alternatives : []),
+    ...(Array.isArray(entry?.results?.channels)
+      ? entry.results.channels.flatMap((channel) => Array.isArray(channel?.alternatives) ? channel.alternatives : [])
+      : []),
+    ...(Array.isArray(entry?.channels)
+      ? entry.channels.flatMap((channel) => Array.isArray(channel?.alternatives) ? channel.alternatives : [])
+      : []),
+  ];
   return [
     typeof entry?.transcript === "string" ? entry.transcript : "",
     typeof entry?.transcript?.text === "string" ? entry.transcript.text : "",
@@ -83,6 +92,7 @@ function transcriptFragments(entry) {
     typeof entry?.result?.transcript === "string" ? entry.result.transcript : "",
     typeof entry?.alternatives?.[0]?.transcript === "string" ? entry.alternatives[0].transcript : "",
     typeof entry?.channel?.alternatives?.[0]?.transcript === "string" ? entry.channel.alternatives[0].transcript : "",
+    ...channelAlternatives.map((alternative) => typeof alternative?.transcript === "string" ? alternative.transcript : ""),
     ...contentItems.flatMap((content) => [
       typeof content?.transcript === "string" ? content.transcript : "",
       typeof content?.text === "string" ? content.text : "",
@@ -102,6 +112,8 @@ function isFinalTranscriptEvidence(entry) {
     || entry?.speech_final === true
     || entry?.status === "final"
     || entry?.status === "completed"
+    || entry?.is_final === "true"
+    || entry?.speech_final === "true"
     || entry?.type === "transcript.final"
     || entry?.type === "response.audio_transcript.done"
     || entry?.type === "response.output_text.done"
