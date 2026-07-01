@@ -19,7 +19,8 @@ function nowIso() {
 async function inspectRtcAsrEvidence(filePath, stats) {
   if (!filePath || !stats || stats.size === 0) return { ready: false };
   const parsed = parseJsonOrJsonLines(await readFile(filePath, "utf8"));
-  if (parsed.length === 0) {
+  const evidence = parsed.flatMap(expandEvidenceEntries);
+  if (evidence.length === 0) {
     return {
       ready: false,
       blocker: "rtc-asr transcript/evidence file is not valid JSON.",
@@ -27,8 +28,8 @@ async function inspectRtcAsrEvidence(filePath, stats) {
     };
   }
 
-  const transcript = parsed.flatMap(transcriptFragments).join(" ").trim();
-  const final = parsed.some(isFinalTranscriptEvidence);
+  const transcript = evidence.flatMap(transcriptFragments).join(" ").trim();
+  const final = evidence.some(isFinalTranscriptEvidence);
   if (!transcript) {
     return {
       ready: false,
@@ -43,7 +44,7 @@ async function inspectRtcAsrEvidence(filePath, stats) {
       nextAction: "Rerun rtc-asr until transcript evidence is final before marking the proof review-ready.",
     };
   }
-  return { ready: true, eventCount: parsed.length, transcript };
+  return { ready: true, eventCount: evidence.length, transcript };
 }
 
 function parseJsonOrJsonLines(raw) {
@@ -64,6 +65,24 @@ function parseJsonOrJsonLines(raw) {
         }
       });
   }
+}
+
+function expandEvidenceEntries(entry, depth = 0) {
+  if (depth > 4 || entry === null || typeof entry !== "object") return [];
+  const wrappedEntries = [entry?.event, entry?.data, entry?.payload, entry?.message]
+    .flatMap((value) => {
+      if (value === null || value === undefined) return [];
+      if (typeof value === "string") {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          return [];
+        }
+      }
+      return typeof value === "object" ? [value] : [];
+    });
+  return [entry, ...wrappedEntries.flatMap((value) => expandEvidenceEntries(value, depth + 1))];
 }
 
 function transcriptFragments(entry) {
