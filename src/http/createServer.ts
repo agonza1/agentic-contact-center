@@ -4,6 +4,7 @@ import { compareTimestamps, getAttentionMetadata } from "../core/attention";
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { LocalRealtimeShimPrototype } from "../core/localRealtimeShimPrototype";
 import { getPipecatPrototypeHealth, SCRIPTED_CALLER_TURNS } from "../core/pipecatFlowPrototype";
+import { REALTIME_SHIM_RPCS } from "../core/realtimeShimContract";
 import { runtimeSeams } from "../core/seams";
 import type {
   AttentionSource,
@@ -137,6 +138,12 @@ function buildRealtimeShimProofPayload(): object {
     issue: "agonza1/agentic-contact-center#85",
     rpcBoundary: "gateway-relay",
     localSttContract: "local-stt.v1",
+    rpcCompatibility: {
+      route: "POST /api/realtime-shim/rpc",
+      supportedRpcs: REALTIME_SHIM_RPCS,
+      statefulSession: true,
+      boundedErrors: true,
+    },
     acceptanceSummary,
     acceptanceDetails,
     readyForIssue85Review: Object.values(acceptanceSummary).every(Boolean),
