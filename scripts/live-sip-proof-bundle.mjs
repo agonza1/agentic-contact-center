@@ -78,10 +78,13 @@ async function sipLogEvidence(filePath) {
     .flatMap((entry) => Array.isArray(entry?.events) ? entry.events : [entry])
     .map((entry) => typeof entry?.headers?.["Event-Name"] === "string" ? entry.headers["Event-Name"] : "")
     .filter(Boolean);
+  const hasSipInvite = startLines.some((line) => /^INVITE\s/i.test(line));
+  const hasAcceptedSipInviteResponse = startLines.some((line) => /^SIP\/2\.0\s+2\d\d\b/i.test(line));
+  const hasAnsweredFreeSwitchChannel = eventNames.includes("CHANNEL_ANSWER");
   return {
     entryCount: entries.length,
-    hasInvite: startLines.some((line) => line.startsWith("INVITE ")) || eventNames.includes("CHANNEL_ANSWER"),
-    hasAcceptedInviteResponse: startLines.some((line) => line.startsWith("SIP/2.0 200")) || eventNames.includes("CHANNEL_ANSWER"),
+    hasInvite: hasSipInvite || hasAnsweredFreeSwitchChannel,
+    hasAcceptedInviteResponse: hasAcceptedSipInviteResponse || hasAnsweredFreeSwitchChannel,
   };
 }
 
