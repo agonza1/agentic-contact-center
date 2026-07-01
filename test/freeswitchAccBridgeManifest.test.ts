@@ -79,6 +79,28 @@ test("FreeSWITCH ESL frame parser waits for a complete CRLF content-length body"
   assert.equal(parsed.complete.rest, "");
 });
 
+test("FreeSWITCH ESL parser keeps malformed percent header values", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+  const script = `
+    const { EslBridge } = await import(${JSON.stringify(moduleUrl)});
+    const bridge = new EslBridge({});
+    await bridge.handleBlock([
+      "Content-Type: text/event-plain",
+      "Event-Name: CHANNEL_ANSWER",
+      "Caller-Caller-ID-Name: 100%+Ready",
+      ""
+    ].join("\\n"));
+    console.log(JSON.stringify(bridge.events[0].headers));
+  `;
+  const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  const headers = JSON.parse(stdout) as { "Caller-Caller-ID-Name": string };
+  assert.equal(headers["Caller-Caller-ID-Name"], "100%+Ready");
+});
+
 test("FreeSWITCH recording path maps host artifacts to a container-visible mount", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;

@@ -133,9 +133,17 @@ function parseHeaders(block) {
   const headers = new Map();
   for (const line of block.split(/\r?\n/)) {
     const index = line.indexOf(":");
-    if (index > 0) headers.set(line.slice(0, index).trim(), decodeURIComponent(line.slice(index + 1).trim().replaceAll("+", "%20")));
+    if (index > 0) headers.set(line.slice(0, index).trim(), decodeHeaderValue(line.slice(index + 1).trim()));
   }
   return headers;
+}
+
+function decodeHeaderValue(value) {
+  try {
+    return decodeURIComponent(value.replaceAll("+", "%20"));
+  } catch {
+    return value;
+  }
 }
 
 function headerSeparatorIndex(raw) {
