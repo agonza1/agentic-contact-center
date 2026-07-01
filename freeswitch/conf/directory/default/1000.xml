@@ -1,0 +1,15 @@
+<include>
+  <user id="1000">
+    <params>
+      <param name="password" value="local-sip-pass"/>
+      <param name="vm-password" value="1000"/>
+    </params>
+    <variables>
+      <variable name="toll_allow" value="local"/>
+      <variable name="accountcode" value="1000"/>
+      <variable name="user_context" value="default"/>
+      <variable name="effective_caller_id_name" value="ACC Local SIP"/>
+      <variable name="effective_caller_id_number" value="1000"/>
+    </variables>
+  </user>
+</include>

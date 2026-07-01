@@ -1539,6 +1539,17 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /confirmationRequired/);
     assert.match(response.body, /confirmationAcknowledged/);
     assert.match(response.body, /Evidence markers/);
+    assert.match(response.body, /Live SIP proof/);
+    assert.match(response.body, /liveProof/);
+    assert.match(response.body, /Audio Capture/);
+    assert.match(response.body, /Transcript \/ ASR/);
+    assert.match(response.body, /Artifacts \/ Eval/);
+    assert.match(response.body, /Handoff State/);
+    assert.match(response.body, /runtimeLabels/);
+    assert.match(response.body, /ready_with_rtc_asr_blocker/);
+    assert.match(response.body, /not_review_ready/);
+    assert.match(response.body, /pathHtml/);
+    assert.match(response.body, /linkHtml/);
     assert.match(response.body, /attentionDetail/);
     assert.match(response.body, /Proof Bundle/);
     assert.match(response.body, /Artifacts/);

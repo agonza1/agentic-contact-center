@@ -1,0 +1,12 @@
+<include>
+  <extension name="agentic_contact_center_local_sip">
+    <condition field="destination_number" expression="^(8600|acc)$">
+      <action application="answer"/>
+      <action application="set" data="acc_route=local_sip"/>
+      <action application="set" data="acc_signalwire_ready=true"/>
+      <action application="set" data="hangup_after_bridge=false"/>
+      <action application="playback" data="silence_stream://1000"/>
+      <action application="park"/>
+    </condition>
+  </extension>
+</include>

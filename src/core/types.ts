@@ -27,6 +27,21 @@ export type FallbackMode = "tool_timeout" | "runtime_failure";
 
 export type AttentionSource = "operator_steer" | "fallback" | "operator_steer+fallback";
 
+export type TelephonyMode = "mocked_telephony" | "local_sip" | "signalwire_live";
+
+export type MediaCaptureMode = "generated_media" | "live_capture";
+
+export type RtcAsrMode = "rtc_asr_replay" | "rtc_asr_live" | "rtc_asr_blocked";
+
+export type CredentialsMode = "mocked" | "signalwire_live";
+
+export interface RuntimeModeLabels {
+  telephony: TelephonyMode;
+  media: MediaCaptureMode;
+  rtcAsr: RtcAsrMode;
+  credentialsMode: CredentialsMode;
+}
+
 export interface TranscriptTurn {
   speaker: Speaker;
   text: string;
@@ -74,7 +89,7 @@ export interface PipecatFlowPrototypeStatus {
 
 export interface PocConfig {
   demoName: string;
-  mode: "mocked_telephony";
+  mode: TelephonyMode;
   provider: {
     name: string;
     callId: string;
@@ -93,15 +108,18 @@ export interface PocConfig {
 
 export interface StartCallOptions {
   providerCallId?: string;
+  providerName?: string;
   openclawSessionId?: string;
   openclawSessionLabel?: string;
   simulateOpenClawAttachFailure?: boolean;
+  runtimeModeLabels?: Partial<RuntimeModeLabels>;
+  source?: "mock_http_route" | "signalwire_webhook" | "freeswitch_esl" | "local_sip_harness";
 }
 
 export interface OpenClawSessionEnvelope {
   sessionId: string;
   label: string;
-  status: "attached_mock" | "attach_failed_mock";
+  status: "attached_mock" | "attached_live" | "attach_failed_mock";
   attachError: string | null;
   eventTrailVersion: number;
   artifactLinks: {
@@ -121,11 +139,12 @@ export interface SessionMetadata {
   providerCallId: string;
   startedAt: string;
   openclawSession: OpenClawSessionEnvelope;
+  runtimeModeLabels: RuntimeModeLabels;
 }
 
 export interface ScenarioMetadata {
   name: string;
-  mode: PocConfig["mode"];
+  mode: TelephonyMode;
   policyProfile: string;
   defaultSupervisorSteer: OperatorSteerAction;
   fallbackMode: FallbackMode;

@@ -14,6 +14,7 @@ import type {
   FallbackMode,
   OperatorSteerAction,
   PocConfig,
+  RuntimeModeLabels,
   StartCallOptions,
   TranscriptTurn,
 } from "./types";
@@ -57,6 +58,17 @@ function buildOpenClawArtifactLinks(callId: string) {
     transcript: `${basePath}/transcript`,
     events: `${basePath}/events`,
     latencyMarks: `${basePath}/latency`,
+  };
+}
+
+function buildRuntimeModeLabels(config: PocConfig, options: StartCallOptions): RuntimeModeLabels {
+  const telephony = options.runtimeModeLabels?.telephony ?? config.mode;
+  return {
+    telephony,
+    media: options.runtimeModeLabels?.media ?? (telephony === "mocked_telephony" ? "generated_media" : "live_capture"),
+    rtcAsr: options.runtimeModeLabels?.rtcAsr ?? (telephony === "mocked_telephony" ? "rtc_asr_replay" : "rtc_asr_blocked"),
+    credentialsMode:
+      options.runtimeModeLabels?.credentialsMode ?? (telephony === "signalwire_live" ? "signalwire_live" : "mocked"),
   };
 }
 
@@ -105,6 +117,8 @@ export class InMemoryTelephonyIngress {
 
     const paddedSequence = String(sequence).padStart(4, "0");
     const callId = `demo-call-${paddedSequence}`;
+    const providerName = options.providerName ?? config.provider.name;
+    const runtimeModeLabels = buildRuntimeModeLabels(config, options);
     const providerCallId = options.providerCallId ?? `${config.provider.callId}-${paddedSequence}`;
     const startedAt = new Date().toISOString();
     const openclawSessionId = options.openclawSessionId ?? `openclaw-call-${paddedSequence}`;
@@ -115,13 +129,14 @@ export class InMemoryTelephonyIngress {
       session: {
         callId,
         demoName: config.demoName,
-        providerName: config.provider.name,
+        providerName,
         providerCallId,
         startedAt,
+        runtimeModeLabels,
         openclawSession: {
           sessionId: openclawSessionId,
           label: openclawSessionLabel,
-          status: openclawAttachFailed ? "attach_failed_mock" : "attached_mock",
+          status: openclawAttachFailed ? "attach_failed_mock" : runtimeModeLabels.telephony === "mocked_telephony" ? "attached_mock" : "attached_live",
           attachError: openclawAttachFailed ? "simulated_openclaw_session_attach_failure" : null,
           eventTrailVersion: 1,
           artifactLinks: buildOpenClawArtifactLinks(callId),
@@ -129,7 +144,7 @@ export class InMemoryTelephonyIngress {
       },
       scenario: {
         name: config.demoName,
-        mode: config.mode,
+        mode: runtimeModeLabels.telephony,
         policyProfile: config.policy.profile,
         defaultSupervisorSteer: config.policy.defaultSupervisorSteer,
         fallbackMode: config.policy.fallbackMode,
@@ -160,9 +175,12 @@ export class InMemoryTelephonyIngress {
           at: startedAt,
           detail: {
             providerCallId,
-            mode: config.mode,
+            mode: runtimeModeLabels.telephony,
+            mediaMode: runtimeModeLabels.media,
+            rtcAsrMode: runtimeModeLabels.rtcAsr,
             pipecatRuntimeMode: "pipecat_local_runtime",
-            credentialsMode: "mocked",
+            credentialsMode: runtimeModeLabels.credentialsMode,
+            ingressSource: options.source ?? "mock_http_route",
           },
         },
         {
@@ -171,8 +189,10 @@ export class InMemoryTelephonyIngress {
           detail: {
             runtimeEngine: "pipecat-ai",
             transport: "local_process",
-            credentialsMode: "mocked",
-            telephonyMode: config.mode,
+            credentialsMode: runtimeModeLabels.credentialsMode,
+            telephonyMode: runtimeModeLabels.telephony,
+            mediaMode: runtimeModeLabels.media,
+            rtcAsrMode: runtimeModeLabels.rtcAsr,
           },
         },
         {
@@ -181,7 +201,7 @@ export class InMemoryTelephonyIngress {
           detail: {
             sessionId: openclawSessionId,
             sessionLabel: openclawSessionLabel,
-            status: openclawAttachFailed ? "attach_failed_mock" : "attached_mock",
+            status: openclawAttachFailed ? "attach_failed_mock" : runtimeModeLabels.telephony === "mocked_telephony" ? "attached_mock" : "attached_live",
             attachError: openclawAttachFailed ? "simulated_openclaw_session_attach_failure" : null,
             proofPath: `/api/calls/${callId}/proof`,
           },
@@ -239,6 +259,36 @@ export class InMemoryTelephonyIngress {
     if (snapshot.transcript.at(-1)?.speaker === "agent") {
       recordLatencyMark(snapshot, "agent_response_ready", turn.timestamp, "ttsFirstAudio");
     }
+
+    return cloneSnapshot(snapshot);
+  }
+
+  async recordLiveTelephonyEvidence(
+    callId: string,
+    evidence: {
+      eventType: "media_capture_attached" | "rtc_asr_transcript" | "rtc_asr_blocked" | "sip_call_ended";
+      timestamp?: string;
+      detail?: Record<string, string | number | boolean | null>;
+    },
+  ): Promise<CallSnapshot> {
+    const snapshot = this.calls.get(callId);
+
+    if (!snapshot) {
+      throw new Error(`Unknown call id: ${callId}`);
+    }
+
+    const recordedAt = evidence.timestamp ?? new Date().toISOString();
+    snapshot.events.push({
+      type: evidence.eventType,
+      at: recordedAt,
+      detail: {
+        telephonyMode: snapshot.session.runtimeModeLabels.telephony,
+        mediaMode: snapshot.session.runtimeModeLabels.media,
+        rtcAsrMode: snapshot.session.runtimeModeLabels.rtcAsr,
+        ...evidence.detail,
+      },
+    });
+    recordLatencyMark(snapshot, evidence.eventType, recordedAt);
 
     return cloneSnapshot(snapshot);
   }
