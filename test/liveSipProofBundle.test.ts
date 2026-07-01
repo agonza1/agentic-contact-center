@@ -973,6 +973,62 @@ test("live SIP proof bundle counts FreeSWITCH event-log name variants", async ()
   }
 });
 
+test("live SIP proof bundle normalizes FreeSWITCH event names before gating", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-fs-normalized-events-"));
+  const audioPath = path.join(tempDir, "caller-capture.wav");
+  const sipLogPath = path.join(tempDir, "freeswitch-esl-events.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+  const manifestPath = path.join(tempDir, "freeswitch-live-proof-manifest.json");
+  const outDir = path.join(tempDir, "bundle");
+
+  try {
+    await writeFile(audioPath, validWavFixture());
+    await writeFile(rtcAsrEvidencePath, JSON.stringify({ transcript: "I need billing help.", final: true }) + "\n", "utf8");
+    await writeFile(
+      sipLogPath,
+      JSON.stringify({
+        generatedAt: "2026-06-30T10:00:00.000Z",
+        events: [
+          { at: "2026-06-30T10:00:01.000Z", headers: { "event-name": "channel-answer" } },
+        ],
+      }) + "\n",
+      "utf8",
+    );
+    await writeFile(manifestPath, JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: "2026-06-30T10:00:00.000Z",
+      workboardCard: "872af947-ef57-47bd-a4f3-3750f54e1948",
+      callId: "call-live-sip-1",
+      sipCallId: "fs-proof-1",
+      runtimeModeLabels: { telephony: "local_sip", media: "live_capture", rtcAsr: "rtc_asr_live", credentialsMode: "mocked" },
+      localSip: { bind: "sip:1000@127.0.0.1:5060", rtpPort: 40000, acceptedInvite: true, rtpPacketCount: 4 },
+      artifacts: { audioWav: audioPath, sipLog: sipLogPath, rtcAsrEvidence: rtcAsrEvidencePath },
+      artifactIntegrity: [],
+      reviewGate: { requiredLabels: ["local_sip", "live_capture", "rtc_asr_live"], missingLabels: [], nextActions: [] },
+      reviewReady: true,
+      blockers: [],
+    }, null, 2) + "\n", "utf8");
+
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      ["scripts/live-sip-proof-bundle.mjs", "--live-manifest", manifestPath, "--out-dir", outDir],
+      { cwd: repoRoot },
+    );
+
+    const summary = JSON.parse(stdout) as { reviewGatePassed: boolean; validationStatus: string };
+    assert.equal(summary.reviewGatePassed, true);
+    assert.equal(summary.validationStatus, "ready_for_review");
+
+    const bundleManifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
+      validationSummary: { sipLogEvidence: { entryCount: number; hasInvite: boolean; hasAcceptedInviteResponse: boolean } };
+    };
+    assert.deepEqual(bundleManifest.validationSummary.sipLogEvidence, { entryCount: 1, hasInvite: true, hasAcceptedInviteResponse: true });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("live SIP proof bundle accepts nested OpenAI realtime transcript evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-openai-realtime-"));

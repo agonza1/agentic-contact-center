@@ -80,7 +80,8 @@ async function sipLogEvidence(filePath) {
       entry?.eventName,
       entry?.event_name,
     ])
-    .filter((name) => typeof name === "string");
+    .filter((name) => typeof name === "string")
+    .map((name) => name.trim().toUpperCase().replaceAll("-", "_"));
   const hasSipInvite = startLines.some((line) => /^INVITE\s/i.test(line));
   const hasAcceptedSipInviteResponse = startLines.some((line) => /^SIP\/2\.0\s+2\d\d\b/i.test(line));
   const hasAnsweredFreeSwitchChannel = eventNames.includes("CHANNEL_ANSWER");
