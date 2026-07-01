@@ -330,6 +330,10 @@ export class LocalRealtimeShimPrototype {
   cancelInput(options: { sessionId: string }): LocalRealtimeShimEvidence {
     const session = this.requireOpenSession(options.sessionId);
     this.recordLocalSttMessage(session, buildLocalSttCancelMessage());
+    session.sttStarted = false;
+    session.audioBytesReceived = 0;
+    session.audioChunksReceived = 0;
+    session.lastAudioTimestamp = undefined;
     session.state = "idle";
     this.recordDiagnostic(session, {
       type: "input.cancelled",
