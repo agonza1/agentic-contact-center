@@ -79,6 +79,60 @@ test("FreeSWITCH ESL frame parser waits for a complete CRLF content-length body"
   assert.equal(parsed.complete.rest, "");
 });
 
+test("FreeSWITCH bridge dispatches streamed content-length events after the body arrives", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+  const script = `
+    const { EslBridge } = await import(${JSON.stringify(moduleUrl)});
+    const sent = [];
+    const body = ["Event-Name: CHANNEL_ANSWER", "Unique-ID: fs-call-streamed", "Caller-Destination-Number: 8600", ""].join("\\r\\n");
+    const raw = ["Content-Type: text/event-plain", "Content-Length: " + Buffer.byteLength(body), "", ""].join("\\r\\n") + body;
+    const bridge = new EslBridge({
+      recordingDir: "/host/acc/media",
+      freeswitchRecordingDir: "/var/log/freeswitch/acc/media",
+      telephonyMode: "local_sip",
+      rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream"
+    });
+    bridge.send = (command) => sent.push(command);
+    bridge.options.accBaseUrl = "http://127.0.0.1:1";
+    const http = await import("node:http");
+    const { Writable, Readable } = await import("node:stream");
+    const originalRequest = http.default.request;
+    http.default.request = (options, callback) => {
+      const req = new Writable({ write(chunk, encoding, done) { done(); } });
+      req.on = req.addListener.bind(req);
+      req.write = () => true;
+      req.end = () => {
+        const res = new Readable({ read() { this.push(JSON.stringify({ call: { session: { callId: "acc-call-streamed" } } })); this.push(null); } });
+        res.statusCode = 200;
+        res.setEncoding = () => res;
+        callback(res);
+      };
+      return req;
+    };
+    try {
+      await bridge.handleData(raw.slice(0, raw.length - 7));
+      await bridge.handleData(raw.slice(raw.length - 7));
+    } finally {
+      http.default.request = originalRequest;
+    }
+    console.log(JSON.stringify({ sent, call: bridge.callMap.get("fs-call-streamed") }));
+  `;
+  const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  const parsed = JSON.parse(stdout) as {
+    sent: string[];
+    call: { destination: string; wavPath: string; freeswitchPath: string; accCallId: string };
+  };
+  assert.deepEqual(parsed.sent, ["api uuid_record fs-call-streamed start /var/log/freeswitch/acc/media/fs-call-streamed.wav"]);
+  assert.equal(parsed.call.destination, "8600");
+  assert.equal(parsed.call.wavPath, "/host/acc/media/fs-call-streamed.wav");
+  assert.equal(parsed.call.freeswitchPath, "/var/log/freeswitch/acc/media/fs-call-streamed.wav");
+  assert.equal(parsed.call.accCallId, "acc-call-streamed");
+});
+
 test("FreeSWITCH ESL parser keeps malformed percent header values", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
