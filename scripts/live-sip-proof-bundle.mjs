@@ -115,6 +115,13 @@ function parseJsonOrJsonLines(raw) {
 }
 
 function transcriptFragments(entry) {
+  const contentItems = [
+    ...(Array.isArray(entry?.content) ? entry.content : []),
+    ...(Array.isArray(entry?.item?.content) ? entry.item.content : []),
+    ...(Array.isArray(entry?.response?.output)
+      ? entry.response.output.flatMap((output) => Array.isArray(output?.content) ? output.content : [])
+      : []),
+  ];
   return [
     typeof entry?.transcript === "string" ? entry.transcript : "",
     typeof entry?.transcript?.text === "string" ? entry.transcript.text : "",
@@ -123,6 +130,10 @@ function transcriptFragments(entry) {
     typeof entry?.result?.transcript === "string" ? entry.result.transcript : "",
     typeof entry?.alternatives?.[0]?.transcript === "string" ? entry.alternatives[0].transcript : "",
     typeof entry?.channel?.alternatives?.[0]?.transcript === "string" ? entry.channel.alternatives[0].transcript : "",
+    ...contentItems.flatMap((content) => [
+      typeof content?.transcript === "string" ? content.transcript : "",
+      typeof content?.text === "string" ? content.text : "",
+    ]),
     ...(Array.isArray(entry?.segments) ? entry.segments.map((segment) => typeof segment?.text === "string" ? segment.text : "") : []),
   ].filter(Boolean);
 }
@@ -136,6 +147,7 @@ function isFinalTranscriptEvidence(entry) {
     || entry?.result?.is_final === true
     || entry?.speech_final === true
     || entry?.status === "final"
+    || entry?.status === "completed"
     || entry?.type === "transcript.final"
     || entry?.type === "conversation.item.input_audio_transcription.completed";
 }
