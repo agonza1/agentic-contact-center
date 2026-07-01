@@ -107,10 +107,32 @@ test("POST /api/realtime-shim/rpc preserves session state across Gateway relay R
       "audio",
       "finalize",
     ]);
-    assert.equal(finalized.payload.result.diagnostics.at(-3).type, "transcript.delta");
-    assert.equal(finalized.payload.result.diagnostics.at(-2).type, "transcript.done");
-    assert.equal(finalized.payload.result.diagnostics.at(-1).type, "output.audio.done");
+    assert.deepEqual(
+      finalized.payload.result.diagnostics.map((event: { type: string }) => event.type),
+      [
+        "ready",
+        "input.audio.delta",
+        "transcript.delta",
+        "transcript.done",
+        "output.text.delta",
+        "output.text.done",
+        "output.audio.started",
+        "output.audio.delta",
+        "output.audio.done",
+      ],
+    );
     assert.equal(finalized.payload.result.qaChecklist.oneTurnEvidence, true);
+
+    const evidenceSnapshot = await postRpc(address.port, {
+      method: "talk.session.getEvidence",
+      params: { sessionId: "local-rt-rpc" },
+    });
+
+    assert.equal(evidenceSnapshot.statusCode, 200);
+    assert.equal(evidenceSnapshot.payload.ok, true);
+    assert.equal(evidenceSnapshot.payload.result.state, "speaking");
+    assert.deepEqual(evidenceSnapshot.payload.result.eventTranscript, finalized.payload.result.eventTranscript);
+    assert.deepEqual(evidenceSnapshot.payload.result.latencyMarks, finalized.payload.result.latencyMarks);
 
     const cancelled = await postRpc(address.port, {
       method: "talk.session.cancelOutput",

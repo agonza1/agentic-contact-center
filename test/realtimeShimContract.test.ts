@@ -44,6 +44,8 @@ test("realtime shim contract lists the browser-facing gateway relay RPCs", () =>
   assert.deepEqual(REALTIME_SHIM_RPCS, [
     "talk.session.create",
     "talk.session.appendAudio",
+    "talk.session.finalizeTurn",
+    "talk.session.getEvidence",
     "talk.session.cancelOutput",
     "talk.session.submitToolResult",
     "talk.session.close",
