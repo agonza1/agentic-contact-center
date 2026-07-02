@@ -73,6 +73,16 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
           lastEvent?: string;
           reviewReady: boolean;
         };
+        turnSummary: {
+          inputAudioChunks: number;
+          inputAudioBytes: number;
+          finalTranscript?: string;
+          outputAudioChunks: number;
+          outputCancelled: boolean;
+          inputCancelled: boolean;
+          errorCount: number;
+          closed: boolean;
+        };
       };
       closeEvidence: {
         state: string;
@@ -236,6 +246,16 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       pipelineStages: 4,
       lastEvent: "13. diagnostic:output.audio.done",
       reviewReady: true,
+    });
+    assert.deepEqual(payload.evidence.turnSummary, {
+      inputAudioChunks: 1,
+      inputAudioBytes: 8,
+      finalTranscript: "Can I get a retention credit?",
+      outputAudioChunks: 1,
+      outputCancelled: false,
+      inputCancelled: false,
+      errorCount: 0,
+      closed: false,
     });
     assert.deepEqual(payload.evidence.eventTranscript.slice(0, 4), [
       "1. diagnostic:ready",

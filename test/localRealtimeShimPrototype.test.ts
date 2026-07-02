@@ -126,6 +126,16 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
     lastEvent: "13. diagnostic:output.audio.done",
     reviewReady: true,
   });
+  assert.deepEqual(evidence.turnSummary, {
+    inputAudioChunks: 1,
+    inputAudioBytes: 8,
+    finalTranscript: "Can I get a retention credit?",
+    outputAudioChunks: 1,
+    outputCancelled: false,
+    inputCancelled: false,
+    errorCount: 0,
+    closed: false,
+  });
   assert.deepEqual(evidence.eventTranscript.slice(0, 4), [
     "1. diagnostic:ready",
     "2. local-stt:start",
@@ -218,6 +228,15 @@ test("local realtime shim prototype models barge-in clear and idempotent close",
   ]);
   assert.equal(cancelled.diagnostics.at(-1)?.type, "turn.cancelled");
   assert.equal(cancelled.qaChecklist.interruptionEvidence, true);
+  assert.deepEqual(cancelled.turnSummary, {
+    inputAudioChunks: 1,
+    inputAudioBytes: 4,
+    outputAudioChunks: 0,
+    outputCancelled: true,
+    inputCancelled: false,
+    errorCount: 0,
+    closed: false,
+  });
   assert.deepEqual(cancelled.timeline.at(-2), {
     sequence: 5,
     source: "relay",
@@ -244,6 +263,16 @@ test("local realtime shim prototype models barge-in clear and idempotent close",
   });
   assert.equal(resumed.relayEvents.filter((event) => event.type === "audio").length, 1);
   assert.equal(resumed.diagnostics.at(-2)?.type, "output.audio.delta");
+  assert.deepEqual(resumed.turnSummary, {
+    inputAudioChunks: 2,
+    inputAudioBytes: 8,
+    finalTranscript: "I am still here",
+    outputAudioChunks: 1,
+    outputCancelled: true,
+    inputCancelled: false,
+    errorCount: 0,
+    closed: false,
+  });
 
   const closed = shim.closeSession({ sessionId: envelope.sessionId, reason: "complete" });
   const closedAgain = shim.closeSession({ sessionId: envelope.sessionId, reason: "client" });
@@ -287,6 +316,15 @@ test("local realtime shim prototype cancels input without final transcript dispa
   assert.equal(cancelled.diagnostics.some((event) => event.type === "transcript.done"), false);
   assert.equal(cancelled.diagnostics.some((event) => event.type === "output.text.done"), false);
   assert.equal(cancelled.qaChecklist.inputCancelEvidence, true);
+  assert.deepEqual(cancelled.turnSummary, {
+    inputAudioChunks: 0,
+    inputAudioBytes: 0,
+    outputAudioChunks: 0,
+    outputCancelled: false,
+    inputCancelled: true,
+    errorCount: 0,
+    closed: false,
+  });
   assert.deepEqual(cancelled.diagnostics.at(-1), {
     type: "input.cancelled",
     sessionId: "local-rt-input-cancel",
@@ -355,6 +393,15 @@ test("local realtime shim prototype emits bounded Local STT error evidence", () 
 
   assert.equal(fatal.state, "closed");
   assert.equal(fatal.qaChecklist.boundedErrorEvidence, true);
+  assert.deepEqual(fatal.turnSummary, {
+    inputAudioChunks: 1,
+    inputAudioBytes: 4,
+    outputAudioChunks: 0,
+    outputCancelled: false,
+    inputCancelled: false,
+    errorCount: 2,
+    closed: true,
+  });
   assert.deepEqual(fatal.relayEvents.slice(-2), [
     {
       relaySessionId: "local-rt-error",
