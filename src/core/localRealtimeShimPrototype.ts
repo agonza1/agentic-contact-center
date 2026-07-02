@@ -91,6 +91,17 @@ export interface LocalRealtimeShimQaEvidenceSummary {
   reviewReady: boolean;
 }
 
+export interface LocalRealtimeShimTurnSummary {
+  inputAudioChunks: number;
+  inputAudioBytes: number;
+  finalTranscript?: string;
+  outputAudioChunks: number;
+  outputCancelled: boolean;
+  inputCancelled: boolean;
+  errorCount: number;
+  closed: boolean;
+}
+
 export interface LocalRealtimeShimEvidence {
   envelope: RealtimeShimSessionEnvelope;
   state: LocalRealtimeShimState;
@@ -119,6 +130,7 @@ export interface LocalRealtimeShimEvidence {
   latencySummary: LocalRealtimeShimLatencySummary;
   pipelineStages: LocalRealtimeShimPipelineStage[];
   qaEvidenceSummary: LocalRealtimeShimQaEvidenceSummary;
+  turnSummary: LocalRealtimeShimTurnSummary;
   localSttMessages: Array<LocalSttStartMessage | LocalSttControlMessage | { type: "audio"; byteLength: number }>;
   toolResults: Array<RealtimeShimToolResultRequest & { status: "not_applicable" }>;
   qaChecklist: {
@@ -466,6 +478,7 @@ export class LocalRealtimeShimPrototype {
       latencySummary: buildLatencySummary(session.latencyMarks),
       pipelineStages,
       qaEvidenceSummary: buildQaEvidenceSummary(session, eventTranscript, logs, pipelineStages, qaChecklist),
+      turnSummary: buildTurnSummary(session),
       localSttMessages: [...session.localSttMessages],
       toolResults: [...session.toolResults],
       qaChecklist,
@@ -537,6 +550,25 @@ export class LocalRealtimeShimPrototype {
       withinBudget: elapsedMs <= budgetMs,
     });
   }
+}
+
+function buildTurnSummary(session: LocalRealtimeShimSession): LocalRealtimeShimTurnSummary {
+  const finalTranscript = [...session.diagnostics]
+    .reverse()
+    .find((event): event is Extract<LocalRealtimeShimDiagnostic, { type: "transcript.done" }> =>
+      event.type === "transcript.done"
+    )?.text;
+
+  return {
+    inputAudioChunks: session.audioChunksReceived,
+    inputAudioBytes: session.audioBytesReceived,
+    ...(finalTranscript ? { finalTranscript } : {}),
+    outputAudioChunks: session.relayEvents.filter((event) => event.type === "audio").length,
+    outputCancelled: session.diagnostics.some((event) => event.type === "turn.cancelled"),
+    inputCancelled: session.diagnostics.some((event) => event.type === "input.cancelled"),
+    errorCount: session.diagnostics.filter((event) => event.type === "session.error").length,
+    closed: session.state === "closed",
+  };
 }
 
 function buildBrowserRelayCompatibility(

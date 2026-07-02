@@ -167,6 +167,16 @@ function buildRealtimeShimRpcSmoke(): Array<{
   audioChunks?: number;
   relayEvents?: number;
   diagnostics?: number;
+  turnSummary?: {
+    inputAudioChunks: number;
+    inputAudioBytes: number;
+    finalTranscript?: string;
+    outputAudioChunks: number;
+    outputCancelled: boolean;
+    inputCancelled: boolean;
+    errorCount: number;
+    closed: boolean;
+  };
 }> {
   const shim = new LocalRealtimeShimPrototype();
   const audioBase64 = Buffer.from([9, 0, 10, 0]).toString("base64");
@@ -188,6 +198,7 @@ function buildRealtimeShimRpcSmoke(): Array<{
     const response = buildRealtimeShimRpcResponse(shim, step);
     const result = isRecord(response) && isRecord(response.result) ? response.result : undefined;
     const audioInput = result && isRecord(result.audioInput) ? result.audioInput : undefined;
+    const turnSummary = result && isRealtimeShimTurnSummary(result.turnSummary) ? result.turnSummary : undefined;
 
     return {
       method: step.method,
@@ -196,8 +207,35 @@ function buildRealtimeShimRpcSmoke(): Array<{
       audioChunks: typeof audioInput?.chunks === "number" ? audioInput.chunks : undefined,
       relayEvents: Array.isArray(result?.relayEvents) ? result.relayEvents.length : undefined,
       diagnostics: Array.isArray(result?.diagnostics) ? result.diagnostics.length : undefined,
+      turnSummary,
     };
   });
+}
+
+function isRealtimeShimTurnSummary(value: unknown): value is {
+  inputAudioChunks: number;
+  inputAudioBytes: number;
+  finalTranscript?: string;
+  outputAudioChunks: number;
+  outputCancelled: boolean;
+  inputCancelled: boolean;
+  errorCount: number;
+  closed: boolean;
+} {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.inputAudioChunks === "number" &&
+    typeof value.inputAudioBytes === "number" &&
+    (value.finalTranscript === undefined || typeof value.finalTranscript === "string") &&
+    typeof value.outputAudioChunks === "number" &&
+    typeof value.outputCancelled === "boolean" &&
+    typeof value.inputCancelled === "boolean" &&
+    typeof value.errorCount === "number" &&
+    typeof value.closed === "boolean"
+  );
 }
 
 function buildRealtimeShimReadinessPayload(): object {

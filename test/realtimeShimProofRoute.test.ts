@@ -45,7 +45,24 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       rpcBoundary: string;
       localSttContract: string;
       rpcCompatibility: { route: string; supportedRpcs: string[]; statefulSession: boolean; boundedErrors: boolean };
-      rpcSmoke: Array<{ method: string; ok: boolean; state?: string; audioChunks?: number; relayEvents?: number; diagnostics?: number }>;
+      rpcSmoke: Array<{
+        method: string;
+        ok: boolean;
+        state?: string;
+        audioChunks?: number;
+        relayEvents?: number;
+        diagnostics?: number;
+        turnSummary?: {
+          inputAudioChunks: number;
+          inputAudioBytes: number;
+          finalTranscript?: string;
+          outputAudioChunks: number;
+          outputCancelled: boolean;
+          inputCancelled: boolean;
+          errorCount: number;
+          closed: boolean;
+        };
+      }>;
       acceptanceSummary: Record<string, boolean>;
       acceptanceDetails: Record<string, { status: string; evidence: string; routes: string[] }>;
       readyForIssue85Review: boolean;
@@ -72,6 +89,16 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
           pipelineStages: number;
           lastEvent?: string;
           reviewReady: boolean;
+        };
+        turnSummary: {
+          inputAudioChunks: number;
+          inputAudioBytes: number;
+          finalTranscript?: string;
+          outputAudioChunks: number;
+          outputCancelled: boolean;
+          inputCancelled: boolean;
+          errorCount: number;
+          closed: boolean;
         };
       };
       closeEvidence: {
@@ -153,6 +180,26 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
     ]);
     assert.equal(payload.rpcSmoke[1].audioChunks, 1);
     assert.equal(payload.rpcSmoke[2].relayEvents, 1);
+    assert.deepEqual(payload.rpcSmoke[3].turnSummary, {
+      inputAudioChunks: 1,
+      inputAudioBytes: 4,
+      finalTranscript: "Need a retention credit.",
+      outputAudioChunks: 1,
+      outputCancelled: false,
+      inputCancelled: false,
+      errorCount: 0,
+      closed: false,
+    });
+    assert.deepEqual(payload.rpcSmoke[4].turnSummary, {
+      inputAudioChunks: 1,
+      inputAudioBytes: 4,
+      finalTranscript: "Need a retention credit.",
+      outputAudioChunks: 1,
+      outputCancelled: false,
+      inputCancelled: false,
+      errorCount: 0,
+      closed: true,
+    });
     assert.deepEqual(payload.acceptanceSummary, {
       oneLocalVoiceTurn: true,
       adapterContract: true,
@@ -236,6 +283,16 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       pipelineStages: 4,
       lastEvent: "13. diagnostic:output.audio.done",
       reviewReady: true,
+    });
+    assert.deepEqual(payload.evidence.turnSummary, {
+      inputAudioChunks: 1,
+      inputAudioBytes: 8,
+      finalTranscript: "Can I get a retention credit?",
+      outputAudioChunks: 1,
+      outputCancelled: false,
+      inputCancelled: false,
+      errorCount: 0,
+      closed: false,
     });
     assert.deepEqual(payload.evidence.eventTranscript.slice(0, 4), [
       "1. diagnostic:ready",
