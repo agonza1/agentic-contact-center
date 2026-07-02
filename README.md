@@ -233,7 +233,7 @@ Generate realtime shim issue #85 proof evidence:
 npm run proof:realtime-shim -- --out artifacts/realtime-shim-proof.json
 ```
 
-The realtime shim proof starts the compiled app on an ephemeral port, fetches `GET /api/realtime-shim/proof`, asserts the issue #85 readiness summary, and writes the Gateway relay/Local STT v1 evidence payload for review.
+The realtime shim proof starts the compiled app on an ephemeral port, fetches `GET /api/realtime-shim/proof` and `GET /api/realtime-shim/readiness`, asserts the issue #85 readiness summary, and writes both the Gateway relay/Local STT v1 evidence payload and readiness checklist for review.
 
 Generate a ConversationAgentEvals-ready proof bundle with media artifacts:
 
