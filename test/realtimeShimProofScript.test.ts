@@ -41,6 +41,11 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
         reviewBlockers: string[];
         acceptanceCriteriaPassed: number;
         acceptanceCriteriaTotal: number;
+        cancelAndErrorEvidence: {
+          outputCancelled: boolean;
+          inputCancelled: boolean;
+          boundedErrors: number;
+        };
         evidence: {
           eventTranscriptLines: number;
           logLines: number;
@@ -72,6 +77,11 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
       reviewBlockers: [],
       acceptanceCriteriaPassed: 6,
       acceptanceCriteriaTotal: 6,
+      cancelAndErrorEvidence: {
+        outputCancelled: true,
+        inputCancelled: true,
+        boundedErrors: 3,
+      },
       evidence: {
         eventTranscriptLines: 13,
         logLines: 13,
