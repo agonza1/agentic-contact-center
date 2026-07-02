@@ -129,6 +129,7 @@ test("POST /api/realtime-shim/rpc preserves session state across Gateway relay R
         "talk.session.create",
         "talk.session.appendAudio",
         "talk.session.finalizeTurn",
+        "talk.session.getEvidence",
         "talk.session.cancelOutput",
         "talk.session.cancelInput",
         "talk.session.submitToolResult",
