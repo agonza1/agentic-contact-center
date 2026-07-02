@@ -18,6 +18,10 @@ function resolveArgPath(flag) {
   return undefined;
 }
 
+function hasArg(flag) {
+  return process.argv.includes(flag);
+}
+
 function resolveOutputPath() {
   const explicitOutputPath = resolveArgPath("--out");
   if (explicitOutputPath) {
@@ -26,6 +30,19 @@ function resolveOutputPath() {
 
   const timestamp = new Date().toISOString().replace(/[:]/g, "-");
   return path.resolve(process.cwd(), "artifacts", `realtime-shim-proof-${timestamp}.json`);
+}
+
+function resolveLatestOutputPath() {
+  const explicitLatestOutputPath = resolveArgPath("--latest-out");
+  if (explicitLatestOutputPath) {
+    return explicitLatestOutputPath;
+  }
+
+  if (hasArg("--out")) {
+    return undefined;
+  }
+
+  return path.resolve(process.cwd(), "artifacts", "realtime-shim-proof-latest.json");
 }
 
 async function withServer(run) {
@@ -73,6 +90,7 @@ async function requestJson(port, route) {
 
 async function main() {
   const outputPath = resolveOutputPath();
+  const latestOutputPath = resolveLatestOutputPath();
   const artifact = await withServer(async (port) => {
     const [proofResponse, readinessResponse] = await Promise.all([
       requestJson(port, "/api/realtime-shim/proof"),
@@ -93,10 +111,27 @@ async function main() {
     assert.deepEqual(readinessResponse.payload.reviewBlockers, []);
     assert.equal(readinessResponse.payload.acceptanceCriteria.every((criterion) => criterion.passed), true);
 
+    const artifactSummary = {
+      readyForIssue85Review: proofResponse.payload.readyForIssue85Review,
+      readinessStatus: readinessResponse.payload.status,
+      reviewBlockers: readinessResponse.payload.reviewBlockers,
+      acceptanceCriteriaPassed: readinessResponse.payload.acceptanceCriteria.filter((criterion) => criterion.passed)
+        .length,
+      acceptanceCriteriaTotal: readinessResponse.payload.acceptanceCriteria.length,
+      evidence: {
+        eventTranscriptLines: proofResponse.payload.evidence.qaEvidenceSummary.eventTranscriptLines,
+        logLines: proofResponse.payload.evidence.qaEvidenceSummary.logLines,
+        timelineEvents: proofResponse.payload.evidence.qaEvidenceSummary.timelineEvents,
+        latencyMarks: proofResponse.payload.evidence.qaEvidenceSummary.latencyMarks,
+        relayEvents: proofResponse.payload.evidence.qaEvidenceSummary.relayEvents,
+      },
+    };
+
     return {
       ok: true,
       issue: proofResponse.payload.issue,
       generatedAt: new Date().toISOString(),
+      artifactSummary,
       readiness: readinessResponse.payload,
       proof: proofResponse.payload,
     };
@@ -105,8 +140,19 @@ async function main() {
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, JSON.stringify(artifact, null, 2) + "\n", "utf8");
 
+  if (latestOutputPath && latestOutputPath !== outputPath) {
+    await mkdir(path.dirname(latestOutputPath), { recursive: true });
+    await writeFile(latestOutputPath, JSON.stringify(artifact, null, 2) + "\n", "utf8");
+  }
+
   console.log(`Saved realtime shim proof artifact to ${path.relative(process.cwd(), outputPath)}`);
+  if (latestOutputPath) {
+    console.log(`Updated latest realtime shim proof artifact at ${path.relative(process.cwd(), latestOutputPath)}`);
+  }
   console.log(`Issue #85 ready: ${artifact.proof.readyForIssue85Review ? "yes" : "no"}`);
+  console.log(
+    `Acceptance criteria: ${artifact.artifactSummary.acceptanceCriteriaPassed}/${artifact.artifactSummary.acceptanceCriteriaTotal}`,
+  );
 }
 
 main().catch((error) => {
