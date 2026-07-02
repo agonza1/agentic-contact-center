@@ -60,6 +60,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         readinessRoute: string;
         rpcRoute: string;
         validationCommands: string[];
+        rpcExamples: Array<{ label: string; method: string; body: { method: string; params: Record<string, unknown> } }>;
         reviewerChecklist: string[];
       };
       validationCommands: string[];
@@ -95,20 +96,33 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
     assert.equal(payload.browserRelayCompatibility.status, "ready_for_browser_flow");
     assert.equal(payload.browserRelayCompatibility.uiRewriteRequired, false);
     assert.deepEqual(payload.reviewBlockers, []);
-    assert.deepEqual(payload.reviewPacket, {
-      ready: true,
-      issue: "agonza1/agentic-contact-center#85",
-      primaryRoute: "/api/realtime-shim/proof",
-      readinessRoute: "/api/realtime-shim/readiness",
-      rpcRoute: "POST /api/realtime-shim/rpc",
-      validationCommands: ["npm test", "npm run pipecat:check", "npm run proof:realtime-shim"],
-      reviewerChecklist: [
-        "Confirm the Gateway relay RPC boundary matches the OpenClaw browser voice surface.",
-        "Inspect proof.evidence.eventTranscript, proof.evidence.logs, and proof.evidence.latencyMarks for the one-turn path.",
-        "Inspect interruptionEvidence, inputCancelEvidence, errorEvidence, and invalidAudioResult for cancel/error behavior.",
-        "Confirm mockedPieces and limitations name the non-live rtc-asr, local LLM, and Kokoro boundaries.",
+    assert.equal(payload.reviewPacket.ready, true);
+    assert.equal(payload.reviewPacket.issue, "agonza1/agentic-contact-center#85");
+    assert.equal(payload.reviewPacket.primaryRoute, "/api/realtime-shim/proof");
+    assert.equal(payload.reviewPacket.readinessRoute, "/api/realtime-shim/readiness");
+    assert.equal(payload.reviewPacket.rpcRoute, "POST /api/realtime-shim/rpc");
+    assert.deepEqual(payload.reviewPacket.validationCommands, ["npm test", "npm run pipecat:check", "npm run proof:realtime-shim"]);
+    assert.deepEqual(
+      payload.reviewPacket.rpcExamples.map((example) => example.method),
+      [
+        "talk.session.create",
+        "talk.session.appendAudio",
+        "talk.session.finalizeTurn",
+        "talk.session.getEvidence",
       ],
+    );
+    assert.deepEqual(payload.reviewPacket.rpcExamples[0].body, {
+      method: "talk.session.create",
+      params: { mode: "realtime", transport: "gateway-relay", relaySessionId: "local-rt-review" },
     });
+    assert.equal(payload.reviewPacket.rpcExamples[1].body.params.sessionId, "local-rt-review");
+    assert.equal(payload.reviewPacket.rpcExamples[2].body.params.transcriptText, "Need a retention credit.");
+    assert.deepEqual(payload.reviewPacket.reviewerChecklist, [
+      "Confirm the Gateway relay RPC boundary matches the OpenClaw browser voice surface.",
+      "Inspect proof.evidence.eventTranscript, proof.evidence.logs, and proof.evidence.latencyMarks for the one-turn path.",
+      "Inspect interruptionEvidence, inputCancelEvidence, errorEvidence, and invalidAudioResult for cancel/error behavior.",
+      "Confirm mockedPieces and limitations name the non-live rtc-asr, local LLM, and Kokoro boundaries.",
+    ]);
     assert.deepEqual(payload.validationCommands, ["npm test", "npm run pipecat:check", "npm run proof:realtime-shim"]);
     assert.deepEqual(payload.qaEvidenceRoutes, [
       {

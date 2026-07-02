@@ -280,6 +280,37 @@ function buildRealtimeShimReadinessPayload(): object {
       readinessRoute: "/api/realtime-shim/readiness",
       rpcRoute: proof.rpcCompatibility.route,
       validationCommands: ["npm test", "npm run pipecat:check", "npm run proof:realtime-shim"],
+      rpcExamples: [
+        {
+          label: "create local realtime shim session",
+          method: "talk.session.create",
+          body: {
+            method: "talk.session.create",
+            params: { mode: "realtime", transport: "gateway-relay", relaySessionId: "local-rt-review" },
+          },
+        },
+        {
+          label: "append one browser PCM16 audio chunk",
+          method: "talk.session.appendAudio",
+          body: {
+            method: "talk.session.appendAudio",
+            params: { sessionId: "local-rt-review", audioBase64: "AAABAAIAAwA=", timestamp: 42 },
+          },
+        },
+        {
+          label: "finalize one local voice turn",
+          method: "talk.session.finalizeTurn",
+          body: {
+            method: "talk.session.finalizeTurn",
+            params: { sessionId: "local-rt-review", transcriptText: "Need a retention credit." },
+          },
+        },
+        {
+          label: "inspect review evidence",
+          method: "talk.session.getEvidence",
+          body: { method: "talk.session.getEvidence", params: { sessionId: "local-rt-review" } },
+        },
+      ],
       reviewerChecklist: [
         "Confirm the Gateway relay RPC boundary matches the OpenClaw browser voice surface.",
         "Inspect proof.evidence.eventTranscript, proof.evidence.logs, and proof.evidence.latencyMarks for the one-turn path.",
