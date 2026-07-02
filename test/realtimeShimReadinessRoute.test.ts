@@ -53,6 +53,15 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       };
       browserRelayCompatibility: { status: string; uiRewriteRequired: boolean; requiredRpcs: string[] };
       reviewBlockers: string[];
+      reviewPacket: {
+        ready: boolean;
+        issue: string;
+        primaryRoute: string;
+        readinessRoute: string;
+        rpcRoute: string;
+        validationCommands: string[];
+        reviewerChecklist: string[];
+      };
       validationCommands: string[];
       qaEvidenceRoutes: Array<{ route: string; method: string; evidence: string[] }>;
       acceptanceCriteria: Array<{ name: string; passed: boolean; evidence: string }>;
@@ -86,6 +95,20 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
     assert.equal(payload.browserRelayCompatibility.status, "ready_for_browser_flow");
     assert.equal(payload.browserRelayCompatibility.uiRewriteRequired, false);
     assert.deepEqual(payload.reviewBlockers, []);
+    assert.deepEqual(payload.reviewPacket, {
+      ready: true,
+      issue: "agonza1/agentic-contact-center#85",
+      primaryRoute: "/api/realtime-shim/proof",
+      readinessRoute: "/api/realtime-shim/readiness",
+      rpcRoute: "POST /api/realtime-shim/rpc",
+      validationCommands: ["npm test", "npm run pipecat:check", "npm run proof:realtime-shim"],
+      reviewerChecklist: [
+        "Confirm the Gateway relay RPC boundary matches the OpenClaw browser voice surface.",
+        "Inspect proof.evidence.eventTranscript, proof.evidence.logs, and proof.evidence.latencyMarks for the one-turn path.",
+        "Inspect interruptionEvidence, inputCancelEvidence, errorEvidence, and invalidAudioResult for cancel/error behavior.",
+        "Confirm mockedPieces and limitations name the non-live rtc-asr, local LLM, and Kokoro boundaries.",
+      ],
+    });
     assert.deepEqual(payload.validationCommands, ["npm test", "npm run pipecat:check"]);
     assert.deepEqual(payload.qaEvidenceRoutes, [
       {

@@ -191,6 +191,20 @@ function buildRealtimeShimReadinessPayload(): object {
     },
     browserRelayCompatibility: proof.evidence.browserRelayCompatibility,
     reviewBlockers: proof.readyForIssue85Review ? [] : ["One or more Issue #85 acceptance criteria are not satisfied."],
+    reviewPacket: {
+      ready: proof.readyForIssue85Review,
+      issue: proof.issue,
+      primaryRoute: "/api/realtime-shim/proof",
+      readinessRoute: "/api/realtime-shim/readiness",
+      rpcRoute: proof.rpcCompatibility.route,
+      validationCommands: ["npm test", "npm run pipecat:check", "npm run proof:realtime-shim"],
+      reviewerChecklist: [
+        "Confirm the Gateway relay RPC boundary matches the OpenClaw browser voice surface.",
+        "Inspect proof.evidence.eventTranscript, proof.evidence.logs, and proof.evidence.latencyMarks for the one-turn path.",
+        "Inspect interruptionEvidence, inputCancelEvidence, errorEvidence, and invalidAudioResult for cancel/error behavior.",
+        "Confirm mockedPieces and limitations name the non-live rtc-asr, local LLM, and Kokoro boundaries.",
+      ],
+    },
     validationCommands: ["npm test", "npm run pipecat:check"],
     qaEvidenceRoutes: [
       {
