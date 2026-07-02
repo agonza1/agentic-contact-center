@@ -73,25 +73,40 @@ async function requestJson(port, route) {
 
 async function main() {
   const outputPath = resolveOutputPath();
-  const proof = await withServer(async (port) => {
-    const response = await requestJson(port, "/api/realtime-shim/proof");
+  const artifact = await withServer(async (port) => {
+    const [proofResponse, readinessResponse] = await Promise.all([
+      requestJson(port, "/api/realtime-shim/proof"),
+      requestJson(port, "/api/realtime-shim/readiness"),
+    ]);
 
-    assert.equal(response.statusCode, 200);
-    assert.equal(response.payload.ok, true);
-    assert.equal(response.payload.readyForIssue85Review, true);
-    assert.equal(response.payload.acceptanceSummary.oneLocalVoiceTurn, true);
-    assert.equal(response.payload.acceptanceSummary.interruptionCancelBehavior, true);
-    assert.equal(response.payload.acceptanceSummary.boundedErrorEvidence, true);
-    assert.equal(response.payload.evidence.qaChecklist.logEvidence, true);
+    assert.equal(proofResponse.statusCode, 200);
+    assert.equal(proofResponse.payload.ok, true);
+    assert.equal(proofResponse.payload.readyForIssue85Review, true);
+    assert.equal(proofResponse.payload.acceptanceSummary.oneLocalVoiceTurn, true);
+    assert.equal(proofResponse.payload.acceptanceSummary.interruptionCancelBehavior, true);
+    assert.equal(proofResponse.payload.acceptanceSummary.boundedErrorEvidence, true);
+    assert.equal(proofResponse.payload.evidence.qaChecklist.logEvidence, true);
 
-    return response.payload;
+    assert.equal(readinessResponse.statusCode, 200);
+    assert.equal(readinessResponse.payload.ok, true);
+    assert.equal(readinessResponse.payload.status, "ready_for_issue_85_review");
+    assert.deepEqual(readinessResponse.payload.reviewBlockers, []);
+    assert.equal(readinessResponse.payload.acceptanceCriteria.every((criterion) => criterion.passed), true);
+
+    return {
+      ok: true,
+      issue: proofResponse.payload.issue,
+      generatedAt: new Date().toISOString(),
+      readiness: readinessResponse.payload,
+      proof: proofResponse.payload,
+    };
   });
 
   await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, JSON.stringify(proof, null, 2) + "\n", "utf8");
+  await writeFile(outputPath, JSON.stringify(artifact, null, 2) + "\n", "utf8");
 
   console.log(`Saved realtime shim proof artifact to ${path.relative(process.cwd(), outputPath)}`);
-  console.log(`Issue #85 ready: ${proof.readyForIssue85Review ? "yes" : "no"}`);
+  console.log(`Issue #85 ready: ${artifact.proof.readyForIssue85Review ? "yes" : "no"}`);
 }
 
 main().catch((error) => {
