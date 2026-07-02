@@ -85,7 +85,10 @@ function buildRealtimeShimProofPayload(): object {
 
   const acceptanceSummary = {
     oneLocalVoiceTurn: evidence.qaChecklist.oneTurnEvidence && closeEvidence.state === "closed",
-    adapterContract: evidence.envelope.transport === "gateway-relay" && evidence.envelope.provider === "local-realtime-shim",
+    adapterContract:
+      evidence.envelope.transport === "gateway-relay" &&
+      evidence.envelope.provider === "local-realtime-shim" &&
+      buildRealtimeShimRpcSmoke().every((step) => step.ok),
     interruptionCancelBehavior:
       interruptionEvidence.qaChecklist.interruptionEvidence && inputCancelEvidence.qaChecklist.inputCancelEvidence,
     qaEvidence:
@@ -147,6 +150,7 @@ function buildRealtimeShimProofPayload(): object {
     acceptanceSummary,
     acceptanceDetails,
     readyForIssue85Review: Object.values(acceptanceSummary).every(Boolean),
+    rpcSmoke: buildRealtimeShimRpcSmoke(),
     evidence,
     closeEvidence,
     interruptionEvidence,
@@ -154,6 +158,46 @@ function buildRealtimeShimProofPayload(): object {
     errorEvidence,
     invalidAudioResult,
   };
+}
+
+function buildRealtimeShimRpcSmoke(): Array<{
+  method: string;
+  ok: boolean;
+  state?: string;
+  audioChunks?: number;
+  relayEvents?: number;
+  diagnostics?: number;
+}> {
+  const shim = new LocalRealtimeShimPrototype();
+  const audioBase64 = Buffer.from([9, 0, 10, 0]).toString("base64");
+  const steps = [
+    {
+      method: "talk.session.create",
+      params: { mode: "realtime", transport: "gateway-relay", relaySessionId: "local-rt-rpc-smoke" },
+    },
+    { method: "talk.session.appendAudio", params: { sessionId: "local-rt-rpc-smoke", audioBase64, timestamp: 12 } },
+    {
+      method: "talk.session.finalizeTurn",
+      params: { sessionId: "local-rt-rpc-smoke", transcriptText: "Need a retention credit." },
+    },
+    { method: "talk.session.getEvidence", params: { sessionId: "local-rt-rpc-smoke" } },
+    { method: "talk.session.close", params: { sessionId: "local-rt-rpc-smoke", reason: "complete" } },
+  ];
+
+  return steps.map((step) => {
+    const response = buildRealtimeShimRpcResponse(shim, step);
+    const result = isRecord(response) && isRecord(response.result) ? response.result : undefined;
+    const audioInput = result && isRecord(result.audioInput) ? result.audioInput : undefined;
+
+    return {
+      method: step.method,
+      ok: isRecord(response) && response.ok === true,
+      state: result ? getOptionalTrimmedString(result.state) : undefined,
+      audioChunks: typeof audioInput?.chunks === "number" ? audioInput.chunks : undefined,
+      relayEvents: Array.isArray(result?.relayEvents) ? result.relayEvents.length : undefined,
+      diagnostics: Array.isArray(result?.diagnostics) ? result.diagnostics.length : undefined,
+    };
+  });
 }
 
 function buildRealtimeShimReadinessPayload(): object {
