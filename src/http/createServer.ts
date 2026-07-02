@@ -248,6 +248,13 @@ function buildRealtimeShimReadinessPayload(): object {
     readyForIssue85Review: boolean;
     evidence: {
       browserRelayCompatibility: { status: string; uiRewriteRequired: boolean; requiredRpcs: string[] };
+      latencyBudget: {
+        profile: string;
+        targetFirstAudioMs: number;
+        targetSessionCloseMs: number;
+        modelGuidance: string;
+        status: string;
+      };
       mockedPieces: string[];
       limitations: string[];
       pipelineStages: Array<{ stage: string; status: string; mocked: boolean; evidence: string }>;
@@ -272,6 +279,7 @@ function buildRealtimeShimReadinessPayload(): object {
       boundedErrors: proof.rpcCompatibility.boundedErrors,
     },
     browserRelayCompatibility: proof.evidence.browserRelayCompatibility,
+    latencyBudget: proof.evidence.latencyBudget,
     reviewBlockers: proof.readyForIssue85Review ? [] : ["One or more Issue #85 acceptance criteria are not satisfied."],
     reviewPacket: {
       ready: proof.readyForIssue85Review,
@@ -313,7 +321,7 @@ function buildRealtimeShimReadinessPayload(): object {
       ],
       reviewerChecklist: [
         "Confirm the Gateway relay RPC boundary matches the OpenClaw browser voice surface.",
-        "Inspect proof.evidence.eventTranscript, proof.evidence.logs, and proof.evidence.latencyMarks for the one-turn path.",
+        "Inspect proof.evidence.eventTranscript, proof.evidence.logs, proof.evidence.latencyMarks, and latencyBudget for the one-turn path.",
         "Inspect interruptionEvidence, inputCancelEvidence, errorEvidence, and invalidAudioResult for cancel/error behavior.",
         "Confirm mockedPieces and limitations name the non-live rtc-asr, local LLM, and Kokoro boundaries.",
       ],
@@ -323,7 +331,7 @@ function buildRealtimeShimReadinessPayload(): object {
       {
         route: "/api/realtime-shim/proof",
         method: "GET",
-        evidence: ["logs", "eventTranscript", "timeline", "latencyMarks", "pipelineStages"],
+        evidence: ["logs", "eventTranscript", "timeline", "latencyMarks", "latencyBudget", "pipelineStages"],
       },
       {
         route: "/api/realtime-shim/rpc",
