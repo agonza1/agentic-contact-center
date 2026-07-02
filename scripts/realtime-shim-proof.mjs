@@ -118,6 +118,12 @@ async function main() {
       acceptanceCriteriaPassed: readinessResponse.payload.acceptanceCriteria.filter((criterion) => criterion.passed)
         .length,
       acceptanceCriteriaTotal: readinessResponse.payload.acceptanceCriteria.length,
+      cancelAndErrorEvidence: {
+        outputCancelled: proofResponse.payload.interruptionEvidence.turnSummary.outputCancelled,
+        inputCancelled: proofResponse.payload.inputCancelEvidence.turnSummary.inputCancelled,
+        boundedErrors: proofResponse.payload.errorEvidence.turnSummary.errorCount +
+          proofResponse.payload.invalidAudioResult.evidence.turnSummary.errorCount,
+      },
       evidence: {
         eventTranscriptLines: proofResponse.payload.evidence.qaEvidenceSummary.eventTranscriptLines,
         logLines: proofResponse.payload.evidence.qaEvidenceSummary.logLines,
