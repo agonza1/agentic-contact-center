@@ -226,6 +226,14 @@ The proof runner builds the TypeScript app, starts the server on an ephemeral po
 
 If `--out` is omitted, the artifact is written to `artifacts/demo-proof-<timestamp>.json`. `--latest-out` keeps a stable pointer for handoff. Use `npm run proof:pipecat -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json` when you want the Pipecat package self-check to gate the proof run. See [docs/demo-proof-runbook.md](docs/demo-proof-runbook.md) for the QA inspection checklist.
 
+Generate realtime shim issue #85 proof evidence:
+
+```bash
+npm run proof:realtime-shim -- --out artifacts/realtime-shim-proof.json
+```
+
+The realtime shim proof starts the compiled app on an ephemeral port, fetches `GET /api/realtime-shim/proof`, asserts the issue #85 readiness summary, and writes the Gateway relay/Local STT v1 evidence payload for review.
+
 Generate a ConversationAgentEvals-ready proof bundle with media artifacts:
 
 ```bash
@@ -241,6 +249,7 @@ The bundle writes `proof-bundle-manifest.json`, `conversation-agent-evals-assert
 - `npm test`: build and run Node tests from `dist/test/*.test.js`.
 - `npm start`: run the compiled server from `dist/src/index.js`.
 - `npm run proof`: build and run `scripts/demo-proof.mjs`.
+- `npm run proof:realtime-shim`: build and write the issue #85 realtime shim proof artifact.
 - `npm run pipecat:check`: verify the local `pipecat-ai` runtime package boundary without live telephony.
 - `npm run proof:pipecat`: run `pipecat:check` before the proof harness.
 - `npm run proof:bundle`: convert a proof JSON file into a ConversationAgentEvals-ready evidence bundle with media artifacts.
