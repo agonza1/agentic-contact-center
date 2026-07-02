@@ -18,6 +18,10 @@ function resolveArgPath(flag) {
   return undefined;
 }
 
+function hasArg(flag) {
+  return process.argv.includes(flag);
+}
+
 function resolveOutputPath() {
   const explicitOutputPath = resolveArgPath("--out");
   if (explicitOutputPath) {
@@ -29,7 +33,16 @@ function resolveOutputPath() {
 }
 
 function resolveLatestOutputPath() {
-  return resolveArgPath("--latest-out");
+  const explicitLatestOutputPath = resolveArgPath("--latest-out");
+  if (explicitLatestOutputPath) {
+    return explicitLatestOutputPath;
+  }
+
+  if (hasArg("--out")) {
+    return undefined;
+  }
+
+  return path.resolve(process.cwd(), "artifacts", "realtime-shim-proof-latest.json");
 }
 
 async function withServer(run) {

@@ -95,3 +95,30 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+test("realtime shim proof runner refreshes latest artifact by default", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const scriptPath = path.join(repoRoot, "scripts", "realtime-shim-proof.mjs");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "realtime-shim-proof-default-"));
+
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [scriptPath], {
+      cwd: tempDir,
+      env: {
+        ...process.env,
+        POC_CONFIG_PATH: path.join(repoRoot, "config", "poc.config.example.json"),
+      },
+    });
+
+    const outputMatch = stdout.match(/Saved realtime shim proof artifact to (artifacts\/realtime-shim-proof-[^\n]+\.json)/);
+    assert.ok(outputMatch, stdout);
+    assert.match(stdout, /Updated latest realtime shim proof artifact at artifacts\/realtime-shim-proof-latest\.json/);
+
+    const outputArtifact = JSON.parse(await readFile(path.join(tempDir, outputMatch[1]), "utf8"));
+    const latestArtifact = JSON.parse(await readFile(path.join(tempDir, "artifacts", "realtime-shim-proof-latest.json"), "utf8"));
+
+    assert.deepEqual(latestArtifact, outputArtifact);
+    assert.equal(latestArtifact.artifactSummary.acceptanceCriteriaPassed, 6);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
