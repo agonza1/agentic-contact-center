@@ -13,13 +13,21 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
   const scriptPath = path.join(repoRoot, "scripts", "realtime-shim-proof.mjs");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "realtime-shim-proof-"));
   const outputPath = path.join(tempDir, "realtime-shim-proof.json");
+  const latestOutputPath = path.join(tempDir, "realtime-shim-proof-latest.json");
 
   try {
-    const { stdout } = await execFileAsync(process.execPath, [scriptPath, "--out", outputPath], {
+    const { stdout } = await execFileAsync(process.execPath, [
+      scriptPath,
+      "--out",
+      outputPath,
+      "--latest-out",
+      latestOutputPath,
+    ], {
       cwd: repoRoot,
     });
 
     assert.match(stdout, /Saved realtime shim proof artifact/);
+    assert.match(stdout, /Updated latest realtime shim proof artifact/);
     assert.match(stdout, /Issue #85 ready: yes/);
     assert.match(stdout, /Acceptance criteria: 6\/6/);
 
@@ -80,6 +88,9 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
     assert.equal(artifact.proof.ok, true);
     assert.equal(artifact.proof.route, "/api/realtime-shim/proof");
     assert.equal(artifact.proof.readyForIssue85Review, true);
+
+    const latestArtifact = JSON.parse(await readFile(latestOutputPath, "utf8"));
+    assert.deepEqual(latestArtifact, artifact);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

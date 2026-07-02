@@ -28,6 +28,10 @@ function resolveOutputPath() {
   return path.resolve(process.cwd(), "artifacts", `realtime-shim-proof-${timestamp}.json`);
 }
 
+function resolveLatestOutputPath() {
+  return resolveArgPath("--latest-out");
+}
+
 async function withServer(run) {
   const server = buildHttpServer(loadPocConfig());
 
@@ -73,6 +77,7 @@ async function requestJson(port, route) {
 
 async function main() {
   const outputPath = resolveOutputPath();
+  const latestOutputPath = resolveLatestOutputPath();
   const artifact = await withServer(async (port) => {
     const [proofResponse, readinessResponse] = await Promise.all([
       requestJson(port, "/api/realtime-shim/proof"),
@@ -122,7 +127,15 @@ async function main() {
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, JSON.stringify(artifact, null, 2) + "\n", "utf8");
 
+  if (latestOutputPath && latestOutputPath !== outputPath) {
+    await mkdir(path.dirname(latestOutputPath), { recursive: true });
+    await writeFile(latestOutputPath, JSON.stringify(artifact, null, 2) + "\n", "utf8");
+  }
+
   console.log(`Saved realtime shim proof artifact to ${path.relative(process.cwd(), outputPath)}`);
+  if (latestOutputPath) {
+    console.log(`Updated latest realtime shim proof artifact at ${path.relative(process.cwd(), latestOutputPath)}`);
+  }
   console.log(`Issue #85 ready: ${artifact.proof.readyForIssue85Review ? "yes" : "no"}`);
   console.log(
     `Acceptance criteria: ${artifact.artifactSummary.acceptanceCriteriaPassed}/${artifact.artifactSummary.acceptanceCriteriaTotal}`,
