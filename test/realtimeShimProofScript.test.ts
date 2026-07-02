@@ -21,11 +21,26 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
 
     assert.match(stdout, /Saved realtime shim proof artifact/);
     assert.match(stdout, /Issue #85 ready: yes/);
+    assert.match(stdout, /Acceptance criteria: 6\/6/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       ok: boolean;
       issue: string;
       generatedAt: string;
+      artifactSummary: {
+        readyForIssue85Review: boolean;
+        readinessStatus: string;
+        reviewBlockers: string[];
+        acceptanceCriteriaPassed: number;
+        acceptanceCriteriaTotal: number;
+        evidence: {
+          eventTranscriptLines: number;
+          logLines: number;
+          timelineEvents: number;
+          latencyMarks: number;
+          relayEvents: number;
+        };
+      };
       readiness: {
         ok: boolean;
         route: string;
@@ -43,6 +58,20 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
     assert.equal(artifact.ok, true);
     assert.equal(artifact.issue, "agonza1/agentic-contact-center#85");
     assert.doesNotThrow(() => new Date(artifact.generatedAt).toISOString());
+    assert.deepEqual(artifact.artifactSummary, {
+      readyForIssue85Review: true,
+      readinessStatus: "ready_for_issue_85_review",
+      reviewBlockers: [],
+      acceptanceCriteriaPassed: 6,
+      acceptanceCriteriaTotal: 6,
+      evidence: {
+        eventTranscriptLines: 13,
+        logLines: 13,
+        timelineEvents: 13,
+        latencyMarks: 3,
+        relayEvents: 1,
+      },
+    });
     assert.equal(artifact.readiness.ok, true);
     assert.equal(artifact.readiness.route, "/api/realtime-shim/readiness");
     assert.equal(artifact.readiness.status, "ready_for_issue_85_review");

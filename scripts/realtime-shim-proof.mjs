@@ -93,10 +93,27 @@ async function main() {
     assert.deepEqual(readinessResponse.payload.reviewBlockers, []);
     assert.equal(readinessResponse.payload.acceptanceCriteria.every((criterion) => criterion.passed), true);
 
+    const artifactSummary = {
+      readyForIssue85Review: proofResponse.payload.readyForIssue85Review,
+      readinessStatus: readinessResponse.payload.status,
+      reviewBlockers: readinessResponse.payload.reviewBlockers,
+      acceptanceCriteriaPassed: readinessResponse.payload.acceptanceCriteria.filter((criterion) => criterion.passed)
+        .length,
+      acceptanceCriteriaTotal: readinessResponse.payload.acceptanceCriteria.length,
+      evidence: {
+        eventTranscriptLines: proofResponse.payload.evidence.qaEvidenceSummary.eventTranscriptLines,
+        logLines: proofResponse.payload.evidence.qaEvidenceSummary.logLines,
+        timelineEvents: proofResponse.payload.evidence.qaEvidenceSummary.timelineEvents,
+        latencyMarks: proofResponse.payload.evidence.qaEvidenceSummary.latencyMarks,
+        relayEvents: proofResponse.payload.evidence.qaEvidenceSummary.relayEvents,
+      },
+    };
+
     return {
       ok: true,
       issue: proofResponse.payload.issue,
       generatedAt: new Date().toISOString(),
+      artifactSummary,
       readiness: readinessResponse.payload,
       proof: proofResponse.payload,
     };
@@ -107,6 +124,9 @@ async function main() {
 
   console.log(`Saved realtime shim proof artifact to ${path.relative(process.cwd(), outputPath)}`);
   console.log(`Issue #85 ready: ${artifact.proof.readyForIssue85Review ? "yes" : "no"}`);
+  console.log(
+    `Acceptance criteria: ${artifact.artifactSummary.acceptanceCriteriaPassed}/${artifact.artifactSummary.acceptanceCriteriaTotal}`,
+  );
 }
 
 main().catch((error) => {
