@@ -156,6 +156,80 @@ function buildRealtimeShimProofPayload(): object {
   };
 }
 
+function buildRealtimeShimReadinessPayload(): object {
+  const proof = buildRealtimeShimProofPayload() as {
+    issue: string;
+    rpcBoundary: string;
+    localSttContract: string;
+    rpcCompatibility: { route: string; supportedRpcs: string[]; statefulSession: boolean; boundedErrors: boolean };
+    acceptanceSummary: Record<string, boolean>;
+    readyForIssue85Review: boolean;
+    evidence: {
+      browserRelayCompatibility: { status: string; uiRewriteRequired: boolean; requiredRpcs: string[] };
+      mockedPieces: string[];
+      limitations: string[];
+      pipelineStages: Array<{ stage: string; status: string; mocked: boolean; evidence: string }>;
+    };
+    closeEvidence: { state: string };
+    interruptionEvidence: { qaChecklist: Record<string, boolean> };
+    inputCancelEvidence: { qaChecklist: Record<string, boolean> };
+    errorEvidence: { qaChecklist: Record<string, boolean> };
+  };
+
+  return {
+    ok: true,
+    route: "/api/realtime-shim/readiness",
+    issue: proof.issue,
+    status: proof.readyForIssue85Review ? "ready_for_issue_85_review" : "not_ready",
+    adapter: {
+      rpcBoundary: proof.rpcBoundary,
+      localSttContract: proof.localSttContract,
+      rpcRoute: proof.rpcCompatibility.route,
+      supportedRpcs: proof.rpcCompatibility.supportedRpcs,
+      statefulSession: proof.rpcCompatibility.statefulSession,
+      boundedErrors: proof.rpcCompatibility.boundedErrors,
+    },
+    browserRelayCompatibility: proof.evidence.browserRelayCompatibility,
+    acceptanceCriteria: [
+      {
+        name: "adapter_contract",
+        passed: proof.acceptanceSummary.adapterContract,
+        evidence: `${proof.rpcBoundary} RPCs expose ${proof.localSttContract}`,
+      },
+      {
+        name: "one_local_voice_turn",
+        passed: proof.acceptanceSummary.oneLocalVoiceTurn && proof.closeEvidence.state === "closed",
+        evidence: "Proof flow ingests audio, finalizes transcript, emits output audio, and closes cleanly.",
+      },
+      {
+        name: "interruption_cancel_behavior",
+        passed: proof.acceptanceSummary.interruptionCancelBehavior &&
+          proof.interruptionEvidence.qaChecklist.interruptionEvidence &&
+          proof.inputCancelEvidence.qaChecklist.inputCancelEvidence,
+        evidence: "Barge-in clear and input cancel are both represented in deterministic Gateway relay evidence.",
+      },
+      {
+        name: "qa_evidence",
+        passed: proof.acceptanceSummary.qaEvidence,
+        evidence: "Proof payload includes logs, event transcript, timeline, latency marks, and pipeline stage evidence.",
+      },
+      {
+        name: "mocked_pieces_isolated",
+        passed: proof.acceptanceSummary.mockedPiecesIsolated,
+        evidence: proof.evidence.mockedPieces.join(", "),
+      },
+      {
+        name: "bounded_error_evidence",
+        passed: proof.acceptanceSummary.boundedErrorEvidence && proof.errorEvidence.qaChecklist.boundedErrorEvidence,
+        evidence: "Local STT and malformed audio failures emit bounded retryability/error evidence.",
+      },
+    ],
+    pipelineStages: proof.evidence.pipelineStages,
+    mockedPieces: proof.evidence.mockedPieces,
+    limitations: proof.evidence.limitations,
+  };
+}
+
 function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: unknown): object {
   if (!isRecord(body)) {
     return { ok: false, error: "json_object_required" };
@@ -2141,6 +2215,11 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/api/realtime-shim/proof") {
     writeJson(response, 200, buildRealtimeShimProofPayload());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/realtime-shim/readiness") {
+    writeJson(response, 200, buildRealtimeShimReadinessPayload());
     return;
   }
 
