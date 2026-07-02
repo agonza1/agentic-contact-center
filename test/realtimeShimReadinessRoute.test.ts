@@ -109,7 +109,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         "Confirm mockedPieces and limitations name the non-live rtc-asr, local LLM, and Kokoro boundaries.",
       ],
     });
-    assert.deepEqual(payload.validationCommands, ["npm test", "npm run pipecat:check"]);
+    assert.deepEqual(payload.validationCommands, ["npm test", "npm run pipecat:check", "npm run proof:realtime-shim"]);
     assert.deepEqual(payload.qaEvidenceRoutes, [
       {
         route: "/api/realtime-shim/proof",

@@ -249,7 +249,7 @@ function buildRealtimeShimReadinessPayload(): object {
         "Confirm mockedPieces and limitations name the non-live rtc-asr, local LLM, and Kokoro boundaries.",
       ],
     },
-    validationCommands: ["npm test", "npm run pipecat:check"],
+    validationCommands: ["npm test", "npm run pipecat:check", "npm run proof:realtime-shim"],
     qaEvidenceRoutes: [
       {
         route: "/api/realtime-shim/proof",
