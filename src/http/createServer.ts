@@ -190,6 +190,8 @@ function buildRealtimeShimReadinessPayload(): object {
       boundedErrors: proof.rpcCompatibility.boundedErrors,
     },
     browserRelayCompatibility: proof.evidence.browserRelayCompatibility,
+    reviewBlockers: proof.readyForIssue85Review ? [] : ["One or more Issue #85 acceptance criteria are not satisfied."],
+    validationCommands: ["npm test", "npm run pipecat:check"],
     qaEvidenceRoutes: [
       {
         route: "/api/realtime-shim/proof",
