@@ -45,6 +45,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       rpcBoundary: string;
       localSttContract: string;
       rpcCompatibility: { route: string; supportedRpcs: string[]; statefulSession: boolean; boundedErrors: boolean };
+      rpcSmoke: Array<{ method: string; ok: boolean; state?: string; audioChunks?: number; relayEvents?: number; diagnostics?: number }>;
       acceptanceSummary: Record<string, boolean>;
       acceptanceDetails: Record<string, { status: string; evidence: string; routes: string[] }>;
       readyForIssue85Review: boolean;
@@ -143,6 +144,15 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       statefulSession: true,
       boundedErrors: true,
     });
+    assert.deepEqual(payload.rpcSmoke.map((step) => [step.method, step.ok, step.state]), [
+      ["talk.session.create", true, undefined],
+      ["talk.session.appendAudio", true, "listening"],
+      ["talk.session.finalizeTurn", true, "speaking"],
+      ["talk.session.getEvidence", true, "speaking"],
+      ["talk.session.close", true, "closed"],
+    ]);
+    assert.equal(payload.rpcSmoke[1].audioChunks, 1);
+    assert.equal(payload.rpcSmoke[2].relayEvents, 1);
     assert.deepEqual(payload.acceptanceSummary, {
       oneLocalVoiceTurn: true,
       adapterContract: true,
