@@ -65,6 +65,13 @@ export interface LocalRealtimeShimLatencyMark {
   withinBudget: boolean;
 }
 
+export interface LocalRealtimeShimLatencySummary {
+  measuredMarks: number;
+  maxElapsedMs: number;
+  slowestMark?: LocalRealtimeShimLatencyMark["name"];
+  allWithinBudget: boolean;
+}
+
 export interface LocalRealtimeShimPipelineStage {
   stage: "gateway_relay" | "local_stt" | "local_llm" | "kokoro_tts";
   status: "ready" | "active" | "mocked";
@@ -97,6 +104,7 @@ export interface LocalRealtimeShimEvidence {
   eventTranscript: string[];
   logs: string[];
   latencyMarks: LocalRealtimeShimLatencyMark[];
+  latencySummary: LocalRealtimeShimLatencySummary;
   pipelineStages: LocalRealtimeShimPipelineStage[];
   localSttMessages: Array<LocalSttStartMessage | LocalSttControlMessage | { type: "audio"; byteLength: number }>;
   toolResults: Array<RealtimeShimToolResultRequest & { status: "not_applicable" }>;
@@ -438,6 +446,7 @@ export class LocalRealtimeShimPrototype {
       eventTranscript: timeline.map(formatTimelineEntry),
       logs: timeline.map(formatLogEntry),
       latencyMarks: [...session.latencyMarks],
+      latencySummary: buildLatencySummary(session.latencyMarks),
       pipelineStages: buildPipelineStages(session),
       localSttMessages: [...session.localSttMessages],
       toolResults: [...session.toolResults],
@@ -576,6 +585,27 @@ function buildPipelineStages(session: LocalRealtimeShimSession): LocalRealtimeSh
         : "Kokoro TTS output is not emitted until response text is available",
     },
   ];
+}
+
+function buildLatencySummary(latencyMarks: LocalRealtimeShimLatencyMark[]): LocalRealtimeShimLatencySummary {
+  if (latencyMarks.length === 0) {
+    return {
+      measuredMarks: 0,
+      maxElapsedMs: 0,
+      allWithinBudget: true,
+    };
+  }
+
+  const slowestMark = latencyMarks.reduce((slowest, mark) =>
+    mark.elapsedMs > slowest.elapsedMs ? mark : slowest,
+  );
+
+  return {
+    measuredMarks: latencyMarks.length,
+    maxElapsedMs: slowestMark.elapsedMs,
+    slowestMark: slowestMark.name,
+    allWithinBudget: latencyMarks.every((mark) => mark.withinBudget),
+  };
 }
 
 function buildQaChecklist(
