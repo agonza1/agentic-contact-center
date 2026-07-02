@@ -91,6 +91,19 @@ export interface LocalRealtimeShimQaEvidenceSummary {
   reviewReady: boolean;
 }
 
+export interface LocalRealtimeShimBrowserTurnLifecycleStep {
+  step: "create" | "append_audio" | "finalize_turn" | "output_audio" | "cancel" | "close";
+  passed: boolean;
+  evidence: string;
+}
+
+export interface LocalRealtimeShimBrowserTurnLifecycle {
+  existingOpenClawFlow: "RealtimeTalkSession gateway-relay";
+  uiRewriteRequired: false;
+  readyForExistingOpenClawFlow: boolean;
+  steps: LocalRealtimeShimBrowserTurnLifecycleStep[];
+}
+
 export interface LocalRealtimeShimTurnSummary {
   inputAudioChunks: number;
   inputAudioBytes: number;
@@ -128,6 +141,7 @@ export interface LocalRealtimeShimEvidence {
   logs: string[];
   latencyMarks: LocalRealtimeShimLatencyMark[];
   latencySummary: LocalRealtimeShimLatencySummary;
+  browserTurnLifecycle: LocalRealtimeShimBrowserTurnLifecycle;
   pipelineStages: LocalRealtimeShimPipelineStage[];
   qaEvidenceSummary: LocalRealtimeShimQaEvidenceSummary;
   turnSummary: LocalRealtimeShimTurnSummary;
@@ -476,6 +490,7 @@ export class LocalRealtimeShimPrototype {
       logs,
       latencyMarks: [...session.latencyMarks],
       latencySummary: buildLatencySummary(session.latencyMarks),
+      browserTurnLifecycle: buildBrowserTurnLifecycle(session),
       pipelineStages,
       qaEvidenceSummary: buildQaEvidenceSummary(session, eventTranscript, logs, pipelineStages, qaChecklist),
       turnSummary: buildTurnSummary(session),
@@ -595,6 +610,64 @@ function buildBrowserRelayCompatibility(
     inputAudio: "pcm16 base64 chunks at 24kHz",
     outputAudio: "pcm16 base64 relay audio at 24kHz",
     status: oneTurnCompleted ? "ready_for_browser_flow" : "awaiting_audio",
+  };
+}
+
+function buildBrowserTurnLifecycle(session: LocalRealtimeShimSession): LocalRealtimeShimBrowserTurnLifecycle {
+  const hasReady = session.diagnostics.some((event) => event.type === "ready");
+  const hasInputAudio = session.diagnostics.some((event) => event.type === "input.audio.delta");
+  const hasFinalTranscript = session.diagnostics.some((event) => event.type === "transcript.done");
+  const hasOutputAudio = session.relayEvents.some((event) => event.type === "audio");
+  const hasCancel =
+    session.relayEvents.some((event) => event.type === "clear") ||
+    session.diagnostics.some((event) => event.type === "input.cancelled");
+  const hasClose = session.relayEvents.some((event) => event.type === "close");
+  const steps: LocalRealtimeShimBrowserTurnLifecycleStep[] = [
+    {
+      step: "create",
+      passed: hasReady,
+      evidence: hasReady ? "Session envelope is ready for the Gateway relay." : "No ready diagnostic recorded yet.",
+    },
+    {
+      step: "append_audio",
+      passed: hasInputAudio,
+      evidence: hasInputAudio
+        ? String(session.audioChunksReceived) + " PCM16 input chunk(s) accepted from the browser relay."
+        : "No browser relay audio has been appended.",
+    },
+    {
+      step: "finalize_turn",
+      passed: hasFinalTranscript,
+      evidence: hasFinalTranscript
+        ? "Local STT v1 finalize produced a transcript.done diagnostic."
+        : "No finalized transcript has been recorded.",
+    },
+    {
+      step: "output_audio",
+      passed: hasOutputAudio,
+      evidence: hasOutputAudio
+        ? String(session.relayEvents.filter((event) => event.type === "audio").length) + " output audio relay event(s) emitted."
+        : "No output audio has been emitted yet.",
+    },
+    {
+      step: "cancel",
+      passed: hasCancel,
+      evidence: hasCancel
+        ? "Cancel evidence is represented by relay clear or Local STT cancel diagnostics."
+        : "Cancel path has not been exercised for this session.",
+    },
+    {
+      step: "close",
+      passed: hasClose,
+      evidence: hasClose ? "Close relay event recorded for session teardown." : "Session has not been closed.",
+    },
+  ];
+
+  return {
+    existingOpenClawFlow: "RealtimeTalkSession gateway-relay",
+    uiRewriteRequired: false,
+    readyForExistingOpenClawFlow: steps.slice(0, 4).every((step) => step.passed),
+    steps,
   };
 }
 
