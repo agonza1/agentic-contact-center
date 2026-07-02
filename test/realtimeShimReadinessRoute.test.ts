@@ -90,7 +90,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         evidence: ["logs", "eventTranscript", "timeline", "latencyMarks", "pipelineStages"],
       },
       {
-        route: "POST /api/realtime-shim/rpc",
+        route: "/api/realtime-shim/rpc",
         method: "POST",
         evidence: ["statefulSession", "cancelInput", "cancelOutput", "boundedErrors", "toolResults"],
       },

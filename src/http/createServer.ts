@@ -197,7 +197,7 @@ function buildRealtimeShimReadinessPayload(): object {
         evidence: ["logs", "eventTranscript", "timeline", "latencyMarks", "pipelineStages"],
       },
       {
-        route: proof.rpcCompatibility.route,
+        route: "/api/realtime-shim/rpc",
         method: "POST",
         evidence: ["statefulSession", "cancelInput", "cancelOutput", "boundedErrors", "toolResults"],
       },
