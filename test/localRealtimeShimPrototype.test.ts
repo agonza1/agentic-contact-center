@@ -41,6 +41,43 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
     bytesReceived: 8,
     lastTimestamp: 42,
   });
+  assert.deepEqual(evidence.browserTurnLifecycle, {
+    existingOpenClawFlow: "RealtimeTalkSession gateway-relay",
+    uiRewriteRequired: false,
+    readyForExistingOpenClawFlow: true,
+    steps: [
+      {
+        step: "create",
+        passed: true,
+        evidence: "Session envelope is ready for the Gateway relay.",
+      },
+      {
+        step: "append_audio",
+        passed: true,
+        evidence: "1 PCM16 input chunk(s) accepted from the browser relay.",
+      },
+      {
+        step: "finalize_turn",
+        passed: true,
+        evidence: "Local STT v1 finalize produced a transcript.done diagnostic.",
+      },
+      {
+        step: "output_audio",
+        passed: true,
+        evidence: "1 output audio relay event(s) emitted.",
+      },
+      {
+        step: "cancel",
+        passed: false,
+        evidence: "Cancel path has not been exercised for this session.",
+      },
+      {
+        step: "close",
+        passed: false,
+        evidence: "Session has not been closed.",
+      },
+    ],
+  });
   assert.deepEqual(evidence.localSttMessages.slice(0, 3), [
     {
       type: "start",
