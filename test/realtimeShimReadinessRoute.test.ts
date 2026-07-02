@@ -52,6 +52,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         boundedErrors: boolean;
       };
       browserRelayCompatibility: { status: string; uiRewriteRequired: boolean; requiredRpcs: string[] };
+      qaEvidenceRoutes: Array<{ route: string; method: string; evidence: string[] }>;
       acceptanceCriteria: Array<{ name: string; passed: boolean; evidence: string }>;
       pipelineStages: Array<{ stage: string; status: string; mocked: boolean; evidence: string }>;
       mockedPieces: string[];
@@ -82,6 +83,18 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
     });
     assert.equal(payload.browserRelayCompatibility.status, "ready_for_browser_flow");
     assert.equal(payload.browserRelayCompatibility.uiRewriteRequired, false);
+    assert.deepEqual(payload.qaEvidenceRoutes, [
+      {
+        route: "/api/realtime-shim/proof",
+        method: "GET",
+        evidence: ["logs", "eventTranscript", "timeline", "latencyMarks", "pipelineStages"],
+      },
+      {
+        route: "POST /api/realtime-shim/rpc",
+        method: "POST",
+        evidence: ["statefulSession", "cancelInput", "cancelOutput", "boundedErrors", "toolResults"],
+      },
+    ]);
     assert.equal(payload.acceptanceCriteria.length, 6);
     assert.deepEqual(
       Object.fromEntries(payload.acceptanceCriteria.map((criterion) => [criterion.name, criterion.passed])),

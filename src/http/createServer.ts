@@ -190,6 +190,18 @@ function buildRealtimeShimReadinessPayload(): object {
       boundedErrors: proof.rpcCompatibility.boundedErrors,
     },
     browserRelayCompatibility: proof.evidence.browserRelayCompatibility,
+    qaEvidenceRoutes: [
+      {
+        route: "/api/realtime-shim/proof",
+        method: "GET",
+        evidence: ["logs", "eventTranscript", "timeline", "latencyMarks", "pipelineStages"],
+      },
+      {
+        route: proof.rpcCompatibility.route,
+        method: "POST",
+        evidence: ["statefulSession", "cancelInput", "cancelOutput", "boundedErrors", "toolResults"],
+      },
+    ],
     acceptanceCriteria: [
       {
         name: "adapter_contract",
