@@ -166,6 +166,7 @@ The flow enters `policy_hold` before unsafe retention offers, requests operator 
 - `GET /api/queue`: return queue summary metadata without full call payloads.
 - `GET /api/operator/actions`: expose the Slack-ready operator action catalog with command examples, reason/pending-call requirements, HTTP body templates, and outcome hints for console buttons.
 - `GET /api/realtime-shim/proof`: expose deterministic Gateway relay and Local STT v1 evidence for the mocked realtime shim path.
+- `GET /api/realtime-shim/readiness`: summarize Issue #85 acceptance readiness, adapter shape, browser relay compatibility, mocked pieces, and limitations from the proof evidence.
 - `POST /api/realtime-shim/rpc`: exercise the `talk.session.*` Gateway relay RPC boundary with persistent local shim session state, including `talk.session.cancelInput` input-buffer cancellation, `talk.session.recordError` bounded Local STT failure evidence, and read-only `talk.session.getEvidence` QA snapshots.
 - `GET /api/calls/:callId`: fetch the current call snapshot.
 - `GET /api/calls/:callId/transcript`: fetch filterable transcript pages.
