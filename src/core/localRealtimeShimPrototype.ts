@@ -79,6 +79,18 @@ export interface LocalRealtimeShimPipelineStage {
   evidence: string;
 }
 
+export interface LocalRealtimeShimQaEvidenceSummary {
+  timelineEvents: number;
+  eventTranscriptLines: number;
+  logLines: number;
+  relayEvents: number;
+  diagnostics: number;
+  latencyMarks: number;
+  pipelineStages: number;
+  lastEvent?: string;
+  reviewReady: boolean;
+}
+
 export interface LocalRealtimeShimEvidence {
   envelope: RealtimeShimSessionEnvelope;
   state: LocalRealtimeShimState;
@@ -106,6 +118,7 @@ export interface LocalRealtimeShimEvidence {
   latencyMarks: LocalRealtimeShimLatencyMark[];
   latencySummary: LocalRealtimeShimLatencySummary;
   pipelineStages: LocalRealtimeShimPipelineStage[];
+  qaEvidenceSummary: LocalRealtimeShimQaEvidenceSummary;
   localSttMessages: Array<LocalSttStartMessage | LocalSttControlMessage | { type: "audio"; byteLength: number }>;
   toolResults: Array<RealtimeShimToolResultRequest & { status: "not_applicable" }>;
   qaChecklist: {
@@ -427,6 +440,10 @@ export class LocalRealtimeShimPrototype {
       "turn endpointing is explicit through finalizeTurn for the first deterministic proof",
     ];
     const timeline = [...session.timeline];
+    const eventTranscript = timeline.map(formatTimelineEntry);
+    const logs = timeline.map(formatLogEntry);
+    const pipelineStages = buildPipelineStages(session);
+    const qaChecklist = buildQaChecklist(session, mockedPieces);
 
     return {
       envelope: session.envelope,
@@ -443,14 +460,15 @@ export class LocalRealtimeShimPrototype {
       diagnostics: [...session.diagnostics],
       relayEvents: [...session.relayEvents],
       timeline,
-      eventTranscript: timeline.map(formatTimelineEntry),
-      logs: timeline.map(formatLogEntry),
+      eventTranscript,
+      logs,
       latencyMarks: [...session.latencyMarks],
       latencySummary: buildLatencySummary(session.latencyMarks),
-      pipelineStages: buildPipelineStages(session),
+      pipelineStages,
+      qaEvidenceSummary: buildQaEvidenceSummary(session, eventTranscript, logs, pipelineStages, qaChecklist),
       localSttMessages: [...session.localSttMessages],
       toolResults: [...session.toolResults],
-      qaChecklist: buildQaChecklist(session, mockedPieces),
+      qaChecklist,
       mockedPieces,
       limitations,
     };
@@ -628,6 +646,32 @@ function buildQaChecklist(
     eventTranscriptEvidence: session.timeline.length > 0,
     logEvidence: session.timeline.length > 0,
     mockedPiecesNamed: mockedPieces.length > 0,
+  };
+}
+
+function buildQaEvidenceSummary(
+  session: LocalRealtimeShimSession,
+  eventTranscript: string[],
+  logs: string[],
+  pipelineStages: LocalRealtimeShimPipelineStage[],
+  qaChecklist: LocalRealtimeShimEvidence["qaChecklist"],
+): LocalRealtimeShimQaEvidenceSummary {
+  const lastEvent = eventTranscript.at(-1);
+
+  return {
+    timelineEvents: session.timeline.length,
+    eventTranscriptLines: eventTranscript.length,
+    logLines: logs.length,
+    relayEvents: session.relayEvents.length,
+    diagnostics: session.diagnostics.length,
+    latencyMarks: session.latencyMarks.length,
+    pipelineStages: pipelineStages.length,
+    ...(lastEvent ? { lastEvent } : {}),
+    reviewReady:
+      qaChecklist.eventTranscriptEvidence &&
+      qaChecklist.logEvidence &&
+      qaChecklist.mockedPiecesNamed &&
+      pipelineStages.length === 4,
   };
 }
 
