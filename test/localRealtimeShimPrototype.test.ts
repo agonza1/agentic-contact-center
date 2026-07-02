@@ -102,6 +102,12 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
     { name: "transcript_final", elapsedMs: 75, budgetMs: 250, withinBudget: true },
     { name: "output_first_audio", elapsedMs: 135, budgetMs: 500, withinBudget: true },
   ]);
+  assert.deepEqual(evidence.latencySummary, {
+    measuredMarks: 3,
+    maxElapsedMs: 135,
+    slowestMark: "output_first_audio",
+    allWithinBudget: true,
+  });
   assert.deepEqual(evidence.pipelineStages.map((stage) => [stage.stage, stage.status, stage.mocked]), [
     ["gateway_relay", "active", false],
     ["local_stt", "active", true],
@@ -238,6 +244,12 @@ test("local realtime shim prototype models barge-in clear and idempotent close",
     elapsedMs: 150,
     budgetMs: 1000,
     withinBudget: true,
+  });
+  assert.deepEqual(closed.latencySummary, {
+    measuredMarks: 4,
+    maxElapsedMs: 150,
+    slowestMark: "session_closed",
+    allWithinBudget: true,
   });
   assert.deepEqual(closedAgain.latencyMarks, closed.latencyMarks);
   assert.deepEqual(closedAgain.relayEvents, closed.relayEvents);
@@ -385,6 +397,11 @@ test("local realtime shim prototype records malformed gateway audio without star
     bytesReceived: 0,
   });
   assert.deepEqual(result.evidence.localSttMessages, []);
+  assert.deepEqual(result.evidence.latencySummary, {
+    measuredMarks: 0,
+    maxElapsedMs: 0,
+    allWithinBudget: true,
+  });
   assert.deepEqual(result.evidence.relayEvents.at(-1), {
     relaySessionId: "local-rt-invalid-audio",
     sessionId: "local-rt-invalid-audio",
