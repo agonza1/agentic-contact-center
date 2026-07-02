@@ -124,6 +124,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         "talk.session.getEvidence",
         "talk.session.cancelOutput",
         "talk.session.cancelInput",
+        "talk.session.recordError",
         "talk.session.submitToolResult",
         "talk.session.close",
       ],

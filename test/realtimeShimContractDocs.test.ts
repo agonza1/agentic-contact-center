@@ -20,6 +20,7 @@ test("Realtime shim contract documents the Local STT v1 lifecycle mapping", () =
     "talk.session.appendAudio",
     "talk.session.getEvidence",
     "talk.session.cancelOutput",
+    "talk.session.recordError",
     "talk.session.submitToolResult",
     "talk.session.close",
     "Gateway Relay RPC Contract",

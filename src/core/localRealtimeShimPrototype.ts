@@ -529,6 +529,7 @@ function buildBrowserRelayCompatibility(
       "talk.session.getEvidence",
       "talk.session.cancelOutput",
       "talk.session.cancelInput",
+      "talk.session.recordError",
       "talk.session.submitToolResult",
       "talk.session.close",
     ],

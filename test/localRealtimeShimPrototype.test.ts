@@ -25,6 +25,7 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
       "talk.session.getEvidence",
       "talk.session.cancelOutput",
       "talk.session.cancelInput",
+      "talk.session.recordError",
       "talk.session.submitToolResult",
       "talk.session.close",
     ],
