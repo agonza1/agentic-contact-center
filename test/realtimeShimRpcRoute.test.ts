@@ -132,6 +132,7 @@ test("POST /api/realtime-shim/rpc preserves session state across Gateway relay R
         "talk.session.getEvidence",
         "talk.session.cancelOutput",
         "talk.session.cancelInput",
+        "talk.session.recordError",
         "talk.session.submitToolResult",
         "talk.session.close",
       ],
@@ -187,6 +188,23 @@ test("POST /api/realtime-shim/rpc preserves session state across Gateway relay R
     assert.equal(inputCancelled.payload.result.localSttMessages.at(-1).type, "cancel");
     assert.equal(inputCancelled.payload.result.diagnostics.at(-1).type, "input.cancelled");
     assert.equal(inputCancelled.payload.result.qaChecklist.inputCancelEvidence, true);
+
+    const recoverableError = await postRpc(address.port, {
+      method: "talk.session.recordError",
+      params: {
+        sessionId: "local-rt-rpc",
+        code: "stream_warning",
+        message: "partial frame arrived late",
+        retryable: true,
+      },
+    });
+
+    assert.equal(recoverableError.statusCode, 200);
+    assert.equal(recoverableError.payload.ok, true);
+    assert.equal(recoverableError.payload.result.state, "listening");
+    assert.equal(recoverableError.payload.result.relayEvents.at(-1).type, "error");
+    assert.equal(recoverableError.payload.result.relayEvents.at(-1).code, "stream_warning");
+    assert.equal(recoverableError.payload.result.qaChecklist.boundedErrorEvidence, true);
 
     const toolResult = await postRpc(address.port, {
       method: "talk.session.submitToolResult",

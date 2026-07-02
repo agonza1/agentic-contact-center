@@ -243,6 +243,19 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       };
     }
 
+    if (method === "talk.session.recordError") {
+      return {
+        ok: true,
+        method,
+        result: shim.recordLocalSttError({
+          sessionId: getOptionalTrimmedString(params.sessionId) ?? "",
+          code: getOptionalTrimmedString(params.code) ?? "local_stt_error",
+          message: getOptionalTrimmedString(params.message) ?? "Local STT error",
+          retryable: typeof params.retryable === "boolean" ? params.retryable : undefined,
+        }),
+      };
+    }
+
     if (method === "talk.session.submitToolResult") {
       return {
         ok: true,

@@ -5,6 +5,7 @@ export type RealtimeShimRpc =
   | "talk.session.getEvidence"
   | "talk.session.cancelOutput"
   | "talk.session.cancelInput"
+  | "talk.session.recordError"
   | "talk.session.submitToolResult"
   | "talk.session.close";
 
@@ -104,6 +105,7 @@ export const REALTIME_SHIM_RPCS: RealtimeShimRpc[] = [
   "talk.session.getEvidence",
   "talk.session.cancelOutput",
   "talk.session.cancelInput",
+  "talk.session.recordError",
   "talk.session.submitToolResult",
   "talk.session.close",
 ];
