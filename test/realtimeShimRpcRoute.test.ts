@@ -206,6 +206,35 @@ test("POST /api/realtime-shim/rpc preserves session state across Gateway relay R
     assert.equal(recoverableError.payload.result.relayEvents.at(-1).code, "stream_warning");
     assert.equal(recoverableError.payload.result.qaChecklist.boundedErrorEvidence, true);
 
+    const fatalSession = await postRpc(address.port, {
+      method: "talk.session.create",
+      params: { mode: "realtime", transport: "gateway-relay", relaySessionId: "local-rt-rpc-fatal-error" },
+    });
+
+    assert.equal(fatalSession.statusCode, 200);
+    assert.equal(fatalSession.payload.ok, true);
+
+    const fatalError = await postRpc(address.port, {
+      method: "talk.session.recordError",
+      params: {
+        sessionId: "local-rt-rpc-fatal-error",
+        code: "stt_disconnected",
+        message: "Local STT stream disconnected",
+        retryable: false,
+      },
+    });
+
+    assert.equal(fatalError.statusCode, 200);
+    assert.equal(fatalError.payload.ok, true);
+    assert.equal(fatalError.payload.result.state, "closed");
+    assert.deepEqual(
+      fatalError.payload.result.relayEvents.map((event: { type: string }) => event.type),
+      ["error", "close"],
+    );
+    assert.equal(fatalError.payload.result.relayEvents.at(-1).reason, "error");
+    assert.equal(fatalError.payload.result.diagnostics.at(-1).type, "session.closed");
+    assert.equal(fatalError.payload.result.qaChecklist.boundedErrorEvidence, true);
+
     const toolResult = await postRpc(address.port, {
       method: "talk.session.submitToolResult",
       params: { sessionId: "local-rt-rpc", toolCallId: "tool-1", result: { approved: false } },
