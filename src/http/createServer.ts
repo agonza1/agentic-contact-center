@@ -1914,6 +1914,14 @@ function buildOperatorActionsPayload() {
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
     },
+    scriptedTurnControl: {
+      method: "POST",
+      postTemplate: "/api/operator/console/scripted-turn",
+      requiresNextTurnIndex: false,
+      bodyTemplate: { callId: "{callId}", expectedTurnIndex: "{nextTurnIndex}" },
+      conflictError: "operator_console_scripted_turn_index_mismatch",
+      completeError: "operator_console_scripted_turn_complete",
+    },
     scriptedCallerTurns: [...SCRIPTED_CALLER_TURNS],
     actions: operatorActionCatalog.map((entry) => ({
       ...entry,

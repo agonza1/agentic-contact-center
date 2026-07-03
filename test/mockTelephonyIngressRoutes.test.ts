@@ -100,6 +100,14 @@ interface OperatorConsolePayload {
     commandWrappers: string[];
     callReferenceFields: string[];
     routes: { startDemoCall: string; callerTurn: string; scriptedTurn: string; steerCall: string; noteCall: string; consoleAction: string };
+    scriptedTurnControl: {
+      method: string;
+      postTemplate: string;
+      requiresNextTurnIndex: boolean;
+      bodyTemplate: { callId: string; expectedTurnIndex: string };
+      conflictError: string;
+      completeError: string;
+    };
     scriptedCallerTurns: string[];
     actions: Array<{
       action: string;
@@ -1209,6 +1217,14 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
+    });
+    assert.deepEqual(consolePayload.controls.scriptedTurnControl, {
+      method: "POST",
+      postTemplate: "/api/operator/console/scripted-turn",
+      requiresNextTurnIndex: false,
+      bodyTemplate: { callId: "{callId}", expectedTurnIndex: "{nextTurnIndex}" },
+      conflictError: "operator_console_scripted_turn_index_mismatch",
+      completeError: "operator_console_scripted_turn_complete",
     });
     assert.deepEqual(consolePayload.controls.scriptedCallerTurns, [
       "I want to cancel my policy today.",
