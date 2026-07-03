@@ -189,7 +189,7 @@ curl -s -X POST http://localhost:8026/api/signalwire/events \
 
 The local bridge treats SignalWire as the telephony entrypoint while keeping credentials mocked and persists the SignalWire call id as `providerCallId` for queue lookup/filtering. `call.error` routes to the existing `tool_timeout` fallback/human handoff path, and `call.ended` safely closes the demo call. Demo recording and consent remain explicit operator responsibilities before connecting real callers.
 
-Common list/queue filters include `callId`, `providerCallId`, `flowState`, `pipecatActiveTool`, `pendingOperatorSteer`, `fallbackArmed`, `attentionRequired`, `attentionSource`, `attentionReason`, `openclawSessionId`, `openclawSessionLabel`, `openclawSessionRef`, `transcriptText`, `minAttentionAgeMs`, `maxAttentionAgeMs`, `latencyStage`, `latencyOverBudget`, `fallbackMode` (`tool_timeout` or `runtime_failure`), `fallbackReason`, and `fallbackSource` such as `tool_timeout_fail_closed`.
+Common list/queue filters include `callId`, `providerCallId`, `flowState`, `pipecatActiveTool`, `pendingOperatorSteer`, `fallbackArmed`, `attentionRequired`, `attentionSource`, `attentionReason`, `openclawSessionId`, `openclawSessionLabel`, `openclawSessionRef`, `transcriptText`, `scriptCompleted`, `minScriptProgressPct`, `maxScriptProgressPct`, `minAttentionAgeMs`, `maxAttentionAgeMs`, `latencyStage`, `latencyOverBudget`, `fallbackMode` (`tool_timeout` or `runtime_failure`), `fallbackReason`, and `fallbackSource` such as `tool_timeout_fail_closed`.
 
 Call, transcript, event, and latency routes support pagination with `offset`, `limit`, and `order=asc|desc`. Event trails also support `detailKey` and `detailText` filters for scoped QA proof lookups. Their max page size is `100`.
 

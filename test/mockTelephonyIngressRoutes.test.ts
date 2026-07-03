@@ -24,7 +24,7 @@ interface SnapshotPayload {
     startedAt: string | null;
     ageMs: number | null;
   };
-  transcript: Array<{ speaker: string; text: string }>;
+  transcript: Array<{ speaker: string; text: string; timestamp?: string }>;
   demoFallback: {
     armed: boolean;
     reason: string | null;
@@ -58,6 +58,8 @@ interface QueueSummaryPayload {
     pendingOperatorSteer: number;
     fallbackArmed: number;
     attentionRequired: number;
+    scriptCompleted: number;
+    scriptInProgress: number;
     oldestAttentionCallId: string | null;
     oldestAttentionProviderCallId: string | null;
     oldestAttentionOpenclawSessionId: string | null;
@@ -97,7 +99,15 @@ interface OperatorConsolePayload {
   controls: {
     commandWrappers: string[];
     callReferenceFields: string[];
-    routes: { startDemoCall: string; callerTurn: string; steerCall: string; noteCall: string; consoleAction: string };
+    routes: { startDemoCall: string; callerTurn: string; scriptedTurn: string; steerCall: string; noteCall: string; consoleAction: string };
+    scriptedTurnControl: {
+      method: string;
+      postTemplate: string;
+      requiresNextTurnIndex: boolean;
+      bodyTemplate: { callId: string; expectedTurnIndex: string };
+      conflictError: string;
+      completeError: string;
+    };
     scriptedCallerTurns: string[];
     actions: Array<{
       action: string;
@@ -150,6 +160,9 @@ interface OperatorConsolePayload {
           handoffStartedAt: string | null;
           overBudgetLatencyMarkCount: number;
           overBudgetLatencyTrail: string | null;
+          scriptProgressQueue: string;
+          scriptProgressCallList: string;
+          scriptProgressOperatorConsole: string;
           links: { transcript: string; events: string; latencyMarks: string; proof: string };
         };
         actionState: {
@@ -167,8 +180,17 @@ interface OperatorConsolePayload {
           scriptedCallerTurnState: {
             matchedTurns: number;
             totalTurns: number;
+            remainingTurns: number;
+            remainingTurnTexts: string[];
+            progressPct: number;
+            progressLabel: string;
             nextTurnIndex: number | null;
+            nextTurnOrdinal: number | null;
             nextTurnText: string | null;
+            nextTurnPostRoute: string | null;
+            nextTurnBodyTemplate: { text: string } | null;
+            nextScriptedTurnPostRoute: string | null;
+            nextScriptedTurnBodyTemplate: { callId: string; expectedTurnIndex: number } | null;
             completed: boolean;
           };
           actionDetails: Array<{
@@ -782,6 +804,8 @@ test("GET /api/queue returns queue summary without call payloads", async () => {
         pendingOperatorSteer: 0,
         fallbackArmed: 0,
         attentionRequired: 0,
+        scriptCompleted: 0,
+        scriptInProgress: 0,
         oldestAttentionCallId: null,
         oldestAttentionProviderCallId: null,
         oldestAttentionOpenclawSessionId: null,
@@ -922,6 +946,8 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       pendingOperatorSteer: 0,
       fallbackArmed: 0,
       attentionRequired: 0,
+      scriptCompleted: 0,
+      scriptInProgress: 0,
       oldestAttentionCallId: null,
       oldestAttentionProviderCallId: null,
       oldestAttentionOpenclawSessionId: null,
@@ -945,6 +971,8 @@ test("GET /api/calls lists active demo calls in start order", async () => {
         pendingOperatorSteer: 0,
         fallbackArmed: 0,
         attentionRequired: 0,
+        scriptCompleted: 0,
+        scriptInProgress: 0,
         oldestAttentionCallId: null,
         oldestAttentionProviderCallId: null,
         oldestAttentionOpenclawSessionId: null,
@@ -1023,6 +1051,8 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       pendingOperatorSteer: 0,
       fallbackArmed: 0,
       attentionRequired: 0,
+      scriptCompleted: 0,
+      scriptInProgress: 2,
       oldestAttentionCallId: null,
       oldestAttentionProviderCallId: null,
       oldestAttentionOpenclawSessionId: null,
@@ -1046,6 +1076,8 @@ test("GET /api/calls lists active demo calls in start order", async () => {
         pendingOperatorSteer: 0,
         fallbackArmed: 0,
         attentionRequired: 0,
+        scriptCompleted: 0,
+        scriptInProgress: 2,
         oldestAttentionCallId: null,
         oldestAttentionProviderCallId: null,
         oldestAttentionOpenclawSessionId: null,
@@ -1181,9 +1213,18 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.deepEqual(consolePayload.controls.routes, {
       startDemoCall: "/api/demo/start",
       callerTurn: "/api/calls/{callId}/caller-turn",
+      scriptedTurn: "/api/operator/console/scripted-turn",
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
+    });
+    assert.deepEqual(consolePayload.controls.scriptedTurnControl, {
+      method: "POST",
+      postTemplate: "/api/operator/console/scripted-turn",
+      requiresNextTurnIndex: false,
+      bodyTemplate: { callId: "{callId}", expectedTurnIndex: "{nextTurnIndex}" },
+      conflictError: "operator_console_scripted_turn_index_mismatch",
+      completeError: "operator_console_scripted_turn_complete",
     });
     assert.deepEqual(consolePayload.controls.scriptedCallerTurns, [
       "I want to cancel my policy today.",
@@ -1217,6 +1258,8 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(gotoSlideAction?.reasonPrompt, "Slide or step");
     assert.equal(consolePayload.queue.summary.totalCalls, 2);
     assert.equal(consolePayload.queue.summary.pendingOperatorSteer, 1);
+    assert.equal(consolePayload.queue.summary.scriptCompleted, 0);
+    assert.equal(consolePayload.queue.summary.scriptInProgress, 2);
     assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
     const operatorConsoleCall = consolePayload.calls.items[0];
     assert.equal(operatorConsoleCall.evidenceSummary.latestEventType, "agent_turn_appended");
@@ -1257,8 +1300,17 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       scriptedCallerTurnState: {
         matchedTurns: 3,
         totalTurns: 4,
+        remainingTurns: 1,
+        remainingTurnTexts: ["Thanks, please note that follow-up and close the call."],
+        progressPct: 75,
+        progressLabel: "3/4 scripted turns sent",
         nextTurnIndex: 3,
+        nextTurnOrdinal: 4,
         nextTurnText: "Thanks, please note that follow-up and close the call.",
+        nextTurnPostRoute: `/api/calls/${operatorCallId}/caller-turn`,
+        nextTurnBodyTemplate: { text: "Thanks, please note that follow-up and close the call." },
+        nextScriptedTurnPostRoute: "/api/operator/console/scripted-turn",
+        nextScriptedTurnBodyTemplate: { callId: operatorCallId, expectedTurnIndex: 3 },
         completed: false,
       },
       actionDetails: [
@@ -1405,8 +1457,22 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.deepEqual(idleConsoleCall?.actionState.scriptedCallerTurnState, {
       matchedTurns: 0,
       totalTurns: 4,
+      remainingTurns: 4,
+      remainingTurnTexts: [
+        "I want to cancel my policy today.",
+        "The renewal increase is too high.",
+        "Okay, what safe options can you review for me?",
+        "Thanks, please note that follow-up and close the call.",
+      ],
+      progressPct: 0,
+      progressLabel: "0/4 scripted turns sent",
       nextTurnIndex: 0,
+      nextTurnOrdinal: 1,
       nextTurnText: "I want to cancel my policy today.",
+      nextTurnPostRoute: `/api/calls/${idleCallId}/caller-turn`,
+      nextTurnBodyTemplate: { text: "I want to cancel my policy today." },
+      nextScriptedTurnPostRoute: "/api/operator/console/scripted-turn",
+      nextScriptedTurnBodyTemplate: { callId: idleCallId, expectedTurnIndex: 0 },
       completed: false,
     });
     assert.deepEqual(
@@ -1479,6 +1545,70 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.deepEqual(activeToolPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
     assert.equal(activeToolPayload.calls.summary.filteredSummary.attentionRequired, 1);
 
+    const inProgressConsole = await requestJson(port, "GET", "/api/operator/console?scriptCompleted=false");
+    const inProgressPayload = inProgressConsole.payload as OperatorConsolePayload;
+
+    assert.equal(inProgressConsole.statusCode, 200);
+    assert.deepEqual(inProgressPayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
+    assert.equal(inProgressPayload.calls.summary.filteredSummary.scriptCompleted, 0);
+    assert.equal(inProgressPayload.calls.summary.filteredSummary.scriptInProgress, 2);
+
+    const earlyScriptConsole = await requestJson(port, "GET", "/api/operator/console?maxScriptProgressPct=25");
+    const earlyScriptPayload = earlyScriptConsole.payload as OperatorConsolePayload;
+
+    assert.equal(earlyScriptConsole.statusCode, 200);
+    assert.deepEqual(earlyScriptPayload.calls.items.map((call) => call.session.callId), [idleCallId]);
+    assert.equal(earlyScriptPayload.calls.summary.filteredSummary.totalCalls, 1);
+
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/operator-steer`, {
+      action: "approve_offer",
+      timestamp: "2026-06-10T14:10:12.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
+      text: "Thanks, please note that follow-up and close the call.",
+      timestamp: "2026-06-10T14:10:15.000Z",
+    });
+    const progressedConsole = await requestJson(port, "GET", "/api/operator/console?minScriptProgressPct=75");
+    const progressedPayload = progressedConsole.payload as OperatorConsolePayload;
+
+    assert.equal(progressedConsole.statusCode, 200);
+    assert.deepEqual(progressedPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
+    assert.equal(progressedPayload.calls.summary.filteredSummary.totalCalls, 1);
+    assert.equal(progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressQueue, "/api/queue?scriptCompleted=true");
+    assert.equal(progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressCallList, "/api/calls?scriptCompleted=true&limit=5");
+    assert.equal(
+      progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressOperatorConsole,
+      "/api/operator/console?scriptCompleted=true&limit=1",
+    );
+
+    const completedConsole = await requestJson(port, "GET", "/api/operator/console?scriptCompleted=true");
+    const completedPayload = completedConsole.payload as OperatorConsolePayload;
+
+    assert.equal(completedConsole.statusCode, 200);
+    assert.deepEqual(completedPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
+    assert.equal(completedPayload.calls.summary.filteredSummary.scriptCompleted, 1);
+    assert.equal(completedPayload.calls.summary.filteredSummary.scriptInProgress, 0);
+
+    const invalidScriptProgressFilter = await requestJson(port, "GET", "/api/operator/console?minScriptProgressPct=101");
+    assert.equal(invalidScriptProgressFilter.statusCode, 400);
+    assert.deepEqual(invalidScriptProgressFilter.payload, { ok: false, error: "operator_console_min_script_progress_pct_invalid" });
+
+    const invalidMaxScriptProgressFilter = await requestJson(port, "GET", "/api/operator/console?maxScriptProgressPct=fast");
+    assert.equal(invalidMaxScriptProgressFilter.statusCode, 400);
+    assert.deepEqual(invalidMaxScriptProgressFilter.payload, { ok: false, error: "operator_console_max_script_progress_pct_invalid" });
+
+    const invalidScriptProgressRangeFilter = await requestJson(
+      port,
+      "GET",
+      "/api/operator/console?minScriptProgressPct=75&maxScriptProgressPct=25",
+    );
+    assert.equal(invalidScriptProgressRangeFilter.statusCode, 400);
+    assert.deepEqual(invalidScriptProgressRangeFilter.payload, { ok: false, error: "operator_console_script_progress_range_invalid" });
+
+    const invalidScriptCompletedFilter = await requestJson(port, "GET", "/api/operator/console?scriptCompleted=maybe");
+    assert.equal(invalidScriptCompletedFilter.statusCode, 400);
+    assert.deepEqual(invalidScriptCompletedFilter.payload, { ok: false, error: "operator_console_script_completed_invalid" });
+
     const invalidFilter = await requestJson(port, "GET", "/api/operator/console?attentionRequired=maybe");
     assert.equal(invalidFilter.statusCode, 400);
     assert.deepEqual(invalidFilter.payload, { ok: false, error: "operator_console_attention_required_invalid" });
@@ -1506,6 +1636,11 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Fallback reason/);
     assert.match(response.body, /Active tool filter/);
     assert.match(response.body, /All active tools/);
+    assert.match(response.body, /Script status filter/);
+    assert.match(response.body, /All script states/);
+    assert.match(response.body, /Script minimum progress filter/);
+    assert.match(response.body, /Script maximum progress filter/);
+    assert.match(response.body, /Any max progress/);
     assert.match(response.body, /Transcript search/);
     assert.match(response.body, /operatorConsoleQuery/);
     assert.match(response.body, /refreshIntervalMs/);
@@ -1522,6 +1657,11 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /fallbackSource/);
     assert.match(response.body, /fallbackReason/);
     assert.match(response.body, /pipecatActiveTool/);
+    assert.match(response.body, /scriptCompleted/);
+    assert.match(response.body, /maxScriptProgressPct/);
+    assert.match(response.body, /script-completed-filter"\)\.addEventListener/);
+    assert.match(response.body, /script-completed-filter"\)\.value = ""/);
+    assert.match(response.body, /script-max-progress-filter"\)\.value = ""/);
     assert.match(response.body, /transcriptText/);
     assert.match(response.body, /\/api\/demo\/start/);
     assert.match(response.body, /caller-turn-form/);
@@ -1530,6 +1670,9 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Scripted Turns/);
     assert.match(response.body, /data-scripted-turn/);
     assert.match(response.body, /postScriptedTurn/);
+    assert.match(response.body, /\/api\/operator\/console\/scripted-turn/);
+    assert.match(response.body, /expectedTurnIndex/);
+    assert.match(response.body, /isCompleted \|\| !isNext/);
     assert.match(response.body, /\/caller-turn/);
     assert.match(response.body, /"goto_slide"/);
     assert.match(response.body, /"ask_operator"/);
@@ -1687,6 +1830,90 @@ test("POST /api/operator/console/action dispatches live call controls", async ()
     });
     assert.equal(unknownRef.statusCode, 400);
     assert.deepEqual(unknownRef.payload, { ok: false, error: "operator_console_action_call_ref_not_found" });
+  });
+});
+
+test("POST /api/operator/console/scripted-turn submits only the next scripted caller turn", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "scripted-turn-session",
+      openclawSessionLabel: "cluecon-demo/scripted-turn",
+    });
+    const callId = (started.payload as SnapshotPayload).session.callId;
+
+    const mismatch = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
+      openclawSessionRef: "cluecon-demo/scripted-turn",
+      expectedTurnIndex: 1,
+    });
+
+    assert.equal(mismatch.statusCode, 409);
+    assert.deepEqual(mismatch.payload, {
+      ok: false,
+      error: "operator_console_scripted_turn_index_mismatch",
+      expectedTurnIndex: 1,
+      nextTurnIndex: 0,
+    });
+
+    const submitted = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
+      openclawSessionRef: "cluecon-demo/scripted-turn",
+      expectedTurnIndex: 0,
+      timestamp: "2026-06-10T14:12:30.000Z",
+    });
+    const submittedPayload = submitted.payload as {
+      ok: boolean;
+      route: string;
+      submittedTurnIndex: number;
+      submittedTurnOrdinal: number;
+      submittedText: string;
+      nextTurnIndex: number | null;
+      nextTurnText: string | null;
+      remainingTurns: number;
+      progressPct: number;
+      scriptCompleted: boolean;
+      call: SnapshotPayload & { actionState: OperatorConsolePayload["calls"]["items"][number]["actionState"] };
+    };
+
+    assert.equal(submitted.statusCode, 200);
+    assert.equal(submittedPayload.ok, true);
+    assert.equal(submittedPayload.route, "/api/operator/console/scripted-turn");
+    assert.equal(submittedPayload.submittedTurnIndex, 0);
+    assert.equal(submittedPayload.submittedTurnOrdinal, 1);
+    assert.equal(submittedPayload.submittedText, "I want to cancel my policy today.");
+    assert.equal(submittedPayload.nextTurnIndex, 1);
+    assert.equal(submittedPayload.nextTurnText, "The renewal increase is too high.");
+    assert.equal(submittedPayload.remainingTurns, 3);
+    assert.equal(submittedPayload.progressPct, 25);
+    assert.equal(submittedPayload.scriptCompleted, false);
+    assert.equal(submittedPayload.call.session.callId, callId);
+    assert.equal(
+      submittedPayload.call.transcript.some(
+        (turn) =>
+          turn.speaker === "caller" &&
+          turn.text === "I want to cancel my policy today." &&
+          turn.timestamp === "2026-06-10T14:12:30.000Z",
+      ),
+      true,
+    );
+    assert.equal(submittedPayload.call.transcript.at(-1)?.speaker, "agent");
+    assert.equal(submittedPayload.call.pipecatFlow.script.matchedCallerTurns, 1);
+    assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.nextTurnIndex, 1);
+    assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.nextTurnOrdinal, 2);
+    assert.deepEqual(submittedPayload.call.actionState.scriptedCallerTurnState.remainingTurnTexts, [
+      "The renewal increase is too high.",
+      "Okay, what safe options can you review for me?",
+      "Thanks, please note that follow-up and close the call.",
+    ]);
+    assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.progressPct, 25);
+    assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.progressLabel, "1/4 scripted turns sent");
+    assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.nextScriptedTurnPostRoute, "/api/operator/console/scripted-turn");
+    assert.deepEqual(submittedPayload.call.actionState.scriptedCallerTurnState.nextScriptedTurnBodyTemplate, {
+      callId,
+      expectedTurnIndex: 1,
+    });
+
+    const consoleResponse = await requestJson(port, "GET", "/api/operator/console?callId=" + callId);
+    const consolePayload = consoleResponse.payload as OperatorConsolePayload;
+    assert.equal(consolePayload.calls.items[0]?.actionState.scriptedCallerTurnState.nextTurnIndex, 1);
   });
 });
 
@@ -1993,6 +2220,18 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     assert.equal(byActiveToolPayload.summary.filteredCalls, 1);
     assert.equal(byActiveToolPayload.summary.filteredSummary.totalCalls, 1);
 
+    const nearCompleteScript = await requestJson(port, "GET", "/api/calls?minScriptProgressPct=50");
+    const nearCompleteScriptPayload = nearCompleteScript.payload as CallListPayload;
+    assert.equal(nearCompleteScript.statusCode, 200);
+    assert.deepEqual(nearCompleteScriptPayload.calls.map((call) => call.session.callId), [firstCallId]);
+    assert.equal(nearCompleteScriptPayload.summary.filteredSummary.totalCalls, 1);
+
+    const earlyScript = await requestJson(port, "GET", "/api/calls?maxScriptProgressPct=25");
+    const earlyScriptPayload = earlyScript.payload as CallListPayload;
+    assert.equal(earlyScript.statusCode, 200);
+    assert.deepEqual(earlyScriptPayload.calls.map((call) => call.session.callId), ["demo-call-0002"]);
+    assert.equal(earlyScriptPayload.summary.filteredSummary.totalCalls, 1);
+
     const noActiveTool = await requestJson(port, "GET", "/api/calls?pipecatActiveTool=missing_tool");
     const noActiveToolPayload = noActiveTool.payload as CallListPayload;
     assert.equal(noActiveTool.statusCode, 200);
@@ -2052,6 +2291,20 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     assert.deepEqual(invalidActiveTool.payload, {
       ok: false,
       error: "call_list_pipecat_active_tool_invalid",
+    });
+
+    const invalidMinScriptProgress = await requestJson(port, "GET", "/api/calls?minScriptProgressPct=101");
+    assert.equal(invalidMinScriptProgress.statusCode, 400);
+    assert.deepEqual(invalidMinScriptProgress.payload, {
+      ok: false,
+      error: "call_list_min_script_progress_pct_invalid",
+    });
+
+    const invalidMaxScriptProgress = await requestJson(port, "GET", "/api/calls?maxScriptProgressPct=fast");
+    assert.equal(invalidMaxScriptProgress.statusCode, 400);
+    assert.deepEqual(invalidMaxScriptProgress.payload, {
+      ok: false,
+      error: "call_list_max_script_progress_pct_invalid",
     });
 
     const invalidLatencyOverBudget = await requestJson(port, "GET", "/api/calls?latencyOverBudget=maybe");
@@ -4283,7 +4536,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
       schemaVersion: number;
       commandWrappers: string[];
       callReferenceFields: string[];
-      routes: { startDemoCall: string; callerTurn: string; steerCall: string; noteCall: string; consoleAction: string };
+      routes: { startDemoCall: string; callerTurn: string; scriptedTurn: string; steerCall: string; noteCall: string; consoleAction: string };
       actions: Array<{
         action: string;
         requiresPendingCall: boolean;
@@ -4309,6 +4562,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     assert.deepEqual(payload.routes, {
       startDemoCall: "/api/demo/start",
       callerTurn: "/api/calls/{callId}/caller-turn",
+      scriptedTurn: "/api/operator/console/scripted-turn",
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",

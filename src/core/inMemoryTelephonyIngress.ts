@@ -106,6 +106,15 @@ function latencyMarkMatchesFilters(
   return isOverBudget === filters.latencyOverBudget;
 }
 
+function getScriptProgressPct(snapshot: CallSnapshot): number {
+  const totalTurns = snapshot.pipecatFlow.script.expectedCallerTurns.length;
+  if (totalTurns === 0) {
+    return snapshot.pipecatFlow.script.completed ? 100 : 0;
+  }
+
+  return Math.round((snapshot.pipecatFlow.script.matchedCallerTurns / totalTurns) * 100);
+}
+
 export class InMemoryTelephonyIngress {
   private readonly calls = new Map<string, CallSnapshot>();
 
@@ -387,6 +396,9 @@ export class InMemoryTelephonyIngress {
     callId?: string;
     providerCallId?: string;
     transcriptText?: string;
+    scriptCompleted?: boolean;
+    minScriptProgressPct?: number;
+    maxScriptProgressPct?: number;
     minAttentionAgeMs?: number;
     maxAttentionAgeMs?: number;
     latencyStage?: string;
@@ -412,6 +424,9 @@ export class InMemoryTelephonyIngress {
     callId?: string;
     providerCallId?: string;
     transcriptText?: string;
+    scriptCompleted?: boolean;
+    minScriptProgressPct?: number;
+    maxScriptProgressPct?: number;
     minAttentionAgeMs?: number;
     maxAttentionAgeMs?: number;
     latencyStage?: string;
@@ -502,6 +517,23 @@ export class InMemoryTelephonyIngress {
         const normalizedText = filters.transcriptText.toLocaleLowerCase();
         return snapshot.transcript.some((turn) => turn.text.toLocaleLowerCase().includes(normalizedText));
       })
+      .filter((snapshot) =>
+        filters.scriptCompleted === undefined ? true : snapshot.pipecatFlow.script.completed === filters.scriptCompleted,
+      )
+      .filter((snapshot) => {
+        if (filters.minScriptProgressPct === undefined) {
+          return true;
+        }
+
+        return getScriptProgressPct(snapshot) >= filters.minScriptProgressPct;
+      })
+      .filter((snapshot) => {
+        if (filters.maxScriptProgressPct === undefined) {
+          return true;
+        }
+
+        return getScriptProgressPct(snapshot) <= filters.maxScriptProgressPct;
+      })
       .filter((snapshot) => snapshot.latencyMarks.some((mark) => latencyMarkMatchesFilters(mark, filters)))
       .filter((snapshot) =>
         filters.openclawSessionId === undefined
@@ -543,6 +575,9 @@ export class InMemoryTelephonyIngress {
     callId?: string;
     providerCallId?: string;
     transcriptText?: string;
+    scriptCompleted?: boolean;
+    minScriptProgressPct?: number;
+    maxScriptProgressPct?: number;
     minAttentionAgeMs?: number;
     maxAttentionAgeMs?: number;
     latencyStage?: string;
@@ -552,6 +587,8 @@ export class InMemoryTelephonyIngress {
     pendingOperatorSteer: number;
     fallbackArmed: number;
     attentionRequired: number;
+    scriptCompleted: number;
+    scriptInProgress: number;
     oldestAttentionCallId: string | null;
     oldestAttentionProviderCallId: string | null;
     oldestAttentionOpenclawSessionId: string | null;
@@ -576,6 +613,8 @@ export class InMemoryTelephonyIngress {
     let pendingOperatorSteer = 0;
     let fallbackArmed = 0;
     let attentionRequired = 0;
+    let scriptCompleted = 0;
+    let scriptInProgress = 0;
     let oldestAttentionCallId: string | null = null;
     let oldestAttentionProviderCallId: string | null = null;
     let oldestAttentionOpenclawSessionId: string | null = null;
@@ -619,6 +658,12 @@ export class InMemoryTelephonyIngress {
           oldestAttentionSource = attention.source;
         }
       }
+
+      if (snapshot.pipecatFlow.script.completed) {
+        scriptCompleted += 1;
+      } else {
+        scriptInProgress += 1;
+      }
     }
 
     return {
@@ -626,6 +671,8 @@ export class InMemoryTelephonyIngress {
       pendingOperatorSteer,
       fallbackArmed,
       attentionRequired,
+      scriptCompleted,
+      scriptInProgress,
       oldestAttentionCallId,
       oldestAttentionProviderCallId,
       oldestAttentionOpenclawSessionId,

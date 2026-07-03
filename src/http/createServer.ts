@@ -810,7 +810,7 @@ function buildOperatorConsoleHtml(): string {
     <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" id="start-demo">Start Demo Call</button><button type="button" id="refresh">Refresh</button></div>
   </header>
   <main>
-    <section class="panel" aria-label="Live calls"><h2>Live Calls</h2><div class="filters"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Attention only</label><label class="filter-toggle"><input type="checkbox" id="latency-over-budget-filter">Over-budget latency</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><select id="fallback-filter" aria-label="Fallback mode filter"><option value="">All fallback modes</option><option value="tool_timeout">Tool Timeout</option><option value="runtime_failure">Runtime Failure</option></select><select id="fallback-source-filter" aria-label="Fallback source filter"><option value="">All fallback sources</option><option value="tool_timeout_fail_closed">Tool Timeout Source</option><option value="pipecat_runtime_failure_fail_closed">Runtime Failure Source</option></select><input id="fallback-reason-filter" aria-label="Fallback reason filter" placeholder="Fallback reason"><select id="tool-filter" aria-label="Active tool filter"><option value="">All active tools</option><option value="get_current_slide">Get Current Slide</option><option value="goto_slide">Go To Slide</option><option value="pause_presentation">Pause Presentation</option><option value="ask_operator">Ask Operator</option></select><input id="transcript-filter" placeholder="Transcript search"><button type="button" id="clear-filters">Clear</button></div><div class="call-list" id="calls"></div></section>
+    <section class="panel" aria-label="Live calls"><h2>Live Calls</h2><div class="filters"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Attention only</label><label class="filter-toggle"><input type="checkbox" id="latency-over-budget-filter">Over-budget latency</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><select id="fallback-filter" aria-label="Fallback mode filter"><option value="">All fallback modes</option><option value="tool_timeout">Tool Timeout</option><option value="runtime_failure">Runtime Failure</option></select><select id="fallback-source-filter" aria-label="Fallback source filter"><option value="">All fallback sources</option><option value="tool_timeout_fail_closed">Tool Timeout Source</option><option value="pipecat_runtime_failure_fail_closed">Runtime Failure Source</option></select><input id="fallback-reason-filter" aria-label="Fallback reason filter" placeholder="Fallback reason"><select id="tool-filter" aria-label="Active tool filter"><option value="">All active tools</option><option value="get_current_slide">Get Current Slide</option><option value="goto_slide">Go To Slide</option><option value="pause_presentation">Pause Presentation</option><option value="ask_operator">Ask Operator</option></select><select id="script-completed-filter" aria-label="Script status filter"><option value="">All script states</option><option value="false">In progress</option><option value="true">Complete</option></select><select id="script-progress-filter" aria-label="Script minimum progress filter"><option value="">Any min progress</option><option value="25">25%+ scripted</option><option value="50">50%+ scripted</option><option value="75">75%+ scripted</option><option value="100">100% scripted</option></select><select id="script-max-progress-filter" aria-label="Script maximum progress filter"><option value="">Any max progress</option><option value="0">0% or less scripted</option><option value="25">25% or less scripted</option><option value="50">50% or less scripted</option><option value="75">75% or less scripted</option></select><input id="transcript-filter" placeholder="Transcript search"><button type="button" id="clear-filters">Clear</button></div><div class="call-list" id="calls"></div></section>
     <section class="panel" aria-label="Selected call"><h2 id="selected-title">Select a call</h2><div class="detail" id="detail"></div></section>
   </main>
   <script>
@@ -838,6 +838,12 @@ function buildOperatorConsoleHtml(): string {
       if (fallbackReason) params.set("fallbackReason", fallbackReason);
       const activeTool = document.getElementById("tool-filter").value;
       if (activeTool) params.set("pipecatActiveTool", activeTool);
+      const scriptCompleted = document.getElementById("script-completed-filter").value;
+      if (scriptCompleted) params.set("scriptCompleted", scriptCompleted);
+      const scriptProgress = document.getElementById("script-progress-filter").value;
+      if (scriptProgress) params.set("minScriptProgressPct", scriptProgress);
+      const scriptMaxProgress = document.getElementById("script-max-progress-filter").value;
+      if (scriptMaxProgress) params.set("maxScriptProgressPct", scriptMaxProgress);
       const transcriptText = document.getElementById("transcript-filter").value.trim();
       if (transcriptText) params.set("transcriptText", transcriptText);
       return params.toString();
@@ -904,10 +910,11 @@ function buildOperatorConsoleHtml(): string {
       const response = await fetch("/api/calls/" + callId + "/caller-turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: text }) });
       if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); const message = payload.error || "Caller turn failed"; setStatus(message); throw new Error(message); }
     }
-    async function postScriptedTurn(text) {
+    async function postScriptedTurn(expectedTurnIndex) {
       const call = selectedCall();
       if (!call) return;
-      await postCallerTurn(call.session.callId, text);
+      const response = await fetch("/api/operator/console/scripted-turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ callId: call.session.callId, expectedTurnIndex: expectedTurnIndex }) });
+      if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); const message = payload.error || "Scripted turn failed"; setStatus(message); throw new Error(message); }
       await refresh();
     }
     async function recordNote(event) {
@@ -924,7 +931,9 @@ function buildOperatorConsoleHtml(): string {
       root.innerHTML = state.calls.map(function(call) {
         const labels = call.liveProof ? call.liveProof.labels : call.session.runtimeModeLabels;
         const labelText = labels ? [labels.telephony, labels.media, labels.rtcAsr].filter(Boolean).join(" | ") : "runtime labels unavailable";
-        return '<button type="button" class="call-item" aria-selected="' + (call.session.callId === state.selectedCallId) + '" data-call-id="' + escapeHtml(call.session.callId) + '"><span class="call-id">' + escapeHtml(call.session.callId) + '</span><span class="meta">' + escapeHtml(call.flowState) + ' | ' + (call.attention.required ? "attention" : "monitoring") + '</span><span class="meta">' + escapeHtml(labelText) + '</span><span class="meta">' + escapeHtml(call.session.openclawSession.label) + '</span></button>';
+        const scriptedState = call.actionState.scriptedCallerTurnState || { matchedTurns: 0, totalTurns: (state.scriptedCallerTurns || []).length, remainingTurns: (state.scriptedCallerTurns || []).length, progressPct: 0, nextTurnIndex: 0, nextTurnText: null, completed: false };
+        const scriptedLabel = scriptedState.completed ? "script complete" : ("script " + scriptedState.matchedTurns + "/" + scriptedState.totalTurns + " | next: " + (scriptedState.nextTurnText || "queued"));
+        return '<button type="button" class="call-item" aria-selected="' + (call.session.callId === state.selectedCallId) + '" data-call-id="' + escapeHtml(call.session.callId) + '"><span class="call-id">' + escapeHtml(call.session.callId) + '</span><span class="meta">' + escapeHtml(call.flowState) + ' | ' + (call.attention.required ? "attention" : "monitoring") + '</span><span class="meta">' + escapeHtml(scriptedLabel) + '</span><span class="meta">' + escapeHtml(labelText) + '</span><span class="meta">' + escapeHtml(call.session.openclawSession.label) + '</span></button>';
       }).join("") || '<div class="meta" style="padding:14px">No active calls</div>';
       root.querySelectorAll("button[data-call-id]").forEach(function(button) { button.addEventListener("click", function() { state.selectedCallId = button.dataset.callId; render(); }); });
     }
@@ -969,18 +978,18 @@ function buildOperatorConsoleHtml(): string {
       const asrDetail = liveProof.asr && (liveProof.asr.latestTranscriptText || liveProof.asr.blocker || liveProof.asr.nextAction) ? (liveProof.asr.latestTranscriptText || liveProof.asr.blocker || liveProof.asr.nextAction) : "no ASR events yet";
       const liveProofHtml = '<section class="proof-panel" aria-label="Live SIP proof"><div class="proof-header"><h3>Live SIP proof</h3><div class="badges"><span class="' + badgeClass + '">' + escapeHtml(liveProof.eval ? liveProof.eval.status : "not_review_ready") + '</span>' + labelBadges + '</div></div><div class="proof-grid"><div class="metric"><span class="meta">Run / Session</span><strong>' + escapeHtml((liveProof.run && liveProof.run.sessionId) || call.session.openclawSession.sessionId) + '</strong><span class="meta">Call: ' + escapeHtml((liveProof.run && liveProof.run.callId) || call.session.callId) + '</span><span class="meta">Provider: ' + escapeHtml((liveProof.run && liveProof.run.providerCallId) || call.session.providerCallId) + '</span></div><div class="metric"><span class="meta">Audio Capture</span><strong>' + escapeHtml(humanLabel(liveProof.audioCapture && liveProof.audioCapture.status)) + '</strong>' + pathHtml(liveProof.audioCapture && liveProof.audioCapture.audioWavPath, "WAV") + pathHtml(liveProof.audioCapture && liveProof.audioCapture.sipLogPath, "SIP log") + linkHtml(liveProof.audioCapture && liveProof.audioCapture.eventTrail, "Capture Events") + '</div><div class="metric"><span class="meta">Transcript / ASR</span><strong>' + escapeHtml(humanLabel(liveProof.asr && liveProof.asr.status)) + '</strong><span class="meta">' + escapeHtml(asrDetail) + '</span>' + pathHtml(liveProof.asr && liveProof.asr.evidencePath, "ASR evidence") + linkHtml(liveProof.asr && liveProof.asr.eventTrail, "ASR Events") + '</div><div class="metric"><span class="meta">Artifacts / Eval</span><strong>' + escapeHtml(isLiveProofReady ? "Reviewable" : "Blocked") + '</strong>' + linkHtml(liveProof.eval && liveProof.eval.proofRoute, "Proof") + linkHtml(liveProof.eval && liveProof.eval.artifactManifestRoute, "Artifacts") + linkHtml(liveProof.eval && liveProof.eval.transcriptRoute, "Transcript") + '</div><div class="metric"><span class="meta">Handoff State</span><strong>' + escapeHtml(humanLabel(liveProof.operator && liveProof.operator.handoffState)) + '</strong><span class="meta">Attention: ' + escapeHtml(liveProof.operator && liveProof.operator.attentionRequired ? "required" : "clear") + '</span><span class="meta">Pending: ' + escapeHtml((liveProof.operator && liveProof.operator.pendingAction) || "none") + '</span></div></div>' + caveatsHtml + '</section>';
       const evidenceHtml = '<div class="evidence" aria-label="Evidence markers"><div class="metric"><span class="meta">Latest Event</span><strong>' + escapeHtml(evidence.latestEventType || "none") + '</strong><span class="meta">' + escapeHtml(evidence.latestEventAt || "not recorded") + '</span><a href="' + escapeHtml(latestEventLink) + '">Event Trail</a></div><div class="metric"><span class="meta">Transcript Turns</span><strong>' + evidence.transcriptTurns + '</strong><a href="' + escapeHtml(evidenceLinks.transcript) + '">Transcript</a></div><div class="metric"><span class="meta">Latency Marks</span><strong>' + evidence.latencyMarkCount + '</strong><span class="meta">Over budget: ' + evidence.overBudgetLatencyMarkCount + '</span><a href="' + escapeHtml(latencyLink) + '">Latency</a></div><div class="metric"><span class="meta">Fallback</span><strong>' + escapeHtml(fallbackLabel) + '</strong><span class="meta">' + escapeHtml(fallbackDetail) + '</span><a href="' + escapeHtml(fallbackTrailLink) + '">Event Trail</a><a href="' + escapeHtml(fallbackQueueLink) + '">Fallback Queue</a>' + reasonTrailHtml + '</div><div class="metric"><span class="meta">Operator Notes</span><strong>' + evidence.operatorNoteCount + '</strong><span class="meta">' + escapeHtml(evidence.latestDisposition || evidence.latestOperatorNoteText || "none") + '</span><a href="' + escapeHtml(operatorNoteTrailLink) + '">Note Trail</a></div><div class="metric"><span class="meta">Proof Bundle</span><strong>' + evidence.eventCount + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Proof</a><a href="' + escapeHtml(evidenceLinks.artifacts) + '">Artifacts</a></div></div>';
-      const scriptedState = call.actionState.scriptedCallerTurnState || { matchedTurns: 0, totalTurns: (state.scriptedCallerTurns || []).length, nextTurnIndex: 0, nextTurnText: null, completed: false };
+      const scriptedState = call.actionState.scriptedCallerTurnState || { matchedTurns: 0, totalTurns: (state.scriptedCallerTurns || []).length, remainingTurns: (state.scriptedCallerTurns || []).length, progressPct: 0, nextTurnIndex: 0, nextTurnText: null, completed: false };
       const scriptedTurns = (state.scriptedCallerTurns || []).map(function(text, index) {
         const isCompleted = index < scriptedState.matchedTurns;
         const isNext = index === scriptedState.nextTurnIndex;
-        const disabled = isCompleted ? "disabled" : "";
+        const disabled = (isCompleted || !isNext) ? "disabled" : "";
         const status = isCompleted ? "Sent" : isNext ? "Next" : "Queued";
         return '<button type="button" data-scripted-turn="' + index + '" ' + disabled + '><span class="meta">' + status + ' | Turn ' + (index + 1) + '</span><br>' + escapeHtml(text) + '</button>';
       }).join("");
-      const scriptedMetric = '<div class="metric"><span class="meta">Scripted Turns</span><strong>' + scriptedState.matchedTurns + '/' + scriptedState.totalTurns + '</strong><span class="meta">' + escapeHtml(scriptedState.completed ? "complete" : scriptedState.nextTurnText || "queued") + '</span></div>';
+      const scriptedMetric = '<div class="metric"><span class="meta">Scripted Turns</span><strong>' + scriptedState.progressPct + '%</strong><span class="meta">' + scriptedState.matchedTurns + '/' + scriptedState.totalTurns + ' sent | ' + scriptedState.remainingTurns + ' remaining</span><span class="meta">' + escapeHtml(scriptedState.completed ? "complete" : scriptedState.nextTurnText || "queued") + '</span></div>';
       root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + scriptedMetric + pendingHtml + '</div>' + liveProofHtml + evidenceHtml + '<div class="actions">' + actionHtml + '</div><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\\n\\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
-      root.querySelectorAll("button[data-scripted-turn]").forEach(function(button) { button.addEventListener("click", function() { const text = state.scriptedCallerTurns[Number(button.dataset.scriptedTurn)]; if (text) postScriptedTurn(text).catch(function(error) { setStatus(error.message); }); }); });
+      root.querySelectorAll("button[data-scripted-turn]").forEach(function(button) { button.addEventListener("click", function() { const index = Number(button.dataset.scriptedTurn); if (Number.isInteger(index)) postScriptedTurn(index).catch(function(error) { setStatus(error.message); }); }); });
       document.getElementById("caller-turn-form").addEventListener("submit", recordCallerTurn);
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
@@ -1001,7 +1010,10 @@ function buildOperatorConsoleHtml(): string {
     document.getElementById("fallback-reason-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("transcript-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("tool-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
-    document.getElementById("clear-filters").addEventListener("click", function() { document.getElementById("attention-filter").checked = false; document.getElementById("latency-over-budget-filter").checked = false; document.getElementById("flow-filter").value = ""; document.getElementById("fallback-filter").value = ""; document.getElementById("fallback-source-filter").value = ""; document.getElementById("fallback-reason-filter").value = ""; document.getElementById("tool-filter").value = ""; document.getElementById("transcript-filter").value = ""; refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("script-completed-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("script-progress-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("script-max-progress-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("clear-filters").addEventListener("click", function() { document.getElementById("attention-filter").checked = false; document.getElementById("latency-over-budget-filter").checked = false; document.getElementById("flow-filter").value = ""; document.getElementById("fallback-filter").value = ""; document.getElementById("fallback-source-filter").value = ""; document.getElementById("fallback-reason-filter").value = ""; document.getElementById("tool-filter").value = ""; document.getElementById("script-completed-filter").value = ""; document.getElementById("script-progress-filter").value = ""; document.getElementById("script-max-progress-filter").value = ""; document.getElementById("transcript-filter").value = ""; refresh().catch(function(error) { setStatus(error.message); }); });
     refresh().catch(function(error) { setStatus(error.message); });
   </script>
 </body>
@@ -1294,11 +1306,18 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
             : "Review the held call context before applying operator guidance.",
       }
     : null;
+  const totalScriptedCallerTurns: number = SCRIPTED_CALLER_TURNS.length;
   const matchedScriptedCallerTurns = Math.min(
     snapshot.pipecatFlow.script.matchedCallerTurns,
-    SCRIPTED_CALLER_TURNS.length,
+    totalScriptedCallerTurns,
   );
+  const remainingScriptedCallerTurns = totalScriptedCallerTurns - matchedScriptedCallerTurns;
   const nextScriptedCallerTurn = SCRIPTED_CALLER_TURNS[matchedScriptedCallerTurns] ?? null;
+  const remainingScriptedCallerTurnTexts = SCRIPTED_CALLER_TURNS.slice(matchedScriptedCallerTurns);
+  const scriptProgressPct = totalScriptedCallerTurns === 0
+    ? 100
+    : Math.round((matchedScriptedCallerTurns / totalScriptedCallerTurns) * 100);
+  const scriptProgressRoutes = buildScriptProgressRoutes(scriptProgressPct, nextScriptedCallerTurn === null);
 
   return {
     ...buildCallPayload(snapshot),
@@ -1342,6 +1361,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       overBudgetLatencyTrail: overBudgetLatencyMarkCount > 0
         ? `${snapshot.session.openclawSession.artifactLinks.latencyMarks}?overBudget=true`
         : null,
+      ...scriptProgressRoutes,
       links: snapshot.session.openclawSession.artifactLinks,
     },
     actionState: {
@@ -1352,9 +1372,22 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       nextRecommendedAction,
       scriptedCallerTurnState: {
         matchedTurns: matchedScriptedCallerTurns,
-        totalTurns: SCRIPTED_CALLER_TURNS.length,
+        totalTurns: totalScriptedCallerTurns,
+        remainingTurns: remainingScriptedCallerTurns,
+        remainingTurnTexts: remainingScriptedCallerTurnTexts,
+        progressPct: scriptProgressPct,
+        progressLabel: `${matchedScriptedCallerTurns}/${totalScriptedCallerTurns} scripted turns sent`,
         nextTurnIndex: nextScriptedCallerTurn === null ? null : matchedScriptedCallerTurns,
+        nextTurnOrdinal: nextScriptedCallerTurn === null ? null : matchedScriptedCallerTurns + 1,
         nextTurnText: nextScriptedCallerTurn,
+        nextTurnPostRoute: nextScriptedCallerTurn === null
+          ? null
+          : `/api/calls/${encodeURIComponent(snapshot.session.callId)}/caller-turn`,
+        nextTurnBodyTemplate: nextScriptedCallerTurn === null ? null : { text: nextScriptedCallerTurn },
+        nextScriptedTurnPostRoute: nextScriptedCallerTurn === null ? null : "/api/operator/console/scripted-turn",
+        nextScriptedTurnBodyTemplate: nextScriptedCallerTurn === null
+          ? null
+          : { callId: snapshot.session.callId, expectedTurnIndex: matchedScriptedCallerTurns },
         completed: nextScriptedCallerTurn === null,
       },
       actionDetails,
@@ -1375,6 +1408,20 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
         })),
       unavailableActions,
     },
+  };
+}
+
+function buildScriptProgressRoutes(progressPct: number, completed: boolean): {
+  scriptProgressQueue: string;
+  scriptProgressCallList: string;
+  scriptProgressOperatorConsole: string;
+} {
+  const progressFilter = completed ? "scriptCompleted=true" : `minScriptProgressPct=${progressPct}`;
+
+  return {
+    scriptProgressQueue: `/api/queue?${progressFilter}`,
+    scriptProgressCallList: `/api/calls?${progressFilter}&limit=5`,
+    scriptProgressOperatorConsole: `/api/operator/console?${progressFilter}&limit=1`,
   };
 }
 
@@ -1862,9 +1909,18 @@ function buildOperatorActionsPayload() {
     routes: {
       startDemoCall: "/api/demo/start",
       callerTurn: "/api/calls/{callId}/caller-turn",
+      scriptedTurn: "/api/operator/console/scripted-turn",
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
+    },
+    scriptedTurnControl: {
+      method: "POST",
+      postTemplate: "/api/operator/console/scripted-turn",
+      requiresNextTurnIndex: false,
+      bodyTemplate: { callId: "{callId}", expectedTurnIndex: "{nextTurnIndex}" },
+      conflictError: "operator_console_scripted_turn_index_mismatch",
+      completeError: "operator_console_scripted_turn_complete",
     },
     scriptedCallerTurns: [...SCRIPTED_CALLER_TURNS],
     actions: operatorActionCatalog.map((entry) => ({
@@ -2006,6 +2062,18 @@ function parseOptionalNonNegativeIntegerFilter(
   return parsed;
 }
 
+function parseOptionalPercentFilter(
+  value: string | null,
+  error: string,
+): number | { error: string } | undefined {
+  const parsed = parseOptionalNonNegativeIntegerFilter(value, error);
+  if (typeof parsed !== "number") {
+    return parsed;
+  }
+
+  return parsed <= 100 ? parsed : { error };
+}
+
 function parseCallListSort(value: string | null): CallListSort | { error: string } {
   if (value === null || value === "startedAt") {
     return "startedAt";
@@ -2067,6 +2135,9 @@ interface CallListFilters {
   callId?: string;
   providerCallId?: string;
   transcriptText?: string;
+  scriptCompleted?: boolean;
+  minScriptProgressPct?: number;
+  maxScriptProgressPct?: number;
   minAttentionAgeMs?: number;
   maxAttentionAgeMs?: number;
   latencyStage?: string;
@@ -2169,6 +2240,38 @@ function parseCallListFilters(
     return { error: `${invalidPrefix}_transcript_text_invalid` };
   }
 
+  const scriptCompleted = parseOptionalBooleanFilter(
+    requestUrl.searchParams.get("scriptCompleted"),
+    `${invalidPrefix}_script_completed_invalid`,
+  );
+  if (scriptCompleted !== undefined && typeof scriptCompleted !== "boolean") {
+    return scriptCompleted;
+  }
+
+  const minScriptProgressPct = parseOptionalPercentFilter(
+    requestUrl.searchParams.get("minScriptProgressPct"),
+    `${invalidPrefix}_min_script_progress_pct_invalid`,
+  );
+  if (minScriptProgressPct !== undefined && typeof minScriptProgressPct !== "number") {
+    return minScriptProgressPct;
+  }
+
+  const maxScriptProgressPct = parseOptionalPercentFilter(
+    requestUrl.searchParams.get("maxScriptProgressPct"),
+    `${invalidPrefix}_max_script_progress_pct_invalid`,
+  );
+  if (maxScriptProgressPct !== undefined && typeof maxScriptProgressPct !== "number") {
+    return maxScriptProgressPct;
+  }
+
+  if (
+    typeof minScriptProgressPct === "number" &&
+    typeof maxScriptProgressPct === "number" &&
+    minScriptProgressPct > maxScriptProgressPct
+  ) {
+    return { error: `${invalidPrefix}_script_progress_range_invalid` };
+  }
+
   const minAttentionAgeMs = parseOptionalNonNegativeIntegerFilter(
     requestUrl.searchParams.get("minAttentionAgeMs"),
     `${invalidPrefix}_min_attention_age_ms_invalid`,
@@ -2215,6 +2318,9 @@ function parseCallListFilters(
     callId: callId?.trim() || undefined,
     providerCallId: providerCallId?.trim() || undefined,
     transcriptText: transcriptText?.trim() || undefined,
+    scriptCompleted,
+    minScriptProgressPct,
+    maxScriptProgressPct,
     minAttentionAgeMs,
     maxAttentionAgeMs,
     latencyStage: latencyStage?.trim() || undefined,
@@ -2735,6 +2841,91 @@ async function routeRequest(
         writeBadRequest(response, "operator_console_action_not_pending");
         return;
       }
+      writeNotFound(response);
+    }
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/operator/console/scripted-turn") {
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const callId = await resolveOperatorConsoleCallId(body, ingress);
+    if (typeof callId !== "string") {
+      writeBadRequest(response, callId.error.replace("operator_console_action", "operator_console_scripted_turn"));
+      return;
+    }
+
+    const snapshots = await ingress.listSnapshots({ callId });
+    const snapshot = snapshots[0];
+    if (!snapshot) {
+      writeBadRequest(response, "operator_console_scripted_turn_call_ref_not_found");
+      return;
+    }
+
+    const expectedTurnIndex = parseOptionalNonNegativeInteger(
+      body.expectedTurnIndex,
+      "operator_console_scripted_turn_index_invalid",
+    );
+    if (expectedTurnIndex !== null && typeof expectedTurnIndex === "object") {
+      writeBadRequest(response, expectedTurnIndex.error);
+      return;
+    }
+
+    const matchedTurns = snapshot.pipecatFlow.script.matchedCallerTurns;
+    if (expectedTurnIndex !== null && expectedTurnIndex !== matchedTurns) {
+      writeJson(response, 409, {
+        ok: false,
+        error: "operator_console_scripted_turn_index_mismatch",
+        expectedTurnIndex,
+        nextTurnIndex: matchedTurns,
+      });
+      return;
+    }
+
+    const text = snapshot.pipecatFlow.script.expectedCallerTurns[matchedTurns];
+    if (!text) {
+      writeBadRequest(response, "operator_console_scripted_turn_complete");
+      return;
+    }
+
+    const timestamp = normalizeTimestamp(body.timestamp, "operator_console_scripted_turn_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+
+    try {
+      const updatedSnapshot = await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config);
+      const totalTurns = updatedSnapshot.pipecatFlow.script.expectedCallerTurns.length;
+      const nextTurnIndex = updatedSnapshot.pipecatFlow.script.completed
+        ? null
+        : updatedSnapshot.pipecatFlow.script.matchedCallerTurns;
+      const nextTurnText = nextTurnIndex === null
+        ? null
+        : updatedSnapshot.pipecatFlow.script.expectedCallerTurns[nextTurnIndex] ?? null;
+      const remainingTurns = nextTurnIndex === null ? 0 : Math.max(totalTurns - nextTurnIndex, 0);
+      const progressPct = totalTurns === 0
+        ? 100
+        : Math.round((updatedSnapshot.pipecatFlow.script.matchedCallerTurns / totalTurns) * 100);
+      writeJson(response, 200, {
+        ok: true,
+        route: "/api/operator/console/scripted-turn",
+        submittedTurnIndex: matchedTurns,
+        submittedTurnOrdinal: matchedTurns + 1,
+        submittedText: text,
+        nextTurnIndex,
+        nextTurnText,
+        remainingTurns,
+        progressPct,
+        scriptCompleted: updatedSnapshot.pipecatFlow.script.completed,
+        call: buildOperatorConsoleCallPayload(updatedSnapshot),
+      });
+    } catch {
       writeNotFound(response);
     }
     return;
