@@ -31,7 +31,7 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
     assert.match(stdout, /Issue #85 ready: yes/);
     assert.match(stdout, /Acceptance criteria: 6\/6/);
     assert.match(stdout, /In-process RPC smoke: 13\/13/);
-    assert.match(stdout, /RPC HTTP smoke: 5 requests/);
+    assert.match(stdout, /RPC HTTP smoke: 5 requests \+ bounded error/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       ok: boolean;
@@ -159,6 +159,11 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
         finalTranscript: "Need a retention credit.",
         outputAudioChunks: 1,
         closed: true,
+        boundedError: {
+          statusCode: 400,
+          error: "realtime_shim_rpc_error",
+          message: "pcm16 audio frames must contain an even number of bytes",
+        },
       },
     });
     assert.equal(artifact.readiness.ok, true);
@@ -203,6 +208,8 @@ test("realtime shim proof runner refreshes latest artifact by default", async ()
     assert.equal(latestArtifact.artifactSummary.rpcSmokeCoverage.total, 13);
     assert.equal(latestArtifact.artifactSummary.rpcHttpSmoke.requests, 5);
     assert.equal(latestArtifact.artifactSummary.rpcHttpSmoke.closed, true);
+    assert.equal(latestArtifact.artifactSummary.rpcHttpSmoke.boundedError.statusCode, 400);
+    assert.equal(latestArtifact.artifactSummary.rpcHttpSmoke.boundedError.error, "realtime_shim_rpc_error");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
