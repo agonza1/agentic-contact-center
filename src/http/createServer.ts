@@ -163,6 +163,7 @@ function buildRealtimeShimProofPayload(): object {
 function buildRealtimeShimRpcSmoke(): Array<{
   method: string;
   ok: boolean;
+  relaySessionId?: string;
   state?: string;
   audioChunks?: number;
   relayEvents?: number;
@@ -192,6 +193,34 @@ function buildRealtimeShimRpcSmoke(): Array<{
     },
     { method: "talk.session.getEvidence", params: { sessionId: "local-rt-rpc-smoke" } },
     { method: "talk.session.close", params: { sessionId: "local-rt-rpc-smoke", reason: "complete" } },
+    {
+      method: "talk.session.create",
+      params: { mode: "realtime", transport: "gateway-relay", relaySessionId: "local-rt-rpc-cancel" },
+    },
+    { method: "talk.session.appendAudio", params: { sessionId: "local-rt-rpc-cancel", audioBase64, timestamp: 24 } },
+    {
+      method: "talk.session.finalizeTurn",
+      params: { sessionId: "local-rt-rpc-cancel", transcriptText: "Please stop that response." },
+    },
+    { method: "talk.session.cancelOutput", params: { sessionId: "local-rt-rpc-cancel", reason: "barge-in" } },
+    { method: "talk.session.cancelInput", params: { sessionId: "local-rt-rpc-cancel" } },
+    {
+      method: "talk.session.create",
+      params: { mode: "realtime", transport: "gateway-relay", relaySessionId: "local-rt-rpc-tools" },
+    },
+    {
+      method: "talk.session.submitToolResult",
+      params: { sessionId: "local-rt-rpc-tools", toolCallId: "tool-review-1", result: { ok: true } },
+    },
+    {
+      method: "talk.session.recordError",
+      params: {
+        sessionId: "local-rt-rpc-tools",
+        code: "stt_disconnected",
+        message: "Local STT websocket closed before final transcript",
+        retryable: true,
+      },
+    },
   ];
 
   return steps.map((step) => {
@@ -203,6 +232,7 @@ function buildRealtimeShimRpcSmoke(): Array<{
     return {
       method: step.method,
       ok: isRecord(response) && response.ok === true,
+      relaySessionId: result ? getOptionalTrimmedString(result.relaySessionId) : undefined,
       state: result ? getOptionalTrimmedString(result.state) : undefined,
       audioChunks: typeof audioInput?.chunks === "number" ? audioInput.chunks : undefined,
       relayEvents: Array.isArray(result?.relayEvents) ? result.relayEvents.length : undefined,
