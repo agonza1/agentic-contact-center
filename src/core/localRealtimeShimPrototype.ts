@@ -101,6 +101,28 @@ export interface LocalRealtimeShimQaEvidenceSummary {
   reviewReady: boolean;
 }
 
+export interface LocalRealtimeShimAudioFrameSummary {
+  input: {
+    encoding: RealtimeShimSessionEnvelope["audio"]["inputEncoding"];
+    sampleRateHz: RealtimeShimSessionEnvelope["audio"]["inputSampleRateHz"];
+    chunks: number;
+    bytes: number;
+    lastTimestamp?: number;
+  };
+  output: {
+    encoding: RealtimeShimSessionEnvelope["audio"]["outputEncoding"];
+    sampleRateHz: RealtimeShimSessionEnvelope["audio"]["outputSampleRateHz"];
+    chunks: number;
+    bytes: number;
+  };
+  localStt: {
+    version: LocalSttStartMessage["version"];
+    sampleRateHz: LocalSttStartMessage["audio"]["sample_rate"];
+    frameMs: LocalSttStartMessage["audio"]["frame_ms"];
+    bytesPerFrame: LocalSttStartMessage["audio"]["bytes_per_frame"];
+  };
+}
+
 export interface LocalRealtimeShimBrowserTurnLifecycleStep {
   step: "create" | "append_audio" | "finalize_turn" | "output_audio" | "cancel" | "close";
   passed: boolean;
@@ -152,6 +174,7 @@ export interface LocalRealtimeShimEvidence {
   latencyMarks: LocalRealtimeShimLatencyMark[];
   latencySummary: LocalRealtimeShimLatencySummary;
   latencyBudget: LocalRealtimeShimLatencyBudget;
+  audioFrameSummary: LocalRealtimeShimAudioFrameSummary;
   browserTurnLifecycle: LocalRealtimeShimBrowserTurnLifecycle;
   pipelineStages: LocalRealtimeShimPipelineStage[];
   qaEvidenceSummary: LocalRealtimeShimQaEvidenceSummary;
@@ -502,6 +525,7 @@ export class LocalRealtimeShimPrototype {
       latencyMarks: [...session.latencyMarks],
       latencySummary: buildLatencySummary(session.latencyMarks),
       latencyBudget: buildLatencyBudget(session.latencyMarks),
+      audioFrameSummary: buildAudioFrameSummary(session),
       browserTurnLifecycle: buildBrowserTurnLifecycle(session),
       pipelineStages,
       qaEvidenceSummary: buildQaEvidenceSummary(session, eventTranscript, logs, pipelineStages, qaChecklist),
@@ -577,6 +601,36 @@ export class LocalRealtimeShimPrototype {
       withinBudget: elapsedMs <= budgetMs,
     });
   }
+}
+
+function buildAudioFrameSummary(session: LocalRealtimeShimSession): LocalRealtimeShimAudioFrameSummary {
+  const localSttStart = buildLocalSttStartMessage();
+  const outputAudioEvents = session.timeline.filter(
+    (event) => event.source === "diagnostic" && event.type === "output.audio.delta",
+  );
+  const outputBytes = outputAudioEvents.reduce((total, event) => total + (event.byteLength ?? 0), 0);
+
+  return {
+    input: {
+      encoding: session.envelope.audio.inputEncoding,
+      sampleRateHz: session.envelope.audio.inputSampleRateHz,
+      chunks: session.audioChunksReceived,
+      bytes: session.audioBytesReceived,
+      ...(session.lastAudioTimestamp !== undefined ? { lastTimestamp: session.lastAudioTimestamp } : {}),
+    },
+    output: {
+      encoding: session.envelope.audio.outputEncoding,
+      sampleRateHz: session.envelope.audio.outputSampleRateHz,
+      chunks: outputAudioEvents.length,
+      bytes: outputBytes,
+    },
+    localStt: {
+      version: localSttStart.version,
+      sampleRateHz: localSttStart.audio.sample_rate,
+      frameMs: localSttStart.audio.frame_ms,
+      bytesPerFrame: localSttStart.audio.bytes_per_frame,
+    },
+  };
 }
 
 function buildTurnSummary(session: LocalRealtimeShimSession): LocalRealtimeShimTurnSummary {
