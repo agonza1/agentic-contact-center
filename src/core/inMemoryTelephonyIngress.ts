@@ -558,6 +558,8 @@ export class InMemoryTelephonyIngress {
     pendingOperatorSteer: number;
     fallbackArmed: number;
     attentionRequired: number;
+    scriptCompleted: number;
+    scriptInProgress: number;
     oldestAttentionCallId: string | null;
     oldestAttentionProviderCallId: string | null;
     oldestAttentionOpenclawSessionId: string | null;
@@ -582,6 +584,8 @@ export class InMemoryTelephonyIngress {
     let pendingOperatorSteer = 0;
     let fallbackArmed = 0;
     let attentionRequired = 0;
+    let scriptCompleted = 0;
+    let scriptInProgress = 0;
     let oldestAttentionCallId: string | null = null;
     let oldestAttentionProviderCallId: string | null = null;
     let oldestAttentionOpenclawSessionId: string | null = null;
@@ -625,6 +629,12 @@ export class InMemoryTelephonyIngress {
           oldestAttentionSource = attention.source;
         }
       }
+
+      if (snapshot.pipecatFlow.script.completed) {
+        scriptCompleted += 1;
+      } else {
+        scriptInProgress += 1;
+      }
     }
 
     return {
@@ -632,6 +642,8 @@ export class InMemoryTelephonyIngress {
       pendingOperatorSteer,
       fallbackArmed,
       attentionRequired,
+      scriptCompleted,
+      scriptInProgress,
       oldestAttentionCallId,
       oldestAttentionProviderCallId,
       oldestAttentionOpenclawSessionId,

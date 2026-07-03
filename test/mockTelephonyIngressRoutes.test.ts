@@ -58,6 +58,8 @@ interface QueueSummaryPayload {
     pendingOperatorSteer: number;
     fallbackArmed: number;
     attentionRequired: number;
+    scriptCompleted: number;
+    scriptInProgress: number;
     oldestAttentionCallId: string | null;
     oldestAttentionProviderCallId: string | null;
     oldestAttentionOpenclawSessionId: string | null;
@@ -784,6 +786,8 @@ test("GET /api/queue returns queue summary without call payloads", async () => {
         pendingOperatorSteer: 0,
         fallbackArmed: 0,
         attentionRequired: 0,
+        scriptCompleted: 0,
+        scriptInProgress: 0,
         oldestAttentionCallId: null,
         oldestAttentionProviderCallId: null,
         oldestAttentionOpenclawSessionId: null,
@@ -924,6 +928,8 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       pendingOperatorSteer: 0,
       fallbackArmed: 0,
       attentionRequired: 0,
+      scriptCompleted: 0,
+      scriptInProgress: 0,
       oldestAttentionCallId: null,
       oldestAttentionProviderCallId: null,
       oldestAttentionOpenclawSessionId: null,
@@ -947,6 +953,8 @@ test("GET /api/calls lists active demo calls in start order", async () => {
         pendingOperatorSteer: 0,
         fallbackArmed: 0,
         attentionRequired: 0,
+        scriptCompleted: 0,
+        scriptInProgress: 0,
         oldestAttentionCallId: null,
         oldestAttentionProviderCallId: null,
         oldestAttentionOpenclawSessionId: null,
@@ -1025,6 +1033,8 @@ test("GET /api/calls lists active demo calls in start order", async () => {
       pendingOperatorSteer: 0,
       fallbackArmed: 0,
       attentionRequired: 0,
+      scriptCompleted: 0,
+      scriptInProgress: 2,
       oldestAttentionCallId: null,
       oldestAttentionProviderCallId: null,
       oldestAttentionOpenclawSessionId: null,
@@ -1048,6 +1058,8 @@ test("GET /api/calls lists active demo calls in start order", async () => {
         pendingOperatorSteer: 0,
         fallbackArmed: 0,
         attentionRequired: 0,
+        scriptCompleted: 0,
+        scriptInProgress: 2,
         oldestAttentionCallId: null,
         oldestAttentionProviderCallId: null,
         oldestAttentionOpenclawSessionId: null,
@@ -1219,6 +1231,8 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(gotoSlideAction?.reasonPrompt, "Slide or step");
     assert.equal(consolePayload.queue.summary.totalCalls, 2);
     assert.equal(consolePayload.queue.summary.pendingOperatorSteer, 1);
+    assert.equal(consolePayload.queue.summary.scriptCompleted, 0);
+    assert.equal(consolePayload.queue.summary.scriptInProgress, 2);
     assert.deepEqual(consolePayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
     const operatorConsoleCall = consolePayload.calls.items[0];
     assert.equal(operatorConsoleCall.evidenceSummary.latestEventType, "agent_turn_appended");
@@ -1490,6 +1504,24 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
 
     assert.equal(inProgressConsole.statusCode, 200);
     assert.deepEqual(inProgressPayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
+    assert.equal(inProgressPayload.calls.summary.filteredSummary.scriptCompleted, 0);
+    assert.equal(inProgressPayload.calls.summary.filteredSummary.scriptInProgress, 2);
+
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/operator-steer`, {
+      action: "approve_offer",
+      timestamp: "2026-06-10T14:10:12.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
+      text: "Thanks, please note that follow-up and close the call.",
+      timestamp: "2026-06-10T14:10:15.000Z",
+    });
+    const completedConsole = await requestJson(port, "GET", "/api/operator/console?scriptCompleted=true");
+    const completedPayload = completedConsole.payload as OperatorConsolePayload;
+
+    assert.equal(completedConsole.statusCode, 200);
+    assert.deepEqual(completedPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
+    assert.equal(completedPayload.calls.summary.filteredSummary.scriptCompleted, 1);
+    assert.equal(completedPayload.calls.summary.filteredSummary.scriptInProgress, 0);
 
     const invalidScriptCompletedFilter = await requestJson(port, "GET", "/api/operator/console?scriptCompleted=maybe");
     assert.equal(invalidScriptCompletedFilter.statusCode, 400);
