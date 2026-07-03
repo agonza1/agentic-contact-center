@@ -252,6 +252,8 @@ function buildRealtimeShimReadinessPayload(): object {
         profile: string;
         targetFirstAudioMs: number;
         targetSessionCloseMs: number;
+        observedFirstAudioMs?: number;
+        observedSessionCloseMs?: number;
         modelGuidance: string;
         status: string;
       };

@@ -56,6 +56,8 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         profile: string;
         targetFirstAudioMs: number;
         targetSessionCloseMs: number;
+        observedFirstAudioMs?: number;
+        observedSessionCloseMs?: number;
         modelGuidance: string;
         status: string;
       };
@@ -106,6 +108,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       profile: "fast_local_turn",
       targetFirstAudioMs: 500,
       targetSessionCloseMs: 1000,
+      observedFirstAudioMs: 135,
       modelGuidance: "small_fast_local_models",
       status: "within_budget",
     });

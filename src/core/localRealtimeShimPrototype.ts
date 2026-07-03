@@ -76,6 +76,8 @@ export interface LocalRealtimeShimLatencyBudget {
   profile: "fast_local_turn";
   targetFirstAudioMs: number;
   targetSessionCloseMs: number;
+  observedFirstAudioMs?: number;
+  observedSessionCloseMs?: number;
   modelGuidance: "small_fast_local_models";
   status: "within_budget" | "over_budget";
 }
@@ -750,6 +752,8 @@ function buildLatencyBudget(latencyMarks: LocalRealtimeShimLatencyMark[]): Local
     profile: "fast_local_turn",
     targetFirstAudioMs: 500,
     targetSessionCloseMs: 1000,
+    observedFirstAudioMs: firstAudio?.elapsedMs,
+    observedSessionCloseMs: sessionClose?.elapsedMs,
     modelGuidance: "small_fast_local_models",
     status: relevantMarks.every((mark) => mark.withinBudget) ? "within_budget" : "over_budget",
   };
