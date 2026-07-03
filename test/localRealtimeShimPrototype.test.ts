@@ -154,6 +154,27 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
     modelGuidance: "small_fast_local_models",
     status: "within_budget",
   });
+  assert.deepEqual(evidence.audioFrameSummary, {
+    input: {
+      encoding: "pcm16",
+      sampleRateHz: 24000,
+      chunks: 1,
+      bytes: 8,
+      lastTimestamp: 42,
+    },
+    output: {
+      encoding: "pcm16",
+      sampleRateHz: 24000,
+      chunks: 1,
+      bytes: 8,
+    },
+    localStt: {
+      version: "local-stt.v1",
+      sampleRateHz: 16000,
+      frameMs: 20,
+      bytesPerFrame: 640,
+    },
+  });
   assert.deepEqual(evidence.pipelineStages.map((stage) => [stage.stage, stage.status, stage.mocked]), [
     ["gateway_relay", "active", false],
     ["local_stt", "active", true],
