@@ -428,6 +428,40 @@ test("local realtime shim prototype cancels input without final transcript dispa
     { sequence: 8, source: "local-stt", type: "audio", byteLength: 4 },
     { sequence: 9, source: "diagnostic", type: "input.audio.delta", byteLength: 4 },
   ]);
+
+  const finalized = shim.finalizeTurn({
+    sessionId: envelope.sessionId,
+    transcriptText: "I am ready to continue.",
+  });
+
+  assert.equal(finalized.state, "speaking");
+  assert.equal(finalized.qaChecklist.oneTurnEvidence, true);
+  assert.deepEqual(finalized.turnSummary, {
+    inputAudioChunks: 1,
+    inputAudioBytes: 4,
+    finalTranscript: "I am ready to continue.",
+    outputAudioChunks: 1,
+    outputCancelled: false,
+    inputCancelled: true,
+    errorCount: 0,
+    closed: false,
+  });
+  assert.deepEqual(finalized.localSttMessages.map((message) => message.type), [
+    "start",
+    "audio",
+    "cancel",
+    "start",
+    "audio",
+    "finalize",
+  ]);
+  assert.deepEqual(finalized.browserTurnLifecycle.steps.map((step) => [step.step, step.passed]), [
+    ["create", true],
+    ["append_audio", true],
+    ["finalize_turn", true],
+    ["output_audio", true],
+    ["cancel", true],
+    ["close", false],
+  ]);
 });
 
 test("local realtime shim prototype emits bounded Local STT error evidence", () => {
