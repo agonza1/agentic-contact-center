@@ -88,6 +88,79 @@ async function requestJson(port, route) {
   });
 }
 
+async function postJson(port, route, body) {
+  const payload = JSON.stringify(body);
+
+  return new Promise((resolve, reject) => {
+    const req = request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: route,
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": Buffer.byteLength(payload),
+        },
+      },
+      (response) => {
+        let responseBody = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          responseBody += chunk;
+        });
+        response.on("end", () => {
+          resolve({ statusCode: response.statusCode ?? 0, payload: responseBody ? JSON.parse(responseBody) : null });
+        });
+      },
+    );
+
+    req.on("error", reject);
+    req.end(payload);
+  });
+}
+
+async function runRealtimeShimRpcHttpSmoke(port) {
+  const audioBase64 = Buffer.from([0, 0, 1, 0, 2, 0, 3, 0]).toString("base64");
+  const sessionId = "local-rt-http-smoke";
+  const requests = [
+    {
+      method: "talk.session.create",
+      params: { mode: "realtime", transport: "gateway-relay", relaySessionId: sessionId },
+    },
+    { method: "talk.session.appendAudio", params: { sessionId, audioBase64, timestamp: 42 } },
+    { method: "talk.session.finalizeTurn", params: { sessionId, transcriptText: "Need a retention credit." } },
+    { method: "talk.session.getEvidence", params: { sessionId } },
+    { method: "talk.session.close", params: { sessionId, reason: "complete" } },
+  ];
+
+  const responses = [];
+  for (const rpcRequest of requests) {
+    const response = await postJson(port, "/api/realtime-shim/rpc", rpcRequest);
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.payload.ok, true);
+    assert.equal(response.payload.method, rpcRequest.method);
+    responses.push(response.payload);
+  }
+
+  const evidenceResponse = responses.find((response) => response.method === "talk.session.getEvidence");
+  const closeResponse = responses.find((response) => response.method === "talk.session.close");
+
+  assert.equal(evidenceResponse.result.turnSummary.finalTranscript, "Need a retention credit.");
+  assert.equal(evidenceResponse.result.turnSummary.outputAudioChunks, 1);
+  assert.equal(closeResponse.result.state, "closed");
+
+  return {
+    route: "/api/realtime-shim/rpc",
+    sessionId,
+    requests: requests.length,
+    methods: requests.map((request) => request.method),
+    finalTranscript: evidenceResponse.result.turnSummary.finalTranscript,
+    outputAudioChunks: evidenceResponse.result.turnSummary.outputAudioChunks,
+    closed: closeResponse.result.state === "closed",
+  };
+}
+
 async function main() {
   const outputPath = resolveOutputPath();
   const latestOutputPath = resolveLatestOutputPath();
@@ -96,6 +169,8 @@ async function main() {
       requestJson(port, "/api/realtime-shim/proof"),
       requestJson(port, "/api/realtime-shim/readiness"),
     ]);
+
+    const rpcHttpSmoke = await runRealtimeShimRpcHttpSmoke(port);
 
     assert.equal(proofResponse.statusCode, 200);
     assert.equal(proofResponse.payload.ok, true);
@@ -131,6 +206,7 @@ async function main() {
         latencyMarks: proofResponse.payload.evidence.qaEvidenceSummary.latencyMarks,
         relayEvents: proofResponse.payload.evidence.qaEvidenceSummary.relayEvents,
       },
+      rpcHttpSmoke,
     };
 
     return {
@@ -159,6 +235,7 @@ async function main() {
   console.log(
     `Acceptance criteria: ${artifact.artifactSummary.acceptanceCriteriaPassed}/${artifact.artifactSummary.acceptanceCriteriaTotal}`,
   );
+  console.log(`RPC HTTP smoke: ${artifact.artifactSummary.rpcHttpSmoke.requests} requests`);
 }
 
 main().catch((error) => {
