@@ -910,10 +910,11 @@ function buildOperatorConsoleHtml(): string {
       const response = await fetch("/api/calls/" + callId + "/caller-turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: text }) });
       if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); const message = payload.error || "Caller turn failed"; setStatus(message); throw new Error(message); }
     }
-    async function postScriptedTurn(text) {
+    async function postScriptedTurn(expectedTurnIndex) {
       const call = selectedCall();
       if (!call) return;
-      await postCallerTurn(call.session.callId, text);
+      const response = await fetch("/api/operator/console/scripted-turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ callId: call.session.callId, expectedTurnIndex: expectedTurnIndex }) });
+      if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); const message = payload.error || "Scripted turn failed"; setStatus(message); throw new Error(message); }
       await refresh();
     }
     async function recordNote(event) {
@@ -981,14 +982,14 @@ function buildOperatorConsoleHtml(): string {
       const scriptedTurns = (state.scriptedCallerTurns || []).map(function(text, index) {
         const isCompleted = index < scriptedState.matchedTurns;
         const isNext = index === scriptedState.nextTurnIndex;
-        const disabled = isCompleted ? "disabled" : "";
+        const disabled = (isCompleted || !isNext) ? "disabled" : "";
         const status = isCompleted ? "Sent" : isNext ? "Next" : "Queued";
         return '<button type="button" data-scripted-turn="' + index + '" ' + disabled + '><span class="meta">' + status + ' | Turn ' + (index + 1) + '</span><br>' + escapeHtml(text) + '</button>';
       }).join("");
       const scriptedMetric = '<div class="metric"><span class="meta">Scripted Turns</span><strong>' + scriptedState.progressPct + '%</strong><span class="meta">' + scriptedState.matchedTurns + '/' + scriptedState.totalTurns + ' sent | ' + scriptedState.remainingTurns + ' remaining</span><span class="meta">' + escapeHtml(scriptedState.completed ? "complete" : scriptedState.nextTurnText || "queued") + '</span></div>';
       root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + scriptedMetric + pendingHtml + '</div>' + liveProofHtml + evidenceHtml + '<div class="actions">' + actionHtml + '</div><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\\n\\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
-      root.querySelectorAll("button[data-scripted-turn]").forEach(function(button) { button.addEventListener("click", function() { const text = state.scriptedCallerTurns[Number(button.dataset.scriptedTurn)]; if (text) postScriptedTurn(text).catch(function(error) { setStatus(error.message); }); }); });
+      root.querySelectorAll("button[data-scripted-turn]").forEach(function(button) { button.addEventListener("click", function() { const index = Number(button.dataset.scriptedTurn); if (Number.isInteger(index)) postScriptedTurn(index).catch(function(error) { setStatus(error.message); }); }); });
       document.getElementById("caller-turn-form").addEventListener("submit", recordCallerTurn);
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }

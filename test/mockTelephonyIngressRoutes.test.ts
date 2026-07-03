@@ -1634,6 +1634,9 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Scripted Turns/);
     assert.match(response.body, /data-scripted-turn/);
     assert.match(response.body, /postScriptedTurn/);
+    assert.match(response.body, /\/api\/operator\/console\/scripted-turn/);
+    assert.match(response.body, /expectedTurnIndex/);
+    assert.match(response.body, /isCompleted \|\| !isNext/);
     assert.match(response.body, /\/caller-turn/);
     assert.match(response.body, /"goto_slide"/);
     assert.match(response.body, /"ask_operator"/);
