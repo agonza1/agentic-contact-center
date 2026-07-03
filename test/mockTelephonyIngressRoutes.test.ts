@@ -178,6 +178,8 @@ interface OperatorConsolePayload {
             nextTurnText: string | null;
             nextTurnPostRoute: string | null;
             nextTurnBodyTemplate: { text: string } | null;
+            nextScriptedTurnPostRoute: string | null;
+            nextScriptedTurnBodyTemplate: { callId: string; expectedTurnIndex: number } | null;
             completed: boolean;
           };
           actionDetails: Array<{
@@ -1285,6 +1287,8 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
         nextTurnText: "Thanks, please note that follow-up and close the call.",
         nextTurnPostRoute: `/api/calls/${operatorCallId}/caller-turn`,
         nextTurnBodyTemplate: { text: "Thanks, please note that follow-up and close the call." },
+        nextScriptedTurnPostRoute: "/api/operator/console/scripted-turn",
+        nextScriptedTurnBodyTemplate: { callId: operatorCallId, expectedTurnIndex: 3 },
         completed: false,
       },
       actionDetails: [
@@ -1437,6 +1441,8 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       nextTurnText: "I want to cancel my policy today.",
       nextTurnPostRoute: `/api/calls/${idleCallId}/caller-turn`,
       nextTurnBodyTemplate: { text: "I want to cancel my policy today." },
+      nextScriptedTurnPostRoute: "/api/operator/console/scripted-turn",
+      nextScriptedTurnBodyTemplate: { callId: idleCallId, expectedTurnIndex: 0 },
       completed: false,
     });
     assert.deepEqual(
@@ -1850,6 +1856,11 @@ test("POST /api/operator/console/scripted-turn submits only the next scripted ca
     assert.equal(submittedPayload.call.pipecatFlow.script.matchedCallerTurns, 1);
     assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.nextTurnIndex, 1);
     assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.progressPct, 25);
+    assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.nextScriptedTurnPostRoute, "/api/operator/console/scripted-turn");
+    assert.deepEqual(submittedPayload.call.actionState.scriptedCallerTurnState.nextScriptedTurnBodyTemplate, {
+      callId,
+      expectedTurnIndex: 1,
+    });
 
     const consoleResponse = await requestJson(port, "GET", "/api/operator/console?callId=" + callId);
     const consolePayload = consoleResponse.payload as OperatorConsolePayload;

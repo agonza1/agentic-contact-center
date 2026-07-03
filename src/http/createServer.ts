@@ -1380,6 +1380,10 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
           ? null
           : `/api/calls/${encodeURIComponent(snapshot.session.callId)}/caller-turn`,
         nextTurnBodyTemplate: nextScriptedCallerTurn === null ? null : { text: nextScriptedCallerTurn },
+        nextScriptedTurnPostRoute: nextScriptedCallerTurn === null ? null : "/api/operator/console/scripted-turn",
+        nextScriptedTurnBodyTemplate: nextScriptedCallerTurn === null
+          ? null
+          : { callId: snapshot.session.callId, expectedTurnIndex: matchedScriptedCallerTurns },
         completed: nextScriptedCallerTurn === null,
       },
       actionDetails,
