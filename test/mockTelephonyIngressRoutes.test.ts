@@ -1541,6 +1541,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /fallbackReason/);
     assert.match(response.body, /pipecatActiveTool/);
     assert.match(response.body, /scriptCompleted/);
+    assert.match(response.body, /script-completed-filter"\)\.addEventListener/);
+    assert.match(response.body, /script-completed-filter"\)\.value = ""/);
     assert.match(response.body, /transcriptText/);
     assert.match(response.body, /\/api\/demo\/start/);
     assert.match(response.body, /caller-turn-form/);
