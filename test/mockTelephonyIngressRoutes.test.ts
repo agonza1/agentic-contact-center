@@ -1507,6 +1507,13 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(inProgressPayload.calls.summary.filteredSummary.scriptCompleted, 0);
     assert.equal(inProgressPayload.calls.summary.filteredSummary.scriptInProgress, 2);
 
+    const earlyScriptConsole = await requestJson(port, "GET", "/api/operator/console?maxScriptProgressPct=25");
+    const earlyScriptPayload = earlyScriptConsole.payload as OperatorConsolePayload;
+
+    assert.equal(earlyScriptConsole.statusCode, 200);
+    assert.deepEqual(earlyScriptPayload.calls.items.map((call) => call.session.callId), [idleCallId]);
+    assert.equal(earlyScriptPayload.calls.summary.filteredSummary.totalCalls, 1);
+
     await requestJson(port, "POST", `/api/calls/${operatorCallId}/operator-steer`, {
       action: "approve_offer",
       timestamp: "2026-06-10T14:10:12.000Z",
@@ -1533,6 +1540,10 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     const invalidScriptProgressFilter = await requestJson(port, "GET", "/api/operator/console?minScriptProgressPct=101");
     assert.equal(invalidScriptProgressFilter.statusCode, 400);
     assert.deepEqual(invalidScriptProgressFilter.payload, { ok: false, error: "operator_console_min_script_progress_pct_invalid" });
+
+    const invalidMaxScriptProgressFilter = await requestJson(port, "GET", "/api/operator/console?maxScriptProgressPct=fast");
+    assert.equal(invalidMaxScriptProgressFilter.statusCode, 400);
+    assert.deepEqual(invalidMaxScriptProgressFilter.payload, { ok: false, error: "operator_console_max_script_progress_pct_invalid" });
 
     const invalidScriptCompletedFilter = await requestJson(port, "GET", "/api/operator/console?scriptCompleted=maybe");
     assert.equal(invalidScriptCompletedFilter.statusCode, 400);
@@ -1567,6 +1578,9 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /All active tools/);
     assert.match(response.body, /Script status filter/);
     assert.match(response.body, /All script states/);
+    assert.match(response.body, /Script minimum progress filter/);
+    assert.match(response.body, /Script maximum progress filter/);
+    assert.match(response.body, /Any max progress/);
     assert.match(response.body, /Transcript search/);
     assert.match(response.body, /operatorConsoleQuery/);
     assert.match(response.body, /refreshIntervalMs/);
@@ -1584,8 +1598,10 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /fallbackReason/);
     assert.match(response.body, /pipecatActiveTool/);
     assert.match(response.body, /scriptCompleted/);
+    assert.match(response.body, /maxScriptProgressPct/);
     assert.match(response.body, /script-completed-filter"\)\.addEventListener/);
     assert.match(response.body, /script-completed-filter"\)\.value = ""/);
+    assert.match(response.body, /script-max-progress-filter"\)\.value = ""/);
     assert.match(response.body, /transcriptText/);
     assert.match(response.body, /\/api\/demo\/start/);
     assert.match(response.body, /caller-turn-form/);
