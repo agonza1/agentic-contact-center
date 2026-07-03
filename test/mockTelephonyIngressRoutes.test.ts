@@ -176,6 +176,8 @@ interface OperatorConsolePayload {
             progressPct: number;
             nextTurnIndex: number | null;
             nextTurnText: string | null;
+            nextTurnPostRoute: string | null;
+            nextTurnBodyTemplate: { text: string } | null;
             completed: boolean;
           };
           actionDetails: Array<{
@@ -1280,6 +1282,8 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
         progressPct: 75,
         nextTurnIndex: 3,
         nextTurnText: "Thanks, please note that follow-up and close the call.",
+        nextTurnPostRoute: `/api/calls/${operatorCallId}/caller-turn`,
+        nextTurnBodyTemplate: { text: "Thanks, please note that follow-up and close the call." },
         completed: false,
       },
       actionDetails: [
@@ -1430,6 +1434,8 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       progressPct: 0,
       nextTurnIndex: 0,
       nextTurnText: "I want to cancel my policy today.",
+      nextTurnPostRoute: `/api/calls/${idleCallId}/caller-turn`,
+      nextTurnBodyTemplate: { text: "I want to cancel my policy today." },
       completed: false,
     });
     assert.deepEqual(

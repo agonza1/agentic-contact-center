@@ -1375,6 +1375,10 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
         progressPct: scriptProgressPct,
         nextTurnIndex: nextScriptedCallerTurn === null ? null : matchedScriptedCallerTurns,
         nextTurnText: nextScriptedCallerTurn,
+        nextTurnPostRoute: nextScriptedCallerTurn === null
+          ? null
+          : `/api/calls/${encodeURIComponent(snapshot.session.callId)}/caller-turn`,
+        nextTurnBodyTemplate: nextScriptedCallerTurn === null ? null : { text: nextScriptedCallerTurn },
         completed: nextScriptedCallerTurn === null,
       },
       actionDetails,
