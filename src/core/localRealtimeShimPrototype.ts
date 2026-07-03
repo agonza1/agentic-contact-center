@@ -72,6 +72,16 @@ export interface LocalRealtimeShimLatencySummary {
   allWithinBudget: boolean;
 }
 
+export interface LocalRealtimeShimLatencyBudget {
+  profile: "fast_local_turn";
+  targetFirstAudioMs: number;
+  targetSessionCloseMs: number;
+  observedFirstAudioMs?: number;
+  observedSessionCloseMs?: number;
+  modelGuidance: "small_fast_local_models";
+  status: "within_budget" | "over_budget";
+}
+
 export interface LocalRealtimeShimPipelineStage {
   stage: "gateway_relay" | "local_stt" | "local_llm" | "kokoro_tts";
   status: "ready" | "active" | "mocked";
@@ -141,6 +151,7 @@ export interface LocalRealtimeShimEvidence {
   logs: string[];
   latencyMarks: LocalRealtimeShimLatencyMark[];
   latencySummary: LocalRealtimeShimLatencySummary;
+  latencyBudget: LocalRealtimeShimLatencyBudget;
   browserTurnLifecycle: LocalRealtimeShimBrowserTurnLifecycle;
   pipelineStages: LocalRealtimeShimPipelineStage[];
   qaEvidenceSummary: LocalRealtimeShimQaEvidenceSummary;
@@ -490,6 +501,7 @@ export class LocalRealtimeShimPrototype {
       logs,
       latencyMarks: [...session.latencyMarks],
       latencySummary: buildLatencySummary(session.latencyMarks),
+      latencyBudget: buildLatencyBudget(session.latencyMarks),
       browserTurnLifecycle: buildBrowserTurnLifecycle(session),
       pipelineStages,
       qaEvidenceSummary: buildQaEvidenceSummary(session, eventTranscript, logs, pipelineStages, qaChecklist),
@@ -728,6 +740,22 @@ function buildLatencySummary(latencyMarks: LocalRealtimeShimLatencyMark[]): Loca
     maxElapsedMs: slowestMark.elapsedMs,
     slowestMark: slowestMark.name,
     allWithinBudget: latencyMarks.every((mark) => mark.withinBudget),
+  };
+}
+
+function buildLatencyBudget(latencyMarks: LocalRealtimeShimLatencyMark[]): LocalRealtimeShimLatencyBudget {
+  const firstAudio = latencyMarks.find((mark) => mark.name === "output_first_audio");
+  const sessionClose = latencyMarks.find((mark) => mark.name === "session_closed");
+  const relevantMarks = [firstAudio, sessionClose].filter((mark): mark is LocalRealtimeShimLatencyMark => mark !== undefined);
+
+  return {
+    profile: "fast_local_turn",
+    targetFirstAudioMs: 500,
+    targetSessionCloseMs: 1000,
+    observedFirstAudioMs: firstAudio?.elapsedMs,
+    observedSessionCloseMs: sessionClose?.elapsedMs,
+    modelGuidance: "small_fast_local_models",
+    status: relevantMarks.every((mark) => mark.withinBudget) ? "within_budget" : "over_budget",
   };
 }
 

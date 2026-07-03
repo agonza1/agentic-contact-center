@@ -163,6 +163,7 @@ function buildRealtimeShimProofPayload(): object {
 function buildRealtimeShimRpcSmoke(): Array<{
   method: string;
   ok: boolean;
+  relaySessionId?: string;
   state?: string;
   audioChunks?: number;
   relayEvents?: number;
@@ -192,6 +193,34 @@ function buildRealtimeShimRpcSmoke(): Array<{
     },
     { method: "talk.session.getEvidence", params: { sessionId: "local-rt-rpc-smoke" } },
     { method: "talk.session.close", params: { sessionId: "local-rt-rpc-smoke", reason: "complete" } },
+    {
+      method: "talk.session.create",
+      params: { mode: "realtime", transport: "gateway-relay", relaySessionId: "local-rt-rpc-cancel" },
+    },
+    { method: "talk.session.appendAudio", params: { sessionId: "local-rt-rpc-cancel", audioBase64, timestamp: 24 } },
+    {
+      method: "talk.session.finalizeTurn",
+      params: { sessionId: "local-rt-rpc-cancel", transcriptText: "Please stop that response." },
+    },
+    { method: "talk.session.cancelOutput", params: { sessionId: "local-rt-rpc-cancel", reason: "barge-in" } },
+    { method: "talk.session.cancelInput", params: { sessionId: "local-rt-rpc-cancel" } },
+    {
+      method: "talk.session.create",
+      params: { mode: "realtime", transport: "gateway-relay", relaySessionId: "local-rt-rpc-tools" },
+    },
+    {
+      method: "talk.session.submitToolResult",
+      params: { sessionId: "local-rt-rpc-tools", toolCallId: "tool-review-1", result: { ok: true } },
+    },
+    {
+      method: "talk.session.recordError",
+      params: {
+        sessionId: "local-rt-rpc-tools",
+        code: "stt_disconnected",
+        message: "Local STT websocket closed before final transcript",
+        retryable: true,
+      },
+    },
   ];
 
   return steps.map((step) => {
@@ -203,6 +232,7 @@ function buildRealtimeShimRpcSmoke(): Array<{
     return {
       method: step.method,
       ok: isRecord(response) && response.ok === true,
+      relaySessionId: result ? getOptionalTrimmedString(result.relaySessionId) : undefined,
       state: result ? getOptionalTrimmedString(result.state) : undefined,
       audioChunks: typeof audioInput?.chunks === "number" ? audioInput.chunks : undefined,
       relayEvents: Array.isArray(result?.relayEvents) ? result.relayEvents.length : undefined,
@@ -248,6 +278,15 @@ function buildRealtimeShimReadinessPayload(): object {
     readyForIssue85Review: boolean;
     evidence: {
       browserRelayCompatibility: { status: string; uiRewriteRequired: boolean; requiredRpcs: string[] };
+      latencyBudget: {
+        profile: string;
+        targetFirstAudioMs: number;
+        targetSessionCloseMs: number;
+        observedFirstAudioMs?: number;
+        observedSessionCloseMs?: number;
+        modelGuidance: string;
+        status: string;
+      };
       mockedPieces: string[];
       limitations: string[];
       pipelineStages: Array<{ stage: string; status: string; mocked: boolean; evidence: string }>;
@@ -272,6 +311,7 @@ function buildRealtimeShimReadinessPayload(): object {
       boundedErrors: proof.rpcCompatibility.boundedErrors,
     },
     browserRelayCompatibility: proof.evidence.browserRelayCompatibility,
+    latencyBudget: proof.evidence.latencyBudget,
     reviewBlockers: proof.readyForIssue85Review ? [] : ["One or more Issue #85 acceptance criteria are not satisfied."],
     reviewPacket: {
       ready: proof.readyForIssue85Review,
@@ -310,10 +350,46 @@ function buildRealtimeShimReadinessPayload(): object {
           method: "talk.session.getEvidence",
           body: { method: "talk.session.getEvidence", params: { sessionId: "local-rt-review" } },
         },
+        {
+          label: "cancel output on browser barge-in",
+          method: "talk.session.cancelOutput",
+          body: { method: "talk.session.cancelOutput", params: { sessionId: "local-rt-review", reason: "barge-in" } },
+        },
+        {
+          label: "cancel pending input audio",
+          method: "talk.session.cancelInput",
+          body: { method: "talk.session.cancelInput", params: { sessionId: "local-rt-review" } },
+        },
+        {
+          label: "record bounded Local STT error",
+          method: "talk.session.recordError",
+          body: {
+            method: "talk.session.recordError",
+            params: {
+              sessionId: "local-rt-review",
+              code: "stt_disconnected",
+              message: "Local STT websocket closed before final transcript",
+              retryable: true,
+            },
+          },
+        },
+        {
+          label: "record tool result compatibility evidence",
+          method: "talk.session.submitToolResult",
+          body: {
+            method: "talk.session.submitToolResult",
+            params: { sessionId: "local-rt-review", toolCallId: "tool-review-1", result: { ok: true } },
+          },
+        },
+        {
+          label: "close local realtime shim session",
+          method: "talk.session.close",
+          body: { method: "talk.session.close", params: { sessionId: "local-rt-review", reason: "complete" } },
+        },
       ],
       reviewerChecklist: [
         "Confirm the Gateway relay RPC boundary matches the OpenClaw browser voice surface.",
-        "Inspect proof.evidence.eventTranscript, proof.evidence.logs, and proof.evidence.latencyMarks for the one-turn path.",
+        "Inspect proof.evidence.eventTranscript, proof.evidence.logs, proof.evidence.latencyMarks, and latencyBudget for the one-turn path.",
         "Inspect interruptionEvidence, inputCancelEvidence, errorEvidence, and invalidAudioResult for cancel/error behavior.",
         "Confirm mockedPieces and limitations name the non-live rtc-asr, local LLM, and Kokoro boundaries.",
       ],
@@ -323,7 +399,7 @@ function buildRealtimeShimReadinessPayload(): object {
       {
         route: "/api/realtime-shim/proof",
         method: "GET",
-        evidence: ["logs", "eventTranscript", "timeline", "latencyMarks", "pipelineStages"],
+        evidence: ["logs", "eventTranscript", "timeline", "latencyMarks", "latencyBudget", "pipelineStages"],
       },
       {
         route: "/api/realtime-shim/rpc",

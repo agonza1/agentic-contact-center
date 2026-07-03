@@ -145,6 +145,15 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
     slowestMark: "output_first_audio",
     allWithinBudget: true,
   });
+  assert.deepEqual(evidence.latencyBudget, {
+    profile: "fast_local_turn",
+    targetFirstAudioMs: 500,
+    targetSessionCloseMs: 1000,
+    observedFirstAudioMs: 135,
+    observedSessionCloseMs: undefined,
+    modelGuidance: "small_fast_local_models",
+    status: "within_budget",
+  });
   assert.deepEqual(evidence.pipelineStages.map((stage) => [stage.stage, stage.status, stage.mocked]), [
     ["gateway_relay", "active", false],
     ["local_stt", "active", true],
@@ -327,6 +336,15 @@ test("local realtime shim prototype models barge-in clear and idempotent close",
     maxElapsedMs: 150,
     slowestMark: "session_closed",
     allWithinBudget: true,
+  });
+  assert.deepEqual(closed.latencyBudget, {
+    profile: "fast_local_turn",
+    targetFirstAudioMs: 500,
+    targetSessionCloseMs: 1000,
+    observedFirstAudioMs: 135,
+    observedSessionCloseMs: 150,
+    modelGuidance: "small_fast_local_models",
+    status: "within_budget",
   });
   assert.deepEqual(closedAgain.latencyMarks, closed.latencyMarks);
   assert.deepEqual(closedAgain.relayEvents, closed.relayEvents);

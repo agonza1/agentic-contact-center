@@ -49,6 +49,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         method: string;
         ok: boolean;
         state?: string;
+        relaySessionId?: string;
         audioChunks?: number;
         relayEvents?: number;
         diagnostics?: number;
@@ -171,12 +172,20 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       statefulSession: true,
       boundedErrors: true,
     });
-    assert.deepEqual(payload.rpcSmoke.map((step) => [step.method, step.ok, step.state]), [
-      ["talk.session.create", true, undefined],
-      ["talk.session.appendAudio", true, "listening"],
-      ["talk.session.finalizeTurn", true, "speaking"],
-      ["talk.session.getEvidence", true, "speaking"],
-      ["talk.session.close", true, "closed"],
+    assert.deepEqual(payload.rpcSmoke.map((step) => [step.method, step.ok, step.relaySessionId, step.state]), [
+      ["talk.session.create", true, "local-rt-rpc-smoke", undefined],
+      ["talk.session.appendAudio", true, undefined, "listening"],
+      ["talk.session.finalizeTurn", true, undefined, "speaking"],
+      ["talk.session.getEvidence", true, undefined, "speaking"],
+      ["talk.session.close", true, undefined, "closed"],
+      ["talk.session.create", true, "local-rt-rpc-cancel", undefined],
+      ["talk.session.appendAudio", true, undefined, "listening"],
+      ["talk.session.finalizeTurn", true, undefined, "speaking"],
+      ["talk.session.cancelOutput", true, undefined, "listening"],
+      ["talk.session.cancelInput", true, undefined, "idle"],
+      ["talk.session.create", true, "local-rt-rpc-tools", undefined],
+      ["talk.session.submitToolResult", true, undefined, "idle"],
+      ["talk.session.recordError", true, undefined, "idle"],
     ]);
     assert.equal(payload.rpcSmoke[1].audioChunks, 1);
     assert.equal(payload.rpcSmoke[2].relayEvents, 1);
@@ -199,6 +208,25 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       inputCancelled: false,
       errorCount: 0,
       closed: true,
+    });
+    assert.deepEqual(payload.rpcSmoke[9].turnSummary, {
+      inputAudioChunks: 0,
+      inputAudioBytes: 0,
+      finalTranscript: "Please stop that response.",
+      outputAudioChunks: 1,
+      outputCancelled: true,
+      inputCancelled: true,
+      errorCount: 0,
+      closed: false,
+    });
+    assert.deepEqual(payload.rpcSmoke[12].turnSummary, {
+      inputAudioChunks: 0,
+      inputAudioBytes: 0,
+      outputAudioChunks: 0,
+      outputCancelled: false,
+      inputCancelled: false,
+      errorCount: 1,
+      closed: false,
     });
     assert.deepEqual(payload.acceptanceSummary, {
       oneLocalVoiceTurn: true,

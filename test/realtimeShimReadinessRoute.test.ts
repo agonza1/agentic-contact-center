@@ -52,6 +52,15 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         boundedErrors: boolean;
       };
       browserRelayCompatibility: { status: string; uiRewriteRequired: boolean; requiredRpcs: string[] };
+      latencyBudget: {
+        profile: string;
+        targetFirstAudioMs: number;
+        targetSessionCloseMs: number;
+        observedFirstAudioMs?: number;
+        observedSessionCloseMs?: number;
+        modelGuidance: string;
+        status: string;
+      };
       reviewBlockers: string[];
       reviewPacket: {
         ready: boolean;
@@ -95,6 +104,14 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
     });
     assert.equal(payload.browserRelayCompatibility.status, "ready_for_browser_flow");
     assert.equal(payload.browserRelayCompatibility.uiRewriteRequired, false);
+    assert.deepEqual(payload.latencyBudget, {
+      profile: "fast_local_turn",
+      targetFirstAudioMs: 500,
+      targetSessionCloseMs: 1000,
+      observedFirstAudioMs: 135,
+      modelGuidance: "small_fast_local_models",
+      status: "within_budget",
+    });
     assert.deepEqual(payload.reviewBlockers, []);
     assert.equal(payload.reviewPacket.ready, true);
     assert.equal(payload.reviewPacket.issue, "agonza1/agentic-contact-center#85");
@@ -109,6 +126,11 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         "talk.session.appendAudio",
         "talk.session.finalizeTurn",
         "talk.session.getEvidence",
+        "talk.session.cancelOutput",
+        "talk.session.cancelInput",
+        "talk.session.recordError",
+        "talk.session.submitToolResult",
+        "talk.session.close",
       ],
     );
     assert.deepEqual(payload.reviewPacket.rpcExamples[0].body, {
@@ -117,9 +139,13 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
     });
     assert.equal(payload.reviewPacket.rpcExamples[1].body.params.sessionId, "local-rt-review");
     assert.equal(payload.reviewPacket.rpcExamples[2].body.params.transcriptText, "Need a retention credit.");
+    assert.equal(payload.reviewPacket.rpcExamples[4].body.params.reason, "barge-in");
+    assert.equal(payload.reviewPacket.rpcExamples[6].body.params.code, "stt_disconnected");
+    assert.deepEqual(payload.reviewPacket.rpcExamples[7].body.params.result, { ok: true });
+    assert.equal(payload.reviewPacket.rpcExamples[8].body.params.reason, "complete");
     assert.deepEqual(payload.reviewPacket.reviewerChecklist, [
       "Confirm the Gateway relay RPC boundary matches the OpenClaw browser voice surface.",
-      "Inspect proof.evidence.eventTranscript, proof.evidence.logs, and proof.evidence.latencyMarks for the one-turn path.",
+      "Inspect proof.evidence.eventTranscript, proof.evidence.logs, proof.evidence.latencyMarks, and latencyBudget for the one-turn path.",
       "Inspect interruptionEvidence, inputCancelEvidence, errorEvidence, and invalidAudioResult for cancel/error behavior.",
       "Confirm mockedPieces and limitations name the non-live rtc-asr, local LLM, and Kokoro boundaries.",
     ]);
@@ -128,7 +154,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       {
         route: "/api/realtime-shim/proof",
         method: "GET",
-        evidence: ["logs", "eventTranscript", "timeline", "latencyMarks", "pipelineStages"],
+        evidence: ["logs", "eventTranscript", "timeline", "latencyMarks", "latencyBudget", "pipelineStages"],
       },
       {
         route: "/api/realtime-shim/rpc",
