@@ -57,7 +57,8 @@ services:
 
 
   freeswitch:
-    image: signalwire/freeswitch:1.10
+    image: safarov/freeswitch:latest
+    platform: linux/amd64
     profiles: ["freeswitch"]
     depends_on:
       - app

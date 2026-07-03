@@ -42,8 +42,10 @@ test("Docker runtime assets keep the documented health and proof contract", () =
     packageJson.scripts?.["docker:proof"],
     "sh -c 'LOCAL_UID=${LOCAL_UID:-$(id -u)} LOCAL_GID=${LOCAL_GID:-$(id -g)} docker compose run --rm proof'",
   );
+  assert.equal(packageJson.scripts?.["docker:freeswitch:only"], "docker compose --profile freeswitch up -d freeswitch --no-deps");
   assert.match(readme, /npm run docker:app/);
   assert.match(readme, /npm run docker:smoke/);
   assert.match(readme, /npm run health:smoke/);
   assert.match(readme, /npm run docker:proof/);
+  assert.match(readme, /npm run docker:freeswitch:only/);
 });
