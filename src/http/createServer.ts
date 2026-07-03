@@ -335,6 +335,11 @@ function buildRealtimeShimReadinessPayload(): object {
         "curl -fsS http://127.0.0.1:8026/api/realtime-shim/readiness",
         "curl -fsS -X POST http://127.0.0.1:8026/api/realtime-shim/rpc -H 'content-type: application/json' --data '{\"method\":\"talk.session.getEvidence\",\"params\":{\"sessionId\":\"local-rt-review\"}}'",
       ],
+      artifactOutputs: {
+        defaultProof: "artifacts/realtime-shim-proof-<timestamp>.json",
+        defaultLatest: "artifacts/realtime-shim-proof-latest.json",
+        explicitProofCommand: "npm run proof:realtime-shim -- --out artifacts/realtime-shim-proof.json --latest-out artifacts/realtime-shim-proof-latest.json",
+      },
       rpcExamples: [
         {
           label: "create local realtime shim session",
