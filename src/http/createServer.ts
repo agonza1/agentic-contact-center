@@ -770,63 +770,101 @@ function buildOperatorConsoleHtml(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Operator Console</title>
   <style>
-    :root { --bg: #f6f7f9; --panel: #fff; --text: #14202b; --muted: #657487; --line: #d7dee8; --accent: #0f766e; --danger: #b42318; }
+    :root {
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --panel-soft: #f8fafb;
+      --text: #17202a;
+      --muted: #667085;
+      --line: #d8dee6;
+      --line-strong: #b9c3d0;
+      --accent: #0f766e;
+      --accent-soft: #e8f5f2;
+      --warning: #a15c07;
+      --warning-soft: #fff7e8;
+      --danger: #b42318;
+      --danger-soft: #fff1f0;
+      --ok: #136f3f;
+      --ok-soft: #ecfdf3;
+      --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+    }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
-    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel); }
-    h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0; }
-    main { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 16px; padding: 16px; }
+    header { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 72px; padding: 14px 24px; border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(12px); }
+    h1 { margin: 0; font-size: 18px; font-weight: 750; letter-spacing: 0; }
+    h2, h3 { letter-spacing: 0; }
+    main { display: grid; grid-template-columns: minmax(320px, 380px) minmax(0, 1fr); gap: 18px; padding: 18px; align-items: start; }
     button, input, select, textarea { font: inherit; }
-    button { min-height: 36px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); cursor: pointer; }
+    button { min-height: 36px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--text); cursor: pointer; font-weight: 650; }
+    button:hover:not(:disabled) { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
     button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-    button.danger { color: var(--danger); border-color: #f0b8b2; }
+    button.danger { color: var(--danger); border-color: #f0b8b2; background: var(--danger-soft); }
     button:disabled { cursor: not-allowed; opacity: 0.45; }
-    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-    .panel h2 { margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 15px; }
-    .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line); background: #fbfcfe; }
-    .filter-toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .brand { display: grid; gap: 2px; min-width: 220px; }
+    .brand-kicker { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+    .toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow); }
+    .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--panel-soft); }
+    .panel h2 { margin: 0; font-size: 14px; font-weight: 750; }
+    .queue-count { color: var(--muted); font-size: 12px; font-weight: 700; }
+    .filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); background: #fff; }
+    .filter-toggle { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; background: var(--panel-soft); }
     .status, .meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .status { display: inline-flex; align-items: center; min-height: 28px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-soft); font-weight: 650; }
     .call-list { display: grid; }
-    .call-item { width: 100%; display: grid; gap: 4px; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; text-align: left; }
-    .call-item[aria-selected="true"] { border-left: 4px solid var(--accent); background: #eefaf7; padding-left: 10px; }
-    .call-id { font-weight: 700; }
-    .detail { display: grid; gap: 14px; padding: 14px; }
+    .call-item { width: 100%; display: grid; gap: 8px; padding: 13px 14px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; text-align: left; background: #fff; font-weight: 500; }
+    .call-item[aria-selected="true"] { border-left: 4px solid var(--accent); background: var(--accent-soft); padding-left: 10px; }
+    .call-top, .call-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .call-id { font-weight: 760; color: var(--text); }
+    .call-state { color: var(--muted); font-size: 12px; text-transform: capitalize; }
+    .progress { height: 6px; overflow: hidden; border-radius: 999px; background: #e6ebf1; }
+    .progress span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+    .detail { display: grid; gap: 14px; padding: 14px; background: #fbfcfd; }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
     .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-    .metric { border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fbfcfe; }
-    .metric strong { display: block; font-size: 18px; }
-    .proof-panel { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #f8fafc; }
+    .metric { border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fff; min-width: 0; }
+    .metric .meta { display: block; line-height: 1.35; }
+    .metric strong { display: block; font-size: 17px; line-height: 1.25; overflow-wrap: anywhere; }
+    .metric.compact strong { font-size: 14px; }
+    .workbench { display: grid; grid-template-columns: minmax(260px, 0.85fr) minmax(360px, 1.15fr); gap: 14px; align-items: start; }
+    .stack { display: grid; gap: 10px; }
+    .section { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fff; }
+    .section-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; font-size: 13px; font-weight: 760; color: var(--text); }
+    .proof-panel { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fff; }
     .proof-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
     .proof-header h3 { margin: 0; font-size: 15px; }
     .badges { display: flex; gap: 6px; flex-wrap: wrap; }
-    .badge { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--muted); font-size: 12px; }
-    .badge.live { color: #0f5f58; border-color: #8fd6cd; background: #eefaf7; }
-    .badge.warn { color: #8a3d13; border-color: #f5bf8f; background: #fff7ed; }
-    .proof-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+    .badge { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .badge.live, .badge.ok { color: var(--ok); border-color: #9bd7b6; background: var(--ok-soft); }
+    .badge.warn { color: var(--warning); border-color: #f2c479; background: var(--warning-soft); }
+    .proof-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
     .caveats { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12px; }
     .evidence { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
-    .evidence a { color: var(--accent); font-weight: 700; text-decoration: none; }
-    .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+    .evidence .metric a, .proof-panel .metric a { color: var(--accent); font-weight: 750; text-decoration: none; display: block; margin-top: 3px; }
+    .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .scripted-turns { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
     .scripted-turns button { text-align: left; padding: 8px; }
-    .transcript { display: grid; gap: 8px; max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fbfcfe; }
-    .turn { display: grid; gap: 2px; }
-    .turn b { font-size: 12px; color: var(--muted); text-transform: uppercase; }
+    .transcript { display: grid; gap: 8px; max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: var(--panel-soft); }
+    .turn { display: grid; gap: 3px; max-width: 82%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .turn.caller { justify-self: start; border-left: 4px solid var(--accent); }
+    .turn.agent, .turn.operator { justify-self: end; border-right: 4px solid var(--line-strong); }
+    .turn b { font-size: 11px; color: var(--muted); text-transform: uppercase; }
     form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
     textarea { min-height: 72px; resize: vertical; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
-    input, select { min-height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 8px; max-width: 180px; background: #fff; }
+    input, select { min-height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 8px; width: 100%; background: #fff; color: var(--text); }
     input[type="checkbox"] { min-height: auto; width: 16px; height: 16px; padding: 0; }
-    @media (max-width: 820px) { main { grid-template-columns: 1fr; } .grid { grid-template-columns: 1fr; } form { grid-template-columns: 1fr; } input, select { max-width: none; width: 100%; } .filters { align-items: stretch; } .filter-toggle { width: 100%; } }
+    @media (max-width: 1120px) { .workbench { grid-template-columns: 1fr; } .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 860px) { header, .toolbar { align-items: stretch; } header { position: static; flex-direction: column; } main { grid-template-columns: 1fr; padding: 12px; } .grid, .summary-grid, .filters { grid-template-columns: 1fr; } form { grid-template-columns: 1fr; } .filter-toggle { width: 100%; } .turn { max-width: 100%; } }
   </style>
 </head>
 <body>
   <header>
-    <h1>Operator Console</h1>
-    <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" id="start-demo">Start Demo Call</button><button type="button" id="refresh">Refresh</button></div>
+    <div class="brand"><span class="brand-kicker">Agentic Contact Center</span><h1>Operator Console</h1></div>
+    <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" class="primary" id="start-demo">Start Demo Call</button><button type="button" id="refresh">Refresh</button></div>
   </header>
   <main>
-    <section class="panel" aria-label="Live calls"><h2>Live Calls</h2><div class="filters"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Attention only</label><label class="filter-toggle"><input type="checkbox" id="latency-over-budget-filter">Over-budget latency</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><select id="fallback-filter" aria-label="Fallback mode filter"><option value="">All fallback modes</option><option value="tool_timeout">Tool Timeout</option><option value="runtime_failure">Runtime Failure</option></select><select id="fallback-source-filter" aria-label="Fallback source filter"><option value="">All fallback sources</option><option value="tool_timeout_fail_closed">Tool Timeout Source</option><option value="pipecat_runtime_failure_fail_closed">Runtime Failure Source</option></select><input id="fallback-reason-filter" aria-label="Fallback reason filter" placeholder="Fallback reason"><select id="tool-filter" aria-label="Active tool filter"><option value="">All active tools</option><option value="get_current_slide">Get Current Slide</option><option value="goto_slide">Go To Slide</option><option value="pause_presentation">Pause Presentation</option><option value="ask_operator">Ask Operator</option></select><select id="script-completed-filter" aria-label="Script status filter"><option value="">All script states</option><option value="false">In progress</option><option value="true">Complete</option></select><select id="script-progress-filter" aria-label="Script minimum progress filter"><option value="">Any min progress</option><option value="25">25%+ scripted</option><option value="50">50%+ scripted</option><option value="75">75%+ scripted</option><option value="100">100% scripted</option></select><select id="script-max-progress-filter" aria-label="Script maximum progress filter"><option value="">Any max progress</option><option value="0">0% or less scripted</option><option value="25">25% or less scripted</option><option value="50">50% or less scripted</option><option value="75">75% or less scripted</option></select><input id="transcript-filter" placeholder="Transcript search"><button type="button" id="clear-filters">Clear</button></div><div class="call-list" id="calls"></div></section>
-    <section class="panel" aria-label="Selected call"><h2 id="selected-title">Select a call</h2><div class="detail" id="detail"></div></section>
+    <section class="panel" aria-label="Live calls"><div class="panel-header"><h2>Live Calls</h2><span class="queue-count" id="queue-count">0 queued</span></div><div class="filters"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Attention only</label><label class="filter-toggle"><input type="checkbox" id="latency-over-budget-filter">Over-budget latency</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><select id="fallback-filter" aria-label="Fallback mode filter"><option value="">All fallback modes</option><option value="tool_timeout">Tool Timeout</option><option value="runtime_failure">Runtime Failure</option></select><select id="fallback-source-filter" aria-label="Fallback source filter"><option value="">All fallback sources</option><option value="tool_timeout_fail_closed">Tool Timeout Source</option><option value="pipecat_runtime_failure_fail_closed">Runtime Failure Source</option></select><input id="fallback-reason-filter" aria-label="Fallback reason filter" placeholder="Fallback reason"><select id="tool-filter" aria-label="Active tool filter"><option value="">All active tools</option><option value="get_current_slide">Get Current Slide</option><option value="goto_slide">Go To Slide</option><option value="pause_presentation">Pause Presentation</option><option value="ask_operator">Ask Operator</option></select><select id="script-completed-filter" aria-label="Script status filter"><option value="">All script states</option><option value="false">In progress</option><option value="true">Complete</option></select><select id="script-progress-filter" aria-label="Script minimum progress filter"><option value="">Any min progress</option><option value="25">25%+ scripted</option><option value="50">50%+ scripted</option><option value="75">75%+ scripted</option><option value="100">100% scripted</option></select><select id="script-max-progress-filter" aria-label="Script maximum progress filter"><option value="">Any max progress</option><option value="0">0% or less scripted</option><option value="25">25% or less scripted</option><option value="50">50% or less scripted</option><option value="75">75% or less scripted</option></select><input id="transcript-filter" placeholder="Transcript search"><button type="button" id="clear-filters">Clear</button></div><div class="call-list" id="calls"></div></section>
+    <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
     const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs} };
@@ -943,12 +981,15 @@ function buildOperatorConsoleHtml(): string {
     }
     function renderCalls() {
       const root = document.getElementById("calls");
+      document.getElementById("queue-count").textContent = state.calls.length + (state.calls.length === 1 ? " call" : " calls");
       root.innerHTML = state.calls.map(function(call) {
         const labels = call.liveProof ? call.liveProof.labels : call.session.runtimeModeLabels;
         const labelText = labels ? [labels.telephony, labels.media, labels.rtcAsr].filter(Boolean).join(" | ") : "runtime labels unavailable";
         const scriptedState = call.actionState.scriptedCallerTurnState || { matchedTurns: 0, totalTurns: (state.scriptedCallerTurns || []).length, remainingTurns: (state.scriptedCallerTurns || []).length, progressPct: 0, nextTurnIndex: 0, nextTurnText: null, completed: false };
         const scriptedLabel = scriptedState.completed ? "script complete" : ("script " + scriptedState.matchedTurns + "/" + scriptedState.totalTurns + " | next: " + (scriptedState.nextTurnText || "queued"));
-        return '<button type="button" class="call-item" aria-selected="' + (call.session.callId === state.selectedCallId) + '" data-call-id="' + escapeHtml(call.session.callId) + '"><span class="call-id">' + escapeHtml(call.session.callId) + '</span><span class="meta">' + escapeHtml(call.flowState) + ' | ' + (call.attention.required ? "attention" : "monitoring") + '</span><span class="meta">' + escapeHtml(scriptedLabel) + '</span><span class="meta">' + escapeHtml(labelText) + '</span><span class="meta">' + escapeHtml(call.session.openclawSession.label) + '</span></button>';
+        const proofStatus = call.liveProof && call.liveProof.eval ? call.liveProof.eval.status : "not_review_ready";
+        const attentionBadge = call.attention.required ? '<span class="badge warn">attention</span>' : '<span class="badge ok">monitoring</span>';
+        return '<button type="button" class="call-item" aria-selected="' + (call.session.callId === state.selectedCallId) + '" data-call-id="' + escapeHtml(call.session.callId) + '"><span class="call-top"><span class="call-id">' + escapeHtml(call.session.callId) + '</span><span class="call-state">' + escapeHtml(call.flowState) + '</span></span><span class="call-row">' + attentionBadge + '<span class="badge">' + escapeHtml(proofStatus) + '</span></span><span class="meta">' + escapeHtml(scriptedLabel) + '</span><span class="progress" aria-hidden="true"><span style="width:' + Math.max(0, Math.min(100, scriptedState.progressPct)) + '%"></span></span><span class="meta">' + escapeHtml(labelText) + '</span><span class="meta">' + escapeHtml(call.session.openclawSession.label) + '</span></button>';
       }).join("") || '<div class="meta" style="padding:14px">No active calls</div>';
       root.querySelectorAll("button[data-call-id]").forEach(function(button) { button.addEventListener("click", function() { state.selectedCallId = button.dataset.callId; render(); }); });
     }
@@ -969,7 +1010,7 @@ function buildOperatorConsoleHtml(): string {
         return '<button type="button" data-action="' + action + '" class="' + cssClass + '" ' + disabled + title + '>' + escapeHtml(labels[action] || action.replace(/_/g, " ")) + '</button>';
       }).join("");
       const transcriptHtml = call.transcript.slice(-10).map(function(turn) {
-        return '<div class="turn"><b>' + escapeHtml(turn.speaker) + '</b><span>' + escapeHtml(turn.text) + '</span></div>';
+        return '<div class="turn ' + escapeHtml(turn.speaker) + '"><b>' + escapeHtml(turn.speaker) + '</b><span>' + escapeHtml(turn.text) + '</span></div>';
       }).join("");
       const pendingHtml = call.actionState.pendingApprovalDetails ? '<div class="metric"><span class="meta">Approval</span><strong>' + escapeHtml(labels[call.actionState.pendingApprovalDetails.recommendedAction] || call.actionState.pendingApprovalDetails.recommendedAction.replace(/_/g, " ")) + '</strong><span class="meta">' + escapeHtml(call.actionState.pendingApprovalDetails.approvalPrompt) + '</span><span class="meta">' + escapeHtml(call.actionState.pendingApprovalDetails.reason || "no reason") + '</span></div>' : '';
       const attentionDetail = call.attention.required ? [call.attention.source, call.attention.reason, call.attention.startedAt].filter(Boolean).join(" | ") : "monitoring";
@@ -989,6 +1030,8 @@ function buildOperatorConsoleHtml(): string {
       const isLiveProofReady = liveProof.eval && liveProof.eval.reviewReady;
       const badgeClass = isLiveProofReady ? "badge live" : "badge warn";
       const labelBadges = [runtimeLabels.telephony, runtimeLabels.media, runtimeLabels.rtcAsr, runtimeLabels.credentialsMode].filter(Boolean).map(function(label) { return '<span class="badge">' + escapeHtml(label) + '</span>'; }).join("");
+      const runtimeModeText = [runtimeLabels.telephony, runtimeLabels.media, runtimeLabels.rtcAsr, runtimeLabels.credentialsMode].filter(Boolean).join(" | ") || "labels unavailable";
+      const runtimeMetric = '<div class="metric compact"><span class="meta">Runtime Mode</span><strong>' + escapeHtml(runtimeModeText) + '</strong></div>';
       const caveatsHtml = (liveProof.caveats || []).length ? '<ul class="caveats">' + liveProof.caveats.map(function(caveat) { return '<li>' + escapeHtml(caveat) + '</li>'; }).join("") + '</ul>' : '<span class="meta">No caveats recorded for this run.</span>';
       const asrDetail = liveProof.asr && (liveProof.asr.latestTranscriptText || liveProof.asr.blocker || liveProof.asr.nextAction) ? (liveProof.asr.latestTranscriptText || liveProof.asr.blocker || liveProof.asr.nextAction) : "no ASR events yet";
       const liveProofHtml = '<section class="proof-panel" aria-label="Live SIP proof"><div class="proof-header"><h3>Live SIP proof</h3><div class="badges"><span class="' + badgeClass + '">' + escapeHtml(liveProof.eval ? liveProof.eval.status : "not_review_ready") + '</span>' + labelBadges + '</div></div><div class="proof-grid"><div class="metric"><span class="meta">Run / Session</span><strong>' + escapeHtml((liveProof.run && liveProof.run.sessionId) || call.session.openclawSession.sessionId) + '</strong><span class="meta">Call: ' + escapeHtml((liveProof.run && liveProof.run.callId) || call.session.callId) + '</span><span class="meta">Provider: ' + escapeHtml((liveProof.run && liveProof.run.providerCallId) || call.session.providerCallId) + '</span></div><div class="metric"><span class="meta">Audio Capture</span><strong>' + escapeHtml(humanLabel(liveProof.audioCapture && liveProof.audioCapture.status)) + '</strong>' + pathHtml(liveProof.audioCapture && liveProof.audioCapture.audioWavPath, "WAV") + pathHtml(liveProof.audioCapture && liveProof.audioCapture.sipLogPath, "SIP log") + linkHtml(liveProof.audioCapture && liveProof.audioCapture.eventTrail, "Capture Events") + '</div><div class="metric"><span class="meta">Transcript / ASR</span><strong>' + escapeHtml(humanLabel(liveProof.asr && liveProof.asr.status)) + '</strong><span class="meta">' + escapeHtml(asrDetail) + '</span>' + pathHtml(liveProof.asr && liveProof.asr.evidencePath, "ASR evidence") + linkHtml(liveProof.asr && liveProof.asr.eventTrail, "ASR Events") + '</div><div class="metric"><span class="meta">Artifacts / Eval</span><strong>' + escapeHtml(isLiveProofReady ? "Reviewable" : "Blocked") + '</strong>' + linkHtml(liveProof.eval && liveProof.eval.proofRoute, "Proof") + linkHtml(liveProof.eval && liveProof.eval.artifactManifestRoute, "Artifacts") + linkHtml(liveProof.eval && liveProof.eval.transcriptRoute, "Transcript") + '</div><div class="metric"><span class="meta">Handoff State</span><strong>' + escapeHtml(humanLabel(liveProof.operator && liveProof.operator.handoffState)) + '</strong><span class="meta">Attention: ' + escapeHtml(liveProof.operator && liveProof.operator.attentionRequired ? "required" : "clear") + '</span><span class="meta">Pending: ' + escapeHtml((liveProof.operator && liveProof.operator.pendingAction) || "none") + '</span></div></div>' + caveatsHtml + '</section>';
@@ -1002,7 +1045,7 @@ function buildOperatorConsoleHtml(): string {
         return '<button type="button" data-scripted-turn="' + index + '" ' + disabled + '><span class="meta">' + status + ' | Turn ' + (index + 1) + '</span><br>' + escapeHtml(text) + '</button>';
       }).join("");
       const scriptedMetric = '<div class="metric"><span class="meta">Scripted Turns</span><strong>' + scriptedState.progressPct + '%</strong><span class="meta">' + scriptedState.matchedTurns + '/' + scriptedState.totalTurns + ' sent | ' + scriptedState.remainingTurns + ' remaining</span><span class="meta">' + escapeHtml(scriptedState.completed ? "complete" : scriptedState.nextTurnText || "queued") + '</span></div>';
-      root.innerHTML = '<div class="grid"><div class="metric"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + scriptedMetric + pendingHtml + '</div>' + liveProofHtml + evidenceHtml + '<div class="actions">' + actionHtml + '</div><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form><div class="transcript">' + transcriptHtml + '</div><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form>';
+      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + runtimeMetric + scriptedMetric + pendingHtml + '</div><div class="workbench"><div class="stack"><section class="section"><h3 class="section-title">Operator Actions</h3><div class="actions">' + actionHtml + '</div></section><section class="section"><h3 class="section-title">Caller Script</h3><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></section><section class="section"><h3 class="section-title">Disposition</h3><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></section></div><div class="stack">' + liveProofHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section></div></div>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\\n\\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       root.querySelectorAll("button[data-scripted-turn]").forEach(function(button) { button.addEventListener("click", function() { const index = Number(button.dataset.scriptedTurn); if (Number.isInteger(index)) postScriptedTurn(index).catch(function(error) { setStatus(error.message); }); }); });
       document.getElementById("caller-turn-form").addEventListener("submit", recordCallerTurn);

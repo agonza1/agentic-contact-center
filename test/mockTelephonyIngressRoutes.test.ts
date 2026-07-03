@@ -1689,6 +1689,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Artifacts \/ Eval/);
     assert.match(response.body, /Handoff State/);
     assert.match(response.body, /runtimeLabels/);
+    assert.match(response.body, /Runtime Mode/);
+    assert.match(response.body, /runtimeModeText/);
     assert.match(response.body, /ready_with_rtc_asr_blocker/);
     assert.match(response.body, /not_review_ready/);
     assert.match(response.body, /pathHtml/);
