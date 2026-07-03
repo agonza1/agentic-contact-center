@@ -1554,6 +1554,14 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(invalidMaxScriptProgressFilter.statusCode, 400);
     assert.deepEqual(invalidMaxScriptProgressFilter.payload, { ok: false, error: "operator_console_max_script_progress_pct_invalid" });
 
+    const invalidScriptProgressRangeFilter = await requestJson(
+      port,
+      "GET",
+      "/api/operator/console?minScriptProgressPct=75&maxScriptProgressPct=25",
+    );
+    assert.equal(invalidScriptProgressRangeFilter.statusCode, 400);
+    assert.deepEqual(invalidScriptProgressRangeFilter.payload, { ok: false, error: "operator_console_script_progress_range_invalid" });
+
     const invalidScriptCompletedFilter = await requestJson(port, "GET", "/api/operator/console?scriptCompleted=maybe");
     assert.equal(invalidScriptCompletedFilter.statusCode, 400);
     assert.deepEqual(invalidScriptCompletedFilter.payload, { ok: false, error: "operator_console_script_completed_invalid" });

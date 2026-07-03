@@ -2242,6 +2242,14 @@ function parseCallListFilters(
     return maxScriptProgressPct;
   }
 
+  if (
+    typeof minScriptProgressPct === "number" &&
+    typeof maxScriptProgressPct === "number" &&
+    minScriptProgressPct > maxScriptProgressPct
+  ) {
+    return { error: `${invalidPrefix}_script_progress_range_invalid` };
+  }
+
   const minAttentionAgeMs = parseOptionalNonNegativeIntegerFilter(
     requestUrl.searchParams.get("minAttentionAgeMs"),
     `${invalidPrefix}_min_attention_age_ms_invalid`,
