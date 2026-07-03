@@ -1305,12 +1305,17 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
             : "Review the held call context before applying operator guidance.",
       }
     : null;
+  const totalScriptedCallerTurns: number = SCRIPTED_CALLER_TURNS.length;
   const matchedScriptedCallerTurns = Math.min(
     snapshot.pipecatFlow.script.matchedCallerTurns,
-    SCRIPTED_CALLER_TURNS.length,
+    totalScriptedCallerTurns,
   );
-  const remainingScriptedCallerTurns = SCRIPTED_CALLER_TURNS.length - matchedScriptedCallerTurns;
+  const remainingScriptedCallerTurns = totalScriptedCallerTurns - matchedScriptedCallerTurns;
   const nextScriptedCallerTurn = SCRIPTED_CALLER_TURNS[matchedScriptedCallerTurns] ?? null;
+  const scriptProgressPct = totalScriptedCallerTurns === 0
+    ? 100
+    : Math.round((matchedScriptedCallerTurns / totalScriptedCallerTurns) * 100);
+  const scriptProgressRoutes = buildScriptProgressRoutes(scriptProgressPct, nextScriptedCallerTurn === null);
 
   return {
     ...buildCallPayload(snapshot),
@@ -1354,6 +1359,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       overBudgetLatencyTrail: overBudgetLatencyMarkCount > 0
         ? `${snapshot.session.openclawSession.artifactLinks.latencyMarks}?overBudget=true`
         : null,
+      ...scriptProgressRoutes,
       links: snapshot.session.openclawSession.artifactLinks,
     },
     actionState: {
@@ -1364,9 +1370,9 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       nextRecommendedAction,
       scriptedCallerTurnState: {
         matchedTurns: matchedScriptedCallerTurns,
-        totalTurns: SCRIPTED_CALLER_TURNS.length,
+        totalTurns: totalScriptedCallerTurns,
         remainingTurns: remainingScriptedCallerTurns,
-        progressPct: Math.round((matchedScriptedCallerTurns / SCRIPTED_CALLER_TURNS.length) * 100),
+        progressPct: scriptProgressPct,
         nextTurnIndex: nextScriptedCallerTurn === null ? null : matchedScriptedCallerTurns,
         nextTurnText: nextScriptedCallerTurn,
         completed: nextScriptedCallerTurn === null,
@@ -1389,6 +1395,20 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
         })),
       unavailableActions,
     },
+  };
+}
+
+function buildScriptProgressRoutes(progressPct: number, completed: boolean): {
+  scriptProgressQueue: string;
+  scriptProgressCallList: string;
+  scriptProgressOperatorConsole: string;
+} {
+  const progressFilter = completed ? "scriptCompleted=true" : `minScriptProgressPct=${progressPct}`;
+
+  return {
+    scriptProgressQueue: `/api/queue?${progressFilter}`,
+    scriptProgressCallList: `/api/calls?${progressFilter}&limit=5`,
+    scriptProgressOperatorConsole: `/api/operator/console?${progressFilter}&limit=1`,
   };
 }
 

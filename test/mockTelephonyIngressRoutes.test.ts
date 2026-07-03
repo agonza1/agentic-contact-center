@@ -152,6 +152,9 @@ interface OperatorConsolePayload {
           handoffStartedAt: string | null;
           overBudgetLatencyMarkCount: number;
           overBudgetLatencyTrail: string | null;
+          scriptProgressQueue: string;
+          scriptProgressCallList: string;
+          scriptProgressOperatorConsole: string;
           links: { transcript: string; events: string; latencyMarks: string; proof: string };
         };
         actionState: {
@@ -1528,6 +1531,12 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(progressedConsole.statusCode, 200);
     assert.deepEqual(progressedPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
     assert.equal(progressedPayload.calls.summary.filteredSummary.totalCalls, 1);
+    assert.equal(progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressQueue, "/api/queue?scriptCompleted=true");
+    assert.equal(progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressCallList, "/api/calls?scriptCompleted=true&limit=5");
+    assert.equal(
+      progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressOperatorConsole,
+      "/api/operator/console?scriptCompleted=true&limit=1",
+    );
 
     const completedConsole = await requestJson(port, "GET", "/api/operator/console?scriptCompleted=true");
     const completedPayload = completedConsole.payload as OperatorConsolePayload;
