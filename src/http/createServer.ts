@@ -2901,15 +2901,27 @@ async function routeRequest(
 
     try {
       const updatedSnapshot = await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config);
+      const totalTurns = updatedSnapshot.pipecatFlow.script.expectedCallerTurns.length;
+      const nextTurnIndex = updatedSnapshot.pipecatFlow.script.completed
+        ? null
+        : updatedSnapshot.pipecatFlow.script.matchedCallerTurns;
+      const nextTurnText = nextTurnIndex === null
+        ? null
+        : updatedSnapshot.pipecatFlow.script.expectedCallerTurns[nextTurnIndex] ?? null;
+      const remainingTurns = nextTurnIndex === null ? 0 : Math.max(totalTurns - nextTurnIndex, 0);
+      const progressPct = totalTurns === 0
+        ? 100
+        : Math.round((updatedSnapshot.pipecatFlow.script.matchedCallerTurns / totalTurns) * 100);
       writeJson(response, 200, {
         ok: true,
         route: "/api/operator/console/scripted-turn",
         submittedTurnIndex: matchedTurns,
         submittedTurnOrdinal: matchedTurns + 1,
         submittedText: text,
-        nextTurnIndex: updatedSnapshot.pipecatFlow.script.completed
-          ? null
-          : updatedSnapshot.pipecatFlow.script.matchedCallerTurns,
+        nextTurnIndex,
+        nextTurnText,
+        remainingTurns,
+        progressPct,
         scriptCompleted: updatedSnapshot.pipecatFlow.script.completed,
         call: buildOperatorConsoleCallPayload(updatedSnapshot),
       });

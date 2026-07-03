@@ -1866,6 +1866,9 @@ test("POST /api/operator/console/scripted-turn submits only the next scripted ca
       submittedTurnOrdinal: number;
       submittedText: string;
       nextTurnIndex: number | null;
+      nextTurnText: string | null;
+      remainingTurns: number;
+      progressPct: number;
       scriptCompleted: boolean;
       call: SnapshotPayload & { actionState: OperatorConsolePayload["calls"]["items"][number]["actionState"] };
     };
@@ -1877,6 +1880,9 @@ test("POST /api/operator/console/scripted-turn submits only the next scripted ca
     assert.equal(submittedPayload.submittedTurnOrdinal, 1);
     assert.equal(submittedPayload.submittedText, "I want to cancel my policy today.");
     assert.equal(submittedPayload.nextTurnIndex, 1);
+    assert.equal(submittedPayload.nextTurnText, "The renewal increase is too high.");
+    assert.equal(submittedPayload.remainingTurns, 3);
+    assert.equal(submittedPayload.progressPct, 25);
     assert.equal(submittedPayload.scriptCompleted, false);
     assert.equal(submittedPayload.call.session.callId, callId);
     assert.equal(
