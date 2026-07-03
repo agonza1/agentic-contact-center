@@ -312,6 +312,16 @@ function buildRealtimeShimReadinessPayload(): object {
     },
     browserRelayCompatibility: proof.evidence.browserRelayCompatibility,
     latencyBudget: proof.evidence.latencyBudget,
+    runtimeMode: {
+      labels: {
+        relay: "gateway_relay",
+        stt: "local_stt_mock",
+        llm: "local_llm_mock",
+        tts: "kokoro_tts_mock",
+      },
+      liveSidecarsRequired: false,
+      reviewStatus: proof.readyForIssue85Review ? "deterministic_local_proof_ready" : "blocked",
+    },
     reviewBlockers: proof.readyForIssue85Review ? [] : ["One or more Issue #85 acceptance criteria are not satisfied."],
     reviewPacket: {
       ready: proof.readyForIssue85Review,

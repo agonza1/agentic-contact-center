@@ -61,6 +61,11 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         modelGuidance: string;
         status: string;
       };
+      runtimeMode: {
+        labels: { relay: string; stt: string; llm: string; tts: string };
+        liveSidecarsRequired: boolean;
+        reviewStatus: string;
+      };
       reviewBlockers: string[];
       reviewPacket: {
         ready: boolean;
@@ -111,6 +116,16 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       observedFirstAudioMs: 135,
       modelGuidance: "small_fast_local_models",
       status: "within_budget",
+    });
+    assert.deepEqual(payload.runtimeMode, {
+      labels: {
+        relay: "gateway_relay",
+        stt: "local_stt_mock",
+        llm: "local_llm_mock",
+        tts: "kokoro_tts_mock",
+      },
+      liveSidecarsRequired: false,
+      reviewStatus: "deterministic_local_proof_ready",
     });
     assert.deepEqual(payload.reviewBlockers, []);
     assert.equal(payload.reviewPacket.ready, true);
