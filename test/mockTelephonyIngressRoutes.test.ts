@@ -173,8 +173,11 @@ interface OperatorConsolePayload {
             matchedTurns: number;
             totalTurns: number;
             remainingTurns: number;
+            remainingTurnTexts: string[];
             progressPct: number;
+            progressLabel: string;
             nextTurnIndex: number | null;
+            nextTurnOrdinal: number | null;
             nextTurnText: string | null;
             nextTurnPostRoute: string | null;
             nextTurnBodyTemplate: { text: string } | null;
@@ -1282,8 +1285,11 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
         matchedTurns: 3,
         totalTurns: 4,
         remainingTurns: 1,
+        remainingTurnTexts: ["Thanks, please note that follow-up and close the call."],
         progressPct: 75,
+        progressLabel: "3/4 scripted turns sent",
         nextTurnIndex: 3,
+        nextTurnOrdinal: 4,
         nextTurnText: "Thanks, please note that follow-up and close the call.",
         nextTurnPostRoute: `/api/calls/${operatorCallId}/caller-turn`,
         nextTurnBodyTemplate: { text: "Thanks, please note that follow-up and close the call." },
@@ -1436,8 +1442,16 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       matchedTurns: 0,
       totalTurns: 4,
       remainingTurns: 4,
+      remainingTurnTexts: [
+        "I want to cancel my policy today.",
+        "The renewal increase is too high.",
+        "Okay, what safe options can you review for me?",
+        "Thanks, please note that follow-up and close the call.",
+      ],
       progressPct: 0,
+      progressLabel: "0/4 scripted turns sent",
       nextTurnIndex: 0,
+      nextTurnOrdinal: 1,
       nextTurnText: "I want to cancel my policy today.",
       nextTurnPostRoute: `/api/calls/${idleCallId}/caller-turn`,
       nextTurnBodyTemplate: { text: "I want to cancel my policy today." },
@@ -1855,7 +1869,14 @@ test("POST /api/operator/console/scripted-turn submits only the next scripted ca
     assert.equal(submittedPayload.call.transcript.at(-1)?.speaker, "agent");
     assert.equal(submittedPayload.call.pipecatFlow.script.matchedCallerTurns, 1);
     assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.nextTurnIndex, 1);
+    assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.nextTurnOrdinal, 2);
+    assert.deepEqual(submittedPayload.call.actionState.scriptedCallerTurnState.remainingTurnTexts, [
+      "The renewal increase is too high.",
+      "Okay, what safe options can you review for me?",
+      "Thanks, please note that follow-up and close the call.",
+    ]);
     assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.progressPct, 25);
+    assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.progressLabel, "1/4 scripted turns sent");
     assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.nextScriptedTurnPostRoute, "/api/operator/console/scripted-turn");
     assert.deepEqual(submittedPayload.call.actionState.scriptedCallerTurnState.nextScriptedTurnBodyTemplate, {
       callId,

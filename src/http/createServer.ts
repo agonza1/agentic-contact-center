@@ -1313,6 +1313,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
   );
   const remainingScriptedCallerTurns = totalScriptedCallerTurns - matchedScriptedCallerTurns;
   const nextScriptedCallerTurn = SCRIPTED_CALLER_TURNS[matchedScriptedCallerTurns] ?? null;
+  const remainingScriptedCallerTurnTexts = SCRIPTED_CALLER_TURNS.slice(matchedScriptedCallerTurns);
   const scriptProgressPct = totalScriptedCallerTurns === 0
     ? 100
     : Math.round((matchedScriptedCallerTurns / totalScriptedCallerTurns) * 100);
@@ -1373,8 +1374,11 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
         matchedTurns: matchedScriptedCallerTurns,
         totalTurns: totalScriptedCallerTurns,
         remainingTurns: remainingScriptedCallerTurns,
+        remainingTurnTexts: remainingScriptedCallerTurnTexts,
         progressPct: scriptProgressPct,
+        progressLabel: `${matchedScriptedCallerTurns}/${totalScriptedCallerTurns} scripted turns sent`,
         nextTurnIndex: nextScriptedCallerTurn === null ? null : matchedScriptedCallerTurns,
+        nextTurnOrdinal: nextScriptedCallerTurn === null ? null : matchedScriptedCallerTurns + 1,
         nextTurnText: nextScriptedCallerTurn,
         nextTurnPostRoute: nextScriptedCallerTurn === null
           ? null
