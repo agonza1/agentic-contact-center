@@ -810,7 +810,7 @@ function buildOperatorConsoleHtml(): string {
     <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" id="start-demo">Start Demo Call</button><button type="button" id="refresh">Refresh</button></div>
   </header>
   <main>
-    <section class="panel" aria-label="Live calls"><h2>Live Calls</h2><div class="filters"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Attention only</label><label class="filter-toggle"><input type="checkbox" id="latency-over-budget-filter">Over-budget latency</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><select id="fallback-filter" aria-label="Fallback mode filter"><option value="">All fallback modes</option><option value="tool_timeout">Tool Timeout</option><option value="runtime_failure">Runtime Failure</option></select><select id="fallback-source-filter" aria-label="Fallback source filter"><option value="">All fallback sources</option><option value="tool_timeout_fail_closed">Tool Timeout Source</option><option value="pipecat_runtime_failure_fail_closed">Runtime Failure Source</option></select><input id="fallback-reason-filter" aria-label="Fallback reason filter" placeholder="Fallback reason"><select id="tool-filter" aria-label="Active tool filter"><option value="">All active tools</option><option value="get_current_slide">Get Current Slide</option><option value="goto_slide">Go To Slide</option><option value="pause_presentation">Pause Presentation</option><option value="ask_operator">Ask Operator</option></select><select id="script-completed-filter" aria-label="Script status filter"><option value="">All script states</option><option value="false">In progress</option><option value="true">Complete</option></select><input id="transcript-filter" placeholder="Transcript search"><button type="button" id="clear-filters">Clear</button></div><div class="call-list" id="calls"></div></section>
+    <section class="panel" aria-label="Live calls"><h2>Live Calls</h2><div class="filters"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Attention only</label><label class="filter-toggle"><input type="checkbox" id="latency-over-budget-filter">Over-budget latency</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><select id="fallback-filter" aria-label="Fallback mode filter"><option value="">All fallback modes</option><option value="tool_timeout">Tool Timeout</option><option value="runtime_failure">Runtime Failure</option></select><select id="fallback-source-filter" aria-label="Fallback source filter"><option value="">All fallback sources</option><option value="tool_timeout_fail_closed">Tool Timeout Source</option><option value="pipecat_runtime_failure_fail_closed">Runtime Failure Source</option></select><input id="fallback-reason-filter" aria-label="Fallback reason filter" placeholder="Fallback reason"><select id="tool-filter" aria-label="Active tool filter"><option value="">All active tools</option><option value="get_current_slide">Get Current Slide</option><option value="goto_slide">Go To Slide</option><option value="pause_presentation">Pause Presentation</option><option value="ask_operator">Ask Operator</option></select><select id="script-completed-filter" aria-label="Script status filter"><option value="">All script states</option><option value="false">In progress</option><option value="true">Complete</option></select><select id="script-progress-filter" aria-label="Script progress filter"><option value="">Any script progress</option><option value="25">25%+ scripted</option><option value="50">50%+ scripted</option><option value="75">75%+ scripted</option><option value="100">100% scripted</option></select><input id="transcript-filter" placeholder="Transcript search"><button type="button" id="clear-filters">Clear</button></div><div class="call-list" id="calls"></div></section>
     <section class="panel" aria-label="Selected call"><h2 id="selected-title">Select a call</h2><div class="detail" id="detail"></div></section>
   </main>
   <script>
@@ -840,6 +840,8 @@ function buildOperatorConsoleHtml(): string {
       if (activeTool) params.set("pipecatActiveTool", activeTool);
       const scriptCompleted = document.getElementById("script-completed-filter").value;
       if (scriptCompleted) params.set("scriptCompleted", scriptCompleted);
+      const scriptProgress = document.getElementById("script-progress-filter").value;
+      if (scriptProgress) params.set("minScriptProgressPct", scriptProgress);
       const transcriptText = document.getElementById("transcript-filter").value.trim();
       if (transcriptText) params.set("transcriptText", transcriptText);
       return params.toString();
@@ -1006,7 +1008,8 @@ function buildOperatorConsoleHtml(): string {
     document.getElementById("transcript-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("tool-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("script-completed-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
-    document.getElementById("clear-filters").addEventListener("click", function() { document.getElementById("attention-filter").checked = false; document.getElementById("latency-over-budget-filter").checked = false; document.getElementById("flow-filter").value = ""; document.getElementById("fallback-filter").value = ""; document.getElementById("fallback-source-filter").value = ""; document.getElementById("fallback-reason-filter").value = ""; document.getElementById("tool-filter").value = ""; document.getElementById("script-completed-filter").value = ""; document.getElementById("transcript-filter").value = ""; refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("script-progress-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("clear-filters").addEventListener("click", function() { document.getElementById("attention-filter").checked = false; document.getElementById("latency-over-budget-filter").checked = false; document.getElementById("flow-filter").value = ""; document.getElementById("fallback-filter").value = ""; document.getElementById("fallback-source-filter").value = ""; document.getElementById("fallback-reason-filter").value = ""; document.getElementById("tool-filter").value = ""; document.getElementById("script-completed-filter").value = ""; document.getElementById("script-progress-filter").value = ""; document.getElementById("transcript-filter").value = ""; refresh().catch(function(error) { setStatus(error.message); }); });
     refresh().catch(function(error) { setStatus(error.message); });
   </script>
 </body>
@@ -2014,6 +2017,18 @@ function parseOptionalNonNegativeIntegerFilter(
   return parsed;
 }
 
+function parseOptionalPercentFilter(
+  value: string | null,
+  error: string,
+): number | { error: string } | undefined {
+  const parsed = parseOptionalNonNegativeIntegerFilter(value, error);
+  if (typeof parsed !== "number") {
+    return parsed;
+  }
+
+  return parsed <= 100 ? parsed : { error };
+}
+
 function parseCallListSort(value: string | null): CallListSort | { error: string } {
   if (value === null || value === "startedAt") {
     return "startedAt";
@@ -2076,6 +2091,8 @@ interface CallListFilters {
   providerCallId?: string;
   transcriptText?: string;
   scriptCompleted?: boolean;
+  minScriptProgressPct?: number;
+  maxScriptProgressPct?: number;
   minAttentionAgeMs?: number;
   maxAttentionAgeMs?: number;
   latencyStage?: string;
@@ -2186,6 +2203,22 @@ function parseCallListFilters(
     return scriptCompleted;
   }
 
+  const minScriptProgressPct = parseOptionalPercentFilter(
+    requestUrl.searchParams.get("minScriptProgressPct"),
+    `${invalidPrefix}_min_script_progress_pct_invalid`,
+  );
+  if (minScriptProgressPct !== undefined && typeof minScriptProgressPct !== "number") {
+    return minScriptProgressPct;
+  }
+
+  const maxScriptProgressPct = parseOptionalPercentFilter(
+    requestUrl.searchParams.get("maxScriptProgressPct"),
+    `${invalidPrefix}_max_script_progress_pct_invalid`,
+  );
+  if (maxScriptProgressPct !== undefined && typeof maxScriptProgressPct !== "number") {
+    return maxScriptProgressPct;
+  }
+
   const minAttentionAgeMs = parseOptionalNonNegativeIntegerFilter(
     requestUrl.searchParams.get("minAttentionAgeMs"),
     `${invalidPrefix}_min_attention_age_ms_invalid`,
@@ -2233,6 +2266,8 @@ function parseCallListFilters(
     providerCallId: providerCallId?.trim() || undefined,
     transcriptText: transcriptText?.trim() || undefined,
     scriptCompleted,
+    minScriptProgressPct,
+    maxScriptProgressPct,
     minAttentionAgeMs,
     maxAttentionAgeMs,
     latencyStage: latencyStage?.trim() || undefined,

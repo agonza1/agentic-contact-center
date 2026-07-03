@@ -1515,6 +1515,13 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       text: "Thanks, please note that follow-up and close the call.",
       timestamp: "2026-06-10T14:10:15.000Z",
     });
+    const progressedConsole = await requestJson(port, "GET", "/api/operator/console?minScriptProgressPct=75");
+    const progressedPayload = progressedConsole.payload as OperatorConsolePayload;
+
+    assert.equal(progressedConsole.statusCode, 200);
+    assert.deepEqual(progressedPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
+    assert.equal(progressedPayload.calls.summary.filteredSummary.totalCalls, 1);
+
     const completedConsole = await requestJson(port, "GET", "/api/operator/console?scriptCompleted=true");
     const completedPayload = completedConsole.payload as OperatorConsolePayload;
 
@@ -1522,6 +1529,10 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.deepEqual(completedPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
     assert.equal(completedPayload.calls.summary.filteredSummary.scriptCompleted, 1);
     assert.equal(completedPayload.calls.summary.filteredSummary.scriptInProgress, 0);
+
+    const invalidScriptProgressFilter = await requestJson(port, "GET", "/api/operator/console?minScriptProgressPct=101");
+    assert.equal(invalidScriptProgressFilter.statusCode, 400);
+    assert.deepEqual(invalidScriptProgressFilter.payload, { ok: false, error: "operator_console_min_script_progress_pct_invalid" });
 
     const invalidScriptCompletedFilter = await requestJson(port, "GET", "/api/operator/console?scriptCompleted=maybe");
     assert.equal(invalidScriptCompletedFilter.statusCode, 400);
@@ -2046,6 +2057,18 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     assert.equal(byActiveToolPayload.summary.filteredCalls, 1);
     assert.equal(byActiveToolPayload.summary.filteredSummary.totalCalls, 1);
 
+    const nearCompleteScript = await requestJson(port, "GET", "/api/calls?minScriptProgressPct=50");
+    const nearCompleteScriptPayload = nearCompleteScript.payload as CallListPayload;
+    assert.equal(nearCompleteScript.statusCode, 200);
+    assert.deepEqual(nearCompleteScriptPayload.calls.map((call) => call.session.callId), [firstCallId]);
+    assert.equal(nearCompleteScriptPayload.summary.filteredSummary.totalCalls, 1);
+
+    const earlyScript = await requestJson(port, "GET", "/api/calls?maxScriptProgressPct=25");
+    const earlyScriptPayload = earlyScript.payload as CallListPayload;
+    assert.equal(earlyScript.statusCode, 200);
+    assert.deepEqual(earlyScriptPayload.calls.map((call) => call.session.callId), ["demo-call-0002"]);
+    assert.equal(earlyScriptPayload.summary.filteredSummary.totalCalls, 1);
+
     const noActiveTool = await requestJson(port, "GET", "/api/calls?pipecatActiveTool=missing_tool");
     const noActiveToolPayload = noActiveTool.payload as CallListPayload;
     assert.equal(noActiveTool.statusCode, 200);
@@ -2105,6 +2128,20 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     assert.deepEqual(invalidActiveTool.payload, {
       ok: false,
       error: "call_list_pipecat_active_tool_invalid",
+    });
+
+    const invalidMinScriptProgress = await requestJson(port, "GET", "/api/calls?minScriptProgressPct=101");
+    assert.equal(invalidMinScriptProgress.statusCode, 400);
+    assert.deepEqual(invalidMinScriptProgress.payload, {
+      ok: false,
+      error: "call_list_min_script_progress_pct_invalid",
+    });
+
+    const invalidMaxScriptProgress = await requestJson(port, "GET", "/api/calls?maxScriptProgressPct=fast");
+    assert.equal(invalidMaxScriptProgress.statusCode, 400);
+    assert.deepEqual(invalidMaxScriptProgress.payload, {
+      ok: false,
+      error: "call_list_max_script_progress_pct_invalid",
     });
 
     const invalidLatencyOverBudget = await requestJson(port, "GET", "/api/calls?latencyOverBudget=maybe");
