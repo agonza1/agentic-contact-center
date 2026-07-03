@@ -199,6 +199,12 @@ async function main() {
         boundedErrors: proofResponse.payload.errorEvidence.turnSummary.errorCount +
           proofResponse.payload.invalidAudioResult.evidence.turnSummary.errorCount,
       },
+      runtimeMode: readinessResponse.payload.runtimeMode,
+      reviewPacketRoutes: {
+        primaryRoute: readinessResponse.payload.reviewPacket.primaryRoute,
+        readinessRoute: readinessResponse.payload.reviewPacket.readinessRoute,
+        rpcRoute: readinessResponse.payload.reviewPacket.rpcRoute,
+      },
       evidence: {
         eventTranscriptLines: proofResponse.payload.evidence.qaEvidenceSummary.eventTranscriptLines,
         logLines: proofResponse.payload.evidence.qaEvidenceSummary.logLines,

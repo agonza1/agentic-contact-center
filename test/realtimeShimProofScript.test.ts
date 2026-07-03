@@ -47,6 +47,12 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
           inputCancelled: boolean;
           boundedErrors: number;
         };
+        runtimeMode: {
+          labels: { relay: string; stt: string; llm: string; tts: string };
+          liveSidecarsRequired: boolean;
+          reviewStatus: string;
+        };
+        reviewPacketRoutes: { primaryRoute: string; readinessRoute: string; rpcRoute: string };
         evidence: {
           eventTranscriptLines: number;
           logLines: number;
@@ -91,6 +97,21 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
         outputCancelled: true,
         inputCancelled: true,
         boundedErrors: 3,
+      },
+      runtimeMode: {
+        labels: {
+          relay: "gateway_relay",
+          stt: "local_stt_mock",
+          llm: "local_llm_mock",
+          tts: "kokoro_tts_mock",
+        },
+        liveSidecarsRequired: false,
+        reviewStatus: "deterministic_local_proof_ready",
+      },
+      reviewPacketRoutes: {
+        primaryRoute: "/api/realtime-shim/proof",
+        readinessRoute: "/api/realtime-shim/readiness",
+        rpcRoute: "POST /api/realtime-shim/rpc",
       },
       evidence: {
         eventTranscriptLines: 13,
