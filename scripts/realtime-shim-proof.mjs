@@ -179,6 +179,7 @@ async function main() {
     assert.equal(proofResponse.payload.acceptanceSummary.interruptionCancelBehavior, true);
     assert.equal(proofResponse.payload.acceptanceSummary.boundedErrorEvidence, true);
     assert.equal(proofResponse.payload.evidence.qaChecklist.logEvidence, true);
+    assert.equal(proofResponse.payload.rpcSmoke.every((step) => step.ok), true);
 
     assert.equal(readinessResponse.statusCode, 200);
     assert.equal(readinessResponse.payload.ok, true);
@@ -212,6 +213,11 @@ async function main() {
         latencyMarks: proofResponse.payload.evidence.qaEvidenceSummary.latencyMarks,
         relayEvents: proofResponse.payload.evidence.qaEvidenceSummary.relayEvents,
       },
+      rpcSmokeCoverage: {
+        passed: proofResponse.payload.rpcSmoke.filter((step) => step.ok).length,
+        total: proofResponse.payload.rpcSmoke.length,
+        methods: proofResponse.payload.rpcSmoke.map((step) => step.method),
+      },
       rpcHttpSmoke,
     };
 
@@ -240,6 +246,9 @@ async function main() {
   console.log(`Issue #85 ready: ${artifact.proof.readyForIssue85Review ? "yes" : "no"}`);
   console.log(
     `Acceptance criteria: ${artifact.artifactSummary.acceptanceCriteriaPassed}/${artifact.artifactSummary.acceptanceCriteriaTotal}`,
+  );
+  console.log(
+    `In-process RPC smoke: ${artifact.artifactSummary.rpcSmokeCoverage.passed}/${artifact.artifactSummary.rpcSmokeCoverage.total}`,
   );
   console.log(`RPC HTTP smoke: ${artifact.artifactSummary.rpcHttpSmoke.requests} requests`);
 }
