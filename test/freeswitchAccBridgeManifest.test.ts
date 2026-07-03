@@ -133,6 +133,25 @@ test("FreeSWITCH bridge dispatches streamed content-length events after the body
   assert.equal(parsed.call.accCallId, "acc-call-streamed");
 });
 
+test("FreeSWITCH bridge subscribes to required ESL events with one event command", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+  const script = `
+    const { EslBridge } = await import(${JSON.stringify(moduleUrl)});
+    const sent = [];
+    const bridge = new EslBridge({ password: "ClueCon" });
+    bridge.send = (command) => sent.push(command);
+    await bridge.handleBlock(["Content-Type: auth/request", "", ""].join("\\n"));
+    console.log(JSON.stringify(sent));
+  `;
+  const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  const sent = JSON.parse(stdout) as string[];
+  assert.deepEqual(sent, ["auth ClueCon", "event plain CHANNEL_ANSWER CHANNEL_HANGUP_COMPLETE RECORD_STOP"]);
+});
+
 test("FreeSWITCH ESL parser keeps malformed percent header values", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
