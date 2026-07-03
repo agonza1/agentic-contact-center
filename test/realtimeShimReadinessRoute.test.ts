@@ -70,6 +70,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       reviewPacket: {
         ready: boolean;
         issue: string;
+        issueUrl: string;
         primaryRoute: string;
         readinessRoute: string;
         rpcRoute: string;
@@ -132,6 +133,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
     assert.deepEqual(payload.reviewBlockers, []);
     assert.equal(payload.reviewPacket.ready, true);
     assert.equal(payload.reviewPacket.issue, "agonza1/agentic-contact-center#85");
+    assert.equal(payload.reviewPacket.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/85");
     assert.equal(payload.reviewPacket.primaryRoute, "/api/realtime-shim/proof");
     assert.equal(payload.reviewPacket.readinessRoute, "/api/realtime-shim/readiness");
     assert.equal(payload.reviewPacket.rpcRoute, "POST /api/realtime-shim/rpc");
@@ -187,6 +189,11 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         route: "/api/realtime-shim/rpc",
         method: "POST",
         evidence: ["statefulSession", "cancelInput", "cancelOutput", "boundedErrors", "toolResults"],
+      },
+      {
+        route: "/api/realtime-shim/readiness",
+        method: "GET",
+        evidence: ["acceptanceCriteria", "runtimeMode", "reviewBlockers", "reviewPacket"],
       },
     ]);
     assert.equal(payload.acceptanceCriteria.length, 6);

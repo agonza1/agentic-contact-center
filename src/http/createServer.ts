@@ -326,6 +326,7 @@ function buildRealtimeShimReadinessPayload(): object {
     reviewPacket: {
       ready: proof.readyForIssue85Review,
       issue: proof.issue,
+      issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/85",
       primaryRoute: "/api/realtime-shim/proof",
       readinessRoute: "/api/realtime-shim/readiness",
       rpcRoute: proof.rpcCompatibility.route,
@@ -425,6 +426,11 @@ function buildRealtimeShimReadinessPayload(): object {
         route: "/api/realtime-shim/rpc",
         method: "POST",
         evidence: ["statefulSession", "cancelInput", "cancelOutput", "boundedErrors", "toolResults"],
+      },
+      {
+        route: "/api/realtime-shim/readiness",
+        method: "GET",
+        evidence: ["acceptanceCriteria", "runtimeMode", "reviewBlockers", "reviewPacket"],
       },
     ],
     acceptanceCriteria: [
