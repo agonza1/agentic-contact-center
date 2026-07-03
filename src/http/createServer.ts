@@ -330,6 +330,11 @@ function buildRealtimeShimReadinessPayload(): object {
       readinessRoute: "/api/realtime-shim/readiness",
       rpcRoute: proof.rpcCompatibility.route,
       validationCommands: ["npm test", "npm run pipecat:check", "npm run proof:realtime-shim"],
+      probeCommands: [
+        "curl -fsS http://127.0.0.1:8026/api/realtime-shim/proof",
+        "curl -fsS http://127.0.0.1:8026/api/realtime-shim/readiness",
+        "curl -fsS -X POST http://127.0.0.1:8026/api/realtime-shim/rpc -H 'content-type: application/json' --data '{\"method\":\"talk.session.getEvidence\",\"params\":{\"sessionId\":\"local-rt-review\"}}'",
+      ],
       rpcExamples: [
         {
           label: "create local realtime shim session",

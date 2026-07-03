@@ -74,6 +74,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         readinessRoute: string;
         rpcRoute: string;
         validationCommands: string[];
+        probeCommands: string[];
         rpcExamples: Array<{ label: string; method: string; body: { method: string; params: Record<string, unknown> } }>;
         reviewerChecklist: string[];
       };
@@ -134,6 +135,11 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
     assert.equal(payload.reviewPacket.readinessRoute, "/api/realtime-shim/readiness");
     assert.equal(payload.reviewPacket.rpcRoute, "POST /api/realtime-shim/rpc");
     assert.deepEqual(payload.reviewPacket.validationCommands, ["npm test", "npm run pipecat:check", "npm run proof:realtime-shim"]);
+    assert.deepEqual(payload.reviewPacket.probeCommands, [
+      "curl -fsS http://127.0.0.1:8026/api/realtime-shim/proof",
+      "curl -fsS http://127.0.0.1:8026/api/realtime-shim/readiness",
+      "curl -fsS -X POST http://127.0.0.1:8026/api/realtime-shim/rpc -H 'content-type: application/json' --data '{\"method\":\"talk.session.getEvidence\",\"params\":{\"sessionId\":\"local-rt-review\"}}'",
+    ]);
     assert.deepEqual(
       payload.reviewPacket.rpcExamples.map((example) => example.method),
       [
