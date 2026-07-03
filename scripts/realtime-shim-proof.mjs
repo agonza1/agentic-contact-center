@@ -150,6 +150,16 @@ async function runRealtimeShimRpcHttpSmoke(port) {
   assert.equal(evidenceResponse.result.turnSummary.outputAudioChunks, 1);
   assert.equal(closeResponse.result.state, "closed");
 
+  const boundedError = await postJson(port, "/api/realtime-shim/rpc", {
+    method: "talk.session.appendAudio",
+    params: { sessionId, audioBase64: Buffer.from([1]).toString("base64") },
+  });
+
+  assert.equal(boundedError.statusCode, 400);
+  assert.equal(boundedError.payload.ok, false);
+  assert.equal(boundedError.payload.error, "realtime_shim_rpc_error");
+  assert.match(boundedError.payload.message, /even number of bytes/);
+
   return {
     route: "/api/realtime-shim/rpc",
     sessionId,
@@ -158,6 +168,11 @@ async function runRealtimeShimRpcHttpSmoke(port) {
     finalTranscript: evidenceResponse.result.turnSummary.finalTranscript,
     outputAudioChunks: evidenceResponse.result.turnSummary.outputAudioChunks,
     closed: closeResponse.result.state === "closed",
+    boundedError: {
+      statusCode: boundedError.statusCode,
+      error: boundedError.payload.error,
+      message: boundedError.payload.message,
+    },
   };
 }
 
@@ -179,6 +194,7 @@ async function main() {
     assert.equal(proofResponse.payload.acceptanceSummary.interruptionCancelBehavior, true);
     assert.equal(proofResponse.payload.acceptanceSummary.boundedErrorEvidence, true);
     assert.equal(proofResponse.payload.evidence.qaChecklist.logEvidence, true);
+    assert.equal(proofResponse.payload.rpcSmoke.every((step) => step.ok), true);
 
     assert.equal(readinessResponse.statusCode, 200);
     assert.equal(readinessResponse.payload.ok, true);
@@ -212,6 +228,11 @@ async function main() {
         latencyMarks: proofResponse.payload.evidence.qaEvidenceSummary.latencyMarks,
         relayEvents: proofResponse.payload.evidence.qaEvidenceSummary.relayEvents,
       },
+      rpcSmokeCoverage: {
+        passed: proofResponse.payload.rpcSmoke.filter((step) => step.ok).length,
+        total: proofResponse.payload.rpcSmoke.length,
+        methods: proofResponse.payload.rpcSmoke.map((step) => step.method),
+      },
       rpcHttpSmoke,
     };
 
@@ -241,7 +262,12 @@ async function main() {
   console.log(
     `Acceptance criteria: ${artifact.artifactSummary.acceptanceCriteriaPassed}/${artifact.artifactSummary.acceptanceCriteriaTotal}`,
   );
-  console.log(`RPC HTTP smoke: ${artifact.artifactSummary.rpcHttpSmoke.requests} requests`);
+  console.log(
+    `In-process RPC smoke: ${artifact.artifactSummary.rpcSmokeCoverage.passed}/${artifact.artifactSummary.rpcSmokeCoverage.total}`,
+  );
+  console.log(
+    `RPC HTTP smoke: ${artifact.artifactSummary.rpcHttpSmoke.requests} requests + bounded error`,
+  );
 }
 
 main().catch((error) => {
