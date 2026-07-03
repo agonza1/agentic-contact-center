@@ -1828,7 +1828,7 @@ test("POST /api/operator/console/scripted-turn submits only the next scripted ca
       route: string;
       submittedTurnIndex: number;
       submittedText: string;
-      call: SnapshotPayload;
+      call: SnapshotPayload & { actionState: OperatorConsolePayload["calls"]["items"][number]["actionState"] };
     };
 
     assert.equal(submitted.statusCode, 200);
@@ -1848,6 +1848,8 @@ test("POST /api/operator/console/scripted-turn submits only the next scripted ca
     );
     assert.equal(submittedPayload.call.transcript.at(-1)?.speaker, "agent");
     assert.equal(submittedPayload.call.pipecatFlow.script.matchedCallerTurns, 1);
+    assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.nextTurnIndex, 1);
+    assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.progressPct, 25);
 
     const consoleResponse = await requestJson(port, "GET", "/api/operator/console?callId=" + callId);
     const consolePayload = consoleResponse.payload as OperatorConsolePayload;

@@ -2890,7 +2890,7 @@ async function routeRequest(
         route: "/api/operator/console/scripted-turn",
         submittedTurnIndex: matchedTurns,
         submittedText: text,
-        call: buildCallPayload(updatedSnapshot),
+        call: buildOperatorConsoleCallPayload(updatedSnapshot),
       });
     } catch {
       writeNotFound(response);
