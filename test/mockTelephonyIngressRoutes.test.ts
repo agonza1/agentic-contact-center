@@ -167,6 +167,8 @@ interface OperatorConsolePayload {
           scriptedCallerTurnState: {
             matchedTurns: number;
             totalTurns: number;
+            remainingTurns: number;
+            progressPct: number;
             nextTurnIndex: number | null;
             nextTurnText: string | null;
             completed: boolean;
@@ -1257,6 +1259,8 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       scriptedCallerTurnState: {
         matchedTurns: 3,
         totalTurns: 4,
+        remainingTurns: 1,
+        progressPct: 75,
         nextTurnIndex: 3,
         nextTurnText: "Thanks, please note that follow-up and close the call.",
         completed: false,
@@ -1405,6 +1409,8 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.deepEqual(idleConsoleCall?.actionState.scriptedCallerTurnState, {
       matchedTurns: 0,
       totalTurns: 4,
+      remainingTurns: 4,
+      progressPct: 0,
       nextTurnIndex: 0,
       nextTurnText: "I want to cancel my policy today.",
       completed: false,

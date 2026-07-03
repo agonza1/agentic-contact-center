@@ -1298,6 +1298,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
     snapshot.pipecatFlow.script.matchedCallerTurns,
     SCRIPTED_CALLER_TURNS.length,
   );
+  const remainingScriptedCallerTurns = SCRIPTED_CALLER_TURNS.length - matchedScriptedCallerTurns;
   const nextScriptedCallerTurn = SCRIPTED_CALLER_TURNS[matchedScriptedCallerTurns] ?? null;
 
   return {
@@ -1353,6 +1354,8 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       scriptedCallerTurnState: {
         matchedTurns: matchedScriptedCallerTurns,
         totalTurns: SCRIPTED_CALLER_TURNS.length,
+        remainingTurns: remainingScriptedCallerTurns,
+        progressPct: Math.round((matchedScriptedCallerTurns / SCRIPTED_CALLER_TURNS.length) * 100),
         nextTurnIndex: nextScriptedCallerTurn === null ? null : matchedScriptedCallerTurns,
         nextTurnText: nextScriptedCallerTurn,
         completed: nextScriptedCallerTurn === null,
