@@ -302,6 +302,7 @@ FreeSWITCH local SIP target:
 - Dial: `8600`
 - ESL bridge: `npm run freeswitch:bridge -- --acc-url http://127.0.0.1:8026`
 - Docker profile: `npm run docker:freeswitch` when Docker is available
+- FreeSWITCH-only compose start: `npm run docker:freeswitch:only` when ACC is already running locally
 - Runbook: `docs/freeswitch-local-sip-runbook.md`
 
 Review release requires a real local SIP softphone call with `live_capture`, not the generated self-test. If `RTC_ASR_WS_URL` is not set, the bundle emits an explicit `rtc_asr_blocked` artifact and blocker instead of a fake transcript.

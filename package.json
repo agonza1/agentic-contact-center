@@ -19,6 +19,7 @@
     "sip:self-test": "node scripts/local-sip-live-proof.mjs --self-test --out-dir artifacts/local-sip-selftest",
     "freeswitch:bridge": "node scripts/freeswitch-acc-bridge.mjs",
     "docker:freeswitch": "docker compose --profile freeswitch up --build app freeswitch",
+    "docker:freeswitch:only": "docker compose --profile freeswitch up -d freeswitch --no-deps",
     "proof:live-sip-bundle": "node scripts/live-sip-proof-bundle.mjs",
     "proof:realtime-shim": "npm run build && node scripts/realtime-shim-proof.mjs"
   },

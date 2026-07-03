@@ -36,11 +36,13 @@ npm run build
 PORT=8026 npm start
 ```
 
-2. Start FreeSWITCH with the local config. If Docker is available:
+2. Start FreeSWITCH with the local config. The compose profile uses the public `safarov/freeswitch:latest` image. If ACC is already running locally on `127.0.0.1:8026`, start only FreeSWITCH:
 
 ```sh
-docker compose --profile freeswitch up --build app freeswitch
+npm run docker:freeswitch:only
 ```
+
+Use `npm run docker:freeswitch` instead when you want compose to build and start both ACC and FreeSWITCH together.
 
 3. Start the ESL bridge from another terminal:
 
@@ -65,6 +67,14 @@ Domain/proxy: 127.0.0.1:5060
 Transport: UDP
 Dial: 8600
 ```
+
+If using an already-running native/Homebrew FreeSWITCH instead of the compose service, confirm its active password before running SIPp or configuring a softphone:
+
+```sh
+fs_cli -x 'global_getvar default_password'
+```
+
+On Alberto's current local Homebrew FreeSWITCH, the active SIP profile binds to `192.168.86.28:5060` and extension `1000` uses the `default_password` value rather than the compose-only `local-sip-pass`.
 
 5. Speak a real caller utterance, then hang up. Review:
 
