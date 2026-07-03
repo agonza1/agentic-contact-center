@@ -350,6 +350,42 @@ function buildRealtimeShimReadinessPayload(): object {
           method: "talk.session.getEvidence",
           body: { method: "talk.session.getEvidence", params: { sessionId: "local-rt-review" } },
         },
+        {
+          label: "cancel output on browser barge-in",
+          method: "talk.session.cancelOutput",
+          body: { method: "talk.session.cancelOutput", params: { sessionId: "local-rt-review", reason: "barge-in" } },
+        },
+        {
+          label: "cancel pending input audio",
+          method: "talk.session.cancelInput",
+          body: { method: "talk.session.cancelInput", params: { sessionId: "local-rt-review" } },
+        },
+        {
+          label: "record bounded Local STT error",
+          method: "talk.session.recordError",
+          body: {
+            method: "talk.session.recordError",
+            params: {
+              sessionId: "local-rt-review",
+              code: "stt_disconnected",
+              message: "Local STT websocket closed before final transcript",
+              retryable: true,
+            },
+          },
+        },
+        {
+          label: "record tool result compatibility evidence",
+          method: "talk.session.submitToolResult",
+          body: {
+            method: "talk.session.submitToolResult",
+            params: { sessionId: "local-rt-review", toolCallId: "tool-review-1", result: { ok: true } },
+          },
+        },
+        {
+          label: "close local realtime shim session",
+          method: "talk.session.close",
+          body: { method: "talk.session.close", params: { sessionId: "local-rt-review", reason: "complete" } },
+        },
       ],
       reviewerChecklist: [
         "Confirm the Gateway relay RPC boundary matches the OpenClaw browser voice surface.",
