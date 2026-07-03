@@ -2905,7 +2905,12 @@ async function routeRequest(
         ok: true,
         route: "/api/operator/console/scripted-turn",
         submittedTurnIndex: matchedTurns,
+        submittedTurnOrdinal: matchedTurns + 1,
         submittedText: text,
+        nextTurnIndex: updatedSnapshot.pipecatFlow.script.completed
+          ? null
+          : updatedSnapshot.pipecatFlow.script.matchedCallerTurns,
+        scriptCompleted: updatedSnapshot.pipecatFlow.script.completed,
         call: buildOperatorConsoleCallPayload(updatedSnapshot),
       });
     } catch {

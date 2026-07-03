@@ -1863,7 +1863,10 @@ test("POST /api/operator/console/scripted-turn submits only the next scripted ca
       ok: boolean;
       route: string;
       submittedTurnIndex: number;
+      submittedTurnOrdinal: number;
       submittedText: string;
+      nextTurnIndex: number | null;
+      scriptCompleted: boolean;
       call: SnapshotPayload & { actionState: OperatorConsolePayload["calls"]["items"][number]["actionState"] };
     };
 
@@ -1871,7 +1874,10 @@ test("POST /api/operator/console/scripted-turn submits only the next scripted ca
     assert.equal(submittedPayload.ok, true);
     assert.equal(submittedPayload.route, "/api/operator/console/scripted-turn");
     assert.equal(submittedPayload.submittedTurnIndex, 0);
+    assert.equal(submittedPayload.submittedTurnOrdinal, 1);
     assert.equal(submittedPayload.submittedText, "I want to cancel my policy today.");
+    assert.equal(submittedPayload.nextTurnIndex, 1);
+    assert.equal(submittedPayload.scriptCompleted, false);
     assert.equal(submittedPayload.call.session.callId, callId);
     assert.equal(
       submittedPayload.call.transcript.some(
