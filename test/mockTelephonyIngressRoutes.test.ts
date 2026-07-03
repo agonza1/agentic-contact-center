@@ -24,7 +24,7 @@ interface SnapshotPayload {
     startedAt: string | null;
     ageMs: number | null;
   };
-  transcript: Array<{ speaker: string; text: string }>;
+  transcript: Array<{ speaker: string; text: string; timestamp?: string }>;
   demoFallback: {
     armed: boolean;
     reason: string | null;
@@ -99,7 +99,7 @@ interface OperatorConsolePayload {
   controls: {
     commandWrappers: string[];
     callReferenceFields: string[];
-    routes: { startDemoCall: string; callerTurn: string; steerCall: string; noteCall: string; consoleAction: string };
+    routes: { startDemoCall: string; callerTurn: string; scriptedTurn: string; steerCall: string; noteCall: string; consoleAction: string };
     scriptedCallerTurns: string[];
     actions: Array<{
       action: string;
@@ -1200,6 +1200,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.deepEqual(consolePayload.controls.routes, {
       startDemoCall: "/api/demo/start",
       callerTurn: "/api/calls/{callId}/caller-turn",
+      scriptedTurn: "/api/operator/console/scripted-turn",
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
@@ -1790,6 +1791,64 @@ test("POST /api/operator/console/action dispatches live call controls", async ()
     });
     assert.equal(unknownRef.statusCode, 400);
     assert.deepEqual(unknownRef.payload, { ok: false, error: "operator_console_action_call_ref_not_found" });
+  });
+});
+
+test("POST /api/operator/console/scripted-turn submits only the next scripted caller turn", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionId: "scripted-turn-session",
+      openclawSessionLabel: "cluecon-demo/scripted-turn",
+    });
+    const callId = (started.payload as SnapshotPayload).session.callId;
+
+    const mismatch = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
+      openclawSessionRef: "cluecon-demo/scripted-turn",
+      expectedTurnIndex: 1,
+    });
+
+    assert.equal(mismatch.statusCode, 409);
+    assert.deepEqual(mismatch.payload, {
+      ok: false,
+      error: "operator_console_scripted_turn_index_mismatch",
+      expectedTurnIndex: 1,
+      nextTurnIndex: 0,
+    });
+
+    const submitted = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
+      openclawSessionRef: "cluecon-demo/scripted-turn",
+      expectedTurnIndex: 0,
+      timestamp: "2026-06-10T14:12:30.000Z",
+    });
+    const submittedPayload = submitted.payload as {
+      ok: boolean;
+      route: string;
+      submittedTurnIndex: number;
+      submittedText: string;
+      call: SnapshotPayload;
+    };
+
+    assert.equal(submitted.statusCode, 200);
+    assert.equal(submittedPayload.ok, true);
+    assert.equal(submittedPayload.route, "/api/operator/console/scripted-turn");
+    assert.equal(submittedPayload.submittedTurnIndex, 0);
+    assert.equal(submittedPayload.submittedText, "I want to cancel my policy today.");
+    assert.equal(submittedPayload.call.session.callId, callId);
+    assert.equal(
+      submittedPayload.call.transcript.some(
+        (turn) =>
+          turn.speaker === "caller" &&
+          turn.text === "I want to cancel my policy today." &&
+          turn.timestamp === "2026-06-10T14:12:30.000Z",
+      ),
+      true,
+    );
+    assert.equal(submittedPayload.call.transcript.at(-1)?.speaker, "agent");
+    assert.equal(submittedPayload.call.pipecatFlow.script.matchedCallerTurns, 1);
+
+    const consoleResponse = await requestJson(port, "GET", "/api/operator/console?callId=" + callId);
+    const consolePayload = consoleResponse.payload as OperatorConsolePayload;
+    assert.equal(consolePayload.calls.items[0]?.actionState.scriptedCallerTurnState.nextTurnIndex, 1);
   });
 });
 
@@ -4412,7 +4471,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
       schemaVersion: number;
       commandWrappers: string[];
       callReferenceFields: string[];
-      routes: { startDemoCall: string; callerTurn: string; steerCall: string; noteCall: string; consoleAction: string };
+      routes: { startDemoCall: string; callerTurn: string; scriptedTurn: string; steerCall: string; noteCall: string; consoleAction: string };
       actions: Array<{
         action: string;
         requiresPendingCall: boolean;
@@ -4438,6 +4497,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     assert.deepEqual(payload.routes, {
       startDemoCall: "/api/demo/start",
       callerTurn: "/api/calls/{callId}/caller-turn",
+      scriptedTurn: "/api/operator/console/scripted-turn",
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",

@@ -1900,6 +1900,7 @@ function buildOperatorActionsPayload() {
     routes: {
       startDemoCall: "/api/demo/start",
       callerTurn: "/api/calls/{callId}/caller-turn",
+      scriptedTurn: "/api/operator/console/scripted-turn",
       steerCall: "/api/calls/{callId}/operator-steer",
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
@@ -2823,6 +2824,74 @@ async function routeRequest(
         writeBadRequest(response, "operator_console_action_not_pending");
         return;
       }
+      writeNotFound(response);
+    }
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/operator/console/scripted-turn") {
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const callId = await resolveOperatorConsoleCallId(body, ingress);
+    if (typeof callId !== "string") {
+      writeBadRequest(response, callId.error.replace("operator_console_action", "operator_console_scripted_turn"));
+      return;
+    }
+
+    const snapshots = await ingress.listSnapshots({ callId });
+    const snapshot = snapshots[0];
+    if (!snapshot) {
+      writeBadRequest(response, "operator_console_scripted_turn_call_ref_not_found");
+      return;
+    }
+
+    const expectedTurnIndex = parseOptionalNonNegativeInteger(
+      body.expectedTurnIndex,
+      "operator_console_scripted_turn_index_invalid",
+    );
+    if (expectedTurnIndex !== null && typeof expectedTurnIndex === "object") {
+      writeBadRequest(response, expectedTurnIndex.error);
+      return;
+    }
+
+    const matchedTurns = snapshot.pipecatFlow.script.matchedCallerTurns;
+    if (expectedTurnIndex !== null && expectedTurnIndex !== matchedTurns) {
+      writeJson(response, 409, {
+        ok: false,
+        error: "operator_console_scripted_turn_index_mismatch",
+        expectedTurnIndex,
+        nextTurnIndex: matchedTurns,
+      });
+      return;
+    }
+
+    const text = snapshot.pipecatFlow.script.expectedCallerTurns[matchedTurns];
+    if (!text) {
+      writeBadRequest(response, "operator_console_scripted_turn_complete");
+      return;
+    }
+
+    const timestamp = normalizeTimestamp(body.timestamp, "operator_console_scripted_turn_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+
+    try {
+      const updatedSnapshot = await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config);
+      writeJson(response, 200, {
+        ok: true,
+        route: "/api/operator/console/scripted-turn",
+        submittedTurnIndex: matchedTurns,
+        submittedText: text,
+        call: buildCallPayload(updatedSnapshot),
+      });
+    } catch {
       writeNotFound(response);
     }
     return;
