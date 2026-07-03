@@ -361,9 +361,6 @@ export class EslBridge {
     if (contentType === "auth/request") {
       this.send(`auth ${this.options.password}`);
       this.send("event plain CHANNEL_ANSWER CHANNEL_HANGUP_COMPLETE RECORD_STOP");
-      this.send("filter Event-Name CHANNEL_ANSWER");
-      this.send("filter Event-Name CHANNEL_HANGUP_COMPLETE");
-      this.send("filter Event-Name RECORD_STOP");
       return;
     }
     if (contentType !== "text/event-plain") return;

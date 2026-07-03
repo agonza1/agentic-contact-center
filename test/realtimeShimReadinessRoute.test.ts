@@ -61,14 +61,22 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         modelGuidance: string;
         status: string;
       };
+      runtimeMode: {
+        labels: { relay: string; stt: string; llm: string; tts: string };
+        liveSidecarsRequired: boolean;
+        reviewStatus: string;
+      };
       reviewBlockers: string[];
       reviewPacket: {
         ready: boolean;
         issue: string;
+        issueUrl: string;
         primaryRoute: string;
         readinessRoute: string;
         rpcRoute: string;
         validationCommands: string[];
+        probeCommands: string[];
+        artifactOutputs: { defaultProof: string; defaultLatest: string; explicitProofCommand: string };
         rpcExamples: Array<{ label: string; method: string; body: { method: string; params: Record<string, unknown> } }>;
         reviewerChecklist: string[];
       };
@@ -112,13 +120,34 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       modelGuidance: "small_fast_local_models",
       status: "within_budget",
     });
+    assert.deepEqual(payload.runtimeMode, {
+      labels: {
+        relay: "gateway_relay",
+        stt: "local_stt_mock",
+        llm: "local_llm_mock",
+        tts: "kokoro_tts_mock",
+      },
+      liveSidecarsRequired: false,
+      reviewStatus: "deterministic_local_proof_ready",
+    });
     assert.deepEqual(payload.reviewBlockers, []);
     assert.equal(payload.reviewPacket.ready, true);
     assert.equal(payload.reviewPacket.issue, "agonza1/agentic-contact-center#85");
+    assert.equal(payload.reviewPacket.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/85");
     assert.equal(payload.reviewPacket.primaryRoute, "/api/realtime-shim/proof");
     assert.equal(payload.reviewPacket.readinessRoute, "/api/realtime-shim/readiness");
     assert.equal(payload.reviewPacket.rpcRoute, "POST /api/realtime-shim/rpc");
     assert.deepEqual(payload.reviewPacket.validationCommands, ["npm test", "npm run pipecat:check", "npm run proof:realtime-shim"]);
+    assert.deepEqual(payload.reviewPacket.probeCommands, [
+      "curl -fsS http://127.0.0.1:8026/api/realtime-shim/proof",
+      "curl -fsS http://127.0.0.1:8026/api/realtime-shim/readiness",
+      "curl -fsS -X POST http://127.0.0.1:8026/api/realtime-shim/rpc -H 'content-type: application/json' --data '{\"method\":\"talk.session.getEvidence\",\"params\":{\"sessionId\":\"local-rt-review\"}}'",
+    ]);
+    assert.deepEqual(payload.reviewPacket.artifactOutputs, {
+      defaultProof: "artifacts/realtime-shim-proof-<timestamp>.json",
+      defaultLatest: "artifacts/realtime-shim-proof-latest.json",
+      explicitProofCommand: "npm run proof:realtime-shim -- --out artifacts/realtime-shim-proof.json --latest-out artifacts/realtime-shim-proof-latest.json",
+    });
     assert.deepEqual(
       payload.reviewPacket.rpcExamples.map((example) => example.method),
       [
@@ -160,6 +189,11 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         route: "/api/realtime-shim/rpc",
         method: "POST",
         evidence: ["statefulSession", "cancelInput", "cancelOutput", "boundedErrors", "toolResults"],
+      },
+      {
+        route: "/api/realtime-shim/readiness",
+        method: "GET",
+        evidence: ["acceptanceCriteria", "runtimeMode", "reviewBlockers", "reviewPacket"],
       },
     ]);
     assert.equal(payload.acceptanceCriteria.length, 6);

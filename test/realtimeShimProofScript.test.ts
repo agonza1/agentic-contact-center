@@ -30,6 +30,7 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
     assert.match(stdout, /Updated latest realtime shim proof artifact/);
     assert.match(stdout, /Issue #85 ready: yes/);
     assert.match(stdout, /Acceptance criteria: 6\/6/);
+    assert.match(stdout, /RPC HTTP smoke: 5 requests/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       ok: boolean;
@@ -46,12 +47,27 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
           inputCancelled: boolean;
           boundedErrors: number;
         };
+        runtimeMode: {
+          labels: { relay: string; stt: string; llm: string; tts: string };
+          liveSidecarsRequired: boolean;
+          reviewStatus: string;
+        };
+        reviewPacketRoutes: { primaryRoute: string; readinessRoute: string; rpcRoute: string };
         evidence: {
           eventTranscriptLines: number;
           logLines: number;
           timelineEvents: number;
           latencyMarks: number;
           relayEvents: number;
+        };
+        rpcHttpSmoke: {
+          route: string;
+          sessionId: string;
+          requests: number;
+          methods: string[];
+          finalTranscript: string;
+          outputAudioChunks: number;
+          closed: boolean;
         };
       };
       readiness: {
@@ -82,12 +98,42 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
         inputCancelled: true,
         boundedErrors: 3,
       },
+      runtimeMode: {
+        labels: {
+          relay: "gateway_relay",
+          stt: "local_stt_mock",
+          llm: "local_llm_mock",
+          tts: "kokoro_tts_mock",
+        },
+        liveSidecarsRequired: false,
+        reviewStatus: "deterministic_local_proof_ready",
+      },
+      reviewPacketRoutes: {
+        primaryRoute: "/api/realtime-shim/proof",
+        readinessRoute: "/api/realtime-shim/readiness",
+        rpcRoute: "POST /api/realtime-shim/rpc",
+      },
       evidence: {
         eventTranscriptLines: 13,
         logLines: 13,
         timelineEvents: 13,
         latencyMarks: 3,
         relayEvents: 1,
+      },
+      rpcHttpSmoke: {
+        route: "/api/realtime-shim/rpc",
+        sessionId: "local-rt-http-smoke",
+        requests: 5,
+        methods: [
+          "talk.session.create",
+          "talk.session.appendAudio",
+          "talk.session.finalizeTurn",
+          "talk.session.getEvidence",
+          "talk.session.close",
+        ],
+        finalTranscript: "Need a retention credit.",
+        outputAudioChunks: 1,
+        closed: true,
       },
     });
     assert.equal(artifact.readiness.ok, true);
@@ -128,6 +174,8 @@ test("realtime shim proof runner refreshes latest artifact by default", async ()
 
     assert.deepEqual(latestArtifact, outputArtifact);
     assert.equal(latestArtifact.artifactSummary.acceptanceCriteriaPassed, 6);
+    assert.equal(latestArtifact.artifactSummary.rpcHttpSmoke.requests, 5);
+    assert.equal(latestArtifact.artifactSummary.rpcHttpSmoke.closed, true);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
