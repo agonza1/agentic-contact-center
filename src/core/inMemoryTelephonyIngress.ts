@@ -387,6 +387,7 @@ export class InMemoryTelephonyIngress {
     callId?: string;
     providerCallId?: string;
     transcriptText?: string;
+    scriptCompleted?: boolean;
     minAttentionAgeMs?: number;
     maxAttentionAgeMs?: number;
     latencyStage?: string;
@@ -412,6 +413,7 @@ export class InMemoryTelephonyIngress {
     callId?: string;
     providerCallId?: string;
     transcriptText?: string;
+    scriptCompleted?: boolean;
     minAttentionAgeMs?: number;
     maxAttentionAgeMs?: number;
     latencyStage?: string;
@@ -502,6 +504,9 @@ export class InMemoryTelephonyIngress {
         const normalizedText = filters.transcriptText.toLocaleLowerCase();
         return snapshot.transcript.some((turn) => turn.text.toLocaleLowerCase().includes(normalizedText));
       })
+      .filter((snapshot) =>
+        filters.scriptCompleted === undefined ? true : snapshot.pipecatFlow.script.completed === filters.scriptCompleted,
+      )
       .filter((snapshot) => snapshot.latencyMarks.some((mark) => latencyMarkMatchesFilters(mark, filters)))
       .filter((snapshot) =>
         filters.openclawSessionId === undefined
@@ -543,6 +548,7 @@ export class InMemoryTelephonyIngress {
     callId?: string;
     providerCallId?: string;
     transcriptText?: string;
+    scriptCompleted?: boolean;
     minAttentionAgeMs?: number;
     maxAttentionAgeMs?: number;
     latencyStage?: string;

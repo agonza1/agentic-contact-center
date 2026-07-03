@@ -1485,6 +1485,16 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.deepEqual(activeToolPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
     assert.equal(activeToolPayload.calls.summary.filteredSummary.attentionRequired, 1);
 
+    const inProgressConsole = await requestJson(port, "GET", "/api/operator/console?scriptCompleted=false");
+    const inProgressPayload = inProgressConsole.payload as OperatorConsolePayload;
+
+    assert.equal(inProgressConsole.statusCode, 200);
+    assert.deepEqual(inProgressPayload.calls.items.map((call) => call.session.callId), [operatorCallId, idleCallId]);
+
+    const invalidScriptCompletedFilter = await requestJson(port, "GET", "/api/operator/console?scriptCompleted=maybe");
+    assert.equal(invalidScriptCompletedFilter.statusCode, 400);
+    assert.deepEqual(invalidScriptCompletedFilter.payload, { ok: false, error: "operator_console_script_completed_invalid" });
+
     const invalidFilter = await requestJson(port, "GET", "/api/operator/console?attentionRequired=maybe");
     assert.equal(invalidFilter.statusCode, 400);
     assert.deepEqual(invalidFilter.payload, { ok: false, error: "operator_console_attention_required_invalid" });
@@ -1512,6 +1522,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Fallback reason/);
     assert.match(response.body, /Active tool filter/);
     assert.match(response.body, /All active tools/);
+    assert.match(response.body, /Script status filter/);
+    assert.match(response.body, /All script states/);
     assert.match(response.body, /Transcript search/);
     assert.match(response.body, /operatorConsoleQuery/);
     assert.match(response.body, /refreshIntervalMs/);
@@ -1528,6 +1540,7 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /fallbackSource/);
     assert.match(response.body, /fallbackReason/);
     assert.match(response.body, /pipecatActiveTool/);
+    assert.match(response.body, /scriptCompleted/);
     assert.match(response.body, /transcriptText/);
     assert.match(response.body, /\/api\/demo\/start/);
     assert.match(response.body, /caller-turn-form/);
