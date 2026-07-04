@@ -31,7 +31,7 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
     assert.match(stdout, /Issue #85 ready: yes/);
     assert.match(stdout, /Acceptance criteria: 6\/6/);
     assert.match(stdout, /In-process RPC smoke: 13\/13/);
-    assert.match(stdout, /RPC HTTP smoke: 5 requests \+ bounded error/);
+    assert.match(stdout, /RPC HTTP smoke: 8 requests \+ bounded error/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       ok: boolean;
@@ -52,6 +52,14 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
           labels: { relay: string; stt: string; llm: string; tts: string };
           liveSidecarsRequired: boolean;
           reviewStatus: string;
+        };
+        liveSidecarPromotion: {
+          status: string;
+          nextSwap: { sidecar: string; mockedStage: string; validationGate: string; rollbackSignal: string };
+          requiredSidecars: string[];
+          contractToPreserve: { rpcBoundary: string; localSttContract: string; browserRelayCompatibility: string };
+          firstValidationGate: string;
+          rollbackSignal: string;
         };
         reviewPacketRoutes: { primaryRoute: string; readinessRoute: string; rpcRoute: string };
         evidence: {
@@ -74,7 +82,13 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
           methods: string[];
           finalTranscript: string;
           outputAudioChunks: number;
+          bargeInRecovery: {
+            outputCancelled: boolean;
+            recoveredFinalTranscript: string;
+            recoveredOutputAudioChunks: number;
+          };
           closed: boolean;
+          boundedError: { statusCode: number; error: string; message: string };
         };
       };
       readiness: {
@@ -115,6 +129,23 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
         liveSidecarsRequired: false,
         reviewStatus: "deterministic_local_proof_ready",
       },
+      liveSidecarPromotion: {
+        status: "ready_for_sidecar_swap",
+        nextSwap: {
+          sidecar: "rtc-asr",
+          mockedStage: "local_stt",
+          validationGate: "npm run proof:realtime-shim",
+          rollbackSignal: "Revert to Local STT v1 deterministic messages if transcript.done, barge-in recovery, or bounded error evidence regresses.",
+        },
+        requiredSidecars: ["rtc-asr", "local_llm", "kokoro_tts"],
+        contractToPreserve: {
+          rpcBoundary: "POST /api/realtime-shim/rpc",
+          localSttContract: "local-stt.v1",
+          browserRelayCompatibility: "ready_for_browser_flow",
+        },
+        firstValidationGate: "npm run proof:realtime-shim -- --out artifacts/realtime-shim-proof.json --latest-out artifacts/realtime-shim-proof-latest.json",
+        rollbackSignal: "Keep mocked local proof green before replacing one sidecar at a time.",
+      },
       reviewPacketRoutes: {
         primaryRoute: "/api/realtime-shim/proof",
         readinessRoute: "/api/realtime-shim/readiness",
@@ -149,17 +180,25 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
       rpcHttpSmoke: {
         route: "/api/realtime-shim/rpc",
         sessionId: "local-rt-http-smoke",
-        requests: 5,
+        requests: 8,
         requestIdsEchoed: true,
         methods: [
           "talk.session.create",
           "talk.session.appendAudio",
           "talk.session.finalizeTurn",
+          "talk.session.cancelOutput",
+          "talk.session.appendAudio",
+          "talk.session.finalizeTurn",
           "talk.session.getEvidence",
           "talk.session.close",
         ],
-        finalTranscript: "Need a retention credit.",
-        outputAudioChunks: 1,
+        finalTranscript: "Continue with a human handoff instead.",
+        outputAudioChunks: 2,
+        bargeInRecovery: {
+          outputCancelled: true,
+          recoveredFinalTranscript: "Continue with a human handoff instead.",
+          recoveredOutputAudioChunks: 2,
+        },
         closed: true,
         boundedError: {
           statusCode: 400,
@@ -208,8 +247,13 @@ test("realtime shim proof runner refreshes latest artifact by default", async ()
     assert.equal(latestArtifact.artifactSummary.acceptanceCriteriaPassed, 6);
     assert.equal(latestArtifact.artifactSummary.rpcSmokeCoverage.passed, 13);
     assert.equal(latestArtifact.artifactSummary.rpcSmokeCoverage.total, 13);
-    assert.equal(latestArtifact.artifactSummary.rpcHttpSmoke.requests, 5);
+    assert.equal(latestArtifact.artifactSummary.rpcHttpSmoke.requests, 8);
     assert.equal(latestArtifact.artifactSummary.rpcHttpSmoke.closed, true);
+    assert.deepEqual(latestArtifact.artifactSummary.rpcHttpSmoke.bargeInRecovery, {
+      outputCancelled: true,
+      recoveredFinalTranscript: "Continue with a human handoff instead.",
+      recoveredOutputAudioChunks: 2,
+    });
     assert.equal(latestArtifact.artifactSummary.rpcHttpSmoke.boundedError.statusCode, 400);
     assert.equal(latestArtifact.artifactSummary.rpcHttpSmoke.boundedError.error, "realtime_shim_rpc_error");
   } finally {

@@ -127,6 +127,31 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         eventTranscript: string[];
         qaChecklist: Record<string, boolean>;
       };
+      bargeInRecoveryEvidence: {
+        state: string;
+        relayEvents: Array<{ type: string; reason?: string }>;
+        localSttMessages: Array<{ type: string; byteLength?: number }>;
+        diagnostics: Array<{ type: string; relaySessionId: string; sessionId: string; text?: string }>;
+        timeline: Array<{ source: string; type: string; reason?: string; text?: string }>;
+        turnSummary: {
+          inputAudioChunks: number;
+          inputAudioBytes: number;
+          finalTranscript?: string;
+          outputAudioChunks: number;
+          outputCancelled: boolean;
+          inputCancelled: boolean;
+          errorCount: number;
+          closed: boolean;
+        };
+        qaChecklist: Record<string, boolean>;
+      };
+      bargeInRecoveryCloseEvidence: {
+        state: string;
+        relayEvents: Array<{ type: string; reason?: string }>;
+        localSttMessages: Array<{ type: string }>;
+        diagnostics: Array<{ type: string; sessionId: string; relaySessionId: string; reason?: string }>;
+        turnSummary: { closed: boolean; outputAudioChunks: number; outputCancelled: boolean };
+      };
       inputCancelEvidence: {
         state: string;
         localSttMessages: Array<{ type: string }>;
@@ -272,6 +297,8 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       },
     );
     assert.match(payload.acceptanceDetails.adapterContract.evidence, /local-realtime-shim over gateway-relay with local-stt\.v1/);
+    assert.match(payload.acceptanceDetails.interruptionCancelBehavior.evidence, /same session recovers into the next voice turn/);
+    assert.match(payload.acceptanceDetails.interruptionCancelBehavior.evidence, /closes cleanly after recovery/);
     assert.deepEqual(payload.acceptanceDetails.oneLocalVoiceTurn.routes, [
       "GET /api/realtime-shim/proof",
       "POST /api/realtime-shim/rpc",
@@ -418,6 +445,70 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         ["diagnostic", "turn.cancelled", "barge-in"],
       ],
     );
+    assert.equal(payload.bargeInRecoveryEvidence.state, "speaking");
+    assert.deepEqual(payload.bargeInRecoveryEvidence.turnSummary, {
+      inputAudioChunks: 2,
+      inputAudioBytes: 16,
+      finalTranscript: "Continue with a human handoff instead.",
+      outputAudioChunks: 2,
+      outputCancelled: true,
+      inputCancelled: false,
+      errorCount: 0,
+      closed: false,
+    });
+    assert.deepEqual(payload.bargeInRecoveryEvidence.relayEvents.map((event) => [event.type, event.reason]), [
+      ["audio", undefined],
+      ["clear", "barge-in"],
+      ["audio", undefined],
+    ]);
+    assert.deepEqual(payload.bargeInRecoveryEvidence.localSttMessages.map((message) => message.type), [
+      "start",
+      "audio",
+      "finalize",
+      "audio",
+      "finalize",
+    ]);
+    assert.deepEqual(
+      payload.bargeInRecoveryEvidence.timeline.slice(-4).map((event) => [event.source, event.type]),
+      [
+        ["diagnostic", "output.audio.started"],
+        ["relay", "audio"],
+        ["diagnostic", "output.audio.delta"],
+        ["diagnostic", "output.audio.done"],
+      ],
+    );
+    assert.equal(payload.bargeInRecoveryEvidence.qaChecklist.oneTurnEvidence, true);
+    assert.equal(payload.bargeInRecoveryCloseEvidence.state, "closed");
+    assert.deepEqual(payload.bargeInRecoveryCloseEvidence.relayEvents.map((event) => [event.type, event.reason]), [
+      ["audio", undefined],
+      ["clear", "barge-in"],
+      ["audio", undefined],
+      ["close", "complete"],
+    ]);
+    assert.deepEqual(payload.bargeInRecoveryCloseEvidence.localSttMessages.map((message) => message.type), [
+      "start",
+      "audio",
+      "finalize",
+      "audio",
+      "finalize",
+      "close",
+    ]);
+    assert.deepEqual(payload.bargeInRecoveryCloseEvidence.diagnostics.at(-1), {
+      type: "session.closed",
+      sessionId: "local-rt-http-interrupt-proof",
+      relaySessionId: "local-rt-http-interrupt-proof",
+      reason: "complete",
+    });
+    assert.deepEqual(payload.bargeInRecoveryCloseEvidence.turnSummary, {
+      inputAudioChunks: 2,
+      inputAudioBytes: 16,
+      finalTranscript: "Continue with a human handoff instead.",
+      outputAudioChunks: 2,
+      outputCancelled: true,
+      inputCancelled: false,
+      errorCount: 0,
+      closed: true,
+    });
     assert.equal(payload.inputCancelEvidence.state, "idle");
     assert.equal(payload.inputCancelEvidence.qaChecklist.inputCancelEvidence, true);
     assert.deepEqual(payload.inputCancelEvidence.localSttMessages.map((message) => message.type), [
