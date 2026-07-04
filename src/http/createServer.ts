@@ -361,6 +361,17 @@ function buildRealtimeShimReadinessPayload(): object {
       liveSidecarsRequired: false,
       reviewStatus: proof.readyForIssue85Review ? "deterministic_local_proof_ready" : "blocked",
     },
+    liveSidecarPromotion: {
+      status: "ready_for_sidecar_swap",
+      requiredSidecars: ["rtc-asr", "local_llm", "kokoro_tts"],
+      contractToPreserve: {
+        rpcBoundary: proof.rpcCompatibility.route,
+        localSttContract: proof.localSttContract,
+        browserRelayCompatibility: proof.evidence.browserRelayCompatibility.status,
+      },
+      firstValidationGate: "npm run proof:realtime-shim -- --out artifacts/realtime-shim-proof.json --latest-out artifacts/realtime-shim-proof-latest.json",
+      rollbackSignal: "Keep mocked local proof green before replacing one sidecar at a time.",
+    },
     reviewBlockers: proof.readyForIssue85Review ? [] : ["One or more Issue #85 acceptance criteria are not satisfied."],
     reviewPacket: {
       ready: proof.readyForIssue85Review,
@@ -393,6 +404,7 @@ function buildRealtimeShimReadinessPayload(): object {
           inputCancelled: proof.inputCancelEvidence.qaChecklist.inputCancelEvidence === true,
           boundedErrors: proof.errorEvidence.qaChecklist.boundedErrorEvidence === true,
         },
+        liveSidecarPromotionStatus: "ready_for_sidecar_swap",
       },
       mockedPieces: proof.evidence.mockedPieces,
       limitations: proof.evidence.limitations,
