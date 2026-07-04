@@ -125,13 +125,18 @@ async function runRealtimeShimRpcHttpSmoke(port) {
   const sessionId = "local-rt-http-smoke";
   const requests = [
     {
+      requestId: "rt-http-1",
       method: "talk.session.create",
       params: { mode: "realtime", transport: "gateway-relay", relaySessionId: sessionId },
     },
-    { method: "talk.session.appendAudio", params: { sessionId, audioBase64, timestamp: 42 } },
-    { method: "talk.session.finalizeTurn", params: { sessionId, transcriptText: "Need a retention credit." } },
-    { method: "talk.session.getEvidence", params: { sessionId } },
-    { method: "talk.session.close", params: { sessionId, reason: "complete" } },
+    { requestId: "rt-http-2", method: "talk.session.appendAudio", params: { sessionId, audioBase64, timestamp: 42 } },
+    {
+      requestId: "rt-http-3",
+      method: "talk.session.finalizeTurn",
+      params: { sessionId, transcriptText: "Need a retention credit." },
+    },
+    { requestId: "rt-http-4", method: "talk.session.getEvidence", params: { sessionId } },
+    { requestId: "rt-http-5", method: "talk.session.close", params: { sessionId, reason: "complete" } },
   ];
 
   const responses = [];
@@ -140,6 +145,8 @@ async function runRealtimeShimRpcHttpSmoke(port) {
     assert.equal(response.statusCode, 200);
     assert.equal(response.payload.ok, true);
     assert.equal(response.payload.method, rpcRequest.method);
+    assert.equal(response.payload.requestId, rpcRequest.requestId);
+    assert.equal(response.payload.id, rpcRequest.requestId);
     responses.push(response.payload);
   }
 
@@ -151,6 +158,7 @@ async function runRealtimeShimRpcHttpSmoke(port) {
   assert.equal(closeResponse.result.state, "closed");
 
   const boundedError = await postJson(port, "/api/realtime-shim/rpc", {
+    requestId: "rt-http-error-1",
     method: "talk.session.appendAudio",
     params: { sessionId, audioBase64: Buffer.from([1]).toString("base64") },
   });
@@ -159,6 +167,8 @@ async function runRealtimeShimRpcHttpSmoke(port) {
   assert.equal(boundedError.payload.ok, false);
   assert.equal(boundedError.payload.error, "realtime_shim_rpc_error");
   assert.equal(boundedError.payload.method, "talk.session.appendAudio");
+  assert.equal(boundedError.payload.requestId, "rt-http-error-1");
+  assert.equal(boundedError.payload.id, "rt-http-error-1");
   assert.equal(boundedError.payload.rpcCompatibility.boundedErrors, true);
   assert.match(boundedError.payload.message, /even number of bytes/);
 
@@ -166,6 +176,8 @@ async function runRealtimeShimRpcHttpSmoke(port) {
     route: "/api/realtime-shim/rpc",
     sessionId,
     requests: requests.length,
+    requestIdsEchoed: responses.every((response, index) => response.requestId === `rt-http-${index + 1}`) &&
+      boundedError.payload.requestId === "rt-http-error-1",
     methods: requests.map((request) => request.method),
     finalTranscript: evidenceResponse.result.turnSummary.finalTranscript,
     outputAudioChunks: evidenceResponse.result.turnSummary.outputAudioChunks,

@@ -70,6 +70,7 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
           route: string;
           sessionId: string;
           requests: number;
+          requestIdsEchoed: boolean;
           methods: string[];
           finalTranscript: string;
           outputAudioChunks: number;
@@ -149,6 +150,7 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
         route: "/api/realtime-shim/rpc",
         sessionId: "local-rt-http-smoke",
         requests: 5,
+        requestIdsEchoed: true,
         methods: [
           "talk.session.create",
           "talk.session.appendAudio",
