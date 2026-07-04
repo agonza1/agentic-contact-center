@@ -57,6 +57,13 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         featureFlagShape: string;
         remainingBeforeIssueClose: string[];
       };
+      runtimeGuardrails: Array<{ metric: string; passCondition: string; rollbackSignal: string }>;
+      replayDecisions: Array<{
+        captureId: string;
+        latencySettingMs: number;
+        enableForLiveDemo: boolean;
+        reasons: string[];
+      }>;
       validationPlan: string[];
     };
 
@@ -94,6 +101,28 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.ok(
       payload.acceptanceReadiness.remainingBeforeIssueClose.some((item) => item.includes("real noisy local SIP capture")),
     );
+    assert.deepEqual(
+      payload.runtimeGuardrails.map((guardrail) => guardrail.metric),
+      [
+        "p95_added_turn_latency_ms",
+        "word_error_rate_delta",
+        "endpointing_stability",
+        "barge_in_risk",
+        "cpu_cost",
+      ],
+    );
+    assert.ok(payload.runtimeGuardrails.every((guardrail) => guardrail.rollbackSignal.length > 0));
+    assert.equal(payload.replayDecisions.length, 1);
+    assert.equal(payload.replayDecisions[0].captureId, "synthetic-noisy-cancellation-rescue-001");
+    assert.equal(payload.replayDecisions[0].latencySettingMs, 12.5);
+    assert.equal(payload.replayDecisions[0].enableForLiveDemo, true);
+    assert.deepEqual(payload.replayDecisions[0].reasons, [
+      "wer_improved",
+      "endpointing_stable",
+      "barge_in_risk_low",
+      "latency_within_budget",
+      "cpu_cost_allowed",
+    ]);
     assert.ok(payload.validationPlan.some((step) => step.includes("noisy local SIP capture")));
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
