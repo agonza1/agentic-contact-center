@@ -77,6 +77,15 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         validationCommands: string[];
         probeCommands: string[];
         artifactOutputs: { defaultProof: string; defaultLatest: string; explicitProofCommand: string };
+        proofSignals: {
+          readyForIssue85Review: boolean;
+          acceptanceCriteriaPassed: number;
+          acceptanceCriteriaTotal: number;
+          inProcessRpcSmokePassed: number;
+          inProcessRpcSmokeTotal: number;
+          oneTurnClosed: boolean;
+          cancelAndErrorEvidence: { outputCancelled: boolean; inputCancelled: boolean; boundedErrors: boolean };
+        };
         rpcExamples: Array<{ label: string; method: string; body: { method: string; params: Record<string, unknown> } }>;
         reviewerChecklist: string[];
       };
@@ -147,6 +156,19 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       defaultProof: "artifacts/realtime-shim-proof-<timestamp>.json",
       defaultLatest: "artifacts/realtime-shim-proof-latest.json",
       explicitProofCommand: "npm run proof:realtime-shim -- --out artifacts/realtime-shim-proof.json --latest-out artifacts/realtime-shim-proof-latest.json",
+    });
+    assert.deepEqual(payload.reviewPacket.proofSignals, {
+      readyForIssue85Review: true,
+      acceptanceCriteriaPassed: 6,
+      acceptanceCriteriaTotal: 6,
+      inProcessRpcSmokePassed: 13,
+      inProcessRpcSmokeTotal: 13,
+      oneTurnClosed: true,
+      cancelAndErrorEvidence: {
+        outputCancelled: true,
+        inputCancelled: true,
+        boundedErrors: true,
+      },
     });
     assert.deepEqual(
       payload.reviewPacket.rpcExamples.map((example) => example.method),

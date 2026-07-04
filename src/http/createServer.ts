@@ -276,6 +276,7 @@ function buildRealtimeShimReadinessPayload(): object {
     rpcCompatibility: { route: string; supportedRpcs: string[]; statefulSession: boolean; boundedErrors: boolean };
     acceptanceSummary: Record<string, boolean>;
     readyForIssue85Review: boolean;
+    rpcSmoke: Array<{ ok: boolean; method: string }>;
     evidence: {
       browserRelayCompatibility: { status: string; uiRewriteRequired: boolean; requiredRpcs: string[] };
       latencyBudget: {
@@ -340,6 +341,19 @@ function buildRealtimeShimReadinessPayload(): object {
         defaultProof: "artifacts/realtime-shim-proof-<timestamp>.json",
         defaultLatest: "artifacts/realtime-shim-proof-latest.json",
         explicitProofCommand: "npm run proof:realtime-shim -- --out artifacts/realtime-shim-proof.json --latest-out artifacts/realtime-shim-proof-latest.json",
+      },
+      proofSignals: {
+        readyForIssue85Review: proof.readyForIssue85Review,
+        acceptanceCriteriaPassed: Object.values(proof.acceptanceSummary).filter(Boolean).length,
+        acceptanceCriteriaTotal: Object.values(proof.acceptanceSummary).length,
+        inProcessRpcSmokePassed: proof.rpcSmoke.filter((step) => step.ok).length,
+        inProcessRpcSmokeTotal: proof.rpcSmoke.length,
+        oneTurnClosed: proof.closeEvidence.state === "closed",
+        cancelAndErrorEvidence: {
+          outputCancelled: proof.interruptionEvidence.qaChecklist.interruptionEvidence === true,
+          inputCancelled: proof.inputCancelEvidence.qaChecklist.inputCancelEvidence === true,
+          boundedErrors: proof.errorEvidence.qaChecklist.boundedErrorEvidence === true,
+        },
       },
       rpcExamples: [
         {
