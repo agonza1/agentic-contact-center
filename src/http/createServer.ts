@@ -379,6 +379,12 @@ function buildRealtimeShimReadinessPayload(): object {
     },
     liveSidecarPromotion: {
       status: "ready_for_sidecar_swap",
+      nextSwap: {
+        sidecar: "rtc-asr",
+        mockedStage: "local_stt",
+        validationGate: "npm run proof:realtime-shim",
+        rollbackSignal: "Revert to Local STT v1 deterministic messages if transcript.done, barge-in recovery, or bounded error evidence regresses.",
+      },
       requiredSidecars: ["rtc-asr", "local_llm", "kokoro_tts"],
       contractToPreserve: {
         rpcBoundary: proof.rpcCompatibility.route,

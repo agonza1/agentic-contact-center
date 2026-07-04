@@ -76,6 +76,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       };
       liveSidecarPromotion: {
         status: string;
+        nextSwap: { sidecar: string; mockedStage: string; validationGate: string; rollbackSignal: string };
         requiredSidecars: string[];
         contractToPreserve: { rpcBoundary: string; localSttContract: string; browserRelayCompatibility: string };
         firstValidationGate: string;
@@ -170,6 +171,12 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
     });
     assert.deepEqual(payload.liveSidecarPromotion, {
       status: "ready_for_sidecar_swap",
+      nextSwap: {
+        sidecar: "rtc-asr",
+        mockedStage: "local_stt",
+        validationGate: "npm run proof:realtime-shim",
+        rollbackSignal: "Revert to Local STT v1 deterministic messages if transcript.done, barge-in recovery, or bounded error evidence regresses.",
+      },
       requiredSidecars: ["rtc-asr", "local_llm", "kokoro_tts"],
       contractToPreserve: {
         rpcBoundary: "POST /api/realtime-shim/rpc",

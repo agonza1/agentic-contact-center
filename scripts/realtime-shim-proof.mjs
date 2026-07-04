@@ -246,6 +246,7 @@ async function main() {
           proofResponse.payload.invalidAudioResult.evidence.turnSummary.errorCount,
       },
       runtimeMode: readinessResponse.payload.runtimeMode,
+      liveSidecarPromotion: readinessResponse.payload.liveSidecarPromotion,
       reviewPacketRoutes: {
         primaryRoute: readinessResponse.payload.reviewPacket.primaryRoute,
         readinessRoute: readinessResponse.payload.reviewPacket.readinessRoute,
