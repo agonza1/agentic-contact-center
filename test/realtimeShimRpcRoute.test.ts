@@ -4,6 +4,7 @@ import { request } from "node:http";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildHttpServer } from "../src/http/createServer";
+import { REALTIME_SHIM_RPCS } from "../src/core/realtimeShimContract";
 
 async function postRpc(port: number, body: unknown): Promise<{ statusCode: number; payload: any }> {
   return new Promise((resolve, reject) => {
@@ -286,11 +287,30 @@ test("POST /api/realtime-shim/rpc returns bounded errors for unsupported payload
   try {
     const missingMethod = await postRpc(address.port, { params: {} });
     assert.equal(missingMethod.statusCode, 400);
-    assert.deepEqual(missingMethod.payload, { ok: false, error: "realtime_shim_method_required" });
+    assert.deepEqual(missingMethod.payload, {
+      ok: false,
+      error: "realtime_shim_method_required",
+      rpcCompatibility: {
+        route: "POST /api/realtime-shim/rpc",
+        supportedRpcs: REALTIME_SHIM_RPCS,
+        statefulSession: true,
+        boundedErrors: true,
+      },
+    });
 
     const unsupported = await postRpc(address.port, { method: "talk.session.flush", params: {} });
     assert.equal(unsupported.statusCode, 400);
-    assert.deepEqual(unsupported.payload, { ok: false, error: "realtime_shim_method_unsupported" });
+    assert.deepEqual(unsupported.payload, {
+      ok: false,
+      error: "realtime_shim_method_unsupported",
+      method: "talk.session.flush",
+      rpcCompatibility: {
+        route: "POST /api/realtime-shim/rpc",
+        supportedRpcs: REALTIME_SHIM_RPCS,
+        statefulSession: true,
+        boundedErrors: true,
+      },
+    });
 
     const badShape = await postRpc(address.port, {
       method: "talk.session.create",
