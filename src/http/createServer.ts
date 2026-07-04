@@ -66,6 +66,10 @@ function buildRealtimeShimProofPayload(): object {
     sessionId: interruptEnvelope.sessionId,
     transcriptText: "Continue with a human handoff instead.",
   });
+  const bargeInRecoveryCloseEvidence = shim.closeSession({
+    sessionId: interruptEnvelope.sessionId,
+    reason: "complete",
+  });
 
   shim.appendAudio({ sessionId: inputCancelEnvelope.sessionId, audioBase64, timestamp: 126 });
   const inputCancelEvidence = shim.cancelInput({ sessionId: inputCancelEnvelope.sessionId });
@@ -98,7 +102,8 @@ function buildRealtimeShimProofPayload(): object {
       interruptionEvidence.qaChecklist.interruptionEvidence &&
       inputCancelEvidence.qaChecklist.inputCancelEvidence &&
       bargeInRecoveryEvidence.turnSummary.finalTranscript === "Continue with a human handoff instead." &&
-      bargeInRecoveryEvidence.turnSummary.outputAudioChunks === 2,
+      bargeInRecoveryEvidence.turnSummary.outputAudioChunks === 2 &&
+      bargeInRecoveryCloseEvidence.state === "closed",
     qaEvidence:
       evidence.qaChecklist.eventTranscriptEvidence && evidence.qaChecklist.logEvidence && evidence.latencyMarks.length > 0,
     mockedPiecesIsolated:
@@ -123,7 +128,7 @@ function buildRealtimeShimProofPayload(): object {
     },
     interruptionCancelBehavior: {
       status: acceptanceSummary.interruptionCancelBehavior ? "passed" : "failed",
-      evidence: "Barge-in emits relay clear evidence, the same session recovers into the next voice turn, and input cancel drops buffered STT audio without dispatching a final transcript.",
+      evidence: "Barge-in emits relay clear evidence, the same session recovers into the next voice turn, closes cleanly after recovery, and input cancel drops buffered STT audio without dispatching a final transcript.",
       routes: ["GET /api/realtime-shim/proof", "POST /api/realtime-shim/rpc"],
     },
     qaEvidence: {
@@ -163,6 +168,7 @@ function buildRealtimeShimProofPayload(): object {
     closeEvidence,
     interruptionEvidence,
     bargeInRecoveryEvidence,
+    bargeInRecoveryCloseEvidence,
     inputCancelEvidence,
     errorEvidence,
     invalidAudioResult,
