@@ -51,6 +51,12 @@ export interface SpeechEnhancementReplayCoverage {
   missingEvidence: string[];
 }
 
+export interface SpeechEnhancementRolloutStep {
+  step: "capture_replay" | "feature_flag" | "shadow_compare" | "live_enablement";
+  owner: "agentic_contact_center" | "rtc_asr";
+  gate: string;
+}
+
 export interface SpeechEnhancementSpikeReport {
   ok: true;
   route: "/api/realtime-shim/speech-enhancement-spike";
@@ -93,6 +99,7 @@ export interface SpeechEnhancementSpikeReport {
   runtimeGuardrails: SpeechEnhancementRuntimeGuardrail[];
   replayDecisions: SpeechEnhancementReplayDecision[];
   replayCoverage: SpeechEnhancementReplayCoverage;
+  rolloutPlan: SpeechEnhancementRolloutStep[];
   validationPlan: string[];
 }
 
@@ -262,6 +269,28 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
     ],
     replayDecisions,
     replayCoverage,
+    rolloutPlan: [
+      {
+        step: "capture_replay",
+        owner: "agentic_contact_center",
+        gate: "Attach one real noisy local SIP capture and compare baseline vs enhanced replay metrics before Issue #97 can close.",
+      },
+      {
+        step: "feature_flag",
+        owner: "rtc_asr",
+        gate: "Implement RTC_ASR_SPEECH_ENHANCEMENT with 12.5 ms default latency and bypass-on-regression behavior.",
+      },
+      {
+        step: "shadow_compare",
+        owner: "rtc_asr",
+        gate: "Run enhancement in shadow mode until WER, endpointing, barge-in, and CPU guardrails pass on the selected host.",
+      },
+      {
+        step: "live_enablement",
+        owner: "agentic_contact_center",
+        gate: "Enable the feature only for demo calls whose proof bundle includes passing enhancement replay and runtime evidence.",
+      },
+    ],
     validationPlan: [
       "Replay one noisy local SIP capture through baseline rtc-asr and enhanced rtc-asr paths.",
       "Record added latency, transcript delta, endpointing behavior, barge-in behavior, and CPU cost.",

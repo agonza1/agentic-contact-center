@@ -71,6 +71,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         liveDemoGate: string;
         missingEvidence: string[];
       };
+      rolloutPlan: Array<{ step: string; owner: string; gate: string }>;
       validationPlan: string[];
     };
 
@@ -135,6 +136,16 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.equal(payload.replayCoverage.baselineEnhancedPairs, 1);
     assert.equal(payload.replayCoverage.liveDemoGate, "blocked_until_real_capture");
     assert.ok(payload.replayCoverage.missingEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));
+    assert.deepEqual(
+      payload.rolloutPlan.map((step) => [step.step, step.owner]),
+      [
+        ["capture_replay", "agentic_contact_center"],
+        ["feature_flag", "rtc_asr"],
+        ["shadow_compare", "rtc_asr"],
+        ["live_enablement", "agentic_contact_center"],
+      ],
+    );
+    assert.ok(payload.rolloutPlan.every((step) => step.gate.length > 0));
     assert.ok(payload.validationPlan.some((step) => step.includes("noisy local SIP capture")));
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
