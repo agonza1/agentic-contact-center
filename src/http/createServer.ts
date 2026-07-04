@@ -546,15 +546,16 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
   }
 
   const requestId = getRealtimeShimRpcRequestId(body);
+  const jsonRpcVersion = getRealtimeShimJsonRpcVersion(body);
   const method = getOptionalTrimmedString(body.method);
   const params = body.params === undefined ? {} : body.params;
 
   if (!method) {
-    return buildRealtimeShimRpcContractError("realtime_shim_method_required", undefined, requestId);
+    return buildRealtimeShimRpcContractError("realtime_shim_method_required", undefined, requestId, jsonRpcVersion);
   }
 
   if (!isRecord(params)) {
-    return buildRealtimeShimRpcContractError("realtime_shim_params_object_required", method, requestId);
+    return buildRealtimeShimRpcContractError("realtime_shim_params_object_required", method, requestId, jsonRpcVersion);
   }
 
   try {
@@ -563,13 +564,13 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       const transport = getOptionalTrimmedString(params.transport) ?? "gateway-relay";
 
       if (mode !== "realtime" || transport !== "gateway-relay") {
-        return buildRealtimeShimRpcContractError("realtime_shim_session_shape_invalid", method, requestId);
+        return buildRealtimeShimRpcContractError("realtime_shim_session_shape_invalid", method, requestId, jsonRpcVersion);
       }
 
       return {
         ok: true,
         method,
-        ...buildRealtimeShimRpcRequestIdPayload(requestId),
+        ...buildRealtimeShimRpcCorrelationPayload(requestId, jsonRpcVersion),
         result: shim.createSession({
           brain: getOptionalTrimmedString(params.brain),
           relaySessionId: getOptionalTrimmedString(params.relaySessionId),
@@ -581,7 +582,7 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       return {
         ok: true,
         method,
-        ...buildRealtimeShimRpcRequestIdPayload(requestId),
+        ...buildRealtimeShimRpcCorrelationPayload(requestId, jsonRpcVersion),
         result: shim.appendAudio({
           sessionId: getOptionalTrimmedString(params.sessionId) ?? "",
           audioBase64: getOptionalTrimmedString(params.audioBase64) ?? "",
@@ -594,7 +595,7 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       return {
         ok: true,
         method,
-        ...buildRealtimeShimRpcRequestIdPayload(requestId),
+        ...buildRealtimeShimRpcCorrelationPayload(requestId, jsonRpcVersion),
         result: shim.finalizeTurn({
           sessionId: getOptionalTrimmedString(params.sessionId) ?? "",
           transcriptText: getOptionalTrimmedString(params.transcriptText),
@@ -606,7 +607,7 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       return {
         ok: true,
         method,
-        ...buildRealtimeShimRpcRequestIdPayload(requestId),
+        ...buildRealtimeShimRpcCorrelationPayload(requestId, jsonRpcVersion),
         result: shim.getEvidence(getOptionalTrimmedString(params.sessionId) ?? ""),
       };
     }
@@ -615,7 +616,7 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       return {
         ok: true,
         method,
-        ...buildRealtimeShimRpcRequestIdPayload(requestId),
+        ...buildRealtimeShimRpcCorrelationPayload(requestId, jsonRpcVersion),
         result: shim.cancelOutput({
           sessionId: getOptionalTrimmedString(params.sessionId) ?? "",
           reason: parseRealtimeShimCancelReason(params.reason),
@@ -627,7 +628,7 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       return {
         ok: true,
         method,
-        ...buildRealtimeShimRpcRequestIdPayload(requestId),
+        ...buildRealtimeShimRpcCorrelationPayload(requestId, jsonRpcVersion),
         result: shim.cancelInput({
           sessionId: getOptionalTrimmedString(params.sessionId) ?? "",
         }),
@@ -638,7 +639,7 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       return {
         ok: true,
         method,
-        ...buildRealtimeShimRpcRequestIdPayload(requestId),
+        ...buildRealtimeShimRpcCorrelationPayload(requestId, jsonRpcVersion),
         result: shim.recordLocalSttError({
           sessionId: getOptionalTrimmedString(params.sessionId) ?? "",
           code: getOptionalTrimmedString(params.code) ?? "local_stt_error",
@@ -652,7 +653,7 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       return {
         ok: true,
         method,
-        ...buildRealtimeShimRpcRequestIdPayload(requestId),
+        ...buildRealtimeShimRpcCorrelationPayload(requestId, jsonRpcVersion),
         result: shim.submitToolResult({
           sessionId: getOptionalTrimmedString(params.sessionId) ?? "",
           toolCallId: getOptionalTrimmedString(params.toolCallId) ?? "",
@@ -665,7 +666,7 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       return {
         ok: true,
         method,
-        ...buildRealtimeShimRpcRequestIdPayload(requestId),
+        ...buildRealtimeShimRpcCorrelationPayload(requestId, jsonRpcVersion),
         result: shim.closeSession({
           sessionId: getOptionalTrimmedString(params.sessionId) ?? "",
           reason: parseRealtimeShimCloseReason(params.reason),
@@ -673,13 +674,13 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       };
     }
 
-    return buildRealtimeShimRpcContractError("realtime_shim_method_unsupported", method, requestId);
+    return buildRealtimeShimRpcContractError("realtime_shim_method_unsupported", method, requestId, jsonRpcVersion);
   } catch (error) {
     return {
       ok: false,
       error: "realtime_shim_rpc_error",
       method,
-      ...buildRealtimeShimRpcRequestIdPayload(requestId),
+      ...buildRealtimeShimRpcCorrelationPayload(requestId, jsonRpcVersion),
       message: error instanceof Error ? error.message : "Realtime shim RPC failed",
       rpcCompatibility: buildRealtimeShimRpcCompatibility(),
     };
@@ -690,12 +691,13 @@ function buildRealtimeShimRpcContractError(
   error: string,
   method?: string,
   requestId?: string | number,
+  jsonRpcVersion?: "2.0",
 ): object {
   return {
     ok: false,
     error,
     method,
-    ...buildRealtimeShimRpcRequestIdPayload(requestId),
+    ...buildRealtimeShimRpcCorrelationPayload(requestId, jsonRpcVersion),
     rpcCompatibility: buildRealtimeShimRpcCompatibility(),
   };
 }
@@ -711,8 +713,18 @@ function getRealtimeShimRpcRequestId(body: Record<string, unknown>): string | nu
   return typeof id === "number" && Number.isFinite(id) ? id : undefined;
 }
 
-function buildRealtimeShimRpcRequestIdPayload(requestId: string | number | undefined): object {
-  return requestId === undefined ? {} : { requestId, id: requestId };
+function getRealtimeShimJsonRpcVersion(body: Record<string, unknown>): "2.0" | undefined {
+  return body.jsonrpc === "2.0" ? "2.0" : undefined;
+}
+
+function buildRealtimeShimRpcCorrelationPayload(
+  requestId: string | number | undefined,
+  jsonRpcVersion: "2.0" | undefined,
+): object {
+  return {
+    ...(jsonRpcVersion === undefined ? {} : { jsonrpc: jsonRpcVersion }),
+    ...(requestId === undefined ? {} : { requestId, id: requestId }),
+  };
 }
 
 function buildRealtimeShimRpcCompatibility(): object {
