@@ -61,6 +61,11 @@ function buildRealtimeShimProofPayload(): object {
     sessionId: interruptEnvelope.sessionId,
     reason: "barge-in",
   });
+  shim.appendAudio({ sessionId: interruptEnvelope.sessionId, audioBase64, timestamp: 96 });
+  const bargeInRecoveryEvidence = shim.finalizeTurn({
+    sessionId: interruptEnvelope.sessionId,
+    transcriptText: "Continue with a human handoff instead.",
+  });
 
   shim.appendAudio({ sessionId: inputCancelEnvelope.sessionId, audioBase64, timestamp: 126 });
   const inputCancelEvidence = shim.cancelInput({ sessionId: inputCancelEnvelope.sessionId });
@@ -90,7 +95,10 @@ function buildRealtimeShimProofPayload(): object {
       evidence.envelope.provider === "local-realtime-shim" &&
       buildRealtimeShimRpcSmoke().every((step) => step.ok),
     interruptionCancelBehavior:
-      interruptionEvidence.qaChecklist.interruptionEvidence && inputCancelEvidence.qaChecklist.inputCancelEvidence,
+      interruptionEvidence.qaChecklist.interruptionEvidence &&
+      inputCancelEvidence.qaChecklist.inputCancelEvidence &&
+      bargeInRecoveryEvidence.turnSummary.finalTranscript === "Continue with a human handoff instead." &&
+      bargeInRecoveryEvidence.turnSummary.outputAudioChunks === 2,
     qaEvidence:
       evidence.qaChecklist.eventTranscriptEvidence && evidence.qaChecklist.logEvidence && evidence.latencyMarks.length > 0,
     mockedPiecesIsolated:
@@ -115,7 +123,7 @@ function buildRealtimeShimProofPayload(): object {
     },
     interruptionCancelBehavior: {
       status: acceptanceSummary.interruptionCancelBehavior ? "passed" : "failed",
-      evidence: "Barge-in emits relay clear evidence and input cancel drops buffered STT audio without dispatching a final transcript.",
+      evidence: "Barge-in emits relay clear evidence, the same session recovers into the next voice turn, and input cancel drops buffered STT audio without dispatching a final transcript.",
       routes: ["GET /api/realtime-shim/proof", "POST /api/realtime-shim/rpc"],
     },
     qaEvidence: {
@@ -154,6 +162,7 @@ function buildRealtimeShimProofPayload(): object {
     evidence,
     closeEvidence,
     interruptionEvidence,
+    bargeInRecoveryEvidence,
     inputCancelEvidence,
     errorEvidence,
     invalidAudioResult,
@@ -331,6 +340,7 @@ function buildRealtimeShimReadinessPayload(): object {
     };
     closeEvidence: { state: string };
     interruptionEvidence: { qaChecklist: Record<string, boolean> };
+    bargeInRecoveryEvidence: { turnSummary: { finalTranscript?: string; outputAudioChunks: number } };
     inputCancelEvidence: { qaChecklist: Record<string, boolean> };
     errorEvidence: { qaChecklist: Record<string, boolean> };
   };
@@ -404,6 +414,9 @@ function buildRealtimeShimReadinessPayload(): object {
           inputCancelled: proof.inputCancelEvidence.qaChecklist.inputCancelEvidence === true,
           boundedErrors: proof.errorEvidence.qaChecklist.boundedErrorEvidence === true,
         },
+        bargeInRecoveryReady:
+          proof.bargeInRecoveryEvidence.turnSummary.finalTranscript === "Continue with a human handoff instead." &&
+          proof.bargeInRecoveryEvidence.turnSummary.outputAudioChunks === 2,
         liveSidecarPromotionStatus: "ready_for_sidecar_swap",
       },
       mockedPieces: proof.evidence.mockedPieces,

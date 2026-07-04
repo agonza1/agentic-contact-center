@@ -101,6 +101,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
           requestIdEchoed: boolean;
           oneTurnClosed: boolean;
           cancelAndErrorEvidence: { outputCancelled: boolean; inputCancelled: boolean; boundedErrors: boolean };
+          bargeInRecoveryReady: boolean;
           liveSidecarPromotionStatus: string;
         };
         mockedPieces: string[];
@@ -209,6 +210,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         inputCancelled: true,
         boundedErrors: true,
       },
+      bargeInRecoveryReady: true,
       liveSidecarPromotionStatus: "ready_for_sidecar_swap",
     });
     assert.deepEqual(payload.reviewPacket.mockedPieces, ["local LLM response text", "Kokoro PCM output audio"]);
