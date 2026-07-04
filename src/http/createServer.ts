@@ -520,7 +520,7 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       const transport = getOptionalTrimmedString(params.transport) ?? "gateway-relay";
 
       if (mode !== "realtime" || transport !== "gateway-relay") {
-        return { ok: false, error: "realtime_shim_session_shape_invalid" };
+        return buildRealtimeShimRpcContractError("realtime_shim_session_shape_invalid", method);
       }
 
       return {

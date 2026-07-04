@@ -324,7 +324,17 @@ test("POST /api/realtime-shim/rpc returns bounded errors for unsupported payload
       params: { mode: "batch", transport: "gateway-relay" },
     });
     assert.equal(badShape.statusCode, 400);
-    assert.deepEqual(badShape.payload, { ok: false, error: "realtime_shim_session_shape_invalid" });
+    assert.deepEqual(badShape.payload, {
+      ok: false,
+      error: "realtime_shim_session_shape_invalid",
+      method: "talk.session.create",
+      rpcCompatibility: {
+        route: "POST /api/realtime-shim/rpc",
+        supportedRpcs: REALTIME_SHIM_RPCS,
+        statefulSession: true,
+        boundedErrors: true,
+      },
+    });
   } finally {
     server.close();
   }
