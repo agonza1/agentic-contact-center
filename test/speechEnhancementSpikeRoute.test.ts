@@ -48,6 +48,15 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       replayMetrics: Array<{ baseline: { wordErrorRateEstimate: number }; enhanced: { wordErrorRateEstimate: number }; latencySettingMs: number }>;
       decision: { status: string; recommendedLatencyMs: number };
       proposedConfig: { featureFlag: string; allowedLatencyMs: number[]; defaultLatencyMs: number };
+      acceptanceReadiness: {
+        reportRecommendation: string;
+        noisyReplay: string;
+        latencyMetrics: string;
+        transcriptEndpointingMetrics: string;
+        cpuRuntimeCost: string;
+        featureFlagShape: string;
+        remainingBeforeIssueClose: string[];
+      };
       validationPlan: string[];
     };
 
@@ -76,6 +85,15 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.equal(payload.proposedConfig.featureFlag, "RTC_ASR_SPEECH_ENHANCEMENT");
     assert.deepEqual(payload.proposedConfig.allowedLatencyMs, [12.5, 25, 50, 75]);
     assert.equal(payload.proposedConfig.defaultLatencyMs, 12.5);
+    assert.equal(payload.acceptanceReadiness.reportRecommendation, "complete");
+    assert.equal(payload.acceptanceReadiness.noisyReplay, "synthetic_fixture_ready");
+    assert.equal(payload.acceptanceReadiness.latencyMetrics, "covered");
+    assert.equal(payload.acceptanceReadiness.transcriptEndpointingMetrics, "covered");
+    assert.equal(payload.acceptanceReadiness.cpuRuntimeCost, "estimated_needs_live_measurement");
+    assert.equal(payload.acceptanceReadiness.featureFlagShape, "proposed");
+    assert.ok(
+      payload.acceptanceReadiness.remainingBeforeIssueClose.some((item) => item.includes("real noisy local SIP capture")),
+    );
     assert.ok(payload.validationPlan.some((step) => step.includes("noisy local SIP capture")));
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

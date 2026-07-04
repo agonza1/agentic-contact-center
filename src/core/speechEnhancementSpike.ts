@@ -55,6 +55,15 @@ export interface SpeechEnhancementSpikeReport {
     defaultLatencyMs: number;
     fallback: "bypass_enhancement_on_budget_or_cpu_regression";
   };
+  acceptanceReadiness: {
+    reportRecommendation: "complete";
+    noisyReplay: "synthetic_fixture_ready" | "real_capture_required";
+    latencyMetrics: "covered";
+    transcriptEndpointingMetrics: "covered";
+    cpuRuntimeCost: "estimated_needs_live_measurement";
+    featureFlagShape: "proposed";
+    remainingBeforeIssueClose: string[];
+  };
   validationPlan: string[];
 }
 
@@ -143,6 +152,18 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
       allowedLatencyMs: candidates.map((candidate) => candidate.algorithmicLatencyMs),
       defaultLatencyMs: 12.5,
       fallback: "bypass_enhancement_on_budget_or_cpu_regression",
+    },
+    acceptanceReadiness: {
+      reportRecommendation: "complete",
+      noisyReplay: "synthetic_fixture_ready",
+      latencyMetrics: "covered",
+      transcriptEndpointingMetrics: "covered",
+      cpuRuntimeCost: "estimated_needs_live_measurement",
+      featureFlagShape: "proposed",
+      remainingBeforeIssueClose: [
+        "Replay a real noisy local SIP capture through baseline and enhancement paths before closing Issue #97.",
+        "Replace CPU cost estimate with measured local runtime cost from the selected rtc-asr host.",
+      ],
     },
     validationPlan: [
       "Replay one noisy local SIP capture through baseline rtc-asr and enhanced rtc-asr paths.",
