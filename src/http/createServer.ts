@@ -500,18 +500,18 @@ function buildRealtimeShimReadinessPayload(): object {
 
 function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: unknown): object {
   if (!isRecord(body)) {
-    return { ok: false, error: "json_object_required" };
+    return buildRealtimeShimRpcContractError("json_object_required");
   }
 
   const method = getOptionalTrimmedString(body.method);
   const params = body.params === undefined ? {} : body.params;
 
   if (!method) {
-    return { ok: false, error: "realtime_shim_method_required" };
+    return buildRealtimeShimRpcContractError("realtime_shim_method_required");
   }
 
   if (!isRecord(params)) {
-    return { ok: false, error: "realtime_shim_params_object_required" };
+    return buildRealtimeShimRpcContractError("realtime_shim_params_object_required");
   }
 
   try {
@@ -621,7 +621,7 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       };
     }
 
-    return { ok: false, error: "realtime_shim_method_unsupported" };
+    return buildRealtimeShimRpcContractError("realtime_shim_method_unsupported", method);
   } catch (error) {
     return {
       ok: false,
@@ -629,6 +629,20 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
       message: error instanceof Error ? error.message : "Realtime shim RPC failed",
     };
   }
+}
+
+function buildRealtimeShimRpcContractError(error: string, method?: string): object {
+  return {
+    ok: false,
+    error,
+    method,
+    rpcCompatibility: {
+      route: "POST /api/realtime-shim/rpc",
+      supportedRpcs: REALTIME_SHIM_RPCS,
+      statefulSession: true,
+      boundedErrors: true,
+    },
+  };
 }
 
 function parseRealtimeShimCancelReason(value: unknown): "barge-in" | "cancelled" | "error" | undefined {
