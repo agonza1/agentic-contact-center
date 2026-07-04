@@ -55,6 +55,7 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
         };
         liveSidecarPromotion: {
           status: string;
+          order: string[];
           nextSwap: { sidecar: string; mockedStage: string; validationGate: string; rollbackSignal: string };
           requiredSidecars: string[];
           contractToPreserve: { rpcBoundary: string; localSttContract: string; browserRelayCompatibility: string };
@@ -131,6 +132,7 @@ test("realtime shim proof runner writes proof and readiness evidence", async () 
       },
       liveSidecarPromotion: {
         status: "ready_for_sidecar_swap",
+        order: ["rtc-asr", "local_llm", "kokoro_tts"],
         nextSwap: {
           sidecar: "rtc-asr",
           mockedStage: "local_stt",
