@@ -5,6 +5,7 @@ import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { LocalRealtimeShimPrototype } from "../core/localRealtimeShimPrototype";
 import { getPipecatPrototypeHealth, SCRIPTED_CALLER_TURNS } from "../core/pipecatFlowPrototype";
 import { REALTIME_SHIM_RPCS } from "../core/realtimeShimContract";
+import { buildSpeechEnhancementSpikeReport } from "../core/speechEnhancementSpike";
 import { runtimeSeams } from "../core/seams";
 import type {
   AttentionSource,
@@ -2792,6 +2793,11 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/api/realtime-shim/readiness") {
     writeJson(response, 200, buildRealtimeShimReadinessPayload());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/realtime-shim/speech-enhancement-spike") {
+    writeJson(response, 200, buildSpeechEnhancementSpikeReport());
     return;
   }
 
