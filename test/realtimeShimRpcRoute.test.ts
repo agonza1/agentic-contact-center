@@ -268,7 +268,54 @@ test("POST /api/realtime-shim/rpc preserves session state across Gateway relay R
     assert.equal(appendClosed.statusCode, 400);
     assert.equal(appendClosed.payload.ok, false);
     assert.equal(appendClosed.payload.error, "realtime_shim_rpc_error");
+    assert.equal(appendClosed.payload.method, "talk.session.appendAudio");
     assert.match(appendClosed.payload.message, /closed/);
+    assert.deepEqual(appendClosed.payload.rpcCompatibility, {
+      route: "POST /api/realtime-shim/rpc",
+      supportedRpcs: REALTIME_SHIM_RPCS,
+      statefulSession: true,
+      boundedErrors: true,
+    });
+  } finally {
+    server.close();
+  }
+});
+
+test("POST /api/realtime-shim/rpc echoes request ids on success and bounded errors", async () => {
+  const server = buildHttpServer(loadPocConfig());
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const created = await postRpc(address.port, {
+      id: "relay-create-1",
+      method: "talk.session.create",
+      params: { relaySessionId: "local-rt-correlated" },
+    });
+
+    assert.equal(created.statusCode, 200);
+    assert.equal(created.payload.ok, true);
+    assert.equal(created.payload.requestId, "relay-create-1");
+    assert.equal(created.payload.id, "relay-create-1");
+    assert.equal(created.payload.result.sessionId, "local-rt-correlated");
+
+    const unsupported = await postRpc(address.port, {
+      requestId: 42,
+      method: "talk.session.flush",
+      params: {},
+    });
+
+    assert.equal(unsupported.statusCode, 400);
+    assert.equal(unsupported.payload.ok, false);
+    assert.equal(unsupported.payload.requestId, 42);
+    assert.equal(unsupported.payload.id, 42);
+    assert.equal(unsupported.payload.method, "talk.session.flush");
+    assert.equal(unsupported.payload.error, "realtime_shim_method_unsupported");
   } finally {
     server.close();
   }
@@ -317,7 +364,17 @@ test("POST /api/realtime-shim/rpc returns bounded errors for unsupported payload
       params: { mode: "batch", transport: "gateway-relay" },
     });
     assert.equal(badShape.statusCode, 400);
-    assert.deepEqual(badShape.payload, { ok: false, error: "realtime_shim_session_shape_invalid" });
+    assert.deepEqual(badShape.payload, {
+      ok: false,
+      error: "realtime_shim_session_shape_invalid",
+      method: "talk.session.create",
+      rpcCompatibility: {
+        route: "POST /api/realtime-shim/rpc",
+        supportedRpcs: REALTIME_SHIM_RPCS,
+        statefulSession: true,
+        boundedErrors: true,
+      },
+    });
   } finally {
     server.close();
   }
