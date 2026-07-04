@@ -43,6 +43,14 @@ export interface SpeechEnhancementReplayDecision {
   reasons: string[];
 }
 
+export interface SpeechEnhancementReplayCoverage {
+  syntheticNoisyReplayCount: number;
+  realNoisyCaptureReplayCount: number;
+  baselineEnhancedPairs: number;
+  liveDemoGate: "blocked_until_real_capture" | "eligible";
+  missingEvidence: string[];
+}
+
 export interface SpeechEnhancementSpikeReport {
   ok: true;
   route: "/api/realtime-shim/speech-enhancement-spike";
@@ -84,6 +92,7 @@ export interface SpeechEnhancementSpikeReport {
   };
   runtimeGuardrails: SpeechEnhancementRuntimeGuardrail[];
   replayDecisions: SpeechEnhancementReplayDecision[];
+  replayCoverage: SpeechEnhancementReplayCoverage;
   validationPlan: string[];
 }
 
@@ -162,6 +171,21 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
     };
   });
 
+  const realNoisyCaptureReplayCount = replayMetrics.filter((metric) => metric.captureId.startsWith("real-")).length;
+  const replayCoverage: SpeechEnhancementReplayCoverage = {
+    syntheticNoisyReplayCount: replayMetrics.filter((metric) => metric.captureId.startsWith("synthetic-")).length,
+    realNoisyCaptureReplayCount,
+    baselineEnhancedPairs: replayMetrics.length,
+    liveDemoGate: realNoisyCaptureReplayCount > 0 ? "eligible" : "blocked_until_real_capture",
+    missingEvidence:
+      realNoisyCaptureReplayCount > 0
+        ? []
+        : [
+            "real_noisy_local_sip_capture_baseline_vs_enhanced_replay",
+            "measured_cpu_cost_on_selected_rtc_asr_host",
+          ],
+  };
+
   return {
     ok: true,
     route: "/api/realtime-shim/speech-enhancement-spike",
@@ -237,6 +261,7 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
       },
     ],
     replayDecisions,
+    replayCoverage,
     validationPlan: [
       "Replay one noisy local SIP capture through baseline rtc-asr and enhanced rtc-asr paths.",
       "Record added latency, transcript delta, endpointing behavior, barge-in behavior, and CPU cost.",

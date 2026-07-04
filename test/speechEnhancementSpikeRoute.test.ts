@@ -64,6 +64,13 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         enableForLiveDemo: boolean;
         reasons: string[];
       }>;
+      replayCoverage: {
+        syntheticNoisyReplayCount: number;
+        realNoisyCaptureReplayCount: number;
+        baselineEnhancedPairs: number;
+        liveDemoGate: string;
+        missingEvidence: string[];
+      };
       validationPlan: string[];
     };
 
@@ -123,6 +130,11 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       "latency_within_budget",
       "cpu_cost_allowed",
     ]);
+    assert.equal(payload.replayCoverage.syntheticNoisyReplayCount, 1);
+    assert.equal(payload.replayCoverage.realNoisyCaptureReplayCount, 0);
+    assert.equal(payload.replayCoverage.baselineEnhancedPairs, 1);
+    assert.equal(payload.replayCoverage.liveDemoGate, "blocked_until_real_capture");
+    assert.ok(payload.replayCoverage.missingEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));
     assert.ok(payload.validationPlan.some((step) => step.includes("noisy local SIP capture")));
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
