@@ -15,6 +15,7 @@
     "pipecat:check": "python3 scripts/pipecat-local-runtime.py --self-test",
     "proof:pipecat": "npm run pipecat:check && npm run proof --",
     "proof:bundle": "node scripts/agentic-call-center-proof.mjs",
+    "proof:speech-enhancement": "npm run build && node scripts/speech-enhancement-spike-report.mjs",
     "sip:local-proof": "node scripts/local-sip-live-proof.mjs",
     "sip:self-test": "node scripts/local-sip-live-proof.mjs --self-test --out-dir artifacts/local-sip-selftest",
     "freeswitch:bridge": "node scripts/freeswitch-acc-bridge.mjs",

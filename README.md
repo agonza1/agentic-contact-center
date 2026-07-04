@@ -252,6 +252,7 @@ The bundle writes `proof-bundle-manifest.json`, `conversation-agent-evals-assert
 - `npm start`: run the compiled server from `dist/src/index.js`.
 - `npm run proof`: build and run `scripts/demo-proof.mjs`.
 - `npm run proof:realtime-shim`: build and write the issue #85 realtime shim proof artifact.
+- `npm run proof:speech-enhancement`: build and write the issue #97 speech enhancement spike artifact.
 - `npm run pipecat:check`: verify the local `pipecat-ai` runtime package boundary without live telephony.
 - `npm run proof:pipecat`: run `pipecat:check` before the proof harness.
 - `npm run proof:bundle`: convert a proof JSON file into a ConversationAgentEvals-ready evidence bundle with media artifacts.
