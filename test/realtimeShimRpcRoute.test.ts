@@ -268,7 +268,14 @@ test("POST /api/realtime-shim/rpc preserves session state across Gateway relay R
     assert.equal(appendClosed.statusCode, 400);
     assert.equal(appendClosed.payload.ok, false);
     assert.equal(appendClosed.payload.error, "realtime_shim_rpc_error");
+    assert.equal(appendClosed.payload.method, "talk.session.appendAudio");
     assert.match(appendClosed.payload.message, /closed/);
+    assert.deepEqual(appendClosed.payload.rpcCompatibility, {
+      route: "POST /api/realtime-shim/rpc",
+      supportedRpcs: REALTIME_SHIM_RPCS,
+      statefulSession: true,
+      boundedErrors: true,
+    });
   } finally {
     server.close();
   }

@@ -158,6 +158,8 @@ async function runRealtimeShimRpcHttpSmoke(port) {
   assert.equal(boundedError.statusCode, 400);
   assert.equal(boundedError.payload.ok, false);
   assert.equal(boundedError.payload.error, "realtime_shim_rpc_error");
+  assert.equal(boundedError.payload.method, "talk.session.appendAudio");
+  assert.equal(boundedError.payload.rpcCompatibility.boundedErrors, true);
   assert.match(boundedError.payload.message, /even number of bytes/);
 
   return {

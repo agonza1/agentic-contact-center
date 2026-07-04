@@ -626,7 +626,9 @@ function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: un
     return {
       ok: false,
       error: "realtime_shim_rpc_error",
+      method,
       message: error instanceof Error ? error.message : "Realtime shim RPC failed",
+      rpcCompatibility: buildRealtimeShimRpcCompatibility(),
     };
   }
 }
@@ -636,12 +638,16 @@ function buildRealtimeShimRpcContractError(error: string, method?: string): obje
     ok: false,
     error,
     method,
-    rpcCompatibility: {
-      route: "POST /api/realtime-shim/rpc",
-      supportedRpcs: REALTIME_SHIM_RPCS,
-      statefulSession: true,
-      boundedErrors: true,
-    },
+    rpcCompatibility: buildRealtimeShimRpcCompatibility(),
+  };
+}
+
+function buildRealtimeShimRpcCompatibility(): object {
+  return {
+    route: "POST /api/realtime-shim/rpc",
+    supportedRpcs: REALTIME_SHIM_RPCS,
+    statefulSession: true,
+    boundedErrors: true,
   };
 }
 
