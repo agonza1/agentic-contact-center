@@ -86,6 +86,8 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
           oneTurnClosed: boolean;
           cancelAndErrorEvidence: { outputCancelled: boolean; inputCancelled: boolean; boundedErrors: boolean };
         };
+        mockedPieces: string[];
+        limitations: string[];
         rpcExamples: Array<{ label: string; method: string; body: { method: string; params: Record<string, unknown> } }>;
         reviewerChecklist: string[];
       };
@@ -170,6 +172,8 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         boundedErrors: true,
       },
     });
+    assert.deepEqual(payload.reviewPacket.mockedPieces, ["local LLM response text", "Kokoro PCM output audio"]);
+    assert.ok(payload.reviewPacket.limitations.some((limitation) => limitation.includes("not a live sidecar connection")));
     assert.deepEqual(
       payload.reviewPacket.rpcExamples.map((example) => example.method),
       [

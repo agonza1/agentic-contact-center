@@ -355,6 +355,8 @@ function buildRealtimeShimReadinessPayload(): object {
           boundedErrors: proof.errorEvidence.qaChecklist.boundedErrorEvidence === true,
         },
       },
+      mockedPieces: proof.evidence.mockedPieces,
+      limitations: proof.evidence.limitations,
       rpcExamples: [
         {
           label: "create local realtime shim session",
