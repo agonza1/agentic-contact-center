@@ -74,6 +74,13 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         liveSidecarsRequired: boolean;
         reviewStatus: string;
       };
+      liveSidecarPromotion: {
+        status: string;
+        requiredSidecars: string[];
+        contractToPreserve: { rpcBoundary: string; localSttContract: string; browserRelayCompatibility: string };
+        firstValidationGate: string;
+        rollbackSignal: string;
+      };
       reviewBlockers: string[];
       reviewPacket: {
         ready: boolean;
@@ -94,6 +101,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
           requestIdEchoed: boolean;
           oneTurnClosed: boolean;
           cancelAndErrorEvidence: { outputCancelled: boolean; inputCancelled: boolean; boundedErrors: boolean };
+          liveSidecarPromotionStatus: string;
         };
         mockedPieces: string[];
         limitations: string[];
@@ -159,6 +167,17 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       liveSidecarsRequired: false,
       reviewStatus: "deterministic_local_proof_ready",
     });
+    assert.deepEqual(payload.liveSidecarPromotion, {
+      status: "ready_for_sidecar_swap",
+      requiredSidecars: ["rtc-asr", "local_llm", "kokoro_tts"],
+      contractToPreserve: {
+        rpcBoundary: "POST /api/realtime-shim/rpc",
+        localSttContract: "local-stt.v1",
+        browserRelayCompatibility: "ready_for_browser_flow",
+      },
+      firstValidationGate: "npm run proof:realtime-shim -- --out artifacts/realtime-shim-proof.json --latest-out artifacts/realtime-shim-proof-latest.json",
+      rollbackSignal: "Keep mocked local proof green before replacing one sidecar at a time.",
+    });
     assert.deepEqual(payload.reviewBlockers, []);
     assert.equal(payload.reviewPacket.ready, true);
     assert.equal(payload.reviewPacket.issue, "agonza1/agentic-contact-center#85");
@@ -190,6 +209,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         inputCancelled: true,
         boundedErrors: true,
       },
+      liveSidecarPromotionStatus: "ready_for_sidecar_swap",
     });
     assert.deepEqual(payload.reviewPacket.mockedPieces, ["local LLM response text", "Kokoro PCM output audio"]);
     assert.ok(payload.reviewPacket.limitations.some((limitation) => limitation.includes("not a live sidecar connection")));
