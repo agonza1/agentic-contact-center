@@ -78,6 +78,14 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
         logs: string[];
         latencyMarks: Array<{ name: string; elapsedMs: number; budgetMs: number; withinBudget: boolean }>;
         latencySummary: { measuredMarks: number; maxElapsedMs: number; slowestMark?: string; allWithinBudget: boolean };
+        sampleRateBridge: {
+          browserInputSampleRateHz: number;
+          localSttSampleRateHz: number;
+          browserOutputSampleRateHz: number;
+          resamplingRequired: boolean;
+          boundary: string;
+          evidence: string;
+        };
         qaChecklist: Record<string, boolean>;
         pipelineStages: Array<{ stage: string; status: string; mocked: boolean; evidence: string }>;
         qaEvidenceSummary: {
@@ -294,6 +302,15 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       maxElapsedMs: 135,
       slowestMark: "output_first_audio",
       allWithinBudget: true,
+    });
+    assert.deepEqual(payload.evidence.sampleRateBridge, {
+      browserInputSampleRateHz: 24000,
+      localSttSampleRateHz: 16000,
+      browserOutputSampleRateHz: 24000,
+      resamplingRequired: true,
+      boundary: "gateway_pcm16_to_local_stt_pcm16",
+      evidence:
+        "Gateway relay audio remains 24kHz PCM16 at the browser boundary while Local STT v1 consumes 16kHz PCM16 frames.",
     });
     assert.deepEqual(payload.evidence.pipelineStages.map((stage) => [stage.stage, stage.status, stage.mocked]), [
       ["gateway_relay", "active", false],

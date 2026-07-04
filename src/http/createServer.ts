@@ -288,6 +288,14 @@ function buildRealtimeShimReadinessPayload(): object {
         modelGuidance: string;
         status: string;
       };
+      sampleRateBridge: {
+        browserInputSampleRateHz: number;
+        localSttSampleRateHz: number;
+        browserOutputSampleRateHz: number;
+        resamplingRequired: boolean;
+        boundary: string;
+        evidence: string;
+      };
       mockedPieces: string[];
       limitations: string[];
       pipelineStages: Array<{ stage: string; status: string; mocked: boolean; evidence: string }>;
@@ -313,6 +321,7 @@ function buildRealtimeShimReadinessPayload(): object {
     },
     browserRelayCompatibility: proof.evidence.browserRelayCompatibility,
     latencyBudget: proof.evidence.latencyBudget,
+    sampleRateBridge: proof.evidence.sampleRateBridge,
     runtimeMode: {
       labels: {
         relay: "gateway_relay",
@@ -436,7 +445,7 @@ function buildRealtimeShimReadinessPayload(): object {
       {
         route: "/api/realtime-shim/proof",
         method: "GET",
-        evidence: ["logs", "eventTranscript", "timeline", "latencyMarks", "latencyBudget", "pipelineStages"],
+        evidence: ["logs", "eventTranscript", "timeline", "latencyMarks", "latencyBudget", "sampleRateBridge", "pipelineStages"],
       },
       {
         route: "/api/realtime-shim/rpc",

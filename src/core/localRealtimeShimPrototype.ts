@@ -123,6 +123,15 @@ export interface LocalRealtimeShimAudioFrameSummary {
   };
 }
 
+export interface LocalRealtimeShimSampleRateBridge {
+  browserInputSampleRateHz: RealtimeShimSessionEnvelope["audio"]["inputSampleRateHz"];
+  localSttSampleRateHz: LocalSttStartMessage["audio"]["sample_rate"];
+  browserOutputSampleRateHz: RealtimeShimSessionEnvelope["audio"]["outputSampleRateHz"];
+  resamplingRequired: boolean;
+  boundary: "gateway_pcm16_to_local_stt_pcm16";
+  evidence: string;
+}
+
 export interface LocalRealtimeShimBrowserTurnLifecycleStep {
   step: "create" | "append_audio" | "finalize_turn" | "output_audio" | "cancel" | "close";
   passed: boolean;
@@ -175,6 +184,7 @@ export interface LocalRealtimeShimEvidence {
   latencySummary: LocalRealtimeShimLatencySummary;
   latencyBudget: LocalRealtimeShimLatencyBudget;
   audioFrameSummary: LocalRealtimeShimAudioFrameSummary;
+  sampleRateBridge: LocalRealtimeShimSampleRateBridge;
   browserTurnLifecycle: LocalRealtimeShimBrowserTurnLifecycle;
   pipelineStages: LocalRealtimeShimPipelineStage[];
   qaEvidenceSummary: LocalRealtimeShimQaEvidenceSummary;
@@ -526,6 +536,7 @@ export class LocalRealtimeShimPrototype {
       latencySummary: buildLatencySummary(session.latencyMarks),
       latencyBudget: buildLatencyBudget(session.latencyMarks),
       audioFrameSummary: buildAudioFrameSummary(session),
+      sampleRateBridge: buildSampleRateBridge(session),
       browserTurnLifecycle: buildBrowserTurnLifecycle(session),
       pipelineStages,
       qaEvidenceSummary: buildQaEvidenceSummary(session, eventTranscript, logs, pipelineStages, qaChecklist),
@@ -601,6 +612,23 @@ export class LocalRealtimeShimPrototype {
       withinBudget: elapsedMs <= budgetMs,
     });
   }
+}
+
+function buildSampleRateBridge(session: LocalRealtimeShimSession): LocalRealtimeShimSampleRateBridge {
+  const localSttStart = buildLocalSttStartMessage();
+  const browserInputSampleRateHz = session.envelope.audio.inputSampleRateHz;
+  const localSttSampleRateHz = localSttStart.audio.sample_rate;
+  const browserOutputSampleRateHz = session.envelope.audio.outputSampleRateHz;
+
+  return {
+    browserInputSampleRateHz,
+    localSttSampleRateHz,
+    browserOutputSampleRateHz,
+    resamplingRequired: Number(browserInputSampleRateHz) !== Number(localSttSampleRateHz),
+    boundary: "gateway_pcm16_to_local_stt_pcm16",
+    evidence:
+      "Gateway relay audio remains 24kHz PCM16 at the browser boundary while Local STT v1 consumes 16kHz PCM16 frames.",
+  };
 }
 
 function buildAudioFrameSummary(session: LocalRealtimeShimSession): LocalRealtimeShimAudioFrameSummary {

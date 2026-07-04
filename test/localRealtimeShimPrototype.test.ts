@@ -175,6 +175,15 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
       bytesPerFrame: 640,
     },
   });
+  assert.deepEqual(evidence.sampleRateBridge, {
+    browserInputSampleRateHz: 24000,
+    localSttSampleRateHz: 16000,
+    browserOutputSampleRateHz: 24000,
+    resamplingRequired: true,
+    boundary: "gateway_pcm16_to_local_stt_pcm16",
+    evidence:
+      "Gateway relay audio remains 24kHz PCM16 at the browser boundary while Local STT v1 consumes 16kHz PCM16 frames.",
+  });
   assert.deepEqual(evidence.pipelineStages.map((stage) => [stage.stage, stage.status, stage.mocked]), [
     ["gateway_relay", "active", false],
     ["local_stt", "active", true],
