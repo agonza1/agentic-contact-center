@@ -394,6 +394,29 @@ function buildRealtimeShimReadinessPayload(): object {
       firstValidationGate: "npm run proof:realtime-shim -- --out artifacts/realtime-shim-proof.json --latest-out artifacts/realtime-shim-proof-latest.json",
       rollbackSignal: "Keep mocked local proof green before replacing one sidecar at a time.",
     },
+    sidecarAcceptanceGates: [
+      {
+        sidecar: "rtc-asr",
+        replaces: "local_stt_mock",
+        requiredEvidence: ["transcript.done", "input cancel drops buffered audio", "bounded STT error evidence"],
+        validationCommand: "npm run proof:realtime-shim",
+        rollbackSignal: "Missing final transcript, cancelled-input evidence, or bounded STT error evidence.",
+      },
+      {
+        sidecar: "local_llm",
+        replaces: "local LLM response text",
+        requiredEvidence: ["policy-safe response text", "tool-result not-applicable evidence", "no unsafe retention promise"],
+        validationCommand: "npm test -- test/realtimeShimProofScript.test.js",
+        rollbackSignal: "Policy gate, tool-result, or unsafe-offer evidence regresses.",
+      },
+      {
+        sidecar: "kokoro_tts",
+        replaces: "Kokoro PCM output audio mock",
+        requiredEvidence: ["output audio chunks", "barge-in clear event", "same-session recovery turn"],
+        validationCommand: "npm run proof:realtime-shim",
+        rollbackSignal: "First audio, output cancel, or barge-in recovery evidence regresses.",
+      },
+    ],
     reviewBlockers: proof.readyForIssue85Review ? [] : ["One or more Issue #85 acceptance criteria are not satisfied."],
     reviewPacket: {
       ready: proof.readyForIssue85Review,

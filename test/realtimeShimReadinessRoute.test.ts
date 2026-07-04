@@ -83,6 +83,13 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         rollbackSignal: string;
       };
       reviewBlockers: string[];
+      sidecarAcceptanceGates: Array<{
+        sidecar: string;
+        replaces: string;
+        requiredEvidence: string[];
+        validationCommand: string;
+        rollbackSignal: string;
+      }>;
       reviewPacket: {
         ready: boolean;
         issue: string;
@@ -187,6 +194,29 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       rollbackSignal: "Keep mocked local proof green before replacing one sidecar at a time.",
     });
     assert.deepEqual(payload.reviewBlockers, []);
+    assert.deepEqual(payload.sidecarAcceptanceGates, [
+      {
+        sidecar: "rtc-asr",
+        replaces: "local_stt_mock",
+        requiredEvidence: ["transcript.done", "input cancel drops buffered audio", "bounded STT error evidence"],
+        validationCommand: "npm run proof:realtime-shim",
+        rollbackSignal: "Missing final transcript, cancelled-input evidence, or bounded STT error evidence.",
+      },
+      {
+        sidecar: "local_llm",
+        replaces: "local LLM response text",
+        requiredEvidence: ["policy-safe response text", "tool-result not-applicable evidence", "no unsafe retention promise"],
+        validationCommand: "npm test -- test/realtimeShimProofScript.test.js",
+        rollbackSignal: "Policy gate, tool-result, or unsafe-offer evidence regresses.",
+      },
+      {
+        sidecar: "kokoro_tts",
+        replaces: "Kokoro PCM output audio mock",
+        requiredEvidence: ["output audio chunks", "barge-in clear event", "same-session recovery turn"],
+        validationCommand: "npm run proof:realtime-shim",
+        rollbackSignal: "First audio, output cancel, or barge-in recovery evidence regresses.",
+      },
+    ]);
     assert.equal(payload.reviewPacket.ready, true);
     assert.equal(payload.reviewPacket.issue, "agonza1/agentic-contact-center#85");
     assert.equal(payload.reviewPacket.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/85");
