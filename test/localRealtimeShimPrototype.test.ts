@@ -184,6 +184,18 @@ test("local realtime shim prototype completes one mocked local voice turn with Q
     evidence:
       "Gateway relay audio remains 24kHz PCM16 at the browser boundary while Local STT v1 consumes 16kHz PCM16 frames.",
   });
+  assert.deepEqual(evidence.sidecarPromotionReadiness, {
+    targetSidecar: "rtc-asr",
+    currentMode: "deterministic_local_stt_mock",
+    status: "ready_for_sidecar_swap",
+    requiredUrlEnv: "RTC_ASR_WS_URL",
+    preservedInputContract: "gateway relay pcm16 base64 chunks at 24kHz",
+    sidecarInputContract: "local-stt.v1 pcm_s16le frames at 16kHz",
+    preservedOutputSignal: "transcript.done diagnostic",
+    validationGate: "npm run proof:realtime-shim",
+    rollbackSignal:
+      "Keep deterministic Local STT v1 proof green before swapping rtc-asr websocket transcript events into the shim.",
+  });
   assert.deepEqual(evidence.pipelineStages.map((stage) => [stage.stage, stage.status, stage.mocked]), [
     ["gateway_relay", "active", false],
     ["local_stt", "active", true],
@@ -257,6 +269,7 @@ test("local realtime shim prototype accepts gateway relay tool results as not ap
     result: { approved: true },
   });
 
+  assert.equal(evidence.sidecarPromotionReadiness.status, "awaiting_local_stt_evidence");
   assert.deepEqual(evidence.toolResults, [
     {
       sessionId: "local-rt-tool",
