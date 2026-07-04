@@ -670,7 +670,7 @@ function getRealtimeShimRpcRequestId(body: Record<string, unknown>): string | nu
 }
 
 function buildRealtimeShimRpcRequestIdPayload(requestId: string | number | undefined): object {
-  return requestId === undefined ? {} : { requestId };
+  return requestId === undefined ? {} : { requestId, id: requestId };
 }
 
 function buildRealtimeShimRpcCompatibility(): object {

@@ -301,6 +301,7 @@ test("POST /api/realtime-shim/rpc echoes request ids on success and bounded erro
     assert.equal(created.statusCode, 200);
     assert.equal(created.payload.ok, true);
     assert.equal(created.payload.requestId, "relay-create-1");
+    assert.equal(created.payload.id, "relay-create-1");
     assert.equal(created.payload.result.sessionId, "local-rt-correlated");
 
     const unsupported = await postRpc(address.port, {
@@ -312,6 +313,7 @@ test("POST /api/realtime-shim/rpc echoes request ids on success and bounded erro
     assert.equal(unsupported.statusCode, 400);
     assert.equal(unsupported.payload.ok, false);
     assert.equal(unsupported.payload.requestId, 42);
+    assert.equal(unsupported.payload.id, 42);
     assert.equal(unsupported.payload.method, "talk.session.flush");
     assert.equal(unsupported.payload.error, "realtime_shim_method_unsupported");
   } finally {
