@@ -132,6 +132,18 @@ export interface LocalRealtimeShimSampleRateBridge {
   evidence: string;
 }
 
+export interface LocalRealtimeShimSidecarPromotionReadiness {
+  targetSidecar: "rtc-asr";
+  currentMode: "deterministic_local_stt_mock";
+  status: "ready_for_sidecar_swap" | "awaiting_local_stt_evidence";
+  requiredUrlEnv: "RTC_ASR_WS_URL";
+  preservedInputContract: "gateway relay pcm16 base64 chunks at 24kHz";
+  sidecarInputContract: "local-stt.v1 pcm_s16le frames at 16kHz";
+  preservedOutputSignal: "transcript.done diagnostic";
+  validationGate: "npm run proof:realtime-shim";
+  rollbackSignal: string;
+}
+
 export interface LocalRealtimeShimBrowserTurnLifecycleStep {
   step: "create" | "append_audio" | "finalize_turn" | "output_audio" | "cancel" | "close";
   passed: boolean;
@@ -185,6 +197,7 @@ export interface LocalRealtimeShimEvidence {
   latencyBudget: LocalRealtimeShimLatencyBudget;
   audioFrameSummary: LocalRealtimeShimAudioFrameSummary;
   sampleRateBridge: LocalRealtimeShimSampleRateBridge;
+  sidecarPromotionReadiness: LocalRealtimeShimSidecarPromotionReadiness;
   browserTurnLifecycle: LocalRealtimeShimBrowserTurnLifecycle;
   pipelineStages: LocalRealtimeShimPipelineStage[];
   qaEvidenceSummary: LocalRealtimeShimQaEvidenceSummary;
@@ -537,6 +550,7 @@ export class LocalRealtimeShimPrototype {
       latencyBudget: buildLatencyBudget(session.latencyMarks),
       audioFrameSummary: buildAudioFrameSummary(session),
       sampleRateBridge: buildSampleRateBridge(session),
+      sidecarPromotionReadiness: buildSidecarPromotionReadiness(session),
       browserTurnLifecycle: buildBrowserTurnLifecycle(session),
       pipelineStages,
       qaEvidenceSummary: buildQaEvidenceSummary(session, eventTranscript, logs, pipelineStages, qaChecklist),
@@ -612,6 +626,26 @@ export class LocalRealtimeShimPrototype {
       withinBudget: elapsedMs <= budgetMs,
     });
   }
+}
+
+function buildSidecarPromotionReadiness(session: LocalRealtimeShimSession): LocalRealtimeShimSidecarPromotionReadiness {
+  const hasLocalSttEvidence =
+    session.localSttMessages.some((message) => message.type === "start") &&
+    session.localSttMessages.some((message) => message.type === "audio") &&
+    session.diagnostics.some((event) => event.type === "transcript.done");
+
+  return {
+    targetSidecar: "rtc-asr",
+    currentMode: "deterministic_local_stt_mock",
+    status: hasLocalSttEvidence ? "ready_for_sidecar_swap" : "awaiting_local_stt_evidence",
+    requiredUrlEnv: "RTC_ASR_WS_URL",
+    preservedInputContract: "gateway relay pcm16 base64 chunks at 24kHz",
+    sidecarInputContract: "local-stt.v1 pcm_s16le frames at 16kHz",
+    preservedOutputSignal: "transcript.done diagnostic",
+    validationGate: "npm run proof:realtime-shim",
+    rollbackSignal:
+      "Keep deterministic Local STT v1 proof green before swapping rtc-asr websocket transcript events into the shim.",
+  };
 }
 
 function buildSampleRateBridge(session: LocalRealtimeShimSession): LocalRealtimeShimSampleRateBridge {
