@@ -25,6 +25,24 @@ export interface SpeechEnhancementReplayMetric {
   cpuCostEstimate: "low" | "medium" | "high";
 }
 
+export interface SpeechEnhancementRuntimeGuardrail {
+  metric:
+    | "p95_added_turn_latency_ms"
+    | "word_error_rate_delta"
+    | "endpointing_stability"
+    | "barge_in_risk"
+    | "cpu_cost";
+  passCondition: string;
+  rollbackSignal: string;
+}
+
+export interface SpeechEnhancementReplayDecision {
+  captureId: string;
+  latencySettingMs: number;
+  enableForLiveDemo: boolean;
+  reasons: string[];
+}
+
 export interface SpeechEnhancementSpikeReport {
   ok: true;
   route: "/api/realtime-shim/speech-enhancement-spike";
@@ -64,6 +82,8 @@ export interface SpeechEnhancementSpikeReport {
     featureFlagShape: "proposed";
     remainingBeforeIssueClose: string[];
   };
+  runtimeGuardrails: SpeechEnhancementRuntimeGuardrail[];
+  replayDecisions: SpeechEnhancementReplayDecision[];
   validationPlan: string[];
 }
 
@@ -99,6 +119,49 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
     },
   ];
 
+  const replayMetrics: SpeechEnhancementReplayMetric[] = [
+    {
+      captureId: "synthetic-noisy-cancellation-rescue-001",
+      scenario: "seeded caller with fan noise and overlapping first syllable",
+      baseline: {
+        transcript: "I want to cancel my policy today",
+        wordErrorRateEstimate: 0.12,
+        endpointingStability: "acceptable",
+        bargeInRisk: "medium",
+      },
+      enhanced: {
+        transcript: "I want to cancel my policy today",
+        wordErrorRateEstimate: 0.07,
+        endpointingStability: "stable",
+        bargeInRisk: "low",
+      },
+      latencySettingMs: 12.5,
+      cpuCostEstimate: "medium",
+    },
+  ];
+
+  const replayDecisions = replayMetrics.map((metric): SpeechEnhancementReplayDecision => {
+    const wordErrorImproved = metric.enhanced.wordErrorRateEstimate < metric.baseline.wordErrorRateEstimate;
+    const endpointingImproved = metric.enhanced.endpointingStability === "stable";
+    const bargeInRiskImproved = metric.enhanced.bargeInRisk === "low";
+    const latencyCandidate = candidates.find((candidate) => candidate.algorithmicLatencyMs === metric.latencySettingMs);
+    const latencyOk = latencyCandidate?.withinConversationalBudget === true;
+    const cpuOk = metric.cpuCostEstimate !== "high";
+
+    return {
+      captureId: metric.captureId,
+      latencySettingMs: metric.latencySettingMs,
+      enableForLiveDemo: wordErrorImproved && endpointingImproved && bargeInRiskImproved && latencyOk && cpuOk,
+      reasons: [
+        wordErrorImproved ? "wer_improved" : "wer_not_improved",
+        endpointingImproved ? "endpointing_stable" : "endpointing_not_stable",
+        bargeInRiskImproved ? "barge_in_risk_low" : "barge_in_risk_not_low",
+        latencyOk ? "latency_within_budget" : "latency_over_budget",
+        cpuOk ? "cpu_cost_allowed" : "cpu_cost_high",
+      ],
+    };
+  });
+
   return {
     ok: true,
     route: "/api/realtime-shim/speech-enhancement-spike",
@@ -120,26 +183,7 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
       ],
     },
     candidates,
-    replayMetrics: [
-      {
-        captureId: "synthetic-noisy-cancellation-rescue-001",
-        scenario: "seeded caller with fan noise and overlapping first syllable",
-        baseline: {
-          transcript: "I want to cancel my policy today",
-          wordErrorRateEstimate: 0.12,
-          endpointingStability: "acceptable",
-          bargeInRisk: "medium",
-        },
-        enhanced: {
-          transcript: "I want to cancel my policy today",
-          wordErrorRateEstimate: 0.07,
-          endpointingStability: "stable",
-          bargeInRisk: "low",
-        },
-        latencySettingMs: 12.5,
-        cpuCostEstimate: "medium",
-      },
-    ],
+    replayMetrics,
     decision: {
       status: "go_for_feature_flagged_spike",
       recommendedLatencyMs: 12.5,
@@ -165,6 +209,34 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
         "Replace CPU cost estimate with measured local runtime cost from the selected rtc-asr host.",
       ],
     },
+    runtimeGuardrails: [
+      {
+        metric: "p95_added_turn_latency_ms",
+        passCondition: "12.5 ms profile stays under 25 ms added p95 turn latency on the selected rtc-asr host",
+        rollbackSignal: "Disable RTC_ASR_SPEECH_ENHANCEMENT when added p95 turn latency exceeds 25 ms.",
+      },
+      {
+        metric: "word_error_rate_delta",
+        passCondition: "enhanced noisy replay WER estimate is lower than baseline for the same capture",
+        rollbackSignal: "Bypass enhancement when noisy replay transcript quality does not improve.",
+      },
+      {
+        metric: "endpointing_stability",
+        passCondition: "enhanced replay keeps endpointing stable with no extra premature finalize events",
+        rollbackSignal: "Bypass enhancement when endpointing regresses from stable or acceptable to unstable.",
+      },
+      {
+        metric: "barge_in_risk",
+        passCondition: "enhanced replay keeps barge-in risk low or improves it relative to baseline",
+        rollbackSignal: "Bypass enhancement when barge-in risk increases.",
+      },
+      {
+        metric: "cpu_cost",
+        passCondition: "runtime CPU cost remains low or medium during local demo load",
+        rollbackSignal: "Disable enhancement on the host when runtime CPU cost is high.",
+      },
+    ],
+    replayDecisions,
     validationPlan: [
       "Replay one noisy local SIP capture through baseline rtc-asr and enhanced rtc-asr paths.",
       "Record added latency, transcript delta, endpointing behavior, barge-in behavior, and CPU cost.",
