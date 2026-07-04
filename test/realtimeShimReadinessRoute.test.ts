@@ -61,6 +61,14 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
         modelGuidance: string;
         status: string;
       };
+      sampleRateBridge: {
+        browserInputSampleRateHz: number;
+        localSttSampleRateHz: number;
+        browserOutputSampleRateHz: number;
+        resamplingRequired: boolean;
+        boundary: string;
+        evidence: string;
+      };
       runtimeMode: {
         labels: { relay: string; stt: string; llm: string; tts: string };
         liveSidecarsRequired: boolean;
@@ -130,6 +138,15 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       observedFirstAudioMs: 135,
       modelGuidance: "small_fast_local_models",
       status: "within_budget",
+    });
+    assert.deepEqual(payload.sampleRateBridge, {
+      browserInputSampleRateHz: 24000,
+      localSttSampleRateHz: 16000,
+      browserOutputSampleRateHz: 24000,
+      resamplingRequired: true,
+      boundary: "gateway_pcm16_to_local_stt_pcm16",
+      evidence:
+        "Gateway relay audio remains 24kHz PCM16 at the browser boundary while Local STT v1 consumes 16kHz PCM16 frames.",
     });
     assert.deepEqual(payload.runtimeMode, {
       labels: {
@@ -209,7 +226,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       {
         route: "/api/realtime-shim/proof",
         method: "GET",
-        evidence: ["logs", "eventTranscript", "timeline", "latencyMarks", "latencyBudget", "pipelineStages"],
+        evidence: ["logs", "eventTranscript", "timeline", "latencyMarks", "latencyBudget", "sampleRateBridge", "pipelineStages"],
       },
       {
         route: "/api/realtime-shim/rpc",
