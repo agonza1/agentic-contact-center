@@ -281,6 +281,44 @@ test("POST /api/realtime-shim/rpc preserves session state across Gateway relay R
   }
 });
 
+test("POST /api/realtime-shim/rpc echoes request ids on success and bounded errors", async () => {
+  const server = buildHttpServer(loadPocConfig());
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const created = await postRpc(address.port, {
+      id: "relay-create-1",
+      method: "talk.session.create",
+      params: { relaySessionId: "local-rt-correlated" },
+    });
+
+    assert.equal(created.statusCode, 200);
+    assert.equal(created.payload.ok, true);
+    assert.equal(created.payload.requestId, "relay-create-1");
+    assert.equal(created.payload.result.sessionId, "local-rt-correlated");
+
+    const unsupported = await postRpc(address.port, {
+      requestId: 42,
+      method: "talk.session.flush",
+      params: {},
+    });
+
+    assert.equal(unsupported.statusCode, 400);
+    assert.equal(unsupported.payload.ok, false);
+    assert.equal(unsupported.payload.requestId, 42);
+    assert.equal(unsupported.payload.method, "talk.session.flush");
+    assert.equal(unsupported.payload.error, "realtime_shim_method_unsupported");
+  } finally {
+    server.close();
+  }
+});
+
 test("POST /api/realtime-shim/rpc returns bounded errors for unsupported payloads", async () => {
   const server = buildHttpServer(loadPocConfig());
 
