@@ -48,6 +48,7 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       rpcSmoke: Array<{
         method: string;
         ok: boolean;
+        requestId?: string | number;
         state?: string;
         relaySessionId?: string;
         audioChunks?: number;
@@ -180,6 +181,21 @@ test("GET /api/realtime-shim/proof returns deterministic gateway relay evidence"
       statefulSession: true,
       boundedErrors: true,
     });
+    assert.deepEqual(payload.rpcSmoke.map((step) => step.requestId), [
+      "rt-smoke-1",
+      "rt-smoke-2",
+      "rt-smoke-3",
+      "rt-smoke-4",
+      "rt-smoke-5",
+      "rt-smoke-6",
+      "rt-smoke-7",
+      "rt-smoke-8",
+      "rt-smoke-9",
+      "rt-smoke-10",
+      "rt-smoke-11",
+      "rt-smoke-12",
+      "rt-smoke-13",
+    ]);
     assert.deepEqual(payload.rpcSmoke.map((step) => [step.method, step.ok, step.relaySessionId, step.state]), [
       ["talk.session.create", true, "local-rt-rpc-smoke", undefined],
       ["talk.session.appendAudio", true, undefined, "listening"],
