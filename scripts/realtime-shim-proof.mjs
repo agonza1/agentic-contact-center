@@ -135,8 +135,15 @@ async function runRealtimeShimRpcHttpSmoke(port) {
       method: "talk.session.finalizeTurn",
       params: { sessionId, transcriptText: "Need a retention credit." },
     },
-    { requestId: "rt-http-4", method: "talk.session.getEvidence", params: { sessionId } },
-    { requestId: "rt-http-5", method: "talk.session.close", params: { sessionId, reason: "complete" } },
+    { requestId: "rt-http-4", method: "talk.session.cancelOutput", params: { sessionId, reason: "barge-in" } },
+    { requestId: "rt-http-5", method: "talk.session.appendAudio", params: { sessionId, audioBase64, timestamp: 96 } },
+    {
+      requestId: "rt-http-6",
+      method: "talk.session.finalizeTurn",
+      params: { sessionId, transcriptText: "Continue with a human handoff instead." },
+    },
+    { requestId: "rt-http-7", method: "talk.session.getEvidence", params: { sessionId } },
+    { requestId: "rt-http-8", method: "talk.session.close", params: { sessionId, reason: "complete" } },
   ];
 
   const responses = [];
@@ -150,11 +157,15 @@ async function runRealtimeShimRpcHttpSmoke(port) {
     responses.push(response.payload);
   }
 
+  const cancelResponse = responses.find((response) => response.method === "talk.session.cancelOutput");
   const evidenceResponse = responses.find((response) => response.method === "talk.session.getEvidence");
   const closeResponse = responses.find((response) => response.method === "talk.session.close");
 
-  assert.equal(evidenceResponse.result.turnSummary.finalTranscript, "Need a retention credit.");
-  assert.equal(evidenceResponse.result.turnSummary.outputAudioChunks, 1);
+  assert.equal(cancelResponse.result.turnSummary.outputCancelled, true);
+  assert.equal(cancelResponse.result.state, "listening");
+  assert.equal(evidenceResponse.result.turnSummary.finalTranscript, "Continue with a human handoff instead.");
+  assert.equal(evidenceResponse.result.turnSummary.outputAudioChunks, 2);
+  assert.equal(evidenceResponse.result.turnSummary.outputCancelled, true);
   assert.equal(closeResponse.result.state, "closed");
 
   const boundedError = await postJson(port, "/api/realtime-shim/rpc", {
@@ -181,6 +192,11 @@ async function runRealtimeShimRpcHttpSmoke(port) {
     methods: requests.map((request) => request.method),
     finalTranscript: evidenceResponse.result.turnSummary.finalTranscript,
     outputAudioChunks: evidenceResponse.result.turnSummary.outputAudioChunks,
+    bargeInRecovery: {
+      outputCancelled: cancelResponse.result.turnSummary.outputCancelled,
+      recoveredFinalTranscript: evidenceResponse.result.turnSummary.finalTranscript,
+      recoveredOutputAudioChunks: evidenceResponse.result.turnSummary.outputAudioChunks,
+    },
     closed: closeResponse.result.state === "closed",
     boundedError: {
       statusCode: boundedError.statusCode,
