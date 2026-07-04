@@ -163,6 +163,7 @@ function buildRealtimeShimProofPayload(): object {
 function buildRealtimeShimRpcSmoke(): Array<{
   method: string;
   ok: boolean;
+  requestId?: string | number;
   relaySessionId?: string;
   state?: string;
   audioChunks?: number;
@@ -183,36 +184,59 @@ function buildRealtimeShimRpcSmoke(): Array<{
   const audioBase64 = Buffer.from([9, 0, 10, 0]).toString("base64");
   const steps = [
     {
+      requestId: "rt-smoke-1",
       method: "talk.session.create",
       params: { mode: "realtime", transport: "gateway-relay", relaySessionId: "local-rt-rpc-smoke" },
     },
-    { method: "talk.session.appendAudio", params: { sessionId: "local-rt-rpc-smoke", audioBase64, timestamp: 12 } },
     {
+      requestId: "rt-smoke-2",
+      method: "talk.session.appendAudio",
+      params: { sessionId: "local-rt-rpc-smoke", audioBase64, timestamp: 12 },
+    },
+    {
+      requestId: "rt-smoke-3",
       method: "talk.session.finalizeTurn",
       params: { sessionId: "local-rt-rpc-smoke", transcriptText: "Need a retention credit." },
     },
-    { method: "talk.session.getEvidence", params: { sessionId: "local-rt-rpc-smoke" } },
-    { method: "talk.session.close", params: { sessionId: "local-rt-rpc-smoke", reason: "complete" } },
+    { requestId: "rt-smoke-4", method: "talk.session.getEvidence", params: { sessionId: "local-rt-rpc-smoke" } },
     {
+      requestId: "rt-smoke-5",
+      method: "talk.session.close",
+      params: { sessionId: "local-rt-rpc-smoke", reason: "complete" },
+    },
+    {
+      requestId: "rt-smoke-6",
       method: "talk.session.create",
       params: { mode: "realtime", transport: "gateway-relay", relaySessionId: "local-rt-rpc-cancel" },
     },
-    { method: "talk.session.appendAudio", params: { sessionId: "local-rt-rpc-cancel", audioBase64, timestamp: 24 } },
     {
+      requestId: "rt-smoke-7",
+      method: "talk.session.appendAudio",
+      params: { sessionId: "local-rt-rpc-cancel", audioBase64, timestamp: 24 },
+    },
+    {
+      requestId: "rt-smoke-8",
       method: "talk.session.finalizeTurn",
       params: { sessionId: "local-rt-rpc-cancel", transcriptText: "Please stop that response." },
     },
-    { method: "talk.session.cancelOutput", params: { sessionId: "local-rt-rpc-cancel", reason: "barge-in" } },
-    { method: "talk.session.cancelInput", params: { sessionId: "local-rt-rpc-cancel" } },
     {
+      requestId: "rt-smoke-9",
+      method: "talk.session.cancelOutput",
+      params: { sessionId: "local-rt-rpc-cancel", reason: "barge-in" },
+    },
+    { requestId: "rt-smoke-10", method: "talk.session.cancelInput", params: { sessionId: "local-rt-rpc-cancel" } },
+    {
+      requestId: "rt-smoke-11",
       method: "talk.session.create",
       params: { mode: "realtime", transport: "gateway-relay", relaySessionId: "local-rt-rpc-tools" },
     },
     {
+      requestId: "rt-smoke-12",
       method: "talk.session.submitToolResult",
       params: { sessionId: "local-rt-rpc-tools", toolCallId: "tool-review-1", result: { ok: true } },
     },
     {
+      requestId: "rt-smoke-13",
       method: "talk.session.recordError",
       params: {
         sessionId: "local-rt-rpc-tools",
@@ -228,10 +252,15 @@ function buildRealtimeShimRpcSmoke(): Array<{
     const result = isRecord(response) && isRecord(response.result) ? response.result : undefined;
     const audioInput = result && isRecord(result.audioInput) ? result.audioInput : undefined;
     const turnSummary = result && isRealtimeShimTurnSummary(result.turnSummary) ? result.turnSummary : undefined;
+    const requestId = isRecord(response) &&
+      (typeof response.requestId === "string" || typeof response.requestId === "number")
+      ? response.requestId
+      : undefined;
 
     return {
       method: step.method,
       ok: isRecord(response) && response.ok === true,
+      requestId,
       relaySessionId: result ? getOptionalTrimmedString(result.relaySessionId) : undefined,
       state: result ? getOptionalTrimmedString(result.state) : undefined,
       audioChunks: typeof audioInput?.chunks === "number" ? audioInput.chunks : undefined,
@@ -276,7 +305,7 @@ function buildRealtimeShimReadinessPayload(): object {
     rpcCompatibility: { route: string; supportedRpcs: string[]; statefulSession: boolean; boundedErrors: boolean };
     acceptanceSummary: Record<string, boolean>;
     readyForIssue85Review: boolean;
-    rpcSmoke: Array<{ ok: boolean; method: string }>;
+    rpcSmoke: Array<{ ok: boolean; method: string; requestId?: string | number }>;
     evidence: {
       browserRelayCompatibility: { status: string; uiRewriteRequired: boolean; requiredRpcs: string[] };
       latencyBudget: {
@@ -357,6 +386,7 @@ function buildRealtimeShimReadinessPayload(): object {
         acceptanceCriteriaTotal: Object.values(proof.acceptanceSummary).length,
         inProcessRpcSmokePassed: proof.rpcSmoke.filter((step) => step.ok).length,
         inProcessRpcSmokeTotal: proof.rpcSmoke.length,
+        requestIdEchoed: proof.rpcSmoke.every((step, index) => step.requestId === `rt-smoke-${index + 1}`),
         oneTurnClosed: proof.closeEvidence.state === "closed",
         cancelAndErrorEvidence: {
           outputCancelled: proof.interruptionEvidence.qaChecklist.interruptionEvidence === true,

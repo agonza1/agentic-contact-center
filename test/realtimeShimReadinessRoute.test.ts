@@ -91,6 +91,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
           acceptanceCriteriaTotal: number;
           inProcessRpcSmokePassed: number;
           inProcessRpcSmokeTotal: number;
+          requestIdEchoed: boolean;
           oneTurnClosed: boolean;
           cancelAndErrorEvidence: { outputCancelled: boolean; inputCancelled: boolean; boundedErrors: boolean };
         };
@@ -182,6 +183,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       acceptanceCriteriaTotal: 6,
       inProcessRpcSmokePassed: 13,
       inProcessRpcSmokeTotal: 13,
+      requestIdEchoed: true,
       oneTurnClosed: true,
       cancelAndErrorEvidence: {
         outputCancelled: true,
