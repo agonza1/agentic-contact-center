@@ -379,6 +379,7 @@ function buildRealtimeShimReadinessPayload(): object {
     },
     liveSidecarPromotion: {
       status: "ready_for_sidecar_swap",
+      order: ["rtc-asr", "local_llm", "kokoro_tts"],
       nextSwap: {
         sidecar: "rtc-asr",
         mockedStage: "local_stt",
@@ -453,6 +454,7 @@ function buildRealtimeShimReadinessPayload(): object {
           proof.bargeInRecoveryEvidence.turnSummary.finalTranscript === "Continue with a human handoff instead." &&
           proof.bargeInRecoveryEvidence.turnSummary.outputAudioChunks === 2,
         liveSidecarPromotionStatus: "ready_for_sidecar_swap",
+        liveSidecarPromotionOrder: ["rtc-asr", "local_llm", "kokoro_tts"],
       },
       mockedPieces: proof.evidence.mockedPieces,
       limitations: proof.evidence.limitations,

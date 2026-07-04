@@ -76,6 +76,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       };
       liveSidecarPromotion: {
         status: string;
+        order: string[];
         nextSwap: { sidecar: string; mockedStage: string; validationGate: string; rollbackSignal: string };
         requiredSidecars: string[];
         contractToPreserve: { rpcBoundary: string; localSttContract: string; browserRelayCompatibility: string };
@@ -111,6 +112,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
           cancelAndErrorEvidence: { outputCancelled: boolean; inputCancelled: boolean; boundedErrors: boolean };
           bargeInRecoveryReady: boolean;
           liveSidecarPromotionStatus: string;
+          liveSidecarPromotionOrder: string[];
         };
         mockedPieces: string[];
         limitations: string[];
@@ -178,6 +180,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
     });
     assert.deepEqual(payload.liveSidecarPromotion, {
       status: "ready_for_sidecar_swap",
+      order: ["rtc-asr", "local_llm", "kokoro_tts"],
       nextSwap: {
         sidecar: "rtc-asr",
         mockedStage: "local_stt",
@@ -249,6 +252,7 @@ test("GET /api/realtime-shim/readiness returns issue 85 acceptance summary", asy
       },
       bargeInRecoveryReady: true,
       liveSidecarPromotionStatus: "ready_for_sidecar_swap",
+      liveSidecarPromotionOrder: ["rtc-asr", "local_llm", "kokoro_tts"],
     });
     assert.deepEqual(payload.reviewPacket.mockedPieces, ["local LLM response text", "Kokoro PCM output audio"]);
     assert.ok(payload.reviewPacket.limitations.some((limitation) => limitation.includes("not a live sidecar connection")));
