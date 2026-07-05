@@ -86,6 +86,12 @@ test("speech enhancement capture replay manifest validates real evidence shape",
   assert.equal(validation.manifestOk, true);
   assert.deepEqual(validation.missingFields, []);
   assert.equal(validation.metric?.captureId, "real-noisy-local-sip-001");
+  assert.deepEqual(validation.metric?.captureEvidence, {
+    recordedAt: "2026-07-05T15:45:00Z",
+    audioSourceUri: "artifacts/local-sip-real-noisy-001.wav",
+    noiseProfile: "speakerphone fan noise",
+    runtimeHost: "local-rtc-asr-host",
+  });
   assert.equal(validation.metric?.enhanced.addedTurnLatencyMsP95, 19);
   assert.equal(validation.evaluation?.issueCloseReady, true);
 });

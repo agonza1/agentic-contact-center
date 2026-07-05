@@ -112,7 +112,12 @@ function normalizeCaptureReplayMetric(payload) {
   return {
     captureId: payload.capture_id,
     scenario: payload.scenario,
-    runtimeHost: payload.runtime_host,
+    captureEvidence: {
+      recordedAt: payload.recorded_at,
+      audioSourceUri: payload.audio_source_uri,
+      noiseProfile: payload.noise_profile,
+      runtimeHost: payload.runtime_host,
+    },
     baseline: {
       transcript: payload.baseline_rtc_asr.transcript,
       wordErrorRateEstimate: payload.baseline_rtc_asr.word_error_rate_estimate,

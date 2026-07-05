@@ -490,6 +490,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
       report: {
         acceptanceReadiness: { noisyReplay: string };
         replayCoverage: { realNoisyCaptureReplayCount: number; liveDemoGate: string; missingEvidence: string[] };
+        replayMetrics: Array<{ captureId: string; captureEvidence?: { recordedAt: string; audioSourceUri: string; noiseProfile: string; runtimeHost: string } }>;
         replayDecisions: Array<{ captureId: string; enableForLiveDemo: boolean }>;
       };
       reviewGate: {
@@ -510,6 +511,13 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.equal(artifact.report.replayCoverage.realNoisyCaptureReplayCount, 1);
     assert.equal(artifact.report.replayCoverage.liveDemoGate, "eligible");
     assert.deepEqual(artifact.report.replayCoverage.missingEvidence, []);
+    assert.equal(artifact.report.replayMetrics.at(-1)?.captureId, "real-noisy-local-sip-001");
+    assert.deepEqual(artifact.report.replayMetrics.at(-1)?.captureEvidence, {
+      recordedAt: "2026-07-05T06:40:00.000Z",
+      audioSourceUri: "artifacts/local-sip/real-noisy-local-sip-001.wav",
+      noiseProfile: "cafe_noise",
+      runtimeHost: "local-rtc-asr-host",
+    });
     assert.equal(artifact.report.replayDecisions.at(-1)?.captureId, "real-noisy-local-sip-001");
     assert.equal(artifact.report.replayDecisions.at(-1)?.enableForLiveDemo, true);
   } finally {

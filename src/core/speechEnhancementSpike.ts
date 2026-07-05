@@ -9,6 +9,12 @@ export interface SpeechEnhancementLatencyCandidate {
 export interface SpeechEnhancementReplayMetric {
   captureId: string;
   scenario: string;
+  captureEvidence?: {
+    recordedAt: string;
+    audioSourceUri: string;
+    noiseProfile: string;
+    runtimeHost: string;
+  };
   baseline: {
     transcript: string;
     wordErrorRateEstimate: number;
@@ -284,6 +290,12 @@ export function validateSpeechEnhancementCaptureReplayManifest(
   const metric: SpeechEnhancementReplayMetric = {
     captureId: typedManifest.capture_id,
     scenario: typedManifest.scenario,
+    captureEvidence: {
+      recordedAt: typedManifest.recorded_at,
+      audioSourceUri: typedManifest.audio_source_uri,
+      noiseProfile: typedManifest.noise_profile,
+      runtimeHost: typedManifest.runtime_host,
+    },
     baseline: {
       transcript: typedManifest.baseline_rtc_asr.transcript,
       wordErrorRateEstimate: typedManifest.baseline_rtc_asr.word_error_rate_estimate,
