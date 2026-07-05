@@ -31,6 +31,7 @@ function normalizeCaptureReplayMetric(payload) {
     "noise_profile",
     "scenario",
     "runtime_host",
+    "latency_setting_ms",
     "baseline_rtc_asr.transcript",
     "baseline_rtc_asr.word_error_rate_estimate",
     "baseline_rtc_asr.endpointing_stability",
@@ -100,8 +101,8 @@ function normalizeCaptureReplayMetric(payload) {
     "enhanced_rtc_asr.cpu_percent_p95 must be a number between 0 and 100",
   );
   assert.ok(
-    payload.enhancement_latency_ms === undefined || Number.isFinite(payload.enhancement_latency_ms),
-    "enhancement_latency_ms must be a number when provided",
+    Number.isFinite(payload.latency_setting_ms),
+    "latency_setting_ms must be a number",
   );
   assert.ok(
     allowedCpuCost.has(payload.enhanced_rtc_asr.cpu_cost_estimate),
@@ -126,7 +127,7 @@ function normalizeCaptureReplayMetric(payload) {
       addedTurnLatencyMsP95: payload.enhanced_rtc_asr.added_turn_latency_ms_p95,
       cpuPercentP95: payload.enhanced_rtc_asr.cpu_percent_p95,
     },
-    latencySettingMs: payload.enhancement_latency_ms ?? 12.5,
+    latencySettingMs: payload.latency_setting_ms,
     cpuCostEstimate: payload.enhanced_rtc_asr.cpu_cost_estimate,
   };
 }
