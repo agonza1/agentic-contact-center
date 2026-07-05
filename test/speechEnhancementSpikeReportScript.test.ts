@@ -54,7 +54,13 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
         captureReplayContract: { fixtureManifestPath: string; requiredFields: string[] };
       };
       handoff: { issueUrl: string; reviewRoute: string; validationCommand: string; nextEvidenceOwner: string };
-      reviewGate: { issueCloseReady: boolean; blockers: string[]; nextEvidence: string[] };
+      reviewGate: {
+        issueCloseReady: boolean;
+        checks: Record<string, boolean>;
+        failureReasons: Record<string, string>;
+        blockers: string[];
+        nextEvidence: string[];
+      };
     };
     const latestArtifact = JSON.parse(await readFile(latestOutputPath, "utf8"));
 
@@ -75,6 +81,9 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("runtime_host"));
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.cpu_percent_p95"));
     assert.equal(artifact.reviewGate.issueCloseReady, false);
+    assert.equal(artifact.reviewGate.checks.realNoisyCaptureReplay, false);
+    assert.equal(artifact.reviewGate.checks.cpuRuntimeCost, false);
+    assert.match(artifact.reviewGate.failureReasons.realNoisyCaptureReplay, /real noisy local SIP capture/);
     assert.ok(artifact.reviewGate.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
     assert.ok(artifact.reviewGate.nextEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));
     assert.deepEqual(latestArtifact.report, artifact.report);
@@ -330,10 +339,17 @@ test("speech enhancement spike report keeps over-budget real capture replay evid
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       report: { replayDecisions: Array<{ captureId: string; enableForLiveDemo: boolean; reasons: string[] }> };
-      reviewGate: { issueCloseReady: boolean; nextEvidence: string[] };
+      reviewGate: {
+        issueCloseReady: boolean;
+        checks: Record<string, boolean>;
+        failureReasons: Record<string, string>;
+        nextEvidence: string[];
+      };
     };
     const decision = artifact.report.replayDecisions.at(-1);
     assert.equal(artifact.reviewGate.issueCloseReady, false);
+    assert.equal(artifact.reviewGate.checks.addedLatencyP95, false);
+    assert.match(artifact.reviewGate.failureReasons.addedLatencyP95, /added turn latency/);
     assert.equal(decision?.captureId, "real-noisy-local-sip-003");
     assert.equal(decision?.enableForLiveDemo, false);
     assert.ok(decision?.reasons.includes("latency_over_budget"));
@@ -476,10 +492,18 @@ test("speech enhancement spike report accepts passing real capture replay eviden
         replayCoverage: { realNoisyCaptureReplayCount: number; liveDemoGate: string; missingEvidence: string[] };
         replayDecisions: Array<{ captureId: string; enableForLiveDemo: boolean }>;
       };
-      reviewGate: { issueCloseReady: boolean; blockers: string[]; nextEvidence: string[] };
+      reviewGate: {
+        issueCloseReady: boolean;
+        checks: Record<string, boolean>;
+        failureReasons: Record<string, string>;
+        blockers: string[];
+        nextEvidence: string[];
+      };
     };
 
     assert.equal(artifact.reviewGate.issueCloseReady, true);
+    assert.deepEqual(Object.values(artifact.reviewGate.checks), [true, true, true, true, true, true, true]);
+    assert.deepEqual(artifact.reviewGate.failureReasons, {});
     assert.equal(artifact.report.acceptanceReadiness.noisyReplay, "real_capture_ready");
     assert.deepEqual(artifact.reviewGate.blockers, []);
     assert.deepEqual(artifact.reviewGate.nextEvidence, []);

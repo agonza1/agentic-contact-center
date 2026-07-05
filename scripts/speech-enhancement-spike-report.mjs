@@ -243,6 +243,40 @@ async function writeJson(filePath, payload) {
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
+function buildReviewGate(report) {
+  const missingEvidence = new Set(report.replayCoverage.missingEvidence);
+  const hasRealCaptureReplay = report.replayCoverage.realNoisyCaptureReplayCount > 0;
+  const issueCloseReady = hasRealCaptureReplay && report.acceptanceReadiness.remainingBeforeIssueClose.length === 0;
+  const checks = {
+    realNoisyCaptureReplay: hasRealCaptureReplay,
+    baselineEnhancedPairs: hasRealCaptureReplay && report.replayCoverage.baselineEnhancedPairs > 0,
+    wordErrorImproved: hasRealCaptureReplay && !missingEvidence.has("enhanced_noisy_replay_wer_improvement"),
+    endpointingNoRegression: hasRealCaptureReplay && !missingEvidence.has("enhanced_endpointing_no_regression"),
+    bargeInNoRegression: hasRealCaptureReplay && !missingEvidence.has("enhanced_barge_in_no_regression"),
+    addedLatencyP95: hasRealCaptureReplay && !missingEvidence.has("measured_12_5_ms_added_turn_latency_under_25_ms_p95"),
+    cpuRuntimeCost: hasRealCaptureReplay && !missingEvidence.has("measured_cpu_cost_on_selected_rtc_asr_host_under_80_percent_p95"),
+  };
+  const failureReasons = Object.fromEntries(
+    Object.entries({
+      realNoisyCaptureReplay: "Attach one real noisy local SIP capture replay before closing Issue #97.",
+      baselineEnhancedPairs: "Attach paired baseline and enhanced rtc-asr replay metrics for the real capture.",
+      wordErrorImproved: "Enhanced noisy replay WER estimate must improve over baseline.",
+      endpointingNoRegression: "Enhanced endpointing must remain stable or no worse than baseline.",
+      bargeInNoRegression: "Enhanced barge-in risk must remain low or no worse than baseline.",
+      addedLatencyP95: "Measured 12.5 ms profile added turn latency must stay at or below 25 ms p95.",
+      cpuRuntimeCost: "Measured enhanced CPU p95 must stay at or below 80% on the selected rtc-asr host.",
+    }).filter(([check]) => !checks[check]),
+  );
+
+  return {
+    issueCloseReady,
+    checks,
+    failureReasons,
+    blockers: report.acceptanceReadiness.remainingBeforeIssueClose,
+    nextEvidence: report.replayCoverage.missingEvidence,
+  };
+}
+
 async function main() {
   const outputPath = resolveOutputPath();
   const latestOutputPath = resolveLatestOutputPath();
@@ -267,11 +301,7 @@ async function main() {
       validationCommand: "npm run proof:speech-enhancement -- --require-close-ready",
       nextEvidenceOwner: "agentic_contact_center",
     },
-    reviewGate: {
-      issueCloseReady: report.replayCoverage.liveDemoGate === "eligible" && report.acceptanceReadiness.remainingBeforeIssueClose.length === 0,
-      blockers: report.acceptanceReadiness.remainingBeforeIssueClose,
-      nextEvidence: report.replayCoverage.missingEvidence,
-    },
+    reviewGate: buildReviewGate(report),
   };
 
   await writeJson(outputPath, artifact);
