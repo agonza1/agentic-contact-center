@@ -130,6 +130,38 @@ test("speech enhancement capture replay manifest requires a real capture id", ()
   assert.equal(validation.evaluation, undefined);
 });
 
+test("speech enhancement capture replay manifest rejects generic real capture ids", () => {
+  const validation = validateSpeechEnhancementCaptureReplayManifest({
+    capture_id: "real-call-001",
+    recorded_at: "2026-07-05T15:45:00Z",
+    audio_source_uri: "artifacts/local-sip-real-call-001.wav",
+    noise_profile: "speakerphone fan noise",
+    scenario: "seeded caller with real local SIP noise",
+    runtime_host: "local-rtc-asr-host",
+    baseline_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.14,
+      endpointing_stability: "acceptable",
+      barge_in_risk: "medium",
+    },
+    enhanced_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.08,
+      endpointing_stability: "stable",
+      barge_in_risk: "low",
+      added_turn_latency_ms_p95: 19,
+      cpu_percent_p95: 44,
+      cpu_cost_estimate: "medium",
+    },
+    latency_setting_ms: 12.5,
+  });
+
+  assert.equal(validation.manifestOk, false);
+  assert.deepEqual(validation.missingFields, ["capture_id.real_noisy_local_sip_required"]);
+  assert.equal(validation.metric, undefined);
+  assert.equal(validation.evaluation, undefined);
+});
+
 test("speech enhancement capture replay manifest names missing fields", () => {
   const validation = validateSpeechEnhancementCaptureReplayManifest({
     capture_id: "real-noisy-local-sip-002",
