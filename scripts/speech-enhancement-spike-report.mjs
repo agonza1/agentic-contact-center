@@ -27,6 +27,7 @@ function normalizeCaptureReplayMetric(payload) {
     "audio_source_uri",
     "noise_profile",
     "scenario",
+    "runtime_host",
     "baseline_rtc_asr.transcript",
     "baseline_rtc_asr.word_error_rate_estimate",
     "baseline_rtc_asr.endpointing_stability",
@@ -36,6 +37,7 @@ function normalizeCaptureReplayMetric(payload) {
     "enhanced_rtc_asr.endpointing_stability",
     "enhanced_rtc_asr.barge_in_risk",
     "enhanced_rtc_asr.added_turn_latency_ms_p95",
+    "enhanced_rtc_asr.cpu_percent_p95",
     "enhanced_rtc_asr.cpu_cost_estimate",
   ];
   for (const fieldPath of requiredFields) {
@@ -50,6 +52,7 @@ function normalizeCaptureReplayMetric(payload) {
   assert.equal(typeof payload.audio_source_uri, "string", "audio_source_uri must be a string");
   assert.equal(typeof payload.noise_profile, "string", "noise_profile must be a string");
   assert.equal(typeof payload.scenario, "string", "scenario must be a string");
+  assert.equal(typeof payload.runtime_host, "string", "runtime_host must be a string");
 
   const allowedStability = new Set(["unstable", "acceptable", "stable"]);
   const allowedRisk = new Set(["low", "medium", "high"]);
@@ -88,6 +91,12 @@ function normalizeCaptureReplayMetric(payload) {
     "enhanced_rtc_asr.added_turn_latency_ms_p95 must be a non-negative number",
   );
   assert.ok(
+    Number.isFinite(payload.enhanced_rtc_asr.cpu_percent_p95) &&
+      payload.enhanced_rtc_asr.cpu_percent_p95 >= 0 &&
+      payload.enhanced_rtc_asr.cpu_percent_p95 <= 100,
+    "enhanced_rtc_asr.cpu_percent_p95 must be a number between 0 and 100",
+  );
+  assert.ok(
     payload.enhancement_latency_ms === undefined || Number.isFinite(payload.enhancement_latency_ms),
     "enhancement_latency_ms must be a number when provided",
   );
@@ -99,6 +108,7 @@ function normalizeCaptureReplayMetric(payload) {
   return {
     captureId: payload.capture_id,
     scenario: payload.scenario,
+    runtimeHost: payload.runtime_host,
     baseline: {
       transcript: payload.baseline_rtc_asr.transcript,
       wordErrorRateEstimate: payload.baseline_rtc_asr.word_error_rate_estimate,
@@ -111,6 +121,7 @@ function normalizeCaptureReplayMetric(payload) {
       endpointingStability: payload.enhanced_rtc_asr.endpointing_stability,
       bargeInRisk: payload.enhanced_rtc_asr.barge_in_risk,
       addedTurnLatencyMsP95: payload.enhanced_rtc_asr.added_turn_latency_ms_p95,
+      cpuPercentP95: payload.enhanced_rtc_asr.cpu_percent_p95,
     },
     latencySettingMs: payload.enhancement_latency_ms ?? 12.5,
     cpuCostEstimate: payload.enhanced_rtc_asr.cpu_cost_estimate,

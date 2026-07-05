@@ -72,6 +72,8 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       "artifacts/speech-enhancement-real-capture-replay.json",
     );
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("audio_source_uri"));
+    assert.ok(artifact.report.captureReplayContract.requiredFields.includes("runtime_host"));
+    assert.ok(artifact.report.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.cpu_percent_p95"));
     assert.equal(artifact.reviewGate.issueCloseReady, false);
     assert.ok(artifact.reviewGate.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
     assert.ok(artifact.reviewGate.nextEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));
@@ -138,6 +140,7 @@ test("speech enhancement spike report rejects incomplete real capture replay evi
             endpointing_stability: "stable",
             barge_in_risk: "low",
             added_turn_latency_ms_p95: 18,
+            cpu_percent_p95: 42,
             cpu_cost_estimate: "medium",
           },
         },
@@ -178,6 +181,7 @@ test("speech enhancement spike report rejects non-numeric real capture replay me
           noise_profile: "cafe_noise",
           scenario: "local SIP caller with malformed WER metric",
           enhancement_latency_ms: 12.5,
+          runtime_host: "local-rtc-asr-host",
           baseline_rtc_asr: {
             transcript: "I need to cansel my policy",
             word_error_rate_estimate: "0.18",
@@ -190,6 +194,7 @@ test("speech enhancement spike report rejects non-numeric real capture replay me
             endpointing_stability: "stable",
             barge_in_risk: "low",
             added_turn_latency_ms_p95: 18,
+            cpu_percent_p95: 42,
             cpu_cost_estimate: "medium",
           },
         },
@@ -214,6 +219,61 @@ test("speech enhancement spike report rejects non-numeric real capture replay me
   }
 });
 
+
+test("speech enhancement spike report rejects malformed CPU p95 evidence", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-invalid-cpu-"));
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+  const captureReplayPath = path.join(tempDir, "real-capture-replay.json");
+
+  try {
+    await writeFile(
+      captureReplayPath,
+      JSON.stringify(
+        {
+          capture_id: "real-noisy-local-sip-005",
+          recorded_at: "2026-07-05T08:30:00.000Z",
+          audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-005.wav",
+          noise_profile: "cafe_noise",
+          scenario: "local SIP caller with malformed CPU metric",
+          enhancement_latency_ms: 12.5,
+          runtime_host: "local-rtc-asr-host",
+          baseline_rtc_asr: {
+            transcript: "I need to cansel my policy",
+            word_error_rate_estimate: 0.18,
+            endpointing_stability: "acceptable",
+            barge_in_risk: "medium",
+          },
+          enhanced_rtc_asr: {
+            transcript: "I need to cancel my policy",
+            word_error_rate_estimate: 0.06,
+            endpointing_stability: "stable",
+            barge_in_risk: "low",
+            added_turn_latency_ms_p95: 18,
+            cpu_percent_p95: 130,
+            cpu_cost_estimate: "medium",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay",
+      captureReplayPath,
+    ]);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /enhanced_rtc_asr\.cpu_percent_p95 must be a number between 0 and 100/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("speech enhancement spike report keeps over-budget real capture replay evidence review-blocked", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-overbudget-"));
   const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
@@ -230,6 +290,7 @@ test("speech enhancement spike report keeps over-budget real capture replay evid
           noise_profile: "cafe_noise",
           scenario: "local SIP caller with improved transcript but too much added latency",
           enhancement_latency_ms: 12.5,
+          runtime_host: "local-rtc-asr-host",
           baseline_rtc_asr: {
             transcript: "I need to cansel my policy",
             word_error_rate_estimate: 0.18,
@@ -242,6 +303,7 @@ test("speech enhancement spike report keeps over-budget real capture replay evid
             endpointing_stability: "stable",
             barge_in_risk: "low",
             added_turn_latency_ms_p95: 31,
+            cpu_percent_p95: 42,
             cpu_cost_estimate: "medium",
           },
         },
@@ -297,6 +359,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
           noise_profile: "cafe_noise",
           scenario: "local SIP caller with cafe noise",
           enhancement_latency_ms: 12.5,
+          runtime_host: "local-rtc-asr-host",
           baseline_rtc_asr: {
             transcript: "I need to cansel my policy",
             word_error_rate_estimate: 0.18,
@@ -309,6 +372,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
             endpointing_stability: "stable",
             barge_in_risk: "low",
             added_turn_latency_ms_p95: 18,
+            cpu_percent_p95: 42,
             cpu_cost_estimate: "medium",
           },
         },
