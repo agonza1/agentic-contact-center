@@ -63,6 +63,14 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
         realCaptureReplayIds: string[];
         passingRealCaptureReplayIds: string[];
         blockedRealCaptureReplayIds: string[];
+        realCaptureReplayEvidence: Array<{
+          captureId: string;
+          recordedAt: string | null;
+          audioSourceUri: string | null;
+          audioSha256: string | null;
+          noiseProfile: string | null;
+          runtimeHost: string | null;
+        }>;
       };
     };
     const latestArtifact = JSON.parse(await readFile(latestOutputPath, "utf8"));
@@ -92,6 +100,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.deepEqual(artifact.reviewGate.realCaptureReplayIds, []);
     assert.deepEqual(artifact.reviewGate.passingRealCaptureReplayIds, []);
     assert.deepEqual(artifact.reviewGate.blockedRealCaptureReplayIds, []);
+    assert.deepEqual(artifact.reviewGate.realCaptureReplayEvidence, []);
     assert.deepEqual(latestArtifact.report, artifact.report);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -353,6 +362,14 @@ test("speech enhancement spike report keeps over-budget real capture replay evid
         realCaptureReplayIds: string[];
         passingRealCaptureReplayIds: string[];
         blockedRealCaptureReplayIds: string[];
+        realCaptureReplayEvidence: Array<{
+          captureId: string;
+          recordedAt: string | null;
+          audioSourceUri: string | null;
+          audioSha256: string | null;
+          noiseProfile: string | null;
+          runtimeHost: string | null;
+        }>;
       };
     };
     const decision = artifact.report.replayDecisions.at(-1);
@@ -457,6 +474,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
           capture_id: "real-noisy-local-sip-001",
           recorded_at: "2026-07-05T06:40:00.000Z",
           audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-001.wav",
+          audio_sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           noise_profile: "cafe_noise",
           scenario: "local SIP caller with cafe noise",
           latency_setting_ms: 12.5,
@@ -502,7 +520,16 @@ test("speech enhancement spike report accepts passing real capture replay eviden
       report: {
         acceptanceReadiness: { noisyReplay: string; cpuRuntimeCost: string };
         replayCoverage: { realNoisyCaptureReplayCount: number; liveDemoGate: string; missingEvidence: string[] };
-        replayMetrics: Array<{ captureId: string; captureEvidence?: { recordedAt: string; audioSourceUri: string; noiseProfile: string; runtimeHost: string } }>;
+        replayMetrics: Array<{
+          captureId: string;
+          captureEvidence?: {
+            recordedAt: string;
+            audioSourceUri: string;
+            audioSha256?: string;
+            noiseProfile: string;
+            runtimeHost: string;
+          };
+        }>;
         replayDecisions: Array<{ captureId: string; enableForLiveDemo: boolean }>;
       };
       reviewGate: {
@@ -514,6 +541,14 @@ test("speech enhancement spike report accepts passing real capture replay eviden
         realCaptureReplayIds: string[];
         passingRealCaptureReplayIds: string[];
         blockedRealCaptureReplayIds: string[];
+        realCaptureReplayEvidence: Array<{
+          captureId: string;
+          recordedAt: string | null;
+          audioSourceUri: string | null;
+          audioSha256: string | null;
+          noiseProfile: string | null;
+          runtimeHost: string | null;
+        }>;
       };
     };
 
@@ -531,6 +566,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.deepEqual(artifact.report.replayMetrics.at(-1)?.captureEvidence, {
       recordedAt: "2026-07-05T06:40:00.000Z",
       audioSourceUri: "artifacts/local-sip/real-noisy-local-sip-001.wav",
+      audioSha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       noiseProfile: "cafe_noise",
       runtimeHost: "local-rtc-asr-host",
     });
@@ -539,6 +575,16 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.deepEqual(artifact.reviewGate.realCaptureReplayIds, ["real-noisy-local-sip-001"]);
     assert.deepEqual(artifact.reviewGate.passingRealCaptureReplayIds, ["real-noisy-local-sip-001"]);
     assert.deepEqual(artifact.reviewGate.blockedRealCaptureReplayIds, []);
+    assert.deepEqual(artifact.reviewGate.realCaptureReplayEvidence, [
+      {
+        captureId: "real-noisy-local-sip-001",
+        recordedAt: "2026-07-05T06:40:00.000Z",
+        audioSourceUri: "artifacts/local-sip/real-noisy-local-sip-001.wav",
+        audioSha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        noiseProfile: "cafe_noise",
+        runtimeHost: "local-rtc-asr-host",
+      },
+    ]);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

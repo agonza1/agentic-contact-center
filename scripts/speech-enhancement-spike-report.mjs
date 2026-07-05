@@ -110,6 +110,7 @@ async function writeJson(filePath, payload) {
 function buildReviewGate(report) {
   const missingEvidence = new Set(report.replayCoverage.missingEvidence);
   const hasRealCaptureReplay = report.replayCoverage.realNoisyCaptureReplayCount > 0;
+  const realCaptureReplayMetrics = report.replayMetrics.filter((metric) => metric.captureId.startsWith("real-"));
   const realCaptureReplayDecisions = report.replayDecisions.filter((decision) => decision.captureId.startsWith("real-"));
   const issueCloseReady = hasRealCaptureReplay && report.acceptanceReadiness.remainingBeforeIssueClose.length === 0;
   const checks = {
@@ -146,6 +147,14 @@ function buildReviewGate(report) {
     blockedRealCaptureReplayIds: realCaptureReplayDecisions
       .filter((decision) => !decision.enableForLiveDemo)
       .map((decision) => decision.captureId),
+    realCaptureReplayEvidence: realCaptureReplayMetrics.map((metric) => ({
+      captureId: metric.captureId,
+      recordedAt: metric.captureEvidence?.recordedAt ?? null,
+      audioSourceUri: metric.captureEvidence?.audioSourceUri ?? null,
+      audioSha256: metric.captureEvidence?.audioSha256 ?? null,
+      noiseProfile: metric.captureEvidence?.noiseProfile ?? null,
+      runtimeHost: metric.captureEvidence?.runtimeHost ?? null,
+    })),
   };
 }
 
