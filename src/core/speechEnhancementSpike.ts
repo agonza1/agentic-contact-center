@@ -45,6 +45,12 @@ export interface SpeechEnhancementReplayDecision {
   reasons: string[];
 }
 
+export interface SpeechEnhancementReplayEvaluation {
+  issueCloseReady: boolean;
+  failingEvidence: string[];
+  reasons: string[];
+}
+
 export interface SpeechEnhancementReplayCoverage {
   syntheticNoisyReplayCount: number;
   realNoisyCaptureReplayCount: number;
@@ -140,6 +146,35 @@ function isBargeInRiskNoWorse(
   return bargeInRiskRank.get(enhanced)! <= bargeInRiskRank.get(baseline)!;
 }
 
+export function evaluateSpeechEnhancementReplayMetric(
+  metric: SpeechEnhancementReplayMetric,
+): SpeechEnhancementReplayEvaluation {
+  const wordErrorImproved = metric.enhanced.wordErrorRateEstimate < metric.baseline.wordErrorRateEstimate;
+  const endpointingOk = isEndpointingNoWorse(metric.enhanced.endpointingStability, metric.baseline.endpointingStability);
+  const bargeInOk = isBargeInRiskNoWorse(metric.enhanced.bargeInRisk, metric.baseline.bargeInRisk);
+  const latencyOk = metric.latencySettingMs === 12.5 && metric.enhanced.addedTurnLatencyMsP95 <= 25;
+  const cpuOk = metric.cpuCostEstimate !== "high" && metric.enhanced.cpuPercentP95 <= 80;
+  const failingEvidence = [
+    wordErrorImproved ? null : "enhanced_noisy_replay_wer_improvement",
+    endpointingOk ? null : "enhanced_endpointing_no_regression",
+    bargeInOk ? null : "enhanced_barge_in_no_regression",
+    latencyOk ? null : "measured_12_5_ms_added_turn_latency_under_25_ms_p95",
+    cpuOk ? null : "measured_cpu_cost_on_selected_rtc_asr_host_under_80_percent_p95",
+  ].filter((evidence): evidence is string => evidence !== null);
+
+  return {
+    issueCloseReady: failingEvidence.length === 0,
+    failingEvidence,
+    reasons: [
+      wordErrorImproved ? "wer_improved" : "wer_not_improved",
+      endpointingOk ? "endpointing_stable" : "endpointing_not_stable",
+      bargeInOk ? "barge_in_risk_low" : "barge_in_risk_not_low",
+      latencyOk ? "latency_within_budget" : "latency_over_budget",
+      cpuOk ? "cpu_cost_allowed" : "cpu_cost_high",
+    ],
+  };
+}
+
 export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeReport {
   const candidates: SpeechEnhancementLatencyCandidate[] = [
     {
@@ -196,23 +231,13 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
   ];
 
   const replayDecisions = replayMetrics.map((metric): SpeechEnhancementReplayDecision => {
-    const wordErrorImproved = metric.enhanced.wordErrorRateEstimate < metric.baseline.wordErrorRateEstimate;
-    const endpointingOk = isEndpointingNoWorse(metric.enhanced.endpointingStability, metric.baseline.endpointingStability);
-    const bargeInOk = isBargeInRiskNoWorse(metric.enhanced.bargeInRisk, metric.baseline.bargeInRisk);
-    const latencyOk = metric.latencySettingMs === 12.5 && metric.enhanced.addedTurnLatencyMsP95 <= 25;
-    const cpuOk = metric.cpuCostEstimate !== "high" && metric.enhanced.cpuPercentP95 <= 80;
+    const evaluation = evaluateSpeechEnhancementReplayMetric(metric);
 
     return {
       captureId: metric.captureId,
       latencySettingMs: metric.latencySettingMs,
-      enableForLiveDemo: wordErrorImproved && endpointingOk && bargeInOk && latencyOk && cpuOk,
-      reasons: [
-        wordErrorImproved ? "wer_improved" : "wer_not_improved",
-        endpointingOk ? "endpointing_stable" : "endpointing_not_stable",
-        bargeInOk ? "barge_in_risk_low" : "barge_in_risk_not_low",
-        latencyOk ? "latency_within_budget" : "latency_over_budget",
-        cpuOk ? "cpu_cost_allowed" : "cpu_cost_high",
-      ],
+      enableForLiveDemo: evaluation.issueCloseReady,
+      reasons: evaluation.reasons,
     };
   });
 
