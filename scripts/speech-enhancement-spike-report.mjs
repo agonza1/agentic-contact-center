@@ -102,9 +102,67 @@ function resolveLatestOutputPath() {
   return path.resolve(process.cwd(), "artifacts", "speech-enhancement-spike-latest.json");
 }
 
+function resolveMarkdownOutputPath(outputPath) {
+  const explicitMarkdownPath = resolveArgPath("--markdown-out");
+  if (explicitMarkdownPath) {
+    return explicitMarkdownPath;
+  }
+
+  if (hasArg("--out")) {
+    return undefined;
+  }
+
+  return outputPath.replace(/\.json$/u, ".md");
+}
+
 async function writeJson(filePath, payload) {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+}
+
+async function writeText(filePath, payload) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, payload, "utf8");
+}
+
+function buildMarkdownReport(artifact) {
+  const { report, reviewGate } = artifact;
+  const recommended = report.decision.recommendedLatencyMs;
+  const blockers = reviewGate.blockers.length > 0 ? reviewGate.blockers : ["None. Issue #97 close gate is ready."];
+  const nextEvidence = reviewGate.nextEvidence.length > 0 ? reviewGate.nextEvidence : ["None."];
+
+  return [
+    "# Speech Enhancement Spike Report",
+    "",
+    `Generated: ${artifact.generatedAt}`,
+    `Issue: ${artifact.handoff.issueUrl}`,
+    `Decision: ${report.decision.status} at ${recommended} ms`,
+    `Review gate: ${reviewGate.issueCloseReady ? "close-ready" : "blocked"}`,
+    "",
+    "## Recommendation",
+    "",
+    report.decision.rationale,
+    "",
+    "## Evidence Coverage",
+    "",
+    `- Synthetic noisy replays: ${report.replayCoverage.syntheticNoisyReplayCount}`,
+    `- Real noisy capture replays: ${report.replayCoverage.realNoisyCaptureReplayCount}`,
+    `- Baseline/enhanced pairs: ${report.replayCoverage.baselineEnhancedPairs}`,
+    `- Live demo gate: ${report.replayCoverage.liveDemoGate}`,
+    "",
+    "## Blockers",
+    "",
+    ...blockers.map((blocker) => `- ${blocker}`),
+    "",
+    "## Next Evidence",
+    "",
+    ...nextEvidence.map((evidence) => `- ${evidence}`),
+    "",
+    "## Validation",
+    "",
+    `Run: ${artifact.handoff.validationCommand}`,
+    "",
+  ].join("\n");
 }
 
 function buildReviewGate(report) {
@@ -161,6 +219,7 @@ function buildReviewGate(report) {
 async function main() {
   const outputPath = resolveOutputPath();
   const latestOutputPath = resolveLatestOutputPath();
+  const markdownOutputPath = resolveMarkdownOutputPath(outputPath);
   const requireCloseReady = hasArg("--require-close-ready");
   const captureReplayMetric = await loadCaptureReplayMetric();
   const report = applyCaptureReplay(buildSpeechEnhancementSpikeReport(), captureReplayMetric);
@@ -189,11 +248,15 @@ async function main() {
   if (latestOutputPath) {
     await writeJson(latestOutputPath, artifact);
   }
+  if (markdownOutputPath) {
+    await writeText(markdownOutputPath, buildMarkdownReport(artifact));
+  }
 
   const summary = {
     ok: !requireCloseReady || artifact.reviewGate.issueCloseReady,
     outputPath,
     latestOutputPath: latestOutputPath ?? null,
+    markdownOutputPath: markdownOutputPath ?? null,
     issueCloseReady: artifact.reviewGate.issueCloseReady,
     blockers: artifact.reviewGate.blockers,
   };

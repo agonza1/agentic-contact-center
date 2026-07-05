@@ -28,6 +28,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
   const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-"));
   const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
   const latestOutputPath = path.join(tempDir, "speech-enhancement-spike-latest.json");
+  const markdownOutputPath = path.join(tempDir, "speech-enhancement-spike.md");
 
   try {
     const result = await runNode([
@@ -36,13 +37,21 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       outputPath,
       "--latest-out",
       latestOutputPath,
+      "--markdown-out",
+      markdownOutputPath,
     ]);
 
     assert.equal(result.exitCode, 0, result.stderr);
-    const summary = JSON.parse(result.stdout) as { ok: boolean; outputPath: string; latestOutputPath: string };
+    const summary = JSON.parse(result.stdout) as {
+      ok: boolean;
+      outputPath: string;
+      latestOutputPath: string;
+      markdownOutputPath: string;
+    };
     assert.equal(summary.ok, true);
     assert.equal(summary.outputPath, outputPath);
     assert.equal(summary.latestOutputPath, latestOutputPath);
+    assert.equal(summary.markdownOutputPath, markdownOutputPath);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       schemaVersion: number;
@@ -74,6 +83,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       };
     };
     const latestArtifact = JSON.parse(await readFile(latestOutputPath, "utf8"));
+    const markdown = await readFile(markdownOutputPath, "utf8");
 
     assert.equal(artifact.schemaVersion, 1);
     assert.equal(artifact.artifactType, "speech_enhancement_spike_report");
@@ -102,6 +112,11 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.deepEqual(artifact.reviewGate.blockedRealCaptureReplayIds, []);
     assert.deepEqual(artifact.reviewGate.realCaptureReplayEvidence, []);
     assert.deepEqual(latestArtifact.report, artifact.report);
+    assert.match(markdown, /# Speech Enhancement Spike Report/);
+    assert.match(markdown, /Decision: go_for_feature_flagged_spike at 12\.5 ms/);
+    assert.match(markdown, /Review gate: blocked/);
+    assert.match(markdown, /Real noisy capture replays: 0/);
+    assert.match(markdown, /Run: npm run proof:speech-enhancement -- --require-close-ready/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -126,11 +141,13 @@ test("speech enhancement spike report script can enforce issue-close readiness",
       blockers: string[];
       outputPath: string;
       latestOutputPath: string | null;
+      markdownOutputPath: string | null;
     };
     assert.equal(summary.ok, false);
     assert.equal(summary.issueCloseReady, false);
     assert.equal(summary.outputPath, outputPath);
     assert.equal(summary.latestOutputPath, null);
+    assert.equal(summary.markdownOutputPath, null);
     assert.ok(summary.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as { reviewGate: { issueCloseReady: boolean } };
