@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildSpeechEnhancementSpikeReport, evaluateSpeechEnhancementReplayMetric } from "../src/core/speechEnhancementSpike";
+import {
+  buildSpeechEnhancementSpikeReport,
+  evaluateSpeechEnhancementReplayMetric,
+  validateSpeechEnhancementCaptureReplayManifest,
+} from "../src/core/speechEnhancementSpike";
 
 test("speech enhancement replay evaluation reports close-gate failures", () => {
   const report = buildSpeechEnhancementSpikeReport();
@@ -50,4 +54,71 @@ test("speech enhancement replay evaluation reports close-gate failures", () => {
       "cpu_cost_high",
     ],
   });
+});
+
+
+test("speech enhancement capture replay manifest validates real evidence shape", () => {
+  const validation = validateSpeechEnhancementCaptureReplayManifest({
+    capture_id: "real-noisy-local-sip-001",
+    recorded_at: "2026-07-05T15:45:00Z",
+    audio_source_uri: "artifacts/local-sip-real-noisy-001.wav",
+    noise_profile: "speakerphone fan noise",
+    scenario: "seeded caller with real local SIP noise",
+    runtime_host: "local-rtc-asr-host",
+    baseline_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.14,
+      endpointing_stability: "acceptable",
+      barge_in_risk: "medium",
+    },
+    enhanced_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.08,
+      endpointing_stability: "stable",
+      barge_in_risk: "low",
+      added_turn_latency_ms_p95: 19,
+      cpu_percent_p95: 44,
+      cpu_cost_estimate: "medium",
+    },
+    latency_setting_ms: 12.5,
+  });
+
+  assert.equal(validation.manifestOk, true);
+  assert.deepEqual(validation.missingFields, []);
+  assert.equal(validation.metric?.captureId, "real-noisy-local-sip-001");
+  assert.equal(validation.metric?.enhanced.addedTurnLatencyMsP95, 19);
+  assert.equal(validation.evaluation?.issueCloseReady, true);
+});
+
+test("speech enhancement capture replay manifest names missing fields", () => {
+  const validation = validateSpeechEnhancementCaptureReplayManifest({
+    capture_id: "real-noisy-local-sip-002",
+    recorded_at: "2026-07-05T15:45:00Z",
+    audio_source_uri: "artifacts/local-sip-real-noisy-002.wav",
+    noise_profile: "speakerphone fan noise",
+    scenario: "seeded caller with real local SIP noise",
+    runtime_host: "local-rtc-asr-host",
+    baseline_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.14,
+      endpointing_stability: "acceptable",
+      barge_in_risk: "medium",
+    },
+    enhanced_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.08,
+      endpointing_stability: "stable",
+      barge_in_risk: "low",
+      added_turn_latency_ms_p95: 19,
+      cpu_cost_estimate: "medium",
+    },
+  });
+
+  assert.equal(validation.manifestOk, false);
+  assert.deepEqual(validation.missingFields, [
+    "latency_setting_ms",
+    "enhanced_rtc_asr.cpu_percent_p95",
+  ]);
+  assert.equal(validation.metric, undefined);
+  assert.equal(validation.evaluation, undefined);
 });
