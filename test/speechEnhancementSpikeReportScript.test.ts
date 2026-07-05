@@ -162,6 +162,72 @@ test("speech enhancement spike report rejects incomplete real capture replay evi
   }
 });
 
+test("speech enhancement spike report keeps over-budget real capture replay evidence review-blocked", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-overbudget-"));
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+  const captureReplayPath = path.join(tempDir, "real-capture-replay.json");
+
+  try {
+    await writeFile(
+      captureReplayPath,
+      JSON.stringify(
+        {
+          capture_id: "real-noisy-local-sip-003",
+          recorded_at: "2026-07-05T06:45:00.000Z",
+          audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-003.wav",
+          noise_profile: "cafe_noise",
+          scenario: "local SIP caller with improved transcript but too much added latency",
+          enhancement_latency_ms: 12.5,
+          baseline_rtc_asr: {
+            transcript: "I need to cansel my policy",
+            word_error_rate_estimate: 0.18,
+            endpointing_stability: "acceptable",
+            barge_in_risk: "medium",
+          },
+          enhanced_rtc_asr: {
+            transcript: "I need to cancel my policy",
+            word_error_rate_estimate: 0.06,
+            endpointing_stability: "stable",
+            barge_in_risk: "low",
+            added_turn_latency_ms_p95: 31,
+            cpu_cost_estimate: "medium",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay",
+      captureReplayPath,
+      "--require-close-ready",
+    ]);
+
+    assert.equal(result.exitCode, 1);
+    const summary = JSON.parse(result.stdout) as { ok: boolean; issueCloseReady: boolean; blockers: string[] };
+    assert.equal(summary.ok, false);
+    assert.equal(summary.issueCloseReady, false);
+    assert.ok(summary.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
+
+    const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
+      report: { replayDecisions: Array<{ captureId: string; enableForLiveDemo: boolean; reasons: string[] }> };
+      reviewGate: { issueCloseReady: boolean };
+    };
+    const decision = artifact.report.replayDecisions.at(-1);
+    assert.equal(artifact.reviewGate.issueCloseReady, false);
+    assert.equal(decision?.captureId, "real-noisy-local-sip-003");
+    assert.equal(decision?.enableForLiveDemo, false);
+    assert.ok(decision?.reasons.includes("latency_over_budget"));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("speech enhancement spike report accepts passing real capture replay evidence", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-real-"));
   const outputPath = path.join(tempDir, "speech-enhancement-spike.json");

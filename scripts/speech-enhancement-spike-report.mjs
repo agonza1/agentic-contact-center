@@ -59,6 +59,7 @@ function normalizeCaptureReplayMetric(payload) {
       wordErrorRateEstimate: payload.enhanced_rtc_asr.word_error_rate_estimate,
       endpointingStability: payload.enhanced_rtc_asr.endpointing_stability,
       bargeInRisk: payload.enhanced_rtc_asr.barge_in_risk,
+      addedTurnLatencyMsP95: payload.enhanced_rtc_asr.added_turn_latency_ms_p95,
     },
     latencySettingMs: payload.enhancement_latency_ms ?? 12.5,
     cpuCostEstimate: payload.enhanced_rtc_asr.cpu_cost_estimate,
@@ -83,7 +84,7 @@ function applyCaptureReplay(report, metric) {
   const wordErrorImproved = metric.enhanced.wordErrorRateEstimate < metric.baseline.wordErrorRateEstimate;
   const endpointingOk = metric.enhanced.endpointingStability === "stable" || metric.enhanced.endpointingStability === metric.baseline.endpointingStability;
   const bargeInOk = metric.enhanced.bargeInRisk === "low" || metric.enhanced.bargeInRisk === metric.baseline.bargeInRisk;
-  const latencyOk = metric.latencySettingMs === 12.5;
+  const latencyOk = metric.latencySettingMs === 12.5 && metric.enhanced.addedTurnLatencyMsP95 <= 25;
   const cpuOk = metric.cpuCostEstimate !== "high";
   const issueCloseReady = wordErrorImproved && endpointingOk && bargeInOk && latencyOk && cpuOk;
 
