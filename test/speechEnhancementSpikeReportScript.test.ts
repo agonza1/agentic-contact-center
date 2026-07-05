@@ -189,7 +189,7 @@ test("speech enhancement spike report rejects non-numeric real capture replay me
           audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-004.wav",
           noise_profile: "cafe_noise",
           scenario: "local SIP caller with malformed WER metric",
-          enhancement_latency_ms: 12.5,
+          latency_setting_ms: 12.5,
           runtime_host: "local-rtc-asr-host",
           baseline_rtc_asr: {
             transcript: "I need to cansel my policy",
@@ -244,7 +244,7 @@ test("speech enhancement spike report rejects malformed CPU p95 evidence", async
           audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-005.wav",
           noise_profile: "cafe_noise",
           scenario: "local SIP caller with malformed CPU metric",
-          enhancement_latency_ms: 12.5,
+          latency_setting_ms: 12.5,
           runtime_host: "local-rtc-asr-host",
           baseline_rtc_asr: {
             transcript: "I need to cansel my policy",
@@ -298,7 +298,7 @@ test("speech enhancement spike report keeps over-budget real capture replay evid
           audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-003.wav",
           noise_profile: "cafe_noise",
           scenario: "local SIP caller with improved transcript but too much added latency",
-          enhancement_latency_ms: 12.5,
+          latency_setting_ms: 12.5,
           runtime_host: "local-rtc-asr-host",
           baseline_rtc_asr: {
             transcript: "I need to cansel my policy",
@@ -374,7 +374,7 @@ test("speech enhancement spike report keeps high measured CPU p95 review-blocked
           audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-007.wav",
           noise_profile: "cafe_noise",
           scenario: "local SIP caller with improved transcript but high CPU p95",
-          enhancement_latency_ms: 12.5,
+          latency_setting_ms: 12.5,
           runtime_host: "local-rtc-asr-host",
           baseline_rtc_asr: {
             transcript: "I need to cansel my policy",
@@ -447,7 +447,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
           audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-001.wav",
           noise_profile: "cafe_noise",
           scenario: "local SIP caller with cafe noise",
-          enhancement_latency_ms: 12.5,
+          latency_setting_ms: 12.5,
           runtime_host: "local-rtc-asr-host",
           baseline_rtc_asr: {
             transcript: "I need to cansel my policy",
@@ -532,7 +532,7 @@ test("speech enhancement spike report accepts no-worse endpointing and barge-in 
           audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-006.wav",
           noise_profile: "cafe_noise",
           scenario: "local SIP caller improves from unstable endpointing and high barge-in risk",
-          enhancement_latency_ms: 12.5,
+          latency_setting_ms: 12.5,
           runtime_host: "local-rtc-asr-host",
           baseline_rtc_asr: {
             transcript: "I need to cansel my policy",
