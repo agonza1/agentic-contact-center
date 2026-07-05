@@ -174,7 +174,7 @@ test("speech enhancement spike report rejects incomplete real capture replay evi
     ]);
 
     assert.equal(result.exitCode, 1);
-    assert.match(result.stderr, /Missing capture replay field: recorded_at/);
+    assert.match(result.stderr, /Invalid capture replay manifest: .*recorded_at/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -228,7 +228,7 @@ test("speech enhancement spike report rejects non-numeric real capture replay me
     ]);
 
     assert.equal(result.exitCode, 1);
-    assert.match(result.stderr, /baseline_rtc_asr\.word_error_rate_estimate must be a number between 0 and 1/);
+    assert.match(result.stderr, /Invalid capture replay manifest: .*baseline_rtc_asr\.word_error_rate_estimate/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -283,7 +283,7 @@ test("speech enhancement spike report rejects malformed CPU p95 evidence", async
     ]);
 
     assert.equal(result.exitCode, 1);
-    assert.match(result.stderr, /enhanced_rtc_asr\.cpu_percent_p95 must be a number between 0 and 100/);
+    assert.match(result.stderr, /Invalid capture replay manifest: .*enhanced_rtc_asr\.cpu_percent_p95/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

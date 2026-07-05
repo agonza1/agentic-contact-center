@@ -231,6 +231,9 @@ export function validateSpeechEnhancementCaptureReplayManifest(
       missingFields.push(field);
     }
   }
+  if (hasStringField(manifest, "capture_id") && !(manifest.capture_id as string).startsWith("real-")) {
+    missingFields.push("capture_id.real_noisy_local_sip_required");
+  }
   if (!hasParseableIsoStringField(manifest, "recorded_at")) {
     missingFields.push("recorded_at");
   }
