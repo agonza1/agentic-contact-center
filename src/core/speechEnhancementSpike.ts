@@ -164,6 +164,36 @@ export interface SpeechEnhancementSpikeReport {
   validationPlan: string[];
 }
 
+export interface SpeechEnhancementReviewGate {
+  issueCloseReady: boolean;
+  checks: Record<
+    | "realNoisyCaptureReplay"
+    | "baselineEnhancedPairs"
+    | "wordErrorImproved"
+    | "endpointingNoRegression"
+    | "bargeInNoRegression"
+    | "addedLatencyP95"
+    | "cpuRuntimeCost",
+    boolean
+  >;
+  failureReasons: Record<string, string>;
+  blockers: string[];
+  nextEvidence: string[];
+  realCaptureReplayIds: string[];
+  passingRealCaptureReplayIds: string[];
+  blockedRealCaptureReplayIds: string[];
+  realCaptureReplayEvidence: Array<{
+    captureId: string;
+    recordedAt: string | null;
+    audioSourceUri: string | null;
+    audioSha256: string | null;
+    sourceManifestUri: string | null;
+    sourceManifestSha256: string | null;
+    noiseProfile: string | null;
+    runtimeHost: string | null;
+  }>;
+}
+
 const endpointingRank = new Map<SpeechEnhancementReplayMetric["baseline"]["endpointingStability"], number>([
   ["unstable", 0],
   ["acceptable", 1],
@@ -609,5 +639,61 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
       "Record added latency, transcript delta, endpointing behavior, barge-in behavior, and CPU cost.",
       "Keep npm run proof:realtime-shim green with enhancement disabled and enabled before live-demo use.",
     ],
+  };
+}
+
+export function buildSpeechEnhancementReviewGate(
+  report: SpeechEnhancementSpikeReport,
+): SpeechEnhancementReviewGate {
+  const missingEvidence = new Set(report.replayCoverage.missingEvidence);
+  const hasRealCaptureReplay = report.replayCoverage.realNoisyCaptureReplayCount > 0;
+  const realCaptureReplayMetrics = report.replayMetrics.filter((metric) => metric.captureId.startsWith("real-"));
+  const realCaptureReplayDecisions = report.replayDecisions.filter((decision) => decision.captureId.startsWith("real-"));
+  const issueCloseReady = hasRealCaptureReplay && report.acceptanceReadiness.remainingBeforeIssueClose.length === 0;
+  const checks = {
+    realNoisyCaptureReplay: hasRealCaptureReplay,
+    baselineEnhancedPairs: hasRealCaptureReplay && report.replayCoverage.baselineEnhancedPairs > 0,
+    wordErrorImproved: hasRealCaptureReplay && !missingEvidence.has("enhanced_noisy_replay_wer_improvement"),
+    endpointingNoRegression: hasRealCaptureReplay && !missingEvidence.has("enhanced_endpointing_no_regression"),
+    bargeInNoRegression: hasRealCaptureReplay && !missingEvidence.has("enhanced_barge_in_no_regression"),
+    addedLatencyP95: hasRealCaptureReplay && !missingEvidence.has("measured_12_5_ms_added_turn_latency_under_25_ms_p95"),
+    cpuRuntimeCost:
+      hasRealCaptureReplay && !missingEvidence.has("measured_cpu_cost_on_selected_rtc_asr_host_under_80_percent_p95"),
+  };
+  const failureReasons = Object.fromEntries(
+    Object.entries({
+      realNoisyCaptureReplay: "Attach one real noisy local SIP capture replay before closing Issue #97.",
+      baselineEnhancedPairs: "Attach paired baseline and enhanced rtc-asr replay metrics for the real capture.",
+      wordErrorImproved: "Enhanced noisy replay WER estimate must improve over baseline.",
+      endpointingNoRegression: "Enhanced endpointing must remain stable or no worse than baseline.",
+      bargeInNoRegression: "Enhanced barge-in risk must remain low or no worse than baseline.",
+      addedLatencyP95: "Measured 12.5 ms profile added turn latency must stay at or below 25 ms p95.",
+      cpuRuntimeCost: "Measured enhanced CPU p95 must stay at or below 80% on the selected rtc-asr host.",
+    }).filter(([check]) => !checks[check as keyof typeof checks]),
+  );
+
+  return {
+    issueCloseReady,
+    checks,
+    failureReasons,
+    blockers: report.acceptanceReadiness.remainingBeforeIssueClose,
+    nextEvidence: report.replayCoverage.missingEvidence,
+    realCaptureReplayIds: realCaptureReplayDecisions.map((decision) => decision.captureId),
+    passingRealCaptureReplayIds: realCaptureReplayDecisions
+      .filter((decision) => decision.enableForLiveDemo)
+      .map((decision) => decision.captureId),
+    blockedRealCaptureReplayIds: realCaptureReplayDecisions
+      .filter((decision) => !decision.enableForLiveDemo)
+      .map((decision) => decision.captureId),
+    realCaptureReplayEvidence: realCaptureReplayMetrics.map((metric) => ({
+      captureId: metric.captureId,
+      recordedAt: metric.captureEvidence?.recordedAt ?? null,
+      audioSourceUri: metric.captureEvidence?.audioSourceUri ?? null,
+      audioSha256: metric.captureEvidence?.audioSha256 ?? null,
+      sourceManifestUri: metric.captureEvidence?.sourceManifestUri ?? null,
+      sourceManifestSha256: metric.captureEvidence?.sourceManifestSha256 ?? null,
+      noiseProfile: metric.captureEvidence?.noiseProfile ?? null,
+      runtimeHost: metric.captureEvidence?.runtimeHost ?? null,
+    })),
   };
 }
