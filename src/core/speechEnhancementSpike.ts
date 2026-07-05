@@ -73,6 +73,38 @@ export interface SpeechEnhancementCaptureReplayContract {
   minimumPassingCriteria: string[];
 }
 
+export interface SpeechEnhancementCaptureReplayManifest {
+  capture_id: string;
+  recorded_at: string;
+  audio_source_uri: string;
+  noise_profile: string;
+  scenario: string;
+  runtime_host: string;
+  baseline_rtc_asr: {
+    transcript: string;
+    word_error_rate_estimate: number;
+    endpointing_stability: SpeechEnhancementReplayMetric["baseline"]["endpointingStability"];
+    barge_in_risk: SpeechEnhancementReplayMetric["baseline"]["bargeInRisk"];
+  };
+  enhanced_rtc_asr: {
+    transcript: string;
+    word_error_rate_estimate: number;
+    endpointing_stability: SpeechEnhancementReplayMetric["enhanced"]["endpointingStability"];
+    barge_in_risk: SpeechEnhancementReplayMetric["enhanced"]["bargeInRisk"];
+    added_turn_latency_ms_p95: number;
+    cpu_percent_p95: number;
+    cpu_cost_estimate: SpeechEnhancementReplayMetric["cpuCostEstimate"];
+  };
+  latency_setting_ms: number;
+}
+
+export interface SpeechEnhancementCaptureReplayValidation {
+  manifestOk: boolean;
+  missingFields: string[];
+  metric?: SpeechEnhancementReplayMetric;
+  evaluation?: SpeechEnhancementReplayEvaluation;
+}
+
 export interface SpeechEnhancementSpikeReport {
   ok: true;
   route: "/api/realtime-shim/speech-enhancement-spike";
@@ -144,6 +176,127 @@ function isBargeInRiskNoWorse(
   baseline: SpeechEnhancementReplayMetric["baseline"]["bargeInRisk"],
 ): boolean {
   return bargeInRiskRank.get(enhanced)! <= bargeInRiskRank.get(baseline)!;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasStringField(record: Record<string, unknown>, field: string): boolean {
+  return typeof record[field] === "string" && record[field].length > 0;
+}
+
+function hasNumberField(record: Record<string, unknown>, field: string): boolean {
+  return typeof record[field] === "number" && Number.isFinite(record[field]);
+}
+
+function hasEnumField<T extends string>(record: Record<string, unknown>, field: string, allowed: readonly T[]): boolean {
+  return typeof record[field] === "string" && allowed.includes(record[field] as T);
+}
+
+function getNestedRecord(record: Record<string, unknown>, field: string): Record<string, unknown> | undefined {
+  const value = record[field];
+  return isRecord(value) ? value : undefined;
+}
+
+const endpointingStabilityValues = ["unstable", "acceptable", "stable"] as const;
+const bargeInRiskValues = ["low", "medium", "high"] as const;
+const cpuCostEstimateValues = ["low", "medium", "high"] as const;
+
+export function validateSpeechEnhancementCaptureReplayManifest(
+  manifest: unknown,
+): SpeechEnhancementCaptureReplayValidation {
+  const missingFields: string[] = [];
+
+  if (!isRecord(manifest)) {
+    return { manifestOk: false, missingFields: ["manifest"] };
+  }
+
+  for (const field of ["capture_id", "recorded_at", "audio_source_uri", "noise_profile", "scenario", "runtime_host"]) {
+    if (!hasStringField(manifest, field)) {
+      missingFields.push(field);
+    }
+  }
+  if (!hasNumberField(manifest, "latency_setting_ms")) {
+    missingFields.push("latency_setting_ms");
+  }
+
+  const baseline = getNestedRecord(manifest, "baseline_rtc_asr");
+  const enhanced = getNestedRecord(manifest, "enhanced_rtc_asr");
+  if (!baseline) {
+    missingFields.push("baseline_rtc_asr");
+  }
+  if (!enhanced) {
+    missingFields.push("enhanced_rtc_asr");
+  }
+
+  if (baseline) {
+    if (!hasStringField(baseline, "transcript")) missingFields.push("baseline_rtc_asr.transcript");
+    if (!hasNumberField(baseline, "word_error_rate_estimate")) {
+      missingFields.push("baseline_rtc_asr.word_error_rate_estimate");
+    }
+    if (!hasEnumField(baseline, "endpointing_stability", endpointingStabilityValues)) {
+      missingFields.push("baseline_rtc_asr.endpointing_stability");
+    }
+    if (!hasEnumField(baseline, "barge_in_risk", bargeInRiskValues)) {
+      missingFields.push("baseline_rtc_asr.barge_in_risk");
+    }
+  }
+
+  if (enhanced) {
+    if (!hasStringField(enhanced, "transcript")) missingFields.push("enhanced_rtc_asr.transcript");
+    if (!hasNumberField(enhanced, "word_error_rate_estimate")) {
+      missingFields.push("enhanced_rtc_asr.word_error_rate_estimate");
+    }
+    if (!hasEnumField(enhanced, "endpointing_stability", endpointingStabilityValues)) {
+      missingFields.push("enhanced_rtc_asr.endpointing_stability");
+    }
+    if (!hasEnumField(enhanced, "barge_in_risk", bargeInRiskValues)) {
+      missingFields.push("enhanced_rtc_asr.barge_in_risk");
+    }
+    if (!hasNumberField(enhanced, "added_turn_latency_ms_p95")) {
+      missingFields.push("enhanced_rtc_asr.added_turn_latency_ms_p95");
+    }
+    if (!hasNumberField(enhanced, "cpu_percent_p95")) {
+      missingFields.push("enhanced_rtc_asr.cpu_percent_p95");
+    }
+    if (!hasEnumField(enhanced, "cpu_cost_estimate", cpuCostEstimateValues)) {
+      missingFields.push("enhanced_rtc_asr.cpu_cost_estimate");
+    }
+  }
+
+  if (missingFields.length > 0 || !baseline || !enhanced) {
+    return { manifestOk: false, missingFields };
+  }
+
+  const typedManifest = manifest as unknown as SpeechEnhancementCaptureReplayManifest;
+  const metric: SpeechEnhancementReplayMetric = {
+    captureId: typedManifest.capture_id,
+    scenario: typedManifest.scenario,
+    baseline: {
+      transcript: typedManifest.baseline_rtc_asr.transcript,
+      wordErrorRateEstimate: typedManifest.baseline_rtc_asr.word_error_rate_estimate,
+      endpointingStability: typedManifest.baseline_rtc_asr.endpointing_stability,
+      bargeInRisk: typedManifest.baseline_rtc_asr.barge_in_risk,
+    },
+    enhanced: {
+      transcript: typedManifest.enhanced_rtc_asr.transcript,
+      wordErrorRateEstimate: typedManifest.enhanced_rtc_asr.word_error_rate_estimate,
+      endpointingStability: typedManifest.enhanced_rtc_asr.endpointing_stability,
+      bargeInRisk: typedManifest.enhanced_rtc_asr.barge_in_risk,
+      addedTurnLatencyMsP95: typedManifest.enhanced_rtc_asr.added_turn_latency_ms_p95,
+      cpuPercentP95: typedManifest.enhanced_rtc_asr.cpu_percent_p95,
+    },
+    latencySettingMs: typedManifest.latency_setting_ms,
+    cpuCostEstimate: typedManifest.enhanced_rtc_asr.cpu_cost_estimate,
+  };
+
+  return {
+    manifestOk: true,
+    missingFields: [],
+    metric,
+    evaluation: evaluateSpeechEnhancementReplayMetric(metric),
+  };
 }
 
 export function evaluateSpeechEnhancementReplayMetric(
