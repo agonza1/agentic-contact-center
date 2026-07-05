@@ -204,6 +204,7 @@ test("speech enhancement spike report rejects incomplete real capture replay evi
 
     assert.equal(result.exitCode, 1);
     assert.match(result.stderr, /Invalid capture replay manifest: .*recorded_at/);
+    assert.match(result.stderr, /Invalid capture replay manifest: .*source_manifest_uri\.artifacts_relative_path_required/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -222,6 +223,7 @@ test("speech enhancement spike report rejects non-numeric real capture replay me
           capture_id: "real-noisy-local-sip-004",
           recorded_at: "2026-07-05T07:55:00.000Z",
           audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-004.wav",
+          source_manifest_uri: "artifacts/local-sip/proof-manifest-004.json",
           noise_profile: "cafe_noise",
           scenario: "local SIP caller with malformed WER metric",
           latency_setting_ms: 12.5,
@@ -277,6 +279,7 @@ test("speech enhancement spike report rejects malformed CPU p95 evidence", async
           capture_id: "real-noisy-local-sip-005",
           recorded_at: "2026-07-05T08:30:00.000Z",
           audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-005.wav",
+          source_manifest_uri: "artifacts/local-sip/proof-manifest-005.json",
           noise_profile: "cafe_noise",
           scenario: "local SIP caller with malformed CPU metric",
           latency_setting_ms: 12.5,
@@ -331,6 +334,7 @@ test("speech enhancement spike report keeps over-budget real capture replay evid
           capture_id: "real-noisy-local-sip-003",
           recorded_at: "2026-07-05T06:45:00.000Z",
           audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-003.wav",
+          source_manifest_uri: "artifacts/local-sip/proof-manifest-003.json",
           noise_profile: "cafe_noise",
           scenario: "local SIP caller with improved transcript but too much added latency",
           latency_setting_ms: 12.5,
@@ -423,6 +427,7 @@ test("speech enhancement spike report keeps high measured CPU p95 review-blocked
           capture_id: "real-noisy-local-sip-007",
           recorded_at: "2026-07-05T10:05:00.000Z",
           audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-007.wav",
+          source_manifest_uri: "artifacts/local-sip/proof-manifest-007.json",
           noise_profile: "cafe_noise",
           scenario: "local SIP caller with improved transcript but high CPU p95",
           latency_setting_ms: 12.5,
@@ -635,6 +640,7 @@ test("speech enhancement spike report accepts no-worse endpointing and barge-in 
           capture_id: "real-noisy-local-sip-006",
           recorded_at: "2026-07-05T09:35:00.000Z",
           audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-006.wav",
+          source_manifest_uri: "artifacts/local-sip/proof-manifest-006.json",
           noise_profile: "cafe_noise",
           scenario: "local SIP caller improves from unstable endpointing and high barge-in risk",
           latency_setting_ms: 12.5,

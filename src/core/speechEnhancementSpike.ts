@@ -258,7 +258,7 @@ export function validateSpeechEnhancementCaptureReplayManifest(
   if (!hasArtifactUriField(manifest, "audio_source_uri")) {
     missingFields.push("audio_source_uri.artifacts_relative_path_required");
   }
-  if (manifest.source_manifest_uri !== undefined && !hasArtifactUriField(manifest, "source_manifest_uri")) {
+  if (!hasArtifactUriField(manifest, "source_manifest_uri")) {
     missingFields.push("source_manifest_uri.artifacts_relative_path_required");
   }
   if (hasStringField(manifest, "capture_id") && !(manifest.capture_id as string).startsWith("real-noisy-local-sip-")) {
