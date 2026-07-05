@@ -198,7 +198,7 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
         ? []
         : [
             "real_noisy_local_sip_capture_baseline_vs_enhanced_replay",
-            "measured_cpu_cost_on_selected_rtc_asr_host",
+            "measured_cpu_cost_on_selected_rtc_asr_host_under_80_percent_p95",
           ],
   };
 
@@ -272,7 +272,7 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
       },
       {
         metric: "cpu_cost",
-        passCondition: "runtime CPU cost remains low or medium during local demo load",
+        passCondition: "runtime CPU cost remains low or medium and enhanced CPU p95 stays at or below 80% during local demo load",
         rollbackSignal: "Disable enhancement on the host when runtime CPU cost is high.",
       },
     ],
@@ -306,7 +306,7 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
         "enhanced endpointing is stable or no worse than baseline",
         "enhanced barge-in risk is low or no worse than baseline",
         "12.5 ms profile stays under 25 ms added p95 turn latency",
-        "runtime CPU cost is low or medium on the selected rtc-asr host",
+        "runtime CPU cost is low or medium and enhanced CPU p95 stays at or below 80% on the selected rtc-asr host",
       ],
     },
     rolloutPlan: [

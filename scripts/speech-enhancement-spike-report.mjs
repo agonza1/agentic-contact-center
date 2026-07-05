@@ -167,14 +167,14 @@ function applyCaptureReplay(report, metric) {
   const endpointingOk = isEndpointingNoWorse(metric.enhanced.endpointingStability, metric.baseline.endpointingStability);
   const bargeInOk = isBargeInRiskNoWorse(metric.enhanced.bargeInRisk, metric.baseline.bargeInRisk);
   const latencyOk = metric.latencySettingMs === 12.5 && metric.enhanced.addedTurnLatencyMsP95 <= 25;
-  const cpuOk = metric.cpuCostEstimate !== "high";
+  const cpuOk = metric.cpuCostEstimate !== "high" && metric.enhanced.cpuPercentP95 <= 80;
   const issueCloseReady = wordErrorImproved && endpointingOk && bargeInOk && latencyOk && cpuOk;
   const failingEvidence = [
     wordErrorImproved ? null : "enhanced_noisy_replay_wer_improvement",
     endpointingOk ? null : "enhanced_endpointing_no_regression",
     bargeInOk ? null : "enhanced_barge_in_no_regression",
     latencyOk ? null : "measured_12_5_ms_added_turn_latency_under_25_ms_p95",
-    cpuOk ? null : "measured_cpu_cost_on_selected_rtc_asr_host",
+    cpuOk ? null : "measured_cpu_cost_on_selected_rtc_asr_host_under_80_percent_p95",
   ].filter(Boolean);
   const remainingBeforeIssueClose = issueCloseReady
     ? []
