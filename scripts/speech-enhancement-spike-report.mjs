@@ -128,6 +128,26 @@ function normalizeCaptureReplayMetric(payload) {
   };
 }
 
+const endpointingRank = new Map([
+  ["unstable", 0],
+  ["acceptable", 1],
+  ["stable", 2],
+]);
+
+const bargeInRiskRank = new Map([
+  ["low", 0],
+  ["medium", 1],
+  ["high", 2],
+]);
+
+function isEndpointingNoWorse(enhanced, baseline) {
+  return endpointingRank.get(enhanced) >= endpointingRank.get(baseline);
+}
+
+function isBargeInRiskNoWorse(enhanced, baseline) {
+  return bargeInRiskRank.get(enhanced) <= bargeInRiskRank.get(baseline);
+}
+
 async function loadCaptureReplayMetric() {
   const captureReplayPath = resolveArgPath("--capture-replay");
   if (!captureReplayPath) {
@@ -144,8 +164,8 @@ function applyCaptureReplay(report, metric) {
   }
 
   const wordErrorImproved = metric.enhanced.wordErrorRateEstimate < metric.baseline.wordErrorRateEstimate;
-  const endpointingOk = metric.enhanced.endpointingStability === "stable" || metric.enhanced.endpointingStability === metric.baseline.endpointingStability;
-  const bargeInOk = metric.enhanced.bargeInRisk === "low" || metric.enhanced.bargeInRisk === metric.baseline.bargeInRisk;
+  const endpointingOk = isEndpointingNoWorse(metric.enhanced.endpointingStability, metric.baseline.endpointingStability);
+  const bargeInOk = isBargeInRiskNoWorse(metric.enhanced.bargeInRisk, metric.baseline.bargeInRisk);
   const latencyOk = metric.latencySettingMs === 12.5 && metric.enhanced.addedTurnLatencyMsP95 <= 25;
   const cpuOk = metric.cpuCostEstimate !== "high";
   const issueCloseReady = wordErrorImproved && endpointingOk && bargeInOk && latencyOk && cpuOk;

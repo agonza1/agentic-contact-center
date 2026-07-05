@@ -419,3 +419,69 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("speech enhancement spike report accepts no-worse endpointing and barge-in improvements", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-noworse-"));
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+  const captureReplayPath = path.join(tempDir, "real-capture-replay.json");
+
+  try {
+    await writeFile(
+      captureReplayPath,
+      JSON.stringify(
+        {
+          capture_id: "real-noisy-local-sip-006",
+          recorded_at: "2026-07-05T09:35:00.000Z",
+          audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-006.wav",
+          noise_profile: "cafe_noise",
+          scenario: "local SIP caller improves from unstable endpointing and high barge-in risk",
+          enhancement_latency_ms: 12.5,
+          runtime_host: "local-rtc-asr-host",
+          baseline_rtc_asr: {
+            transcript: "I need to cansel my policy",
+            word_error_rate_estimate: 0.18,
+            endpointing_stability: "unstable",
+            barge_in_risk: "high",
+          },
+          enhanced_rtc_asr: {
+            transcript: "I need to cancel my policy",
+            word_error_rate_estimate: 0.06,
+            endpointing_stability: "acceptable",
+            barge_in_risk: "medium",
+            added_turn_latency_ms_p95: 18,
+            cpu_percent_p95: 42,
+            cpu_cost_estimate: "medium",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay",
+      captureReplayPath,
+      "--require-close-ready",
+    ]);
+
+    assert.equal(result.exitCode, 0, result.stderr);
+    const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
+      report: { replayDecisions: Array<{ captureId: string; enableForLiveDemo: boolean; reasons: string[] }> };
+      reviewGate: { issueCloseReady: boolean; nextEvidence: string[] };
+    };
+    const decision = artifact.report.replayDecisions.at(-1);
+
+    assert.equal(artifact.reviewGate.issueCloseReady, true);
+    assert.deepEqual(artifact.reviewGate.nextEvidence, []);
+    assert.equal(decision?.captureId, "real-noisy-local-sip-006");
+    assert.equal(decision?.enableForLiveDemo, true);
+    assert.ok(decision?.reasons.includes("endpointing_stable"));
+    assert.ok(decision?.reasons.includes("barge_in_risk_low"));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
