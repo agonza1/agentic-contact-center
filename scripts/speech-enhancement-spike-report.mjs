@@ -5,7 +5,10 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 
-const { buildSpeechEnhancementSpikeReport } = require("../dist/src/core/speechEnhancementSpike.js");
+const {
+  buildSpeechEnhancementSpikeReport,
+  evaluateSpeechEnhancementReplayMetric,
+} = require("../dist/src/core/speechEnhancementSpike.js");
 
 function resolveArgPath(flag) {
   const flagIndex = process.argv.indexOf(flag);
@@ -128,26 +131,6 @@ function normalizeCaptureReplayMetric(payload) {
   };
 }
 
-const endpointingRank = new Map([
-  ["unstable", 0],
-  ["acceptable", 1],
-  ["stable", 2],
-]);
-
-const bargeInRiskRank = new Map([
-  ["low", 0],
-  ["medium", 1],
-  ["high", 2],
-]);
-
-function isEndpointingNoWorse(enhanced, baseline) {
-  return endpointingRank.get(enhanced) >= endpointingRank.get(baseline);
-}
-
-function isBargeInRiskNoWorse(enhanced, baseline) {
-  return bargeInRiskRank.get(enhanced) <= bargeInRiskRank.get(baseline);
-}
-
 async function loadCaptureReplayMetric() {
   const captureReplayPath = resolveArgPath("--capture-replay");
   if (!captureReplayPath) {
@@ -163,19 +146,7 @@ function applyCaptureReplay(report, metric) {
     return report;
   }
 
-  const wordErrorImproved = metric.enhanced.wordErrorRateEstimate < metric.baseline.wordErrorRateEstimate;
-  const endpointingOk = isEndpointingNoWorse(metric.enhanced.endpointingStability, metric.baseline.endpointingStability);
-  const bargeInOk = isBargeInRiskNoWorse(metric.enhanced.bargeInRisk, metric.baseline.bargeInRisk);
-  const latencyOk = metric.latencySettingMs === 12.5 && metric.enhanced.addedTurnLatencyMsP95 <= 25;
-  const cpuOk = metric.cpuCostEstimate !== "high" && metric.enhanced.cpuPercentP95 <= 80;
-  const issueCloseReady = wordErrorImproved && endpointingOk && bargeInOk && latencyOk && cpuOk;
-  const failingEvidence = [
-    wordErrorImproved ? null : "enhanced_noisy_replay_wer_improvement",
-    endpointingOk ? null : "enhanced_endpointing_no_regression",
-    bargeInOk ? null : "enhanced_barge_in_no_regression",
-    latencyOk ? null : "measured_12_5_ms_added_turn_latency_under_25_ms_p95",
-    cpuOk ? null : "measured_cpu_cost_on_selected_rtc_asr_host_under_80_percent_p95",
-  ].filter(Boolean);
+  const { issueCloseReady, failingEvidence, reasons } = evaluateSpeechEnhancementReplayMetric(metric);
   const remainingBeforeIssueClose = issueCloseReady
     ? []
     : [
@@ -191,13 +162,7 @@ function applyCaptureReplay(report, metric) {
         captureId: metric.captureId,
         latencySettingMs: metric.latencySettingMs,
         enableForLiveDemo: issueCloseReady,
-        reasons: [
-          wordErrorImproved ? "wer_improved" : "wer_not_improved",
-          endpointingOk ? "endpointing_stable" : "endpointing_not_stable",
-          bargeInOk ? "barge_in_risk_low" : "barge_in_risk_not_low",
-          latencyOk ? "latency_within_budget" : "latency_over_budget",
-          cpuOk ? "cpu_cost_allowed" : "cpu_cost_high",
-        ],
+        reasons,
       },
     ],
     replayCoverage: {
