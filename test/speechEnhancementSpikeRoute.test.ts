@@ -45,7 +45,11 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       reference: { modelFamily: string; paperUrl: string; latencyRangeMs: number[] };
       pipelinePlacement: { recommendedOwner: string; stage: string; preservedContracts: string[] };
       candidates: Array<{ algorithmicLatencyMs: number; withinConversationalBudget: boolean; recommendation: string }>;
-      replayMetrics: Array<{ baseline: { wordErrorRateEstimate: number }; enhanced: { wordErrorRateEstimate: number }; latencySettingMs: number }>;
+      replayMetrics: Array<{
+        baseline: { wordErrorRateEstimate: number };
+        enhanced: { wordErrorRateEstimate: number; addedTurnLatencyMsP95: number; cpuPercentP95: number };
+        latencySettingMs: number;
+      }>;
       decision: { status: string; recommendedLatencyMs: number };
       proposedConfig: { featureFlag: string; allowedLatencyMs: number[]; defaultLatencyMs: number };
       acceptanceReadiness: {
@@ -98,6 +102,8 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.equal(payload.candidates.at(-1)?.withinConversationalBudget, false);
     assert.equal(payload.replayMetrics.length, 1);
     assert.equal(payload.replayMetrics[0].latencySettingMs, 12.5);
+    assert.equal(payload.replayMetrics[0].enhanced.addedTurnLatencyMsP95, 18);
+    assert.equal(payload.replayMetrics[0].enhanced.cpuPercentP95, 42);
     assert.ok(
       payload.replayMetrics[0].enhanced.wordErrorRateEstimate <
         payload.replayMetrics[0].baseline.wordErrorRateEstimate,
@@ -150,6 +156,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     );
     assert.deepEqual(payload.captureReplayContract.comparisonPairs, ["baseline_rtc_asr", "enhanced_rtc_asr"]);
     assert.ok(payload.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.added_turn_latency_ms_p95"));
+    assert.ok(payload.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.cpu_percent_p95"));
     assert.ok(
       payload.captureReplayContract.minimumPassingCriteria.some((criterion) => criterion.includes("word error")),
     );

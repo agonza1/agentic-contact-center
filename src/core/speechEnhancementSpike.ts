@@ -20,6 +20,8 @@ export interface SpeechEnhancementReplayMetric {
     wordErrorRateEstimate: number;
     endpointingStability: "unstable" | "acceptable" | "stable";
     bargeInRisk: "low" | "medium" | "high";
+    addedTurnLatencyMsP95: number;
+    cpuPercentP95: number;
   };
   latencySettingMs: number;
   cpuCostEstimate: "low" | "medium" | "high";
@@ -97,7 +99,7 @@ export interface SpeechEnhancementSpikeReport {
   };
   acceptanceReadiness: {
     reportRecommendation: "complete";
-    noisyReplay: "synthetic_fixture_ready" | "real_capture_required";
+    noisyReplay: "synthetic_fixture_ready" | "real_capture_required" | "real_capture_ready";
     latencyMetrics: "covered";
     transcriptEndpointingMetrics: "covered";
     cpuRuntimeCost: "estimated_needs_live_measurement";
@@ -110,6 +112,32 @@ export interface SpeechEnhancementSpikeReport {
   captureReplayContract: SpeechEnhancementCaptureReplayContract;
   rolloutPlan: SpeechEnhancementRolloutStep[];
   validationPlan: string[];
+}
+
+const endpointingRank = new Map<SpeechEnhancementReplayMetric["baseline"]["endpointingStability"], number>([
+  ["unstable", 0],
+  ["acceptable", 1],
+  ["stable", 2],
+]);
+
+const bargeInRiskRank = new Map<SpeechEnhancementReplayMetric["baseline"]["bargeInRisk"], number>([
+  ["low", 0],
+  ["medium", 1],
+  ["high", 2],
+]);
+
+function isEndpointingNoWorse(
+  enhanced: SpeechEnhancementReplayMetric["baseline"]["endpointingStability"],
+  baseline: SpeechEnhancementReplayMetric["baseline"]["endpointingStability"],
+): boolean {
+  return endpointingRank.get(enhanced)! >= endpointingRank.get(baseline)!;
+}
+
+function isBargeInRiskNoWorse(
+  enhanced: SpeechEnhancementReplayMetric["baseline"]["bargeInRisk"],
+  baseline: SpeechEnhancementReplayMetric["baseline"]["bargeInRisk"],
+): boolean {
+  return bargeInRiskRank.get(enhanced)! <= bargeInRiskRank.get(baseline)!;
 }
 
 export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeReport {
@@ -159,6 +187,8 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
         wordErrorRateEstimate: 0.07,
         endpointingStability: "stable",
         bargeInRisk: "low",
+        addedTurnLatencyMsP95: 18,
+        cpuPercentP95: 42,
       },
       latencySettingMs: 12.5,
       cpuCostEstimate: "medium",
@@ -167,20 +197,19 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
 
   const replayDecisions = replayMetrics.map((metric): SpeechEnhancementReplayDecision => {
     const wordErrorImproved = metric.enhanced.wordErrorRateEstimate < metric.baseline.wordErrorRateEstimate;
-    const endpointingImproved = metric.enhanced.endpointingStability === "stable";
-    const bargeInRiskImproved = metric.enhanced.bargeInRisk === "low";
-    const latencyCandidate = candidates.find((candidate) => candidate.algorithmicLatencyMs === metric.latencySettingMs);
-    const latencyOk = latencyCandidate?.withinConversationalBudget === true;
-    const cpuOk = metric.cpuCostEstimate !== "high";
+    const endpointingOk = isEndpointingNoWorse(metric.enhanced.endpointingStability, metric.baseline.endpointingStability);
+    const bargeInOk = isBargeInRiskNoWorse(metric.enhanced.bargeInRisk, metric.baseline.bargeInRisk);
+    const latencyOk = metric.latencySettingMs === 12.5 && metric.enhanced.addedTurnLatencyMsP95 <= 25;
+    const cpuOk = metric.cpuCostEstimate !== "high" && metric.enhanced.cpuPercentP95 <= 80;
 
     return {
       captureId: metric.captureId,
       latencySettingMs: metric.latencySettingMs,
-      enableForLiveDemo: wordErrorImproved && endpointingImproved && bargeInRiskImproved && latencyOk && cpuOk,
+      enableForLiveDemo: wordErrorImproved && endpointingOk && bargeInOk && latencyOk && cpuOk,
       reasons: [
         wordErrorImproved ? "wer_improved" : "wer_not_improved",
-        endpointingImproved ? "endpointing_stable" : "endpointing_not_stable",
-        bargeInRiskImproved ? "barge_in_risk_low" : "barge_in_risk_not_low",
+        endpointingOk ? "endpointing_stable" : "endpointing_not_stable",
+        bargeInOk ? "barge_in_risk_low" : "barge_in_risk_not_low",
         latencyOk ? "latency_within_budget" : "latency_over_budget",
         cpuOk ? "cpu_cost_allowed" : "cpu_cost_high",
       ],
@@ -198,7 +227,7 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
         ? []
         : [
             "real_noisy_local_sip_capture_baseline_vs_enhanced_replay",
-            "measured_cpu_cost_on_selected_rtc_asr_host",
+            "measured_cpu_cost_on_selected_rtc_asr_host_under_80_percent_p95",
           ],
   };
 
@@ -272,7 +301,7 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
       },
       {
         metric: "cpu_cost",
-        passCondition: "runtime CPU cost remains low or medium during local demo load",
+        passCondition: "runtime CPU cost remains low or medium and enhanced CPU p95 stays at or below 80% during local demo load",
         rollbackSignal: "Disable enhancement on the host when runtime CPU cost is high.",
       },
     ],
@@ -286,6 +315,8 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
         "recorded_at",
         "audio_source_uri",
         "noise_profile",
+        "scenario",
+        "runtime_host",
         "baseline_rtc_asr.transcript",
         "baseline_rtc_asr.word_error_rate_estimate",
         "baseline_rtc_asr.endpointing_stability",
@@ -295,6 +326,7 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
         "enhanced_rtc_asr.endpointing_stability",
         "enhanced_rtc_asr.barge_in_risk",
         "enhanced_rtc_asr.added_turn_latency_ms_p95",
+        "enhanced_rtc_asr.cpu_percent_p95",
         "enhanced_rtc_asr.cpu_cost_estimate",
       ],
       comparisonPairs: ["baseline_rtc_asr", "enhanced_rtc_asr"],
@@ -303,7 +335,7 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
         "enhanced endpointing is stable or no worse than baseline",
         "enhanced barge-in risk is low or no worse than baseline",
         "12.5 ms profile stays under 25 ms added p95 turn latency",
-        "runtime CPU cost is low or medium on the selected rtc-asr host",
+        "runtime CPU cost is low or medium and enhanced CPU p95 stays at or below 80% on the selected rtc-asr host",
       ],
     },
     rolloutPlan: [

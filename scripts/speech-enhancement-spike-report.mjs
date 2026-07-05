@@ -21,21 +21,94 @@ function hasArg(flag) {
 }
 
 function normalizeCaptureReplayMetric(payload) {
-  const requiredTopLevelFields = [
+  const requiredFields = [
     "capture_id",
+    "recorded_at",
+    "audio_source_uri",
+    "noise_profile",
     "scenario",
-    "baseline_rtc_asr",
-    "enhanced_rtc_asr",
+    "runtime_host",
+    "baseline_rtc_asr.transcript",
+    "baseline_rtc_asr.word_error_rate_estimate",
+    "baseline_rtc_asr.endpointing_stability",
+    "baseline_rtc_asr.barge_in_risk",
+    "enhanced_rtc_asr.transcript",
+    "enhanced_rtc_asr.word_error_rate_estimate",
+    "enhanced_rtc_asr.endpointing_stability",
+    "enhanced_rtc_asr.barge_in_risk",
+    "enhanced_rtc_asr.added_turn_latency_ms_p95",
+    "enhanced_rtc_asr.cpu_percent_p95",
+    "enhanced_rtc_asr.cpu_cost_estimate",
   ];
-  for (const field of requiredTopLevelFields) {
-    assert.ok(payload && Object.prototype.hasOwnProperty.call(payload, field), `Missing capture replay field: ${field}`);
+  for (const fieldPath of requiredFields) {
+    const value = fieldPath.split(".").reduce((current, key) => current?.[key], payload);
+    assert.ok(value !== undefined && value !== null && value !== "", `Missing capture replay field: ${fieldPath}`);
   }
 
+  assert.equal(typeof payload.capture_id, "string", "capture_id must be a string");
   assert.ok(payload.capture_id.startsWith("real-"), "capture_id must start with real- for issue-close readiness");
+  assert.equal(typeof payload.recorded_at, "string", "recorded_at must be an ISO timestamp string");
+  assert.ok(!Number.isNaN(Date.parse(payload.recorded_at)), "recorded_at must be a parseable ISO timestamp string");
+  assert.equal(typeof payload.audio_source_uri, "string", "audio_source_uri must be a string");
+  assert.equal(typeof payload.noise_profile, "string", "noise_profile must be a string");
+  assert.equal(typeof payload.scenario, "string", "scenario must be a string");
+  assert.equal(typeof payload.runtime_host, "string", "runtime_host must be a string");
+
+  const allowedStability = new Set(["unstable", "acceptable", "stable"]);
+  const allowedRisk = new Set(["low", "medium", "high"]);
+  const allowedCpuCost = new Set(["low", "medium", "high"]);
+  assert.ok(
+    Number.isFinite(payload.baseline_rtc_asr.word_error_rate_estimate) &&
+      payload.baseline_rtc_asr.word_error_rate_estimate >= 0 &&
+      payload.baseline_rtc_asr.word_error_rate_estimate <= 1,
+    "baseline_rtc_asr.word_error_rate_estimate must be a number between 0 and 1",
+  );
+  assert.ok(
+    Number.isFinite(payload.enhanced_rtc_asr.word_error_rate_estimate) &&
+      payload.enhanced_rtc_asr.word_error_rate_estimate >= 0 &&
+      payload.enhanced_rtc_asr.word_error_rate_estimate <= 1,
+    "enhanced_rtc_asr.word_error_rate_estimate must be a number between 0 and 1",
+  );
+  assert.ok(
+    allowedStability.has(payload.baseline_rtc_asr.endpointing_stability),
+    "baseline_rtc_asr.endpointing_stability must be unstable, acceptable, or stable",
+  );
+  assert.ok(
+    allowedStability.has(payload.enhanced_rtc_asr.endpointing_stability),
+    "enhanced_rtc_asr.endpointing_stability must be unstable, acceptable, or stable",
+  );
+  assert.ok(
+    allowedRisk.has(payload.baseline_rtc_asr.barge_in_risk),
+    "baseline_rtc_asr.barge_in_risk must be low, medium, or high",
+  );
+  assert.ok(
+    allowedRisk.has(payload.enhanced_rtc_asr.barge_in_risk),
+    "enhanced_rtc_asr.barge_in_risk must be low, medium, or high",
+  );
+  assert.ok(
+    Number.isFinite(payload.enhanced_rtc_asr.added_turn_latency_ms_p95) &&
+      payload.enhanced_rtc_asr.added_turn_latency_ms_p95 >= 0,
+    "enhanced_rtc_asr.added_turn_latency_ms_p95 must be a non-negative number",
+  );
+  assert.ok(
+    Number.isFinite(payload.enhanced_rtc_asr.cpu_percent_p95) &&
+      payload.enhanced_rtc_asr.cpu_percent_p95 >= 0 &&
+      payload.enhanced_rtc_asr.cpu_percent_p95 <= 100,
+    "enhanced_rtc_asr.cpu_percent_p95 must be a number between 0 and 100",
+  );
+  assert.ok(
+    payload.enhancement_latency_ms === undefined || Number.isFinite(payload.enhancement_latency_ms),
+    "enhancement_latency_ms must be a number when provided",
+  );
+  assert.ok(
+    allowedCpuCost.has(payload.enhanced_rtc_asr.cpu_cost_estimate),
+    "enhanced_rtc_asr.cpu_cost_estimate must be low, medium, or high",
+  );
 
   return {
     captureId: payload.capture_id,
     scenario: payload.scenario,
+    runtimeHost: payload.runtime_host,
     baseline: {
       transcript: payload.baseline_rtc_asr.transcript,
       wordErrorRateEstimate: payload.baseline_rtc_asr.word_error_rate_estimate,
@@ -47,10 +120,32 @@ function normalizeCaptureReplayMetric(payload) {
       wordErrorRateEstimate: payload.enhanced_rtc_asr.word_error_rate_estimate,
       endpointingStability: payload.enhanced_rtc_asr.endpointing_stability,
       bargeInRisk: payload.enhanced_rtc_asr.barge_in_risk,
+      addedTurnLatencyMsP95: payload.enhanced_rtc_asr.added_turn_latency_ms_p95,
+      cpuPercentP95: payload.enhanced_rtc_asr.cpu_percent_p95,
     },
     latencySettingMs: payload.enhancement_latency_ms ?? 12.5,
     cpuCostEstimate: payload.enhanced_rtc_asr.cpu_cost_estimate,
   };
+}
+
+const endpointingRank = new Map([
+  ["unstable", 0],
+  ["acceptable", 1],
+  ["stable", 2],
+]);
+
+const bargeInRiskRank = new Map([
+  ["low", 0],
+  ["medium", 1],
+  ["high", 2],
+]);
+
+function isEndpointingNoWorse(enhanced, baseline) {
+  return endpointingRank.get(enhanced) >= endpointingRank.get(baseline);
+}
+
+function isBargeInRiskNoWorse(enhanced, baseline) {
+  return bargeInRiskRank.get(enhanced) <= bargeInRiskRank.get(baseline);
 }
 
 async function loadCaptureReplayMetric() {
@@ -69,11 +164,23 @@ function applyCaptureReplay(report, metric) {
   }
 
   const wordErrorImproved = metric.enhanced.wordErrorRateEstimate < metric.baseline.wordErrorRateEstimate;
-  const endpointingOk = metric.enhanced.endpointingStability === "stable" || metric.enhanced.endpointingStability === metric.baseline.endpointingStability;
-  const bargeInOk = metric.enhanced.bargeInRisk === "low" || metric.enhanced.bargeInRisk === metric.baseline.bargeInRisk;
-  const latencyOk = metric.latencySettingMs === 12.5;
-  const cpuOk = metric.cpuCostEstimate !== "high";
+  const endpointingOk = isEndpointingNoWorse(metric.enhanced.endpointingStability, metric.baseline.endpointingStability);
+  const bargeInOk = isBargeInRiskNoWorse(metric.enhanced.bargeInRisk, metric.baseline.bargeInRisk);
+  const latencyOk = metric.latencySettingMs === 12.5 && metric.enhanced.addedTurnLatencyMsP95 <= 25;
+  const cpuOk = metric.cpuCostEstimate !== "high" && metric.enhanced.cpuPercentP95 <= 80;
   const issueCloseReady = wordErrorImproved && endpointingOk && bargeInOk && latencyOk && cpuOk;
+  const failingEvidence = [
+    wordErrorImproved ? null : "enhanced_noisy_replay_wer_improvement",
+    endpointingOk ? null : "enhanced_endpointing_no_regression",
+    bargeInOk ? null : "enhanced_barge_in_no_regression",
+    latencyOk ? null : "measured_12_5_ms_added_turn_latency_under_25_ms_p95",
+    cpuOk ? null : "measured_cpu_cost_on_selected_rtc_asr_host_under_80_percent_p95",
+  ].filter(Boolean);
+  const remainingBeforeIssueClose = issueCloseReady
+    ? []
+    : [
+        "Replay " + metric.captureId + " did not pass all enhancement close gates: " + failingEvidence.join(", ") + ".",
+      ];
 
   return {
     ...report,
@@ -98,12 +205,12 @@ function applyCaptureReplay(report, metric) {
       realNoisyCaptureReplayCount: report.replayCoverage.realNoisyCaptureReplayCount + 1,
       baselineEnhancedPairs: report.replayCoverage.baselineEnhancedPairs + 1,
       liveDemoGate: issueCloseReady ? "eligible" : "blocked_until_real_capture",
-      missingEvidence: issueCloseReady ? [] : report.replayCoverage.missingEvidence,
+      missingEvidence: issueCloseReady ? [] : failingEvidence,
     },
     acceptanceReadiness: {
       ...report.acceptanceReadiness,
-      noisyReplay: issueCloseReady ? "real_capture_required" : report.acceptanceReadiness.noisyReplay,
-      remainingBeforeIssueClose: issueCloseReady ? [] : report.acceptanceReadiness.remainingBeforeIssueClose,
+      noisyReplay: issueCloseReady ? "real_capture_ready" : report.acceptanceReadiness.noisyReplay,
+      remainingBeforeIssueClose,
     },
   };
 }
@@ -136,6 +243,40 @@ async function writeJson(filePath, payload) {
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
+function buildReviewGate(report) {
+  const missingEvidence = new Set(report.replayCoverage.missingEvidence);
+  const hasRealCaptureReplay = report.replayCoverage.realNoisyCaptureReplayCount > 0;
+  const issueCloseReady = hasRealCaptureReplay && report.acceptanceReadiness.remainingBeforeIssueClose.length === 0;
+  const checks = {
+    realNoisyCaptureReplay: hasRealCaptureReplay,
+    baselineEnhancedPairs: hasRealCaptureReplay && report.replayCoverage.baselineEnhancedPairs > 0,
+    wordErrorImproved: hasRealCaptureReplay && !missingEvidence.has("enhanced_noisy_replay_wer_improvement"),
+    endpointingNoRegression: hasRealCaptureReplay && !missingEvidence.has("enhanced_endpointing_no_regression"),
+    bargeInNoRegression: hasRealCaptureReplay && !missingEvidence.has("enhanced_barge_in_no_regression"),
+    addedLatencyP95: hasRealCaptureReplay && !missingEvidence.has("measured_12_5_ms_added_turn_latency_under_25_ms_p95"),
+    cpuRuntimeCost: hasRealCaptureReplay && !missingEvidence.has("measured_cpu_cost_on_selected_rtc_asr_host_under_80_percent_p95"),
+  };
+  const failureReasons = Object.fromEntries(
+    Object.entries({
+      realNoisyCaptureReplay: "Attach one real noisy local SIP capture replay before closing Issue #97.",
+      baselineEnhancedPairs: "Attach paired baseline and enhanced rtc-asr replay metrics for the real capture.",
+      wordErrorImproved: "Enhanced noisy replay WER estimate must improve over baseline.",
+      endpointingNoRegression: "Enhanced endpointing must remain stable or no worse than baseline.",
+      bargeInNoRegression: "Enhanced barge-in risk must remain low or no worse than baseline.",
+      addedLatencyP95: "Measured 12.5 ms profile added turn latency must stay at or below 25 ms p95.",
+      cpuRuntimeCost: "Measured enhanced CPU p95 must stay at or below 80% on the selected rtc-asr host.",
+    }).filter(([check]) => !checks[check]),
+  );
+
+  return {
+    issueCloseReady,
+    checks,
+    failureReasons,
+    blockers: report.acceptanceReadiness.remainingBeforeIssueClose,
+    nextEvidence: report.replayCoverage.missingEvidence,
+  };
+}
+
 async function main() {
   const outputPath = resolveOutputPath();
   const latestOutputPath = resolveLatestOutputPath();
@@ -160,11 +301,7 @@ async function main() {
       validationCommand: "npm run proof:speech-enhancement -- --require-close-ready",
       nextEvidenceOwner: "agentic_contact_center",
     },
-    reviewGate: {
-      issueCloseReady: report.replayCoverage.liveDemoGate === "eligible" && report.acceptanceReadiness.remainingBeforeIssueClose.length === 0,
-      blockers: report.acceptanceReadiness.remainingBeforeIssueClose,
-      nextEvidence: report.replayCoverage.missingEvidence,
-    },
+    reviewGate: buildReviewGate(report),
   };
 
   await writeJson(outputPath, artifact);
