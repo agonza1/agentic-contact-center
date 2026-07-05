@@ -8,6 +8,7 @@ const require = createRequire(import.meta.url);
 const {
   buildSpeechEnhancementSpikeReport,
   evaluateSpeechEnhancementReplayMetric,
+  validateSpeechEnhancementCaptureReplayManifest,
 } = require("../dist/src/core/speechEnhancementSpike.js");
 
 function resolveArgPath(flag) {
@@ -23,115 +24,6 @@ function hasArg(flag) {
   return process.argv.includes(flag);
 }
 
-function normalizeCaptureReplayMetric(payload) {
-  const requiredFields = [
-    "capture_id",
-    "recorded_at",
-    "audio_source_uri",
-    "noise_profile",
-    "scenario",
-    "runtime_host",
-    "latency_setting_ms",
-    "baseline_rtc_asr.transcript",
-    "baseline_rtc_asr.word_error_rate_estimate",
-    "baseline_rtc_asr.endpointing_stability",
-    "baseline_rtc_asr.barge_in_risk",
-    "enhanced_rtc_asr.transcript",
-    "enhanced_rtc_asr.word_error_rate_estimate",
-    "enhanced_rtc_asr.endpointing_stability",
-    "enhanced_rtc_asr.barge_in_risk",
-    "enhanced_rtc_asr.added_turn_latency_ms_p95",
-    "enhanced_rtc_asr.cpu_percent_p95",
-    "enhanced_rtc_asr.cpu_cost_estimate",
-  ];
-  for (const fieldPath of requiredFields) {
-    const value = fieldPath.split(".").reduce((current, key) => current?.[key], payload);
-    assert.ok(value !== undefined && value !== null && value !== "", `Missing capture replay field: ${fieldPath}`);
-  }
-
-  assert.equal(typeof payload.capture_id, "string", "capture_id must be a string");
-  assert.ok(payload.capture_id.startsWith("real-"), "capture_id must start with real- for issue-close readiness");
-  assert.equal(typeof payload.recorded_at, "string", "recorded_at must be an ISO timestamp string");
-  assert.ok(!Number.isNaN(Date.parse(payload.recorded_at)), "recorded_at must be a parseable ISO timestamp string");
-  assert.equal(typeof payload.audio_source_uri, "string", "audio_source_uri must be a string");
-  assert.equal(typeof payload.noise_profile, "string", "noise_profile must be a string");
-  assert.equal(typeof payload.scenario, "string", "scenario must be a string");
-  assert.equal(typeof payload.runtime_host, "string", "runtime_host must be a string");
-
-  const allowedStability = new Set(["unstable", "acceptable", "stable"]);
-  const allowedRisk = new Set(["low", "medium", "high"]);
-  const allowedCpuCost = new Set(["low", "medium", "high"]);
-  assert.ok(
-    Number.isFinite(payload.baseline_rtc_asr.word_error_rate_estimate) &&
-      payload.baseline_rtc_asr.word_error_rate_estimate >= 0 &&
-      payload.baseline_rtc_asr.word_error_rate_estimate <= 1,
-    "baseline_rtc_asr.word_error_rate_estimate must be a number between 0 and 1",
-  );
-  assert.ok(
-    Number.isFinite(payload.enhanced_rtc_asr.word_error_rate_estimate) &&
-      payload.enhanced_rtc_asr.word_error_rate_estimate >= 0 &&
-      payload.enhanced_rtc_asr.word_error_rate_estimate <= 1,
-    "enhanced_rtc_asr.word_error_rate_estimate must be a number between 0 and 1",
-  );
-  assert.ok(
-    allowedStability.has(payload.baseline_rtc_asr.endpointing_stability),
-    "baseline_rtc_asr.endpointing_stability must be unstable, acceptable, or stable",
-  );
-  assert.ok(
-    allowedStability.has(payload.enhanced_rtc_asr.endpointing_stability),
-    "enhanced_rtc_asr.endpointing_stability must be unstable, acceptable, or stable",
-  );
-  assert.ok(
-    allowedRisk.has(payload.baseline_rtc_asr.barge_in_risk),
-    "baseline_rtc_asr.barge_in_risk must be low, medium, or high",
-  );
-  assert.ok(
-    allowedRisk.has(payload.enhanced_rtc_asr.barge_in_risk),
-    "enhanced_rtc_asr.barge_in_risk must be low, medium, or high",
-  );
-  assert.ok(
-    Number.isFinite(payload.enhanced_rtc_asr.added_turn_latency_ms_p95) &&
-      payload.enhanced_rtc_asr.added_turn_latency_ms_p95 >= 0,
-    "enhanced_rtc_asr.added_turn_latency_ms_p95 must be a non-negative number",
-  );
-  assert.ok(
-    Number.isFinite(payload.enhanced_rtc_asr.cpu_percent_p95) &&
-      payload.enhanced_rtc_asr.cpu_percent_p95 >= 0 &&
-      payload.enhanced_rtc_asr.cpu_percent_p95 <= 100,
-    "enhanced_rtc_asr.cpu_percent_p95 must be a number between 0 and 100",
-  );
-  assert.ok(
-    Number.isFinite(payload.latency_setting_ms),
-    "latency_setting_ms must be a number",
-  );
-  assert.ok(
-    allowedCpuCost.has(payload.enhanced_rtc_asr.cpu_cost_estimate),
-    "enhanced_rtc_asr.cpu_cost_estimate must be low, medium, or high",
-  );
-
-  return {
-    captureId: payload.capture_id,
-    scenario: payload.scenario,
-    runtimeHost: payload.runtime_host,
-    baseline: {
-      transcript: payload.baseline_rtc_asr.transcript,
-      wordErrorRateEstimate: payload.baseline_rtc_asr.word_error_rate_estimate,
-      endpointingStability: payload.baseline_rtc_asr.endpointing_stability,
-      bargeInRisk: payload.baseline_rtc_asr.barge_in_risk,
-    },
-    enhanced: {
-      transcript: payload.enhanced_rtc_asr.transcript,
-      wordErrorRateEstimate: payload.enhanced_rtc_asr.word_error_rate_estimate,
-      endpointingStability: payload.enhanced_rtc_asr.endpointing_stability,
-      bargeInRisk: payload.enhanced_rtc_asr.barge_in_risk,
-      addedTurnLatencyMsP95: payload.enhanced_rtc_asr.added_turn_latency_ms_p95,
-      cpuPercentP95: payload.enhanced_rtc_asr.cpu_percent_p95,
-    },
-    latencySettingMs: payload.latency_setting_ms,
-    cpuCostEstimate: payload.enhanced_rtc_asr.cpu_cost_estimate,
-  };
-}
-
 async function loadCaptureReplayMetric() {
   const captureReplayPath = resolveArgPath("--capture-replay");
   if (!captureReplayPath) {
@@ -139,7 +31,12 @@ async function loadCaptureReplayMetric() {
   }
 
   const payload = JSON.parse(await readFile(captureReplayPath, "utf8"));
-  return normalizeCaptureReplayMetric(payload);
+  const validation = validateSpeechEnhancementCaptureReplayManifest(payload);
+  if (!validation.manifestOk || !validation.metric) {
+    throw new Error(`Invalid capture replay manifest: ${validation.missingFields.join(", ")}`);
+  }
+
+  return validation.metric;
 }
 
 function applyCaptureReplay(report, metric) {
@@ -176,6 +73,7 @@ function applyCaptureReplay(report, metric) {
     acceptanceReadiness: {
       ...report.acceptanceReadiness,
       noisyReplay: issueCloseReady ? "real_capture_ready" : report.acceptanceReadiness.noisyReplay,
+      cpuRuntimeCost: issueCloseReady ? "covered" : report.acceptanceReadiness.cpuRuntimeCost,
       remainingBeforeIssueClose,
     },
   };
@@ -204,14 +102,74 @@ function resolveLatestOutputPath() {
   return path.resolve(process.cwd(), "artifacts", "speech-enhancement-spike-latest.json");
 }
 
+function resolveMarkdownOutputPath(outputPath) {
+  const explicitMarkdownPath = resolveArgPath("--markdown-out");
+  if (explicitMarkdownPath) {
+    return explicitMarkdownPath;
+  }
+
+  if (hasArg("--out")) {
+    return undefined;
+  }
+
+  return outputPath.replace(/\.json$/u, ".md");
+}
+
 async function writeJson(filePath, payload) {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
+async function writeText(filePath, payload) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, payload, "utf8");
+}
+
+function buildMarkdownReport(artifact) {
+  const { report, reviewGate } = artifact;
+  const recommended = report.decision.recommendedLatencyMs;
+  const blockers = reviewGate.blockers.length > 0 ? reviewGate.blockers : ["None. Issue #97 close gate is ready."];
+  const nextEvidence = reviewGate.nextEvidence.length > 0 ? reviewGate.nextEvidence : ["None."];
+
+  return [
+    "# Speech Enhancement Spike Report",
+    "",
+    `Generated: ${artifact.generatedAt}`,
+    `Issue: ${artifact.handoff.issueUrl}`,
+    `Decision: ${report.decision.status} at ${recommended} ms`,
+    `Review gate: ${reviewGate.issueCloseReady ? "close-ready" : "blocked"}`,
+    "",
+    "## Recommendation",
+    "",
+    report.decision.rationale,
+    "",
+    "## Evidence Coverage",
+    "",
+    `- Synthetic noisy replays: ${report.replayCoverage.syntheticNoisyReplayCount}`,
+    `- Real noisy capture replays: ${report.replayCoverage.realNoisyCaptureReplayCount}`,
+    `- Baseline/enhanced pairs: ${report.replayCoverage.baselineEnhancedPairs}`,
+    `- Live demo gate: ${report.replayCoverage.liveDemoGate}`,
+    "",
+    "## Blockers",
+    "",
+    ...blockers.map((blocker) => `- ${blocker}`),
+    "",
+    "## Next Evidence",
+    "",
+    ...nextEvidence.map((evidence) => `- ${evidence}`),
+    "",
+    "## Validation",
+    "",
+    `Run: ${artifact.handoff.validationCommand}`,
+    "",
+  ].join("\n");
+}
+
 function buildReviewGate(report) {
   const missingEvidence = new Set(report.replayCoverage.missingEvidence);
   const hasRealCaptureReplay = report.replayCoverage.realNoisyCaptureReplayCount > 0;
+  const realCaptureReplayMetrics = report.replayMetrics.filter((metric) => metric.captureId.startsWith("real-"));
+  const realCaptureReplayDecisions = report.replayDecisions.filter((decision) => decision.captureId.startsWith("real-"));
   const issueCloseReady = hasRealCaptureReplay && report.acceptanceReadiness.remainingBeforeIssueClose.length === 0;
   const checks = {
     realNoisyCaptureReplay: hasRealCaptureReplay,
@@ -240,12 +198,30 @@ function buildReviewGate(report) {
     failureReasons,
     blockers: report.acceptanceReadiness.remainingBeforeIssueClose,
     nextEvidence: report.replayCoverage.missingEvidence,
+    realCaptureReplayIds: realCaptureReplayDecisions.map((decision) => decision.captureId),
+    passingRealCaptureReplayIds: realCaptureReplayDecisions
+      .filter((decision) => decision.enableForLiveDemo)
+      .map((decision) => decision.captureId),
+    blockedRealCaptureReplayIds: realCaptureReplayDecisions
+      .filter((decision) => !decision.enableForLiveDemo)
+      .map((decision) => decision.captureId),
+    realCaptureReplayEvidence: realCaptureReplayMetrics.map((metric) => ({
+      captureId: metric.captureId,
+      recordedAt: metric.captureEvidence?.recordedAt ?? null,
+      audioSourceUri: metric.captureEvidence?.audioSourceUri ?? null,
+      audioSha256: metric.captureEvidence?.audioSha256 ?? null,
+      sourceManifestUri: metric.captureEvidence?.sourceManifestUri ?? null,
+      sourceManifestSha256: metric.captureEvidence?.sourceManifestSha256 ?? null,
+      noiseProfile: metric.captureEvidence?.noiseProfile ?? null,
+      runtimeHost: metric.captureEvidence?.runtimeHost ?? null,
+    })),
   };
 }
 
 async function main() {
   const outputPath = resolveOutputPath();
   const latestOutputPath = resolveLatestOutputPath();
+  const markdownOutputPath = resolveMarkdownOutputPath(outputPath);
   const requireCloseReady = hasArg("--require-close-ready");
   const captureReplayMetric = await loadCaptureReplayMetric();
   const report = applyCaptureReplay(buildSpeechEnhancementSpikeReport(), captureReplayMetric);
@@ -274,11 +250,15 @@ async function main() {
   if (latestOutputPath) {
     await writeJson(latestOutputPath, artifact);
   }
+  if (markdownOutputPath) {
+    await writeText(markdownOutputPath, buildMarkdownReport(artifact));
+  }
 
   const summary = {
     ok: !requireCloseReady || artifact.reviewGate.issueCloseReady,
     outputPath,
     latestOutputPath: latestOutputPath ?? null,
+    markdownOutputPath: markdownOutputPath ?? null,
     issueCloseReady: artifact.reviewGate.issueCloseReady,
     blockers: artifact.reviewGate.blockers,
   };

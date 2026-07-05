@@ -9,6 +9,15 @@ export interface SpeechEnhancementLatencyCandidate {
 export interface SpeechEnhancementReplayMetric {
   captureId: string;
   scenario: string;
+  captureEvidence?: {
+    recordedAt: string;
+    audioSourceUri: string;
+    audioSha256?: string;
+    sourceManifestUri?: string;
+    sourceManifestSha256?: string;
+    noiseProfile: string;
+    runtimeHost: string;
+  };
   baseline: {
     transcript: string;
     wordErrorRateEstimate: number;
@@ -77,6 +86,9 @@ export interface SpeechEnhancementCaptureReplayManifest {
   capture_id: string;
   recorded_at: string;
   audio_source_uri: string;
+  audio_sha256?: string;
+  source_manifest_uri?: string;
+  source_manifest_sha256?: string;
   noise_profile: string;
   scenario: string;
   runtime_host: string;
@@ -140,7 +152,7 @@ export interface SpeechEnhancementSpikeReport {
     noisyReplay: "synthetic_fixture_ready" | "real_capture_required" | "real_capture_ready";
     latencyMetrics: "covered";
     transcriptEndpointingMetrics: "covered";
-    cpuRuntimeCost: "estimated_needs_live_measurement";
+    cpuRuntimeCost: "estimated_needs_live_measurement" | "covered";
     featureFlagShape: "proposed";
     remainingBeforeIssueClose: string[];
   };
@@ -198,6 +210,19 @@ function hasParseableIsoStringField(record: Record<string, unknown>, field: stri
   return hasStringField(record, field) && !Number.isNaN(Date.parse(record[field] as string));
 }
 
+function hasOptionalSha256Field(record: Record<string, unknown>, field: string): boolean {
+  return record[field] === undefined || (typeof record[field] === "string" && new RegExp("^[a-f0-9]{64}$", "i").test(record[field]));
+}
+
+function hasArtifactUriField(record: Record<string, unknown>, field: string): boolean {
+  if (!hasStringField(record, field)) {
+    return false;
+  }
+
+  const value = record[field] as string;
+  return value.startsWith("artifacts/") && !value.includes("..") && !value.startsWith("/");
+}
+
 function hasEnumField<T extends string>(record: Record<string, unknown>, field: string, allowed: readonly T[]): boolean {
   return typeof record[field] === "string" && allowed.includes(record[field] as T);
 }
@@ -210,6 +235,11 @@ function getNestedRecord(record: Record<string, unknown>, field: string): Record
 const endpointingStabilityValues = ["unstable", "acceptable", "stable"] as const;
 const bargeInRiskValues = ["low", "medium", "high"] as const;
 const cpuCostEstimateValues = ["low", "medium", "high"] as const;
+const allowedLatencySettingsMs = [12.5, 25, 50, 75] as const;
+
+function hasAllowedLatencySetting(record: Record<string, unknown>, field: string): boolean {
+  return hasNumberField(record, field) && (allowedLatencySettingsMs as readonly number[]).includes(record[field] as number);
+}
 
 export function validateSpeechEnhancementCaptureReplayManifest(
   manifest: unknown,
@@ -220,16 +250,31 @@ export function validateSpeechEnhancementCaptureReplayManifest(
     return { manifestOk: false, missingFields: ["manifest"] };
   }
 
-  for (const field of ["capture_id", "audio_source_uri", "noise_profile", "scenario", "runtime_host"]) {
+  for (const field of ["capture_id", "noise_profile", "scenario", "runtime_host"]) {
     if (!hasStringField(manifest, field)) {
       missingFields.push(field);
     }
   }
+  if (!hasArtifactUriField(manifest, "audio_source_uri")) {
+    missingFields.push("audio_source_uri.artifacts_relative_path_required");
+  }
+  if (!hasArtifactUriField(manifest, "source_manifest_uri")) {
+    missingFields.push("source_manifest_uri.artifacts_relative_path_required");
+  }
+  if (hasStringField(manifest, "capture_id") && !(manifest.capture_id as string).startsWith("real-noisy-local-sip-")) {
+    missingFields.push("capture_id.real_noisy_local_sip_required");
+  }
   if (!hasParseableIsoStringField(manifest, "recorded_at")) {
     missingFields.push("recorded_at");
   }
-  if (!hasNumberField(manifest, "latency_setting_ms")) {
+  if (!hasAllowedLatencySetting(manifest, "latency_setting_ms")) {
     missingFields.push("latency_setting_ms");
+  }
+  if (!hasOptionalSha256Field(manifest, "audio_sha256")) {
+    missingFields.push("audio_sha256");
+  }
+  if (!hasOptionalSha256Field(manifest, "source_manifest_sha256")) {
+    missingFields.push("source_manifest_sha256");
   }
 
   const baseline = getNestedRecord(manifest, "baseline_rtc_asr");
@@ -284,6 +329,15 @@ export function validateSpeechEnhancementCaptureReplayManifest(
   const metric: SpeechEnhancementReplayMetric = {
     captureId: typedManifest.capture_id,
     scenario: typedManifest.scenario,
+    captureEvidence: {
+      recordedAt: typedManifest.recorded_at,
+      audioSourceUri: typedManifest.audio_source_uri,
+      audioSha256: typedManifest.audio_sha256,
+      sourceManifestUri: typedManifest.source_manifest_uri,
+      sourceManifestSha256: typedManifest.source_manifest_sha256,
+      noiseProfile: typedManifest.noise_profile,
+      runtimeHost: typedManifest.runtime_host,
+    },
     baseline: {
       transcript: typedManifest.baseline_rtc_asr.transcript,
       wordErrorRateEstimate: typedManifest.baseline_rtc_asr.word_error_rate_estimate,
@@ -503,6 +557,7 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
         "capture_id",
         "recorded_at",
         "audio_source_uri",
+        "source_manifest_uri",
         "noise_profile",
         "scenario",
         "runtime_host",
