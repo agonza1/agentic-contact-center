@@ -43,7 +43,58 @@ function normalizeCaptureReplayMetric(payload) {
     assert.ok(value !== undefined && value !== null && value !== "", `Missing capture replay field: ${fieldPath}`);
   }
 
+  assert.equal(typeof payload.capture_id, "string", "capture_id must be a string");
   assert.ok(payload.capture_id.startsWith("real-"), "capture_id must start with real- for issue-close readiness");
+  assert.equal(typeof payload.recorded_at, "string", "recorded_at must be an ISO timestamp string");
+  assert.ok(!Number.isNaN(Date.parse(payload.recorded_at)), "recorded_at must be a parseable ISO timestamp string");
+  assert.equal(typeof payload.audio_source_uri, "string", "audio_source_uri must be a string");
+  assert.equal(typeof payload.noise_profile, "string", "noise_profile must be a string");
+  assert.equal(typeof payload.scenario, "string", "scenario must be a string");
+
+  const allowedStability = new Set(["unstable", "acceptable", "stable"]);
+  const allowedRisk = new Set(["low", "medium", "high"]);
+  const allowedCpuCost = new Set(["low", "medium", "high"]);
+  assert.ok(
+    Number.isFinite(payload.baseline_rtc_asr.word_error_rate_estimate) &&
+      payload.baseline_rtc_asr.word_error_rate_estimate >= 0 &&
+      payload.baseline_rtc_asr.word_error_rate_estimate <= 1,
+    "baseline_rtc_asr.word_error_rate_estimate must be a number between 0 and 1",
+  );
+  assert.ok(
+    Number.isFinite(payload.enhanced_rtc_asr.word_error_rate_estimate) &&
+      payload.enhanced_rtc_asr.word_error_rate_estimate >= 0 &&
+      payload.enhanced_rtc_asr.word_error_rate_estimate <= 1,
+    "enhanced_rtc_asr.word_error_rate_estimate must be a number between 0 and 1",
+  );
+  assert.ok(
+    allowedStability.has(payload.baseline_rtc_asr.endpointing_stability),
+    "baseline_rtc_asr.endpointing_stability must be unstable, acceptable, or stable",
+  );
+  assert.ok(
+    allowedStability.has(payload.enhanced_rtc_asr.endpointing_stability),
+    "enhanced_rtc_asr.endpointing_stability must be unstable, acceptable, or stable",
+  );
+  assert.ok(
+    allowedRisk.has(payload.baseline_rtc_asr.barge_in_risk),
+    "baseline_rtc_asr.barge_in_risk must be low, medium, or high",
+  );
+  assert.ok(
+    allowedRisk.has(payload.enhanced_rtc_asr.barge_in_risk),
+    "enhanced_rtc_asr.barge_in_risk must be low, medium, or high",
+  );
+  assert.ok(
+    Number.isFinite(payload.enhanced_rtc_asr.added_turn_latency_ms_p95) &&
+      payload.enhanced_rtc_asr.added_turn_latency_ms_p95 >= 0,
+    "enhanced_rtc_asr.added_turn_latency_ms_p95 must be a non-negative number",
+  );
+  assert.ok(
+    payload.enhancement_latency_ms === undefined || Number.isFinite(payload.enhancement_latency_ms),
+    "enhancement_latency_ms must be a number when provided",
+  );
+  assert.ok(
+    allowedCpuCost.has(payload.enhanced_rtc_asr.cpu_cost_estimate),
+    "enhanced_rtc_asr.cpu_cost_estimate must be low, medium, or high",
+  );
 
   return {
     captureId: payload.capture_id,

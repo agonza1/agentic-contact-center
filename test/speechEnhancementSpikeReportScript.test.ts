@@ -162,6 +162,58 @@ test("speech enhancement spike report rejects incomplete real capture replay evi
   }
 });
 
+test("speech enhancement spike report rejects non-numeric real capture replay metrics", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-invalid-metrics-"));
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+  const captureReplayPath = path.join(tempDir, "real-capture-replay.json");
+
+  try {
+    await writeFile(
+      captureReplayPath,
+      JSON.stringify(
+        {
+          capture_id: "real-noisy-local-sip-004",
+          recorded_at: "2026-07-05T07:55:00.000Z",
+          audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-004.wav",
+          noise_profile: "cafe_noise",
+          scenario: "local SIP caller with malformed WER metric",
+          enhancement_latency_ms: 12.5,
+          baseline_rtc_asr: {
+            transcript: "I need to cansel my policy",
+            word_error_rate_estimate: "0.18",
+            endpointing_stability: "acceptable",
+            barge_in_risk: "medium",
+          },
+          enhanced_rtc_asr: {
+            transcript: "I need to cancel my policy",
+            word_error_rate_estimate: 0.06,
+            endpointing_stability: "stable",
+            barge_in_risk: "low",
+            added_turn_latency_ms_p95: 18,
+            cpu_cost_estimate: "medium",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay",
+      captureReplayPath,
+    ]);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /baseline_rtc_asr\.word_error_rate_estimate must be a number between 0 and 1/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("speech enhancement spike report keeps over-budget real capture replay evidence review-blocked", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-overbudget-"));
   const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
