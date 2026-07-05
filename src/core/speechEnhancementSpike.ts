@@ -222,6 +222,11 @@ function getNestedRecord(record: Record<string, unknown>, field: string): Record
 const endpointingStabilityValues = ["unstable", "acceptable", "stable"] as const;
 const bargeInRiskValues = ["low", "medium", "high"] as const;
 const cpuCostEstimateValues = ["low", "medium", "high"] as const;
+const allowedLatencySettingsMs = [12.5, 25, 50, 75] as const;
+
+function hasAllowedLatencySetting(record: Record<string, unknown>, field: string): boolean {
+  return hasNumberField(record, field) && (allowedLatencySettingsMs as readonly number[]).includes(record[field] as number);
+}
 
 export function validateSpeechEnhancementCaptureReplayManifest(
   manifest: unknown,
@@ -243,7 +248,7 @@ export function validateSpeechEnhancementCaptureReplayManifest(
   if (!hasParseableIsoStringField(manifest, "recorded_at")) {
     missingFields.push("recorded_at");
   }
-  if (!hasNumberField(manifest, "latency_setting_ms")) {
+  if (!hasAllowedLatencySetting(manifest, "latency_setting_ms")) {
     missingFields.push("latency_setting_ms");
   }
   if (!hasOptionalSha256Field(manifest, "audio_sha256")) {
