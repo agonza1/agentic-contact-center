@@ -73,6 +73,7 @@ function applyCaptureReplay(report, metric) {
     acceptanceReadiness: {
       ...report.acceptanceReadiness,
       noisyReplay: issueCloseReady ? "real_capture_ready" : report.acceptanceReadiness.noisyReplay,
+      cpuRuntimeCost: issueCloseReady ? "covered" : report.acceptanceReadiness.cpuRuntimeCost,
       remainingBeforeIssueClose,
     },
   };

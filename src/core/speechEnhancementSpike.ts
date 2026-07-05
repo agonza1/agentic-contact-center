@@ -146,7 +146,7 @@ export interface SpeechEnhancementSpikeReport {
     noisyReplay: "synthetic_fixture_ready" | "real_capture_required" | "real_capture_ready";
     latencyMetrics: "covered";
     transcriptEndpointingMetrics: "covered";
-    cpuRuntimeCost: "estimated_needs_live_measurement";
+    cpuRuntimeCost: "estimated_needs_live_measurement" | "covered";
     featureFlagShape: "proposed";
     remainingBeforeIssueClose: string[];
   };
