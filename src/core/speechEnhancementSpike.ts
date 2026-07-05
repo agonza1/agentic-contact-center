@@ -57,6 +57,14 @@ export interface SpeechEnhancementRolloutStep {
   gate: string;
 }
 
+export interface SpeechEnhancementCaptureReplayContract {
+  requiredCaptureKind: "real_noisy_local_sip";
+  fixtureManifestPath: "artifacts/speech-enhancement-real-capture-replay.json";
+  requiredFields: string[];
+  comparisonPairs: Array<"baseline_rtc_asr" | "enhanced_rtc_asr">;
+  minimumPassingCriteria: string[];
+}
+
 export interface SpeechEnhancementSpikeReport {
   ok: true;
   route: "/api/realtime-shim/speech-enhancement-spike";
@@ -99,6 +107,7 @@ export interface SpeechEnhancementSpikeReport {
   runtimeGuardrails: SpeechEnhancementRuntimeGuardrail[];
   replayDecisions: SpeechEnhancementReplayDecision[];
   replayCoverage: SpeechEnhancementReplayCoverage;
+  captureReplayContract: SpeechEnhancementCaptureReplayContract;
   rolloutPlan: SpeechEnhancementRolloutStep[];
   validationPlan: string[];
 }
@@ -269,6 +278,34 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
     ],
     replayDecisions,
     replayCoverage,
+    captureReplayContract: {
+      requiredCaptureKind: "real_noisy_local_sip",
+      fixtureManifestPath: "artifacts/speech-enhancement-real-capture-replay.json",
+      requiredFields: [
+        "capture_id",
+        "recorded_at",
+        "audio_source_uri",
+        "noise_profile",
+        "baseline_rtc_asr.transcript",
+        "baseline_rtc_asr.word_error_rate_estimate",
+        "baseline_rtc_asr.endpointing_stability",
+        "baseline_rtc_asr.barge_in_risk",
+        "enhanced_rtc_asr.transcript",
+        "enhanced_rtc_asr.word_error_rate_estimate",
+        "enhanced_rtc_asr.endpointing_stability",
+        "enhanced_rtc_asr.barge_in_risk",
+        "enhanced_rtc_asr.added_turn_latency_ms_p95",
+        "enhanced_rtc_asr.cpu_cost_estimate",
+      ],
+      comparisonPairs: ["baseline_rtc_asr", "enhanced_rtc_asr"],
+      minimumPassingCriteria: [
+        "enhanced word error estimate improves over baseline",
+        "enhanced endpointing is stable or no worse than baseline",
+        "enhanced barge-in risk is low or no worse than baseline",
+        "12.5 ms profile stays under 25 ms added p95 turn latency",
+        "runtime CPU cost is low or medium on the selected rtc-asr host",
+      ],
+    },
     rolloutPlan: [
       {
         step: "capture_replay",
