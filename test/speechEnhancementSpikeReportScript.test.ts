@@ -47,7 +47,12 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       schemaVersion: number;
       artifactType: string;
-      report: { issue: string; proposedConfig: { featureFlag: string }; replayCoverage: { liveDemoGate: string } };
+      report: {
+        issue: string;
+        proposedConfig: { featureFlag: string };
+        replayCoverage: { liveDemoGate: string };
+        captureReplayContract: { fixtureManifestPath: string; requiredFields: string[] };
+      };
       handoff: { issueUrl: string; reviewRoute: string; validationCommand: string; nextEvidenceOwner: string };
       reviewGate: { issueCloseReady: boolean; blockers: string[]; nextEvidence: string[] };
     };
@@ -62,6 +67,11 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.equal(artifact.handoff.nextEvidenceOwner, "agentic_contact_center");
     assert.equal(artifact.report.proposedConfig.featureFlag, "RTC_ASR_SPEECH_ENHANCEMENT");
     assert.equal(artifact.report.replayCoverage.liveDemoGate, "blocked_until_real_capture");
+    assert.equal(
+      artifact.report.captureReplayContract.fixtureManifestPath,
+      "artifacts/speech-enhancement-real-capture-replay.json",
+    );
+    assert.ok(artifact.report.captureReplayContract.requiredFields.includes("audio_source_uri"));
     assert.equal(artifact.reviewGate.issueCloseReady, false);
     assert.ok(artifact.reviewGate.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
     assert.ok(artifact.reviewGate.nextEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));

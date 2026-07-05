@@ -71,6 +71,13 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         liveDemoGate: string;
         missingEvidence: string[];
       };
+      captureReplayContract: {
+        requiredCaptureKind: string;
+        fixtureManifestPath: string;
+        requiredFields: string[];
+        comparisonPairs: string[];
+        minimumPassingCriteria: string[];
+      };
       rolloutPlan: Array<{ step: string; owner: string; gate: string }>;
       validationPlan: string[];
     };
@@ -136,6 +143,16 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.equal(payload.replayCoverage.baselineEnhancedPairs, 1);
     assert.equal(payload.replayCoverage.liveDemoGate, "blocked_until_real_capture");
     assert.ok(payload.replayCoverage.missingEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));
+    assert.equal(payload.captureReplayContract.requiredCaptureKind, "real_noisy_local_sip");
+    assert.equal(
+      payload.captureReplayContract.fixtureManifestPath,
+      "artifacts/speech-enhancement-real-capture-replay.json",
+    );
+    assert.deepEqual(payload.captureReplayContract.comparisonPairs, ["baseline_rtc_asr", "enhanced_rtc_asr"]);
+    assert.ok(payload.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.added_turn_latency_ms_p95"));
+    assert.ok(
+      payload.captureReplayContract.minimumPassingCriteria.some((criterion) => criterion.includes("word error")),
+    );
     assert.deepEqual(
       payload.rolloutPlan.map((step) => [step.step, step.owner]),
       [
