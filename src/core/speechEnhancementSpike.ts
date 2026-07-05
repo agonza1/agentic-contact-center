@@ -210,6 +210,15 @@ function hasOptionalSha256Field(record: Record<string, unknown>, field: string):
   return record[field] === undefined || (typeof record[field] === "string" && new RegExp("^[a-f0-9]{64}$", "i").test(record[field]));
 }
 
+function hasArtifactUriField(record: Record<string, unknown>, field: string): boolean {
+  if (!hasStringField(record, field)) {
+    return false;
+  }
+
+  const value = record[field] as string;
+  return value.startsWith("artifacts/") && !value.includes("..") && !value.startsWith("/");
+}
+
 function hasEnumField<T extends string>(record: Record<string, unknown>, field: string, allowed: readonly T[]): boolean {
   return typeof record[field] === "string" && allowed.includes(record[field] as T);
 }
@@ -237,10 +246,13 @@ export function validateSpeechEnhancementCaptureReplayManifest(
     return { manifestOk: false, missingFields: ["manifest"] };
   }
 
-  for (const field of ["capture_id", "audio_source_uri", "noise_profile", "scenario", "runtime_host"]) {
+  for (const field of ["capture_id", "noise_profile", "scenario", "runtime_host"]) {
     if (!hasStringField(manifest, field)) {
       missingFields.push(field);
     }
+  }
+  if (!hasArtifactUriField(manifest, "audio_source_uri")) {
+    missingFields.push("audio_source_uri.artifacts_relative_path_required");
   }
   if (hasStringField(manifest, "capture_id") && !(manifest.capture_id as string).startsWith("real-noisy-local-sip-")) {
     missingFields.push("capture_id.real_noisy_local_sip_required");
