@@ -65,3 +65,36 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("speech enhancement spike report script can enforce issue-close readiness", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-strict-"));
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+
+  try {
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--require-close-ready",
+    ]);
+
+    assert.equal(result.exitCode, 1);
+    const summary = JSON.parse(result.stdout) as {
+      ok: boolean;
+      issueCloseReady: boolean;
+      blockers: string[];
+      outputPath: string;
+      latestOutputPath: string | null;
+    };
+    assert.equal(summary.ok, false);
+    assert.equal(summary.issueCloseReady, false);
+    assert.equal(summary.outputPath, outputPath);
+    assert.equal(summary.latestOutputPath, null);
+    assert.ok(summary.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
+
+    const artifact = JSON.parse(await readFile(outputPath, "utf8")) as { reviewGate: { issueCloseReady: boolean } };
+    assert.equal(artifact.reviewGate.issueCloseReady, false);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});

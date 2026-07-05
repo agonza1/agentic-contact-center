@@ -51,6 +51,7 @@ async function writeJson(filePath, payload) {
 async function main() {
   const outputPath = resolveOutputPath();
   const latestOutputPath = resolveLatestOutputPath();
+  const requireCloseReady = hasArg("--require-close-ready");
   const report = buildSpeechEnhancementSpikeReport();
 
   assert.equal(report.ok, true);
@@ -76,7 +77,19 @@ async function main() {
     await writeJson(latestOutputPath, artifact);
   }
 
-  console.log(JSON.stringify({ ok: true, outputPath, latestOutputPath: latestOutputPath ?? null }));
+  const summary = {
+    ok: !requireCloseReady || artifact.reviewGate.issueCloseReady,
+    outputPath,
+    latestOutputPath: latestOutputPath ?? null,
+    issueCloseReady: artifact.reviewGate.issueCloseReady,
+    blockers: artifact.reviewGate.blockers,
+  };
+
+  console.log(JSON.stringify(summary));
+
+  if (requireCloseReady && !artifact.reviewGate.issueCloseReady) {
+    process.exitCode = 1;
+  }
 }
 
 main().catch((error) => {
