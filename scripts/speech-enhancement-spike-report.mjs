@@ -217,6 +217,7 @@ async function writeJson(filePath, payload) {
 function buildReviewGate(report) {
   const missingEvidence = new Set(report.replayCoverage.missingEvidence);
   const hasRealCaptureReplay = report.replayCoverage.realNoisyCaptureReplayCount > 0;
+  const realCaptureReplayDecisions = report.replayDecisions.filter((decision) => decision.captureId.startsWith("real-"));
   const issueCloseReady = hasRealCaptureReplay && report.acceptanceReadiness.remainingBeforeIssueClose.length === 0;
   const checks = {
     realNoisyCaptureReplay: hasRealCaptureReplay,
@@ -245,6 +246,13 @@ function buildReviewGate(report) {
     failureReasons,
     blockers: report.acceptanceReadiness.remainingBeforeIssueClose,
     nextEvidence: report.replayCoverage.missingEvidence,
+    realCaptureReplayIds: realCaptureReplayDecisions.map((decision) => decision.captureId),
+    passingRealCaptureReplayIds: realCaptureReplayDecisions
+      .filter((decision) => decision.enableForLiveDemo)
+      .map((decision) => decision.captureId),
+    blockedRealCaptureReplayIds: realCaptureReplayDecisions
+      .filter((decision) => !decision.enableForLiveDemo)
+      .map((decision) => decision.captureId),
   };
 }
 

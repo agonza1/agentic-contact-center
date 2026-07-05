@@ -60,6 +60,9 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
         failureReasons: Record<string, string>;
         blockers: string[];
         nextEvidence: string[];
+        realCaptureReplayIds: string[];
+        passingRealCaptureReplayIds: string[];
+        blockedRealCaptureReplayIds: string[];
       };
     };
     const latestArtifact = JSON.parse(await readFile(latestOutputPath, "utf8"));
@@ -86,6 +89,9 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(artifact.reviewGate.failureReasons.realNoisyCaptureReplay, /real noisy local SIP capture/);
     assert.ok(artifact.reviewGate.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
     assert.ok(artifact.reviewGate.nextEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));
+    assert.deepEqual(artifact.reviewGate.realCaptureReplayIds, []);
+    assert.deepEqual(artifact.reviewGate.passingRealCaptureReplayIds, []);
+    assert.deepEqual(artifact.reviewGate.blockedRealCaptureReplayIds, []);
     assert.deepEqual(latestArtifact.report, artifact.report);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -344,6 +350,9 @@ test("speech enhancement spike report keeps over-budget real capture replay evid
         checks: Record<string, boolean>;
         failureReasons: Record<string, string>;
         nextEvidence: string[];
+        realCaptureReplayIds: string[];
+        passingRealCaptureReplayIds: string[];
+        blockedRealCaptureReplayIds: string[];
       };
     };
     const decision = artifact.report.replayDecisions.at(-1);
@@ -354,6 +363,9 @@ test("speech enhancement spike report keeps over-budget real capture replay evid
     assert.equal(decision?.enableForLiveDemo, false);
     assert.ok(decision?.reasons.includes("latency_over_budget"));
     assert.deepEqual(artifact.reviewGate.nextEvidence, ["measured_12_5_ms_added_turn_latency_under_25_ms_p95"]);
+    assert.deepEqual(artifact.reviewGate.realCaptureReplayIds, ["real-noisy-local-sip-003"]);
+    assert.deepEqual(artifact.reviewGate.passingRealCaptureReplayIds, []);
+    assert.deepEqual(artifact.reviewGate.blockedRealCaptureReplayIds, ["real-noisy-local-sip-003"]);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -499,6 +511,9 @@ test("speech enhancement spike report accepts passing real capture replay eviden
         failureReasons: Record<string, string>;
         blockers: string[];
         nextEvidence: string[];
+        realCaptureReplayIds: string[];
+        passingRealCaptureReplayIds: string[];
+        blockedRealCaptureReplayIds: string[];
       };
     };
 
@@ -520,6 +535,9 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     });
     assert.equal(artifact.report.replayDecisions.at(-1)?.captureId, "real-noisy-local-sip-001");
     assert.equal(artifact.report.replayDecisions.at(-1)?.enableForLiveDemo, true);
+    assert.deepEqual(artifact.reviewGate.realCaptureReplayIds, ["real-noisy-local-sip-001"]);
+    assert.deepEqual(artifact.reviewGate.passingRealCaptureReplayIds, ["real-noisy-local-sip-001"]);
+    assert.deepEqual(artifact.reviewGate.blockedRealCaptureReplayIds, []);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
