@@ -114,6 +114,54 @@ test("speech enhancement spike report script can enforce issue-close readiness",
   }
 });
 
+test("speech enhancement spike report rejects incomplete real capture replay evidence", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-invalid-"));
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+  const captureReplayPath = path.join(tempDir, "real-capture-replay.json");
+
+  try {
+    await writeFile(
+      captureReplayPath,
+      JSON.stringify(
+        {
+          capture_id: "real-noisy-local-sip-002",
+          scenario: "local SIP caller missing source metadata",
+          baseline_rtc_asr: {
+            transcript: "I need to cansel my policy",
+            word_error_rate_estimate: 0.18,
+            endpointing_stability: "acceptable",
+            barge_in_risk: "medium",
+          },
+          enhanced_rtc_asr: {
+            transcript: "I need to cancel my policy",
+            word_error_rate_estimate: 0.06,
+            endpointing_stability: "stable",
+            barge_in_risk: "low",
+            added_turn_latency_ms_p95: 18,
+            cpu_cost_estimate: "medium",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay",
+      captureReplayPath,
+    ]);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /Missing capture replay field: recorded_at/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("speech enhancement spike report accepts passing real capture replay evidence", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-real-"));
   const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
@@ -125,6 +173,9 @@ test("speech enhancement spike report accepts passing real capture replay eviden
       JSON.stringify(
         {
           capture_id: "real-noisy-local-sip-001",
+          recorded_at: "2026-07-05T06:40:00.000Z",
+          audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-001.wav",
+          noise_profile: "cafe_noise",
           scenario: "local SIP caller with cafe noise",
           enhancement_latency_ms: 12.5,
           baseline_rtc_asr: {

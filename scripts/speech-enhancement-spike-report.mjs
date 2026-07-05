@@ -21,14 +21,26 @@ function hasArg(flag) {
 }
 
 function normalizeCaptureReplayMetric(payload) {
-  const requiredTopLevelFields = [
+  const requiredFields = [
     "capture_id",
+    "recorded_at",
+    "audio_source_uri",
+    "noise_profile",
     "scenario",
-    "baseline_rtc_asr",
-    "enhanced_rtc_asr",
+    "baseline_rtc_asr.transcript",
+    "baseline_rtc_asr.word_error_rate_estimate",
+    "baseline_rtc_asr.endpointing_stability",
+    "baseline_rtc_asr.barge_in_risk",
+    "enhanced_rtc_asr.transcript",
+    "enhanced_rtc_asr.word_error_rate_estimate",
+    "enhanced_rtc_asr.endpointing_stability",
+    "enhanced_rtc_asr.barge_in_risk",
+    "enhanced_rtc_asr.added_turn_latency_ms_p95",
+    "enhanced_rtc_asr.cpu_cost_estimate",
   ];
-  for (const field of requiredTopLevelFields) {
-    assert.ok(payload && Object.prototype.hasOwnProperty.call(payload, field), `Missing capture replay field: ${field}`);
+  for (const fieldPath of requiredFields) {
+    const value = fieldPath.split(".").reduce((current, key) => current?.[key], payload);
+    assert.ok(value !== undefined && value !== null && value !== "", `Missing capture replay field: ${fieldPath}`);
   }
 
   assert.ok(payload.capture_id.startsWith("real-"), "capture_id must start with real- for issue-close readiness");
