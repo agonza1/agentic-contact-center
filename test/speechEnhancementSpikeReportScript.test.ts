@@ -48,6 +48,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       schemaVersion: number;
       artifactType: string;
       report: { issue: string; proposedConfig: { featureFlag: string }; replayCoverage: { liveDemoGate: string } };
+      handoff: { issueUrl: string; reviewRoute: string; validationCommand: string; nextEvidenceOwner: string };
       reviewGate: { issueCloseReady: boolean; blockers: string[]; nextEvidence: string[] };
     };
     const latestArtifact = JSON.parse(await readFile(latestOutputPath, "utf8"));
@@ -55,6 +56,10 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.equal(artifact.schemaVersion, 1);
     assert.equal(artifact.artifactType, "speech_enhancement_spike_report");
     assert.equal(artifact.report.issue, "agonza1/agentic-contact-center#97");
+    assert.equal(artifact.handoff.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/97");
+    assert.equal(artifact.handoff.reviewRoute, "/api/realtime-shim/speech-enhancement-spike");
+    assert.equal(artifact.handoff.validationCommand, "npm run proof:speech-enhancement -- --require-close-ready");
+    assert.equal(artifact.handoff.nextEvidenceOwner, "agentic_contact_center");
     assert.equal(artifact.report.proposedConfig.featureFlag, "RTC_ASR_SPEECH_ENHANCEMENT");
     assert.equal(artifact.report.replayCoverage.liveDemoGate, "blocked_until_real_capture");
     assert.equal(artifact.reviewGate.issueCloseReady, false);

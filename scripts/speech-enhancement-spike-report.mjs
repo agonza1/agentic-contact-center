@@ -65,6 +65,12 @@ async function main() {
     generatedAt: new Date().toISOString(),
     artifactType: "speech_enhancement_spike_report",
     report,
+    handoff: {
+      issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97",
+      reviewRoute: report.route,
+      validationCommand: "npm run proof:speech-enhancement -- --require-close-ready",
+      nextEvidenceOwner: "agentic_contact_center",
+    },
     reviewGate: {
       issueCloseReady: report.replayCoverage.liveDemoGate === "eligible" && report.acceptanceReadiness.remainingBeforeIssueClose.length === 0,
       blockers: report.acceptanceReadiness.remainingBeforeIssueClose,
