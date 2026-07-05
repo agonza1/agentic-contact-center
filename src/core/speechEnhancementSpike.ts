@@ -190,6 +190,14 @@ function hasNumberField(record: Record<string, unknown>, field: string): boolean
   return typeof record[field] === "number" && Number.isFinite(record[field]);
 }
 
+function hasNumberInRangeField(record: Record<string, unknown>, field: string, min: number, max: number): boolean {
+  return hasNumberField(record, field) && (record[field] as number) >= min && (record[field] as number) <= max;
+}
+
+function hasParseableIsoStringField(record: Record<string, unknown>, field: string): boolean {
+  return hasStringField(record, field) && !Number.isNaN(Date.parse(record[field] as string));
+}
+
 function hasEnumField<T extends string>(record: Record<string, unknown>, field: string, allowed: readonly T[]): boolean {
   return typeof record[field] === "string" && allowed.includes(record[field] as T);
 }
@@ -212,10 +220,13 @@ export function validateSpeechEnhancementCaptureReplayManifest(
     return { manifestOk: false, missingFields: ["manifest"] };
   }
 
-  for (const field of ["capture_id", "recorded_at", "audio_source_uri", "noise_profile", "scenario", "runtime_host"]) {
+  for (const field of ["capture_id", "audio_source_uri", "noise_profile", "scenario", "runtime_host"]) {
     if (!hasStringField(manifest, field)) {
       missingFields.push(field);
     }
+  }
+  if (!hasParseableIsoStringField(manifest, "recorded_at")) {
+    missingFields.push("recorded_at");
   }
   if (!hasNumberField(manifest, "latency_setting_ms")) {
     missingFields.push("latency_setting_ms");
@@ -232,7 +243,7 @@ export function validateSpeechEnhancementCaptureReplayManifest(
 
   if (baseline) {
     if (!hasStringField(baseline, "transcript")) missingFields.push("baseline_rtc_asr.transcript");
-    if (!hasNumberField(baseline, "word_error_rate_estimate")) {
+    if (!hasNumberInRangeField(baseline, "word_error_rate_estimate", 0, 1)) {
       missingFields.push("baseline_rtc_asr.word_error_rate_estimate");
     }
     if (!hasEnumField(baseline, "endpointing_stability", endpointingStabilityValues)) {
@@ -245,7 +256,7 @@ export function validateSpeechEnhancementCaptureReplayManifest(
 
   if (enhanced) {
     if (!hasStringField(enhanced, "transcript")) missingFields.push("enhanced_rtc_asr.transcript");
-    if (!hasNumberField(enhanced, "word_error_rate_estimate")) {
+    if (!hasNumberInRangeField(enhanced, "word_error_rate_estimate", 0, 1)) {
       missingFields.push("enhanced_rtc_asr.word_error_rate_estimate");
     }
     if (!hasEnumField(enhanced, "endpointing_stability", endpointingStabilityValues)) {
@@ -254,10 +265,10 @@ export function validateSpeechEnhancementCaptureReplayManifest(
     if (!hasEnumField(enhanced, "barge_in_risk", bargeInRiskValues)) {
       missingFields.push("enhanced_rtc_asr.barge_in_risk");
     }
-    if (!hasNumberField(enhanced, "added_turn_latency_ms_p95")) {
+    if (!hasNumberInRangeField(enhanced, "added_turn_latency_ms_p95", 0, Number.MAX_SAFE_INTEGER)) {
       missingFields.push("enhanced_rtc_asr.added_turn_latency_ms_p95");
     }
-    if (!hasNumberField(enhanced, "cpu_percent_p95")) {
+    if (!hasNumberInRangeField(enhanced, "cpu_percent_p95", 0, 100)) {
       missingFields.push("enhanced_rtc_asr.cpu_percent_p95");
     }
     if (!hasEnumField(enhanced, "cpu_cost_estimate", cpuCostEstimateValues)) {
