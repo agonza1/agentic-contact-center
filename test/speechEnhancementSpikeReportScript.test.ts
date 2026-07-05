@@ -77,6 +77,8 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
           recordedAt: string | null;
           audioSourceUri: string | null;
           audioSha256: string | null;
+          sourceManifestUri: string | null;
+          sourceManifestSha256: string | null;
           noiseProfile: string | null;
           runtimeHost: string | null;
         }>;
@@ -99,6 +101,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       "artifacts/speech-enhancement-real-capture-replay.json",
     );
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("audio_source_uri"));
+    assert.ok(artifact.report.captureReplayContract.requiredFields.includes("source_manifest_uri"));
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("runtime_host"));
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.cpu_percent_p95"));
     assert.equal(artifact.reviewGate.issueCloseReady, false);
@@ -384,6 +387,8 @@ test("speech enhancement spike report keeps over-budget real capture replay evid
           recordedAt: string | null;
           audioSourceUri: string | null;
           audioSha256: string | null;
+          sourceManifestUri: string | null;
+          sourceManifestSha256: string | null;
           noiseProfile: string | null;
           runtimeHost: string | null;
         }>;
@@ -492,6 +497,8 @@ test("speech enhancement spike report accepts passing real capture replay eviden
           recorded_at: "2026-07-05T06:40:00.000Z",
           audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-001.wav",
           audio_sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          source_manifest_uri: "artifacts/local-sip/proof-manifest-001.json",
+          source_manifest_sha256: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
           noise_profile: "cafe_noise",
           scenario: "local SIP caller with cafe noise",
           latency_setting_ms: 12.5,
@@ -543,6 +550,8 @@ test("speech enhancement spike report accepts passing real capture replay eviden
             recordedAt: string;
             audioSourceUri: string;
             audioSha256?: string;
+            sourceManifestUri?: string;
+            sourceManifestSha256?: string;
             noiseProfile: string;
             runtimeHost: string;
           };
@@ -563,6 +572,8 @@ test("speech enhancement spike report accepts passing real capture replay eviden
           recordedAt: string | null;
           audioSourceUri: string | null;
           audioSha256: string | null;
+          sourceManifestUri: string | null;
+          sourceManifestSha256: string | null;
           noiseProfile: string | null;
           runtimeHost: string | null;
         }>;
@@ -584,6 +595,8 @@ test("speech enhancement spike report accepts passing real capture replay eviden
       recordedAt: "2026-07-05T06:40:00.000Z",
       audioSourceUri: "artifacts/local-sip/real-noisy-local-sip-001.wav",
       audioSha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      sourceManifestUri: "artifacts/local-sip/proof-manifest-001.json",
+      sourceManifestSha256: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
       noiseProfile: "cafe_noise",
       runtimeHost: "local-rtc-asr-host",
     });
@@ -598,6 +611,8 @@ test("speech enhancement spike report accepts passing real capture replay eviden
         recordedAt: "2026-07-05T06:40:00.000Z",
         audioSourceUri: "artifacts/local-sip/real-noisy-local-sip-001.wav",
         audioSha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        sourceManifestUri: "artifacts/local-sip/proof-manifest-001.json",
+        sourceManifestSha256: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         noiseProfile: "cafe_noise",
         runtimeHost: "local-rtc-asr-host",
       },

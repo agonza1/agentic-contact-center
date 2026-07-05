@@ -13,6 +13,8 @@ export interface SpeechEnhancementReplayMetric {
     recordedAt: string;
     audioSourceUri: string;
     audioSha256?: string;
+    sourceManifestUri?: string;
+    sourceManifestSha256?: string;
     noiseProfile: string;
     runtimeHost: string;
   };
@@ -85,6 +87,8 @@ export interface SpeechEnhancementCaptureReplayManifest {
   recorded_at: string;
   audio_source_uri: string;
   audio_sha256?: string;
+  source_manifest_uri?: string;
+  source_manifest_sha256?: string;
   noise_profile: string;
   scenario: string;
   runtime_host: string;
@@ -254,6 +258,9 @@ export function validateSpeechEnhancementCaptureReplayManifest(
   if (!hasArtifactUriField(manifest, "audio_source_uri")) {
     missingFields.push("audio_source_uri.artifacts_relative_path_required");
   }
+  if (manifest.source_manifest_uri !== undefined && !hasArtifactUriField(manifest, "source_manifest_uri")) {
+    missingFields.push("source_manifest_uri.artifacts_relative_path_required");
+  }
   if (hasStringField(manifest, "capture_id") && !(manifest.capture_id as string).startsWith("real-noisy-local-sip-")) {
     missingFields.push("capture_id.real_noisy_local_sip_required");
   }
@@ -265,6 +272,9 @@ export function validateSpeechEnhancementCaptureReplayManifest(
   }
   if (!hasOptionalSha256Field(manifest, "audio_sha256")) {
     missingFields.push("audio_sha256");
+  }
+  if (!hasOptionalSha256Field(manifest, "source_manifest_sha256")) {
+    missingFields.push("source_manifest_sha256");
   }
 
   const baseline = getNestedRecord(manifest, "baseline_rtc_asr");
@@ -323,6 +333,8 @@ export function validateSpeechEnhancementCaptureReplayManifest(
       recordedAt: typedManifest.recorded_at,
       audioSourceUri: typedManifest.audio_source_uri,
       audioSha256: typedManifest.audio_sha256,
+      sourceManifestUri: typedManifest.source_manifest_uri,
+      sourceManifestSha256: typedManifest.source_manifest_sha256,
       noiseProfile: typedManifest.noise_profile,
       runtimeHost: typedManifest.runtime_host,
     },
@@ -545,6 +557,7 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
         "capture_id",
         "recorded_at",
         "audio_source_uri",
+        "source_manifest_uri",
         "noise_profile",
         "scenario",
         "runtime_host",

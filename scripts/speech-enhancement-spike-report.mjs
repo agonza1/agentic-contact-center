@@ -210,6 +210,8 @@ function buildReviewGate(report) {
       recordedAt: metric.captureEvidence?.recordedAt ?? null,
       audioSourceUri: metric.captureEvidence?.audioSourceUri ?? null,
       audioSha256: metric.captureEvidence?.audioSha256 ?? null,
+      sourceManifestUri: metric.captureEvidence?.sourceManifestUri ?? null,
+      sourceManifestSha256: metric.captureEvidence?.sourceManifestSha256 ?? null,
       noiseProfile: metric.captureEvidence?.noiseProfile ?? null,
       runtimeHost: metric.captureEvidence?.runtimeHost ?? null,
     })),
