@@ -212,17 +212,18 @@ test("speech enhancement spike report keeps over-budget real capture replay evid
     const summary = JSON.parse(result.stdout) as { ok: boolean; issueCloseReady: boolean; blockers: string[] };
     assert.equal(summary.ok, false);
     assert.equal(summary.issueCloseReady, false);
-    assert.ok(summary.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
+    assert.ok(summary.blockers.some((blocker) => blocker.includes("measured_12_5_ms_added_turn_latency_under_25_ms_p95")));
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       report: { replayDecisions: Array<{ captureId: string; enableForLiveDemo: boolean; reasons: string[] }> };
-      reviewGate: { issueCloseReady: boolean };
+      reviewGate: { issueCloseReady: boolean; nextEvidence: string[] };
     };
     const decision = artifact.report.replayDecisions.at(-1);
     assert.equal(artifact.reviewGate.issueCloseReady, false);
     assert.equal(decision?.captureId, "real-noisy-local-sip-003");
     assert.equal(decision?.enableForLiveDemo, false);
     assert.ok(decision?.reasons.includes("latency_over_budget"));
+    assert.deepEqual(artifact.reviewGate.nextEvidence, ["measured_12_5_ms_added_turn_latency_under_25_ms_p95"]);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

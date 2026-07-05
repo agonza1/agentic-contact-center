@@ -87,6 +87,18 @@ function applyCaptureReplay(report, metric) {
   const latencyOk = metric.latencySettingMs === 12.5 && metric.enhanced.addedTurnLatencyMsP95 <= 25;
   const cpuOk = metric.cpuCostEstimate !== "high";
   const issueCloseReady = wordErrorImproved && endpointingOk && bargeInOk && latencyOk && cpuOk;
+  const failingEvidence = [
+    wordErrorImproved ? null : "enhanced_noisy_replay_wer_improvement",
+    endpointingOk ? null : "enhanced_endpointing_no_regression",
+    bargeInOk ? null : "enhanced_barge_in_no_regression",
+    latencyOk ? null : "measured_12_5_ms_added_turn_latency_under_25_ms_p95",
+    cpuOk ? null : "measured_cpu_cost_on_selected_rtc_asr_host",
+  ].filter(Boolean);
+  const remainingBeforeIssueClose = issueCloseReady
+    ? []
+    : [
+        "Replay " + metric.captureId + " did not pass all enhancement close gates: " + failingEvidence.join(", ") + ".",
+      ];
 
   return {
     ...report,
@@ -111,12 +123,12 @@ function applyCaptureReplay(report, metric) {
       realNoisyCaptureReplayCount: report.replayCoverage.realNoisyCaptureReplayCount + 1,
       baselineEnhancedPairs: report.replayCoverage.baselineEnhancedPairs + 1,
       liveDemoGate: issueCloseReady ? "eligible" : "blocked_until_real_capture",
-      missingEvidence: issueCloseReady ? [] : report.replayCoverage.missingEvidence,
+      missingEvidence: issueCloseReady ? [] : failingEvidence,
     },
     acceptanceReadiness: {
       ...report.acceptanceReadiness,
       noisyReplay: issueCloseReady ? "real_capture_required" : report.acceptanceReadiness.noisyReplay,
-      remainingBeforeIssueClose: issueCloseReady ? [] : report.acceptanceReadiness.remainingBeforeIssueClose,
+      remainingBeforeIssueClose,
     },
   };
 }
