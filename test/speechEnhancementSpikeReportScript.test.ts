@@ -399,6 +399,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       report: {
+        acceptanceReadiness: { noisyReplay: string };
         replayCoverage: { realNoisyCaptureReplayCount: number; liveDemoGate: string; missingEvidence: string[] };
         replayDecisions: Array<{ captureId: string; enableForLiveDemo: boolean }>;
       };
@@ -406,6 +407,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     };
 
     assert.equal(artifact.reviewGate.issueCloseReady, true);
+    assert.equal(artifact.report.acceptanceReadiness.noisyReplay, "real_capture_ready");
     assert.deepEqual(artifact.reviewGate.blockers, []);
     assert.deepEqual(artifact.reviewGate.nextEvidence, []);
     assert.equal(artifact.report.replayCoverage.realNoisyCaptureReplayCount, 1);

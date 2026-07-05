@@ -189,7 +189,7 @@ function applyCaptureReplay(report, metric) {
     },
     acceptanceReadiness: {
       ...report.acceptanceReadiness,
-      noisyReplay: issueCloseReady ? "real_capture_required" : report.acceptanceReadiness.noisyReplay,
+      noisyReplay: issueCloseReady ? "real_capture_ready" : report.acceptanceReadiness.noisyReplay,
       remainingBeforeIssueClose,
     },
   };

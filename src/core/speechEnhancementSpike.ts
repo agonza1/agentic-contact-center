@@ -97,7 +97,7 @@ export interface SpeechEnhancementSpikeReport {
   };
   acceptanceReadiness: {
     reportRecommendation: "complete";
-    noisyReplay: "synthetic_fixture_ready" | "real_capture_required";
+    noisyReplay: "synthetic_fixture_ready" | "real_capture_required" | "real_capture_ready";
     latencyMetrics: "covered";
     transcriptEndpointingMetrics: "covered";
     cpuRuntimeCost: "estimated_needs_live_measurement";
