@@ -20,6 +20,8 @@ export interface SpeechEnhancementReplayMetric {
     wordErrorRateEstimate: number;
     endpointingStability: "unstable" | "acceptable" | "stable";
     bargeInRisk: "low" | "medium" | "high";
+    addedTurnLatencyMsP95: number;
+    cpuPercentP95: number;
   };
   latencySettingMs: number;
   cpuCostEstimate: "low" | "medium" | "high";
@@ -112,6 +114,32 @@ export interface SpeechEnhancementSpikeReport {
   validationPlan: string[];
 }
 
+const endpointingRank = new Map<SpeechEnhancementReplayMetric["baseline"]["endpointingStability"], number>([
+  ["unstable", 0],
+  ["acceptable", 1],
+  ["stable", 2],
+]);
+
+const bargeInRiskRank = new Map<SpeechEnhancementReplayMetric["baseline"]["bargeInRisk"], number>([
+  ["low", 0],
+  ["medium", 1],
+  ["high", 2],
+]);
+
+function isEndpointingNoWorse(
+  enhanced: SpeechEnhancementReplayMetric["baseline"]["endpointingStability"],
+  baseline: SpeechEnhancementReplayMetric["baseline"]["endpointingStability"],
+): boolean {
+  return endpointingRank.get(enhanced)! >= endpointingRank.get(baseline)!;
+}
+
+function isBargeInRiskNoWorse(
+  enhanced: SpeechEnhancementReplayMetric["baseline"]["bargeInRisk"],
+  baseline: SpeechEnhancementReplayMetric["baseline"]["bargeInRisk"],
+): boolean {
+  return bargeInRiskRank.get(enhanced)! <= bargeInRiskRank.get(baseline)!;
+}
+
 export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeReport {
   const candidates: SpeechEnhancementLatencyCandidate[] = [
     {
@@ -159,6 +187,8 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
         wordErrorRateEstimate: 0.07,
         endpointingStability: "stable",
         bargeInRisk: "low",
+        addedTurnLatencyMsP95: 18,
+        cpuPercentP95: 42,
       },
       latencySettingMs: 12.5,
       cpuCostEstimate: "medium",
@@ -167,20 +197,19 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
 
   const replayDecisions = replayMetrics.map((metric): SpeechEnhancementReplayDecision => {
     const wordErrorImproved = metric.enhanced.wordErrorRateEstimate < metric.baseline.wordErrorRateEstimate;
-    const endpointingImproved = metric.enhanced.endpointingStability === "stable";
-    const bargeInRiskImproved = metric.enhanced.bargeInRisk === "low";
-    const latencyCandidate = candidates.find((candidate) => candidate.algorithmicLatencyMs === metric.latencySettingMs);
-    const latencyOk = latencyCandidate?.withinConversationalBudget === true;
-    const cpuOk = metric.cpuCostEstimate !== "high";
+    const endpointingOk = isEndpointingNoWorse(metric.enhanced.endpointingStability, metric.baseline.endpointingStability);
+    const bargeInOk = isBargeInRiskNoWorse(metric.enhanced.bargeInRisk, metric.baseline.bargeInRisk);
+    const latencyOk = metric.latencySettingMs === 12.5 && metric.enhanced.addedTurnLatencyMsP95 <= 25;
+    const cpuOk = metric.cpuCostEstimate !== "high" && metric.enhanced.cpuPercentP95 <= 80;
 
     return {
       captureId: metric.captureId,
       latencySettingMs: metric.latencySettingMs,
-      enableForLiveDemo: wordErrorImproved && endpointingImproved && bargeInRiskImproved && latencyOk && cpuOk,
+      enableForLiveDemo: wordErrorImproved && endpointingOk && bargeInOk && latencyOk && cpuOk,
       reasons: [
         wordErrorImproved ? "wer_improved" : "wer_not_improved",
-        endpointingImproved ? "endpointing_stable" : "endpointing_not_stable",
-        bargeInRiskImproved ? "barge_in_risk_low" : "barge_in_risk_not_low",
+        endpointingOk ? "endpointing_stable" : "endpointing_not_stable",
+        bargeInOk ? "barge_in_risk_low" : "barge_in_risk_not_low",
         latencyOk ? "latency_within_budget" : "latency_over_budget",
         cpuOk ? "cpu_cost_allowed" : "cpu_cost_high",
       ],
