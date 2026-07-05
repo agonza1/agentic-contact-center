@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 
@@ -18,6 +18,94 @@ function resolveArgPath(flag) {
 
 function hasArg(flag) {
   return process.argv.includes(flag);
+}
+
+function normalizeCaptureReplayMetric(payload) {
+  const requiredTopLevelFields = [
+    "capture_id",
+    "scenario",
+    "baseline_rtc_asr",
+    "enhanced_rtc_asr",
+  ];
+  for (const field of requiredTopLevelFields) {
+    assert.ok(payload && Object.prototype.hasOwnProperty.call(payload, field), `Missing capture replay field: ${field}`);
+  }
+
+  assert.ok(payload.capture_id.startsWith("real-"), "capture_id must start with real- for issue-close readiness");
+
+  return {
+    captureId: payload.capture_id,
+    scenario: payload.scenario,
+    baseline: {
+      transcript: payload.baseline_rtc_asr.transcript,
+      wordErrorRateEstimate: payload.baseline_rtc_asr.word_error_rate_estimate,
+      endpointingStability: payload.baseline_rtc_asr.endpointing_stability,
+      bargeInRisk: payload.baseline_rtc_asr.barge_in_risk,
+    },
+    enhanced: {
+      transcript: payload.enhanced_rtc_asr.transcript,
+      wordErrorRateEstimate: payload.enhanced_rtc_asr.word_error_rate_estimate,
+      endpointingStability: payload.enhanced_rtc_asr.endpointing_stability,
+      bargeInRisk: payload.enhanced_rtc_asr.barge_in_risk,
+    },
+    latencySettingMs: payload.enhancement_latency_ms ?? 12.5,
+    cpuCostEstimate: payload.enhanced_rtc_asr.cpu_cost_estimate,
+  };
+}
+
+async function loadCaptureReplayMetric() {
+  const captureReplayPath = resolveArgPath("--capture-replay");
+  if (!captureReplayPath) {
+    return undefined;
+  }
+
+  const payload = JSON.parse(await readFile(captureReplayPath, "utf8"));
+  return normalizeCaptureReplayMetric(payload);
+}
+
+function applyCaptureReplay(report, metric) {
+  if (!metric) {
+    return report;
+  }
+
+  const wordErrorImproved = metric.enhanced.wordErrorRateEstimate < metric.baseline.wordErrorRateEstimate;
+  const endpointingOk = metric.enhanced.endpointingStability === "stable" || metric.enhanced.endpointingStability === metric.baseline.endpointingStability;
+  const bargeInOk = metric.enhanced.bargeInRisk === "low" || metric.enhanced.bargeInRisk === metric.baseline.bargeInRisk;
+  const latencyOk = metric.latencySettingMs === 12.5;
+  const cpuOk = metric.cpuCostEstimate !== "high";
+  const issueCloseReady = wordErrorImproved && endpointingOk && bargeInOk && latencyOk && cpuOk;
+
+  return {
+    ...report,
+    replayMetrics: [...report.replayMetrics, metric],
+    replayDecisions: [
+      ...report.replayDecisions,
+      {
+        captureId: metric.captureId,
+        latencySettingMs: metric.latencySettingMs,
+        enableForLiveDemo: issueCloseReady,
+        reasons: [
+          wordErrorImproved ? "wer_improved" : "wer_not_improved",
+          endpointingOk ? "endpointing_stable" : "endpointing_not_stable",
+          bargeInOk ? "barge_in_risk_low" : "barge_in_risk_not_low",
+          latencyOk ? "latency_within_budget" : "latency_over_budget",
+          cpuOk ? "cpu_cost_allowed" : "cpu_cost_high",
+        ],
+      },
+    ],
+    replayCoverage: {
+      syntheticNoisyReplayCount: report.replayCoverage.syntheticNoisyReplayCount,
+      realNoisyCaptureReplayCount: report.replayCoverage.realNoisyCaptureReplayCount + 1,
+      baselineEnhancedPairs: report.replayCoverage.baselineEnhancedPairs + 1,
+      liveDemoGate: issueCloseReady ? "eligible" : "blocked_until_real_capture",
+      missingEvidence: issueCloseReady ? [] : report.replayCoverage.missingEvidence,
+    },
+    acceptanceReadiness: {
+      ...report.acceptanceReadiness,
+      noisyReplay: issueCloseReady ? "real_capture_required" : report.acceptanceReadiness.noisyReplay,
+      remainingBeforeIssueClose: issueCloseReady ? [] : report.acceptanceReadiness.remainingBeforeIssueClose,
+    },
+  };
 }
 
 function resolveOutputPath() {
@@ -52,7 +140,8 @@ async function main() {
   const outputPath = resolveOutputPath();
   const latestOutputPath = resolveLatestOutputPath();
   const requireCloseReady = hasArg("--require-close-ready");
-  const report = buildSpeechEnhancementSpikeReport();
+  const captureReplayMetric = await loadCaptureReplayMetric();
+  const report = applyCaptureReplay(buildSpeechEnhancementSpikeReport(), captureReplayMetric);
 
   assert.equal(report.ok, true);
   assert.equal(report.issue, "agonza1/agentic-contact-center#97");

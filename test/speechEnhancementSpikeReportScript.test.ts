@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -109,6 +109,76 @@ test("speech enhancement spike report script can enforce issue-close readiness",
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as { reviewGate: { issueCloseReady: boolean } };
     assert.equal(artifact.reviewGate.issueCloseReady, false);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("speech enhancement spike report accepts passing real capture replay evidence", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-real-"));
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+  const captureReplayPath = path.join(tempDir, "real-capture-replay.json");
+
+  try {
+    await writeFile(
+      captureReplayPath,
+      JSON.stringify(
+        {
+          capture_id: "real-noisy-local-sip-001",
+          scenario: "local SIP caller with cafe noise",
+          enhancement_latency_ms: 12.5,
+          baseline_rtc_asr: {
+            transcript: "I need to cansel my policy",
+            word_error_rate_estimate: 0.18,
+            endpointing_stability: "acceptable",
+            barge_in_risk: "medium",
+          },
+          enhanced_rtc_asr: {
+            transcript: "I need to cancel my policy",
+            word_error_rate_estimate: 0.06,
+            endpointing_stability: "stable",
+            barge_in_risk: "low",
+            added_turn_latency_ms_p95: 18,
+            cpu_cost_estimate: "medium",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay",
+      captureReplayPath,
+      "--require-close-ready",
+    ]);
+
+    assert.equal(result.exitCode, 0, result.stderr);
+    const summary = JSON.parse(result.stdout) as { ok: boolean; issueCloseReady: boolean; blockers: string[] };
+    assert.equal(summary.ok, true);
+    assert.equal(summary.issueCloseReady, true);
+    assert.deepEqual(summary.blockers, []);
+
+    const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
+      report: {
+        replayCoverage: { realNoisyCaptureReplayCount: number; liveDemoGate: string; missingEvidence: string[] };
+        replayDecisions: Array<{ captureId: string; enableForLiveDemo: boolean }>;
+      };
+      reviewGate: { issueCloseReady: boolean; blockers: string[]; nextEvidence: string[] };
+    };
+
+    assert.equal(artifact.reviewGate.issueCloseReady, true);
+    assert.deepEqual(artifact.reviewGate.blockers, []);
+    assert.deepEqual(artifact.reviewGate.nextEvidence, []);
+    assert.equal(artifact.report.replayCoverage.realNoisyCaptureReplayCount, 1);
+    assert.equal(artifact.report.replayCoverage.liveDemoGate, "eligible");
+    assert.deepEqual(artifact.report.replayCoverage.missingEvidence, []);
+    assert.equal(artifact.report.replayDecisions.at(-1)?.captureId, "real-noisy-local-sip-001");
+    assert.equal(artifact.report.replayDecisions.at(-1)?.enableForLiveDemo, true);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
