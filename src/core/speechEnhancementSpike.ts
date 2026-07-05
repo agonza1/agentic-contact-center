@@ -12,6 +12,7 @@ export interface SpeechEnhancementReplayMetric {
   captureEvidence?: {
     recordedAt: string;
     audioSourceUri: string;
+    audioSha256?: string;
     noiseProfile: string;
     runtimeHost: string;
   };
@@ -83,6 +84,7 @@ export interface SpeechEnhancementCaptureReplayManifest {
   capture_id: string;
   recorded_at: string;
   audio_source_uri: string;
+  audio_sha256?: string;
   noise_profile: string;
   scenario: string;
   runtime_host: string;
@@ -204,6 +206,10 @@ function hasParseableIsoStringField(record: Record<string, unknown>, field: stri
   return hasStringField(record, field) && !Number.isNaN(Date.parse(record[field] as string));
 }
 
+function hasOptionalSha256Field(record: Record<string, unknown>, field: string): boolean {
+  return record[field] === undefined || (typeof record[field] === "string" && new RegExp("^[a-f0-9]{64}$", "i").test(record[field]));
+}
+
 function hasEnumField<T extends string>(record: Record<string, unknown>, field: string, allowed: readonly T[]): boolean {
   return typeof record[field] === "string" && allowed.includes(record[field] as T);
 }
@@ -239,6 +245,9 @@ export function validateSpeechEnhancementCaptureReplayManifest(
   }
   if (!hasNumberField(manifest, "latency_setting_ms")) {
     missingFields.push("latency_setting_ms");
+  }
+  if (!hasOptionalSha256Field(manifest, "audio_sha256")) {
+    missingFields.push("audio_sha256");
   }
 
   const baseline = getNestedRecord(manifest, "baseline_rtc_asr");
@@ -296,6 +305,7 @@ export function validateSpeechEnhancementCaptureReplayManifest(
     captureEvidence: {
       recordedAt: typedManifest.recorded_at,
       audioSourceUri: typedManifest.audio_source_uri,
+      audioSha256: typedManifest.audio_sha256,
       noiseProfile: typedManifest.noise_profile,
       runtimeHost: typedManifest.runtime_host,
     },
