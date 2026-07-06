@@ -71,6 +71,10 @@ test("GET /health returns config-backed demo metadata", async () => {
       failureReasons: Record<string, string>;
       missingEvidence: string[];
       blockers: string[];
+      nextEvidence: string[];
+      passingRealCaptureReplayIds: string[];
+      blockedRealCaptureReplayIds: string[];
+      validationCommand: string;
     };
   };
 
@@ -108,4 +112,11 @@ test("GET /health returns config-backed demo metadata", async () => {
     ),
   );
   assert.ok(payload.speechEnhancement.blockers.some((item) => item.includes("real noisy local SIP capture")));
+  assert.deepEqual(payload.speechEnhancement.nextEvidence, payload.speechEnhancement.missingEvidence);
+  assert.deepEqual(payload.speechEnhancement.passingRealCaptureReplayIds, []);
+  assert.deepEqual(payload.speechEnhancement.blockedRealCaptureReplayIds, []);
+  assert.equal(
+    payload.speechEnhancement.validationCommand,
+    "npm run proof:speech-enhancement -- --require-close-ready",
+  );
 });
