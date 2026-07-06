@@ -59,11 +59,18 @@ function applyCaptureReplay(report, metric) {
   }
 
   const { issueCloseReady, failingEvidence, reasons } = evaluateSpeechEnhancementReplayMetric(metric);
-  const remainingBeforeIssueClose = issueCloseReady
+  const previousReplayFailures = report.acceptanceReadiness.remainingBeforeIssueClose.filter((blocker) =>
+    blocker.startsWith("Replay ") && blocker.includes(" did not pass all enhancement close gates"),
+  );
+  const replayFailures = issueCloseReady
     ? []
-    : [
-        "Replay " + metric.captureId + " did not pass all enhancement close gates: " + failingEvidence.join(", ") + ".",
-      ];
+    : ["Replay " + metric.captureId + " did not pass all enhancement close gates: " + failingEvidence.join(", ") + "."];
+  const remainingBeforeIssueClose = [...previousReplayFailures, ...replayFailures];
+  const missingEvidence = Array.from(new Set([
+    ...(report.replayCoverage.realNoisyCaptureReplayCount > 0 ? report.replayCoverage.missingEvidence : []),
+    ...failingEvidence,
+  ]));
+  const allAttachedReplaysPass = remainingBeforeIssueClose.length === 0;
 
   return {
     ...report,
@@ -81,13 +88,13 @@ function applyCaptureReplay(report, metric) {
       syntheticNoisyReplayCount: report.replayCoverage.syntheticNoisyReplayCount,
       realNoisyCaptureReplayCount: report.replayCoverage.realNoisyCaptureReplayCount + 1,
       baselineEnhancedPairs: report.replayCoverage.baselineEnhancedPairs + 1,
-      liveDemoGate: issueCloseReady ? "eligible" : "blocked_until_real_capture",
-      missingEvidence: issueCloseReady ? [] : failingEvidence,
+      liveDemoGate: allAttachedReplaysPass ? "eligible" : "blocked_until_real_capture",
+      missingEvidence,
     },
     acceptanceReadiness: {
       ...report.acceptanceReadiness,
-      noisyReplay: issueCloseReady ? "real_capture_ready" : report.acceptanceReadiness.noisyReplay,
-      cpuRuntimeCost: issueCloseReady ? "covered" : report.acceptanceReadiness.cpuRuntimeCost,
+      noisyReplay: allAttachedReplaysPass ? "real_capture_ready" : report.acceptanceReadiness.noisyReplay,
+      cpuRuntimeCost: allAttachedReplaysPass ? "covered" : report.acceptanceReadiness.cpuRuntimeCost,
       remainingBeforeIssueClose,
     },
   };

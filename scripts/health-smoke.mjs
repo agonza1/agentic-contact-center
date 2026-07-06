@@ -20,8 +20,16 @@ function parseArgs(argv) {
     expectPipecatRuntimeCheckLiveTelephonyRequired: undefined,
     expectPipecatActiveTool: undefined,
     expectPipecatScriptCompleted: undefined,
+    expectSpeechEnhancementRuntimeEnabled: undefined,
+    expectSpeechEnhancementIssueCloseReady: undefined,
+    expectSpeechEnhancementLiveDemoGate: undefined,
+    expectSpeechEnhancementRecommendedLatencyMs: undefined,
+    expectSpeechEnhancementRuntimeLatencyMs: undefined,
+    expectSpeechEnhancementRuntimeBypassReason: undefined,
     expectRuntimeSeams: [],
     expectPipecatTools: [],
+    expectSpeechEnhancementMissingEvidence: [],
+    expectSpeechEnhancementBlockers: [],
     expectLatencyBudgetsMs: [],
     expectLatencyBudgetMaxMs: [],
   };
@@ -47,6 +55,14 @@ function parseArgs(argv) {
     '--expect-pipecat-runtime-check-live-telephony-required',
     '--expect-pipecat-active-tool',
     '--expect-pipecat-script-completed',
+    '--expect-speech-enhancement-runtime-enabled',
+    '--expect-speech-enhancement-issue-close-ready',
+    '--expect-speech-enhancement-live-demo-gate',
+    '--expect-speech-enhancement-recommended-latency-ms',
+    '--expect-speech-enhancement-runtime-latency-ms',
+    '--expect-speech-enhancement-runtime-bypass-reason',
+    '--expect-speech-enhancement-missing-evidence',
+    '--expect-speech-enhancement-blocker',
     '--expect-runtime-seam',
     '--expect-pipecat-tool',
     '--expect-latency-budget-ms',
@@ -195,6 +211,54 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-speech-enhancement-runtime-enabled' && next) {
+      args.expectSpeechEnhancementRuntimeEnabled = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-issue-close-ready' && next) {
+      args.expectSpeechEnhancementIssueCloseReady = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-live-demo-gate' && next) {
+      args.expectSpeechEnhancementLiveDemoGate = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-recommended-latency-ms' && next) {
+      args.expectSpeechEnhancementRecommendedLatencyMs = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-runtime-latency-ms' && next) {
+      args.expectSpeechEnhancementRuntimeLatencyMs = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-runtime-bypass-reason' && next) {
+      args.expectSpeechEnhancementRuntimeBypassReason = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-missing-evidence' && next) {
+      args.expectSpeechEnhancementMissingEvidence.push(next);
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-blocker' && next) {
+      args.expectSpeechEnhancementBlockers.push(next);
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-runtime-seam' && next) {
       args.expectRuntimeSeams.push(next);
       index += 1;
@@ -249,9 +313,17 @@ function hasJsonExpectations(args) {
     args.expectPipecatRuntimeCheckLiveTelephonyRequired,
     args.expectPipecatActiveTool,
     args.expectPipecatScriptCompleted,
+    args.expectSpeechEnhancementRuntimeEnabled,
+    args.expectSpeechEnhancementIssueCloseReady,
+    args.expectSpeechEnhancementLiveDemoGate,
+    args.expectSpeechEnhancementRecommendedLatencyMs,
+    args.expectSpeechEnhancementRuntimeLatencyMs,
+    args.expectSpeechEnhancementRuntimeBypassReason,
   ].some((expectedValue) => expectedValue !== undefined)
     || args.expectRuntimeSeams.length > 0
     || args.expectPipecatTools.length > 0
+    || args.expectSpeechEnhancementMissingEvidence.length > 0
+    || args.expectSpeechEnhancementBlockers.length > 0
     || args.expectLatencyBudgetsMs.length > 0
     || args.expectLatencyBudgetMaxMs.length > 0;
 }
@@ -307,11 +379,43 @@ function validateLatencyBudgetExpectations(args) {
   return null;
 }
 
+function parseFiniteNumberExpectation(flagName, rawValue) {
+  const expectedValue = Number(rawValue);
+
+  if (!Number.isFinite(expectedValue)) {
+    return { error: `invalid_${flagName}_value(${JSON.stringify(rawValue)})` };
+  }
+
+  return { expectedValue };
+}
+
+function validateNumberExpectations(args) {
+  const numberExpectations = [
+    ['speech_enhancement_recommended_latency_ms', args.expectSpeechEnhancementRecommendedLatencyMs],
+    ['speech_enhancement_runtime_latency_ms', args.expectSpeechEnhancementRuntimeLatencyMs],
+  ];
+
+  for (const [flagName, rawValue] of numberExpectations) {
+    if (rawValue === undefined) {
+      continue;
+    }
+
+    const parsedExpectation = parseFiniteNumberExpectation(flagName, rawValue);
+    if (parsedExpectation.error) {
+      return parsedExpectation.error;
+    }
+  }
+
+  return null;
+}
+
 function validateBooleanExpectations(args) {
   const booleanExpectations = [
     ['pipecat_ready', args.expectPipecatReady],
     ['pipecat_script_completed', args.expectPipecatScriptCompleted],
     ['pipecat_runtime_check_live_telephony_required', args.expectPipecatRuntimeCheckLiveTelephonyRequired],
+    ['speech_enhancement_runtime_enabled', args.expectSpeechEnhancementRuntimeEnabled],
+    ['speech_enhancement_issue_close_ready', args.expectSpeechEnhancementIssueCloseReady],
   ];
 
   for (const [flagName, rawValue] of booleanExpectations) {
@@ -450,6 +554,96 @@ async function getFailureReason(response, args) {
     }
   }
 
+  const speechEnhancementStringExpectations = [
+    ['liveDemoGate', args.expectSpeechEnhancementLiveDemoGate],
+    ['runtimeBypassReason', args.expectSpeechEnhancementRuntimeBypassReason],
+  ];
+
+  for (const [field, expectedValue] of speechEnhancementStringExpectations) {
+    if (expectedValue === undefined) {
+      continue;
+    }
+
+    const speechEnhancement = payload.speechEnhancement && typeof payload.speechEnhancement === 'object'
+      ? payload.speechEnhancement
+      : undefined;
+    const actualValue = speechEnhancement ? speechEnhancement[field] : undefined;
+
+    if (actualValue !== expectedValue) {
+      return `json_speechEnhancement_${field}_mismatch(expected=${JSON.stringify(expectedValue)},actual=${JSON.stringify(actualValue)})`;
+    }
+  }
+
+  const speechEnhancementBooleanExpectations = [
+    ['runtimeEnabled', 'speech_enhancement_runtime_enabled', args.expectSpeechEnhancementRuntimeEnabled],
+    ['issueCloseReady', 'speech_enhancement_issue_close_ready', args.expectSpeechEnhancementIssueCloseReady],
+  ];
+
+  for (const [field, flagName, rawExpectedValue] of speechEnhancementBooleanExpectations) {
+    if (rawExpectedValue === undefined) {
+      continue;
+    }
+
+    const parsedExpectation = parseBooleanExpectation(flagName, rawExpectedValue);
+    if (parsedExpectation.error) {
+      return parsedExpectation.error;
+    }
+
+    const speechEnhancement = payload.speechEnhancement && typeof payload.speechEnhancement === 'object'
+      ? payload.speechEnhancement
+      : undefined;
+    const actualValue = speechEnhancement ? speechEnhancement[field] : undefined;
+
+    if (actualValue !== parsedExpectation.expectedValue) {
+      return `json_speechEnhancement_${field}_mismatch(expected=${JSON.stringify(parsedExpectation.expectedValue)},actual=${JSON.stringify(actualValue)})`;
+    }
+  }
+
+  const speechEnhancementNumberExpectations = [
+    ['recommendedLatencyMs', 'speech_enhancement_recommended_latency_ms', args.expectSpeechEnhancementRecommendedLatencyMs],
+    ['runtimeLatencyMs', 'speech_enhancement_runtime_latency_ms', args.expectSpeechEnhancementRuntimeLatencyMs],
+  ];
+
+  for (const [field, flagName, rawExpectedValue] of speechEnhancementNumberExpectations) {
+    if (rawExpectedValue === undefined) {
+      continue;
+    }
+
+    const parsedExpectation = parseFiniteNumberExpectation(flagName, rawExpectedValue);
+    if (parsedExpectation.error) {
+      return parsedExpectation.error;
+    }
+
+    const speechEnhancement = payload.speechEnhancement && typeof payload.speechEnhancement === 'object'
+      ? payload.speechEnhancement
+      : undefined;
+    const actualValue = speechEnhancement ? speechEnhancement[field] : undefined;
+
+    if (actualValue !== parsedExpectation.expectedValue) {
+      return `json_speechEnhancement_${field}_mismatch(expected=${JSON.stringify(parsedExpectation.expectedValue)},actual=${JSON.stringify(actualValue)})`;
+    }
+  }
+
+  for (const expectedEvidence of args.expectSpeechEnhancementMissingEvidence) {
+    const missingEvidence = payload.speechEnhancement && typeof payload.speechEnhancement === 'object'
+      ? payload.speechEnhancement.missingEvidence
+      : undefined;
+
+    if (!Array.isArray(missingEvidence) || !missingEvidence.includes(expectedEvidence)) {
+      return `json_speechEnhancement_missingEvidence_missing(expected=${JSON.stringify(expectedEvidence)},actual=${JSON.stringify(missingEvidence)})`;
+    }
+  }
+
+  for (const expectedBlocker of args.expectSpeechEnhancementBlockers) {
+    const blockers = payload.speechEnhancement && typeof payload.speechEnhancement === 'object'
+      ? payload.speechEnhancement.blockers
+      : undefined;
+
+    if (!Array.isArray(blockers) || !blockers.includes(expectedBlocker)) {
+      return `json_speechEnhancement_blockers_missing(expected=${JSON.stringify(expectedBlocker)},actual=${JSON.stringify(blockers)})`;
+    }
+  }
+
   const runtimeCheckExpectations = [
     ['command', args.expectPipecatRuntimeCheckCommand],
     ['installCommand', args.expectPipecatRuntimeCheckInstallCommand],
@@ -546,6 +740,11 @@ async function main() {
   const invalidBooleanExpectation = validateBooleanExpectations(args);
   if (invalidBooleanExpectation) {
     throw new Error(invalidBooleanExpectation);
+  }
+
+  const invalidNumberExpectation = validateNumberExpectations(args);
+  if (invalidNumberExpectation) {
+    throw new Error(invalidNumberExpectation);
   }
 
   const invalidTimeoutMs = validatePositiveIntegerOption('timeout_ms', timeoutMs);

@@ -33,6 +33,20 @@ services:
         - npm run pipecat:check
         - --expect-pipecat-runtime-check-live-telephony-required
         - "false"
+        - --expect-speech-enhancement-runtime-enabled
+        - "false"
+        - --expect-speech-enhancement-issue-close-ready
+        - "false"
+        - --expect-speech-enhancement-live-demo-gate
+        - blocked_until_real_capture
+        - --expect-speech-enhancement-recommended-latency-ms
+        - "12.5"
+        - --expect-speech-enhancement-runtime-latency-ms
+        - "12.5"
+        - --expect-speech-enhancement-runtime-bypass-reason
+        - feature_flag_disabled
+        - --expect-speech-enhancement-missing-evidence
+        - real_noisy_local_sip_capture_baseline_vs_enhanced_replay
       interval: 10s
       timeout: 3s
       retries: 5

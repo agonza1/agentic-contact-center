@@ -6,6 +6,7 @@ import { LocalRealtimeShimPrototype } from "../core/localRealtimeShimPrototype";
 import { getPipecatPrototypeHealth, SCRIPTED_CALLER_TURNS } from "../core/pipecatFlowPrototype";
 import { REALTIME_SHIM_RPCS } from "../core/realtimeShimContract";
 import {
+  buildSpeechEnhancementHealthSummary,
   buildSpeechEnhancementReviewGate,
   buildSpeechEnhancementSpikeReport,
   resolveSpeechEnhancementRuntimeConfig,
@@ -2786,6 +2787,7 @@ async function routeRequest(
       latencyBudgetsMs: config.latencyBudgetsMs,
       runtimeSeams,
       pipecatFlow: getPipecatPrototypeHealth(),
+      speechEnhancement: buildSpeechEnhancementHealthSummary(),
     });
     return;
   }
