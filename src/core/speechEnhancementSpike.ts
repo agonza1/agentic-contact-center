@@ -164,6 +164,21 @@ export interface SpeechEnhancementSpikeReport {
   validationPlan: string[];
 }
 
+export interface SpeechEnhancementRuntimeConfigInput {
+  featureFlag?: string;
+  latencyMs?: string;
+}
+
+export interface SpeechEnhancementRuntimeConfig {
+  enabled: boolean;
+  latencyMs: number;
+  bypassReason?: "feature_flag_disabled" | "invalid_latency_ms" | "unsupported_latency_ms";
+  env: {
+    featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT";
+    latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS";
+  };
+}
+
 export interface SpeechEnhancementReviewGate {
   issueCloseReady: boolean;
   checks: Record<
@@ -267,6 +282,40 @@ const bargeInRiskValues = ["low", "medium", "high"] as const;
 const cpuCostEstimateValues = ["low", "medium", "high"] as const;
 const allowedLatencySettingsMs = [12.5, 25, 50, 75] as const;
 const realNoisyLocalSipCaptureIdPrefix = "real-noisy-local-sip-";
+
+function isTruthyFeatureFlag(value: string | undefined): boolean {
+  const normalizedValue = value?.trim().toLowerCase();
+  return normalizedValue === "1" || normalizedValue === "true" || normalizedValue === "enabled";
+}
+
+export function resolveSpeechEnhancementRuntimeConfig(
+  input: SpeechEnhancementRuntimeConfigInput = {},
+): SpeechEnhancementRuntimeConfig {
+  const defaultLatencyMs = 12.5;
+  const latencyInput = input.latencyMs?.trim();
+  const hasExplicitLatency = latencyInput !== undefined && latencyInput !== "";
+  const parsedLatencyMs = hasExplicitLatency ? Number(latencyInput) : defaultLatencyMs;
+  const env = {
+    featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT" as const,
+    latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS" as const,
+  };
+
+  if (!isTruthyFeatureFlag(input.featureFlag)) {
+    return { enabled: false, latencyMs: defaultLatencyMs, bypassReason: "feature_flag_disabled", env };
+  }
+
+  if (!Number.isFinite(parsedLatencyMs)) {
+    return { enabled: false, latencyMs: defaultLatencyMs, bypassReason: "invalid_latency_ms", env };
+  }
+
+  const latencyMs = parsedLatencyMs;
+
+  if (!(allowedLatencySettingsMs as readonly number[]).includes(latencyMs)) {
+    return { enabled: false, latencyMs, bypassReason: "unsupported_latency_ms", env };
+  }
+
+  return { enabled: true, latencyMs, env };
+}
 
 function hasAllowedLatencySetting(record: Record<string, unknown>, field: string): boolean {
   return hasNumberField(record, field) && (allowedLatencySettingsMs as readonly number[]).includes(record[field] as number);
