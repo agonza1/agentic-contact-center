@@ -292,6 +292,7 @@ const bargeInRiskValues = ["low", "medium", "high"] as const;
 const cpuCostEstimateValues = ["low", "medium", "high"] as const;
 const allowedLatencySettingsMs = [12.5, 25, 50, 75] as const;
 const realNoisyLocalSipCaptureIdPrefix = "real-noisy-local-sip-";
+const realNoisyLocalSipCaptureIdPattern = /^real-noisy-local-sip-[a-z0-9][a-z0-9._-]*$/u;
 
 function isTruthyFeatureFlag(value: string | undefined): boolean {
   const normalizedValue = value?.trim().toLowerCase();
@@ -357,7 +358,7 @@ export function validateSpeechEnhancementCaptureReplayManifest(
   if (!hasArtifactUriField(manifest, "source_manifest_uri")) {
     missingFields.push("source_manifest_uri.artifacts_relative_path_required");
   }
-  if (hasStringField(manifest, "capture_id") && !(manifest.capture_id as string).startsWith(realNoisyLocalSipCaptureIdPrefix)) {
+  if (hasStringField(manifest, "capture_id") && !realNoisyLocalSipCaptureIdPattern.test(manifest.capture_id as string)) {
     missingFields.push("capture_id.real_noisy_local_sip_required");
   }
   if (!hasParseableIsoStringField(manifest, "recorded_at")) {
