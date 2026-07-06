@@ -6,6 +6,11 @@ import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildHttpServer } from "../src/http/createServer";
 
 test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommendation", async () => {
+  const previousFeatureFlag = process.env.RTC_ASR_SPEECH_ENHANCEMENT;
+  const previousLatencyMs = process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS;
+  delete process.env.RTC_ASR_SPEECH_ENHANCEMENT;
+  delete process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS;
+
   const server = buildHttpServer(loadPocConfig());
 
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -52,6 +57,12 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       }>;
       decision: { status: string; recommendedLatencyMs: number };
       proposedConfig: { featureFlag: string; allowedLatencyMs: number[]; defaultLatencyMs: number };
+      runtimeConfig: {
+        enabled: boolean;
+        latencyMs: number;
+        bypassReason?: string;
+        env: { featureFlag: string; latencyMs: string };
+      };
       acceptanceReadiness: {
         reportRecommendation: string;
         noisyReplay: string;
@@ -121,6 +132,15 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.equal(payload.proposedConfig.featureFlag, "RTC_ASR_SPEECH_ENHANCEMENT");
     assert.deepEqual(payload.proposedConfig.allowedLatencyMs, [12.5, 25, 50, 75]);
     assert.equal(payload.proposedConfig.defaultLatencyMs, 12.5);
+    assert.deepEqual(payload.runtimeConfig, {
+      enabled: false,
+      latencyMs: 12.5,
+      bypassReason: "feature_flag_disabled",
+      env: {
+        featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT",
+        latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS",
+      },
+    });
     assert.equal(payload.acceptanceReadiness.reportRecommendation, "complete");
     assert.equal(payload.acceptanceReadiness.noisyReplay, "synthetic_fixture_ready");
     assert.equal(payload.acceptanceReadiness.latencyMetrics, "covered");
@@ -188,5 +208,17 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.deepEqual(payload.reviewGate.realCaptureReplayIds, []);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+
+    if (previousFeatureFlag === undefined) {
+      delete process.env.RTC_ASR_SPEECH_ENHANCEMENT;
+    } else {
+      process.env.RTC_ASR_SPEECH_ENHANCEMENT = previousFeatureFlag;
+    }
+
+    if (previousLatencyMs === undefined) {
+      delete process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS;
+    } else {
+      process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS = previousLatencyMs;
+    }
   }
 });
