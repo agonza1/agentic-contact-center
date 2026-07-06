@@ -104,6 +104,88 @@ test("speech enhancement capture replay manifest validates real evidence shape",
   assert.equal(validation.evaluation?.issueCloseReady, true);
 });
 
+test("speech enhancement spike report can attach a passing real capture replay", () => {
+  const validation = validateSpeechEnhancementCaptureReplayManifest({
+    capture_id: "real-noisy-local-sip-010",
+    recorded_at: "2026-07-05T15:45:00Z",
+    audio_source_uri: "artifacts/local-sip-real-noisy-010.wav",
+    audio_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    source_manifest_uri: "artifacts/local-sip/proof-manifest-010.json",
+    source_manifest_sha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    noise_profile: "speakerphone fan noise",
+    scenario: "seeded caller with real local SIP noise",
+    runtime_host: "local-rtc-asr-host",
+    baseline_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.14,
+      endpointing_stability: "acceptable",
+      barge_in_risk: "medium",
+    },
+    enhanced_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.08,
+      endpointing_stability: "stable",
+      barge_in_risk: "low",
+      added_turn_latency_ms_p95: 19,
+      cpu_percent_p95: 44,
+      cpu_cost_estimate: "medium",
+    },
+    latency_setting_ms: 12.5,
+  });
+
+  assert.equal(validation.manifestOk, true);
+  assert.ok(validation.metric);
+
+  const report = buildSpeechEnhancementSpikeReport({ captureReplayMetrics: [validation.metric] });
+  const reviewGate = buildSpeechEnhancementReviewGate(report);
+
+  assert.equal(report.acceptanceReadiness.noisyReplay, "real_capture_ready");
+  assert.equal(report.acceptanceReadiness.cpuRuntimeCost, "covered");
+  assert.deepEqual(report.acceptanceReadiness.remainingBeforeIssueClose, []);
+  assert.equal(report.replayCoverage.realNoisyCaptureReplayCount, 1);
+  assert.equal(report.replayCoverage.liveDemoGate, "eligible");
+  assert.equal(reviewGate.issueCloseReady, true);
+  assert.deepEqual(reviewGate.passingRealCaptureReplayIds, ["real-noisy-local-sip-010"]);
+});
+
+test("speech enhancement spike report keeps failing real capture replay blockers", () => {
+  const report = buildSpeechEnhancementSpikeReport();
+  const failingMetric = {
+    ...report.replayMetrics[0],
+    captureId: "real-noisy-local-sip-011",
+    captureEvidence: {
+      recordedAt: "2026-07-05T15:45:00Z",
+      audioSourceUri: "artifacts/local-sip-real-noisy-011.wav",
+      sourceManifestUri: "artifacts/local-sip/proof-manifest-011.json",
+      noiseProfile: "speakerphone fan noise",
+      runtimeHost: "local-rtc-asr-host",
+    },
+    enhanced: {
+      ...report.replayMetrics[0].enhanced,
+      wordErrorRateEstimate: report.replayMetrics[0].baseline.wordErrorRateEstimate,
+      addedTurnLatencyMsP95: 40,
+      cpuPercentP95: 90,
+    },
+    cpuCostEstimate: "high" as const,
+  };
+
+  const reportWithReplay = buildSpeechEnhancementSpikeReport({ captureReplayMetrics: [failingMetric] });
+  const reviewGate = buildSpeechEnhancementReviewGate(reportWithReplay);
+
+  assert.equal(reportWithReplay.replayCoverage.liveDemoGate, "blocked_until_real_capture");
+  assert.deepEqual(reportWithReplay.replayCoverage.missingEvidence, [
+    "enhanced_noisy_replay_wer_improvement",
+    "measured_12_5_ms_added_turn_latency_under_25_ms_p95",
+    "measured_cpu_cost_on_selected_rtc_asr_host_under_80_percent_p95",
+  ]);
+  assert.match(
+    reportWithReplay.acceptanceReadiness.remainingBeforeIssueClose[0],
+    /^Replay real-noisy-local-sip-011 did not pass all enhancement close gates:/,
+  );
+  assert.equal(reviewGate.issueCloseReady, false);
+  assert.deepEqual(reviewGate.blockedRealCaptureReplayIds, ["real-noisy-local-sip-011"]);
+});
+
 test("speech enhancement capture replay manifest requires artifact-relative audio evidence", () => {
   const validation = validateSpeechEnhancementCaptureReplayManifest({
     capture_id: "real-noisy-local-sip-005",

@@ -9,7 +9,6 @@ const require = createRequire(import.meta.url);
 const {
   buildSpeechEnhancementReviewGate,
   buildSpeechEnhancementSpikeReport,
-  evaluateSpeechEnhancementReplayMetric,
   validateSpeechEnhancementCaptureReplayManifest,
 } = require("../dist/src/core/speechEnhancementSpike.js");
 
@@ -89,53 +88,6 @@ async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayP
       `Capture replay artifact hash mismatch for ${field}: ${captureReplayPath}: expected ${expectedSha256}, got ${actualSha256}`,
     );
   }
-}
-
-function applyCaptureReplay(report, metric) {
-  if (!metric) {
-    return report;
-  }
-
-  const { issueCloseReady, failingEvidence, reasons } = evaluateSpeechEnhancementReplayMetric(metric);
-  const previousReplayFailures = report.acceptanceReadiness.remainingBeforeIssueClose.filter((blocker) =>
-    blocker.startsWith("Replay ") && blocker.includes(" did not pass all enhancement close gates"),
-  );
-  const replayFailures = issueCloseReady
-    ? []
-    : ["Replay " + metric.captureId + " did not pass all enhancement close gates: " + failingEvidence.join(", ") + "."];
-  const remainingBeforeIssueClose = [...previousReplayFailures, ...replayFailures];
-  const missingEvidence = Array.from(new Set([
-    ...(report.replayCoverage.realNoisyCaptureReplayCount > 0 ? report.replayCoverage.missingEvidence : []),
-    ...failingEvidence,
-  ]));
-  const allAttachedReplaysPass = remainingBeforeIssueClose.length === 0;
-
-  return {
-    ...report,
-    replayMetrics: [...report.replayMetrics, metric],
-    replayDecisions: [
-      ...report.replayDecisions,
-      {
-        captureId: metric.captureId,
-        latencySettingMs: metric.latencySettingMs,
-        enableForLiveDemo: issueCloseReady,
-        reasons,
-      },
-    ],
-    replayCoverage: {
-      syntheticNoisyReplayCount: report.replayCoverage.syntheticNoisyReplayCount,
-      realNoisyCaptureReplayCount: report.replayCoverage.realNoisyCaptureReplayCount + 1,
-      baselineEnhancedPairs: report.replayCoverage.baselineEnhancedPairs + 1,
-      liveDemoGate: allAttachedReplaysPass ? "eligible" : "blocked_until_real_capture",
-      missingEvidence,
-    },
-    acceptanceReadiness: {
-      ...report.acceptanceReadiness,
-      noisyReplay: allAttachedReplaysPass ? "real_capture_ready" : report.acceptanceReadiness.noisyReplay,
-      cpuRuntimeCost: allAttachedReplaysPass ? "covered" : report.acceptanceReadiness.cpuRuntimeCost,
-      remainingBeforeIssueClose,
-    },
-  };
 }
 
 function resolveOutputPath() {
@@ -231,7 +183,7 @@ async function main() {
   const markdownOutputPath = resolveMarkdownOutputPath(outputPath);
   const requireCloseReady = hasArg("--require-close-ready");
   const captureReplayMetrics = await loadCaptureReplayMetrics();
-  const report = captureReplayMetrics.reduce(applyCaptureReplay, buildSpeechEnhancementSpikeReport());
+  const report = buildSpeechEnhancementSpikeReport({ captureReplayMetrics });
 
   assert.equal(report.ok, true);
   assert.equal(report.issue, "agonza1/agentic-contact-center#97");
