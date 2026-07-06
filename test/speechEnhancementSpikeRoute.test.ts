@@ -84,6 +84,14 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       };
       rolloutPlan: Array<{ step: string; owner: string; gate: string }>;
       validationPlan: string[];
+      reviewGate: {
+        issueCloseReady: boolean;
+        checks: Record<string, boolean>;
+        failureReasons: Record<string, string>;
+        blockers: string[];
+        nextEvidence: string[];
+        realCaptureReplayIds: string[];
+      };
     };
 
     assert.equal(payload.ok, true);
@@ -171,6 +179,13 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     );
     assert.ok(payload.rolloutPlan.every((step) => step.gate.length > 0));
     assert.ok(payload.validationPlan.some((step) => step.includes("noisy local SIP capture")));
+    assert.equal(payload.reviewGate.issueCloseReady, false);
+    assert.equal(payload.reviewGate.checks.realNoisyCaptureReplay, false);
+    assert.equal(payload.reviewGate.checks.cpuRuntimeCost, false);
+    assert.match(payload.reviewGate.failureReasons.realNoisyCaptureReplay, /real noisy local SIP capture/);
+    assert.ok(payload.reviewGate.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
+    assert.ok(payload.reviewGate.nextEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));
+    assert.deepEqual(payload.reviewGate.realCaptureReplayIds, []);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
