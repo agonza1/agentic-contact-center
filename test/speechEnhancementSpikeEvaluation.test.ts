@@ -186,6 +186,44 @@ test("speech enhancement spike report keeps failing real capture replay blockers
   assert.deepEqual(reviewGate.blockedRealCaptureReplayIds, ["real-noisy-local-sip-011"]);
 });
 
+test("speech enhancement spike report downgrades readiness when a later real replay fails", () => {
+  const report = buildSpeechEnhancementSpikeReport();
+  const passingMetric = {
+    ...report.replayMetrics[0],
+    captureId: "real-noisy-local-sip-012",
+    captureEvidence: {
+      recordedAt: "2026-07-05T15:45:00Z",
+      audioSourceUri: "artifacts/local-sip-real-noisy-012.wav",
+      sourceManifestUri: "artifacts/local-sip/proof-manifest-012.json",
+      noiseProfile: "speakerphone fan noise",
+      runtimeHost: "local-rtc-asr-host",
+    },
+  };
+  const failingMetric = {
+    ...passingMetric,
+    captureId: "real-noisy-local-sip-013",
+    enhanced: {
+      ...passingMetric.enhanced,
+      wordErrorRateEstimate: passingMetric.baseline.wordErrorRateEstimate,
+      addedTurnLatencyMsP95: 40,
+      cpuPercentP95: 90,
+    },
+    cpuCostEstimate: "high" as const,
+  };
+
+  const reportWithReplays = buildSpeechEnhancementSpikeReport({
+    captureReplayMetrics: [passingMetric, failingMetric],
+  });
+  const reviewGate = buildSpeechEnhancementReviewGate(reportWithReplays);
+
+  assert.equal(reportWithReplays.acceptanceReadiness.noisyReplay, "real_capture_required");
+  assert.equal(reportWithReplays.acceptanceReadiness.cpuRuntimeCost, "estimated_needs_live_measurement");
+  assert.equal(reportWithReplays.replayCoverage.liveDemoGate, "blocked_until_real_capture");
+  assert.deepEqual(reviewGate.passingRealCaptureReplayIds, ["real-noisy-local-sip-012"]);
+  assert.deepEqual(reviewGate.blockedRealCaptureReplayIds, ["real-noisy-local-sip-013"]);
+  assert.equal(reviewGate.issueCloseReady, false);
+});
+
 test("speech enhancement capture replay manifest requires artifact-relative audio evidence", () => {
   const validation = validateSpeechEnhancementCaptureReplayManifest({
     capture_id: "real-noisy-local-sip-005",

@@ -524,8 +524,8 @@ export function applySpeechEnhancementCaptureReplayMetric(
     },
     acceptanceReadiness: {
       ...report.acceptanceReadiness,
-      noisyReplay: allAttachedReplaysPass ? "real_capture_ready" : report.acceptanceReadiness.noisyReplay,
-      cpuRuntimeCost: allAttachedReplaysPass ? "covered" : report.acceptanceReadiness.cpuRuntimeCost,
+      noisyReplay: allAttachedReplaysPass ? "real_capture_ready" : "real_capture_required",
+      cpuRuntimeCost: allAttachedReplaysPass ? "covered" : "estimated_needs_live_measurement",
       remainingBeforeIssueClose,
     },
   };
