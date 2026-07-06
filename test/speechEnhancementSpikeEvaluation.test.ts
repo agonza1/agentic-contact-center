@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildSpeechEnhancementSpikeReport,
+  buildSpeechEnhancementReviewGate,
   evaluateSpeechEnhancementReplayMetric,
   validateSpeechEnhancementCaptureReplayManifest,
 } from "../src/core/speechEnhancementSpike";
@@ -234,6 +235,48 @@ test("speech enhancement capture replay manifest names missing fields", () => {
   ]);
   assert.equal(validation.metric, undefined);
   assert.equal(validation.evaluation, undefined);
+});
+
+test("speech enhancement review gate only counts canonical real noisy local SIP captures", () => {
+  const report = buildSpeechEnhancementSpikeReport();
+  const genericRealMetric = {
+    ...report.replayMetrics[0],
+    captureId: "real-call-should-not-count",
+    captureEvidence: {
+      recordedAt: "2026-07-05T15:45:00Z",
+      audioSourceUri: "artifacts/generic-real-call.wav",
+      noiseProfile: "speakerphone fan noise",
+      runtimeHost: "local-rtc-asr-host",
+    },
+  };
+  const reviewGate = buildSpeechEnhancementReviewGate({
+    ...report,
+    replayMetrics: [...report.replayMetrics, genericRealMetric],
+    replayDecisions: [
+      ...report.replayDecisions,
+      {
+        captureId: genericRealMetric.captureId,
+        latencySettingMs: genericRealMetric.latencySettingMs,
+        enableForLiveDemo: true,
+        reasons: ["wer_improved"],
+      },
+    ],
+    replayCoverage: {
+      ...report.replayCoverage,
+      realNoisyCaptureReplayCount: 1,
+      missingEvidence: [],
+    },
+    acceptanceReadiness: {
+      ...report.acceptanceReadiness,
+      remainingBeforeIssueClose: [],
+    },
+  });
+
+  assert.equal(reviewGate.issueCloseReady, false);
+  assert.equal(reviewGate.checks.realNoisyCaptureReplay, false);
+  assert.deepEqual(reviewGate.realCaptureReplayIds, []);
+  assert.deepEqual(reviewGate.passingRealCaptureReplayIds, []);
+  assert.deepEqual(reviewGate.realCaptureReplayEvidence, []);
 });
 
 test("speech enhancement capture replay manifest rejects unsupported latency settings", () => {
