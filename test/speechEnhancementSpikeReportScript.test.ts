@@ -61,7 +61,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
         issue: string;
         proposedConfig: { featureFlag: string };
         replayCoverage: { liveDemoGate: string };
-        captureReplayContract: { fixtureManifestPath: string; requiredFields: string[] };
+        captureReplayContract: { fixtureManifestPath: string; requiredFields: string[]; strictArtifactFields: string[] };
       };
       handoff: {
         issueUrl: string;
@@ -113,6 +113,9 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     );
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("audio_source_uri"));
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("source_manifest_uri"));
+    assert.ok(artifact.report.captureReplayContract.requiredFields.includes("audio_sha256"));
+    assert.ok(artifact.report.captureReplayContract.requiredFields.includes("source_manifest_sha256"));
+    assert.deepEqual(artifact.report.captureReplayContract.strictArtifactFields, ["audio_sha256", "source_manifest_sha256"]);
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("runtime_host"));
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.cpu_percent_p95"));
     assert.equal(artifact.reviewGate.issueCloseReady, false);
@@ -130,6 +133,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /Decision: go_for_feature_flagged_spike at 12\.5 ms/);
     assert.match(markdown, /Review gate: blocked/);
     assert.match(markdown, /Real noisy capture replays: 0/);
+    assert.match(markdown, /Strict artifact hashes: audio_sha256, source_manifest_sha256/);
     assert.match(markdown, /Run: npm run proof:speech-enhancement -- --require-close-ready/);
     assert.match(markdown, /Strict artifact check: npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts\/speech-enhancement-real-capture-replay\.json/);
   } finally {

@@ -78,6 +78,7 @@ export interface SpeechEnhancementCaptureReplayContract {
   requiredCaptureKind: "real_noisy_local_sip";
   fixtureManifestPath: "artifacts/speech-enhancement-real-capture-replay.json";
   requiredFields: string[];
+  strictArtifactFields: string[];
   comparisonPairs: Array<"baseline_rtc_asr" | "enhanced_rtc_asr">;
   minimumPassingCriteria: string[];
 }
@@ -704,7 +705,9 @@ export function buildSpeechEnhancementSpikeReport(
         "capture_id",
         "recorded_at",
         "audio_source_uri",
+        "audio_sha256",
         "source_manifest_uri",
+        "source_manifest_sha256",
         "noise_profile",
         "scenario",
         "runtime_host",
@@ -720,6 +723,7 @@ export function buildSpeechEnhancementSpikeReport(
         "enhanced_rtc_asr.cpu_percent_p95",
         "enhanced_rtc_asr.cpu_cost_estimate",
       ],
+      strictArtifactFields: ["audio_sha256", "source_manifest_sha256"],
       comparisonPairs: ["baseline_rtc_asr", "enhanced_rtc_asr"],
       minimumPassingCriteria: [
         "enhanced word error estimate improves over baseline",

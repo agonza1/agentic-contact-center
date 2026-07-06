@@ -187,6 +187,7 @@ function buildMarkdownReport(artifact) {
     `- Real noisy capture replays: ${report.replayCoverage.realNoisyCaptureReplayCount}`,
     `- Baseline/enhanced pairs: ${report.replayCoverage.baselineEnhancedPairs}`,
     `- Live demo gate: ${report.replayCoverage.liveDemoGate}`,
+    `- Strict artifact hashes: ${report.captureReplayContract.strictArtifactFields.join(", ")}`,
     "",
     "## Blockers",
     "",
