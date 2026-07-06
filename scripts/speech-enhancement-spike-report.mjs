@@ -67,6 +67,7 @@ async function loadCaptureReplayMetrics() {
   const captureReplayPaths = resolveArgPaths("--capture-replay");
   const strictCaptureArtifacts = hasArg("--strict-capture-artifacts");
   const metrics = [];
+  const seenCaptureIds = new Map();
 
   for (const captureReplayPath of captureReplayPaths) {
     const payload = JSON.parse(await readFile(captureReplayPath, "utf8"));
@@ -74,6 +75,14 @@ async function loadCaptureReplayMetrics() {
     if (!validation.manifestOk || !validation.metric) {
       throw new Error(`Invalid capture replay manifest: ${captureReplayPath}: ${validation.missingFields.join(", ")}`);
     }
+
+    const previousCaptureReplayPath = seenCaptureIds.get(validation.metric.captureId);
+    if (previousCaptureReplayPath) {
+      throw new Error(
+        `Duplicate capture replay id: ${validation.metric.captureId}: ${previousCaptureReplayPath} and ${captureReplayPath}`,
+      );
+    }
+    seenCaptureIds.set(validation.metric.captureId, captureReplayPath);
 
     if (strictCaptureArtifacts) {
       await assertCaptureArtifact(payload.audio_source_uri, payload.audio_sha256, captureReplayPath, "audio_source_uri");

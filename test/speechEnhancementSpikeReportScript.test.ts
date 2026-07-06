@@ -869,6 +869,64 @@ test("speech enhancement spike report blocks mixed passing and failing real capt
 });
 
 
+test("speech enhancement spike report rejects duplicate real capture replay ids", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-duplicate-"));
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+  const firstCaptureReplayPath = path.join(tempDir, "real-capture-replay-1.json");
+  const secondCaptureReplayPath = path.join(tempDir, "real-capture-replay-2.json");
+
+  const captureReplay = {
+    capture_id: "real-noisy-local-sip-301",
+    recorded_at: "2026-07-06T14:25:00.000Z",
+    audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-301.wav",
+    source_manifest_uri: "artifacts/local-sip/real-noisy-local-sip-301-manifest.json",
+    noise_profile: "cafe_noise",
+    scenario: "local SIP caller with duplicate capture evidence",
+    latency_setting_ms: 12.5,
+    runtime_host: "local-rtc-asr-host",
+    baseline_rtc_asr: {
+      transcript: "I need to cansel my policy",
+      word_error_rate_estimate: 0.18,
+      endpointing_stability: "acceptable",
+      barge_in_risk: "medium",
+    },
+    enhanced_rtc_asr: {
+      transcript: "I need to cancel my policy",
+      word_error_rate_estimate: 0.06,
+      endpointing_stability: "stable",
+      barge_in_risk: "low",
+      added_turn_latency_ms_p95: 18,
+      cpu_percent_p95: 42,
+      cpu_cost_estimate: "medium",
+    },
+  };
+
+  try {
+    await writeFile(firstCaptureReplayPath, JSON.stringify(captureReplay, null, 2), "utf8");
+    await writeFile(
+      secondCaptureReplayPath,
+      JSON.stringify({ ...captureReplay, recorded_at: "2026-07-06T14:30:00.000Z" }, null, 2),
+      "utf8",
+    );
+
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay",
+      firstCaptureReplayPath,
+      "--capture-replay",
+      secondCaptureReplayPath,
+    ]);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /Duplicate capture replay id: real-noisy-local-sip-301/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+
 test("speech enhancement spike report strict mode verifies capture artifact files and hashes", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-strict-artifacts-"));
   const artifactDir = path.join(process.cwd(), "artifacts", `strict-capture-${path.basename(tempDir)}`);
