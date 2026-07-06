@@ -285,7 +285,13 @@ const realNoisyLocalSipCaptureIdPrefix = "real-noisy-local-sip-";
 
 function isTruthyFeatureFlag(value: string | undefined): boolean {
   const normalizedValue = value?.trim().toLowerCase();
-  return normalizedValue === "1" || normalizedValue === "true" || normalizedValue === "enabled";
+  return (
+    normalizedValue === "1" ||
+    normalizedValue === "true" ||
+    normalizedValue === "enabled" ||
+    normalizedValue === "on" ||
+    normalizedValue === "yes"
+  );
 }
 
 export function resolveSpeechEnhancementRuntimeConfig(
