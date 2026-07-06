@@ -134,6 +134,10 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /Review gate: blocked/);
     assert.match(markdown, /Real noisy capture replays: 0/);
     assert.match(markdown, /Strict artifact hashes: audio_sha256, source_manifest_sha256/);
+    assert.match(markdown, /Passing real replay ids: None/);
+    assert.match(markdown, /Blocked real replay ids: None/);
+    assert.match(markdown, /Real Capture Replay Evidence/);
+    assert.match(markdown, /- None attached\./);
     assert.match(markdown, /Run: npm run proof:speech-enhancement -- --require-close-ready/);
     assert.match(markdown, /Strict artifact check: npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts\/speech-enhancement-real-capture-replay\.json/);
   } finally {
@@ -513,6 +517,7 @@ test("speech enhancement spike report keeps high measured CPU p95 review-blocked
 test("speech enhancement spike report accepts passing real capture replay evidence", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-real-"));
   const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+  const markdownOutputPath = path.join(tempDir, "speech-enhancement-spike.md");
   const captureReplayPath = path.join(tempDir, "real-capture-replay.json");
 
   try {
@@ -558,6 +563,8 @@ test("speech enhancement spike report accepts passing real capture replay eviden
       outputPath,
       "--capture-replay",
       captureReplayPath,
+      "--markdown-out",
+      markdownOutputPath,
       "--require-close-ready",
     ]);
 
@@ -566,6 +573,14 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.equal(summary.ok, true);
     assert.equal(summary.issueCloseReady, true);
     assert.deepEqual(summary.blockers, []);
+
+    const markdown = await readFile(markdownOutputPath, "utf8");
+    assert.match(markdown, /Passing real replay ids: real-noisy-local-sip-001/);
+    assert.match(markdown, /Blocked real replay ids: None/);
+    assert.match(
+      markdown,
+      /real-noisy-local-sip-001: passing; audio=artifacts\/local-sip\/real-noisy-local-sip-001\.wav; source_manifest=artifacts\/local-sip\/proof-manifest-001\.json; runtime_host=local-rtc-asr-host/,
+    );
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       report: {

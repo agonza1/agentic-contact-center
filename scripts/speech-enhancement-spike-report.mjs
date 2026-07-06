@@ -177,6 +177,14 @@ function buildMarkdownReport(artifact) {
   const recommended = report.decision.recommendedLatencyMs;
   const blockers = reviewGate.blockers.length > 0 ? reviewGate.blockers : ["None. Issue #97 close gate is ready."];
   const nextEvidence = reviewGate.nextEvidence.length > 0 ? reviewGate.nextEvidence : ["None."];
+  const replayEvidence = reviewGate.realCaptureReplayEvidence.map((evidence) => {
+    const status = reviewGate.passingRealCaptureReplayIds.includes(evidence.captureId) ? "passing" : "blocked";
+    const source = evidence.audioSourceUri ?? "missing audio source";
+    const sourceManifest = evidence.sourceManifestUri ?? "missing source manifest";
+    const runtimeHost = evidence.runtimeHost ?? "missing runtime host";
+
+    return `- ${evidence.captureId}: ${status}; audio=${source}; source_manifest=${sourceManifest}; runtime_host=${runtimeHost}`;
+  });
 
   return [
     "# Speech Enhancement Spike Report",
@@ -197,6 +205,12 @@ function buildMarkdownReport(artifact) {
     `- Baseline/enhanced pairs: ${report.replayCoverage.baselineEnhancedPairs}`,
     `- Live demo gate: ${report.replayCoverage.liveDemoGate}`,
     `- Strict artifact hashes: ${report.captureReplayContract.strictArtifactFields.join(", ")}`,
+    `- Passing real replay ids: ${reviewGate.passingRealCaptureReplayIds.join(", ") || "None"}`,
+    `- Blocked real replay ids: ${reviewGate.blockedRealCaptureReplayIds.join(", ") || "None"}`,
+    "",
+    "## Real Capture Replay Evidence",
+    "",
+    ...(replayEvidence.length > 0 ? replayEvidence : ["- None attached."]),
     "",
     "## Blockers",
     "",
