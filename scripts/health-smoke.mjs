@@ -23,6 +23,8 @@ function parseArgs(argv) {
     expectSpeechEnhancementRuntimeEnabled: undefined,
     expectSpeechEnhancementIssueCloseReady: undefined,
     expectSpeechEnhancementLiveDemoGate: undefined,
+    expectSpeechEnhancementRecommendedLatencyMs: undefined,
+    expectSpeechEnhancementRuntimeLatencyMs: undefined,
     expectRuntimeSeams: [],
     expectPipecatTools: [],
     expectSpeechEnhancementMissingEvidence: [],
@@ -55,6 +57,8 @@ function parseArgs(argv) {
     '--expect-speech-enhancement-runtime-enabled',
     '--expect-speech-enhancement-issue-close-ready',
     '--expect-speech-enhancement-live-demo-gate',
+    '--expect-speech-enhancement-recommended-latency-ms',
+    '--expect-speech-enhancement-runtime-latency-ms',
     '--expect-speech-enhancement-missing-evidence',
     '--expect-speech-enhancement-blocker',
     '--expect-runtime-seam',
@@ -223,6 +227,18 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-speech-enhancement-recommended-latency-ms' && next) {
+      args.expectSpeechEnhancementRecommendedLatencyMs = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-runtime-latency-ms' && next) {
+      args.expectSpeechEnhancementRuntimeLatencyMs = next;
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-speech-enhancement-missing-evidence' && next) {
       args.expectSpeechEnhancementMissingEvidence.push(next);
       index += 1;
@@ -292,6 +308,8 @@ function hasJsonExpectations(args) {
     args.expectSpeechEnhancementRuntimeEnabled,
     args.expectSpeechEnhancementIssueCloseReady,
     args.expectSpeechEnhancementLiveDemoGate,
+    args.expectSpeechEnhancementRecommendedLatencyMs,
+    args.expectSpeechEnhancementRuntimeLatencyMs,
   ].some((expectedValue) => expectedValue !== undefined)
     || args.expectRuntimeSeams.length > 0
     || args.expectPipecatTools.length > 0
@@ -344,6 +362,36 @@ function validatePositiveIntegerOption(flagName, rawValue) {
 function validateLatencyBudgetExpectations(args) {
   for (const rawExpectation of [...args.expectLatencyBudgetsMs, ...args.expectLatencyBudgetMaxMs]) {
     const parsedExpectation = parseLatencyBudgetExpectation(rawExpectation);
+    if (parsedExpectation.error) {
+      return parsedExpectation.error;
+    }
+  }
+
+  return null;
+}
+
+function parseFiniteNumberExpectation(flagName, rawValue) {
+  const expectedValue = Number(rawValue);
+
+  if (!Number.isFinite(expectedValue)) {
+    return { error: `invalid_${flagName}_value(${JSON.stringify(rawValue)})` };
+  }
+
+  return { expectedValue };
+}
+
+function validateNumberExpectations(args) {
+  const numberExpectations = [
+    ['speech_enhancement_recommended_latency_ms', args.expectSpeechEnhancementRecommendedLatencyMs],
+    ['speech_enhancement_runtime_latency_ms', args.expectSpeechEnhancementRuntimeLatencyMs],
+  ];
+
+  for (const [flagName, rawValue] of numberExpectations) {
+    if (rawValue === undefined) {
+      continue;
+    }
+
+    const parsedExpectation = parseFiniteNumberExpectation(flagName, rawValue);
     if (parsedExpectation.error) {
       return parsedExpectation.error;
     }
@@ -541,6 +589,31 @@ async function getFailureReason(response, args) {
     }
   }
 
+  const speechEnhancementNumberExpectations = [
+    ['recommendedLatencyMs', 'speech_enhancement_recommended_latency_ms', args.expectSpeechEnhancementRecommendedLatencyMs],
+    ['runtimeLatencyMs', 'speech_enhancement_runtime_latency_ms', args.expectSpeechEnhancementRuntimeLatencyMs],
+  ];
+
+  for (const [field, flagName, rawExpectedValue] of speechEnhancementNumberExpectations) {
+    if (rawExpectedValue === undefined) {
+      continue;
+    }
+
+    const parsedExpectation = parseFiniteNumberExpectation(flagName, rawExpectedValue);
+    if (parsedExpectation.error) {
+      return parsedExpectation.error;
+    }
+
+    const speechEnhancement = payload.speechEnhancement && typeof payload.speechEnhancement === 'object'
+      ? payload.speechEnhancement
+      : undefined;
+    const actualValue = speechEnhancement ? speechEnhancement[field] : undefined;
+
+    if (actualValue !== parsedExpectation.expectedValue) {
+      return `json_speechEnhancement_${field}_mismatch(expected=${JSON.stringify(parsedExpectation.expectedValue)},actual=${JSON.stringify(actualValue)})`;
+    }
+  }
+
   for (const expectedEvidence of args.expectSpeechEnhancementMissingEvidence) {
     const missingEvidence = payload.speechEnhancement && typeof payload.speechEnhancement === 'object'
       ? payload.speechEnhancement.missingEvidence
@@ -657,6 +730,11 @@ async function main() {
   const invalidBooleanExpectation = validateBooleanExpectations(args);
   if (invalidBooleanExpectation) {
     throw new Error(invalidBooleanExpectation);
+  }
+
+  const invalidNumberExpectation = validateNumberExpectations(args);
+  if (invalidNumberExpectation) {
+    throw new Error(invalidNumberExpectation);
   }
 
   const invalidTimeoutMs = validatePositiveIntegerOption('timeout_ms', timeoutMs);
