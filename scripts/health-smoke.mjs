@@ -25,6 +25,7 @@ function parseArgs(argv) {
     expectSpeechEnhancementLiveDemoGate: undefined,
     expectSpeechEnhancementRecommendedLatencyMs: undefined,
     expectSpeechEnhancementRuntimeLatencyMs: undefined,
+    expectSpeechEnhancementRuntimeBypassReason: undefined,
     expectRuntimeSeams: [],
     expectPipecatTools: [],
     expectSpeechEnhancementMissingEvidence: [],
@@ -59,6 +60,7 @@ function parseArgs(argv) {
     '--expect-speech-enhancement-live-demo-gate',
     '--expect-speech-enhancement-recommended-latency-ms',
     '--expect-speech-enhancement-runtime-latency-ms',
+    '--expect-speech-enhancement-runtime-bypass-reason',
     '--expect-speech-enhancement-missing-evidence',
     '--expect-speech-enhancement-blocker',
     '--expect-runtime-seam',
@@ -239,6 +241,12 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-speech-enhancement-runtime-bypass-reason' && next) {
+      args.expectSpeechEnhancementRuntimeBypassReason = next;
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-speech-enhancement-missing-evidence' && next) {
       args.expectSpeechEnhancementMissingEvidence.push(next);
       index += 1;
@@ -310,6 +318,7 @@ function hasJsonExpectations(args) {
     args.expectSpeechEnhancementLiveDemoGate,
     args.expectSpeechEnhancementRecommendedLatencyMs,
     args.expectSpeechEnhancementRuntimeLatencyMs,
+    args.expectSpeechEnhancementRuntimeBypassReason,
   ].some((expectedValue) => expectedValue !== undefined)
     || args.expectRuntimeSeams.length > 0
     || args.expectPipecatTools.length > 0
@@ -547,6 +556,7 @@ async function getFailureReason(response, args) {
 
   const speechEnhancementStringExpectations = [
     ['liveDemoGate', args.expectSpeechEnhancementLiveDemoGate],
+    ['runtimeBypassReason', args.expectSpeechEnhancementRuntimeBypassReason],
   ];
 
   for (const [field, expectedValue] of speechEnhancementStringExpectations) {

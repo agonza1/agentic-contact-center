@@ -64,6 +64,7 @@ test("GET /health returns config-backed demo metadata", async () => {
       recommendedLatencyMs: number;
       runtimeEnabled: boolean;
       runtimeLatencyMs: number;
+      runtimeBypassReason?: string;
       liveDemoGate: string;
       issueCloseReady: boolean;
       missingEvidence: string[];
@@ -93,6 +94,7 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.speechEnhancement.recommendedLatencyMs, 12.5);
   assert.equal(payload.speechEnhancement.runtimeEnabled, false);
   assert.equal(payload.speechEnhancement.runtimeLatencyMs, 12.5);
+  assert.equal(payload.speechEnhancement.runtimeBypassReason, "feature_flag_disabled");
   assert.equal(payload.speechEnhancement.liveDemoGate, "blocked_until_real_capture");
   assert.equal(payload.speechEnhancement.issueCloseReady, false);
   assert.ok(

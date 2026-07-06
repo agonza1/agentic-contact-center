@@ -704,6 +704,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   recommendedLatencyMs: number;
   runtimeEnabled: boolean;
   runtimeLatencyMs: number;
+  runtimeBypassReason?: SpeechEnhancementRuntimeConfig["bypassReason"];
   liveDemoGate: string;
   issueCloseReady: boolean;
   missingEvidence: string[];
@@ -721,6 +722,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     recommendedLatencyMs: report.decision.recommendedLatencyMs,
     runtimeEnabled: runtimeConfig.enabled,
     runtimeLatencyMs: runtimeConfig.latencyMs,
+    runtimeBypassReason: runtimeConfig.bypassReason,
     liveDemoGate: report.replayCoverage.liveDemoGate,
     issueCloseReady: reviewGate.issueCloseReady,
     missingEvidence: reviewGate.nextEvidence,
