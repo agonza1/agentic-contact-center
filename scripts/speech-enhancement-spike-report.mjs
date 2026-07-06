@@ -21,23 +21,36 @@ function resolveArgPath(flag) {
   return undefined;
 }
 
+function resolveArgPaths(flag) {
+  const paths = [];
+  for (let index = 0; index < process.argv.length; index += 1) {
+    if (process.argv[index] === flag && process.argv[index + 1]) {
+      paths.push(path.resolve(process.cwd(), process.argv[index + 1]));
+    }
+  }
+
+  return paths;
+}
+
 function hasArg(flag) {
   return process.argv.includes(flag);
 }
 
-async function loadCaptureReplayMetric() {
-  const captureReplayPath = resolveArgPath("--capture-replay");
-  if (!captureReplayPath) {
-    return undefined;
+async function loadCaptureReplayMetrics() {
+  const captureReplayPaths = resolveArgPaths("--capture-replay");
+  const metrics = [];
+
+  for (const captureReplayPath of captureReplayPaths) {
+    const payload = JSON.parse(await readFile(captureReplayPath, "utf8"));
+    const validation = validateSpeechEnhancementCaptureReplayManifest(payload);
+    if (!validation.manifestOk || !validation.metric) {
+      throw new Error(`Invalid capture replay manifest: ${captureReplayPath}: ${validation.missingFields.join(", ")}`);
+    }
+
+    metrics.push(validation.metric);
   }
 
-  const payload = JSON.parse(await readFile(captureReplayPath, "utf8"));
-  const validation = validateSpeechEnhancementCaptureReplayManifest(payload);
-  if (!validation.manifestOk || !validation.metric) {
-    throw new Error(`Invalid capture replay manifest: ${validation.missingFields.join(", ")}`);
-  }
-
-  return validation.metric;
+  return metrics;
 }
 
 function applyCaptureReplay(report, metric) {
@@ -171,8 +184,8 @@ async function main() {
   const latestOutputPath = resolveLatestOutputPath();
   const markdownOutputPath = resolveMarkdownOutputPath(outputPath);
   const requireCloseReady = hasArg("--require-close-ready");
-  const captureReplayMetric = await loadCaptureReplayMetric();
-  const report = applyCaptureReplay(buildSpeechEnhancementSpikeReport(), captureReplayMetric);
+  const captureReplayMetrics = await loadCaptureReplayMetrics();
+  const report = captureReplayMetrics.reduce(applyCaptureReplay, buildSpeechEnhancementSpikeReport());
 
   assert.equal(report.ok, true);
   assert.equal(report.issue, "agonza1/agentic-contact-center#97");
