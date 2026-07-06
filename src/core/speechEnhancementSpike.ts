@@ -711,6 +711,10 @@ export function buildSpeechEnhancementHealthSummary(): {
   failureReasons: SpeechEnhancementReviewGate["failureReasons"];
   missingEvidence: string[];
   blockers: string[];
+  nextEvidence: string[];
+  passingRealCaptureReplayIds: string[];
+  blockedRealCaptureReplayIds: string[];
+  validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
 } {
   const report = buildSpeechEnhancementSpikeReport();
   const reviewGate = buildSpeechEnhancementReviewGate(report);
@@ -731,6 +735,10 @@ export function buildSpeechEnhancementHealthSummary(): {
     failureReasons: reviewGate.failureReasons,
     missingEvidence: reviewGate.nextEvidence,
     blockers: reviewGate.blockers,
+    nextEvidence: reviewGate.nextEvidence,
+    passingRealCaptureReplayIds: reviewGate.passingRealCaptureReplayIds,
+    blockedRealCaptureReplayIds: reviewGate.blockedRealCaptureReplayIds,
+    validationCommand: "npm run proof:speech-enhancement -- --require-close-ready",
   };
 }
 
