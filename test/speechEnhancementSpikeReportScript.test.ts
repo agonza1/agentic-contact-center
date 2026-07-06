@@ -810,9 +810,9 @@ test("speech enhancement spike report blocks mixed passing and failing real capt
       "--out",
       outputPath,
       "--capture-replay",
-      passingCaptureReplayPath,
-      "--capture-replay",
       failingCaptureReplayPath,
+      "--capture-replay",
+      passingCaptureReplayPath,
       "--require-close-ready",
     ]);
 
@@ -823,13 +823,22 @@ test("speech enhancement spike report blocks mixed passing and failing real capt
     assert.ok(summary.blockers.some((blocker) => blocker.includes("real-noisy-local-sip-202")));
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
+      report: { replayCoverage: { liveDemoGate: string; missingEvidence: string[] } };
       reviewGate: {
         issueCloseReady: boolean;
+        checks: Record<string, boolean>;
+        nextEvidence: string[];
         passingRealCaptureReplayIds: string[];
         blockedRealCaptureReplayIds: string[];
       };
     };
     assert.equal(artifact.reviewGate.issueCloseReady, false);
+    assert.equal(artifact.report.replayCoverage.liveDemoGate, "blocked_until_real_capture");
+    assert.deepEqual(artifact.report.replayCoverage.missingEvidence, [
+      "measured_12_5_ms_added_turn_latency_under_25_ms_p95",
+    ]);
+    assert.equal(artifact.reviewGate.checks.addedLatencyP95, false);
+    assert.deepEqual(artifact.reviewGate.nextEvidence, ["measured_12_5_ms_added_turn_latency_under_25_ms_p95"]);
     assert.deepEqual(artifact.reviewGate.passingRealCaptureReplayIds, ["real-noisy-local-sip-201"]);
     assert.deepEqual(artifact.reviewGate.blockedRealCaptureReplayIds, ["real-noisy-local-sip-202"]);
   } finally {
