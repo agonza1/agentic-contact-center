@@ -378,14 +378,16 @@ test("speech enhancement runtime config accepts supported feature-flagged latenc
 });
 
 test("speech enhancement runtime config trims truthy feature flags", () => {
-  assert.deepEqual(resolveSpeechEnhancementRuntimeConfig({ featureFlag: " TRUE ", latencyMs: "12.5" }), {
-    enabled: true,
-    latencyMs: 12.5,
-    env: {
-      featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT",
-      latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS",
-    },
-  });
+  for (const featureFlag of [" TRUE ", "on", "yes"]) {
+    assert.deepEqual(resolveSpeechEnhancementRuntimeConfig({ featureFlag, latencyMs: "12.5" }), {
+      enabled: true,
+      latencyMs: 12.5,
+      env: {
+        featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT",
+        latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS",
+      },
+    });
+  }
 });
 
 test("speech enhancement runtime config bypasses invalid latency", () => {
