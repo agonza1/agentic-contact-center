@@ -759,3 +759,80 @@ test("speech enhancement spike report accepts multiple real capture replay manif
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+
+test("speech enhancement spike report blocks mixed passing and failing real capture replays", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-mixed-"));
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+  const passingCaptureReplayPath = path.join(tempDir, "real-capture-replay-pass.json");
+  const failingCaptureReplayPath = path.join(tempDir, "real-capture-replay-fail.json");
+
+  const buildCaptureReplay = (captureId: string, addedTurnLatencyMsP95: number) => ({
+    capture_id: captureId,
+    recorded_at: "2026-07-05T12:10:00.000Z",
+    audio_source_uri: `artifacts/local-sip/${captureId}.wav`,
+    source_manifest_uri: `artifacts/local-sip/${captureId}-manifest.json`,
+    noise_profile: "cafe_noise",
+    scenario: "local SIP caller with mixed noisy capture evidence",
+    latency_setting_ms: 12.5,
+    runtime_host: "local-rtc-asr-host",
+    baseline_rtc_asr: {
+      transcript: "I need to cansel my policy",
+      word_error_rate_estimate: 0.18,
+      endpointing_stability: "acceptable",
+      barge_in_risk: "medium",
+    },
+    enhanced_rtc_asr: {
+      transcript: "I need to cancel my policy",
+      word_error_rate_estimate: 0.06,
+      endpointing_stability: "stable",
+      barge_in_risk: "low",
+      added_turn_latency_ms_p95: addedTurnLatencyMsP95,
+      cpu_percent_p95: 42,
+      cpu_cost_estimate: "medium",
+    },
+  });
+
+  try {
+    await writeFile(
+      passingCaptureReplayPath,
+      JSON.stringify(buildCaptureReplay("real-noisy-local-sip-201", 18), null, 2),
+      "utf8",
+    );
+    await writeFile(
+      failingCaptureReplayPath,
+      JSON.stringify(buildCaptureReplay("real-noisy-local-sip-202", 31), null, 2),
+      "utf8",
+    );
+
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay",
+      passingCaptureReplayPath,
+      "--capture-replay",
+      failingCaptureReplayPath,
+      "--require-close-ready",
+    ]);
+
+    assert.equal(result.exitCode, 1);
+    const summary = JSON.parse(result.stdout) as { ok: boolean; issueCloseReady: boolean; blockers: string[] };
+    assert.equal(summary.ok, false);
+    assert.equal(summary.issueCloseReady, false);
+    assert.ok(summary.blockers.some((blocker) => blocker.includes("real-noisy-local-sip-202")));
+
+    const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
+      reviewGate: {
+        issueCloseReady: boolean;
+        passingRealCaptureReplayIds: string[];
+        blockedRealCaptureReplayIds: string[];
+      };
+    };
+    assert.equal(artifact.reviewGate.issueCloseReady, false);
+    assert.deepEqual(artifact.reviewGate.passingRealCaptureReplayIds, ["real-noisy-local-sip-201"]);
+    assert.deepEqual(artifact.reviewGate.blockedRealCaptureReplayIds, ["real-noisy-local-sip-202"]);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});

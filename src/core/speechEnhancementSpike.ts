@@ -654,7 +654,20 @@ export function buildSpeechEnhancementReviewGate(
   const realCaptureReplayDecisions = report.replayDecisions.filter((decision) =>
     decision.captureId.startsWith(realNoisyLocalSipCaptureIdPrefix),
   );
-  const issueCloseReady = hasRealCaptureReplay && report.acceptanceReadiness.remainingBeforeIssueClose.length === 0;
+  const passingRealCaptureReplayIds = realCaptureReplayDecisions
+    .filter((decision) => decision.enableForLiveDemo)
+    .map((decision) => decision.captureId);
+  const blockedRealCaptureReplayIds = realCaptureReplayDecisions
+    .filter((decision) => !decision.enableForLiveDemo)
+    .map((decision) => decision.captureId);
+  const blockedReplayMessages = blockedRealCaptureReplayIds.map(
+    (captureId) => `Replay ${captureId} is attached but does not pass all Issue #97 close gates.`,
+  );
+  const issueCloseReady =
+    hasRealCaptureReplay &&
+    passingRealCaptureReplayIds.length > 0 &&
+    blockedRealCaptureReplayIds.length === 0 &&
+    report.acceptanceReadiness.remainingBeforeIssueClose.length === 0;
   const checks = {
     realNoisyCaptureReplay: hasRealCaptureReplay,
     baselineEnhancedPairs: hasRealCaptureReplay && report.replayCoverage.baselineEnhancedPairs > 0,
@@ -681,15 +694,11 @@ export function buildSpeechEnhancementReviewGate(
     issueCloseReady,
     checks,
     failureReasons,
-    blockers: report.acceptanceReadiness.remainingBeforeIssueClose,
+    blockers: [...report.acceptanceReadiness.remainingBeforeIssueClose, ...blockedReplayMessages],
     nextEvidence: report.replayCoverage.missingEvidence,
     realCaptureReplayIds: realCaptureReplayDecisions.map((decision) => decision.captureId),
-    passingRealCaptureReplayIds: realCaptureReplayDecisions
-      .filter((decision) => decision.enableForLiveDemo)
-      .map((decision) => decision.captureId),
-    blockedRealCaptureReplayIds: realCaptureReplayDecisions
-      .filter((decision) => !decision.enableForLiveDemo)
-      .map((decision) => decision.captureId),
+    passingRealCaptureReplayIds,
+    blockedRealCaptureReplayIds,
     realCaptureReplayEvidence: realCaptureReplayMetrics.map((metric) => ({
       captureId: metric.captureId,
       recordedAt: metric.captureEvidence?.recordedAt ?? null,
