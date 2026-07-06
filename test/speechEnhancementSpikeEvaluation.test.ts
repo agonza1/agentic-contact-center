@@ -5,6 +5,7 @@ import {
   buildSpeechEnhancementSpikeReport,
   buildSpeechEnhancementReviewGate,
   evaluateSpeechEnhancementReplayMetric,
+  resolveSpeechEnhancementRuntimeConfig,
   validateSpeechEnhancementCaptureReplayManifest,
 } from "../src/core/speechEnhancementSpike";
 
@@ -351,4 +352,39 @@ test("speech enhancement capture replay manifest rejects invalid metric ranges",
   ]);
   assert.equal(validation.metric, undefined);
   assert.equal(validation.evaluation, undefined);
+});
+
+test("speech enhancement runtime config keeps feature flag disabled by default", () => {
+  assert.deepEqual(resolveSpeechEnhancementRuntimeConfig(), {
+    enabled: false,
+    latencyMs: 12.5,
+    bypassReason: "feature_flag_disabled",
+    env: {
+      featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT",
+      latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS",
+    },
+  });
+});
+
+test("speech enhancement runtime config accepts supported feature-flagged latency", () => {
+  assert.deepEqual(resolveSpeechEnhancementRuntimeConfig({ featureFlag: "enabled", latencyMs: "25" }), {
+    enabled: true,
+    latencyMs: 25,
+    env: {
+      featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT",
+      latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS",
+    },
+  });
+});
+
+test("speech enhancement runtime config bypasses unsupported latency", () => {
+  assert.deepEqual(resolveSpeechEnhancementRuntimeConfig({ featureFlag: "true", latencyMs: "13" }), {
+    enabled: false,
+    latencyMs: 13,
+    bypassReason: "unsupported_latency_ms",
+    env: {
+      featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT",
+      latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS",
+    },
+  });
 });
