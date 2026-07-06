@@ -988,3 +988,16 @@ test("speech enhancement spike report strict mode rejects missing capture artifa
   }
 });
 
+test("speech enhancement spike report script rejects unknown arguments", async () => {
+  const result = await runNode(["scripts/speech-enhancement-spike-report.mjs", "--outt", "artifact.json"]);
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.stderr, /Unknown argument: --outt/);
+});
+
+test("speech enhancement spike report script rejects missing argument values", async () => {
+  const result = await runNode(["scripts/speech-enhancement-spike-report.mjs", "--capture-replay", "--require-close-ready"]);
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.stderr, /Missing value for --capture-replay/);
+});

@@ -12,6 +12,33 @@ const {
   validateSpeechEnhancementCaptureReplayManifest,
 } = require("../dist/src/core/speechEnhancementSpike.js");
 
+const valueFlags = new Set(["--capture-replay", "--out", "--latest-out", "--markdown-out"]);
+const booleanFlags = new Set(["--strict-capture-artifacts", "--require-close-ready"]);
+
+function validateCliArgs(argv) {
+  for (let index = 2; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (valueFlags.has(arg)) {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+      index += 1;
+      continue;
+    }
+
+    if (booleanFlags.has(arg)) {
+      continue;
+    }
+
+    if (arg.startsWith("--")) {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
+
+    throw new Error(`Unexpected positional argument: ${arg}`);
+  }
+}
+
 function resolveArgPath(flag) {
   const flagIndex = process.argv.indexOf(flag);
   if (flagIndex >= 0 && process.argv[flagIndex + 1]) {
@@ -178,6 +205,8 @@ function buildMarkdownReport(artifact) {
 }
 
 async function main() {
+  validateCliArgs(process.argv);
+
   const outputPath = resolveOutputPath();
   const latestOutputPath = resolveLatestOutputPath();
   const markdownOutputPath = resolveMarkdownOutputPath(outputPath);
