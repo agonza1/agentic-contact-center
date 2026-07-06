@@ -172,7 +172,7 @@ export interface SpeechEnhancementRuntimeConfigInput {
 export interface SpeechEnhancementRuntimeConfig {
   enabled: boolean;
   latencyMs: number;
-  bypassReason?: "feature_flag_disabled" | "unsupported_latency_ms";
+  bypassReason?: "feature_flag_disabled" | "invalid_latency_ms" | "unsupported_latency_ms";
   env: {
     featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT";
     latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS";
@@ -284,17 +284,17 @@ const allowedLatencySettingsMs = [12.5, 25, 50, 75] as const;
 const realNoisyLocalSipCaptureIdPrefix = "real-noisy-local-sip-";
 
 function isTruthyFeatureFlag(value: string | undefined): boolean {
-  return value === "1" || value?.toLowerCase() === "true" || value?.toLowerCase() === "enabled";
+  const normalizedValue = value?.trim().toLowerCase();
+  return normalizedValue === "1" || normalizedValue === "true" || normalizedValue === "enabled";
 }
 
 export function resolveSpeechEnhancementRuntimeConfig(
   input: SpeechEnhancementRuntimeConfigInput = {},
 ): SpeechEnhancementRuntimeConfig {
   const defaultLatencyMs = 12.5;
-  const parsedLatencyMs = input.latencyMs === undefined || input.latencyMs.trim() === ""
-    ? defaultLatencyMs
-    : Number(input.latencyMs);
-  const latencyMs = Number.isFinite(parsedLatencyMs) ? parsedLatencyMs : defaultLatencyMs;
+  const latencyInput = input.latencyMs?.trim();
+  const hasExplicitLatency = latencyInput !== undefined && latencyInput !== "";
+  const parsedLatencyMs = hasExplicitLatency ? Number(latencyInput) : defaultLatencyMs;
   const env = {
     featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT" as const,
     latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS" as const,
@@ -303,6 +303,12 @@ export function resolveSpeechEnhancementRuntimeConfig(
   if (!isTruthyFeatureFlag(input.featureFlag)) {
     return { enabled: false, latencyMs: defaultLatencyMs, bypassReason: "feature_flag_disabled", env };
   }
+
+  if (!Number.isFinite(parsedLatencyMs)) {
+    return { enabled: false, latencyMs: defaultLatencyMs, bypassReason: "invalid_latency_ms", env };
+  }
+
+  const latencyMs = parsedLatencyMs;
 
   if (!(allowedLatencySettingsMs as readonly number[]).includes(latencyMs)) {
     return { enabled: false, latencyMs, bypassReason: "unsupported_latency_ms", env };
