@@ -26,6 +26,7 @@ function parseArgs(argv) {
     expectRuntimeSeams: [],
     expectPipecatTools: [],
     expectSpeechEnhancementMissingEvidence: [],
+    expectSpeechEnhancementBlockers: [],
     expectLatencyBudgetsMs: [],
     expectLatencyBudgetMaxMs: [],
   };
@@ -55,6 +56,7 @@ function parseArgs(argv) {
     '--expect-speech-enhancement-issue-close-ready',
     '--expect-speech-enhancement-live-demo-gate',
     '--expect-speech-enhancement-missing-evidence',
+    '--expect-speech-enhancement-blocker',
     '--expect-runtime-seam',
     '--expect-pipecat-tool',
     '--expect-latency-budget-ms',
@@ -227,6 +229,12 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-speech-enhancement-blocker' && next) {
+      args.expectSpeechEnhancementBlockers.push(next);
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-runtime-seam' && next) {
       args.expectRuntimeSeams.push(next);
       index += 1;
@@ -288,6 +296,7 @@ function hasJsonExpectations(args) {
     || args.expectRuntimeSeams.length > 0
     || args.expectPipecatTools.length > 0
     || args.expectSpeechEnhancementMissingEvidence.length > 0
+    || args.expectSpeechEnhancementBlockers.length > 0
     || args.expectLatencyBudgetsMs.length > 0
     || args.expectLatencyBudgetMaxMs.length > 0;
 }
@@ -539,6 +548,16 @@ async function getFailureReason(response, args) {
 
     if (!Array.isArray(missingEvidence) || !missingEvidence.includes(expectedEvidence)) {
       return `json_speechEnhancement_missingEvidence_missing(expected=${JSON.stringify(expectedEvidence)},actual=${JSON.stringify(missingEvidence)})`;
+    }
+  }
+
+  for (const expectedBlocker of args.expectSpeechEnhancementBlockers) {
+    const blockers = payload.speechEnhancement && typeof payload.speechEnhancement === 'object'
+      ? payload.speechEnhancement.blockers
+      : undefined;
+
+    if (!Array.isArray(blockers) || !blockers.includes(expectedBlocker)) {
+      return `json_speechEnhancement_blockers_missing(expected=${JSON.stringify(expectedBlocker)},actual=${JSON.stringify(blockers)})`;
     }
   }
 

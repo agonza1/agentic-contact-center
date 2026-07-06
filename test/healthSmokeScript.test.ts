@@ -213,6 +213,7 @@ test("health smoke script can assert expected health metadata and multiple runti
           issueCloseReady: false,
           liveDemoGate: "blocked_until_real_capture",
           missingEvidence: ["real_noisy_local_sip_capture_baseline_vs_enhanced_replay"],
+          blockers: ["Replay a real noisy local SIP capture through baseline and enhancement paths before closing Issue #97."],
         },
       }),
     );
@@ -270,6 +271,8 @@ test("health smoke script can assert expected health metadata and multiple runti
       "blocked_until_real_capture",
       "--expect-speech-enhancement-missing-evidence",
       "real_noisy_local_sip_capture_baseline_vs_enhanced_replay",
+      "--expect-speech-enhancement-blocker",
+      "Replay a real noisy local SIP capture through baseline and enhancement paths before closing Issue #97.",
       "--timeout-ms",
       "200",
       "--interval-ms",
@@ -538,7 +541,7 @@ test("health smoke script reports speech enhancement readiness mismatches in the
     }
 
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ok: true, speechEnhancement: { runtimeEnabled: false, liveDemoGate: "blocked_until_real_capture" } }));
+    response.end(JSON.stringify({ ok: true, speechEnhancement: { runtimeEnabled: false, liveDemoGate: "blocked_until_real_capture", blockers: [] } }));
   }, async (port) => {
     const result = await runProbe([
       "--url",
@@ -553,6 +556,32 @@ test("health smoke script reports speech enhancement readiness mismatches in the
 
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Last failure: json_speechEnhancement_runtimeEnabled_mismatch\(expected=true,actual=false\)/);
+  });
+});
+
+test("health smoke script reports missing speech enhancement blockers in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, speechEnhancement: { blockers: [] } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-speech-enhancement-blocker",
+      "Replay a real noisy local SIP capture through baseline and enhancement paths before closing Issue #97.",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_speechEnhancement_blockers_missing/);
   });
 });
 
