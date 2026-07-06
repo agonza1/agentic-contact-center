@@ -698,6 +698,36 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
   };
 }
 
+
+export function buildSpeechEnhancementHealthSummary(): {
+  issue: string;
+  recommendedLatencyMs: number;
+  runtimeEnabled: boolean;
+  runtimeLatencyMs: number;
+  liveDemoGate: string;
+  issueCloseReady: boolean;
+  missingEvidence: string[];
+  blockers: string[];
+} {
+  const report = buildSpeechEnhancementSpikeReport();
+  const reviewGate = buildSpeechEnhancementReviewGate(report);
+  const runtimeConfig = resolveSpeechEnhancementRuntimeConfig({
+    featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
+    latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
+  });
+
+  return {
+    issue: report.issue,
+    recommendedLatencyMs: report.decision.recommendedLatencyMs,
+    runtimeEnabled: runtimeConfig.enabled,
+    runtimeLatencyMs: runtimeConfig.latencyMs,
+    liveDemoGate: report.replayCoverage.liveDemoGate,
+    issueCloseReady: reviewGate.issueCloseReady,
+    missingEvidence: reviewGate.nextEvidence,
+    blockers: reviewGate.blockers,
+  };
+}
+
 export function buildSpeechEnhancementReviewGate(
   report: SpeechEnhancementSpikeReport,
 ): SpeechEnhancementReviewGate {

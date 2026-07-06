@@ -59,6 +59,16 @@ test("GET /health returns config-backed demo metadata", async () => {
       activeTool: string | null;
       toolCoverage: string[];
     };
+    speechEnhancement: {
+      issue: string;
+      recommendedLatencyMs: number;
+      runtimeEnabled: boolean;
+      runtimeLatencyMs: number;
+      liveDemoGate: string;
+      issueCloseReady: boolean;
+      missingEvidence: string[];
+      blockers: string[];
+    };
   };
 
   assert.equal(payload.ok, true);
@@ -79,4 +89,16 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.match(payload.pipecatFlow.runtimeCheck.installCommand, /requirements-pipecat\.txt/);
   assert.equal(payload.pipecatFlow.activeTool, "get_current_slide");
   assert.equal(payload.pipecatFlow.toolCoverage.includes("goto_slide"), true);
+  assert.equal(payload.speechEnhancement.issue, "agonza1/agentic-contact-center#97");
+  assert.equal(payload.speechEnhancement.recommendedLatencyMs, 12.5);
+  assert.equal(payload.speechEnhancement.runtimeEnabled, false);
+  assert.equal(payload.speechEnhancement.runtimeLatencyMs, 12.5);
+  assert.equal(payload.speechEnhancement.liveDemoGate, "blocked_until_real_capture");
+  assert.equal(payload.speechEnhancement.issueCloseReady, false);
+  assert.ok(
+    payload.speechEnhancement.missingEvidence.includes(
+      "real_noisy_local_sip_capture_baseline_vs_enhanced_replay",
+    ),
+  );
+  assert.ok(payload.speechEnhancement.blockers.some((item) => item.includes("real noisy local SIP capture")));
 });
