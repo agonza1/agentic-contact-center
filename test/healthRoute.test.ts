@@ -67,6 +67,8 @@ test("GET /health returns config-backed demo metadata", async () => {
       runtimeBypassReason?: string;
       liveDemoGate: string;
       issueCloseReady: boolean;
+      reviewChecks: { realNoisyCaptureReplay: boolean; cpuRuntimeCost: boolean };
+      failureReasons: Record<string, string>;
       missingEvidence: string[];
       blockers: string[];
     };
@@ -97,6 +99,9 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.speechEnhancement.runtimeBypassReason, "feature_flag_disabled");
   assert.equal(payload.speechEnhancement.liveDemoGate, "blocked_until_real_capture");
   assert.equal(payload.speechEnhancement.issueCloseReady, false);
+  assert.equal(payload.speechEnhancement.reviewChecks.realNoisyCaptureReplay, false);
+  assert.equal(payload.speechEnhancement.reviewChecks.cpuRuntimeCost, false);
+  assert.match(payload.speechEnhancement.failureReasons.realNoisyCaptureReplay, /real noisy local SIP capture/);
   assert.ok(
     payload.speechEnhancement.missingEvidence.includes(
       "real_noisy_local_sip_capture_baseline_vs_enhanced_replay",

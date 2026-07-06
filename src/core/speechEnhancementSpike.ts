@@ -707,6 +707,8 @@ export function buildSpeechEnhancementHealthSummary(): {
   runtimeBypassReason?: SpeechEnhancementRuntimeConfig["bypassReason"];
   liveDemoGate: string;
   issueCloseReady: boolean;
+  reviewChecks: SpeechEnhancementReviewGate["checks"];
+  failureReasons: SpeechEnhancementReviewGate["failureReasons"];
   missingEvidence: string[];
   blockers: string[];
 } {
@@ -725,6 +727,8 @@ export function buildSpeechEnhancementHealthSummary(): {
     runtimeBypassReason: runtimeConfig.bypassReason,
     liveDemoGate: report.replayCoverage.liveDemoGate,
     issueCloseReady: reviewGate.issueCloseReady,
+    reviewChecks: reviewGate.checks,
+    failureReasons: reviewGate.failureReasons,
     missingEvidence: reviewGate.nextEvidence,
     blockers: reviewGate.blockers,
   };
