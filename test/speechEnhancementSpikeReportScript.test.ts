@@ -131,6 +131,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /Review gate: blocked/);
     assert.match(markdown, /Real noisy capture replays: 0/);
     assert.match(markdown, /Run: npm run proof:speech-enhancement -- --require-close-ready/);
+    assert.match(markdown, /Strict artifact check: npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts\/speech-enhancement-real-capture-replay\.json/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

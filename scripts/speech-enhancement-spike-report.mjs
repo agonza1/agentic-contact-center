@@ -220,6 +220,7 @@ function buildMarkdownReport(artifact) {
     "## Validation",
     "",
     `Run: ${artifact.handoff.validationCommand}`,
+    `Strict artifact check: ${artifact.handoff.strictValidationCommand}`,
     "",
   ].join("\n");
 }
