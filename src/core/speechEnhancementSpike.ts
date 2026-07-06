@@ -269,7 +269,13 @@ function hasArtifactUriField(record: Record<string, unknown>, field: string): bo
   }
 
   const value = record[field] as string;
-  return value.startsWith("artifacts/") && !value.includes("..") && !value.startsWith("/");
+  const pathParts = value.split("/");
+  return (
+    /^artifacts\/[A-Za-z0-9._/-]+$/u.test(value) &&
+    !value.includes("//") &&
+    !value.endsWith("/") &&
+    !pathParts.includes("..")
+  );
 }
 
 function hasEnumField<T extends string>(record: Record<string, unknown>, field: string, allowed: readonly T[]): boolean {
