@@ -208,6 +208,12 @@ test("health smoke script can assert expected health metadata and multiple runti
           toolCoverage: ["goto_slide", "approve_offer"],
           script: { completed: true },
         },
+        speechEnhancement: {
+          runtimeEnabled: false,
+          issueCloseReady: false,
+          liveDemoGate: "blocked_until_real_capture",
+          missingEvidence: ["real_noisy_local_sip_capture_baseline_vs_enhanced_replay"],
+        },
       }),
     );
   }, async (port) => {
@@ -256,6 +262,14 @@ test("health smoke script can assert expected health metadata and multiple runti
       "approve_offer",
       "--expect-pipecat-script-completed",
       "true",
+      "--expect-speech-enhancement-runtime-enabled",
+      "false",
+      "--expect-speech-enhancement-issue-close-ready",
+      "false",
+      "--expect-speech-enhancement-live-demo-gate",
+      "blocked_until_real_capture",
+      "--expect-speech-enhancement-missing-evidence",
+      "real_noisy_local_sip_capture_baseline_vs_enhanced_replay",
       "--timeout-ms",
       "200",
       "--interval-ms",
@@ -514,6 +528,32 @@ test("health smoke script rejects malformed Pipecat readiness expectations befor
   assert.equal(result.code, 1);
   assert.match(result.stderr, /invalid_pipecat_ready_value\("yes"\)/);
   assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
+});
+
+test("health smoke script reports speech enhancement readiness mismatches in the timeout summary", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, speechEnhancement: { runtimeEnabled: false, liveDemoGate: "blocked_until_real_capture" } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-speech-enhancement-runtime-enabled",
+      "true",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_speechEnhancement_runtimeEnabled_mismatch\(expected=true,actual=false\)/);
+  });
 });
 
 test("health smoke script reports Pipecat runtime metadata mismatches in the timeout summary", async () => {
