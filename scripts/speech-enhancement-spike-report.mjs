@@ -250,7 +250,10 @@ async function main() {
     latestOutputPath: latestOutputPath ?? null,
     markdownOutputPath: markdownOutputPath ?? null,
     issueCloseReady: artifact.reviewGate.issueCloseReady,
+    checks: artifact.reviewGate.checks,
+    failureReasons: artifact.reviewGate.failureReasons,
     blockers: artifact.reviewGate.blockers,
+    nextEvidence: artifact.reviewGate.nextEvidence,
   };
 
   console.log(JSON.stringify(summary));

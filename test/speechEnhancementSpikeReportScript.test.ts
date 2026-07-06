@@ -153,7 +153,10 @@ test("speech enhancement spike report script can enforce issue-close readiness",
     const summary = JSON.parse(result.stdout) as {
       ok: boolean;
       issueCloseReady: boolean;
+      checks: Record<string, boolean>;
+      failureReasons: Record<string, string>;
       blockers: string[];
+      nextEvidence: string[];
       outputPath: string;
       latestOutputPath: string | null;
       markdownOutputPath: string | null;
@@ -163,7 +166,10 @@ test("speech enhancement spike report script can enforce issue-close readiness",
     assert.equal(summary.outputPath, outputPath);
     assert.equal(summary.latestOutputPath, null);
     assert.equal(summary.markdownOutputPath, null);
+    assert.equal(summary.checks.realNoisyCaptureReplay, false);
+    assert.match(summary.failureReasons.realNoisyCaptureReplay, /real noisy local SIP capture/);
     assert.ok(summary.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
+    assert.ok(summary.nextEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as { reviewGate: { issueCloseReady: boolean } };
     assert.equal(artifact.reviewGate.issueCloseReady, false);
