@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -38,6 +39,7 @@ function hasArg(flag) {
 
 async function loadCaptureReplayMetrics() {
   const captureReplayPaths = resolveArgPaths("--capture-replay");
+  const strictCaptureArtifacts = hasArg("--strict-capture-artifacts");
   const metrics = [];
 
   for (const captureReplayPath of captureReplayPaths) {
@@ -47,10 +49,46 @@ async function loadCaptureReplayMetrics() {
       throw new Error(`Invalid capture replay manifest: ${captureReplayPath}: ${validation.missingFields.join(", ")}`);
     }
 
+    if (strictCaptureArtifacts) {
+      await assertCaptureArtifact(payload.audio_source_uri, payload.audio_sha256, captureReplayPath, "audio_source_uri");
+      await assertCaptureArtifact(
+        payload.source_manifest_uri,
+        payload.source_manifest_sha256,
+        captureReplayPath,
+        "source_manifest_uri",
+      );
+    }
+
     metrics.push(validation.metric);
   }
 
   return metrics;
+}
+
+async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayPath, field) {
+  const artifactPath = path.resolve(process.cwd(), artifactUri);
+  let contents;
+
+  try {
+    contents = await readFile(artifactPath);
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      throw new Error(`Missing capture replay artifact for ${field}: ${captureReplayPath}: ${artifactUri}`);
+    }
+
+    throw error;
+  }
+
+  if (!expectedSha256) {
+    throw new Error(`Missing sha256 for strict capture replay artifact: ${captureReplayPath}: ${field}`);
+  }
+
+  const actualSha256 = createHash("sha256").update(contents).digest("hex");
+  if (actualSha256 !== expectedSha256.toLowerCase()) {
+    throw new Error(
+      `Capture replay artifact hash mismatch for ${field}: ${captureReplayPath}: expected ${expectedSha256}, got ${actualSha256}`,
+    );
+  }
 }
 
 function applyCaptureReplay(report, metric) {
@@ -209,6 +247,8 @@ async function main() {
       issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97",
       reviewRoute: report.route,
       validationCommand: "npm run proof:speech-enhancement -- --require-close-ready",
+      strictValidationCommand:
+        "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
       nextEvidenceOwner: "agentic_contact_center",
     },
     reviewGate: buildSpeechEnhancementReviewGate(report),
