@@ -8,6 +8,7 @@ const require = createRequire(import.meta.url);
 
 const {
   buildSpeechEnhancementReviewGate,
+  buildSpeechEnhancementReviewHandoff,
   buildSpeechEnhancementSpikeReport,
   validateSpeechEnhancementCaptureReplayManifest,
 } = require("../dist/src/core/speechEnhancementSpike.js");
@@ -298,14 +299,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     artifactType: "speech_enhancement_spike_report",
     report,
-    handoff: {
-      issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97",
-      reviewRoute: report.route,
-      validationCommand: "npm run proof:speech-enhancement -- --require-close-ready",
-      strictValidationCommand:
-        "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
-      nextEvidenceOwner: "agentic_contact_center",
-    },
+    handoff: buildSpeechEnhancementReviewHandoff(),
     reviewGate: buildSpeechEnhancementReviewGate(report),
   };
 

@@ -198,6 +198,14 @@ export interface SpeechEnhancementRuntimeConfig {
   };
 }
 
+export interface SpeechEnhancementReviewHandoff {
+  issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97";
+  reviewRoute: "/api/realtime-shim/speech-enhancement-spike";
+  validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
+  strictValidationCommand: "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json";
+  nextEvidenceOwner: "agentic_contact_center";
+}
+
 export interface SpeechEnhancementReviewGate {
   issueCloseReady: boolean;
   checks: Record<
@@ -840,9 +848,11 @@ export function buildSpeechEnhancementHealthSummary(): {
   passingRealCaptureReplayIds: string[];
   blockedRealCaptureReplayIds: string[];
   validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
+  strictValidationCommand: SpeechEnhancementReviewHandoff["strictValidationCommand"];
 } {
   const report = buildSpeechEnhancementSpikeReport();
   const reviewGate = buildSpeechEnhancementReviewGate(report);
+  const handoff = buildSpeechEnhancementReviewHandoff();
   const runtimeConfig = resolveSpeechEnhancementRuntimeConfig({
     featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
     latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
@@ -863,7 +873,19 @@ export function buildSpeechEnhancementHealthSummary(): {
     nextEvidence: reviewGate.nextEvidence,
     passingRealCaptureReplayIds: reviewGate.passingRealCaptureReplayIds,
     blockedRealCaptureReplayIds: reviewGate.blockedRealCaptureReplayIds,
+    validationCommand: handoff.validationCommand,
+    strictValidationCommand: handoff.strictValidationCommand,
+  };
+}
+
+export function buildSpeechEnhancementReviewHandoff(): SpeechEnhancementReviewHandoff {
+  return {
+    issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97",
+    reviewRoute: "/api/realtime-shim/speech-enhancement-spike",
     validationCommand: "npm run proof:speech-enhancement -- --require-close-ready",
+    strictValidationCommand:
+      "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
+    nextEvidenceOwner: "agentic_contact_center",
   };
 }
 

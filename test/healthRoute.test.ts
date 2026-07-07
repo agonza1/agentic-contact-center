@@ -75,6 +75,7 @@ test("GET /health returns config-backed demo metadata", async () => {
       passingRealCaptureReplayIds: string[];
       blockedRealCaptureReplayIds: string[];
       validationCommand: string;
+      strictValidationCommand: string;
     };
   };
 
@@ -118,5 +119,9 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(
     payload.speechEnhancement.validationCommand,
     "npm run proof:speech-enhancement -- --require-close-ready",
+  );
+  assert.equal(
+    payload.speechEnhancement.strictValidationCommand,
+    "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
   );
 });

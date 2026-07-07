@@ -8,6 +8,7 @@ import { REALTIME_SHIM_RPCS } from "../core/realtimeShimContract";
 import {
   buildSpeechEnhancementHealthSummary,
   buildSpeechEnhancementReviewGate,
+  buildSpeechEnhancementReviewHandoff,
   buildSpeechEnhancementSpikeReport,
   resolveSpeechEnhancementRuntimeConfig,
 } from "../core/speechEnhancementSpike";
@@ -2811,6 +2812,7 @@ async function routeRequest(
         latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
       }),
       reviewGate: buildSpeechEnhancementReviewGate(report),
+      reviewHandoff: buildSpeechEnhancementReviewHandoff(),
     });
     return;
   }
