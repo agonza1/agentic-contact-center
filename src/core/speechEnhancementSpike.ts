@@ -571,15 +571,18 @@ export function applySpeechEnhancementCaptureReplayMetric(
     metric: candidate,
     evaluation: evaluateSpeechEnhancementReplayMetric(candidate),
   }));
-  const remainingBeforeIssueClose = realReplayEvaluations.flatMap(({ metric: replayMetric, evaluation }) =>
-    evaluation.issueCloseReady
-      ? []
-      : [
-          `Replay ${replayMetric.captureId} did not pass all enhancement close gates: ${evaluation.failingEvidence.join(
-            ", ",
-          )}.`,
-        ],
-  );
+  const remainingBeforeIssueClose =
+    realReplayEvaluations.length === 0
+      ? report.acceptanceReadiness.remainingBeforeIssueClose
+      : realReplayEvaluations.flatMap(({ metric: replayMetric, evaluation }) =>
+          evaluation.issueCloseReady
+            ? []
+            : [
+                `Replay ${replayMetric.captureId} did not pass all enhancement close gates: ${evaluation.failingEvidence.join(
+                  ", ",
+                )}.`,
+              ],
+        );
   const missingEvidence =
     realReplayMetrics.length === 0
       ? report.replayCoverage.missingEvidence

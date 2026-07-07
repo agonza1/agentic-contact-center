@@ -210,7 +210,10 @@ test("speech enhancement spike report does not treat extra synthetic replay as r
 
   assert.equal(reportWithSyntheticReplay.acceptanceReadiness.noisyReplay, "real_capture_required");
   assert.equal(reportWithSyntheticReplay.acceptanceReadiness.cpuRuntimeCost, "estimated_needs_live_measurement");
-  assert.deepEqual(reportWithSyntheticReplay.acceptanceReadiness.remainingBeforeIssueClose, []);
+  assert.deepEqual(reportWithSyntheticReplay.acceptanceReadiness.remainingBeforeIssueClose, [
+    "Replay a real noisy local SIP capture through baseline and enhancement paths before closing Issue #97.",
+    "Replace CPU cost estimate with measured local runtime cost from the selected rtc-asr host.",
+  ]);
   assert.equal(reportWithSyntheticReplay.replayCoverage.syntheticNoisyReplayCount, 2);
   assert.equal(reportWithSyntheticReplay.replayCoverage.realNoisyCaptureReplayCount, 0);
   assert.equal(reportWithSyntheticReplay.replayCoverage.baselineEnhancedPairs, 2);
