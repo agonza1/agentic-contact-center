@@ -51,6 +51,11 @@ export interface SpeechEnhancementReplayDecision {
   captureId: string;
   latencySettingMs: number;
   enableForLiveDemo: boolean;
+  diagnostics: {
+    wordErrorRateDelta: number;
+    addedLatencyBudgetHeadroomMs: number;
+    cpuP95BudgetHeadroomPercent: number;
+  };
   reasons: string[];
 }
 
@@ -193,6 +198,14 @@ export interface SpeechEnhancementRuntimeConfig {
   };
 }
 
+export interface SpeechEnhancementReviewHandoff {
+  issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97";
+  reviewRoute: "/api/realtime-shim/speech-enhancement-spike";
+  validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
+  strictValidationCommand: "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json";
+  nextEvidenceOwner: "agentic_contact_center";
+}
+
 export interface SpeechEnhancementReviewGate {
   issueCloseReady: boolean;
   checks: Record<
@@ -213,6 +226,13 @@ export interface SpeechEnhancementReviewGate {
   blockedRealCaptureReplayIds: string[];
   realCaptureReplayEvidence: Array<{
     captureId: string;
+    status: "passing" | "blocked";
+    enableForLiveDemo: boolean;
+    failingEvidence: string[];
+    reasons: string[];
+    wordErrorRateDelta: number;
+    addedLatencyBudgetHeadroomMs: number;
+    cpuP95BudgetHeadroomPercent: number;
     recordedAt: string | null;
     audioSourceUri: string | null;
     audioSha256: string | null;
@@ -511,49 +531,88 @@ export function evaluateSpeechEnhancementReplayMetric(
   };
 }
 
+export function buildSpeechEnhancementReplayDiagnostics(metric: SpeechEnhancementReplayMetric): {
+  wordErrorRateDelta: number;
+  addedLatencyBudgetHeadroomMs: number;
+  cpuP95BudgetHeadroomPercent: number;
+} {
+  return {
+    wordErrorRateDelta: Number(
+      (metric.baseline.wordErrorRateEstimate - metric.enhanced.wordErrorRateEstimate).toFixed(4),
+    ),
+    addedLatencyBudgetHeadroomMs: roundBudgetHeadroom(
+      closeGateProfile.maxAddedTurnLatencyMsP95 - metric.enhanced.addedTurnLatencyMsP95,
+    ),
+    cpuP95BudgetHeadroomPercent: roundBudgetHeadroom(
+      closeGateProfile.maxCpuPercentP95 - metric.enhanced.cpuPercentP95,
+    ),
+  };
+}
+
+function roundBudgetHeadroom(rawHeadroom: number): number {
+  const rounded = Number(rawHeadroom.toFixed(2));
+  if (rawHeadroom < 0 && Object.is(rounded, -0)) {
+    return -0.01;
+  }
+
+  return rounded;
+}
+
 export function applySpeechEnhancementCaptureReplayMetric(
   report: SpeechEnhancementSpikeReport,
   metric: SpeechEnhancementReplayMetric,
 ): SpeechEnhancementSpikeReport {
-  const { issueCloseReady, failingEvidence, reasons } = evaluateSpeechEnhancementReplayMetric(metric);
-  const previousReplayFailures = report.acceptanceReadiness.remainingBeforeIssueClose.filter((blocker) =>
-    blocker.startsWith("Replay ") && blocker.includes(" did not pass all enhancement close gates"),
+  const { issueCloseReady, reasons } = evaluateSpeechEnhancementReplayMetric(metric);
+  const replayMetrics = [...report.replayMetrics, metric];
+  const realReplayMetrics = replayMetrics.filter((candidate) =>
+    candidate.captureId.startsWith(realNoisyLocalSipCaptureIdPrefix),
   );
-  const replayFailures = issueCloseReady
-    ? []
-    : [`Replay ${metric.captureId} did not pass all enhancement close gates: ${failingEvidence.join(", ")}.`];
-  const remainingBeforeIssueClose = [...previousReplayFailures, ...replayFailures];
-  const missingEvidence = Array.from(
-    new Set([
-      ...(report.replayCoverage.realNoisyCaptureReplayCount > 0 ? report.replayCoverage.missingEvidence : []),
-      ...failingEvidence,
-    ]),
-  );
-  const allAttachedReplaysPass = remainingBeforeIssueClose.length === 0;
+  const realReplayEvaluations = realReplayMetrics.map((candidate) => ({
+    metric: candidate,
+    evaluation: evaluateSpeechEnhancementReplayMetric(candidate),
+  }));
+  const remainingBeforeIssueClose =
+    realReplayEvaluations.length === 0
+      ? report.acceptanceReadiness.remainingBeforeIssueClose
+      : realReplayEvaluations.flatMap(({ metric: replayMetric, evaluation }) =>
+          evaluation.issueCloseReady
+            ? []
+            : [
+                `Replay ${replayMetric.captureId} did not pass all enhancement close gates: ${evaluation.failingEvidence.join(
+                  ", ",
+                )}.`,
+              ],
+        );
+  const missingEvidence =
+    realReplayMetrics.length === 0
+      ? report.replayCoverage.missingEvidence
+      : Array.from(new Set(realReplayEvaluations.flatMap(({ evaluation }) => evaluation.failingEvidence)));
+  const allRealReplaysPass = realReplayMetrics.length > 0 && remainingBeforeIssueClose.length === 0;
 
   return {
     ...report,
-    replayMetrics: [...report.replayMetrics, metric],
+    replayMetrics,
     replayDecisions: [
       ...report.replayDecisions,
       {
         captureId: metric.captureId,
         latencySettingMs: metric.latencySettingMs,
         enableForLiveDemo: issueCloseReady,
+        diagnostics: buildSpeechEnhancementReplayDiagnostics(metric),
         reasons,
       },
     ],
     replayCoverage: {
-      syntheticNoisyReplayCount: report.replayCoverage.syntheticNoisyReplayCount,
-      realNoisyCaptureReplayCount: report.replayCoverage.realNoisyCaptureReplayCount + 1,
-      baselineEnhancedPairs: report.replayCoverage.baselineEnhancedPairs + 1,
-      liveDemoGate: allAttachedReplaysPass ? "eligible" : "blocked_until_real_capture",
+      syntheticNoisyReplayCount: replayMetrics.filter((candidate) => candidate.captureId.startsWith("synthetic-")).length,
+      realNoisyCaptureReplayCount: realReplayMetrics.length,
+      baselineEnhancedPairs: replayMetrics.length,
+      liveDemoGate: allRealReplaysPass ? "eligible" : "blocked_until_real_capture",
       missingEvidence,
     },
     acceptanceReadiness: {
       ...report.acceptanceReadiness,
-      noisyReplay: allAttachedReplaysPass ? "real_capture_ready" : "real_capture_required",
-      cpuRuntimeCost: allAttachedReplaysPass ? "covered" : "estimated_needs_live_measurement",
+      noisyReplay: allRealReplaysPass ? "real_capture_ready" : "real_capture_required",
+      cpuRuntimeCost: allRealReplaysPass ? "covered" : "estimated_needs_live_measurement",
       remainingBeforeIssueClose,
     },
   };
@@ -623,6 +682,7 @@ export function buildSpeechEnhancementSpikeReport(
       captureId: metric.captureId,
       latencySettingMs: metric.latencySettingMs,
       enableForLiveDemo: evaluation.issueCloseReady,
+      diagnostics: buildSpeechEnhancementReplayDiagnostics(metric),
       reasons: evaluation.reasons,
     };
   });
@@ -790,6 +850,8 @@ export function buildSpeechEnhancementSpikeReport(
 
 export function buildSpeechEnhancementHealthSummary(): {
   issue: string;
+  issueUrl: SpeechEnhancementReviewHandoff["issueUrl"];
+  reviewRoute: SpeechEnhancementReviewHandoff["reviewRoute"];
   recommendedLatencyMs: number;
   runtimeEnabled: boolean;
   runtimeLatencyMs: number;
@@ -803,10 +865,13 @@ export function buildSpeechEnhancementHealthSummary(): {
   nextEvidence: string[];
   passingRealCaptureReplayIds: string[];
   blockedRealCaptureReplayIds: string[];
+  captureReplayFixturePath: SpeechEnhancementCaptureReplayContract["fixtureManifestPath"];
   validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
+  strictValidationCommand: SpeechEnhancementReviewHandoff["strictValidationCommand"];
 } {
   const report = buildSpeechEnhancementSpikeReport();
   const reviewGate = buildSpeechEnhancementReviewGate(report);
+  const handoff = buildSpeechEnhancementReviewHandoff();
   const runtimeConfig = resolveSpeechEnhancementRuntimeConfig({
     featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
     latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
@@ -814,6 +879,8 @@ export function buildSpeechEnhancementHealthSummary(): {
 
   return {
     issue: report.issue,
+    issueUrl: handoff.issueUrl,
+    reviewRoute: handoff.reviewRoute,
     recommendedLatencyMs: report.decision.recommendedLatencyMs,
     runtimeEnabled: runtimeConfig.enabled,
     runtimeLatencyMs: runtimeConfig.latencyMs,
@@ -827,7 +894,20 @@ export function buildSpeechEnhancementHealthSummary(): {
     nextEvidence: reviewGate.nextEvidence,
     passingRealCaptureReplayIds: reviewGate.passingRealCaptureReplayIds,
     blockedRealCaptureReplayIds: reviewGate.blockedRealCaptureReplayIds,
+    captureReplayFixturePath: report.captureReplayContract.fixtureManifestPath,
+    validationCommand: handoff.validationCommand,
+    strictValidationCommand: handoff.strictValidationCommand,
+  };
+}
+
+export function buildSpeechEnhancementReviewHandoff(): SpeechEnhancementReviewHandoff {
+  return {
+    issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97",
+    reviewRoute: "/api/realtime-shim/speech-enhancement-spike",
     validationCommand: "npm run proof:speech-enhancement -- --require-close-ready",
+    strictValidationCommand:
+      "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
+    nextEvidenceOwner: "agentic_contact_center",
   };
 }
 
@@ -887,15 +967,28 @@ export function buildSpeechEnhancementReviewGate(
     realCaptureReplayIds: realCaptureReplayDecisions.map((decision) => decision.captureId),
     passingRealCaptureReplayIds,
     blockedRealCaptureReplayIds,
-    realCaptureReplayEvidence: realCaptureReplayMetrics.map((metric) => ({
-      captureId: metric.captureId,
-      recordedAt: metric.captureEvidence?.recordedAt ?? null,
-      audioSourceUri: metric.captureEvidence?.audioSourceUri ?? null,
-      audioSha256: metric.captureEvidence?.audioSha256 ?? null,
-      sourceManifestUri: metric.captureEvidence?.sourceManifestUri ?? null,
-      sourceManifestSha256: metric.captureEvidence?.sourceManifestSha256 ?? null,
-      noiseProfile: metric.captureEvidence?.noiseProfile ?? null,
-      runtimeHost: metric.captureEvidence?.runtimeHost ?? null,
-    })),
+    realCaptureReplayEvidence: realCaptureReplayMetrics.map((metric) => {
+      const decision = realCaptureReplayDecisions.find((candidate) => candidate.captureId === metric.captureId);
+      const diagnostics = decision?.diagnostics ?? buildSpeechEnhancementReplayDiagnostics(metric);
+      const evaluation = evaluateSpeechEnhancementReplayMetric(metric);
+
+      return {
+        captureId: metric.captureId,
+        status: decision?.enableForLiveDemo ? "passing" : "blocked",
+        enableForLiveDemo: decision?.enableForLiveDemo ?? false,
+        failingEvidence: evaluation.failingEvidence,
+        reasons: decision?.reasons ?? evaluation.reasons,
+        wordErrorRateDelta: diagnostics.wordErrorRateDelta,
+        addedLatencyBudgetHeadroomMs: diagnostics.addedLatencyBudgetHeadroomMs,
+        cpuP95BudgetHeadroomPercent: diagnostics.cpuP95BudgetHeadroomPercent,
+        recordedAt: metric.captureEvidence?.recordedAt ?? null,
+        audioSourceUri: metric.captureEvidence?.audioSourceUri ?? null,
+        audioSha256: metric.captureEvidence?.audioSha256 ?? null,
+        sourceManifestUri: metric.captureEvidence?.sourceManifestUri ?? null,
+        sourceManifestSha256: metric.captureEvidence?.sourceManifestSha256 ?? null,
+        noiseProfile: metric.captureEvidence?.noiseProfile ?? null,
+        runtimeHost: metric.captureEvidence?.runtimeHost ?? null,
+      };
+    }),
   };
 }

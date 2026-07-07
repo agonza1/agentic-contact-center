@@ -8,6 +8,7 @@ const require = createRequire(import.meta.url);
 
 const {
   buildSpeechEnhancementReviewGate,
+  buildSpeechEnhancementReviewHandoff,
   buildSpeechEnhancementSpikeReport,
   validateSpeechEnhancementCaptureReplayManifest,
 } = require("../dist/src/core/speechEnhancementSpike.js");
@@ -202,12 +203,20 @@ function buildMarkdownReport(artifact) {
   });
   const failureReasons = Object.entries(reviewGate.failureReasons).map(([check, reason]) => "- " + check + ": " + reason);
   const replayEvidence = reviewGate.realCaptureReplayEvidence.map((evidence) => {
-    const status = reviewGate.passingRealCaptureReplayIds.includes(evidence.captureId) ? "passing" : "blocked";
     const source = evidence.audioSourceUri ?? "missing audio source";
     const sourceManifest = evidence.sourceManifestUri ?? "missing source manifest";
     const runtimeHost = evidence.runtimeHost ?? "missing runtime host";
 
-    return `- ${evidence.captureId}: ${status}; audio=${source}; source_manifest=${sourceManifest}; runtime_host=${runtimeHost}`;
+    const failingEvidence = evidence.failingEvidence.length > 0 ? evidence.failingEvidence.join(", ") : "none";
+    const reasons = evidence.reasons.length > 0 ? evidence.reasons.join(", ") : "none";
+
+    return `- ${evidence.captureId}: ${evidence.status}; wer_delta=${evidence.wordErrorRateDelta}; latency_headroom_ms=${evidence.addedLatencyBudgetHeadroomMs}; cpu_headroom_percent=${evidence.cpuP95BudgetHeadroomPercent}; failing_evidence=${failingEvidence}; reasons=${reasons}; audio=${source}; source_manifest=${sourceManifest}; runtime_host=${runtimeHost}`;
+  });
+  const replayDecisions = report.replayDecisions.map((decision) => {
+    const enabled = decision.enableForLiveDemo ? "enabled" : "blocked";
+    const diagnostics = decision.diagnostics;
+
+    return `- ${decision.captureId}: ${enabled}; latency_setting_ms=${decision.latencySettingMs}; wer_delta=${diagnostics.wordErrorRateDelta}; latency_headroom_ms=${diagnostics.addedLatencyBudgetHeadroomMs}; cpu_headroom_percent=${diagnostics.cpuP95BudgetHeadroomPercent}; reasons=${decision.reasons.join(", ")}`;
   });
 
   return [
@@ -243,6 +252,10 @@ function buildMarkdownReport(artifact) {
     "## Real Capture Replay Evidence",
     "",
     ...(replayEvidence.length > 0 ? replayEvidence : ["- None attached."]),
+    "",
+    "## Replay Decisions",
+    "",
+    ...replayDecisions,
     "",
     "## Review Checks",
     "",
@@ -289,14 +302,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     artifactType: "speech_enhancement_spike_report",
     report,
-    handoff: {
-      issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97",
-      reviewRoute: report.route,
-      validationCommand: "npm run proof:speech-enhancement -- --require-close-ready",
-      strictValidationCommand:
-        "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
-      nextEvidenceOwner: "agentic_contact_center",
-    },
+    handoff: buildSpeechEnhancementReviewHandoff(),
     reviewGate: buildSpeechEnhancementReviewGate(report),
   };
 
@@ -321,6 +327,7 @@ async function main() {
     realCaptureReplayIds: artifact.reviewGate.realCaptureReplayIds,
     passingRealCaptureReplayIds: artifact.reviewGate.passingRealCaptureReplayIds,
     blockedRealCaptureReplayIds: artifact.reviewGate.blockedRealCaptureReplayIds,
+    realCaptureReplayEvidence: artifact.reviewGate.realCaptureReplayEvidence,
   };
 
   console.log(JSON.stringify(summary));

@@ -88,6 +88,13 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
         blockedRealCaptureReplayIds: string[];
         realCaptureReplayEvidence: Array<{
           captureId: string;
+          status: "passing" | "blocked";
+          enableForLiveDemo: boolean;
+          failingEvidence: string[];
+          reasons: string[];
+          wordErrorRateDelta: number;
+          addedLatencyBudgetHeadroomMs: number;
+          cpuP95BudgetHeadroomPercent: number;
           recordedAt: string | null;
           audioSourceUri: string | null;
           audioSha256: string | null;
@@ -158,6 +165,8 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /Allowed CPU cost estimates: low, medium/);
     assert.match(markdown, /Real Capture Replay Evidence/);
     assert.match(markdown, /- None attached\./);
+    assert.match(markdown, /Replay Decisions/);
+    assert.match(markdown, /synthetic-noisy-cancellation-rescue-001: enabled; latency_setting_ms=12\.5; wer_delta=0\.05; latency_headroom_ms=7; cpu_headroom_percent=38/);
     assert.match(markdown, /Review Checks/);
     assert.match(markdown, /- \[ \] realNoisyCaptureReplay/);
     assert.match(markdown, /- \[ \] wordErrorImproved/);
@@ -209,7 +218,6 @@ test("speech enhancement spike report script can enforce issue-close readiness",
     assert.deepEqual(summary.realCaptureReplayIds, []);
     assert.deepEqual(summary.passingRealCaptureReplayIds, []);
     assert.deepEqual(summary.blockedRealCaptureReplayIds, []);
-
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as { reviewGate: { issueCloseReady: boolean } };
     assert.equal(artifact.reviewGate.issueCloseReady, false);
   } finally {
@@ -509,6 +517,9 @@ test("speech enhancement spike report keeps over-budget real capture replay evid
         blockedRealCaptureReplayIds: string[];
         realCaptureReplayEvidence: Array<{
           captureId: string;
+          status: "passing" | "blocked";
+          failingEvidence: string[];
+          reasons: string[];
           recordedAt: string | null;
           audioSourceUri: string | null;
           audioSha256: string | null;
@@ -527,6 +538,10 @@ test("speech enhancement spike report keeps over-budget real capture replay evid
     assert.equal(decision?.enableForLiveDemo, false);
     assert.ok(decision?.reasons.includes("latency_over_budget"));
     assert.deepEqual(artifact.reviewGate.nextEvidence, ["measured_12_5_ms_added_turn_latency_under_25_ms_p95"]);
+    assert.deepEqual(artifact.reviewGate.realCaptureReplayEvidence[0].failingEvidence, [
+      "measured_12_5_ms_added_turn_latency_under_25_ms_p95",
+    ]);
+    assert.ok(artifact.reviewGate.realCaptureReplayEvidence[0].reasons.includes("latency_over_budget"));
     assert.deepEqual(artifact.reviewGate.realCaptureReplayIds, ["real-noisy-local-sip-003"]);
     assert.deepEqual(artifact.reviewGate.passingRealCaptureReplayIds, []);
     assert.deepEqual(artifact.reviewGate.blockedRealCaptureReplayIds, ["real-noisy-local-sip-003"]);
@@ -673,6 +688,13 @@ test("speech enhancement spike report accepts passing real capture replay eviden
       realCaptureReplayIds: string[];
       passingRealCaptureReplayIds: string[];
       blockedRealCaptureReplayIds: string[];
+      realCaptureReplayEvidence: Array<{
+        captureId: string;
+        status: string;
+        failingEvidence: string[];
+        reasons: string[];
+        wordErrorRateDelta: number;
+      }>;
     };
     assert.equal(summary.ok, true);
     assert.equal(summary.issueCloseReady, true);
@@ -680,6 +702,27 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.deepEqual(summary.realCaptureReplayIds, ["real-noisy-local-sip-001"]);
     assert.deepEqual(summary.passingRealCaptureReplayIds, ["real-noisy-local-sip-001"]);
     assert.deepEqual(summary.blockedRealCaptureReplayIds, []);
+    assert.deepEqual(summary.realCaptureReplayEvidence.map((evidence) => ({
+      captureId: evidence.captureId,
+      status: evidence.status,
+      failingEvidence: evidence.failingEvidence,
+      reasons: evidence.reasons,
+      wordErrorRateDelta: evidence.wordErrorRateDelta,
+    })), [
+      {
+        captureId: "real-noisy-local-sip-001",
+        status: "passing",
+        failingEvidence: [],
+        reasons: [
+          "wer_improved",
+          "endpointing_stable",
+          "barge_in_risk_low",
+          "latency_within_budget",
+          "cpu_cost_allowed",
+        ],
+        wordErrorRateDelta: 0.12,
+      },
+    ]);
 
     const markdown = await readFile(markdownOutputPath, "utf8");
     assert.match(markdown, /Passing real replay ids: real-noisy-local-sip-001/);
@@ -689,7 +732,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.match(markdown, /Failure Reasons\n\n- None\./);
     assert.match(
       markdown,
-      /real-noisy-local-sip-001: passing; audio=artifacts\/local-sip\/real-noisy-local-sip-001\.wav; source_manifest=artifacts\/local-sip\/proof-manifest-001\.json; runtime_host=local-rtc-asr-host/,
+      /real-noisy-local-sip-001: passing; wer_delta=0\.12; latency_headroom_ms=7; cpu_headroom_percent=38; failing_evidence=none; reasons=wer_improved, endpointing_stable, barge_in_risk_low, latency_within_budget, cpu_cost_allowed; audio=artifacts\/local-sip\/real-noisy-local-sip-001\.wav; source_manifest=artifacts\/local-sip\/proof-manifest-001\.json; runtime_host=local-rtc-asr-host/,
     );
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
@@ -721,6 +764,9 @@ test("speech enhancement spike report accepts passing real capture replay eviden
         blockedRealCaptureReplayIds: string[];
         realCaptureReplayEvidence: Array<{
           captureId: string;
+          status: "passing" | "blocked";
+          failingEvidence: string[];
+          reasons: string[];
           recordedAt: string | null;
           audioSourceUri: string | null;
           audioSha256: string | null;
@@ -760,6 +806,19 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.deepEqual(artifact.reviewGate.realCaptureReplayEvidence, [
       {
         captureId: "real-noisy-local-sip-001",
+        status: "passing",
+        enableForLiveDemo: true,
+        failingEvidence: [],
+        reasons: [
+          "wer_improved",
+          "endpointing_stable",
+          "barge_in_risk_low",
+          "latency_within_budget",
+          "cpu_cost_allowed",
+        ],
+        wordErrorRateDelta: 0.12,
+        addedLatencyBudgetHeadroomMs: 7,
+        cpuP95BudgetHeadroomPercent: 38,
         recordedAt: "2026-07-05T06:40:00.000Z",
         audioSourceUri: "artifacts/local-sip/real-noisy-local-sip-001.wav",
         audioSha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",

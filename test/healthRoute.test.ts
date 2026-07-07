@@ -61,6 +61,8 @@ test("GET /health returns config-backed demo metadata", async () => {
     };
     speechEnhancement: {
       issue: string;
+      issueUrl: string;
+      reviewRoute: string;
       recommendedLatencyMs: number;
       runtimeEnabled: boolean;
       runtimeLatencyMs: number;
@@ -74,7 +76,9 @@ test("GET /health returns config-backed demo metadata", async () => {
       nextEvidence: string[];
       passingRealCaptureReplayIds: string[];
       blockedRealCaptureReplayIds: string[];
+      captureReplayFixturePath: string;
       validationCommand: string;
+      strictValidationCommand: string;
     };
   };
 
@@ -97,6 +101,8 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.pipecatFlow.activeTool, "get_current_slide");
   assert.equal(payload.pipecatFlow.toolCoverage.includes("goto_slide"), true);
   assert.equal(payload.speechEnhancement.issue, "agonza1/agentic-contact-center#97");
+  assert.equal(payload.speechEnhancement.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/97");
+  assert.equal(payload.speechEnhancement.reviewRoute, "/api/realtime-shim/speech-enhancement-spike");
   assert.equal(payload.speechEnhancement.recommendedLatencyMs, 12.5);
   assert.equal(payload.speechEnhancement.runtimeEnabled, false);
   assert.equal(payload.speechEnhancement.runtimeLatencyMs, 12.5);
@@ -116,7 +122,15 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.deepEqual(payload.speechEnhancement.passingRealCaptureReplayIds, []);
   assert.deepEqual(payload.speechEnhancement.blockedRealCaptureReplayIds, []);
   assert.equal(
+    payload.speechEnhancement.captureReplayFixturePath,
+    "artifacts/speech-enhancement-real-capture-replay.json",
+  );
+  assert.equal(
     payload.speechEnhancement.validationCommand,
     "npm run proof:speech-enhancement -- --require-close-ready",
+  );
+  assert.equal(
+    payload.speechEnhancement.strictValidationCommand,
+    "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
   );
 });
