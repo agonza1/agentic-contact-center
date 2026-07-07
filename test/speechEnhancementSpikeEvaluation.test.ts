@@ -153,6 +153,22 @@ test("speech enhancement spike report can attach a passing real capture replay",
   assert.equal(report.replayCoverage.liveDemoGate, "eligible");
   assert.equal(reviewGate.issueCloseReady, true);
   assert.deepEqual(reviewGate.passingRealCaptureReplayIds, ["real-noisy-local-sip-010"]);
+  assert.deepEqual(reviewGate.realCaptureReplayEvidence, [
+    {
+      captureId: "real-noisy-local-sip-010",
+      enableForLiveDemo: true,
+      wordErrorRateDelta: 0.06,
+      addedLatencyBudgetHeadroomMs: 6,
+      cpuP95BudgetHeadroomPercent: 36,
+      recordedAt: "2026-07-05T15:45:00Z",
+      audioSourceUri: "artifacts/local-sip-real-noisy-010.wav",
+      audioSha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      sourceManifestUri: "artifacts/local-sip/proof-manifest-010.json",
+      sourceManifestSha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      noiseProfile: "speakerphone fan noise",
+      runtimeHost: "local-rtc-asr-host",
+    },
+  ]);
 });
 
 test("speech enhancement spike report keeps failing real capture replay blockers", () => {

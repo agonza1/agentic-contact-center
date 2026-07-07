@@ -218,6 +218,10 @@ export interface SpeechEnhancementReviewGate {
   blockedRealCaptureReplayIds: string[];
   realCaptureReplayEvidence: Array<{
     captureId: string;
+    enableForLiveDemo: boolean;
+    wordErrorRateDelta: number;
+    addedLatencyBudgetHeadroomMs: number;
+    cpuP95BudgetHeadroomPercent: number;
     recordedAt: string | null;
     audioSourceUri: string | null;
     audioSha256: string | null;
@@ -910,15 +914,24 @@ export function buildSpeechEnhancementReviewGate(
     realCaptureReplayIds: realCaptureReplayDecisions.map((decision) => decision.captureId),
     passingRealCaptureReplayIds,
     blockedRealCaptureReplayIds,
-    realCaptureReplayEvidence: realCaptureReplayMetrics.map((metric) => ({
-      captureId: metric.captureId,
-      recordedAt: metric.captureEvidence?.recordedAt ?? null,
-      audioSourceUri: metric.captureEvidence?.audioSourceUri ?? null,
-      audioSha256: metric.captureEvidence?.audioSha256 ?? null,
-      sourceManifestUri: metric.captureEvidence?.sourceManifestUri ?? null,
-      sourceManifestSha256: metric.captureEvidence?.sourceManifestSha256 ?? null,
-      noiseProfile: metric.captureEvidence?.noiseProfile ?? null,
-      runtimeHost: metric.captureEvidence?.runtimeHost ?? null,
-    })),
+    realCaptureReplayEvidence: realCaptureReplayMetrics.map((metric) => {
+      const decision = realCaptureReplayDecisions.find((candidate) => candidate.captureId === metric.captureId);
+      const diagnostics = decision?.diagnostics ?? buildSpeechEnhancementReplayDiagnostics(metric);
+
+      return {
+        captureId: metric.captureId,
+        enableForLiveDemo: decision?.enableForLiveDemo ?? false,
+        wordErrorRateDelta: diagnostics.wordErrorRateDelta,
+        addedLatencyBudgetHeadroomMs: diagnostics.addedLatencyBudgetHeadroomMs,
+        cpuP95BudgetHeadroomPercent: diagnostics.cpuP95BudgetHeadroomPercent,
+        recordedAt: metric.captureEvidence?.recordedAt ?? null,
+        audioSourceUri: metric.captureEvidence?.audioSourceUri ?? null,
+        audioSha256: metric.captureEvidence?.audioSha256 ?? null,
+        sourceManifestUri: metric.captureEvidence?.sourceManifestUri ?? null,
+        sourceManifestSha256: metric.captureEvidence?.sourceManifestSha256 ?? null,
+        noiseProfile: metric.captureEvidence?.noiseProfile ?? null,
+        runtimeHost: metric.captureEvidence?.runtimeHost ?? null,
+      };
+    }),
   };
 }

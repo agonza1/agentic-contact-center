@@ -88,6 +88,10 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
         blockedRealCaptureReplayIds: string[];
         realCaptureReplayEvidence: Array<{
           captureId: string;
+          enableForLiveDemo: boolean;
+          wordErrorRateDelta: number;
+          addedLatencyBudgetHeadroomMs: number;
+          cpuP95BudgetHeadroomPercent: number;
           recordedAt: string | null;
           audioSourceUri: string | null;
           audioSha256: string | null;
@@ -689,7 +693,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.match(markdown, /Failure Reasons\n\n- None\./);
     assert.match(
       markdown,
-      /real-noisy-local-sip-001: passing; audio=artifacts\/local-sip\/real-noisy-local-sip-001\.wav; source_manifest=artifacts\/local-sip\/proof-manifest-001\.json; runtime_host=local-rtc-asr-host/,
+      /real-noisy-local-sip-001: passing; wer_delta=0\.12; latency_headroom_ms=7; cpu_headroom_percent=38; audio=artifacts\/local-sip\/real-noisy-local-sip-001\.wav; source_manifest=artifacts\/local-sip\/proof-manifest-001\.json; runtime_host=local-rtc-asr-host/,
     );
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
@@ -760,6 +764,10 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.deepEqual(artifact.reviewGate.realCaptureReplayEvidence, [
       {
         captureId: "real-noisy-local-sip-001",
+        enableForLiveDemo: true,
+        wordErrorRateDelta: 0.12,
+        addedLatencyBudgetHeadroomMs: 7,
+        cpuP95BudgetHeadroomPercent: 38,
         recordedAt: "2026-07-05T06:40:00.000Z",
         audioSourceUri: "artifacts/local-sip/real-noisy-local-sip-001.wav",
         audioSha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
