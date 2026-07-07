@@ -174,6 +174,7 @@ test("speech enhancement spike report can attach a passing real capture replay",
   assert.deepEqual(reviewGate.realCaptureReplayEvidence, [
     {
       captureId: "real-noisy-local-sip-010",
+      status: "passing",
       enableForLiveDemo: true,
       wordErrorRateDelta: 0.06,
       addedLatencyBudgetHeadroomMs: 6,

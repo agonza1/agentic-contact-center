@@ -109,6 +109,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         blockers: string[];
         nextEvidence: string[];
         realCaptureReplayIds: string[];
+        realCaptureReplayEvidence: Array<{ captureId: string; status: "passing" | "blocked" }>;
       };
     };
 

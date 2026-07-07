@@ -202,12 +202,11 @@ function buildMarkdownReport(artifact) {
   });
   const failureReasons = Object.entries(reviewGate.failureReasons).map(([check, reason]) => "- " + check + ": " + reason);
   const replayEvidence = reviewGate.realCaptureReplayEvidence.map((evidence) => {
-    const status = reviewGate.passingRealCaptureReplayIds.includes(evidence.captureId) ? "passing" : "blocked";
     const source = evidence.audioSourceUri ?? "missing audio source";
     const sourceManifest = evidence.sourceManifestUri ?? "missing source manifest";
     const runtimeHost = evidence.runtimeHost ?? "missing runtime host";
 
-    return `- ${evidence.captureId}: ${status}; wer_delta=${evidence.wordErrorRateDelta}; latency_headroom_ms=${evidence.addedLatencyBudgetHeadroomMs}; cpu_headroom_percent=${evidence.cpuP95BudgetHeadroomPercent}; audio=${source}; source_manifest=${sourceManifest}; runtime_host=${runtimeHost}`;
+    return `- ${evidence.captureId}: ${evidence.status}; wer_delta=${evidence.wordErrorRateDelta}; latency_headroom_ms=${evidence.addedLatencyBudgetHeadroomMs}; cpu_headroom_percent=${evidence.cpuP95BudgetHeadroomPercent}; audio=${source}; source_manifest=${sourceManifest}; runtime_host=${runtimeHost}`;
   });
 
   return [

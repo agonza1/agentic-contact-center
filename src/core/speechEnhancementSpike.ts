@@ -218,6 +218,7 @@ export interface SpeechEnhancementReviewGate {
   blockedRealCaptureReplayIds: string[];
   realCaptureReplayEvidence: Array<{
     captureId: string;
+    status: "passing" | "blocked";
     enableForLiveDemo: boolean;
     wordErrorRateDelta: number;
     addedLatencyBudgetHeadroomMs: number;
@@ -920,6 +921,7 @@ export function buildSpeechEnhancementReviewGate(
 
       return {
         captureId: metric.captureId,
+        status: decision?.enableForLiveDemo ? "passing" : "blocked",
         enableForLiveDemo: decision?.enableForLiveDemo ?? false,
         wordErrorRateDelta: diagnostics.wordErrorRateDelta,
         addedLatencyBudgetHeadroomMs: diagnostics.addedLatencyBudgetHeadroomMs,
