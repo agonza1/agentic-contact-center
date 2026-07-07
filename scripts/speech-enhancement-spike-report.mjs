@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 
@@ -12,7 +12,7 @@ const {
   validateSpeechEnhancementCaptureReplayManifest,
 } = require("../dist/src/core/speechEnhancementSpike.js");
 
-const valueFlags = new Set(["--capture-replay", "--out", "--latest-out", "--markdown-out"]);
+const valueFlags = new Set(["--capture-replay", "--capture-replay-dir", "--out", "--latest-out", "--markdown-out"]);
 const booleanFlags = new Set(["--strict-capture-artifacts", "--require-close-ready"]);
 
 function validateCliArgs(argv) {
@@ -64,7 +64,7 @@ function hasArg(flag) {
 }
 
 async function loadCaptureReplayMetrics() {
-  const captureReplayPaths = resolveArgPaths("--capture-replay");
+  const captureReplayPaths = await resolveCaptureReplayPaths();
   const strictCaptureArtifacts = hasArg("--strict-capture-artifacts");
   const metrics = [];
   const seenCaptureIds = new Map();
@@ -98,6 +98,24 @@ async function loadCaptureReplayMetrics() {
   }
 
   return metrics;
+}
+
+async function resolveCaptureReplayPaths() {
+  const explicitPaths = resolveArgPaths("--capture-replay");
+  const directoryPaths = resolveArgPaths("--capture-replay-dir");
+  const directoryManifestPaths = [];
+
+  for (const directoryPath of directoryPaths) {
+    const entries = await readdir(directoryPath, { withFileTypes: true });
+    directoryManifestPaths.push(
+      ...entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+        .map((entry) => path.join(directoryPath, entry.name))
+        .sort(),
+    );
+  }
+
+  return [...explicitPaths, ...directoryManifestPaths];
 }
 
 async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayPath, field) {
