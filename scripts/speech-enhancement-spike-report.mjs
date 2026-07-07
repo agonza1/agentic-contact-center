@@ -278,6 +278,9 @@ async function main() {
     failureReasons: artifact.reviewGate.failureReasons,
     blockers: artifact.reviewGate.blockers,
     nextEvidence: artifact.reviewGate.nextEvidence,
+    realCaptureReplayIds: artifact.reviewGate.realCaptureReplayIds,
+    passingRealCaptureReplayIds: artifact.reviewGate.passingRealCaptureReplayIds,
+    blockedRealCaptureReplayIds: artifact.reviewGate.blockedRealCaptureReplayIds,
   };
 
   console.log(JSON.stringify(summary));

@@ -165,6 +165,9 @@ test("speech enhancement spike report script can enforce issue-close readiness",
       failureReasons: Record<string, string>;
       blockers: string[];
       nextEvidence: string[];
+      realCaptureReplayIds: string[];
+      passingRealCaptureReplayIds: string[];
+      blockedRealCaptureReplayIds: string[];
       outputPath: string;
       latestOutputPath: string | null;
       markdownOutputPath: string | null;
@@ -178,6 +181,9 @@ test("speech enhancement spike report script can enforce issue-close readiness",
     assert.match(summary.failureReasons.realNoisyCaptureReplay, /real noisy local SIP capture/);
     assert.ok(summary.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
     assert.ok(summary.nextEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));
+    assert.deepEqual(summary.realCaptureReplayIds, []);
+    assert.deepEqual(summary.passingRealCaptureReplayIds, []);
+    assert.deepEqual(summary.blockedRealCaptureReplayIds, []);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as { reviewGate: { issueCloseReady: boolean } };
     assert.equal(artifact.reviewGate.issueCloseReady, false);
@@ -569,10 +575,20 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     ]);
 
     assert.equal(result.exitCode, 0, result.stderr);
-    const summary = JSON.parse(result.stdout) as { ok: boolean; issueCloseReady: boolean; blockers: string[] };
+    const summary = JSON.parse(result.stdout) as {
+      ok: boolean;
+      issueCloseReady: boolean;
+      blockers: string[];
+      realCaptureReplayIds: string[];
+      passingRealCaptureReplayIds: string[];
+      blockedRealCaptureReplayIds: string[];
+    };
     assert.equal(summary.ok, true);
     assert.equal(summary.issueCloseReady, true);
     assert.deepEqual(summary.blockers, []);
+    assert.deepEqual(summary.realCaptureReplayIds, ["real-noisy-local-sip-001"]);
+    assert.deepEqual(summary.passingRealCaptureReplayIds, ["real-noisy-local-sip-001"]);
+    assert.deepEqual(summary.blockedRealCaptureReplayIds, []);
 
     const markdown = await readFile(markdownOutputPath, "utf8");
     assert.match(markdown, /Passing real replay ids: real-noisy-local-sip-001/);
