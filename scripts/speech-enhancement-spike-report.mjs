@@ -320,6 +320,7 @@ async function main() {
     realCaptureReplayIds: artifact.reviewGate.realCaptureReplayIds,
     passingRealCaptureReplayIds: artifact.reviewGate.passingRealCaptureReplayIds,
     blockedRealCaptureReplayIds: artifact.reviewGate.blockedRealCaptureReplayIds,
+    realCaptureReplayEvidence: artifact.reviewGate.realCaptureReplayEvidence,
   };
 
   console.log(JSON.stringify(summary));

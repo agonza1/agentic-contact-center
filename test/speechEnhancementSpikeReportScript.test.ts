@@ -214,7 +214,6 @@ test("speech enhancement spike report script can enforce issue-close readiness",
     assert.deepEqual(summary.realCaptureReplayIds, []);
     assert.deepEqual(summary.passingRealCaptureReplayIds, []);
     assert.deepEqual(summary.blockedRealCaptureReplayIds, []);
-
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as { reviewGate: { issueCloseReady: boolean } };
     assert.equal(artifact.reviewGate.issueCloseReady, false);
   } finally {
@@ -679,6 +678,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
       realCaptureReplayIds: string[];
       passingRealCaptureReplayIds: string[];
       blockedRealCaptureReplayIds: string[];
+      realCaptureReplayEvidence: Array<{ captureId: string; status: string; wordErrorRateDelta: number }>;
     };
     assert.equal(summary.ok, true);
     assert.equal(summary.issueCloseReady, true);
@@ -686,6 +686,13 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.deepEqual(summary.realCaptureReplayIds, ["real-noisy-local-sip-001"]);
     assert.deepEqual(summary.passingRealCaptureReplayIds, ["real-noisy-local-sip-001"]);
     assert.deepEqual(summary.blockedRealCaptureReplayIds, []);
+    assert.deepEqual(summary.realCaptureReplayEvidence.map((evidence) => ({
+      captureId: evidence.captureId,
+      status: evidence.status,
+      wordErrorRateDelta: evidence.wordErrorRateDelta,
+    })), [
+      { captureId: "real-noisy-local-sip-001", status: "passing", wordErrorRateDelta: 0.12 },
+    ]);
 
     const markdown = await readFile(markdownOutputPath, "utf8");
     assert.match(markdown, /Passing real replay ids: real-noisy-local-sip-001/);
