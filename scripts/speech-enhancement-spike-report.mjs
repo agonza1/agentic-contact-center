@@ -9,7 +9,9 @@ const require = createRequire(import.meta.url);
 const {
   buildSpeechEnhancementReviewGate,
   buildSpeechEnhancementReviewHandoff,
+  buildSpeechEnhancementRuntimeReadiness,
   buildSpeechEnhancementSpikeReport,
+  resolveSpeechEnhancementRuntimeConfig,
   validateSpeechEnhancementCaptureReplayManifest,
 } = require("../dist/src/core/speechEnhancementSpike.js");
 
@@ -226,6 +228,10 @@ function buildMarkdownReport(artifact) {
     `Issue: ${artifact.handoff.issueUrl}`,
     `Decision: ${report.decision.status} at ${recommended} ms`,
     `Review gate: ${reviewGate.issueCloseReady ? "close-ready" : "blocked"}`,
+    `Runtime readiness: ${artifact.runtimeReadiness.liveDemoEligible ? "live-demo-eligible" : "bypassed"}`,
+    `Runtime latency: ${artifact.runtimeReadiness.latencyMs} ms`,
+    `Runtime frame budget: ${artifact.runtimeReadiness.frameBudget.lookaheadFrames !== null ? artifact.runtimeReadiness.frameBudget.lookaheadFrames : "unknown"} lookahead frame(s), ${artifact.runtimeReadiness.frameBudget.maxBufferedAudioMs !== null ? artifact.runtimeReadiness.frameBudget.maxBufferedAudioMs : "unknown"} ms max buffered audio`,
+    `Runtime bypass reasons: ${artifact.runtimeReadiness.bypassReasons.length > 0 ? artifact.runtimeReadiness.bypassReasons.join(", ") : "None"}`,
     "",
     "## Recommendation",
     "",
@@ -290,6 +296,10 @@ async function main() {
   const requireCloseReady = hasArg("--require-close-ready");
   const captureReplayMetrics = await loadCaptureReplayMetrics();
   const report = buildSpeechEnhancementSpikeReport({ captureReplayMetrics });
+  const runtimeConfig = resolveSpeechEnhancementRuntimeConfig({
+    featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
+    latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
+  });
 
   assert.equal(report.ok, true);
   assert.equal(report.issue, "agonza1/agentic-contact-center#97");
@@ -302,6 +312,8 @@ async function main() {
     generatedAt: new Date().toISOString(),
     artifactType: "speech_enhancement_spike_report",
     report,
+    runtimeConfig,
+    runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
     handoff: buildSpeechEnhancementReviewHandoff(),
     reviewGate: buildSpeechEnhancementReviewGate(report),
   };
@@ -320,6 +332,8 @@ async function main() {
     latestOutputPath: latestOutputPath ?? null,
     markdownOutputPath: markdownOutputPath ?? null,
     issueCloseReady: artifact.reviewGate.issueCloseReady,
+    runtimeLiveDemoEligible: artifact.runtimeReadiness.liveDemoEligible,
+    runtimeBypassReasons: artifact.runtimeReadiness.bypassReasons,
     checks: artifact.reviewGate.checks,
     failureReasons: artifact.reviewGate.failureReasons,
     blockers: artifact.reviewGate.blockers,
