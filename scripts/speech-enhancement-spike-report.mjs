@@ -177,6 +177,11 @@ function buildMarkdownReport(artifact) {
   const recommended = report.decision.recommendedLatencyMs;
   const blockers = reviewGate.blockers.length > 0 ? reviewGate.blockers : ["None. Issue #97 close gate is ready."];
   const nextEvidence = reviewGate.nextEvidence.length > 0 ? reviewGate.nextEvidence : ["None."];
+  const reviewChecks = Object.entries(reviewGate.checks).map(([check, passed]) => {
+    const status = passed ? "x" : " ";
+    return "- [" + status + "] " + check;
+  });
+  const failureReasons = Object.entries(reviewGate.failureReasons).map(([check, reason]) => "- " + check + ": " + reason);
   const replayEvidence = reviewGate.realCaptureReplayEvidence.map((evidence) => {
     const status = reviewGate.passingRealCaptureReplayIds.includes(evidence.captureId) ? "passing" : "blocked";
     const source = evidence.audioSourceUri ?? "missing audio source";
@@ -211,6 +216,14 @@ function buildMarkdownReport(artifact) {
     "## Real Capture Replay Evidence",
     "",
     ...(replayEvidence.length > 0 ? replayEvidence : ["- None attached."]),
+    "",
+    "## Review Checks",
+    "",
+    ...reviewChecks,
+    "",
+    "## Failure Reasons",
+    "",
+    ...(failureReasons.length > 0 ? failureReasons : ["- None."]),
     "",
     "## Blockers",
     "",
