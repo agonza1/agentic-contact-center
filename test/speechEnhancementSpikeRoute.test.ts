@@ -86,6 +86,13 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         liveDemoGate: string;
         missingEvidence: string[];
       };
+      closeGateProfile: {
+        requiredCaptureIdPrefix: string;
+        requiredLatencySettingMs: number;
+        maxAddedTurnLatencyMsP95: number;
+        maxCpuPercentP95: number;
+        allowedCpuCostEstimates: string[];
+      };
       captureReplayContract: {
         requiredCaptureKind: string;
         fixtureManifestPath: string;
@@ -176,6 +183,13 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.equal(payload.replayCoverage.realNoisyCaptureReplayCount, 0);
     assert.equal(payload.replayCoverage.baselineEnhancedPairs, 1);
     assert.equal(payload.replayCoverage.liveDemoGate, "blocked_until_real_capture");
+    assert.deepEqual(payload.closeGateProfile, {
+      requiredCaptureIdPrefix: "real-noisy-local-sip-",
+      requiredLatencySettingMs: 12.5,
+      maxAddedTurnLatencyMsP95: 25,
+      maxCpuPercentP95: 80,
+      allowedCpuCostEstimates: ["low", "medium"],
+    });
     assert.ok(payload.replayCoverage.missingEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));
     assert.equal(payload.captureReplayContract.requiredCaptureKind, "real_noisy_local_sip");
     assert.equal(
