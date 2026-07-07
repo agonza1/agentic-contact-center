@@ -175,6 +175,7 @@ async function writeText(filePath, payload) {
 function buildMarkdownReport(artifact) {
   const { report, reviewGate } = artifact;
   const recommended = report.decision.recommendedLatencyMs;
+  const closeGate = report.closeGateProfile;
   const blockers = reviewGate.blockers.length > 0 ? reviewGate.blockers : ["None. Issue #97 close gate is ready."];
   const nextEvidence = reviewGate.nextEvidence.length > 0 ? reviewGate.nextEvidence : ["None."];
   const reviewChecks = Object.entries(reviewGate.checks).map(([check, passed]) => {
@@ -212,6 +213,14 @@ function buildMarkdownReport(artifact) {
     `- Strict artifact hashes: ${report.captureReplayContract.strictArtifactFields.join(", ")}`,
     `- Passing real replay ids: ${reviewGate.passingRealCaptureReplayIds.join(", ") || "None"}`,
     `- Blocked real replay ids: ${reviewGate.blockedRealCaptureReplayIds.join(", ") || "None"}`,
+    "",
+    "## Close Gate Profile",
+    "",
+    `- Required capture id prefix: ${closeGate.requiredCaptureIdPrefix}`,
+    `- Required latency setting: ${closeGate.requiredLatencySettingMs} ms`,
+    `- Max added turn latency p95: ${closeGate.maxAddedTurnLatencyMsP95} ms`,
+    `- Max CPU p95: ${closeGate.maxCpuPercentP95}%`,
+    `- Allowed CPU cost estimates: ${closeGate.allowedCpuCostEstimates.join(", ")}`,
     "",
     "## Real Capture Replay Evidence",
     "",

@@ -150,6 +150,12 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /Strict artifact hashes: audio_sha256, source_manifest_sha256/);
     assert.match(markdown, /Passing real replay ids: None/);
     assert.match(markdown, /Blocked real replay ids: None/);
+    assert.match(markdown, /Close Gate Profile/);
+    assert.match(markdown, /Required capture id prefix: real-noisy-local-sip-/);
+    assert.match(markdown, /Required latency setting: 12\.5 ms/);
+    assert.match(markdown, /Max added turn latency p95: 25 ms/);
+    assert.match(markdown, /Max CPU p95: 80%/);
+    assert.match(markdown, /Allowed CPU cost estimates: low, medium/);
     assert.match(markdown, /Real Capture Replay Evidence/);
     assert.match(markdown, /- None attached\./);
     assert.match(markdown, /Review Checks/);
