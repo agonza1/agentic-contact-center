@@ -538,11 +538,22 @@ export function buildSpeechEnhancementReplayDiagnostics(metric: SpeechEnhancemen
     wordErrorRateDelta: Number(
       (metric.baseline.wordErrorRateEstimate - metric.enhanced.wordErrorRateEstimate).toFixed(4),
     ),
-    addedLatencyBudgetHeadroomMs: Number(
-      (closeGateProfile.maxAddedTurnLatencyMsP95 - metric.enhanced.addedTurnLatencyMsP95).toFixed(2),
+    addedLatencyBudgetHeadroomMs: roundBudgetHeadroom(
+      closeGateProfile.maxAddedTurnLatencyMsP95 - metric.enhanced.addedTurnLatencyMsP95,
     ),
-    cpuP95BudgetHeadroomPercent: Number((closeGateProfile.maxCpuPercentP95 - metric.enhanced.cpuPercentP95).toFixed(2)),
+    cpuP95BudgetHeadroomPercent: roundBudgetHeadroom(
+      closeGateProfile.maxCpuPercentP95 - metric.enhanced.cpuPercentP95,
+    ),
   };
+}
+
+function roundBudgetHeadroom(rawHeadroom: number): number {
+  const rounded = Number(rawHeadroom.toFixed(2));
+  if (rawHeadroom < 0 && Object.is(rounded, -0)) {
+    return -0.01;
+  }
+
+  return rounded;
 }
 
 export function applySpeechEnhancementCaptureReplayMetric(

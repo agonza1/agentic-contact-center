@@ -71,15 +71,15 @@ test("speech enhancement replay diagnostics preserve tiny over-budget deficits",
     ...report.replayMetrics[0],
     enhanced: {
       ...report.replayMetrics[0].enhanced,
-      addedTurnLatencyMsP95: 25.04,
-      cpuPercentP95: 80.04,
+      addedTurnLatencyMsP95: 25.004,
+      cpuPercentP95: 80.004,
     },
   };
 
   assert.deepEqual(buildSpeechEnhancementReplayDiagnostics(metric), {
     wordErrorRateDelta: 0.05,
-    addedLatencyBudgetHeadroomMs: -0.04,
-    cpuP95BudgetHeadroomPercent: -0.04,
+    addedLatencyBudgetHeadroomMs: -0.01,
+    cpuP95BudgetHeadroomPercent: -0.01,
   });
 });
 
