@@ -847,6 +847,8 @@ export function buildSpeechEnhancementSpikeReport(
 
 export function buildSpeechEnhancementHealthSummary(): {
   issue: string;
+  issueUrl: SpeechEnhancementReviewHandoff["issueUrl"];
+  reviewRoute: SpeechEnhancementReviewHandoff["reviewRoute"];
   recommendedLatencyMs: number;
   runtimeEnabled: boolean;
   runtimeLatencyMs: number;
@@ -860,6 +862,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   nextEvidence: string[];
   passingRealCaptureReplayIds: string[];
   blockedRealCaptureReplayIds: string[];
+  captureReplayFixturePath: SpeechEnhancementCaptureReplayContract["fixtureManifestPath"];
   validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
   strictValidationCommand: SpeechEnhancementReviewHandoff["strictValidationCommand"];
 } {
@@ -873,6 +876,8 @@ export function buildSpeechEnhancementHealthSummary(): {
 
   return {
     issue: report.issue,
+    issueUrl: handoff.issueUrl,
+    reviewRoute: handoff.reviewRoute,
     recommendedLatencyMs: report.decision.recommendedLatencyMs,
     runtimeEnabled: runtimeConfig.enabled,
     runtimeLatencyMs: runtimeConfig.latencyMs,
@@ -886,6 +891,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     nextEvidence: reviewGate.nextEvidence,
     passingRealCaptureReplayIds: reviewGate.passingRealCaptureReplayIds,
     blockedRealCaptureReplayIds: reviewGate.blockedRealCaptureReplayIds,
+    captureReplayFixturePath: report.captureReplayContract.fixtureManifestPath,
     validationCommand: handoff.validationCommand,
     strictValidationCommand: handoff.strictValidationCommand,
   };
