@@ -919,6 +919,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   runtimeEnabled: boolean;
   runtimeLatencyMs: number;
   runtimeBypassReason?: SpeechEnhancementRuntimeConfig["bypassReason"];
+  runtimeBypassReasons: string[];
   runtimeLookaheadFrames: number | null;
   runtimeMaxBufferedAudioMs: number | null;
   runtimeLiveDemoEligible: boolean;
@@ -952,6 +953,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     runtimeEnabled: runtimeConfig.enabled,
     runtimeLatencyMs: runtimeConfig.latencyMs,
     runtimeBypassReason: runtimeConfig.bypassReason,
+    runtimeBypassReasons: runtimeReadiness.bypassReasons,
     runtimeLookaheadFrames: runtimeReadiness.frameBudget.lookaheadFrames,
     runtimeMaxBufferedAudioMs: runtimeReadiness.frameBudget.maxBufferedAudioMs,
     runtimeLiveDemoEligible: runtimeReadiness.liveDemoEligible,

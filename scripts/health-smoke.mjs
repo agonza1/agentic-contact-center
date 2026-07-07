@@ -26,6 +26,7 @@ function parseArgs(argv) {
     expectSpeechEnhancementRecommendedLatencyMs: undefined,
     expectSpeechEnhancementRuntimeLatencyMs: undefined,
     expectSpeechEnhancementRuntimeBypassReason: undefined,
+    expectSpeechEnhancementRuntimeBypassReasons: [],
     expectRuntimeSeams: [],
     expectPipecatTools: [],
     expectSpeechEnhancementMissingEvidence: [],
@@ -61,6 +62,7 @@ function parseArgs(argv) {
     '--expect-speech-enhancement-recommended-latency-ms',
     '--expect-speech-enhancement-runtime-latency-ms',
     '--expect-speech-enhancement-runtime-bypass-reason',
+    '--expect-speech-enhancement-runtime-bypass-reason-item',
     '--expect-speech-enhancement-missing-evidence',
     '--expect-speech-enhancement-blocker',
     '--expect-runtime-seam',
@@ -247,6 +249,12 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-speech-enhancement-runtime-bypass-reason-item' && next) {
+      args.expectSpeechEnhancementRuntimeBypassReasons.push(next);
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-speech-enhancement-missing-evidence' && next) {
       args.expectSpeechEnhancementMissingEvidence.push(next);
       index += 1;
@@ -320,6 +328,7 @@ function hasJsonExpectations(args) {
     args.expectSpeechEnhancementRuntimeLatencyMs,
     args.expectSpeechEnhancementRuntimeBypassReason,
   ].some((expectedValue) => expectedValue !== undefined)
+    || args.expectSpeechEnhancementRuntimeBypassReasons.length > 0
     || args.expectRuntimeSeams.length > 0
     || args.expectPipecatTools.length > 0
     || args.expectSpeechEnhancementMissingEvidence.length > 0
@@ -621,6 +630,16 @@ async function getFailureReason(response, args) {
 
     if (actualValue !== parsedExpectation.expectedValue) {
       return `json_speechEnhancement_${field}_mismatch(expected=${JSON.stringify(parsedExpectation.expectedValue)},actual=${JSON.stringify(actualValue)})`;
+    }
+  }
+
+  for (const expectedBypassReason of args.expectSpeechEnhancementRuntimeBypassReasons) {
+    const bypassReasons = payload.speechEnhancement && typeof payload.speechEnhancement === 'object'
+      ? payload.speechEnhancement.runtimeBypassReasons
+      : undefined;
+
+    if (!Array.isArray(bypassReasons) || !bypassReasons.includes(expectedBypassReason)) {
+      return `json_speechEnhancement_runtimeBypassReasons_missing(expected=${JSON.stringify(expectedBypassReason)},actual=${JSON.stringify(bypassReasons)})`;
     }
   }
 
