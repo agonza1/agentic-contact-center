@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildSpeechEnhancementSpikeReport,
   buildSpeechEnhancementReviewGate,
+  buildSpeechEnhancementReplayDiagnostics,
   evaluateSpeechEnhancementReplayMetric,
   resolveSpeechEnhancementRuntimeConfig,
   validateSpeechEnhancementCaptureReplayManifest,
@@ -23,6 +24,12 @@ test("speech enhancement replay evaluation reports close-gate failures", () => {
       "latency_within_budget",
       "cpu_cost_allowed",
     ],
+  });
+
+  assert.deepEqual(report.replayDecisions[0].diagnostics, {
+    wordErrorRateDelta: 0.05,
+    addedLatencyBudgetHeadroomMs: 7,
+    cpuP95BudgetHeadroomPercent: 38,
   });
 
   const failingMetric = {
@@ -184,6 +191,11 @@ test("speech enhancement spike report keeps failing real capture replay blockers
   );
   assert.equal(reviewGate.issueCloseReady, false);
   assert.deepEqual(reviewGate.blockedRealCaptureReplayIds, ["real-noisy-local-sip-011"]);
+  assert.deepEqual(reportWithReplay.replayDecisions.at(-1)?.diagnostics, {
+    wordErrorRateDelta: 0,
+    addedLatencyBudgetHeadroomMs: -15,
+    cpuP95BudgetHeadroomPercent: -10,
+  });
 });
 
 test("speech enhancement spike report downgrades readiness when a later real replay fails", () => {
@@ -459,6 +471,7 @@ test("speech enhancement review gate only counts canonical real noisy local SIP 
         captureId: genericRealMetric.captureId,
         latencySettingMs: genericRealMetric.latencySettingMs,
         enableForLiveDemo: true,
+        diagnostics: buildSpeechEnhancementReplayDiagnostics(genericRealMetric),
         reasons: ["wer_improved"],
       },
     ],

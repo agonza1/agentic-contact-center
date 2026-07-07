@@ -51,6 +51,11 @@ export interface SpeechEnhancementReplayDecision {
   captureId: string;
   latencySettingMs: number;
   enableForLiveDemo: boolean;
+  diagnostics: {
+    wordErrorRateDelta: number;
+    addedLatencyBudgetHeadroomMs: number;
+    cpuP95BudgetHeadroomPercent: number;
+  };
   reasons: string[];
 }
 
@@ -511,6 +516,22 @@ export function evaluateSpeechEnhancementReplayMetric(
   };
 }
 
+export function buildSpeechEnhancementReplayDiagnostics(metric: SpeechEnhancementReplayMetric): {
+  wordErrorRateDelta: number;
+  addedLatencyBudgetHeadroomMs: number;
+  cpuP95BudgetHeadroomPercent: number;
+} {
+  return {
+    wordErrorRateDelta: Number(
+      (metric.baseline.wordErrorRateEstimate - metric.enhanced.wordErrorRateEstimate).toFixed(4),
+    ),
+    addedLatencyBudgetHeadroomMs: Number(
+      (closeGateProfile.maxAddedTurnLatencyMsP95 - metric.enhanced.addedTurnLatencyMsP95).toFixed(1),
+    ),
+    cpuP95BudgetHeadroomPercent: Number((closeGateProfile.maxCpuPercentP95 - metric.enhanced.cpuPercentP95).toFixed(1)),
+  };
+}
+
 export function applySpeechEnhancementCaptureReplayMetric(
   report: SpeechEnhancementSpikeReport,
   metric: SpeechEnhancementReplayMetric,
@@ -540,6 +561,7 @@ export function applySpeechEnhancementCaptureReplayMetric(
         captureId: metric.captureId,
         latencySettingMs: metric.latencySettingMs,
         enableForLiveDemo: issueCloseReady,
+        diagnostics: buildSpeechEnhancementReplayDiagnostics(metric),
         reasons,
       },
     ],
@@ -623,6 +645,7 @@ export function buildSpeechEnhancementSpikeReport(
       captureId: metric.captureId,
       latencySettingMs: metric.latencySettingMs,
       enableForLiveDemo: evaluation.issueCloseReady,
+      diagnostics: buildSpeechEnhancementReplayDiagnostics(metric),
       reasons: evaluation.reasons,
     };
   });
