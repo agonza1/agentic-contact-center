@@ -242,6 +242,62 @@ test("speech enhancement spike report rejects incomplete real capture replay evi
   }
 });
 
+test("speech enhancement spike report rejects whitespace-only real capture replay evidence", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-whitespace-"));
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+  const captureReplayPath = path.join(tempDir, "real-capture-replay.json");
+
+  try {
+    await writeFile(
+      captureReplayPath,
+      JSON.stringify(
+        {
+          capture_id: "real-noisy-local-sip-005",
+          recorded_at: "2026-07-05T07:55:00.000Z",
+          audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-005.wav",
+          source_manifest_uri: "artifacts/local-sip/proof-manifest-005.json",
+          noise_profile: "   ",
+          scenario: "local SIP caller with blank evidence metadata",
+          latency_setting_ms: 12.5,
+          runtime_host: "local-rtc-asr-host",
+          baseline_rtc_asr: {
+            transcript: "I need to cansel my policy",
+            word_error_rate_estimate: 0.18,
+            endpointing_stability: "acceptable",
+            barge_in_risk: "medium",
+          },
+          enhanced_rtc_asr: {
+            transcript: "   ",
+            word_error_rate_estimate: 0.06,
+            endpointing_stability: "stable",
+            barge_in_risk: "low",
+            added_turn_latency_ms_p95: 18,
+            cpu_percent_p95: 42,
+            cpu_cost_estimate: "medium",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay",
+      captureReplayPath,
+    ]);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /Invalid capture replay manifest: .*noise_profile/);
+    assert.match(result.stderr, /Invalid capture replay manifest: .*enhanced_rtc_asr\.transcript/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("speech enhancement spike report rejects non-numeric real capture replay metrics", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-invalid-metrics-"));
   const outputPath = path.join(tempDir, "speech-enhancement-spike.json");

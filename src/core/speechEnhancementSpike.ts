@@ -245,7 +245,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function hasStringField(record: Record<string, unknown>, field: string): boolean {
-  return typeof record[field] === "string" && record[field].length > 0;
+  return typeof record[field] === "string" && record[field].trim().length > 0;
 }
 
 function hasNumberField(record: Record<string, unknown>, field: string): boolean {
