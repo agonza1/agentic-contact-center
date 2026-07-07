@@ -208,6 +208,12 @@ function buildMarkdownReport(artifact) {
 
     return `- ${evidence.captureId}: ${evidence.status}; wer_delta=${evidence.wordErrorRateDelta}; latency_headroom_ms=${evidence.addedLatencyBudgetHeadroomMs}; cpu_headroom_percent=${evidence.cpuP95BudgetHeadroomPercent}; audio=${source}; source_manifest=${sourceManifest}; runtime_host=${runtimeHost}`;
   });
+  const replayDecisions = report.replayDecisions.map((decision) => {
+    const enabled = decision.enableForLiveDemo ? "enabled" : "blocked";
+    const diagnostics = decision.diagnostics;
+
+    return `- ${decision.captureId}: ${enabled}; latency_setting_ms=${decision.latencySettingMs}; wer_delta=${diagnostics.wordErrorRateDelta}; latency_headroom_ms=${diagnostics.addedLatencyBudgetHeadroomMs}; cpu_headroom_percent=${diagnostics.cpuP95BudgetHeadroomPercent}; reasons=${decision.reasons.join(", ")}`;
+  });
 
   return [
     "# Speech Enhancement Spike Report",
@@ -242,6 +248,10 @@ function buildMarkdownReport(artifact) {
     "## Real Capture Replay Evidence",
     "",
     ...(replayEvidence.length > 0 ? replayEvidence : ["- None attached."]),
+    "",
+    "## Replay Decisions",
+    "",
+    ...replayDecisions,
     "",
     "## Review Checks",
     "",

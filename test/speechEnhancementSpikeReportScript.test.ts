@@ -163,6 +163,8 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /Allowed CPU cost estimates: low, medium/);
     assert.match(markdown, /Real Capture Replay Evidence/);
     assert.match(markdown, /- None attached\./);
+    assert.match(markdown, /Replay Decisions/);
+    assert.match(markdown, /synthetic-noisy-cancellation-rescue-001: enabled; latency_setting_ms=12\.5; wer_delta=0\.05; latency_headroom_ms=7; cpu_headroom_percent=38/);
     assert.match(markdown, /Review Checks/);
     assert.match(markdown, /- \[ \] realNoisyCaptureReplay/);
     assert.match(markdown, /- \[ \] wordErrorImproved/);
