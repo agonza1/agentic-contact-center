@@ -530,9 +530,9 @@ export function buildSpeechEnhancementReplayDiagnostics(metric: SpeechEnhancemen
       (metric.baseline.wordErrorRateEstimate - metric.enhanced.wordErrorRateEstimate).toFixed(4),
     ),
     addedLatencyBudgetHeadroomMs: Number(
-      (closeGateProfile.maxAddedTurnLatencyMsP95 - metric.enhanced.addedTurnLatencyMsP95).toFixed(1),
+      (closeGateProfile.maxAddedTurnLatencyMsP95 - metric.enhanced.addedTurnLatencyMsP95).toFixed(2),
     ),
-    cpuP95BudgetHeadroomPercent: Number((closeGateProfile.maxCpuPercentP95 - metric.enhanced.cpuPercentP95).toFixed(1)),
+    cpuP95BudgetHeadroomPercent: Number((closeGateProfile.maxCpuPercentP95 - metric.enhanced.cpuPercentP95).toFixed(2)),
   };
 }
 

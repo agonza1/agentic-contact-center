@@ -65,6 +65,24 @@ test("speech enhancement replay evaluation reports close-gate failures", () => {
   });
 });
 
+test("speech enhancement replay diagnostics preserve tiny over-budget deficits", () => {
+  const report = buildSpeechEnhancementSpikeReport();
+  const metric = {
+    ...report.replayMetrics[0],
+    enhanced: {
+      ...report.replayMetrics[0].enhanced,
+      addedTurnLatencyMsP95: 25.04,
+      cpuPercentP95: 80.04,
+    },
+  };
+
+  assert.deepEqual(buildSpeechEnhancementReplayDiagnostics(metric), {
+    wordErrorRateDelta: 0.05,
+    addedLatencyBudgetHeadroomMs: -0.04,
+    cpuP95BudgetHeadroomPercent: -0.04,
+  });
+});
+
 
 test("speech enhancement capture replay manifest validates real evidence shape", () => {
   const validation = validateSpeechEnhancementCaptureReplayManifest({
