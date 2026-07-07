@@ -64,6 +64,14 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         bypassReason?: string;
         env: { featureFlag: string; latencyMs: string };
       };
+      runtimeReadiness: {
+        enabled: boolean;
+        latencyMs: number;
+        liveDemoEligible: boolean;
+        selectedLatencyProfile: { latencyMs: number; lookaheadFrames: number; maxBufferedAudioMs: number } | null;
+        frameBudget: { rtcAsrFrameMs: number; lookaheadFrames: number | null; maxBufferedAudioMs: number | null };
+        bypassReasons: string[];
+      };
       acceptanceReadiness: {
         reportRecommendation: string;
         noisyReplay: string;
@@ -174,6 +182,19 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS",
       },
     });
+    assert.equal(payload.runtimeReadiness.enabled, false);
+    assert.equal(payload.runtimeReadiness.latencyMs, 12.5);
+    assert.equal(payload.runtimeReadiness.liveDemoEligible, false);
+    assert.equal(payload.runtimeReadiness.selectedLatencyProfile?.lookaheadFrames, 1);
+    assert.deepEqual(payload.runtimeReadiness.frameBudget, {
+      rtcAsrFrameMs: 20,
+      lookaheadFrames: 1,
+      maxBufferedAudioMs: 32.5,
+    });
+    assert.deepEqual(payload.runtimeReadiness.bypassReasons, [
+      "feature_flag_disabled",
+      "blocked_until_real_capture",
+    ]);
     assert.equal(payload.acceptanceReadiness.reportRecommendation, "complete");
     assert.equal(payload.acceptanceReadiness.noisyReplay, "synthetic_fixture_ready");
     assert.equal(payload.acceptanceReadiness.latencyMetrics, "covered");

@@ -208,6 +208,19 @@ export interface SpeechEnhancementRuntimeConfig {
   };
 }
 
+export interface SpeechEnhancementRuntimeReadiness {
+  enabled: boolean;
+  latencyMs: number;
+  liveDemoEligible: boolean;
+  selectedLatencyProfile: SpeechEnhancementLatencyProfile | null;
+  frameBudget: {
+    rtcAsrFrameMs: 20;
+    lookaheadFrames: number | null;
+    maxBufferedAudioMs: number | null;
+  };
+  bypassReasons: string[];
+}
+
 export interface SpeechEnhancementReviewHandoff {
   issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97";
   reviewRoute: "/api/realtime-shim/speech-enhancement-spike";
@@ -379,6 +392,32 @@ export function resolveSpeechEnhancementRuntimeConfig(
   }
 
   return { enabled: true, latencyMs, env };
+}
+
+export function buildSpeechEnhancementRuntimeReadiness(
+  runtimeConfig: SpeechEnhancementRuntimeConfig,
+  report: SpeechEnhancementSpikeReport = buildSpeechEnhancementSpikeReport(),
+): SpeechEnhancementRuntimeReadiness {
+  const selectedLatencyProfile =
+    report.latencyProfiles.find((profile) => profile.latencyMs === runtimeConfig.latencyMs) ?? null;
+  const bypassReasons = [
+    runtimeConfig.bypassReason ?? null,
+    selectedLatencyProfile && !selectedLatencyProfile.liveDemoEligible ? "latency_profile_not_live_demo_eligible" : null,
+    report.replayCoverage.liveDemoGate === "eligible" ? null : report.replayCoverage.liveDemoGate,
+  ].filter((reason): reason is string => reason !== null);
+
+  return {
+    enabled: runtimeConfig.enabled,
+    latencyMs: runtimeConfig.latencyMs,
+    liveDemoEligible: runtimeConfig.enabled && selectedLatencyProfile?.liveDemoEligible === true && bypassReasons.length === 0,
+    selectedLatencyProfile,
+    frameBudget: {
+      rtcAsrFrameMs: 20,
+      lookaheadFrames: selectedLatencyProfile?.lookaheadFrames ?? null,
+      maxBufferedAudioMs: selectedLatencyProfile?.maxBufferedAudioMs ?? null,
+    },
+    bypassReasons,
+  };
 }
 
 function hasAllowedLatencySetting(record: Record<string, unknown>, field: string): boolean {
@@ -880,6 +919,9 @@ export function buildSpeechEnhancementHealthSummary(): {
   runtimeEnabled: boolean;
   runtimeLatencyMs: number;
   runtimeBypassReason?: SpeechEnhancementRuntimeConfig["bypassReason"];
+  runtimeLookaheadFrames: number | null;
+  runtimeMaxBufferedAudioMs: number | null;
+  runtimeLiveDemoEligible: boolean;
   liveDemoGate: string;
   issueCloseReady: boolean;
   reviewChecks: SpeechEnhancementReviewGate["checks"];
@@ -900,6 +942,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
     latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
   });
+  const runtimeReadiness = buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report);
 
   return {
     issue: report.issue,
@@ -909,6 +952,9 @@ export function buildSpeechEnhancementHealthSummary(): {
     runtimeEnabled: runtimeConfig.enabled,
     runtimeLatencyMs: runtimeConfig.latencyMs,
     runtimeBypassReason: runtimeConfig.bypassReason,
+    runtimeLookaheadFrames: runtimeReadiness.frameBudget.lookaheadFrames,
+    runtimeMaxBufferedAudioMs: runtimeReadiness.frameBudget.maxBufferedAudioMs,
+    runtimeLiveDemoEligible: runtimeReadiness.liveDemoEligible,
     liveDemoGate: report.replayCoverage.liveDemoGate,
     issueCloseReady: reviewGate.issueCloseReady,
     reviewChecks: reviewGate.checks,
