@@ -228,6 +228,8 @@ export interface SpeechEnhancementReviewGate {
     captureId: string;
     status: "passing" | "blocked";
     enableForLiveDemo: boolean;
+    failingEvidence: string[];
+    reasons: string[];
     wordErrorRateDelta: number;
     addedLatencyBudgetHeadroomMs: number;
     cpuP95BudgetHeadroomPercent: number;
@@ -959,11 +961,14 @@ export function buildSpeechEnhancementReviewGate(
     realCaptureReplayEvidence: realCaptureReplayMetrics.map((metric) => {
       const decision = realCaptureReplayDecisions.find((candidate) => candidate.captureId === metric.captureId);
       const diagnostics = decision?.diagnostics ?? buildSpeechEnhancementReplayDiagnostics(metric);
+      const evaluation = evaluateSpeechEnhancementReplayMetric(metric);
 
       return {
         captureId: metric.captureId,
         status: decision?.enableForLiveDemo ? "passing" : "blocked",
         enableForLiveDemo: decision?.enableForLiveDemo ?? false,
+        failingEvidence: evaluation.failingEvidence,
+        reasons: decision?.reasons ?? evaluation.reasons,
         wordErrorRateDelta: diagnostics.wordErrorRateDelta,
         addedLatencyBudgetHeadroomMs: diagnostics.addedLatencyBudgetHeadroomMs,
         cpuP95BudgetHeadroomPercent: diagnostics.cpuP95BudgetHeadroomPercent,

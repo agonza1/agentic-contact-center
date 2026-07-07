@@ -207,7 +207,10 @@ function buildMarkdownReport(artifact) {
     const sourceManifest = evidence.sourceManifestUri ?? "missing source manifest";
     const runtimeHost = evidence.runtimeHost ?? "missing runtime host";
 
-    return `- ${evidence.captureId}: ${evidence.status}; wer_delta=${evidence.wordErrorRateDelta}; latency_headroom_ms=${evidence.addedLatencyBudgetHeadroomMs}; cpu_headroom_percent=${evidence.cpuP95BudgetHeadroomPercent}; audio=${source}; source_manifest=${sourceManifest}; runtime_host=${runtimeHost}`;
+    const failingEvidence = evidence.failingEvidence.length > 0 ? evidence.failingEvidence.join(", ") : "none";
+    const reasons = evidence.reasons.length > 0 ? evidence.reasons.join(", ") : "none";
+
+    return `- ${evidence.captureId}: ${evidence.status}; wer_delta=${evidence.wordErrorRateDelta}; latency_headroom_ms=${evidence.addedLatencyBudgetHeadroomMs}; cpu_headroom_percent=${evidence.cpuP95BudgetHeadroomPercent}; failing_evidence=${failingEvidence}; reasons=${reasons}; audio=${source}; source_manifest=${sourceManifest}; runtime_host=${runtimeHost}`;
   });
   const replayDecisions = report.replayDecisions.map((decision) => {
     const enabled = decision.enableForLiveDemo ? "enabled" : "blocked";
