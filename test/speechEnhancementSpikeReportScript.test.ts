@@ -61,6 +61,13 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
         issue: string;
         proposedConfig: { featureFlag: string };
         replayCoverage: { liveDemoGate: string };
+        closeGateProfile: {
+          requiredCaptureIdPrefix: string;
+          requiredLatencySettingMs: number;
+          maxAddedTurnLatencyMsP95: number;
+          maxCpuPercentP95: number;
+          allowedCpuCostEstimates: string[];
+        };
         captureReplayContract: { fixtureManifestPath: string; requiredFields: string[]; strictArtifactFields: string[] };
       };
       handoff: {
@@ -107,6 +114,13 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.equal(artifact.handoff.nextEvidenceOwner, "agentic_contact_center");
     assert.equal(artifact.report.proposedConfig.featureFlag, "RTC_ASR_SPEECH_ENHANCEMENT");
     assert.equal(artifact.report.replayCoverage.liveDemoGate, "blocked_until_real_capture");
+    assert.deepEqual(artifact.report.closeGateProfile, {
+      requiredCaptureIdPrefix: "real-noisy-local-sip-",
+      requiredLatencySettingMs: 12.5,
+      maxAddedTurnLatencyMsP95: 25,
+      maxCpuPercentP95: 80,
+      allowedCpuCostEstimates: ["low", "medium"],
+    });
     assert.equal(
       artifact.report.captureReplayContract.fixtureManifestPath,
       "artifacts/speech-enhancement-real-capture-replay.json",

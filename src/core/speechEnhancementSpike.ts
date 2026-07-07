@@ -68,6 +68,14 @@ export interface SpeechEnhancementReplayCoverage {
   missingEvidence: string[];
 }
 
+export interface SpeechEnhancementCloseGateProfile {
+  requiredCaptureIdPrefix: "real-noisy-local-sip-";
+  requiredLatencySettingMs: 12.5;
+  maxAddedTurnLatencyMsP95: 25;
+  maxCpuPercentP95: 80;
+  allowedCpuCostEstimates: Array<"low" | "medium">;
+}
+
 export interface SpeechEnhancementRolloutStep {
   step: "capture_replay" | "feature_flag" | "shadow_compare" | "live_enablement";
   owner: "agentic_contact_center" | "rtc_asr";
@@ -160,6 +168,7 @@ export interface SpeechEnhancementSpikeReport {
   runtimeGuardrails: SpeechEnhancementRuntimeGuardrail[];
   replayDecisions: SpeechEnhancementReplayDecision[];
   replayCoverage: SpeechEnhancementReplayCoverage;
+  closeGateProfile: SpeechEnhancementCloseGateProfile;
   captureReplayContract: SpeechEnhancementCaptureReplayContract;
   rolloutPlan: SpeechEnhancementRolloutStep[];
   validationPlan: string[];
@@ -294,6 +303,13 @@ const cpuCostEstimateValues = ["low", "medium", "high"] as const;
 const allowedLatencySettingsMs = [12.5, 25, 50, 75] as const;
 const realNoisyLocalSipCaptureIdPrefix = "real-noisy-local-sip-";
 const realNoisyLocalSipCaptureIdPattern = /^real-noisy-local-sip-[a-z0-9][a-z0-9._-]*$/u;
+const closeGateProfile: SpeechEnhancementCloseGateProfile = {
+  requiredCaptureIdPrefix: realNoisyLocalSipCaptureIdPrefix,
+  requiredLatencySettingMs: 12.5,
+  maxAddedTurnLatencyMsP95: 25,
+  maxCpuPercentP95: 80,
+  allowedCpuCostEstimates: ["low", "medium"],
+};
 
 function isTruthyFeatureFlag(value: string | undefined): boolean {
   const normalizedValue = value?.trim().toLowerCase();
@@ -468,8 +484,12 @@ export function evaluateSpeechEnhancementReplayMetric(
   const wordErrorImproved = metric.enhanced.wordErrorRateEstimate < metric.baseline.wordErrorRateEstimate;
   const endpointingOk = isEndpointingNoWorse(metric.enhanced.endpointingStability, metric.baseline.endpointingStability);
   const bargeInOk = isBargeInRiskNoWorse(metric.enhanced.bargeInRisk, metric.baseline.bargeInRisk);
-  const latencyOk = metric.latencySettingMs === 12.5 && metric.enhanced.addedTurnLatencyMsP95 <= 25;
-  const cpuOk = metric.cpuCostEstimate !== "high" && metric.enhanced.cpuPercentP95 <= 80;
+  const latencyOk =
+    metric.latencySettingMs === closeGateProfile.requiredLatencySettingMs &&
+    metric.enhanced.addedTurnLatencyMsP95 <= closeGateProfile.maxAddedTurnLatencyMsP95;
+  const cpuOk =
+    (closeGateProfile.allowedCpuCostEstimates as readonly string[]).includes(metric.cpuCostEstimate) &&
+    metric.enhanced.cpuPercentP95 <= closeGateProfile.maxCpuPercentP95;
   const failingEvidence = [
     wordErrorImproved ? null : "enhanced_noisy_replay_wer_improvement",
     endpointingOk ? null : "enhanced_endpointing_no_regression",
@@ -698,6 +718,7 @@ export function buildSpeechEnhancementSpikeReport(
     ],
     replayDecisions,
     replayCoverage,
+    closeGateProfile,
     captureReplayContract: {
       requiredCaptureKind: "real_noisy_local_sip",
       fixtureManifestPath: "artifacts/speech-enhancement-real-capture-replay.json",
