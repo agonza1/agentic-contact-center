@@ -138,6 +138,11 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /Blocked real replay ids: None/);
     assert.match(markdown, /Real Capture Replay Evidence/);
     assert.match(markdown, /- None attached\./);
+    assert.match(markdown, /Review Checks/);
+    assert.match(markdown, /- \[ \] realNoisyCaptureReplay/);
+    assert.match(markdown, /- \[ \] wordErrorImproved/);
+    assert.match(markdown, /Failure Reasons/);
+    assert.match(markdown, /realNoisyCaptureReplay: Attach one real noisy local SIP capture replay before closing Issue #97\./);
     assert.match(markdown, /Run: npm run proof:speech-enhancement -- --require-close-ready/);
     assert.match(markdown, /Strict artifact check: npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts\/speech-enhancement-real-capture-replay\.json/);
   } finally {
@@ -649,6 +654,9 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     const markdown = await readFile(markdownOutputPath, "utf8");
     assert.match(markdown, /Passing real replay ids: real-noisy-local-sip-001/);
     assert.match(markdown, /Blocked real replay ids: None/);
+    assert.match(markdown, /- \[x\] realNoisyCaptureReplay/);
+    assert.match(markdown, /- \[x\] cpuRuntimeCost/);
+    assert.match(markdown, /Failure Reasons\n\n- None\./);
     assert.match(
       markdown,
       /real-noisy-local-sip-001: passing; audio=artifacts\/local-sip\/real-noisy-local-sip-001\.wav; source_manifest=artifacts\/local-sip\/proof-manifest-001\.json; runtime_host=local-rtc-asr-host/,
