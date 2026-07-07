@@ -185,6 +185,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.deepEqual(payload.captureReplayContract.comparisonPairs, ["baseline_rtc_asr", "enhanced_rtc_asr"]);
     assert.ok(payload.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.added_turn_latency_ms_p95"));
     assert.ok(payload.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.cpu_percent_p95"));
+    assert.ok(payload.captureReplayContract.requiredFields.includes("latency_setting_ms"));
     assert.ok(
       payload.captureReplayContract.minimumPassingCriteria.some((criterion) => criterion.includes("word error")),
     );

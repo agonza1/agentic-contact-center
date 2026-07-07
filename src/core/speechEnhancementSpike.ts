@@ -722,6 +722,7 @@ export function buildSpeechEnhancementSpikeReport(
         "enhanced_rtc_asr.added_turn_latency_ms_p95",
         "enhanced_rtc_asr.cpu_percent_p95",
         "enhanced_rtc_asr.cpu_cost_estimate",
+        "latency_setting_ms",
       ],
       strictArtifactFields: ["audio_sha256", "source_manifest_sha256"],
       comparisonPairs: ["baseline_rtc_asr", "enhanced_rtc_asr"],
