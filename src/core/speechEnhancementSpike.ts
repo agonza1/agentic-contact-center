@@ -916,6 +916,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   issueUrl: SpeechEnhancementReviewHandoff["issueUrl"];
   reviewRoute: SpeechEnhancementReviewHandoff["reviewRoute"];
   recommendedLatencyMs: number;
+  runtimeEnv: SpeechEnhancementRuntimeConfig["env"];
   runtimeEnabled: boolean;
   runtimeLatencyMs: number;
   runtimeBypassReason?: SpeechEnhancementRuntimeConfig["bypassReason"];
@@ -950,6 +951,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     issueUrl: handoff.issueUrl,
     reviewRoute: handoff.reviewRoute,
     recommendedLatencyMs: report.decision.recommendedLatencyMs,
+    runtimeEnv: runtimeConfig.env,
     runtimeEnabled: runtimeConfig.enabled,
     runtimeLatencyMs: runtimeConfig.latencyMs,
     runtimeBypassReason: runtimeConfig.bypassReason,
