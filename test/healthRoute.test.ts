@@ -64,9 +64,14 @@ test("GET /health returns config-backed demo metadata", async () => {
       issueUrl: string;
       reviewRoute: string;
       recommendedLatencyMs: number;
+      runtimeEnv: { featureFlag: string; latencyMs: string };
       runtimeEnabled: boolean;
       runtimeLatencyMs: number;
       runtimeBypassReason?: string;
+      runtimeBypassReasons: string[];
+      runtimeLookaheadFrames: number | null;
+      runtimeMaxBufferedAudioMs: number | null;
+      runtimeLiveDemoEligible: boolean;
       liveDemoGate: string;
       issueCloseReady: boolean;
       reviewChecks: { realNoisyCaptureReplay: boolean; cpuRuntimeCost: boolean };
@@ -104,9 +109,20 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.speechEnhancement.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/97");
   assert.equal(payload.speechEnhancement.reviewRoute, "/api/realtime-shim/speech-enhancement-spike");
   assert.equal(payload.speechEnhancement.recommendedLatencyMs, 12.5);
+  assert.deepEqual(payload.speechEnhancement.runtimeEnv, {
+    featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT",
+    latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS",
+  });
   assert.equal(payload.speechEnhancement.runtimeEnabled, false);
   assert.equal(payload.speechEnhancement.runtimeLatencyMs, 12.5);
   assert.equal(payload.speechEnhancement.runtimeBypassReason, "feature_flag_disabled");
+  assert.deepEqual(payload.speechEnhancement.runtimeBypassReasons, [
+    "feature_flag_disabled",
+    "blocked_until_real_capture",
+  ]);
+  assert.equal(payload.speechEnhancement.runtimeLookaheadFrames, 1);
+  assert.equal(payload.speechEnhancement.runtimeMaxBufferedAudioMs, 32.5);
+  assert.equal(payload.speechEnhancement.runtimeLiveDemoEligible, false);
   assert.equal(payload.speechEnhancement.liveDemoGate, "blocked_until_real_capture");
   assert.equal(payload.speechEnhancement.issueCloseReady, false);
   assert.equal(payload.speechEnhancement.reviewChecks.realNoisyCaptureReplay, false);

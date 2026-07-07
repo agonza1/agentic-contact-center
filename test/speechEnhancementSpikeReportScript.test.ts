@@ -48,11 +48,15 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       outputPath: string;
       latestOutputPath: string;
       markdownOutputPath: string;
+      runtimeLiveDemoEligible: boolean;
+      runtimeBypassReasons: string[];
     };
     assert.equal(summary.ok, true);
     assert.equal(summary.outputPath, outputPath);
     assert.equal(summary.latestOutputPath, latestOutputPath);
     assert.equal(summary.markdownOutputPath, markdownOutputPath);
+    assert.equal(summary.runtimeLiveDemoEligible, false);
+    assert.deepEqual(summary.runtimeBypassReasons, ["feature_flag_disabled", "blocked_until_real_capture"]);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       schemaVersion: number;
@@ -70,6 +74,8 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
         };
         captureReplayContract: { fixtureManifestPath: string; requiredFields: string[]; strictArtifactFields: string[] };
       };
+      runtimeConfig: { enabled: boolean; latencyMs: number; bypassReason?: string; env: { featureFlag: string; latencyMs: string } };
+      runtimeReadiness: { enabled: boolean; latencyMs: number; liveDemoEligible: boolean; frameBudget: { rtcAsrFrameMs: number; lookaheadFrames: number | null; maxBufferedAudioMs: number | null }; bypassReasons: string[] };
       handoff: {
         issueUrl: string;
         reviewRoute: string;
@@ -121,6 +127,15 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.equal(artifact.handoff.nextEvidenceOwner, "agentic_contact_center");
     assert.equal(artifact.report.proposedConfig.featureFlag, "RTC_ASR_SPEECH_ENHANCEMENT");
     assert.equal(artifact.report.replayCoverage.liveDemoGate, "blocked_until_real_capture");
+    assert.deepEqual(artifact.runtimeConfig, {
+      enabled: false,
+      latencyMs: 12.5,
+      bypassReason: "feature_flag_disabled",
+      env: { featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT", latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS" },
+    });
+    assert.equal(artifact.runtimeReadiness.liveDemoEligible, false);
+    assert.deepEqual(artifact.runtimeReadiness.frameBudget, { lookaheadFrames: 1, maxBufferedAudioMs: 32.5, rtcAsrFrameMs: 20 });
+    assert.deepEqual(artifact.runtimeReadiness.bypassReasons, ["feature_flag_disabled", "blocked_until_real_capture"]);
     assert.deepEqual(artifact.report.closeGateProfile, {
       requiredCaptureIdPrefix: "real-noisy-local-sip-",
       requiredLatencySettingMs: 12.5,
@@ -153,6 +168,10 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /# Speech Enhancement Spike Report/);
     assert.match(markdown, /Decision: go_for_feature_flagged_spike at 12\.5 ms/);
     assert.match(markdown, /Review gate: blocked/);
+    assert.match(markdown, /Runtime readiness: bypassed/);
+    assert.match(markdown, /Runtime latency: 12\.5 ms/);
+    assert.match(markdown, /Runtime frame budget: 1 lookahead frame\(s\), 32\.5 ms max buffered audio/);
+    assert.match(markdown, /Runtime bypass reasons: feature_flag_disabled, blocked_until_real_capture/);
     assert.match(markdown, /Real noisy capture replays: 0/);
     assert.match(markdown, /Strict artifact hashes: audio_sha256, source_manifest_sha256/);
     assert.match(markdown, /Passing real replay ids: None/);

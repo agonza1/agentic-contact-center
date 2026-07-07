@@ -8,6 +8,7 @@ import { REALTIME_SHIM_RPCS } from "../core/realtimeShimContract";
 import {
   buildSpeechEnhancementHealthSummary,
   buildSpeechEnhancementReviewGate,
+  buildSpeechEnhancementRuntimeReadiness,
   buildSpeechEnhancementReviewHandoff,
   buildSpeechEnhancementSpikeReport,
   resolveSpeechEnhancementRuntimeConfig,
@@ -2805,12 +2806,14 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/api/realtime-shim/speech-enhancement-spike") {
     const report = buildSpeechEnhancementSpikeReport();
+    const runtimeConfig = resolveSpeechEnhancementRuntimeConfig({
+      featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
+      latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
+    });
     writeJson(response, 200, {
       ...report,
-      runtimeConfig: resolveSpeechEnhancementRuntimeConfig({
-        featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
-        latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
-      }),
+      runtimeConfig,
+      runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
       reviewGate: buildSpeechEnhancementReviewGate(report),
       reviewHandoff: buildSpeechEnhancementReviewHandoff(),
     });
