@@ -50,6 +50,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       reference: { modelFamily: string; paperUrl: string; latencyRangeMs: number[] };
       pipelinePlacement: { recommendedOwner: string; stage: string; preservedContracts: string[] };
       candidates: Array<{ algorithmicLatencyMs: number; withinConversationalBudget: boolean; recommendation: string }>;
+      latencyProfiles: Array<{ latencyMs: number; rtcAsrFrameMs: number; lookaheadFrames: number; maxBufferedAudioMs: number; liveDemoEligible: boolean; bypassWhen: string[] }>;
       replayMetrics: Array<{
         baseline: { wordErrorRateEstimate: number };
         enhanced: { wordErrorRateEstimate: number; addedTurnLatencyMsP95: number; cpuPercentP95: number };
@@ -126,6 +127,23 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     );
     assert.equal(payload.candidates[0].recommendation, "recommended");
     assert.equal(payload.candidates.at(-1)?.withinConversationalBudget, false);
+    assert.deepEqual(
+      payload.latencyProfiles.map((profile) => profile.latencyMs),
+      [12.5, 25, 50, 75],
+    );
+    assert.deepEqual(payload.latencyProfiles[0], {
+      latencyMs: 12.5,
+      rtcAsrFrameMs: 20,
+      lookaheadFrames: 1,
+      maxBufferedAudioMs: 32.5,
+      liveDemoEligible: true,
+      bypassWhen: [
+        "added_turn_latency_p95_exceeds_candidate_budget",
+        "enhanced_cpu_percent_p95_exceeds_80",
+        "barge_in_or_endpointing_regresses",
+      ],
+    });
+    assert.equal(payload.latencyProfiles.at(-1)?.liveDemoEligible, false);
     assert.equal(payload.replayMetrics.length, 1);
     assert.equal(payload.replayMetrics[0].latencySettingMs, 12.5);
     assert.equal(payload.replayMetrics[0].enhanced.addedTurnLatencyMsP95, 18);

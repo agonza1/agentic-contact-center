@@ -6,6 +6,15 @@ export interface SpeechEnhancementLatencyCandidate {
   recommendation: "recommended" | "acceptable" | "avoid_for_live_turns";
 }
 
+export interface SpeechEnhancementLatencyProfile {
+  latencyMs: number;
+  rtcAsrFrameMs: 20;
+  lookaheadFrames: number;
+  maxBufferedAudioMs: number;
+  liveDemoEligible: boolean;
+  bypassWhen: string[];
+}
+
 export interface SpeechEnhancementReplayMetric {
   captureId: string;
   scenario: string;
@@ -143,6 +152,7 @@ export interface SpeechEnhancementSpikeReport {
     preservedContracts: string[];
   };
   candidates: SpeechEnhancementLatencyCandidate[];
+  latencyProfiles: SpeechEnhancementLatencyProfile[];
   replayMetrics: SpeechEnhancementReplayMetric[];
   decision: {
     status: "go_for_feature_flagged_spike" | "no_go";
@@ -593,6 +603,19 @@ export function buildSpeechEnhancementSpikeReport(
     },
   ];
 
+  const latencyProfiles: SpeechEnhancementLatencyProfile[] = candidates.map((candidate) => ({
+    latencyMs: candidate.algorithmicLatencyMs,
+    rtcAsrFrameMs: 20,
+    lookaheadFrames: Math.ceil(candidate.algorithmicLatencyMs / 20),
+    maxBufferedAudioMs: candidate.algorithmicLatencyMs + 20,
+    liveDemoEligible: candidate.recommendation !== "avoid_for_live_turns",
+    bypassWhen: [
+      "added_turn_latency_p95_exceeds_candidate_budget",
+      "enhanced_cpu_percent_p95_exceeds_80",
+      "barge_in_or_endpointing_regresses",
+    ],
+  }));
+
   const replayMetrics: SpeechEnhancementReplayMetric[] = [
     {
       captureId: "synthetic-noisy-cancellation-rescue-001",
@@ -663,6 +686,7 @@ export function buildSpeechEnhancementSpikeReport(
       ],
     },
     candidates,
+    latencyProfiles,
     replayMetrics,
     decision: {
       status: "go_for_feature_flagged_spike",
