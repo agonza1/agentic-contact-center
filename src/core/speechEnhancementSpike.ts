@@ -11,6 +11,8 @@ export interface SpeechEnhancementLatencyProfile {
   rtcAsrFrameMs: 20;
   lookaheadFrames: number;
   maxBufferedAudioMs: number;
+  expectedUse: SpeechEnhancementLatencyCandidate["expectedUse"];
+  recommendation: SpeechEnhancementLatencyCandidate["recommendation"];
   liveDemoEligible: boolean;
   bypassWhen: string[];
 }
@@ -706,6 +708,8 @@ export function buildSpeechEnhancementSpikeReport(
     rtcAsrFrameMs: 20,
     lookaheadFrames: Math.ceil(candidate.algorithmicLatencyMs / 20),
     maxBufferedAudioMs: candidate.algorithmicLatencyMs + 20,
+    expectedUse: candidate.expectedUse,
+    recommendation: candidate.recommendation,
     liveDemoEligible: candidate.recommendation !== "avoid_for_live_turns",
     bypassWhen: [
       "added_turn_latency_p95_exceeds_candidate_budget",
@@ -923,6 +927,8 @@ export function buildSpeechEnhancementHealthSummary(): {
   runtimeBypassReasons: string[];
   runtimeLookaheadFrames: number | null;
   runtimeMaxBufferedAudioMs: number | null;
+  runtimeProfileExpectedUse: SpeechEnhancementLatencyProfile["expectedUse"] | null;
+  runtimeProfileRecommendation: SpeechEnhancementLatencyProfile["recommendation"] | null;
   runtimeProfileBypassWhen: string[];
   runtimeLiveDemoEligible: boolean;
   liveDemoGate: string;
@@ -959,6 +965,8 @@ export function buildSpeechEnhancementHealthSummary(): {
     runtimeBypassReasons: runtimeReadiness.bypassReasons,
     runtimeLookaheadFrames: runtimeReadiness.frameBudget.lookaheadFrames,
     runtimeMaxBufferedAudioMs: runtimeReadiness.frameBudget.maxBufferedAudioMs,
+    runtimeProfileExpectedUse: runtimeReadiness.selectedLatencyProfile?.expectedUse ?? null,
+    runtimeProfileRecommendation: runtimeReadiness.selectedLatencyProfile?.recommendation ?? null,
     runtimeProfileBypassWhen: runtimeReadiness.selectedLatencyProfile?.bypassWhen ?? [],
     runtimeLiveDemoEligible: runtimeReadiness.liveDemoEligible,
     liveDemoGate: report.replayCoverage.liveDemoGate,
