@@ -923,6 +923,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   runtimeBypassReasons: string[];
   runtimeLookaheadFrames: number | null;
   runtimeMaxBufferedAudioMs: number | null;
+  runtimeProfileBypassWhen: string[];
   runtimeLiveDemoEligible: boolean;
   liveDemoGate: string;
   issueCloseReady: boolean;
@@ -958,6 +959,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     runtimeBypassReasons: runtimeReadiness.bypassReasons,
     runtimeLookaheadFrames: runtimeReadiness.frameBudget.lookaheadFrames,
     runtimeMaxBufferedAudioMs: runtimeReadiness.frameBudget.maxBufferedAudioMs,
+    runtimeProfileBypassWhen: runtimeReadiness.selectedLatencyProfile?.bypassWhen ?? [],
     runtimeLiveDemoEligible: runtimeReadiness.liveDemoEligible,
     liveDemoGate: report.replayCoverage.liveDemoGate,
     issueCloseReady: reviewGate.issueCloseReady,

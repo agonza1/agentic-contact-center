@@ -71,6 +71,7 @@ test("GET /health returns config-backed demo metadata", async () => {
       runtimeBypassReasons: string[];
       runtimeLookaheadFrames: number | null;
       runtimeMaxBufferedAudioMs: number | null;
+      runtimeProfileBypassWhen: string[];
       runtimeLiveDemoEligible: boolean;
       liveDemoGate: string;
       issueCloseReady: boolean;
@@ -122,6 +123,11 @@ test("GET /health returns config-backed demo metadata", async () => {
   ]);
   assert.equal(payload.speechEnhancement.runtimeLookaheadFrames, 1);
   assert.equal(payload.speechEnhancement.runtimeMaxBufferedAudioMs, 32.5);
+  assert.deepEqual(payload.speechEnhancement.runtimeProfileBypassWhen, [
+    "added_turn_latency_p95_exceeds_candidate_budget",
+    "enhanced_cpu_percent_p95_exceeds_80",
+    "barge_in_or_endpointing_regresses",
+  ]);
   assert.equal(payload.speechEnhancement.runtimeLiveDemoEligible, false);
   assert.equal(payload.speechEnhancement.liveDemoGate, "blocked_until_real_capture");
   assert.equal(payload.speechEnhancement.issueCloseReady, false);
