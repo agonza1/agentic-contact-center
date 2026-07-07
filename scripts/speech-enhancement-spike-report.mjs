@@ -9,9 +9,35 @@ const require = createRequire(import.meta.url);
 const {
   buildSpeechEnhancementReviewGate,
   buildSpeechEnhancementSpikeReport,
-  evaluateSpeechEnhancementReplayMetric,
   validateSpeechEnhancementCaptureReplayManifest,
 } = require("../dist/src/core/speechEnhancementSpike.js");
+
+const valueFlags = new Set(["--capture-replay", "--out", "--latest-out", "--markdown-out"]);
+const booleanFlags = new Set(["--strict-capture-artifacts", "--require-close-ready"]);
+
+function validateCliArgs(argv) {
+  for (let index = 2; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (valueFlags.has(arg)) {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+      index += 1;
+      continue;
+    }
+
+    if (booleanFlags.has(arg)) {
+      continue;
+    }
+
+    if (arg.startsWith("--")) {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
+
+    throw new Error(`Unexpected positional argument: ${arg}`);
+  }
+}
 
 function resolveArgPath(flag) {
   const flagIndex = process.argv.indexOf(flag);
@@ -41,6 +67,7 @@ async function loadCaptureReplayMetrics() {
   const captureReplayPaths = resolveArgPaths("--capture-replay");
   const strictCaptureArtifacts = hasArg("--strict-capture-artifacts");
   const metrics = [];
+  const seenCaptureIds = new Map();
 
   for (const captureReplayPath of captureReplayPaths) {
     const payload = JSON.parse(await readFile(captureReplayPath, "utf8"));
@@ -48,6 +75,14 @@ async function loadCaptureReplayMetrics() {
     if (!validation.manifestOk || !validation.metric) {
       throw new Error(`Invalid capture replay manifest: ${captureReplayPath}: ${validation.missingFields.join(", ")}`);
     }
+
+    const previousCaptureReplayPath = seenCaptureIds.get(validation.metric.captureId);
+    if (previousCaptureReplayPath) {
+      throw new Error(
+        `Duplicate capture replay id: ${validation.metric.captureId}: ${previousCaptureReplayPath} and ${captureReplayPath}`,
+      );
+    }
+    seenCaptureIds.set(validation.metric.captureId, captureReplayPath);
 
     if (strictCaptureArtifacts) {
       await assertCaptureArtifact(payload.audio_source_uri, payload.audio_sha256, captureReplayPath, "audio_source_uri");
@@ -89,53 +124,6 @@ async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayP
       `Capture replay artifact hash mismatch for ${field}: ${captureReplayPath}: expected ${expectedSha256}, got ${actualSha256}`,
     );
   }
-}
-
-function applyCaptureReplay(report, metric) {
-  if (!metric) {
-    return report;
-  }
-
-  const { issueCloseReady, failingEvidence, reasons } = evaluateSpeechEnhancementReplayMetric(metric);
-  const previousReplayFailures = report.acceptanceReadiness.remainingBeforeIssueClose.filter((blocker) =>
-    blocker.startsWith("Replay ") && blocker.includes(" did not pass all enhancement close gates"),
-  );
-  const replayFailures = issueCloseReady
-    ? []
-    : ["Replay " + metric.captureId + " did not pass all enhancement close gates: " + failingEvidence.join(", ") + "."];
-  const remainingBeforeIssueClose = [...previousReplayFailures, ...replayFailures];
-  const missingEvidence = Array.from(new Set([
-    ...(report.replayCoverage.realNoisyCaptureReplayCount > 0 ? report.replayCoverage.missingEvidence : []),
-    ...failingEvidence,
-  ]));
-  const allAttachedReplaysPass = remainingBeforeIssueClose.length === 0;
-
-  return {
-    ...report,
-    replayMetrics: [...report.replayMetrics, metric],
-    replayDecisions: [
-      ...report.replayDecisions,
-      {
-        captureId: metric.captureId,
-        latencySettingMs: metric.latencySettingMs,
-        enableForLiveDemo: issueCloseReady,
-        reasons,
-      },
-    ],
-    replayCoverage: {
-      syntheticNoisyReplayCount: report.replayCoverage.syntheticNoisyReplayCount,
-      realNoisyCaptureReplayCount: report.replayCoverage.realNoisyCaptureReplayCount + 1,
-      baselineEnhancedPairs: report.replayCoverage.baselineEnhancedPairs + 1,
-      liveDemoGate: allAttachedReplaysPass ? "eligible" : "blocked_until_real_capture",
-      missingEvidence,
-    },
-    acceptanceReadiness: {
-      ...report.acceptanceReadiness,
-      noisyReplay: allAttachedReplaysPass ? "real_capture_ready" : report.acceptanceReadiness.noisyReplay,
-      cpuRuntimeCost: allAttachedReplaysPass ? "covered" : report.acceptanceReadiness.cpuRuntimeCost,
-      remainingBeforeIssueClose,
-    },
-  };
 }
 
 function resolveOutputPath() {
@@ -189,6 +177,14 @@ function buildMarkdownReport(artifact) {
   const recommended = report.decision.recommendedLatencyMs;
   const blockers = reviewGate.blockers.length > 0 ? reviewGate.blockers : ["None. Issue #97 close gate is ready."];
   const nextEvidence = reviewGate.nextEvidence.length > 0 ? reviewGate.nextEvidence : ["None."];
+  const replayEvidence = reviewGate.realCaptureReplayEvidence.map((evidence) => {
+    const status = reviewGate.passingRealCaptureReplayIds.includes(evidence.captureId) ? "passing" : "blocked";
+    const source = evidence.audioSourceUri ?? "missing audio source";
+    const sourceManifest = evidence.sourceManifestUri ?? "missing source manifest";
+    const runtimeHost = evidence.runtimeHost ?? "missing runtime host";
+
+    return `- ${evidence.captureId}: ${status}; audio=${source}; source_manifest=${sourceManifest}; runtime_host=${runtimeHost}`;
+  });
 
   return [
     "# Speech Enhancement Spike Report",
@@ -208,6 +204,13 @@ function buildMarkdownReport(artifact) {
     `- Real noisy capture replays: ${report.replayCoverage.realNoisyCaptureReplayCount}`,
     `- Baseline/enhanced pairs: ${report.replayCoverage.baselineEnhancedPairs}`,
     `- Live demo gate: ${report.replayCoverage.liveDemoGate}`,
+    `- Strict artifact hashes: ${report.captureReplayContract.strictArtifactFields.join(", ")}`,
+    `- Passing real replay ids: ${reviewGate.passingRealCaptureReplayIds.join(", ") || "None"}`,
+    `- Blocked real replay ids: ${reviewGate.blockedRealCaptureReplayIds.join(", ") || "None"}`,
+    "",
+    "## Real Capture Replay Evidence",
+    "",
+    ...(replayEvidence.length > 0 ? replayEvidence : ["- None attached."]),
     "",
     "## Blockers",
     "",
@@ -226,12 +229,14 @@ function buildMarkdownReport(artifact) {
 }
 
 async function main() {
+  validateCliArgs(process.argv);
+
   const outputPath = resolveOutputPath();
   const latestOutputPath = resolveLatestOutputPath();
   const markdownOutputPath = resolveMarkdownOutputPath(outputPath);
   const requireCloseReady = hasArg("--require-close-ready");
   const captureReplayMetrics = await loadCaptureReplayMetrics();
-  const report = captureReplayMetrics.reduce(applyCaptureReplay, buildSpeechEnhancementSpikeReport());
+  const report = buildSpeechEnhancementSpikeReport({ captureReplayMetrics });
 
   assert.equal(report.ok, true);
   assert.equal(report.issue, "agonza1/agentic-contact-center#97");
@@ -269,7 +274,13 @@ async function main() {
     latestOutputPath: latestOutputPath ?? null,
     markdownOutputPath: markdownOutputPath ?? null,
     issueCloseReady: artifact.reviewGate.issueCloseReady,
+    checks: artifact.reviewGate.checks,
+    failureReasons: artifact.reviewGate.failureReasons,
     blockers: artifact.reviewGate.blockers,
+    nextEvidence: artifact.reviewGate.nextEvidence,
+    realCaptureReplayIds: artifact.reviewGate.realCaptureReplayIds,
+    passingRealCaptureReplayIds: artifact.reviewGate.passingRealCaptureReplayIds,
+    blockedRealCaptureReplayIds: artifact.reviewGate.blockedRealCaptureReplayIds,
   };
 
   console.log(JSON.stringify(summary));

@@ -78,6 +78,7 @@ export interface SpeechEnhancementCaptureReplayContract {
   requiredCaptureKind: "real_noisy_local_sip";
   fixtureManifestPath: "artifacts/speech-enhancement-real-capture-replay.json";
   requiredFields: string[];
+  strictArtifactFields: string[];
   comparisonPairs: Array<"baseline_rtc_asr" | "enhanced_rtc_asr">;
   minimumPassingCriteria: string[];
 }
@@ -162,6 +163,10 @@ export interface SpeechEnhancementSpikeReport {
   captureReplayContract: SpeechEnhancementCaptureReplayContract;
   rolloutPlan: SpeechEnhancementRolloutStep[];
   validationPlan: string[];
+}
+
+export interface SpeechEnhancementSpikeReportInput {
+  captureReplayMetrics?: SpeechEnhancementReplayMetric[];
 }
 
 export interface SpeechEnhancementRuntimeConfigInput {
@@ -265,7 +270,13 @@ function hasArtifactUriField(record: Record<string, unknown>, field: string): bo
   }
 
   const value = record[field] as string;
-  return value.startsWith("artifacts/") && !value.includes("..") && !value.startsWith("/");
+  const pathParts = value.split("/");
+  return (
+    /^artifacts\/[A-Za-z0-9._/-]+$/u.test(value) &&
+    !value.includes("//") &&
+    !value.endsWith("/") &&
+    !pathParts.includes("..")
+  );
 }
 
 function hasEnumField<T extends string>(record: Record<string, unknown>, field: string, allowed: readonly T[]): boolean {
@@ -282,6 +293,7 @@ const bargeInRiskValues = ["low", "medium", "high"] as const;
 const cpuCostEstimateValues = ["low", "medium", "high"] as const;
 const allowedLatencySettingsMs = [12.5, 25, 50, 75] as const;
 const realNoisyLocalSipCaptureIdPrefix = "real-noisy-local-sip-";
+const realNoisyLocalSipCaptureIdPattern = /^real-noisy-local-sip-[a-z0-9][a-z0-9._-]*$/u;
 
 function isTruthyFeatureFlag(value: string | undefined): boolean {
   const normalizedValue = value?.trim().toLowerCase();
@@ -347,7 +359,7 @@ export function validateSpeechEnhancementCaptureReplayManifest(
   if (!hasArtifactUriField(manifest, "source_manifest_uri")) {
     missingFields.push("source_manifest_uri.artifacts_relative_path_required");
   }
-  if (hasStringField(manifest, "capture_id") && !(manifest.capture_id as string).startsWith(realNoisyLocalSipCaptureIdPrefix)) {
+  if (hasStringField(manifest, "capture_id") && !realNoisyLocalSipCaptureIdPattern.test(manifest.capture_id as string)) {
     missingFields.push("capture_id.real_noisy_local_sip_required");
   }
   if (!hasParseableIsoStringField(manifest, "recorded_at")) {
@@ -479,7 +491,57 @@ export function evaluateSpeechEnhancementReplayMetric(
   };
 }
 
-export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeReport {
+export function applySpeechEnhancementCaptureReplayMetric(
+  report: SpeechEnhancementSpikeReport,
+  metric: SpeechEnhancementReplayMetric,
+): SpeechEnhancementSpikeReport {
+  const { issueCloseReady, failingEvidence, reasons } = evaluateSpeechEnhancementReplayMetric(metric);
+  const previousReplayFailures = report.acceptanceReadiness.remainingBeforeIssueClose.filter((blocker) =>
+    blocker.startsWith("Replay ") && blocker.includes(" did not pass all enhancement close gates"),
+  );
+  const replayFailures = issueCloseReady
+    ? []
+    : [`Replay ${metric.captureId} did not pass all enhancement close gates: ${failingEvidence.join(", ")}.`];
+  const remainingBeforeIssueClose = [...previousReplayFailures, ...replayFailures];
+  const missingEvidence = Array.from(
+    new Set([
+      ...(report.replayCoverage.realNoisyCaptureReplayCount > 0 ? report.replayCoverage.missingEvidence : []),
+      ...failingEvidence,
+    ]),
+  );
+  const allAttachedReplaysPass = remainingBeforeIssueClose.length === 0;
+
+  return {
+    ...report,
+    replayMetrics: [...report.replayMetrics, metric],
+    replayDecisions: [
+      ...report.replayDecisions,
+      {
+        captureId: metric.captureId,
+        latencySettingMs: metric.latencySettingMs,
+        enableForLiveDemo: issueCloseReady,
+        reasons,
+      },
+    ],
+    replayCoverage: {
+      syntheticNoisyReplayCount: report.replayCoverage.syntheticNoisyReplayCount,
+      realNoisyCaptureReplayCount: report.replayCoverage.realNoisyCaptureReplayCount + 1,
+      baselineEnhancedPairs: report.replayCoverage.baselineEnhancedPairs + 1,
+      liveDemoGate: allAttachedReplaysPass ? "eligible" : "blocked_until_real_capture",
+      missingEvidence,
+    },
+    acceptanceReadiness: {
+      ...report.acceptanceReadiness,
+      noisyReplay: allAttachedReplaysPass ? "real_capture_ready" : "real_capture_required",
+      cpuRuntimeCost: allAttachedReplaysPass ? "covered" : "estimated_needs_live_measurement",
+      remainingBeforeIssueClose,
+    },
+  };
+}
+
+export function buildSpeechEnhancementSpikeReport(
+  input: SpeechEnhancementSpikeReportInput = {},
+): SpeechEnhancementSpikeReport {
   const candidates: SpeechEnhancementLatencyCandidate[] = [
     {
       algorithmicLatencyMs: 12.5,
@@ -560,7 +622,7 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
           ],
   };
 
-  return {
+  const report: SpeechEnhancementSpikeReport = {
     ok: true,
     route: "/api/realtime-shim/speech-enhancement-spike",
     issue: "agonza1/agentic-contact-center#97",
@@ -643,7 +705,9 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
         "capture_id",
         "recorded_at",
         "audio_source_uri",
+        "audio_sha256",
         "source_manifest_uri",
+        "source_manifest_sha256",
         "noise_profile",
         "scenario",
         "runtime_host",
@@ -659,6 +723,7 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
         "enhanced_rtc_asr.cpu_percent_p95",
         "enhanced_rtc_asr.cpu_cost_estimate",
       ],
+      strictArtifactFields: ["audio_sha256", "source_manifest_sha256"],
       comparisonPairs: ["baseline_rtc_asr", "enhanced_rtc_asr"],
       minimumPassingCriteria: [
         "enhanced word error estimate improves over baseline",
@@ -696,6 +761,8 @@ export function buildSpeechEnhancementSpikeReport(): SpeechEnhancementSpikeRepor
       "Keep npm run proof:realtime-shim green with enhancement disabled and enabled before live-demo use.",
     ],
   };
+
+  return (input.captureReplayMetrics ?? []).reduce(applySpeechEnhancementCaptureReplayMetric, report);
 }
 
 
