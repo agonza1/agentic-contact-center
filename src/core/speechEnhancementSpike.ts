@@ -541,25 +541,33 @@ export function applySpeechEnhancementCaptureReplayMetric(
   report: SpeechEnhancementSpikeReport,
   metric: SpeechEnhancementReplayMetric,
 ): SpeechEnhancementSpikeReport {
-  const { issueCloseReady, failingEvidence, reasons } = evaluateSpeechEnhancementReplayMetric(metric);
-  const previousReplayFailures = report.acceptanceReadiness.remainingBeforeIssueClose.filter((blocker) =>
-    blocker.startsWith("Replay ") && blocker.includes(" did not pass all enhancement close gates"),
+  const { issueCloseReady, reasons } = evaluateSpeechEnhancementReplayMetric(metric);
+  const replayMetrics = [...report.replayMetrics, metric];
+  const realReplayMetrics = replayMetrics.filter((candidate) =>
+    candidate.captureId.startsWith(realNoisyLocalSipCaptureIdPrefix),
   );
-  const replayFailures = issueCloseReady
-    ? []
-    : [`Replay ${metric.captureId} did not pass all enhancement close gates: ${failingEvidence.join(", ")}.`];
-  const remainingBeforeIssueClose = [...previousReplayFailures, ...replayFailures];
-  const missingEvidence = Array.from(
-    new Set([
-      ...(report.replayCoverage.realNoisyCaptureReplayCount > 0 ? report.replayCoverage.missingEvidence : []),
-      ...failingEvidence,
-    ]),
+  const realReplayEvaluations = realReplayMetrics.map((candidate) => ({
+    metric: candidate,
+    evaluation: evaluateSpeechEnhancementReplayMetric(candidate),
+  }));
+  const remainingBeforeIssueClose = realReplayEvaluations.flatMap(({ metric: replayMetric, evaluation }) =>
+    evaluation.issueCloseReady
+      ? []
+      : [
+          `Replay ${replayMetric.captureId} did not pass all enhancement close gates: ${evaluation.failingEvidence.join(
+            ", ",
+          )}.`,
+        ],
   );
-  const allAttachedReplaysPass = remainingBeforeIssueClose.length === 0;
+  const missingEvidence =
+    realReplayMetrics.length === 0
+      ? report.replayCoverage.missingEvidence
+      : Array.from(new Set(realReplayEvaluations.flatMap(({ evaluation }) => evaluation.failingEvidence)));
+  const allRealReplaysPass = realReplayMetrics.length > 0 && remainingBeforeIssueClose.length === 0;
 
   return {
     ...report,
-    replayMetrics: [...report.replayMetrics, metric],
+    replayMetrics,
     replayDecisions: [
       ...report.replayDecisions,
       {
@@ -571,16 +579,16 @@ export function applySpeechEnhancementCaptureReplayMetric(
       },
     ],
     replayCoverage: {
-      syntheticNoisyReplayCount: report.replayCoverage.syntheticNoisyReplayCount,
-      realNoisyCaptureReplayCount: report.replayCoverage.realNoisyCaptureReplayCount + 1,
-      baselineEnhancedPairs: report.replayCoverage.baselineEnhancedPairs + 1,
-      liveDemoGate: allAttachedReplaysPass ? "eligible" : "blocked_until_real_capture",
+      syntheticNoisyReplayCount: replayMetrics.filter((candidate) => candidate.captureId.startsWith("synthetic-")).length,
+      realNoisyCaptureReplayCount: realReplayMetrics.length,
+      baselineEnhancedPairs: replayMetrics.length,
+      liveDemoGate: allRealReplaysPass ? "eligible" : "blocked_until_real_capture",
       missingEvidence,
     },
     acceptanceReadiness: {
       ...report.acceptanceReadiness,
-      noisyReplay: allAttachedReplaysPass ? "real_capture_ready" : "real_capture_required",
-      cpuRuntimeCost: allAttachedReplaysPass ? "covered" : "estimated_needs_live_measurement",
+      noisyReplay: allRealReplaysPass ? "real_capture_ready" : "real_capture_required",
+      cpuRuntimeCost: allRealReplaysPass ? "covered" : "estimated_needs_live_measurement",
       remainingBeforeIssueClose,
     },
   };

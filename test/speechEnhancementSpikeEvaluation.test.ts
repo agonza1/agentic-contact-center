@@ -190,6 +190,31 @@ test("speech enhancement spike report can attach a passing real capture replay",
   ]);
 });
 
+test("speech enhancement spike report does not treat extra synthetic replay as real close evidence", () => {
+  const report = buildSpeechEnhancementSpikeReport();
+  const syntheticMetric = {
+    ...report.replayMetrics[0],
+    captureId: "synthetic-noisy-cancellation-rescue-002",
+  };
+
+  const reportWithSyntheticReplay = buildSpeechEnhancementSpikeReport({ captureReplayMetrics: [syntheticMetric] });
+  const reviewGate = buildSpeechEnhancementReviewGate(reportWithSyntheticReplay);
+
+  assert.equal(reportWithSyntheticReplay.acceptanceReadiness.noisyReplay, "real_capture_required");
+  assert.equal(reportWithSyntheticReplay.acceptanceReadiness.cpuRuntimeCost, "estimated_needs_live_measurement");
+  assert.deepEqual(reportWithSyntheticReplay.acceptanceReadiness.remainingBeforeIssueClose, []);
+  assert.equal(reportWithSyntheticReplay.replayCoverage.syntheticNoisyReplayCount, 2);
+  assert.equal(reportWithSyntheticReplay.replayCoverage.realNoisyCaptureReplayCount, 0);
+  assert.equal(reportWithSyntheticReplay.replayCoverage.baselineEnhancedPairs, 2);
+  assert.equal(reportWithSyntheticReplay.replayCoverage.liveDemoGate, "blocked_until_real_capture");
+  assert.deepEqual(reportWithSyntheticReplay.replayCoverage.missingEvidence, [
+    "real_noisy_local_sip_capture_baseline_vs_enhanced_replay",
+    "measured_cpu_cost_on_selected_rtc_asr_host_under_80_percent_p95",
+  ]);
+  assert.equal(reviewGate.issueCloseReady, false);
+  assert.deepEqual(reviewGate.passingRealCaptureReplayIds, []);
+});
+
 test("speech enhancement spike report keeps failing real capture replay blockers", () => {
   const report = buildSpeechEnhancementSpikeReport();
   const failingMetric = {
