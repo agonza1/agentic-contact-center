@@ -260,8 +260,8 @@ function hasParseableIsoStringField(record: Record<string, unknown>, field: stri
   return hasStringField(record, field) && !Number.isNaN(Date.parse(record[field] as string));
 }
 
-function hasOptionalSha256Field(record: Record<string, unknown>, field: string): boolean {
-  return record[field] === undefined || (typeof record[field] === "string" && new RegExp("^[a-f0-9]{64}$", "i").test(record[field]));
+function hasSha256Field(record: Record<string, unknown>, field: string): boolean {
+  return typeof record[field] === "string" && new RegExp("^[a-f0-9]{64}$", "i").test(record[field]);
 }
 
 function hasArtifactUriField(record: Record<string, unknown>, field: string): boolean {
@@ -368,10 +368,10 @@ export function validateSpeechEnhancementCaptureReplayManifest(
   if (!hasAllowedLatencySetting(manifest, "latency_setting_ms")) {
     missingFields.push("latency_setting_ms");
   }
-  if (!hasOptionalSha256Field(manifest, "audio_sha256")) {
+  if (!hasSha256Field(manifest, "audio_sha256")) {
     missingFields.push("audio_sha256");
   }
-  if (!hasOptionalSha256Field(manifest, "source_manifest_sha256")) {
+  if (!hasSha256Field(manifest, "source_manifest_sha256")) {
     missingFields.push("source_manifest_sha256");
   }
 
