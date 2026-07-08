@@ -266,6 +266,11 @@ function buildMarkdownReport(artifact) {
 
     return `- ${evidence.captureId}: ${evidence.status}; wer_delta=${evidence.wordErrorRateDelta}; latency_headroom_ms=${evidence.addedLatencyBudgetHeadroomMs}; cpu_headroom_percent=${evidence.cpuP95BudgetHeadroomPercent}; failing_evidence=${failingEvidence}; reasons=${reasons}; audio=${source}; source_manifest=${sourceManifest}; runtime_host=${runtimeHost}`;
   });
+  const captureReplaySources = artifact.captureReplaySources.map((source) => {
+    const strictArtifacts = source.strictArtifactsVerified ? "verified" : "not_verified";
+
+    return `- ${source.captureId}: path=${source.path}; strict_artifacts=${strictArtifacts}`;
+  });
   const replayDecisions = report.replayDecisions.map((decision) => {
     const enabled = decision.enableForLiveDemo ? "enabled" : "blocked";
     const diagnostics = decision.diagnostics;
@@ -314,6 +319,10 @@ function buildMarkdownReport(artifact) {
     "## Real Capture Replay Evidence",
     "",
     ...(replayEvidence.length > 0 ? replayEvidence : ["- None attached."]),
+    "",
+    "## Capture Replay Sources",
+    "",
+    ...(captureReplaySources.length > 0 ? captureReplaySources : ["- None loaded."]),
     "",
     "## Replay Decisions",
     "",

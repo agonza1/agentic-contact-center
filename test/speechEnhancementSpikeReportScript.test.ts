@@ -204,6 +204,8 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /75 ms: offline-only; lookahead_frames=4; max_buffered_audio_ms=95; expected_use=offline_review; recommendation=avoid_for_live_turns/);
     assert.match(markdown, /Real Capture Replay Evidence/);
     assert.match(markdown, /- None attached\./);
+    assert.match(markdown, /Capture Replay Sources/);
+    assert.match(markdown, /- None loaded\./);
     assert.match(markdown, /Replay Decisions/);
     assert.match(markdown, /synthetic-noisy-cancellation-rescue-001: enabled; latency_setting_ms=12\.5; wer_delta=0\.05; latency_headroom_ms=7; cpu_headroom_percent=38/);
     assert.match(markdown, /Review Checks/);
@@ -784,6 +786,11 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.match(
       markdown,
       /real-noisy-local-sip-001: passing; wer_delta=0\.12; latency_headroom_ms=7; cpu_headroom_percent=38; failing_evidence=none; reasons=wer_improved, endpointing_stable, barge_in_risk_low, latency_within_budget, cpu_cost_allowed; audio=artifacts\/local-sip\/real-noisy-local-sip-001\.wav; source_manifest=artifacts\/local-sip\/proof-manifest-001\.json; runtime_host=local-rtc-asr-host/,
+    );
+    assert.match(markdown, /Capture Replay Sources/);
+    assert.match(
+      markdown,
+      new RegExp("real-noisy-local-sip-001: path=" + captureReplayPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "; strict_artifacts=not_verified"),
     );
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
