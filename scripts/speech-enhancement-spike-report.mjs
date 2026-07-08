@@ -70,6 +70,7 @@ async function loadCaptureReplayMetrics() {
   const captureReplayPaths = await resolveCaptureReplayPaths();
   const strictCaptureArtifacts = hasArg("--strict-capture-artifacts");
   const metrics = [];
+  const sources = [];
   const seenCaptureIds = new Map();
 
   for (const captureReplayPath of captureReplayPaths) {
@@ -98,9 +99,14 @@ async function loadCaptureReplayMetrics() {
     }
 
     metrics.push(validation.metric);
+    sources.push({
+      captureId: validation.metric.captureId,
+      path: captureReplayPath,
+      strictArtifactsVerified: strictCaptureArtifacts,
+    });
   }
 
-  return metrics;
+  return { metrics, sources };
 }
 
 async function resolveCaptureReplayPaths() {
@@ -294,8 +300,8 @@ async function main() {
   const latestOutputPath = resolveLatestOutputPath();
   const markdownOutputPath = resolveMarkdownOutputPath(outputPath);
   const requireCloseReady = hasArg("--require-close-ready");
-  const captureReplayMetrics = await loadCaptureReplayMetrics();
-  const report = buildSpeechEnhancementSpikeReport({ captureReplayMetrics });
+  const captureReplayInputs = await loadCaptureReplayMetrics();
+  const report = buildSpeechEnhancementSpikeReport({ captureReplayMetrics: captureReplayInputs.metrics });
   const runtimeConfig = resolveSpeechEnhancementRuntimeConfig({
     featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
     latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
@@ -314,6 +320,7 @@ async function main() {
     report,
     runtimeConfig,
     runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
+    captureReplaySources: captureReplayInputs.sources,
     handoff: buildSpeechEnhancementReviewHandoff(),
     reviewGate: buildSpeechEnhancementReviewGate(report),
   };
@@ -342,6 +349,7 @@ async function main() {
     passingRealCaptureReplayIds: artifact.reviewGate.passingRealCaptureReplayIds,
     blockedRealCaptureReplayIds: artifact.reviewGate.blockedRealCaptureReplayIds,
     realCaptureReplayEvidence: artifact.reviewGate.realCaptureReplayEvidence,
+    captureReplaySources: artifact.captureReplaySources,
   };
 
   console.log(JSON.stringify(summary));
