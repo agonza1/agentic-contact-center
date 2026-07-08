@@ -211,6 +211,7 @@ export interface SpeechEnhancementRuntimeConfig {
 }
 
 export interface SpeechEnhancementRuntimeReadiness {
+  status: "disabled" | "blocked" | "ready";
   enabled: boolean;
   latencyMs: number;
   liveDemoEligible: boolean;
@@ -407,11 +408,14 @@ export function buildSpeechEnhancementRuntimeReadiness(
     selectedLatencyProfile && !selectedLatencyProfile.liveDemoEligible ? "latency_profile_not_live_demo_eligible" : null,
     report.replayCoverage.liveDemoGate === "eligible" ? null : report.replayCoverage.liveDemoGate,
   ].filter((reason): reason is string => reason !== null);
+  const liveDemoEligible =
+    runtimeConfig.enabled && selectedLatencyProfile?.liveDemoEligible === true && bypassReasons.length === 0;
 
   return {
+    status: !runtimeConfig.enabled ? "disabled" : liveDemoEligible ? "ready" : "blocked",
     enabled: runtimeConfig.enabled,
     latencyMs: runtimeConfig.latencyMs,
-    liveDemoEligible: runtimeConfig.enabled && selectedLatencyProfile?.liveDemoEligible === true && bypassReasons.length === 0,
+    liveDemoEligible,
     selectedLatencyProfile,
     frameBudget: {
       rtcAsrFrameMs: 20,
@@ -921,6 +925,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   reviewRoute: SpeechEnhancementReviewHandoff["reviewRoute"];
   recommendedLatencyMs: number;
   runtimeEnv: SpeechEnhancementRuntimeConfig["env"];
+  runtimeStatus: SpeechEnhancementRuntimeReadiness["status"];
   runtimeEnabled: boolean;
   runtimeLatencyMs: number;
   runtimeBypassReason?: SpeechEnhancementRuntimeConfig["bypassReason"];
@@ -959,6 +964,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     reviewRoute: handoff.reviewRoute,
     recommendedLatencyMs: report.decision.recommendedLatencyMs,
     runtimeEnv: runtimeConfig.env,
+    runtimeStatus: runtimeReadiness.status,
     runtimeEnabled: runtimeConfig.enabled,
     runtimeLatencyMs: runtimeConfig.latencyMs,
     runtimeBypassReason: runtimeConfig.bypassReason,

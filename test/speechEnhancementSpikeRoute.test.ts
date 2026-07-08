@@ -74,6 +74,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         env: { featureFlag: string; latencyMs: string };
       };
       runtimeReadiness: {
+        status: string;
         enabled: boolean;
         latencyMs: number;
         liveDemoEligible: boolean;
@@ -193,6 +194,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS",
       },
     });
+    assert.equal(payload.runtimeReadiness.status, "disabled");
     assert.equal(payload.runtimeReadiness.enabled, false);
     assert.equal(payload.runtimeReadiness.latencyMs, 12.5);
     assert.equal(payload.runtimeReadiness.liveDemoEligible, false);
