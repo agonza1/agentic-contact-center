@@ -41,6 +41,8 @@ function parseArgs(argv) {
     expectPipecatTools: [],
     expectSpeechEnhancementMissingEvidence: [],
     expectSpeechEnhancementBlockers: [],
+    expectSpeechEnhancementPassingReplayIds: [],
+    expectSpeechEnhancementBlockedReplayIds: [],
     expectLatencyBudgetsMs: [],
     expectLatencyBudgetMaxMs: [],
   };
@@ -85,6 +87,8 @@ function parseArgs(argv) {
     '--expect-speech-enhancement-close-gate-max-cpu-percent-p95',
     '--expect-speech-enhancement-missing-evidence',
     '--expect-speech-enhancement-blocker',
+    '--expect-speech-enhancement-passing-replay-id',
+    '--expect-speech-enhancement-blocked-replay-id',
     '--expect-runtime-seam',
     '--expect-pipecat-tool',
     '--expect-latency-budget-ms',
@@ -347,6 +351,18 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-speech-enhancement-passing-replay-id' && next) {
+      args.expectSpeechEnhancementPassingReplayIds.push(next);
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-blocked-replay-id' && next) {
+      args.expectSpeechEnhancementBlockedReplayIds.push(next);
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-runtime-seam' && next) {
       args.expectRuntimeSeams.push(next);
       index += 1;
@@ -418,6 +434,8 @@ function hasJsonExpectations(args) {
     || args.expectPipecatTools.length > 0
     || args.expectSpeechEnhancementMissingEvidence.length > 0
     || args.expectSpeechEnhancementBlockers.length > 0
+    || args.expectSpeechEnhancementPassingReplayIds.length > 0
+    || args.expectSpeechEnhancementBlockedReplayIds.length > 0
     || args.expectLatencyBudgetsMs.length > 0
     || args.expectLatencyBudgetMaxMs.length > 0;
 }
@@ -767,6 +785,26 @@ async function getFailureReason(response, args) {
 
     if (!Array.isArray(blockers) || !blockers.includes(expectedBlocker)) {
       return `json_speechEnhancement_blockers_missing(expected=${JSON.stringify(expectedBlocker)},actual=${JSON.stringify(blockers)})`;
+    }
+  }
+
+  for (const expectedReplayId of args.expectSpeechEnhancementPassingReplayIds) {
+    const replayIds = payload.speechEnhancement && typeof payload.speechEnhancement === 'object'
+      ? payload.speechEnhancement.passingRealCaptureReplayIds
+      : undefined;
+
+    if (!Array.isArray(replayIds) || !replayIds.includes(expectedReplayId)) {
+      return `json_speechEnhancement_passingRealCaptureReplayIds_missing(expected=${JSON.stringify(expectedReplayId)},actual=${JSON.stringify(replayIds)})`;
+    }
+  }
+
+  for (const expectedReplayId of args.expectSpeechEnhancementBlockedReplayIds) {
+    const replayIds = payload.speechEnhancement && typeof payload.speechEnhancement === 'object'
+      ? payload.speechEnhancement.blockedRealCaptureReplayIds
+      : undefined;
+
+    if (!Array.isArray(replayIds) || !replayIds.includes(expectedReplayId)) {
+      return `json_speechEnhancement_blockedRealCaptureReplayIds_missing(expected=${JSON.stringify(expectedReplayId)},actual=${JSON.stringify(replayIds)})`;
     }
   }
 
