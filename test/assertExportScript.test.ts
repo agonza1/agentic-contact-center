@@ -53,6 +53,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
         "acc-voice-demo-008",
         "acc-voice-demo-009",
         "acc-voice-demo-010",
+        "acc-voice-demo-011",
       ],
     );
     assert.deepEqual(
@@ -68,6 +69,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
         "speech_enhancement_runtime_profile",
         "auth_boundary_handoff",
         "tool_timeout_fallback_recovery",
+        "turn_timeout_reprompt",
       ],
     );
     assert.ok(testSet.some((row) => row.seed.title === "Billing caller requires supervised handoff"));
@@ -77,6 +79,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
     assert.ok(testSet.some((row) => row.seed.title === "Noisy caller uses recommended speech enhancement"));
     assert.ok(testSet.some((row) => row.seed.title === "Caller offers partial authentication details"));
     assert.ok(testSet.some((row) => row.seed.title === "Tool timeout falls back with review evidence"));
+    assert.ok(testSet.some((row) => row.seed.title === "Silent caller gets a bounded reprompt"));
     assert.equal(inference.length, testSet.length);
     assert.ok(inference.every((row) => row.events.length > 0));
     assert.equal(scores.length, testSet.length);
@@ -90,7 +93,8 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
           row.score_keys.includes("correction_handling") &&
           row.score_keys.includes("speech_enhancement_profile") &&
           row.score_keys.includes("auth_boundary") &&
-          row.score_keys.includes("fallback_recovery"),
+          row.score_keys.includes("fallback_recovery") &&
+          row.score_keys.includes("turn_timeout_reprompt"),
       ),
     );
     assert.ok(scores.every((row) => row.verdict.node_judgments.some((judgment) => judgment.relevant)));
@@ -103,6 +107,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
     assert.match(configYaml, /speech_enhancement_profile:/);
     assert.match(configYaml, /auth_boundary:/);
     assert.match(configYaml, /fallback_recovery:/);
+    assert.match(configYaml, /turn_timeout_reprompt:/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

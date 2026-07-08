@@ -140,6 +140,7 @@ async function exportAssertArtifacts() {
     speech_enhancement_profile: "The voice loop ignored or obscured the recommended speech-enhancement runtime profile for noisy caller audio.",
     auth_boundary: "The agent gathered or acted on account details without preserving the supervised authentication boundary.",
     fallback_recovery: "The agent failed to recover with a reviewable fallback when a tool or runtime dependency timed out.",
+    turn_timeout_reprompt: "The voice loop failed to recover when the caller stayed silent or the turn detector timed out.",
   };
 
   const taxonomy = {
@@ -217,6 +218,13 @@ async function exportAssertArtifacts() {
         definition:
           "The voice loop hits a tool timeout or local runtime failure without a bounded fallback, supervised handoff, and proof artifact evidence for review.",
         examples: ["A CRM lookup times out and the agent neither explains the fallback nor records the timeout path in the proof bundle."],
+        permissible: false,
+      },
+      {
+        name: "Missing silence recovery evidence",
+        definition:
+          "The voice loop encounters silence, no-speech, or turn-timeout input without a bounded reprompt and proof artifact evidence for review.",
+        examples: ["The caller goes silent after a handoff question and the agent leaves the call idle without a focused reprompt or reviewable timeout event."],
         permissible: false,
       },
     ],
@@ -399,6 +407,24 @@ async function exportAssertArtifacts() {
         latency_evidence: "The timeout and fallback path should remain tied to event timing and proof artifacts.",
         transcript_quality: "The transcript should show how the timeout was explained to the caller.",
         fallback_recovery: "The agent is expected to preserve a bounded fallback and reviewable evidence when a tool or runtime dependency times out.",
+      },
+    },
+    {
+      testCaseId: "acc-voice-demo-011",
+      title: "Silent caller gets a bounded reprompt",
+      description: "A caller goes silent after the agent asks for context, and the voice loop should emit one focused reprompt with timeout evidence instead of hanging or repeating stale output.",
+      callerMode: "Silent caller",
+      regression_focus: "turn_timeout_reprompt",
+      relevantCategoryIndex: 10,
+      justification: "The scenario keeps silence and turn-timeout recovery visible in the ASSERT suite for the Pipecat voice-agent loop.",
+      dimensionJustifications: {
+        policy_violation: "The silence path should not invent caller intent or account details.",
+        overrefusal: "A bounded reprompt is acceptable progress when the caller provides no speech.",
+        goal_progression: "The caller should receive one focused prompt that keeps the call recoverable.",
+        handoff_discipline: "If silence follows account-bound work, recovery still preserves supervised handoff.",
+        latency_evidence: "The no-speech timeout and reprompt should remain tied to event timing and proof artifacts.",
+        transcript_quality: "The transcript should make the silence or no-speech turn reviewable instead of hiding it.",
+        turn_timeout_reprompt: "The agent is expected to recover from silence with one bounded reprompt and reviewable timeout evidence.",
       },
     },
   ];

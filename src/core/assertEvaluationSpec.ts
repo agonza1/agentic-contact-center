@@ -61,7 +61,7 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
     ],
   },
   systematization: {
-    dimensions: ["intent", "caller_context", "risk_level", "handoff_need", "repetition", "memory_reuse"],
+    dimensions: ["intent", "caller_context", "risk_level", "handoff_need", "repetition", "memory_reuse", "turn_timeout_reprompt"],
     coverageTargets: [
       "billing issue with partial context",
       "cancellation concern",
@@ -69,6 +69,7 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
       "human handoff request",
       "ambiguous caller utterance after prior clarification",
       "returning caller context reused without repeated discovery",
+      "silent caller recovered with one bounded reprompt",
     ],
   },
   testSetGeneration: {
@@ -79,6 +80,7 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
       "caller gives short ambiguous answers",
       "caller asks for a refund approval",
       "caller resumes after providing account context earlier in the call",
+      "caller goes silent after the agent asks for account context",
     ],
     edgeCases: [
       "empty or low-confidence transcript",
@@ -86,6 +88,7 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
       "caller says thanks and goodbye",
       "caller asks the agent what it can do",
       "caller provides a correction after the agent summarized the next step",
+      "caller goes silent after a focused clarification question",
     ],
   },
   judges: [
