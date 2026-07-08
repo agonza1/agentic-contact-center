@@ -102,7 +102,7 @@ async function exportAssertArtifacts() {
     const response = await requestJson(port, "POST", "/api/demo/run-end-to-end", {
       openclawSessionLabel: "assert-full-viewer/export",
     });
-    assert.equal(response.statusCode, 200);
+    assert.equal(response.statusCode, 201);
     return response.payload.call;
   });
 

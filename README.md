@@ -148,11 +148,12 @@ For an interactive free caller voice demo:
 
 The audio path is browser mic -> local Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS `say` local TTS -> browser playback. The bridge drops low-information STT fragments such as tiny filler words or dotted silence before they pollute the transcript. If the bridge is not running, typed **Caller transcript turn** entries still exercise the same call-flow API but are not a voice demo.
 
-The operator console includes a Mermaid **Demo Flow** diagram that shows where caller audio, the Pipecat bridge, the agent, the operator console, and ASSERT artifacts fit.
+The operator console includes a rendered **Demo Flow** diagram that shows where caller audio, the Pipecat bridge, the agent, the operator console, and ASSERT artifacts fit.
 
 ASSERT surfaces:
 
-- `http://localhost:8026/assert`: local artifact viewer with calls, proof, artifacts, transcript, events, and latency tabs.
+- `http://localhost:8026/assert/full`: wrapper for the upstream ASSERT local viewer. Run `npm run assert:export` to write `artifacts/results/...`, then `npm run assert:viewer` to start the real ASSERT viewer at `http://127.0.0.1:5174`.
+- `http://localhost:8026/assert`: ACC local artifact view with calls, proof, artifacts, transcript, events, and latency tabs.
 - `http://localhost:8026/assert/spec`: simplified editable eval spec with objective, success checks, failure checks, scenario seeds, prewritten blocks, generated `assert.yml`, and collapsed advanced judge/systematization settings.
 
 Useful health assertions:
@@ -223,7 +224,8 @@ The flow enters `policy_hold` before unsafe retention offers, requests operator 
 - `GET /api/realtime-shim/readiness`: summarize Issue #85 acceptance readiness, adapter shape, browser relay compatibility, reviewer packet, mocked pieces, and limitations from the proof evidence.
 - `GET /api/realtime-shim/speech-enhancement-spike`: summarize Issue #97 latency-configurable speech enhancement placement, candidate latency settings, replay metric shape, and feature-flag recommendation for rtc-asr.
 - `POST /api/realtime-shim/rpc`: exercise the `talk.session.*` Gateway relay RPC boundary with persistent local shim session state, including `talk.session.cancelInput` input-buffer cancellation, `talk.session.recordError` bounded Local STT failure evidence, and read-only `talk.session.getEvidence` QA snapshots.
-- `GET /assert`: serve the local ASSERT-style artifact viewer.
+- `GET /assert/full`: serve the local navigation wrapper around the upstream ASSERT viewer on `http://127.0.0.1:5174`.
+- `GET /assert`: serve the ACC local artifact viewer.
 - `GET /assert/spec`: serve the editable local ASSERT evaluation spec UI.
 - `GET /api/assert/spec`: return the active in-memory eval spec, reusable blocks, and generated YAML.
 - `POST /api/assert/spec/preview`: validate a draft eval spec and return generated YAML without saving.
@@ -316,6 +318,10 @@ The bundle writes `proof-bundle-manifest.json`, `conversation-agent-evals-assert
 - `npm run pipecat:check`: verify the local `pipecat-ai` runtime package boundary without live telephony.
 - `npm run pipecat:voice:install`: install Pipecat voice bridge dependencies into `.pipecat-runtime`.
 - `npm run pipecat:voice`: run the local browser voice bridge on `ws://127.0.0.1:8765`.
+- `npm run assert:export`: generate official ASSERT local-viewer artifacts under `artifacts/results/agentic-contact-center-voice-demo/...`.
+- `npm run assert:viewer:install`: clone and install the upstream ASSERT viewer into `.assert-viewer/`.
+- `npm run assert:viewer`: run the upstream ASSERT viewer against this repo's `artifacts/results` at `http://127.0.0.1:5174`.
+- `npm run assert:full`: export artifacts, then start the upstream ASSERT viewer.
 - `npm run proof:pipecat`: run `pipecat:check` before the proof harness.
 - `npm run proof:bundle`: convert a proof JSON file into a ConversationAgentEvals-ready evidence bundle with media artifacts.
 - `npm run health:smoke`: poll `http://127.0.0.1:8026/health`.
