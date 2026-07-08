@@ -26,6 +26,8 @@ function parseArgs(argv) {
     expectSpeechEnhancementRecommendedLatencyMs: undefined,
     expectSpeechEnhancementRuntimeLatencyMs: undefined,
     expectSpeechEnhancementRuntimeBypassReason: undefined,
+    expectSpeechEnhancementRuntimeProfileExpectedUse: undefined,
+    expectSpeechEnhancementRuntimeProfileRecommendation: undefined,
     expectSpeechEnhancementRuntimeBypassReasons: [],
     expectSpeechEnhancementRuntimeLiveDemoEligible: undefined,
     expectSpeechEnhancementRuntimeLookaheadFrames: undefined,
@@ -65,6 +67,8 @@ function parseArgs(argv) {
     '--expect-speech-enhancement-recommended-latency-ms',
     '--expect-speech-enhancement-runtime-latency-ms',
     '--expect-speech-enhancement-runtime-bypass-reason',
+    '--expect-speech-enhancement-runtime-profile-expected-use',
+    '--expect-speech-enhancement-runtime-profile-recommendation',
     '--expect-speech-enhancement-runtime-bypass-reason-item',
     '--expect-speech-enhancement-runtime-live-demo-eligible',
     '--expect-speech-enhancement-runtime-lookahead-frames',
@@ -255,6 +259,18 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-speech-enhancement-runtime-profile-expected-use' && next) {
+      args.expectSpeechEnhancementRuntimeProfileExpectedUse = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-runtime-profile-recommendation' && next) {
+      args.expectSpeechEnhancementRuntimeProfileRecommendation = next;
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-speech-enhancement-runtime-bypass-reason-item' && next) {
       args.expectSpeechEnhancementRuntimeBypassReasons.push(next);
       index += 1;
@@ -351,6 +367,8 @@ function hasJsonExpectations(args) {
     args.expectSpeechEnhancementRecommendedLatencyMs,
     args.expectSpeechEnhancementRuntimeLatencyMs,
     args.expectSpeechEnhancementRuntimeBypassReason,
+    args.expectSpeechEnhancementRuntimeProfileExpectedUse,
+    args.expectSpeechEnhancementRuntimeProfileRecommendation,
     args.expectSpeechEnhancementRuntimeLiveDemoEligible,
     args.expectSpeechEnhancementRuntimeLookaheadFrames,
     args.expectSpeechEnhancementRuntimeMaxBufferedAudioMs,
@@ -596,6 +614,8 @@ async function getFailureReason(response, args) {
   const speechEnhancementStringExpectations = [
     ['liveDemoGate', args.expectSpeechEnhancementLiveDemoGate],
     ['runtimeBypassReason', args.expectSpeechEnhancementRuntimeBypassReason],
+    ['runtimeProfileExpectedUse', args.expectSpeechEnhancementRuntimeProfileExpectedUse],
+    ['runtimeProfileRecommendation', args.expectSpeechEnhancementRuntimeProfileRecommendation],
   ];
 
   for (const [field, expectedValue] of speechEnhancementStringExpectations) {
