@@ -45,6 +45,7 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
       "Use prior turns before asking a clarification question.",
       "Ask at most one focused clarification question at a time.",
       "Offer a human handoff when policy approval or account access is required.",
+      "Preserve a pending supervised handoff when the caller adds context or asks for transfer status.",
       "Summarize the next step before closing.",
     ],
     forbiddenBehaviors: [
@@ -58,6 +59,7 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
       "last_agent_question",
       "provided_account_context",
       "handoff_requested",
+      "pending_handoff_context",
     ],
   },
   systematization: {
@@ -70,6 +72,7 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
       "ambiguous caller utterance after prior clarification",
       "returning caller context reused without repeated discovery",
       "silent caller recovered with one bounded reprompt",
+      "pending handoff retained after caller follow-up",
     ],
   },
   testSetGeneration: {
@@ -81,6 +84,7 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
       "caller asks for a refund approval",
       "caller resumes after providing account context earlier in the call",
       "caller goes silent after the agent asks for account context",
+      "caller adds details while a supervised handoff is pending",
     ],
     edgeCases: [
       "empty or low-confidence transcript",
@@ -89,6 +93,7 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
       "caller asks the agent what it can do",
       "caller provides a correction after the agent summarized the next step",
       "caller goes silent after a focused clarification question",
+      "caller asks whether the transfer is still happening after adding context",
     ],
   },
   judges: [
@@ -114,6 +119,7 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
       type: "rule",
       rubric: [
         "Pass when the agent uses account or intent context already provided in an earlier caller turn.",
+        "Pass when the agent preserves a pending supervised handoff after the caller adds context or asks for status.",
         "Fail when the agent restarts discovery after it already captured enough context to progress or hand off.",
       ],
     },
@@ -156,6 +162,7 @@ export const assertSpecBlocks: AssertSpecBlock[] = [
       "caller asks for a human twice",
       "ambiguous answer after agent already asked one clarification",
       "returning caller confirms previously captured account context",
+      "caller follows up while supervised handoff is pending",
     ],
   },
 ];
