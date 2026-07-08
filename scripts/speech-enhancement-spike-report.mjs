@@ -143,16 +143,29 @@ async function resolveCaptureReplayPaths() {
       throw new Error(`Capture replay directory is not a directory: ${directoryPath}`);
     }
 
-    const entries = await readdir(directoryPath, { withFileTypes: true });
-    directoryManifestPaths.push(
-      ...entries
-        .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-        .map((entry) => path.join(directoryPath, entry.name))
-        .sort(),
-    );
+    directoryManifestPaths.push(...await collectCaptureReplayManifestPaths(directoryPath));
   }
 
   return [...new Set([...explicitPaths, ...directoryManifestPaths])];
+}
+
+async function collectCaptureReplayManifestPaths(directoryPath) {
+  const entries = await readdir(directoryPath, { withFileTypes: true });
+  const manifestPaths = [];
+
+  for (const entry of entries) {
+    const entryPath = path.join(directoryPath, entry.name);
+    if (entry.isDirectory()) {
+      manifestPaths.push(...await collectCaptureReplayManifestPaths(entryPath));
+      continue;
+    }
+
+    if (entry.isFile() && entry.name.endsWith(".json")) {
+      manifestPaths.push(entryPath);
+    }
+  }
+
+  return manifestPaths.sort();
 }
 
 async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayPath, field) {
