@@ -65,14 +65,20 @@ test("GET /health returns config-backed demo metadata", async () => {
       reviewRoute: string;
       recommendedLatencyMs: number;
       runtimeEnv: { featureFlag: string; latencyMs: string };
+      runtimeStatus: string;
       runtimeEnabled: boolean;
       runtimeLatencyMs: number;
       runtimeBypassReason?: string;
       runtimeBypassReasons: string[];
       runtimeLookaheadFrames: number | null;
       runtimeMaxBufferedAudioMs: number | null;
+      runtimeProfileExpectedUse: string | null;
+      runtimeProfileRecommendation: string | null;
       runtimeProfileBypassWhen: string[];
       runtimeLiveDemoEligible: boolean;
+      closeGateRequiredLatencyMs: number;
+      closeGateMaxAddedTurnLatencyMsP95: number;
+      closeGateMaxCpuPercentP95: number;
       liveDemoGate: string;
       issueCloseReady: boolean;
       reviewChecks: { realNoisyCaptureReplay: boolean; cpuRuntimeCost: boolean };
@@ -114,6 +120,7 @@ test("GET /health returns config-backed demo metadata", async () => {
     featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT",
     latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS",
   });
+  assert.equal(payload.speechEnhancement.runtimeStatus, "disabled");
   assert.equal(payload.speechEnhancement.runtimeEnabled, false);
   assert.equal(payload.speechEnhancement.runtimeLatencyMs, 12.5);
   assert.equal(payload.speechEnhancement.runtimeBypassReason, "feature_flag_disabled");
@@ -123,12 +130,17 @@ test("GET /health returns config-backed demo metadata", async () => {
   ]);
   assert.equal(payload.speechEnhancement.runtimeLookaheadFrames, 1);
   assert.equal(payload.speechEnhancement.runtimeMaxBufferedAudioMs, 32.5);
+  assert.equal(payload.speechEnhancement.runtimeProfileExpectedUse, "default");
+  assert.equal(payload.speechEnhancement.runtimeProfileRecommendation, "recommended");
   assert.deepEqual(payload.speechEnhancement.runtimeProfileBypassWhen, [
     "added_turn_latency_p95_exceeds_candidate_budget",
     "enhanced_cpu_percent_p95_exceeds_80",
     "barge_in_or_endpointing_regresses",
   ]);
   assert.equal(payload.speechEnhancement.runtimeLiveDemoEligible, false);
+  assert.equal(payload.speechEnhancement.closeGateRequiredLatencyMs, 12.5);
+  assert.equal(payload.speechEnhancement.closeGateMaxAddedTurnLatencyMsP95, 25);
+  assert.equal(payload.speechEnhancement.closeGateMaxCpuPercentP95, 80);
   assert.equal(payload.speechEnhancement.liveDemoGate, "blocked_until_real_capture");
   assert.equal(payload.speechEnhancement.issueCloseReady, false);
   assert.equal(payload.speechEnhancement.reviewChecks.realNoisyCaptureReplay, false);

@@ -45,6 +45,10 @@ services:
         - "12.5"
         - --expect-speech-enhancement-runtime-bypass-reason
         - feature_flag_disabled
+        - --expect-speech-enhancement-runtime-profile-expected-use
+        - default
+        - --expect-speech-enhancement-runtime-profile-recommendation
+        - recommended
         - --expect-speech-enhancement-missing-evidence
         - real_noisy_local_sip_capture_baseline_vs_enhanced_replay
       interval: 10s

@@ -11,6 +11,8 @@ export interface SpeechEnhancementLatencyProfile {
   rtcAsrFrameMs: 20;
   lookaheadFrames: number;
   maxBufferedAudioMs: number;
+  expectedUse: SpeechEnhancementLatencyCandidate["expectedUse"];
+  recommendation: SpeechEnhancementLatencyCandidate["recommendation"];
   liveDemoEligible: boolean;
   bypassWhen: string[];
 }
@@ -209,6 +211,7 @@ export interface SpeechEnhancementRuntimeConfig {
 }
 
 export interface SpeechEnhancementRuntimeReadiness {
+  status: "disabled" | "blocked" | "ready";
   enabled: boolean;
   latencyMs: number;
   liveDemoEligible: boolean;
@@ -405,11 +408,14 @@ export function buildSpeechEnhancementRuntimeReadiness(
     selectedLatencyProfile && !selectedLatencyProfile.liveDemoEligible ? "latency_profile_not_live_demo_eligible" : null,
     report.replayCoverage.liveDemoGate === "eligible" ? null : report.replayCoverage.liveDemoGate,
   ].filter((reason): reason is string => reason !== null);
+  const liveDemoEligible =
+    runtimeConfig.enabled && selectedLatencyProfile?.liveDemoEligible === true && bypassReasons.length === 0;
 
   return {
+    status: !runtimeConfig.enabled ? "disabled" : liveDemoEligible ? "ready" : "blocked",
     enabled: runtimeConfig.enabled,
     latencyMs: runtimeConfig.latencyMs,
-    liveDemoEligible: runtimeConfig.enabled && selectedLatencyProfile?.liveDemoEligible === true && bypassReasons.length === 0,
+    liveDemoEligible,
     selectedLatencyProfile,
     frameBudget: {
       rtcAsrFrameMs: 20,
@@ -706,6 +712,8 @@ export function buildSpeechEnhancementSpikeReport(
     rtcAsrFrameMs: 20,
     lookaheadFrames: Math.ceil(candidate.algorithmicLatencyMs / 20),
     maxBufferedAudioMs: candidate.algorithmicLatencyMs + 20,
+    expectedUse: candidate.expectedUse,
+    recommendation: candidate.recommendation,
     liveDemoEligible: candidate.recommendation !== "avoid_for_live_turns",
     bypassWhen: [
       "added_turn_latency_p95_exceeds_candidate_budget",
@@ -917,14 +925,20 @@ export function buildSpeechEnhancementHealthSummary(): {
   reviewRoute: SpeechEnhancementReviewHandoff["reviewRoute"];
   recommendedLatencyMs: number;
   runtimeEnv: SpeechEnhancementRuntimeConfig["env"];
+  runtimeStatus: SpeechEnhancementRuntimeReadiness["status"];
   runtimeEnabled: boolean;
   runtimeLatencyMs: number;
   runtimeBypassReason?: SpeechEnhancementRuntimeConfig["bypassReason"];
   runtimeBypassReasons: string[];
   runtimeLookaheadFrames: number | null;
   runtimeMaxBufferedAudioMs: number | null;
+  runtimeProfileExpectedUse: SpeechEnhancementLatencyProfile["expectedUse"] | null;
+  runtimeProfileRecommendation: SpeechEnhancementLatencyProfile["recommendation"] | null;
   runtimeProfileBypassWhen: string[];
   runtimeLiveDemoEligible: boolean;
+  closeGateRequiredLatencyMs: number;
+  closeGateMaxAddedTurnLatencyMsP95: number;
+  closeGateMaxCpuPercentP95: number;
   liveDemoGate: string;
   issueCloseReady: boolean;
   reviewChecks: SpeechEnhancementReviewGate["checks"];
@@ -953,14 +967,20 @@ export function buildSpeechEnhancementHealthSummary(): {
     reviewRoute: handoff.reviewRoute,
     recommendedLatencyMs: report.decision.recommendedLatencyMs,
     runtimeEnv: runtimeConfig.env,
+    runtimeStatus: runtimeReadiness.status,
     runtimeEnabled: runtimeConfig.enabled,
     runtimeLatencyMs: runtimeConfig.latencyMs,
     runtimeBypassReason: runtimeConfig.bypassReason,
     runtimeBypassReasons: runtimeReadiness.bypassReasons,
     runtimeLookaheadFrames: runtimeReadiness.frameBudget.lookaheadFrames,
     runtimeMaxBufferedAudioMs: runtimeReadiness.frameBudget.maxBufferedAudioMs,
+    runtimeProfileExpectedUse: runtimeReadiness.selectedLatencyProfile?.expectedUse ?? null,
+    runtimeProfileRecommendation: runtimeReadiness.selectedLatencyProfile?.recommendation ?? null,
     runtimeProfileBypassWhen: runtimeReadiness.selectedLatencyProfile?.bypassWhen ?? [],
     runtimeLiveDemoEligible: runtimeReadiness.liveDemoEligible,
+    closeGateRequiredLatencyMs: report.closeGateProfile.requiredLatencySettingMs,
+    closeGateMaxAddedTurnLatencyMsP95: report.closeGateProfile.maxAddedTurnLatencyMsP95,
+    closeGateMaxCpuPercentP95: report.closeGateProfile.maxCpuPercentP95,
     liveDemoGate: report.replayCoverage.liveDemoGate,
     issueCloseReady: reviewGate.issueCloseReady,
     reviewChecks: reviewGate.checks,

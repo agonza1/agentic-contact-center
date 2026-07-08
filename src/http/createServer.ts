@@ -1,5 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
+import {
+  assertSpecBlocks,
+  assertSpecToYaml,
+  cloneAssertEvaluationSpec,
+  defaultAssertEvaluationSpec,
+  type AssertEvaluationSpec,
+} from "../core/assertEvaluationSpec";
 import { compareTimestamps, getAttentionMetadata } from "../core/attention";
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { LocalRealtimeShimPrototype } from "../core/localRealtimeShimPrototype";
@@ -40,6 +47,7 @@ const maxTranscriptPageLimit = 100;
 const maxLatencyMarkPageLimit = 100;
 const maxCallListPageLimit = 100;
 const operatorConsoleRefreshIntervalMs = 5000;
+let activeAssertEvaluationSpec = cloneAssertEvaluationSpec(defaultAssertEvaluationSpec);
 
 function buildRealtimeShimProofPayload(): object {
   const shim = new LocalRealtimeShimPrototype();
@@ -1002,6 +1010,8 @@ function buildOperatorConsoleHtml(): string {
     .brand { display: grid; gap: 2px; min-width: 220px; }
     .brand-kicker { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
     .toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+    .nav-link { display: inline-flex; align-items: center; min-height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--text); font-size: 13px; font-weight: 700; text-decoration: none; }
+    .nav-link:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow); }
     .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--panel-soft); }
     .panel h2 { margin: 0; font-size: 14px; font-weight: 750; }
@@ -1026,14 +1036,15 @@ function buildOperatorConsoleHtml(): string {
     .metric strong { display: block; font-size: 17px; line-height: 1.25; overflow-wrap: anywhere; }
     .metric.compact strong { font-size: 14px; }
     .workbench { display: grid; grid-template-columns: minmax(260px, 0.85fr) minmax(360px, 1.15fr); gap: 14px; align-items: start; }
-    .stack { display: grid; gap: 10px; }
+    .workbench.single { grid-template-columns: minmax(0, 1fr); }
+    .stack { display: grid; gap: 10px; width: 100%; min-width: 0; }
     .section { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fff; }
     .section-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; font-size: 13px; font-weight: 760; color: var(--text); }
     .proof-panel { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fff; }
     .proof-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
     .proof-header h3 { margin: 0; font-size: 15px; }
     .badges { display: flex; gap: 6px; flex-wrap: wrap; }
-    .badge { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .badge { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--muted); font-size: 12px; font-weight: 700; text-decoration: none; }
     .badge.live, .badge.ok { color: var(--ok); border-color: #9bd7b6; background: var(--ok-soft); }
     .badge.warn { color: var(--warning); border-color: #f2c479; background: var(--warning-soft); }
     .proof-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
@@ -1043,6 +1054,9 @@ function buildOperatorConsoleHtml(): string {
     .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .scripted-turns { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
     .scripted-turns button { text-align: left; padding: 8px; }
+    .diagram { overflow: visible; }
+    .diagram .section-title { font-size: 15px; }
+    .demo-flow-svg { display: block; width: 100%; max-width: 980px; height: auto; min-height: 250px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
     .transcript { display: grid; gap: 8px; max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: var(--panel-soft); }
     .turn { display: grid; gap: 3px; max-width: 82%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
     .turn.caller { justify-self: start; border-left: 4px solid var(--accent); }
@@ -1059,14 +1073,14 @@ function buildOperatorConsoleHtml(): string {
 <body>
   <header>
     <div class="brand"><span class="brand-kicker">Agentic Contact Center</span><h1>Operator Console</h1></div>
-    <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" class="primary" id="start-demo">Start Demo Call</button><button type="button" id="refresh">Refresh</button></div>
+    <div class="toolbar"><a class="nav-link" href="/assert/full">Full ASSERT</a><a class="nav-link" href="/assert">ACC Artifacts</a><a class="nav-link" href="/assert/spec">Eval Spec</a><span class="status" id="status">Loading</span><button type="button" class="primary" id="run-demo-flow">Run Demo Flow</button><button type="button" id="start-demo">Start Empty Call</button><button type="button" id="refresh">Refresh</button></div>
   </header>
   <main>
     <section class="panel" aria-label="Live calls"><div class="panel-header"><h2>Live Calls</h2><span class="queue-count" id="queue-count">0 queued</span></div><div class="filters"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Attention only</label><label class="filter-toggle"><input type="checkbox" id="latency-over-budget-filter">Over-budget latency</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><select id="fallback-filter" aria-label="Fallback mode filter"><option value="">All fallback modes</option><option value="tool_timeout">Tool Timeout</option><option value="runtime_failure">Runtime Failure</option></select><select id="fallback-source-filter" aria-label="Fallback source filter"><option value="">All fallback sources</option><option value="tool_timeout_fail_closed">Tool Timeout Source</option><option value="pipecat_runtime_failure_fail_closed">Runtime Failure Source</option></select><input id="fallback-reason-filter" aria-label="Fallback reason filter" placeholder="Fallback reason"><select id="tool-filter" aria-label="Active tool filter"><option value="">All active tools</option><option value="get_current_slide">Get Current Slide</option><option value="goto_slide">Go To Slide</option><option value="pause_presentation">Pause Presentation</option><option value="ask_operator">Ask Operator</option></select><select id="script-completed-filter" aria-label="Script status filter"><option value="">All script states</option><option value="false">In progress</option><option value="true">Complete</option></select><select id="script-progress-filter" aria-label="Script minimum progress filter"><option value="">Any min progress</option><option value="25">25%+ scripted</option><option value="50">50%+ scripted</option><option value="75">75%+ scripted</option><option value="100">100% scripted</option></select><select id="script-max-progress-filter" aria-label="Script maximum progress filter"><option value="">Any max progress</option><option value="0">0% or less scripted</option><option value="25">25% or less scripted</option><option value="50">50% or less scripted</option><option value="75">75% or less scripted</option></select><input id="transcript-filter" placeholder="Transcript search"><button type="button" id="clear-filters">Clear</button></div><div class="call-list" id="calls"></div></section>
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs} };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 3500, voiceStatus: "Voice disconnected", transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
     const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
@@ -1114,9 +1128,27 @@ function buildOperatorConsoleHtml(): string {
       });
     }
     function hasDirtyDetailInput() {
+      if (state.voiceConnecting || state.voiceProcessing || !state.voiceMuted || (state.voiceRecording && state.voiceRecording.state === "recording")) return true;
       return ["caller-turn", "note", "disposition"].some(function(id) {
         const input = document.getElementById(id);
         return input && (document.activeElement === input || input.value.trim());
+      });
+    }
+    function captureTranscriptScroll() {
+      const transcript = document.querySelector("#detail .transcript");
+      if (!transcript) return;
+      state.transcriptScrollTop = transcript.scrollTop;
+      state.transcriptStickToBottom = transcript.scrollTop + transcript.clientHeight >= transcript.scrollHeight - 24;
+    }
+    function restoreTranscriptScroll(callId) {
+      const transcript = document.querySelector("#detail .transcript");
+      if (!transcript) return;
+      state.transcriptCallId = callId;
+      const maxScroll = Math.max(0, transcript.scrollHeight - transcript.clientHeight);
+      transcript.scrollTop = state.transcriptStickToBottom ? maxScroll : Math.min(state.transcriptScrollTop || 0, maxScroll);
+      transcript.addEventListener("scroll", function() {
+        state.transcriptScrollTop = transcript.scrollTop;
+        state.transcriptStickToBottom = transcript.scrollTop + transcript.clientHeight >= transcript.scrollHeight - 24;
       });
     }
     async function refresh(options) {
@@ -1149,6 +1181,15 @@ function buildOperatorConsoleHtml(): string {
       state.selectedCallId = payload.session.callId;
       await refresh();
     }
+    async function runDemoFlow() {
+      setStatus("Running full demo flow");
+      const response = await fetch("/api/demo/run-end-to-end", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ openclawSessionLabel: "operator-console/end-to-end" }) });
+      if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); setStatus(payload.error || "Demo flow failed"); return; }
+      const payload = await response.json();
+      state.selectedCallId = payload.call.session.callId;
+      await refresh();
+      setStatus("Demo flow complete");
+    }
     async function recordCallerTurn(event) {
       event.preventDefault();
       const call = selectedCall();
@@ -1161,6 +1202,126 @@ function buildOperatorConsoleHtml(): string {
     async function postCallerTurn(callId, text) {
       const response = await fetch("/api/calls/" + callId + "/caller-turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: text }) });
       if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); const message = payload.error || "Caller turn failed"; setStatus(message); throw new Error(message); }
+    }
+    function voiceBridgeUrl() { return "ws://" + window.location.hostname + ":8765"; }
+    function playAgentAudio(agentAudio, onEnded) {
+      if (!agentAudio || !agentAudio.base64) { if (onEnded) onEnded(); return; }
+      const audio = new Audio("data:" + (agentAudio.contentType || "audio/wav") + ";base64," + agentAudio.base64);
+      audio.onended = function() { if (onEnded) onEnded(); };
+      audio.onerror = function() { if (onEnded) onEnded(); };
+      audio.play().catch(function(error) { setStatus("Agent audio blocked: " + error.message); if (onEnded) onEnded(); });
+    }
+    function stopVoiceSegment() {
+      if (state.voiceRecording && state.voiceRecording.state === "recording") {
+        state.voiceRecording.stop();
+      }
+    }
+    function stopVoiceStream() {
+      stopVoiceSegment();
+      if (state.voiceStream) {
+        state.voiceStream.getTracks().forEach(function(track) { track.stop(); });
+        state.voiceStream = null;
+      }
+      state.voiceRecording = null;
+      state.voiceChunks = [];
+    }
+    async function ensureVoiceStream() {
+      if (!state.voiceStream) {
+        state.voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+      return state.voiceStream;
+    }
+    async function startVoiceSegment() {
+      if (state.voiceMuted || state.voiceProcessing || !state.voiceWs || state.voiceWs.readyState !== WebSocket.OPEN) return;
+      if (state.voiceRecording && state.voiceRecording.state === "recording") return;
+      const stream = await ensureVoiceStream();
+      const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : undefined });
+      state.voiceChunks = [];
+      state.voiceRecording = recorder;
+      recorder.ondataavailable = function(event) { if (event.data.size > 0) state.voiceChunks.push(event.data); };
+      recorder.onstop = async function() {
+        if (state.voiceRecording === recorder) state.voiceRecording = null;
+        if (state.voiceMuted || !state.voiceChunks.length || !state.voiceWs || state.voiceWs.readyState !== WebSocket.OPEN) return;
+        const blob = new Blob(state.voiceChunks, { type: recorder.mimeType || "audio/webm" });
+        state.voiceChunks = [];
+        const buffer = await blob.arrayBuffer();
+        state.voiceProcessing = true;
+        state.voiceStatus = "Thinking";
+        setStatus("Sent caller audio to local STT");
+        state.voiceWs.send(buffer);
+        render();
+      };
+      recorder.start();
+      state.voiceStatus = "Listening";
+      setStatus("Listening");
+      render();
+      window.setTimeout(function() {
+        if (state.voiceRecording === recorder && recorder.state === "recording") recorder.stop();
+      }, state.voiceSegmentMs);
+    }
+    async function connectPipecatVoice() {
+      const call = selectedCall();
+      if (!call) { await startDemoCall(); }
+      const activeCall = selectedCall();
+      state.voiceConnecting = true;
+      state.voiceStatus = "Connecting to Pipecat voice bridge";
+      await ensureVoiceStream();
+      const ws = new WebSocket(voiceBridgeUrl());
+      state.voiceWs = ws;
+      ws.onopen = function() {
+        ws.send(JSON.stringify({ type: "start", accUrl: window.location.origin, callId: activeCall ? activeCall.session.callId : null }));
+        state.voiceConnecting = false;
+        state.voiceStatus = "Connected to Pipecat voice bridge";
+        setStatus("Pipecat voice bridge connected");
+      };
+      ws.onmessage = async function(event) {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "started") {
+          state.voiceCallId = payload.callId;
+          state.selectedCallId = payload.callId;
+          state.voiceMuted = false;
+          state.voiceStatus = "Voice call " + payload.callId + " connected. Listening";
+          await refresh();
+          await startVoiceSegment();
+          return;
+        }
+        if (payload.type === "turn" && payload.ok) {
+          state.selectedCallId = payload.callId;
+          state.voiceProcessing = false;
+          state.voiceStatus = "Agent responding";
+          setStatus("Caller: " + payload.callerTranscript);
+          playAgentAudio(payload.agentAudio, function() {
+            if (!state.voiceMuted) startVoiceSegment().catch(function(error) { setStatus(error.message); });
+          });
+          await refresh();
+          return;
+        }
+        if (payload.type === "error" || payload.ok === false) {
+          state.voiceProcessing = false;
+          state.voiceStatus = payload.error || "Pipecat voice turn failed";
+          setStatus(payload.error || "Pipecat voice turn failed");
+          if (!state.voiceMuted) startVoiceSegment().catch(function(error) { setStatus(error.message); });
+        }
+      };
+      ws.onclose = function() { state.voiceConnecting = false; state.voiceProcessing = false; state.voiceMuted = true; stopVoiceStream(); if (state.voiceWs === ws) state.voiceWs = null; state.voiceStatus = "Pipecat voice bridge disconnected"; setStatus("Pipecat voice bridge disconnected"); };
+      ws.onerror = function() { state.voiceConnecting = false; state.voiceStatus = "Pipecat voice bridge unavailable. Run npm run pipecat:voice"; setStatus(state.voiceStatus); };
+    }
+    async function togglePipecatMute() {
+      if (!state.voiceWs || state.voiceWs.readyState !== WebSocket.OPEN) {
+        await connectPipecatVoice();
+        return;
+      }
+      state.voiceMuted = !state.voiceMuted;
+      if (state.voiceMuted) {
+        stopVoiceSegment();
+        state.voiceStatus = "Muted";
+        setStatus("Caller muted");
+        render();
+        return;
+      }
+      state.voiceStatus = "Listening";
+      setStatus("Caller unmuted");
+      await startVoiceSegment();
     }
     async function postScriptedTurn(expectedTurnIndex) {
       const call = selectedCall();
@@ -1192,11 +1353,33 @@ function buildOperatorConsoleHtml(): string {
       }).join("") || '<div class="meta" style="padding:14px">No active calls</div>';
       root.querySelectorAll("button[data-call-id]").forEach(function(button) { button.addEventListener("click", function() { state.selectedCallId = button.dataset.callId; render(); }); });
     }
+    function voiceControlsHtml() {
+      const muteLabel = state.voiceMuted ? "Unmute Caller" : "Mute Caller";
+      return '<section class="section"><h3 class="section-title">Pipecat Voice Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute">' + muteLabel + '</button></div><span class="status">' + escapeHtml(state.voiceStatus) + '</span><span class="meta">Requires local bridge: npm run pipecat:voice. Audio path is browser mic -> Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS say local TTS -> browser playback.</span></section><section class="section diagram"><h3 class="section-title">Demo Flow</h3><svg class="demo-flow-svg" viewBox="0 0 980 360" role="img" aria-label="Caller audio flows through Pipecat, local STT, the agent, local TTS, operator controls, and ASSERT artifacts" preserveAspectRatio="xMidYMid meet"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0969da"/></marker><style>.node{fill:#ffffff;stroke:#d0d7de;stroke-width:2}.primaryNode{fill:#ddf4ff;stroke:#0969da;stroke-width:2}.artifactNode{fill:#dafbe1;stroke:#1a7f37;stroke-width:2}.label{font:700 17px system-ui,sans-serif;fill:#24292f}.small{font:600 13px system-ui,sans-serif;fill:#57606a}.line{stroke:#0969da;stroke-width:3;fill:none;marker-end:url(#arrow)}.softLine{stroke:#57606a;stroke-width:2.5;stroke-dasharray:7 6;fill:none;marker-end:url(#arrow)}</style></defs><rect class="primaryNode" x="30" y="58" width="145" height="82" rx="10"/><text class="label" x="103" y="92" text-anchor="middle">Caller</text><text class="small" x="103" y="116" text-anchor="middle">browser mic</text><rect class="node" x="225" y="58" width="150" height="82" rx="10"/><text class="label" x="300" y="88" text-anchor="middle">Pipecat</text><text class="small" x="300" y="112" text-anchor="middle">voice bridge</text><rect class="node" x="425" y="58" width="150" height="82" rx="10"/><text class="label" x="500" y="88" text-anchor="middle">Local STT</text><text class="small" x="500" y="112" text-anchor="middle">MLX Whisper</text><rect class="primaryNode" x="625" y="58" width="150" height="82" rx="10"/><text class="label" x="700" y="88" text-anchor="middle">Agent</text><text class="small" x="700" y="112" text-anchor="middle">goal + memory</text><rect class="node" x="825" y="58" width="125" height="82" rx="10"/><text class="label" x="888" y="88" text-anchor="middle">Local TTS</text><text class="small" x="888" y="112" text-anchor="middle">macOS say</text><rect class="artifactNode" x="515" y="225" width="170" height="82" rx="10"/><text class="label" x="600" y="255" text-anchor="middle">Artifacts</text><text class="small" x="600" y="279" text-anchor="middle">proof + transcript</text><rect class="artifactNode" x="742" y="225" width="178" height="82" rx="10"/><text class="label" x="831" y="255" text-anchor="middle">ASSERT</text><text class="small" x="831" y="279" text-anchor="middle">viewer + eval spec</text><rect class="node" x="210" y="225" width="180" height="82" rx="10"/><text class="label" x="300" y="255" text-anchor="middle">Operator</text><text class="small" x="300" y="279" text-anchor="middle">listen / steer</text><path class="line" d="M175 99 H225"/><path class="line" d="M375 99 H425"/><path class="line" d="M575 99 H625"/><path class="line" d="M775 99 H825"/><path class="line" d="M888 140 C888 178 816 178 775 140"/><path class="line" d="M700 140 V225"/><path class="line" d="M685 266 H742"/><path class="softLine" d="M390 266 C470 266 520 185 625 120"/></svg></section>';
+    }
+    function attachVoiceControls() {
+      const connect = document.getElementById("voice-connect");
+      const mute = document.getElementById("voice-mute");
+      if (connect) connect.addEventListener("click", function() { connectPipecatVoice().catch(function(error) { setStatus(error.message); }); });
+      if (mute) mute.addEventListener("click", function() { togglePipecatMute().catch(function(error) { setStatus(error.message); }); });
+    }
     function renderDetail() {
       const call = selectedCall();
+      const callId = call ? call.session.callId : null;
+      if (state.transcriptCallId === callId) {
+        captureTranscriptScroll();
+      } else {
+        state.transcriptCallId = callId;
+        state.transcriptScrollTop = 0;
+        state.transcriptStickToBottom = true;
+      }
       document.getElementById("selected-title").textContent = call ? call.session.callId : "Select a call";
       const root = document.getElementById("detail");
-      if (!call) { root.innerHTML = ""; return; }
+      if (!call) {
+        root.innerHTML = '<div class="workbench single"><div class="stack">' + voiceControlsHtml() + '</div></div>';
+        attachVoiceControls();
+        return;
+      }
       const actionDetails = Object.fromEntries((call.actionState.actionDetails || []).map(function(entry) { return [entry.action, entry]; }));
       const unavailable = new Set(call.actionState.unavailableActions.map(function(entry) { return entry.action; }));
       const unavailableReasons = Object.fromEntries(call.actionState.unavailableActions.map(function(entry) { return [entry.action, entry.reason]; }));
@@ -1235,6 +1418,7 @@ function buildOperatorConsoleHtml(): string {
       const asrDetail = liveProof.asr && (liveProof.asr.latestTranscriptText || liveProof.asr.blocker || liveProof.asr.nextAction) ? (liveProof.asr.latestTranscriptText || liveProof.asr.blocker || liveProof.asr.nextAction) : "no ASR events yet";
       const liveProofHtml = '<section class="proof-panel" aria-label="Live SIP proof"><div class="proof-header"><h3>Live SIP proof</h3><div class="badges"><span class="' + badgeClass + '">' + escapeHtml(liveProof.eval ? liveProof.eval.status : "not_review_ready") + '</span>' + labelBadges + '</div></div><div class="proof-grid"><div class="metric"><span class="meta">Run / Session</span><strong>' + escapeHtml((liveProof.run && liveProof.run.sessionId) || call.session.openclawSession.sessionId) + '</strong><span class="meta">Call: ' + escapeHtml((liveProof.run && liveProof.run.callId) || call.session.callId) + '</span><span class="meta">Provider: ' + escapeHtml((liveProof.run && liveProof.run.providerCallId) || call.session.providerCallId) + '</span></div><div class="metric"><span class="meta">Audio Capture</span><strong>' + escapeHtml(humanLabel(liveProof.audioCapture && liveProof.audioCapture.status)) + '</strong>' + pathHtml(liveProof.audioCapture && liveProof.audioCapture.audioWavPath, "WAV") + pathHtml(liveProof.audioCapture && liveProof.audioCapture.sipLogPath, "SIP log") + linkHtml(liveProof.audioCapture && liveProof.audioCapture.eventTrail, "Capture Events") + '</div><div class="metric"><span class="meta">Transcript / ASR</span><strong>' + escapeHtml(humanLabel(liveProof.asr && liveProof.asr.status)) + '</strong><span class="meta">' + escapeHtml(asrDetail) + '</span>' + pathHtml(liveProof.asr && liveProof.asr.evidencePath, "ASR evidence") + linkHtml(liveProof.asr && liveProof.asr.eventTrail, "ASR Events") + '</div><div class="metric"><span class="meta">Artifacts / Eval</span><strong>' + escapeHtml(isLiveProofReady ? "Reviewable" : "Blocked") + '</strong>' + linkHtml(liveProof.eval && liveProof.eval.proofRoute, "Proof") + linkHtml(liveProof.eval && liveProof.eval.artifactManifestRoute, "Artifacts") + linkHtml(liveProof.eval && liveProof.eval.transcriptRoute, "Transcript") + '</div><div class="metric"><span class="meta">Handoff State</span><strong>' + escapeHtml(humanLabel(liveProof.operator && liveProof.operator.handoffState)) + '</strong><span class="meta">Attention: ' + escapeHtml(liveProof.operator && liveProof.operator.attentionRequired ? "required" : "clear") + '</span><span class="meta">Pending: ' + escapeHtml((liveProof.operator && liveProof.operator.pendingAction) || "none") + '</span></div></div>' + caveatsHtml + '</section>';
       const evidenceHtml = '<div class="evidence" aria-label="Evidence markers"><div class="metric"><span class="meta">Latest Event</span><strong>' + escapeHtml(evidence.latestEventType || "none") + '</strong><span class="meta">' + escapeHtml(evidence.latestEventAt || "not recorded") + '</span><a href="' + escapeHtml(latestEventLink) + '">Event Trail</a></div><div class="metric"><span class="meta">Transcript Turns</span><strong>' + evidence.transcriptTurns + '</strong><a href="' + escapeHtml(evidenceLinks.transcript) + '">Transcript</a></div><div class="metric"><span class="meta">Latency Marks</span><strong>' + evidence.latencyMarkCount + '</strong><span class="meta">Over budget: ' + evidence.overBudgetLatencyMarkCount + '</span><a href="' + escapeHtml(latencyLink) + '">Latency</a></div><div class="metric"><span class="meta">Fallback</span><strong>' + escapeHtml(fallbackLabel) + '</strong><span class="meta">' + escapeHtml(fallbackDetail) + '</span><a href="' + escapeHtml(fallbackTrailLink) + '">Event Trail</a><a href="' + escapeHtml(fallbackQueueLink) + '">Fallback Queue</a>' + reasonTrailHtml + '</div><div class="metric"><span class="meta">Operator Notes</span><strong>' + evidence.operatorNoteCount + '</strong><span class="meta">' + escapeHtml(evidence.latestDisposition || evidence.latestOperatorNoteText || "none") + '</span><a href="' + escapeHtml(operatorNoteTrailLink) + '">Note Trail</a></div><div class="metric"><span class="meta">Proof Bundle</span><strong>' + evidence.eventCount + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Proof</a><a href="' + escapeHtml(evidenceLinks.artifacts) + '">Artifacts</a></div></div>';
+      const assertHtml = '<section class="proof-panel" aria-label="Assert UI"><div class="proof-header"><h3>Assert UI</h3><div class="badges"><a class="badge" href="/assert/full">Full ASSERT</a><a class="badge" href="/assert">ACC Artifacts</a><a class="badge" href="/assert/spec">Eval Spec</a><span class="badge ok">' + escapeHtml(call.flowState === "wrap" && call.pipecatFlow.script.completed ? "call complete" : "collecting evidence") + '</span><span class="badge">' + escapeHtml(call.pipecatFlow.prototypeMode) + '</span></div></div><div class="proof-grid"><div class="metric"><span class="meta">Call State</span><strong>' + escapeHtml(call.flowState) + '</strong><span class="meta">Script: ' + escapeHtml(call.pipecatFlow.script.completed ? "complete" : "in progress") + '</span><span class="meta">Attention: ' + escapeHtml(call.attention.required ? "required" : "clear") + '</span></div><div class="metric"><span class="meta">Evidence Counts</span><strong>' + evidence.eventCount + ' events</strong><span class="meta">' + evidence.transcriptTurns + ' transcript turns</span><span class="meta">' + evidence.latencyMarkCount + ' latency marks</span></div><div class="metric"><span class="meta">Artifacts</span><strong>' + escapeHtml(evidence.operatorNoteCount > 0 ? "Disposition captured" : "No disposition yet") + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Open Proof JSON</a><a href="' + escapeHtml(evidenceLinks.artifacts) + '">Open Artifact Manifest</a><a href="' + escapeHtml(evidenceLinks.transcript) + '">Open Transcript JSON</a></div><div class="metric"><span class="meta">Assert Inputs</span><strong>' + escapeHtml(liveProof.eval && liveProof.eval.status ? liveProof.eval.status : "local proof bundle") + '</strong><span class="meta">Use npm run assert:export to write official ASSERT viewer artifacts, then npm run assert:viewer to browse them.</span></div></div></section>';
       const scriptedState = call.actionState.scriptedCallerTurnState || { matchedTurns: 0, totalTurns: (state.scriptedCallerTurns || []).length, remainingTurns: (state.scriptedCallerTurns || []).length, progressPct: 0, nextTurnIndex: 0, nextTurnText: null, completed: false };
       const scriptedTurns = (state.scriptedCallerTurns || []).map(function(text, index) {
         const isCompleted = index < scriptedState.matchedTurns;
@@ -1244,11 +1428,13 @@ function buildOperatorConsoleHtml(): string {
         return '<button type="button" data-scripted-turn="' + index + '" ' + disabled + '><span class="meta">' + status + ' | Turn ' + (index + 1) + '</span><br>' + escapeHtml(text) + '</button>';
       }).join("");
       const scriptedMetric = '<div class="metric"><span class="meta">Scripted Turns</span><strong>' + scriptedState.progressPct + '%</strong><span class="meta">' + scriptedState.matchedTurns + '/' + scriptedState.totalTurns + ' sent | ' + scriptedState.remainingTurns + ' remaining</span><span class="meta">' + escapeHtml(scriptedState.completed ? "complete" : scriptedState.nextTurnText || "queued") + '</span></div>';
-      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + runtimeMetric + scriptedMetric + pendingHtml + '</div><div class="workbench"><div class="stack"><section class="section"><h3 class="section-title">Operator Actions</h3><div class="actions">' + actionHtml + '</div></section><section class="section"><h3 class="section-title">Caller Script</h3><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></section><section class="section"><h3 class="section-title">Disposition</h3><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></section></div><div class="stack">' + liveProofHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section></div></div>';
+      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + runtimeMetric + scriptedMetric + pendingHtml + '</div><div class="workbench"><div class="stack">' + voiceControlsHtml() + '<section class="section"><h3 class="section-title">Operator Actions</h3><div class="actions">' + actionHtml + '</div></section><section class="section"><h3 class="section-title">Caller Script</h3><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></section><section class="section"><h3 class="section-title">Disposition</h3><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></section></div><div class="stack">' + assertHtml + liveProofHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section></div></div>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\\n\\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       root.querySelectorAll("button[data-scripted-turn]").forEach(function(button) { button.addEventListener("click", function() { const index = Number(button.dataset.scriptedTurn); if (Number.isInteger(index)) postScriptedTurn(index).catch(function(error) { setStatus(error.message); }); }); });
+      attachVoiceControls();
       document.getElementById("caller-turn-form").addEventListener("submit", recordCallerTurn);
       document.getElementById("note-form").addEventListener("submit", recordNote);
+      restoreTranscriptScroll(call.session.callId);
     }
     function render() { renderCalls(); renderDetail(); }
     function scheduleRefresh() {
@@ -1257,6 +1443,7 @@ function buildOperatorConsoleHtml(): string {
       state.refreshTimer = setTimeout(function() { refresh({ auto: true }).catch(function(error) { setStatus(error.message); scheduleRefresh(); }); }, state.refreshIntervalMs || 5000);
     }
     document.addEventListener("visibilitychange", function() { if (document.hidden && state.refreshTimer) clearTimeout(state.refreshTimer); else refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("run-demo-flow").addEventListener("click", function() { runDemoFlow().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("start-demo").addEventListener("click", function() { startDemoCall().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("refresh").addEventListener("click", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("attention-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
@@ -1272,6 +1459,320 @@ function buildOperatorConsoleHtml(): string {
     document.getElementById("script-max-progress-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("clear-filters").addEventListener("click", function() { document.getElementById("attention-filter").checked = false; document.getElementById("latency-over-budget-filter").checked = false; document.getElementById("flow-filter").value = ""; document.getElementById("fallback-filter").value = ""; document.getElementById("fallback-source-filter").value = ""; document.getElementById("fallback-reason-filter").value = ""; document.getElementById("tool-filter").value = ""; document.getElementById("script-completed-filter").value = ""; document.getElementById("script-progress-filter").value = ""; document.getElementById("script-max-progress-filter").value = ""; document.getElementById("transcript-filter").value = ""; refresh().catch(function(error) { setStatus(error.message); }); });
     refresh().catch(function(error) { setStatus(error.message); });
+  </script>
+</body>
+</html>`;
+}
+
+function buildAssertFullViewerHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Full ASSERT Viewer</title>
+  <style>
+    :root { --line: #d0d7de; --text: #24292f; --muted: #57606a; --bg: #f6f8fa; --panel: #fff; --accent: #0969da; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; grid-template-rows: auto minmax(0, 1fr); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--text); background: var(--bg); }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    h1 { margin: 0; font-size: 17px; letter-spacing: 0; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    a { display: inline-flex; align-items: center; min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); font-size: 13px; font-weight: 700; text-decoration: none; }
+    a.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .frame-wrap { min-height: 0; padding: 10px; }
+    iframe { width: 100%; height: 100%; min-height: calc(100vh - 82px); border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    @media (max-width: 760px) { header { align-items: stretch; flex-direction: column; } .toolbar { align-items: stretch; } a { justify-content: center; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>Full ASSERT Viewer</h1><div class="muted">Runs the upstream ASSERT viewer against local artifacts/results. Start it with npm run assert:viewer after npm run assert:export.</div></div>
+    <div class="toolbar"><a href="/operator/console">Operator</a><a href="/assert/spec">Eval Spec</a><a href="/assert">ACC Artifacts</a><a class="primary" href="http://127.0.0.1:5174" target="_blank" rel="noreferrer">Open Viewer</a></div>
+  </header>
+  <main class="frame-wrap"><iframe title="Upstream ASSERT viewer" src="http://127.0.0.1:5174"></iframe></main>
+</body>
+</html>`;
+}
+
+function buildAssertViewerHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ASSERT Viewer</title>
+  <style>
+    :root { --bg: #f6f8fa; --panel: #fff; --text: #24292f; --muted: #57606a; --line: #d0d7de; --accent: #0969da; --ok: #1a7f37; --warn: #9a6700; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    h1 { margin: 0; font-size: 18px; letter-spacing: 0; }
+    a { color: var(--accent); text-decoration: none; font-weight: 650; }
+    main { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); min-height: calc(100vh - 58px); }
+    aside { border-right: 1px solid var(--line); background: var(--panel); overflow: auto; }
+    section { min-width: 0; }
+    button, select { font: inherit; }
+    button { border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); cursor: pointer; }
+    button:hover { border-color: var(--accent); }
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .run { display: grid; gap: 6px; width: 100%; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; text-align: left; }
+    .run[aria-selected="true"] { border-left: 4px solid var(--accent); padding-left: 10px; background: #ddf4ff; }
+    .muted { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .badge { display: inline-flex; align-items: center; width: fit-content; min-height: 22px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .badge.ok { color: var(--ok); border-color: #4ac26b; background: #dafbe1; }
+    .badge.warn { color: var(--warn); border-color: #d4a72c; background: #fff8c5; }
+    .content { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; }
+    .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    .card { border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fff; min-width: 0; }
+    .card strong { display: block; font-size: 18px; overflow-wrap: anywhere; }
+    .tabs { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: #fff; overflow: auto; }
+    .tabs button { padding: 7px 10px; white-space: nowrap; }
+    .tabs button[aria-selected="true"] { color: #fff; border-color: var(--accent); background: var(--accent); }
+    pre { margin: 0; padding: 14px; overflow: auto; min-height: 0; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #0d1117; color: #e6edf3; }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } aside { max-height: 260px; border-right: 0; border-bottom: 1px solid var(--line); } .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>ACC Artifact View</h1><div class="muted">Local ACC proof artifacts and call eval evidence; use Full ASSERT for the upstream viewer.</div></div>
+    <div class="toolbar"><a href="/assert/full">Full ASSERT</a><a href="/operator/console">Operator Console</a><a href="/assert/spec">Eval Spec</a><button type="button" id="refresh">Refresh</button></div>
+  </header>
+  <main>
+    <aside id="runs"></aside>
+    <section class="content">
+      <div class="summary" id="summary"></div>
+      <div class="tabs" id="tabs"></div>
+      <pre id="json">{}</pre>
+    </section>
+  </main>
+  <script>
+    const state = { calls: [], selectedCallId: null, tab: "proof", artifacts: {} };
+    const tabs = ["proof", "artifacts", "transcript", "events", "latency"];
+    function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { if (char === "&") return "&amp;"; if (char === "<") return "&lt;"; if (char === ">") return "&gt;"; return "&quot;"; }); }
+    function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
+    async function fetchJson(path) { const response = await fetch(path); if (!response.ok) throw new Error(path + " failed"); return response.json(); }
+    async function refresh() {
+      const payload = await fetchJson("/api/operator/console?limit=100&order=desc");
+      state.calls = payload.calls.items;
+      if (!state.calls.some(function(call) { return call.session.callId === state.selectedCallId; })) state.selectedCallId = state.calls[0] ? state.calls[0].session.callId : null;
+      await loadSelectedArtifact();
+      render();
+    }
+    async function loadSelectedArtifact() {
+      const call = selectedCall();
+      if (!call) return;
+      const links = call.evidenceSummary.links;
+      const loaders = {
+        proof: links.proof,
+        artifacts: links.artifacts,
+        transcript: links.transcript,
+        events: links.events,
+        latency: links.latencyMarks
+      };
+      state.artifacts = {};
+      await Promise.all(Object.entries(loaders).map(async function(entry) {
+        const key = entry[0], path = entry[1];
+        state.artifacts[key] = await fetchJson(path);
+      }));
+    }
+    async function selectCall(callId) { state.selectedCallId = callId; await loadSelectedArtifact(); render(); }
+    function renderRuns() {
+      const root = document.getElementById("runs");
+      root.innerHTML = state.calls.map(function(call) {
+        const complete = call.flowState === "wrap" && call.pipecatFlow.script.completed;
+        return '<button class="run" aria-selected="' + (call.session.callId === state.selectedCallId) + '" data-call-id="' + escapeHtml(call.session.callId) + '"><strong>' + escapeHtml(call.session.callId) + '</strong><span class="' + (complete ? "badge ok" : "badge warn") + '">' + escapeHtml(complete ? "complete" : call.flowState) + '</span><span class="muted">' + escapeHtml(call.session.openclawSession.label) + '</span><span class="muted">' + escapeHtml(call.evidenceSummary.eventCount + " events | " + call.evidenceSummary.transcriptTurns + " transcript turns") + '</span></button>';
+      }).join("") || '<div class="muted" style="padding:14px">No call artifacts yet</div>';
+      root.querySelectorAll("button[data-call-id]").forEach(function(button) { button.addEventListener("click", function() { selectCall(button.dataset.callId).catch(function(error) { document.getElementById("json").textContent = error.message; }); }); });
+    }
+    function renderSummary() {
+      const call = selectedCall();
+      const root = document.getElementById("summary");
+      if (!call) { root.innerHTML = ""; return; }
+      root.innerHTML = '<div class="card"><span class="muted">Call</span><strong>' + escapeHtml(call.session.callId) + '</strong><span class="muted">' + escapeHtml(call.session.providerCallId) + '</span></div><div class="card"><span class="muted">State</span><strong>' + escapeHtml(call.flowState) + '</strong><span class="muted">Script ' + escapeHtml(call.pipecatFlow.script.completed ? "complete" : "in progress") + '</span></div><div class="card"><span class="muted">Evidence</span><strong>' + escapeHtml(call.evidenceSummary.eventCount + " events") + '</strong><span class="muted">' + escapeHtml(call.evidenceSummary.latencyMarkCount + " latency marks") + '</span></div><div class="card"><span class="muted">Runtime</span><strong>' + escapeHtml(call.pipecatFlow.prototypeMode) + '</strong><span class="muted">' + escapeHtml(call.pipecatFlow.runtimeEngine) + '</span></div>';
+    }
+    function renderTabs() {
+      const root = document.getElementById("tabs");
+      root.innerHTML = tabs.map(function(tab) { return '<button type="button" aria-selected="' + (state.tab === tab) + '" data-tab="' + tab + '">' + escapeHtml(tab) + '</button>'; }).join("");
+      root.querySelectorAll("button[data-tab]").forEach(function(button) { button.addEventListener("click", function() { state.tab = button.dataset.tab; renderJson(); renderTabs(); }); });
+    }
+    function renderJson() { document.getElementById("json").textContent = JSON.stringify(state.artifacts[state.tab] || {}, null, 2); }
+    function render() { renderRuns(); renderSummary(); renderTabs(); renderJson(); }
+    document.getElementById("refresh").addEventListener("click", function() { refresh().catch(function(error) { document.getElementById("json").textContent = error.message; }); });
+    refresh().catch(function(error) { document.getElementById("json").textContent = error.message; });
+  </script>
+</body>
+</html>`;
+}
+
+function buildAssertSpecEditorHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ASSERT Eval Spec</title>
+  <style>
+    :root { --bg: #f6f8fa; --panel: #fff; --text: #24292f; --muted: #57606a; --line: #d0d7de; --accent: #0969da; --ok: #1a7f37; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: #fff; }
+    h1 { margin: 0; font-size: 18px; letter-spacing: 0; }
+    h2 { margin: 0 0 8px; font-size: 14px; letter-spacing: 0; }
+    a { color: var(--accent); text-decoration: none; font-weight: 650; }
+    main { display: grid; grid-template-columns: minmax(320px, 0.9fr) minmax(360px, 1.1fr); gap: 14px; padding: 14px; }
+    section { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); padding: 12px; min-width: 0; }
+    label { display: grid; gap: 5px; margin-bottom: 10px; color: var(--muted); font-size: 12px; font-weight: 700; }
+    input, textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: 13px/1.4 ui-sans-serif, system-ui; color: var(--text); background: #fff; }
+    textarea { min-height: 78px; resize: vertical; }
+    pre { margin: 0; min-height: 520px; overflow: auto; padding: 12px; border-radius: 6px; background: #0d1117; color: #e6edf3; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    button { border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); padding: 8px 10px; font: inherit; cursor: pointer; }
+    button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+    .toolbar, .actions, .blocks { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .status { color: var(--ok); font-size: 12px; font-weight: 700; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    details { margin: 12px 0; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #f6f8fa; }
+    summary { cursor: pointer; font-weight: 750; }
+    @media (max-width: 980px) { main, .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>ASSERT Eval Spec</h1><div class="muted">Editable local YAML-shaped spec for voice-agent goals, test generation, and judges</div></div>
+    <div class="toolbar"><a href="/assert/full">Full ASSERT</a><a href="/assert">ACC Artifacts</a><a href="/operator/console">Operator Console</a><button type="button" class="primary" id="save">Save</button><button type="button" id="reset">Reset</button></div>
+  </header>
+  <main>
+    <section>
+      <h2>Goal</h2>
+      <label>Spec ID<input id="id"></label>
+      <label>Title<input id="title"></label>
+      <label>Role<input id="role"></label>
+      <label>Objective<textarea id="objective"></textarea></label>
+      <div class="grid">
+        <label>Success checks<textarea id="requiredBehaviors"></textarea></label>
+        <label>Failure checks<textarea id="forbiddenBehaviors"></textarea></label>
+      </div>
+      <label>Scenario seeds<textarea id="scenarios"></textarea></label>
+      <details>
+      <summary>Advanced systematization and judge settings</summary>
+      <label>Conversation memory keys<textarea id="conversationMemory"></textarea></label>
+      <h2>Systematization / Test Set</h2>
+      <div class="grid">
+        <label>Dimensions<textarea id="dimensions"></textarea></label>
+        <label>Coverage targets<textarea id="coverageTargets"></textarea></label>
+        <label>Personas<textarea id="personas"></textarea></label>
+      </div>
+      <label>Edge cases<textarea id="edgeCases"></textarea></label>
+      <h2>Judge Options</h2>
+      <label>Judges JSON<textarea id="judges"></textarea></label>
+      </details>
+      <h2>Prewritten Blocks</h2>
+      <div class="blocks" id="blocks"></div>
+      <div class="actions"><span class="status" id="status">Loaded</span></div>
+    </section>
+    <section>
+      <h2>Generated assert.yml</h2>
+      <pre id="yaml"></pre>
+    </section>
+  </main>
+  <script>
+    let current = null;
+    let blocks = [];
+    function lines(value) { return String(value || "").split("\\n").map(function(line) { return line.trim(); }).filter(Boolean); }
+    function setLines(id, values) { document.getElementById(id).value = (values || []).join("\\n"); }
+    function getSpec() {
+      return {
+        id: document.getElementById("id").value.trim(),
+        version: current ? current.version : 1,
+        title: document.getElementById("title").value.trim(),
+        agentGoal: {
+          role: document.getElementById("role").value.trim(),
+          objective: document.getElementById("objective").value.trim(),
+          requiredBehaviors: lines(document.getElementById("requiredBehaviors").value),
+          forbiddenBehaviors: lines(document.getElementById("forbiddenBehaviors").value),
+          conversationMemory: lines(document.getElementById("conversationMemory").value),
+        },
+        systematization: {
+          dimensions: lines(document.getElementById("dimensions").value),
+          coverageTargets: lines(document.getElementById("coverageTargets").value),
+        },
+        testSetGeneration: {
+          personas: lines(document.getElementById("personas").value),
+          scenarios: lines(document.getElementById("scenarios").value),
+          edgeCases: lines(document.getElementById("edgeCases").value),
+        },
+        judges: JSON.parse(document.getElementById("judges").value || "[]"),
+      };
+    }
+    function renderSpec(payload) {
+      current = payload.spec;
+      blocks = payload.blocks || blocks;
+      document.getElementById("id").value = current.id;
+      document.getElementById("title").value = current.title;
+      document.getElementById("role").value = current.agentGoal.role;
+      document.getElementById("objective").value = current.agentGoal.objective;
+      setLines("requiredBehaviors", current.agentGoal.requiredBehaviors);
+      setLines("forbiddenBehaviors", current.agentGoal.forbiddenBehaviors);
+      setLines("conversationMemory", current.agentGoal.conversationMemory);
+      setLines("dimensions", current.systematization.dimensions);
+      setLines("coverageTargets", current.systematization.coverageTargets);
+      setLines("personas", current.testSetGeneration.personas);
+      setLines("scenarios", current.testSetGeneration.scenarios);
+      setLines("edgeCases", current.testSetGeneration.edgeCases);
+      document.getElementById("judges").value = JSON.stringify(current.judges, null, 2);
+      document.getElementById("yaml").textContent = payload.yaml;
+      renderBlocks();
+    }
+    function renderBlocks() {
+      const root = document.getElementById("blocks");
+      root.innerHTML = blocks.map(function(block) { return '<button type="button" data-block="' + block.id + '">' + block.label + '</button>'; }).join("");
+      root.querySelectorAll("button[data-block]").forEach(function(button) {
+        button.addEventListener("click", function() {
+          const block = blocks.find(function(item) { return item.id === button.dataset.block; });
+          if (!block) return;
+          const map = {
+            "agentGoal.requiredBehaviors": "requiredBehaviors",
+            "agentGoal.forbiddenBehaviors": "forbiddenBehaviors",
+            systematization: "dimensions",
+            testSetGeneration: "scenarios",
+          };
+          const targetId = map[block.target];
+          if (!targetId) return;
+          const input = document.getElementById(targetId);
+          const existing = lines(input.value);
+          input.value = Array.from(new Set(existing.concat(block.values))).join("\\n");
+          refreshYaml();
+        });
+      });
+    }
+    async function refreshYaml() {
+      const response = await fetch("/api/assert/spec/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ spec: getSpec() }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "preview failed");
+      document.getElementById("yaml").textContent = payload.yaml;
+      document.getElementById("status").textContent = "Preview updated";
+    }
+    async function loadSpec() {
+      const response = await fetch("/api/assert/spec");
+      renderSpec(await response.json());
+    }
+    async function saveSpec() {
+      const response = await fetch("/api/assert/spec", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ spec: getSpec() }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "save failed");
+      renderSpec(payload);
+      document.getElementById("status").textContent = "Saved";
+    }
+    document.querySelectorAll("input, textarea").forEach(function(input) { input.addEventListener("change", function() { refreshYaml().catch(function(error) { document.getElementById("status").textContent = error.message; }); }); });
+    document.getElementById("save").addEventListener("click", function() { saveSpec().catch(function(error) { document.getElementById("status").textContent = error.message; }); });
+    document.getElementById("reset").addEventListener("click", async function() {
+      const response = await fetch("/api/assert/spec/reset", { method: "POST" });
+      renderSpec(await response.json());
+      document.getElementById("status").textContent = "Reset";
+    });
+    loadSpec().catch(function(error) { document.getElementById("status").textContent = error.message; });
   </script>
 </body>
 </html>`;
@@ -1303,6 +1804,79 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function getOptionalTrimmedString(value: unknown): string | undefined {
   return typeof value === "string" ? value.trim() : undefined;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function parseAssertEvaluationSpec(value: unknown): AssertEvaluationSpec | null {
+  if (!isRecord(value)) return null;
+  const agentGoal = value.agentGoal;
+  const systematization = value.systematization;
+  const testSetGeneration = value.testSetGeneration;
+  const judges = value.judges;
+
+  if (!isRecord(agentGoal) || !isRecord(systematization) || !isRecord(testSetGeneration) || !Array.isArray(judges)) {
+    return null;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.title !== "string" ||
+    typeof value.version !== "number" ||
+    typeof agentGoal.role !== "string" ||
+    typeof agentGoal.objective !== "string" ||
+    !isStringArray(agentGoal.requiredBehaviors) ||
+    !isStringArray(agentGoal.forbiddenBehaviors) ||
+    !isStringArray(agentGoal.conversationMemory) ||
+    !isStringArray(systematization.dimensions) ||
+    !isStringArray(systematization.coverageTargets) ||
+    !isStringArray(testSetGeneration.personas) ||
+    !isStringArray(testSetGeneration.scenarios) ||
+    !isStringArray(testSetGeneration.edgeCases)
+  ) {
+    return null;
+  }
+
+  const parsedJudges = judges.map((judge) => {
+    if (!isRecord(judge) || typeof judge.name !== "string" || (judge.type !== "llm" && judge.type !== "rule") || !isStringArray(judge.rubric)) {
+      return null;
+    }
+
+    return {
+      name: judge.name,
+      type: judge.type,
+      rubric: judge.rubric,
+    };
+  });
+
+  if (parsedJudges.some((judge) => judge === null)) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    version: value.version,
+    title: value.title,
+    agentGoal: {
+      role: agentGoal.role,
+      objective: agentGoal.objective,
+      requiredBehaviors: agentGoal.requiredBehaviors,
+      forbiddenBehaviors: agentGoal.forbiddenBehaviors,
+      conversationMemory: agentGoal.conversationMemory,
+    },
+    systematization: {
+      dimensions: systematization.dimensions,
+      coverageTargets: systematization.coverageTargets,
+    },
+    testSetGeneration: {
+      personas: testSetGeneration.personas,
+      scenarios: testSetGeneration.scenarios,
+      edgeCases: testSetGeneration.edgeCases,
+    },
+    judges: parsedJudges as AssertEvaluationSpec["judges"],
+  };
 }
 
 function hasInvalidOptionalString(value: unknown): boolean {
@@ -2165,6 +2739,7 @@ function buildOperatorActionsPayload() {
     callReferenceFields: ["callId", "providerCallId", "openclawSessionId", "openclawSessionLabel", "openclawSessionRef"],
     routes: {
       startDemoCall: "/api/demo/start",
+      runEndToEndDemo: "/api/demo/run-end-to-end",
       callerTurn: "/api/calls/{callId}/caller-turn",
       scriptedTurn: "/api/operator/console/scripted-turn",
       steerCall: "/api/calls/{callId}/operator-steer",
@@ -2227,6 +2802,88 @@ function buildSignalWireResponse(
     signalWireCallId,
     call: buildCallPayload(snapshot),
   };
+}
+
+async function runEndToEndDemoFlow(
+  ingress: InMemoryTelephonyIngress,
+  config: PocConfig,
+  options: StartCallOptions,
+) {
+  const started = await ingress.startCall(config, options);
+  const callId = started.session.callId;
+  const steps: Array<{
+    step: string;
+    ok: boolean;
+    flowState: FlowState;
+    callId: string;
+    detail: string;
+  }> = [
+    {
+      step: "start_call",
+      ok: true,
+      flowState: started.flowState,
+      callId,
+      detail: "Mock telephony call created.",
+    },
+  ];
+
+  let latest = started;
+  const startedAtMs = new Date(started.session.startedAt).getTime();
+  const timestampAfter = (offsetMs: number) => new Date(startedAtMs + offsetMs).toISOString();
+  const scriptedTimestamps = [timestampAfter(1_000), timestampAfter(5_000), timestampAfter(9_000)];
+
+  for (const [index, text] of SCRIPTED_CALLER_TURNS.slice(0, 3).entries()) {
+    latest = await ingress.appendCallerTurn(
+      callId,
+      { speaker: "caller", text, timestamp: scriptedTimestamps[index] },
+      config,
+    );
+    steps.push({
+      step: `caller_turn_${index + 1}`,
+      ok: true,
+      flowState: latest.flowState,
+      callId,
+      detail: text,
+    });
+  }
+
+  latest = await ingress.applyOperatorSteer(callId, "approve_offer", timestampAfter(11_000));
+  steps.push({
+    step: "operator_approve_offer",
+    ok: true,
+    flowState: latest.flowState,
+    callId,
+    detail: "Operator approved the safe retention response.",
+  });
+
+  latest = await ingress.appendCallerTurn(
+    callId,
+    { speaker: "caller", text: SCRIPTED_CALLER_TURNS[3], timestamp: timestampAfter(15_000) },
+    config,
+  );
+  steps.push({
+    step: "caller_wrap",
+    ok: true,
+    flowState: latest.flowState,
+    callId,
+    detail: SCRIPTED_CALLER_TURNS[3],
+  });
+
+  latest = await ingress.recordOperatorNote(
+    callId,
+    "Demo completed end to end: policy hold, operator approval, safe retention wrap, and proof bundle are available.",
+    timestampAfter(16_000),
+    "demo_completed",
+  );
+  steps.push({
+    step: "operator_disposition",
+    ok: true,
+    flowState: latest.flowState,
+    callId,
+    detail: "Disposition recorded as demo_completed.",
+  });
+
+  return { latest, steps };
 }
 
 async function resolveOperatorConsoleCallId(
@@ -2827,8 +3484,89 @@ async function routeRequest(
     return;
   }
 
-  if (request.method === "GET" && (pathname === "/operator" || pathname === "/operator/console")) {
+  if (request.method === "GET" && (pathname === "/" || pathname === "/operator" || pathname === "/operator/console")) {
     writeHtml(response, 200, buildOperatorConsoleHtml());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/assert/full") {
+    writeHtml(response, 200, buildAssertFullViewerHtml());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/assert") {
+    writeHtml(response, 200, buildAssertViewerHtml());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/assert/spec") {
+    writeHtml(response, 200, buildAssertSpecEditorHtml());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/assert/spec") {
+    writeJson(response, 200, {
+      ok: true,
+      spec: activeAssertEvaluationSpec,
+      yaml: assertSpecToYaml(activeAssertEvaluationSpec),
+      blocks: assertSpecBlocks,
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/assert/spec/preview") {
+    const body = await readJsonBody<unknown>(request);
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const spec = parseAssertEvaluationSpec(body.spec);
+    if (!spec) {
+      writeBadRequest(response, "assert_spec_invalid");
+      return;
+    }
+
+    writeJson(response, 200, {
+      ok: true,
+      spec,
+      yaml: assertSpecToYaml(spec),
+      blocks: assertSpecBlocks,
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/assert/spec") {
+    const body = await readJsonBody<unknown>(request);
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const spec = parseAssertEvaluationSpec(body.spec);
+    if (!spec) {
+      writeBadRequest(response, "assert_spec_invalid");
+      return;
+    }
+
+    activeAssertEvaluationSpec = cloneAssertEvaluationSpec(spec);
+    writeJson(response, 200, {
+      ok: true,
+      spec: activeAssertEvaluationSpec,
+      yaml: assertSpecToYaml(activeAssertEvaluationSpec),
+      blocks: assertSpecBlocks,
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/assert/spec/reset") {
+    activeAssertEvaluationSpec = cloneAssertEvaluationSpec(defaultAssertEvaluationSpec);
+    writeJson(response, 200, {
+      ok: true,
+      spec: activeAssertEvaluationSpec,
+      yaml: assertSpecToYaml(activeAssertEvaluationSpec),
+      blocks: assertSpecBlocks,
+    });
     return;
   }
 
@@ -2971,6 +3709,46 @@ async function routeRequest(
     } catch {
       writeNotFound(response);
     }
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/demo/run-end-to-end") {
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const openclawSessionId = body.openclawSessionId;
+    if (openclawSessionId !== undefined && (typeof openclawSessionId !== "string" || !openclawSessionId.trim())) {
+      writeBadRequest(response, "openclaw_session_id_invalid");
+      return;
+    }
+
+    const openclawSessionLabel = body.openclawSessionLabel;
+    if (
+      openclawSessionLabel !== undefined &&
+      (typeof openclawSessionLabel !== "string" || !openclawSessionLabel.trim())
+    ) {
+      writeBadRequest(response, "openclaw_session_label_invalid");
+      return;
+    }
+
+    const { latest, steps } = await runEndToEndDemoFlow(ingress, config, {
+      openclawSessionId: openclawSessionId?.trim(),
+      openclawSessionLabel: openclawSessionLabel?.trim() ?? "operator-console/end-to-end",
+    } satisfies StartCallOptions);
+
+    writeJson(response, 201, {
+      ok: true,
+      route: "/api/demo/run-end-to-end",
+      outcome: latest.flowState === "wrap" && latest.pipecatFlow.script.completed ? "scripted_wrap_complete" : "incomplete",
+      steps,
+      call: buildCallPayload(latest),
+      operatorConsoleCall: buildOperatorConsoleCallPayload(latest),
+      proof: buildCallProofBundlePayload(latest),
+    });
     return;
   }
 
@@ -3362,6 +4140,16 @@ async function routeRequest(
       return;
     }
 
+    const conversationMode = body.conversationMode;
+    if (
+      conversationMode !== undefined &&
+      conversationMode !== "scripted" &&
+      conversationMode !== "free_caller"
+    ) {
+      writeBadRequest(response, "caller_turn_conversation_mode_invalid");
+      return;
+    }
+
     const timestamp = normalizeTimestamp(body.timestamp, "caller_turn_timestamp_invalid");
     if (typeof timestamp !== "string") {
       writeBadRequest(response, timestamp.error);
@@ -3375,7 +4163,9 @@ async function routeRequest(
     };
 
     try {
-      const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config);
+      const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config, {
+        conversationMode,
+      });
       writeJson(response, 200, buildCallPayload(snapshot));
     } catch {
       writeNotFound(response);

@@ -9,6 +9,7 @@ __pycache__
 artifacts
 
 .pipecat-runtime/
+.assert-viewer/
 # Local SIP/FreeSWITCH runtime logs
 /*_logs.log
 /*_errors.log

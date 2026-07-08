@@ -8,7 +8,12 @@ import type {
 
 export interface TelephonyIngress {
   startCall(config: PocConfig): Promise<CallSnapshot>;
-  appendCallerTurn(callId: string, turn: TranscriptTurn, config: PocConfig): Promise<CallSnapshot>;
+  appendCallerTurn(
+    callId: string,
+    turn: TranscriptTurn,
+    config: PocConfig,
+    options?: { conversationMode?: "scripted" | "free_caller" },
+  ): Promise<CallSnapshot>;
 }
 
 export interface FlowEngine {

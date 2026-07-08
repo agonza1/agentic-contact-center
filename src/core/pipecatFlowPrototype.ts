@@ -9,6 +9,7 @@ import type {
   ScriptProgress,
   TranscriptTurn,
 } from "./types";
+import { defaultAssertEvaluationSpec } from "./assertEvaluationSpec";
 
 export const SCRIPTED_CALLER_TURNS = [
   "I want to cancel my policy today.",
@@ -320,6 +321,229 @@ export function applyDeterministicPipecatFlow(
     );
     snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
   }
+}
+
+function priorAgentTurns(snapshot: CallSnapshot): string[] {
+  return snapshot.transcript.filter((turn) => turn.speaker === "agent").map((turn) => normalizeText(turn.text));
+}
+
+function alreadyAsked(agentTurns: string[], fragment: string): boolean {
+  const normalizedFragment = normalizeText(fragment);
+  return agentTurns.some((text) => text.includes(normalizedFragment));
+}
+
+function callerHistory(snapshot: CallSnapshot): string {
+  return normalizeText(snapshot.transcript.filter((turn) => turn.speaker === "caller").map((turn) => turn.text).join(" "));
+}
+
+function detectIntent(text: string): "billing" | "cancellation" | "account_update" | "handoff" | "service_info" | null {
+  if (/\b(human|agent|representative|operator|person|supervisor)\b/.test(text)) return "handoff";
+  if (/\b(bill|billing|charge|charged|payment|invoice|refund|renewal|price|cost)\b/.test(text)) return "billing";
+  if (/\b(cancel|cancellation|canceling|cancelled|council)\b/.test(text)) return "cancellation";
+  if (/\b(address|email|phone|contact|name|update|change)\b/.test(text)) return "account_update";
+  if (/\b(hours|open|close|location|office|website|app)\b/.test(text)) return "service_info";
+  return null;
+}
+
+function detectBillingSubtype(text: string): "charge" | "renewal" | "refund" | "payment" | null {
+  if (/\b(refund|credit|money back)\b/.test(text)) return "refund";
+  if (/\b(renewal|increase|went up|higher)\b/.test(text)) return "renewal";
+  if (/\b(payment|card|paid|autopay|failed)\b/.test(text)) return "payment";
+  if (/\b(charge|charged|invoice|bill)\b/.test(text)) return "charge";
+  return null;
+}
+
+function isLowInformationTranscript(text: string): boolean {
+  const withoutPunctuation = text.replace(/[^\p{L}\p{N}]+/gu, "").trim();
+  const words = text.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word));
+  return withoutPunctuation.length <= 2 || words.length === 0 || /^[.\s]+$/.test(text);
+}
+
+function isCapabilitiesQuestion(text: string): boolean {
+  return /\b(what can you do|what do you do|how can you help|what are my options)\b/.test(text);
+}
+
+function buildFreeCallerAgentResponse(
+  snapshot: CallSnapshot,
+  text: string,
+  callerTurnCount: number,
+): { response: string; done: boolean; responseKind: string } {
+  const normalized = normalizeText(text);
+  const previousAgentTurns = priorAgentTurns(snapshot);
+  const history = callerHistory(snapshot);
+  const currentIntent = detectIntent(normalized);
+  const historyIntent = detectIntent(history);
+  const intent = currentIntent ?? historyIntent;
+  const billingSubtype = detectBillingSubtype(normalized) ?? detectBillingSubtype(history);
+  const cancellationReasonAsked =
+    alreadyAsked(previousAgentTurns, "main reason you want to cancel") ||
+    alreadyAsked(previousAgentTurns, "why you want to cancel");
+
+  if (isLowInformationTranscript(normalized)) {
+    return {
+      response: "I didn’t catch that. Please say that again.",
+      done: false,
+      responseKind: "low_information_retry",
+    };
+  }
+
+  if (isCapabilitiesQuestion(normalized)) {
+    return {
+      response: "I can help with billing, cancellation, account updates, service questions, or getting a human operator.",
+      done: false,
+      responseKind: "capabilities",
+    };
+  }
+
+  if (/\b(thanks|thank you|bye|goodbye|that's all|that is all)\b/.test(normalized)) {
+    return {
+      response: "You are welcome. I noted the request and I am closing the demo call.",
+      done: true,
+      responseKind: "closing",
+    };
+  }
+
+  if (alreadyAsked(previousAgentTurns, "what is the one thing you want them to solve first")) {
+    return {
+      response: "Got it. I’ll include that in the handoff summary and keep the call ready for an operator.",
+      done: false,
+      responseKind: "handoff_detail_captured",
+    };
+  }
+
+  if (intent === "handoff") {
+    return {
+      response: "I’ll prepare a handoff summary for a human operator. What is the one thing you want them to solve first?",
+      done: false,
+      responseKind: "handoff",
+    };
+  }
+
+  if (historyIntent === "cancellation" && cancellationReasonAsked) {
+    if (/\b(already said|said it|told you|i did)\b/.test(normalized)) {
+      return {
+        response: "You’re right, I have the cancellation reason. I can prepare safe options now or bring in a human specialist.",
+        done: false,
+        responseKind: "cancellation_reason_acknowledged",
+      };
+    }
+
+    return {
+      response: "I’ll mark that as the cancellation reason and prepare safe options. Do you want a human specialist to take over?",
+      done: false,
+      responseKind: "cancellation_reason_captured",
+    };
+  }
+
+  if (intent === "billing") {
+    if (billingSubtype) {
+      if (alreadyAsked(previousAgentTurns, "what amount or date should i attach")) {
+        return {
+          response: `Thanks. I added that detail to the ${billingSubtype} review and will route anything needing approval to a human specialist.`,
+          done: false,
+          responseKind: `billing_${billingSubtype}_captured`,
+        };
+      }
+
+      return {
+        response: `Got it. I’ll start a ${billingSubtype} review. What amount or date should I attach to the case?`,
+        done: false,
+        responseKind: `billing_${billingSubtype}`,
+      };
+    }
+
+    if (alreadyAsked(previousAgentTurns, "charge, renewal increase, refund, or payment issue")) {
+      return {
+        response: "No problem. I’ll open this as a general billing review. What amount or date do you see on the bill?",
+        done: false,
+        responseKind: "billing_general_review",
+      };
+    }
+
+    return {
+      response: "I can help. Is it a charge, renewal increase, refund, or payment issue?",
+      done: false,
+      responseKind: "billing_clarify",
+    };
+  }
+
+  if (intent === "cancellation") {
+    if (cancellationReasonAsked) {
+      return {
+        response: "I’ll mark this as a cancellation review and prepare safe options. Do you want a human specialist to take over?",
+        done: false,
+        responseKind: "cancellation_followup",
+      };
+    }
+
+    return {
+      response: "I can help with cancellation. What is the main reason you want to cancel?",
+      done: false,
+      responseKind: "cancellation_clarify",
+    };
+  }
+
+  if (intent === "account_update") {
+    return {
+      response: "I can capture that account update. What detail should be changed?",
+      done: false,
+      responseKind: "account_update",
+    };
+  }
+
+  if (intent === "service_info") {
+    return {
+      response: "I can help with service info. Which product or location should I check?",
+      done: false,
+      responseKind: "service_info",
+    };
+  }
+
+  if (callerTurnCount === 1) {
+    return {
+      response: "Hi, I can help with billing, cancellation, account updates, or a human handoff. What do you need today?",
+      done: false,
+      responseKind: "initial_capabilities",
+    };
+  }
+
+  if (alreadyAsked(previousAgentTurns, "billing, cancellation, an account update")) {
+    return {
+      response: "Let’s move this forward. I can start a billing review, cancellation review, account update, or human handoff. Pick one.",
+      done: false,
+      responseKind: "ambiguous_followup",
+    };
+  }
+
+  return {
+    response: "Is this billing, cancellation, an account update, or a human handoff?",
+    done: false,
+    responseKind: "ambiguous_clarify",
+  };
+}
+
+export function applyFreeCallerPipecatFlow(snapshot: CallSnapshot, turn: TranscriptTurn): void {
+  const callerTurnCount = snapshot.transcript.filter((entry) => entry.speaker === "caller").length;
+  const { response, done, responseKind } = buildFreeCallerAgentResponse(snapshot, turn.text, callerTurnCount);
+
+  snapshot.pipecatFlow.activeTool = done ? "pause_presentation" : "conversation_agent";
+  snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
+  recordEvent(snapshot, "free_caller_turn_processed", turn.timestamp, {
+    callerTurnCount,
+    conversationMode: "free_caller",
+    goalSpecId: defaultAssertEvaluationSpec.id,
+    responseKind,
+  });
+
+  if (callerTurnCount === 1) {
+    transitionFlowState(snapshot, "greet", turn.timestamp, "free_caller_connected");
+  } else if (done) {
+    transitionFlowState(snapshot, "wrap", turn.timestamp, "free_caller_closed");
+  } else {
+    transitionFlowState(snapshot, "diagnose", turn.timestamp, "free_caller_conversation");
+  }
+
+  appendAgentTurn(snapshot, response, turn.timestamp);
 }
 
 export function applyOperatorSteer(

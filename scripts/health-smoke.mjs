@@ -21,15 +21,22 @@ function parseArgs(argv) {
     expectPipecatActiveTool: undefined,
     expectPipecatScriptCompleted: undefined,
     expectSpeechEnhancementRuntimeEnabled: undefined,
+    expectSpeechEnhancementRuntimeStatus: undefined,
     expectSpeechEnhancementIssueCloseReady: undefined,
     expectSpeechEnhancementLiveDemoGate: undefined,
     expectSpeechEnhancementRecommendedLatencyMs: undefined,
     expectSpeechEnhancementRuntimeLatencyMs: undefined,
     expectSpeechEnhancementRuntimeBypassReason: undefined,
+    expectSpeechEnhancementRuntimeProfileExpectedUse: undefined,
+    expectSpeechEnhancementRuntimeProfileRecommendation: undefined,
+    expectSpeechEnhancementRuntimeProfileBypassWhen: [],
     expectSpeechEnhancementRuntimeBypassReasons: [],
     expectSpeechEnhancementRuntimeLiveDemoEligible: undefined,
     expectSpeechEnhancementRuntimeLookaheadFrames: undefined,
     expectSpeechEnhancementRuntimeMaxBufferedAudioMs: undefined,
+    expectSpeechEnhancementCloseGateRequiredLatencyMs: undefined,
+    expectSpeechEnhancementCloseGateMaxAddedTurnLatencyMsP95: undefined,
+    expectSpeechEnhancementCloseGateMaxCpuPercentP95: undefined,
     expectRuntimeSeams: [],
     expectPipecatTools: [],
     expectSpeechEnhancementMissingEvidence: [],
@@ -60,15 +67,22 @@ function parseArgs(argv) {
     '--expect-pipecat-active-tool',
     '--expect-pipecat-script-completed',
     '--expect-speech-enhancement-runtime-enabled',
+    '--expect-speech-enhancement-runtime-status',
     '--expect-speech-enhancement-issue-close-ready',
     '--expect-speech-enhancement-live-demo-gate',
     '--expect-speech-enhancement-recommended-latency-ms',
     '--expect-speech-enhancement-runtime-latency-ms',
     '--expect-speech-enhancement-runtime-bypass-reason',
+    '--expect-speech-enhancement-runtime-profile-expected-use',
+    '--expect-speech-enhancement-runtime-profile-recommendation',
+    '--expect-speech-enhancement-runtime-profile-bypass-when',
     '--expect-speech-enhancement-runtime-bypass-reason-item',
     '--expect-speech-enhancement-runtime-live-demo-eligible',
     '--expect-speech-enhancement-runtime-lookahead-frames',
     '--expect-speech-enhancement-runtime-max-buffered-audio-ms',
+    '--expect-speech-enhancement-close-gate-required-latency-ms',
+    '--expect-speech-enhancement-close-gate-max-added-turn-latency-ms-p95',
+    '--expect-speech-enhancement-close-gate-max-cpu-percent-p95',
     '--expect-speech-enhancement-missing-evidence',
     '--expect-speech-enhancement-blocker',
     '--expect-runtime-seam',
@@ -225,6 +239,12 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-speech-enhancement-runtime-status' && next) {
+      args.expectSpeechEnhancementRuntimeStatus = next;
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-speech-enhancement-issue-close-ready' && next) {
       args.expectSpeechEnhancementIssueCloseReady = next;
       index += 1;
@@ -255,6 +275,24 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-speech-enhancement-runtime-profile-expected-use' && next) {
+      args.expectSpeechEnhancementRuntimeProfileExpectedUse = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-runtime-profile-recommendation' && next) {
+      args.expectSpeechEnhancementRuntimeProfileRecommendation = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-runtime-profile-bypass-when' && next) {
+      args.expectSpeechEnhancementRuntimeProfileBypassWhen.push(next);
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-speech-enhancement-runtime-bypass-reason-item' && next) {
       args.expectSpeechEnhancementRuntimeBypassReasons.push(next);
       index += 1;
@@ -275,6 +313,24 @@ function parseArgs(argv) {
 
     if (arg === '--expect-speech-enhancement-runtime-max-buffered-audio-ms' && next) {
       args.expectSpeechEnhancementRuntimeMaxBufferedAudioMs = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-close-gate-required-latency-ms' && next) {
+      args.expectSpeechEnhancementCloseGateRequiredLatencyMs = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-close-gate-max-added-turn-latency-ms-p95' && next) {
+      args.expectSpeechEnhancementCloseGateMaxAddedTurnLatencyMsP95 = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-close-gate-max-cpu-percent-p95' && next) {
+      args.expectSpeechEnhancementCloseGateMaxCpuPercentP95 = next;
       index += 1;
       continue;
     }
@@ -351,6 +407,8 @@ function hasJsonExpectations(args) {
     args.expectSpeechEnhancementRecommendedLatencyMs,
     args.expectSpeechEnhancementRuntimeLatencyMs,
     args.expectSpeechEnhancementRuntimeBypassReason,
+    args.expectSpeechEnhancementRuntimeProfileExpectedUse,
+    args.expectSpeechEnhancementRuntimeProfileRecommendation,
     args.expectSpeechEnhancementRuntimeLiveDemoEligible,
     args.expectSpeechEnhancementRuntimeLookaheadFrames,
     args.expectSpeechEnhancementRuntimeMaxBufferedAudioMs,
@@ -595,7 +653,10 @@ async function getFailureReason(response, args) {
 
   const speechEnhancementStringExpectations = [
     ['liveDemoGate', args.expectSpeechEnhancementLiveDemoGate],
+    ['runtimeStatus', args.expectSpeechEnhancementRuntimeStatus],
     ['runtimeBypassReason', args.expectSpeechEnhancementRuntimeBypassReason],
+    ['runtimeProfileExpectedUse', args.expectSpeechEnhancementRuntimeProfileExpectedUse],
+    ['runtimeProfileRecommendation', args.expectSpeechEnhancementRuntimeProfileRecommendation],
   ];
 
   for (const [field, expectedValue] of speechEnhancementStringExpectations) {
@@ -644,6 +705,9 @@ async function getFailureReason(response, args) {
     ['runtimeLatencyMs', 'speech_enhancement_runtime_latency_ms', args.expectSpeechEnhancementRuntimeLatencyMs],
     ['runtimeLookaheadFrames', 'speech_enhancement_runtime_lookahead_frames', args.expectSpeechEnhancementRuntimeLookaheadFrames],
     ['runtimeMaxBufferedAudioMs', 'speech_enhancement_runtime_max_buffered_audio_ms', args.expectSpeechEnhancementRuntimeMaxBufferedAudioMs],
+    ['closeGateRequiredLatencyMs', 'speech_enhancement_close_gate_required_latency_ms', args.expectSpeechEnhancementCloseGateRequiredLatencyMs],
+    ['closeGateMaxAddedTurnLatencyMsP95', 'speech_enhancement_close_gate_max_added_turn_latency_ms_p95', args.expectSpeechEnhancementCloseGateMaxAddedTurnLatencyMsP95],
+    ['closeGateMaxCpuPercentP95', 'speech_enhancement_close_gate_max_cpu_percent_p95', args.expectSpeechEnhancementCloseGateMaxCpuPercentP95],
   ];
 
   for (const [field, flagName, rawExpectedValue] of speechEnhancementNumberExpectations) {
@@ -673,6 +737,16 @@ async function getFailureReason(response, args) {
 
     if (!Array.isArray(bypassReasons) || !bypassReasons.includes(expectedBypassReason)) {
       return `json_speechEnhancement_runtimeBypassReasons_missing(expected=${JSON.stringify(expectedBypassReason)},actual=${JSON.stringify(bypassReasons)})`;
+    }
+  }
+
+  for (const expectedProfileBypass of args.expectSpeechEnhancementRuntimeProfileBypassWhen) {
+    const profileBypassWhen = payload.speechEnhancement && typeof payload.speechEnhancement === 'object'
+      ? payload.speechEnhancement.runtimeProfileBypassWhen
+      : undefined;
+
+    if (!Array.isArray(profileBypassWhen) || !profileBypassWhen.includes(expectedProfileBypass)) {
+      return `json_speechEnhancement_runtimeProfileBypassWhen_missing(expected=${JSON.stringify(expectedProfileBypass)},actual=${JSON.stringify(profileBypassWhen)})`;
     }
   }
 

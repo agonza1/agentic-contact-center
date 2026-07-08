@@ -210,13 +210,20 @@ test("health smoke script can assert expected health metadata and multiple runti
         },
         speechEnhancement: {
           runtimeEnabled: false,
+          runtimeStatus: "disabled",
           issueCloseReady: false,
           liveDemoGate: "blocked_until_real_capture",
           recommendedLatencyMs: 12.5,
           runtimeLatencyMs: 12.5,
           runtimeBypassReason: "feature_flag_disabled",
+          runtimeProfileExpectedUse: "default",
+          runtimeProfileRecommendation: "recommended",
+          runtimeProfileBypassWhen: ["added_turn_latency_p95_exceeds_candidate_budget"],
           runtimeBypassReasons: ["feature_flag_disabled", "blocked_until_real_capture"],
           runtimeLiveDemoEligible: false,
+          closeGateRequiredLatencyMs: 12.5,
+          closeGateMaxAddedTurnLatencyMsP95: 25,
+          closeGateMaxCpuPercentP95: 80,
           runtimeLookaheadFrames: 1,
           runtimeMaxBufferedAudioMs: 32.5,
           missingEvidence: ["real_noisy_local_sip_capture_baseline_vs_enhanced_replay"],
@@ -272,6 +279,8 @@ test("health smoke script can assert expected health metadata and multiple runti
       "true",
       "--expect-speech-enhancement-runtime-enabled",
       "false",
+      "--expect-speech-enhancement-runtime-status",
+      "disabled",
       "--expect-speech-enhancement-issue-close-ready",
       "false",
       "--expect-speech-enhancement-live-demo-gate",
@@ -282,6 +291,12 @@ test("health smoke script can assert expected health metadata and multiple runti
       "12.5",
       "--expect-speech-enhancement-runtime-bypass-reason",
       "feature_flag_disabled",
+      "--expect-speech-enhancement-runtime-profile-expected-use",
+      "default",
+      "--expect-speech-enhancement-runtime-profile-recommendation",
+      "recommended",
+      "--expect-speech-enhancement-runtime-profile-bypass-when",
+      "added_turn_latency_p95_exceeds_candidate_budget",
       "--expect-speech-enhancement-runtime-bypass-reason-item",
       "blocked_until_real_capture",
       "--expect-speech-enhancement-runtime-live-demo-eligible",
@@ -290,6 +305,12 @@ test("health smoke script can assert expected health metadata and multiple runti
       "1",
       "--expect-speech-enhancement-runtime-max-buffered-audio-ms",
       "32.5",
+      "--expect-speech-enhancement-close-gate-required-latency-ms",
+      "12.5",
+      "--expect-speech-enhancement-close-gate-max-added-turn-latency-ms-p95",
+      "25",
+      "--expect-speech-enhancement-close-gate-max-cpu-percent-p95",
+      "80",
       "--expect-speech-enhancement-missing-evidence",
       "real_noisy_local_sip_capture_baseline_vs_enhanced_replay",
       "--expect-speech-enhancement-blocker",
@@ -577,6 +598,32 @@ test("health smoke script reports speech enhancement readiness mismatches in the
 
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Last failure: json_speechEnhancement_runtimeEnabled_mismatch\(expected=true,actual=false\)/);
+  });
+});
+
+test("health smoke script reports missing speech enhancement runtime profile bypass guidance", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, speechEnhancement: { runtimeProfileBypassWhen: [] } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-speech-enhancement-runtime-profile-bypass-when",
+      "barge_in_or_endpointing_regresses",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Last failure: json_speechEnhancement_runtimeProfileBypassWhen_missing/);
   });
 });
 

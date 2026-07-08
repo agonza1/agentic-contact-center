@@ -50,7 +50,16 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       reference: { modelFamily: string; paperUrl: string; latencyRangeMs: number[] };
       pipelinePlacement: { recommendedOwner: string; stage: string; preservedContracts: string[] };
       candidates: Array<{ algorithmicLatencyMs: number; withinConversationalBudget: boolean; recommendation: string }>;
-      latencyProfiles: Array<{ latencyMs: number; rtcAsrFrameMs: number; lookaheadFrames: number; maxBufferedAudioMs: number; liveDemoEligible: boolean; bypassWhen: string[] }>;
+      latencyProfiles: Array<{
+        latencyMs: number;
+        rtcAsrFrameMs: number;
+        lookaheadFrames: number;
+        maxBufferedAudioMs: number;
+        expectedUse: string;
+        recommendation: string;
+        liveDemoEligible: boolean;
+        bypassWhen: string[];
+      }>;
       replayMetrics: Array<{
         baseline: { wordErrorRateEstimate: number };
         enhanced: { wordErrorRateEstimate: number; addedTurnLatencyMsP95: number; cpuPercentP95: number };
@@ -65,6 +74,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         env: { featureFlag: string; latencyMs: string };
       };
       runtimeReadiness: {
+        status: string;
         enabled: boolean;
         latencyMs: number;
         liveDemoEligible: boolean;
@@ -152,6 +162,8 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       rtcAsrFrameMs: 20,
       lookaheadFrames: 1,
       maxBufferedAudioMs: 32.5,
+      expectedUse: "default",
+      recommendation: "recommended",
       liveDemoEligible: true,
       bypassWhen: [
         "added_turn_latency_p95_exceeds_candidate_budget",
@@ -182,6 +194,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS",
       },
     });
+    assert.equal(payload.runtimeReadiness.status, "disabled");
     assert.equal(payload.runtimeReadiness.enabled, false);
     assert.equal(payload.runtimeReadiness.latencyMs, 12.5);
     assert.equal(payload.runtimeReadiness.liveDemoEligible, false);

@@ -10,6 +10,7 @@ interface SnapshotPayload {
   session: {
     callId: string;
     providerCallId: string;
+    startedAt: string;
     openclawSession: {
       sessionId: string;
       label: string;
@@ -99,7 +100,15 @@ interface OperatorConsolePayload {
   controls: {
     commandWrappers: string[];
     callReferenceFields: string[];
-    routes: { startDemoCall: string; callerTurn: string; scriptedTurn: string; steerCall: string; noteCall: string; consoleAction: string };
+    routes: {
+      startDemoCall: string;
+      runEndToEndDemo: string;
+      callerTurn: string;
+      scriptedTurn: string;
+      steerCall: string;
+      noteCall: string;
+      consoleAction: string;
+    };
     scriptedTurnControl: {
       method: string;
       postTemplate: string;
@@ -1212,6 +1221,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     ]);
     assert.deepEqual(consolePayload.controls.routes, {
       startDemoCall: "/api/demo/start",
+      runEndToEndDemo: "/api/demo/run-end-to-end",
       callerTurn: "/api/calls/{callId}/caller-turn",
       scriptedTurn: "/api/operator/console/scripted-turn",
       steerCall: "/api/calls/{callId}/operator-steer",
@@ -1622,7 +1632,40 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.equal(response.statusCode, 200);
     assert.equal(response.contentType, "text/html; charset=utf-8");
     assert.match(response.body, /<title>Operator Console<\/title>/);
-    assert.match(response.body, /Start Demo Call/);
+    assert.match(response.body, /Run Demo Flow/);
+    assert.match(response.body, /Start Empty Call/);
+    assert.match(response.body, /href="\/assert\/full"/);
+    assert.match(response.body, /href="\/assert"/);
+    assert.match(response.body, /href="\/assert\/spec"/);
+    assert.match(response.body, /Full ASSERT/);
+    assert.match(response.body, /ACC Artifacts/);
+    assert.match(response.body, /Eval Spec/);
+    assert.match(response.body, /runDemoFlow/);
+    assert.match(response.body, /\/api\/demo\/run-end-to-end/);
+    assert.match(response.body, /Pipecat Voice Caller/);
+    assert.match(response.body, /workbench single/);
+    assert.match(response.body, /Connect Voice/);
+    assert.match(response.body, /Unmute Caller/);
+    assert.match(response.body, /Mute Caller/);
+    assert.match(response.body, /Demo Flow/);
+    assert.match(response.body, /class="demo-flow-svg"/);
+    assert.match(response.body, /browser mic/);
+    assert.match(response.body, /ASSERT/);
+    assert.match(response.body, /viewer \+ eval spec/);
+    assert.match(response.body, /npm run assert:export/);
+    assert.match(response.body, /npm run assert:viewer/);
+    assert.match(response.body, /Voice disconnected/);
+    assert.match(response.body, /npm run pipecat:voice/);
+    assert.match(response.body, /MLX Whisper local STT/);
+    assert.match(response.body, /macOS say local TTS/);
+    assert.match(response.body, /connectPipecatVoice/);
+    assert.match(response.body, /togglePipecatMute/);
+    assert.match(response.body, /captureTranscriptScroll/);
+    assert.match(response.body, /restoreTranscriptScroll/);
+    assert.match(response.body, /startVoiceSegment/);
+    assert.match(response.body, /voiceSegmentMs/);
+    assert.match(response.body, /MediaRecorder/);
+    assert.match(response.body, /new WebSocket/);
     assert.match(response.body, /Attention only/);
     assert.match(response.body, /Over-budget latency/);
     assert.match(response.body, /Flow state filter/);
@@ -1721,6 +1764,161 @@ test("GET /operator/console serves the local console with the full action set", 
     }
 
     assert.match(response.body, /Confirm /);
+  });
+});
+
+test("GET /assert/full embeds the upstream ASSERT local viewer with local navigation", async () => {
+  await withServer(async (port) => {
+    const response = await requestText(port, "GET", "/assert/full");
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.contentType, "text/html; charset=utf-8");
+    assert.match(response.body, /<title>Full ASSERT Viewer<\/title>/);
+    assert.match(response.body, /src="http:\/\/127\.0\.0\.1:5174"/);
+    assert.match(response.body, /npm run assert:export/);
+    assert.match(response.body, /npm run assert:viewer/);
+    assert.match(response.body, /href="\/operator\/console"/);
+    assert.match(response.body, /href="\/assert\/spec"/);
+    assert.match(response.body, /href="\/assert"/);
+  });
+});
+
+test("GET /assert serves an ACC local artifact viewer", async () => {
+  await withServer(async (port) => {
+    const response = await requestText(port, "GET", "/assert");
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.contentType, "text/html; charset=utf-8");
+    assert.match(response.body, /<title>ASSERT Viewer<\/title>/);
+    assert.match(response.body, /Local ACC proof artifacts/);
+    assert.match(response.body, /Full ASSERT/);
+    assert.match(response.body, /\/api\/operator\/console\?limit=100&order=desc/);
+    assert.match(response.body, /const tabs = \["proof", "artifacts", "transcript", "events", "latency"\]/);
+    assert.match(response.body, /JSON\.stringify\(state\.artifacts\[state\.tab\]/);
+    assert.match(response.body, /Operator Console/);
+  });
+});
+
+test("GET /assert/spec serves an editable ASSERT evaluation spec SPA", async () => {
+  await withServer(async (port) => {
+    const response = await requestText(port, "GET", "/assert/spec");
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.contentType, "text/html; charset=utf-8");
+    assert.match(response.body, /<title>ASSERT Eval Spec<\/title>/);
+    assert.match(response.body, /Generated assert\.yml/);
+    assert.match(response.body, /Success checks/);
+    assert.match(response.body, /Failure checks/);
+    assert.match(response.body, /Scenario seeds/);
+    assert.match(response.body, /Advanced systematization and judge settings/);
+    assert.match(response.body, /Prewritten Blocks/);
+    assert.match(response.body, /Judge Options/);
+    assert.match(response.body, /\/api\/assert\/spec\/preview/);
+  });
+});
+
+test("ASSERT spec API returns YAML, blocks, preview, save, and reset", async () => {
+  await withServer(async (port) => {
+    const initial = await requestJson(port, "GET", "/api/assert/spec");
+    const initialPayload = initial.payload as {
+      spec: {
+        title: string;
+        agentGoal: { requiredBehaviors: string[] };
+      };
+      yaml: string;
+      blocks: Array<{ id: string }>;
+    };
+
+    assert.equal(initial.statusCode, 200);
+    assert.match(initialPayload.yaml, /agent_goal:/);
+    assert.equal(initialPayload.blocks.some((block) => block.id === "goal_free_caller"), true);
+
+    const spec = {
+      ...initialPayload.spec,
+      title: "Edited local voice spec",
+      agentGoal: {
+        ...initialPayload.spec.agentGoal,
+        requiredBehaviors: [...initialPayload.spec.agentGoal.requiredBehaviors, "Use the caller's prior answer before asking again."],
+      },
+    };
+
+    const preview = await requestJson(port, "POST", "/api/assert/spec/preview", { spec });
+    assert.equal(preview.statusCode, 200);
+    assert.match((preview.payload as { yaml: string }).yaml, /Edited local voice spec/);
+
+    const saved = await requestJson(port, "POST", "/api/assert/spec", { spec });
+    assert.equal(saved.statusCode, 200);
+    assert.equal((saved.payload as { spec: { title: string } }).spec.title, "Edited local voice spec");
+
+    const reset = await requestJson(port, "POST", "/api/assert/spec/reset");
+    assert.equal(reset.statusCode, 200);
+    assert.equal((reset.payload as { spec: { title: string } }).spec.title, initialPayload.spec.title);
+  });
+});
+
+test("GET / serves the operator console instead of a dead end", async () => {
+  await withServer(async (port) => {
+    const response = await requestText(port, "GET", "/");
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.contentType, "text/html; charset=utf-8");
+    assert.match(response.body, /<title>Operator Console<\/title>/);
+    assert.match(response.body, /Run Demo Flow/);
+  });
+});
+
+test("POST /api/demo/run-end-to-end executes a complete usable call flow", async () => {
+  await withServer(async (port) => {
+    const response = await requestJson(port, "POST", "/api/demo/run-end-to-end", {
+      openclawSessionId: "end-to-end-session",
+      openclawSessionLabel: "operator-console/end-to-end-test",
+    });
+    const payload = response.payload as {
+      ok: boolean;
+      route: string;
+      outcome: string;
+      steps: Array<{ step: string; ok: boolean; flowState: string; callId: string; detail: string }>;
+      call: SnapshotPayload;
+      operatorConsoleCall: { actionState: { scriptedCallerTurnState: { completed: boolean; progressPct: number } } };
+      proof: {
+        outcome: { flowState: string; scriptCompleted: boolean };
+        summary: { transcriptTurns: number; operatorNoteCount: number };
+      };
+    };
+
+    assert.equal(response.statusCode, 201);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.route, "/api/demo/run-end-to-end");
+    assert.equal(payload.outcome, "scripted_wrap_complete");
+    assert.deepEqual(
+      payload.steps.map((step) => step.step),
+      [
+        "start_call",
+        "caller_turn_1",
+        "caller_turn_2",
+        "caller_turn_3",
+        "operator_approve_offer",
+        "caller_wrap",
+        "operator_disposition",
+      ],
+    );
+    assert.equal(payload.steps.every((step) => step.ok && step.callId === payload.call.session.callId), true);
+    assert.equal(payload.call.flowState, "wrap");
+    assert.equal(payload.call.pipecatFlow.script.completed, true);
+    assert.equal(payload.call.operatorSteer.lastAction, "approve_offer");
+    assert.equal(payload.call.session.openclawSession.label, "operator-console/end-to-end-test");
+    const startedAtMs = Date.parse(payload.call.session.startedAt);
+    const callerOffsets = payload.call.transcript
+      .filter((turn) => turn.speaker === "caller")
+      .map((turn) => Date.parse(turn.timestamp ?? "") - startedAtMs);
+    assert.deepEqual(callerOffsets, [1_000, 5_000, 9_000, 15_000]);
+    assert.equal(Date.parse(payload.call.operatorSteer.respondedAt ?? "") - startedAtMs, 11_000);
+    assert.equal(payload.operatorConsoleCall.actionState.scriptedCallerTurnState.completed, true);
+    assert.equal(payload.operatorConsoleCall.actionState.scriptedCallerTurnState.progressPct, 100);
+    assert.equal(payload.proof.outcome.flowState, "wrap");
+    assert.equal(payload.proof.outcome.scriptCompleted, true);
+    assert.equal(payload.proof.summary.operatorNoteCount, 1);
+    assert.equal(payload.proof.summary.transcriptTurns >= 8, true);
   });
 });
 
@@ -3897,6 +4095,224 @@ test("off-script caller turns pause the prototype for operator guidance", async 
   });
 });
 
+test("free caller voice turns get conversational agent responses instead of scripted hold", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const turn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help me with a billing problem?",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const payload = turn.payload as SnapshotPayload;
+
+    assert.equal(turn.statusCode, 200);
+    assert.notEqual(payload.flowState, "policy_hold");
+    assert.equal(payload.pipecatFlow.activeTool, "conversation_agent");
+    assert.equal(payload.events.some((event) => event.type === "free_caller_turn_processed"), true);
+
+    const lastAgentTurn = [...payload.transcript].reverse().find((entry) => entry.speaker === "agent");
+    assert.ok(lastAgentTurn);
+    assert.match(lastAgentTurn.text, /charge, renewal increase, refund, or payment issue/i);
+    assert.equal(lastAgentTurn.text.includes("approved cancellation-rescue script"), false);
+    assert.equal(lastAgentTurn.text.includes("requesting operator guidance"), false);
+  });
+});
+
+test("pipecat local voice sessions default caller turns to free caller mode", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const turn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I need to change the email address on my account.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const payload = turn.payload as SnapshotPayload;
+
+    assert.equal(turn.statusCode, 200);
+    assert.equal(payload.flowState, "greet");
+    assert.equal(payload.pipecatFlow.activeTool, "conversation_agent");
+    assert.equal(payload.events.some((event) => event.type === "free_caller_turn_processed"), true);
+
+    const lastAgentTurn = [...payload.transcript].reverse().find((entry) => entry.speaker === "agent");
+    assert.ok(lastAgentTurn);
+    assert.match(lastAgentTurn.text, /capture that account update/i);
+  });
+});
+
+test("free caller voice turns avoid repeating the same clarification question", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Hello there.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I am not sure.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    const third = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Still not sure.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+    const payload = third.payload as SnapshotPayload;
+    const agentTurns = payload.transcript.filter((entry) => entry.speaker === "agent").map((entry) => entry.text);
+
+    assert.equal(third.statusCode, 200);
+    assert.equal(payload.events.some((event) => event.detail.goalSpecId === "local-free-caller-contact-center"), true);
+    assert.equal(agentTurns.length, 3);
+    assert.notEqual(agentTurns.at(-1), agentTurns.at(-2));
+    assert.match(agentTurns.at(-1) ?? "", /move this forward/i);
+  });
+});
+
+test("free caller billing flow captures follow-up details instead of repeating amount question", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I have a billing problem.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "It is a renewal increase.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    const third = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "The amount is two hundred dollars.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+    const payload = third.payload as SnapshotPayload;
+    const agentTurns = payload.transcript.filter((entry) => entry.speaker === "agent").map((entry) => entry.text);
+
+    assert.equal(third.statusCode, 200);
+    assert.match(agentTurns.at(-1) ?? "", /added that detail/i);
+    assert.notEqual(agentTurns.at(-1), agentTurns.at(-2));
+  });
+});
+
+test("free caller cancellation flow captures reason instead of repeating reason question", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Hello",
+      conversationMode: "free_caller",
+      timestamp: "2026-07-08T03:17:44.961Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      conversationMode: "free_caller",
+      timestamp: "2026-07-08T03:17:56.211Z",
+    });
+    const reason = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I just think it's too expensive.",
+      conversationMode: "free_caller",
+      timestamp: "2026-07-08T03:18:04.326Z",
+    });
+    const repeated = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I already said it.",
+      conversationMode: "free_caller",
+      timestamp: "2026-07-08T03:18:16.025Z",
+    });
+    const reasonPayload = reason.payload as SnapshotPayload;
+    const repeatedPayload = repeated.payload as SnapshotPayload;
+    const reasonAgentTurn = reasonPayload.transcript.at(-1)?.text ?? "";
+    const repeatedAgentTurn = repeatedPayload.transcript.at(-1)?.text ?? "";
+
+    assert.equal(reason.statusCode, 200);
+    assert.equal(repeated.statusCode, 200);
+    assert.match(reasonAgentTurn, /cancellation reason/i);
+    assert.equal(
+      reasonPayload.events.some((event) => event.detail.responseKind === "cancellation_reason_captured"),
+      true,
+    );
+    assert.match(repeatedAgentTurn, /you.re right|i have the cancellation reason|human specialist/i);
+    assert.doesNotMatch(reasonAgentTurn, /main reason you want to cancel/i);
+    assert.doesNotMatch(repeatedAgentTurn, /main reason you want to cancel/i);
+    assert.notEqual(repeatedAgentTurn, reasonAgentTurn);
+    assert.equal(
+      repeatedPayload.events.some((event) => event.detail.responseKind === "cancellation_reason_acknowledged"),
+      true,
+    );
+  });
+});
+
+test("free caller voice handles capabilities, low-information STT, and handoff details", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I have a billing problem.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const capabilities = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "What can you do?",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    const capabilitiesPayload = capabilities.payload as SnapshotPayload;
+    assert.match(capabilitiesPayload.transcript.at(-1)?.text ?? "", /billing, cancellation, account updates/i);
+
+    const lowInfo = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: ". . . . . . .",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+    const lowInfoPayload = lowInfo.payload as SnapshotPayload;
+    assert.match(lowInfoPayload.transcript.at(-1)?.text ?? "", /didn.t catch/i);
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I would like to speak with a human agent.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:15.000Z",
+    });
+    const handoffDetail = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I would like them to help me cancel my account.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:20.000Z",
+    });
+    const handoffPayload = handoffDetail.payload as SnapshotPayload;
+    assert.match(handoffPayload.transcript.at(-1)?.text ?? "", /handoff summary/i);
+    assert.doesNotMatch(handoffPayload.transcript.at(-1)?.text ?? "", /one thing you want them to solve first/i);
+
+    const closed = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Thanks, bye.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:25.000Z",
+    });
+    const closedPayload = closed.payload as SnapshotPayload;
+    assert.equal(closedPayload.flowState, "wrap");
+    assert.match(closedPayload.transcript.at(-1)?.text ?? "", /closing the demo call/i);
+  });
+});
+
 test("attention age metadata tracks when operator attention actually started", async () => {
   await withServer(async (port) => {
     const now = Date.now();
@@ -4538,7 +4954,15 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
       schemaVersion: number;
       commandWrappers: string[];
       callReferenceFields: string[];
-      routes: { startDemoCall: string; callerTurn: string; scriptedTurn: string; steerCall: string; noteCall: string; consoleAction: string };
+      routes: {
+        startDemoCall: string;
+        runEndToEndDemo: string;
+        callerTurn: string;
+        scriptedTurn: string;
+        steerCall: string;
+        noteCall: string;
+        consoleAction: string;
+      };
       actions: Array<{
         action: string;
         requiresPendingCall: boolean;
@@ -4563,6 +4987,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     ]);
     assert.deepEqual(payload.routes, {
       startDemoCall: "/api/demo/start",
+      runEndToEndDemo: "/api/demo/run-end-to-end",
       callerTurn: "/api/calls/{callId}/caller-turn",
       scriptedTurn: "/api/operator/console/scripted-turn",
       steerCall: "/api/calls/{callId}/operator-steer",
