@@ -1633,6 +1633,10 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /<title>Operator Console<\/title>/);
     assert.match(response.body, /Run Demo Flow/);
     assert.match(response.body, /Start Empty Call/);
+    assert.match(response.body, /href="\/assert"/);
+    assert.match(response.body, /href="\/assert\/spec"/);
+    assert.match(response.body, /Full ASSERT/);
+    assert.match(response.body, /Eval Spec/);
     assert.match(response.body, /runDemoFlow/);
     assert.match(response.body, /\/api\/demo\/run-end-to-end/);
     assert.match(response.body, /Pipecat Voice Caller/);
@@ -1651,6 +1655,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /macOS say local TTS/);
     assert.match(response.body, /connectPipecatVoice/);
     assert.match(response.body, /togglePipecatMute/);
+    assert.match(response.body, /captureTranscriptScroll/);
+    assert.match(response.body, /restoreTranscriptScroll/);
     assert.match(response.body, /startVoiceSegment/);
     assert.match(response.body, /voiceSegmentMs/);
     assert.match(response.body, /MediaRecorder/);
