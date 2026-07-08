@@ -9,6 +9,7 @@ import type {
   ScriptProgress,
   TranscriptTurn,
 } from "./types";
+import { defaultAssertEvaluationSpec } from "./assertEvaluationSpec";
 
 export const SCRIPTED_CALLER_TURNS = [
   "I want to cancel my policy today.",
@@ -320,6 +321,134 @@ export function applyDeterministicPipecatFlow(
     );
     snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
   }
+}
+
+function priorAgentTurns(snapshot: CallSnapshot): string[] {
+  return snapshot.transcript.filter((turn) => turn.speaker === "agent").map((turn) => normalizeText(turn.text));
+}
+
+function alreadyAsked(agentTurns: string[], fragment: string): boolean {
+  const normalizedFragment = normalizeText(fragment);
+  return agentTurns.some((text) => text.includes(normalizedFragment));
+}
+
+function buildFreeCallerAgentResponse(
+  snapshot: CallSnapshot,
+  text: string,
+  callerTurnCount: number,
+): { response: string; done: boolean; responseKind: string } {
+  const normalized = normalizeText(text);
+  const previousAgentTurns = priorAgentTurns(snapshot);
+
+  if (/\b(thanks|thank you|bye|goodbye|that's all|that is all)\b/.test(normalized)) {
+    return {
+      response: "You are welcome. I have noted the conversation and I am closing the demo call now.",
+      done: true,
+      responseKind: "closing",
+    };
+  }
+
+  if (/\b(human|agent|representative|operator|person|supervisor)\b/.test(normalized)) {
+    return {
+      response: "I can get a human involved. I will summarize what you told me so far and mark the call for operator follow-up.",
+      done: false,
+      responseKind: "handoff",
+    };
+  }
+
+  if (/\b(bill|billing|charge|charged|payment|invoice|refund|renewal|price|cost)\b/.test(normalized)) {
+    if (alreadyAsked(previousAgentTurns, "new charge, renewal increase, refund, or payment failure")) {
+      return {
+        response: "Thanks, I have the billing issue in context. The next useful step is to verify the account and review the charge details; if a credit or refund is needed, I would route that for approval instead of promising it here.",
+        done: false,
+        responseKind: "billing_followup",
+      };
+    }
+
+    return {
+      response: "I can help with the billing question. Is this about a new charge, a renewal increase, a refund, or a payment failure?",
+      done: false,
+      responseKind: "billing_clarify",
+    };
+  }
+
+  if (/\b(cancel|cancellation|canceling|cancelled)\b/.test(normalized)) {
+    if (alreadyAsked(previousAgentTurns, "why you want to cancel")) {
+      return {
+        response: "I have the cancellation concern in context. I can review approved next steps and, if this needs a policy decision, prepare a handoff summary for a specialist.",
+        done: false,
+        responseKind: "cancellation_followup",
+      };
+    }
+
+    return {
+      response: "I can help with a cancellation request. I will first understand why you want to cancel, then I can review approved options or connect you with the right specialist if the call needs a policy decision.",
+      done: false,
+      responseKind: "cancellation_clarify",
+    };
+  }
+
+  if (/\b(address|email|phone|contact|name|update|change)\b/.test(normalized)) {
+    return {
+      response: "I can help update contact information. I would verify the account, confirm the new details back to you, and record the change request for the account workflow.",
+      done: false,
+      responseKind: "account_update",
+    };
+  }
+
+  if (/\b(hours|open|close|location|office|website|app)\b/.test(normalized)) {
+    return {
+      response: "I can help with service information. Tell me the location, product, or account area you mean, and I will narrow the answer to that context.",
+      done: false,
+      responseKind: "service_info",
+    };
+  }
+
+  if (callerTurnCount === 1) {
+    return {
+      response: "Hi, I am the local voice agent. I can help with billing, cancellation, account updates, or getting a human involved. What would you like to do next?",
+      done: false,
+      responseKind: "initial_capabilities",
+    };
+  }
+
+  if (alreadyAsked(previousAgentTurns, "billing, cancellation, an account update, or a handoff")) {
+    return {
+      response: "I heard that additional detail. I will keep the existing context and move toward the safest next step: either answer within the demo scope or prepare a handoff if the request needs account access.",
+      done: false,
+      responseKind: "ambiguous_followup",
+    };
+  }
+
+  return {
+    response: "I heard you. To make sure I help correctly, can you tell me whether this is about billing, cancellation, an account update, or a handoff to a human?",
+    done: false,
+    responseKind: "ambiguous_clarify",
+  };
+}
+
+export function applyFreeCallerPipecatFlow(snapshot: CallSnapshot, turn: TranscriptTurn): void {
+  const callerTurnCount = snapshot.transcript.filter((entry) => entry.speaker === "caller").length;
+  const { response, done, responseKind } = buildFreeCallerAgentResponse(snapshot, turn.text, callerTurnCount);
+
+  snapshot.pipecatFlow.activeTool = done ? "pause_presentation" : "conversation_agent";
+  snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
+  recordEvent(snapshot, "free_caller_turn_processed", turn.timestamp, {
+    callerTurnCount,
+    conversationMode: "free_caller",
+    goalSpecId: defaultAssertEvaluationSpec.id,
+    responseKind,
+  });
+
+  if (callerTurnCount === 1) {
+    transitionFlowState(snapshot, "greet", turn.timestamp, "free_caller_connected");
+  } else if (done) {
+    transitionFlowState(snapshot, "wrap", turn.timestamp, "free_caller_closed");
+  } else {
+    transitionFlowState(snapshot, "diagnose", turn.timestamp, "free_caller_conversation");
+  }
+
+  appendAgentTurn(snapshot, response, turn.timestamp);
 }
 
 export function applyOperatorSteer(

@@ -1,5 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
+import {
+  assertSpecBlocks,
+  assertSpecToYaml,
+  cloneAssertEvaluationSpec,
+  defaultAssertEvaluationSpec,
+  type AssertEvaluationSpec,
+} from "../core/assertEvaluationSpec";
 import { compareTimestamps, getAttentionMetadata } from "../core/attention";
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { LocalRealtimeShimPrototype } from "../core/localRealtimeShimPrototype";
@@ -40,6 +47,7 @@ const maxTranscriptPageLimit = 100;
 const maxLatencyMarkPageLimit = 100;
 const maxCallListPageLimit = 100;
 const operatorConsoleRefreshIntervalMs = 5000;
+let activeAssertEvaluationSpec = cloneAssertEvaluationSpec(defaultAssertEvaluationSpec);
 
 function buildRealtimeShimProofPayload(): object {
   const shim = new LocalRealtimeShimPrototype();
@@ -1066,7 +1074,7 @@ function buildOperatorConsoleHtml(): string {
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voiceConnecting: false, voiceRecording: null, voiceChunks: [], voiceCallId: null, voiceStatus: "Voice disconnected" };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 3500, voiceStatus: "Voice disconnected" };
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
     const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
@@ -1114,7 +1122,7 @@ function buildOperatorConsoleHtml(): string {
       });
     }
     function hasDirtyDetailInput() {
-      if (state.voiceConnecting || (state.voiceRecording && state.voiceRecording.state === "recording")) return true;
+      if (state.voiceConnecting || state.voiceProcessing || !state.voiceMuted || (state.voiceRecording && state.voiceRecording.state === "recording")) return true;
       return ["caller-turn", "note", "disposition"].some(function(id) {
         const input = document.getElementById(id);
         return input && (document.activeElement === input || input.value.trim());
@@ -1173,10 +1181,60 @@ function buildOperatorConsoleHtml(): string {
       if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); const message = payload.error || "Caller turn failed"; setStatus(message); throw new Error(message); }
     }
     function voiceBridgeUrl() { return "ws://" + window.location.hostname + ":8765"; }
-    function playAgentAudio(agentAudio) {
-      if (!agentAudio || !agentAudio.base64) return;
+    function playAgentAudio(agentAudio, onEnded) {
+      if (!agentAudio || !agentAudio.base64) { if (onEnded) onEnded(); return; }
       const audio = new Audio("data:" + (agentAudio.contentType || "audio/wav") + ";base64," + agentAudio.base64);
-      audio.play().catch(function(error) { setStatus("Agent audio blocked: " + error.message); });
+      audio.onended = function() { if (onEnded) onEnded(); };
+      audio.onerror = function() { if (onEnded) onEnded(); };
+      audio.play().catch(function(error) { setStatus("Agent audio blocked: " + error.message); if (onEnded) onEnded(); });
+    }
+    function stopVoiceSegment() {
+      if (state.voiceRecording && state.voiceRecording.state === "recording") {
+        state.voiceRecording.stop();
+      }
+    }
+    function stopVoiceStream() {
+      stopVoiceSegment();
+      if (state.voiceStream) {
+        state.voiceStream.getTracks().forEach(function(track) { track.stop(); });
+        state.voiceStream = null;
+      }
+      state.voiceRecording = null;
+      state.voiceChunks = [];
+    }
+    async function ensureVoiceStream() {
+      if (!state.voiceStream) {
+        state.voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+      return state.voiceStream;
+    }
+    async function startVoiceSegment() {
+      if (state.voiceMuted || state.voiceProcessing || !state.voiceWs || state.voiceWs.readyState !== WebSocket.OPEN) return;
+      if (state.voiceRecording && state.voiceRecording.state === "recording") return;
+      const stream = await ensureVoiceStream();
+      const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : undefined });
+      state.voiceChunks = [];
+      state.voiceRecording = recorder;
+      recorder.ondataavailable = function(event) { if (event.data.size > 0) state.voiceChunks.push(event.data); };
+      recorder.onstop = async function() {
+        if (state.voiceRecording === recorder) state.voiceRecording = null;
+        if (state.voiceMuted || !state.voiceChunks.length || !state.voiceWs || state.voiceWs.readyState !== WebSocket.OPEN) return;
+        const blob = new Blob(state.voiceChunks, { type: recorder.mimeType || "audio/webm" });
+        state.voiceChunks = [];
+        const buffer = await blob.arrayBuffer();
+        state.voiceProcessing = true;
+        state.voiceStatus = "Thinking";
+        setStatus("Sent caller audio to local STT");
+        state.voiceWs.send(buffer);
+        render();
+      };
+      recorder.start();
+      state.voiceStatus = "Listening";
+      setStatus("Listening");
+      render();
+      window.setTimeout(function() {
+        if (state.voiceRecording === recorder && recorder.state === "recording") recorder.stop();
+      }, state.voiceSegmentMs);
     }
     async function connectPipecatVoice() {
       const call = selectedCall();
@@ -1184,6 +1242,7 @@ function buildOperatorConsoleHtml(): string {
       const activeCall = selectedCall();
       state.voiceConnecting = true;
       state.voiceStatus = "Connecting to Pipecat voice bridge";
+      await ensureVoiceStream();
       const ws = new WebSocket(voiceBridgeUrl());
       state.voiceWs = ws;
       ws.onopen = function() {
@@ -1197,52 +1256,49 @@ function buildOperatorConsoleHtml(): string {
         if (payload.type === "started") {
           state.voiceCallId = payload.callId;
           state.selectedCallId = payload.callId;
-          state.voiceStatus = "Voice call " + payload.callId + " connected";
+          state.voiceMuted = false;
+          state.voiceStatus = "Voice call " + payload.callId + " connected. Listening";
           await refresh();
+          await startVoiceSegment();
           return;
         }
         if (payload.type === "turn" && payload.ok) {
           state.selectedCallId = payload.callId;
-          state.voiceStatus = "Caller: " + payload.callerTranscript;
+          state.voiceProcessing = false;
+          state.voiceStatus = "Agent responding";
           setStatus("Caller: " + payload.callerTranscript);
-          playAgentAudio(payload.agentAudio);
+          playAgentAudio(payload.agentAudio, function() {
+            if (!state.voiceMuted) startVoiceSegment().catch(function(error) { setStatus(error.message); });
+          });
           await refresh();
           return;
         }
         if (payload.type === "error" || payload.ok === false) {
+          state.voiceProcessing = false;
           state.voiceStatus = payload.error || "Pipecat voice turn failed";
           setStatus(payload.error || "Pipecat voice turn failed");
+          if (!state.voiceMuted) startVoiceSegment().catch(function(error) { setStatus(error.message); });
         }
       };
-      ws.onclose = function() { state.voiceConnecting = false; if (state.voiceWs === ws) state.voiceWs = null; state.voiceStatus = "Pipecat voice bridge disconnected"; setStatus("Pipecat voice bridge disconnected"); };
+      ws.onclose = function() { state.voiceConnecting = false; state.voiceProcessing = false; state.voiceMuted = true; stopVoiceStream(); if (state.voiceWs === ws) state.voiceWs = null; state.voiceStatus = "Pipecat voice bridge disconnected"; setStatus("Pipecat voice bridge disconnected"); };
       ws.onerror = function() { state.voiceConnecting = false; state.voiceStatus = "Pipecat voice bridge unavailable. Run npm run pipecat:voice"; setStatus(state.voiceStatus); };
     }
-    async function togglePipecatRecording() {
+    async function togglePipecatMute() {
       if (!state.voiceWs || state.voiceWs.readyState !== WebSocket.OPEN) {
         await connectPipecatVoice();
-      }
-      if (state.voiceRecording && state.voiceRecording.state === "recording") {
-        state.voiceRecording.stop();
         return;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : undefined });
-      state.voiceChunks = [];
-      state.voiceRecording = recorder;
-      recorder.ondataavailable = function(event) { if (event.data.size > 0) state.voiceChunks.push(event.data); };
-      recorder.onstop = async function() {
-        stream.getTracks().forEach(function(track) { track.stop(); });
-        const blob = new Blob(state.voiceChunks, { type: recorder.mimeType || "audio/webm" });
-        const buffer = await blob.arrayBuffer();
-        if (state.voiceWs && state.voiceWs.readyState === WebSocket.OPEN) {
-          state.voiceWs.send(buffer);
-          state.voiceStatus = "Sent caller audio to local STT";
-          setStatus("Sent caller audio to Pipecat STT");
-        }
-      };
-      recorder.start();
-      state.voiceStatus = "Recording caller audio";
-      setStatus("Recording caller audio");
+      state.voiceMuted = !state.voiceMuted;
+      if (state.voiceMuted) {
+        stopVoiceSegment();
+        state.voiceStatus = "Muted";
+        setStatus("Caller muted");
+        render();
+        return;
+      }
+      state.voiceStatus = "Listening";
+      setStatus("Caller unmuted");
+      await startVoiceSegment();
     }
     async function postScriptedTurn(expectedTurnIndex) {
       const call = selectedCall();
@@ -1274,11 +1330,25 @@ function buildOperatorConsoleHtml(): string {
       }).join("") || '<div class="meta" style="padding:14px">No active calls</div>';
       root.querySelectorAll("button[data-call-id]").forEach(function(button) { button.addEventListener("click", function() { state.selectedCallId = button.dataset.callId; render(); }); });
     }
+    function voiceControlsHtml() {
+      const muteLabel = state.voiceMuted ? "Unmute Caller" : "Mute Caller";
+      return '<section class="section"><h3 class="section-title">Pipecat Voice Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute">' + muteLabel + '</button></div><span class="status">' + escapeHtml(state.voiceStatus) + '</span><span class="meta">Requires local bridge: npm run pipecat:voice. Audio path is browser mic -> Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS say local TTS -> browser playback.</span></section>';
+    }
+    function attachVoiceControls() {
+      const connect = document.getElementById("voice-connect");
+      const mute = document.getElementById("voice-mute");
+      if (connect) connect.addEventListener("click", function() { connectPipecatVoice().catch(function(error) { setStatus(error.message); }); });
+      if (mute) mute.addEventListener("click", function() { togglePipecatMute().catch(function(error) { setStatus(error.message); }); });
+    }
     function renderDetail() {
       const call = selectedCall();
       document.getElementById("selected-title").textContent = call ? call.session.callId : "Select a call";
       const root = document.getElementById("detail");
-      if (!call) { root.innerHTML = ""; return; }
+      if (!call) {
+        root.innerHTML = '<div class="workbench"><div class="stack">' + voiceControlsHtml() + '</div></div>';
+        attachVoiceControls();
+        return;
+      }
       const actionDetails = Object.fromEntries((call.actionState.actionDetails || []).map(function(entry) { return [entry.action, entry]; }));
       const unavailable = new Set(call.actionState.unavailableActions.map(function(entry) { return entry.action; }));
       const unavailableReasons = Object.fromEntries(call.actionState.unavailableActions.map(function(entry) { return [entry.action, entry.reason]; }));
@@ -1327,11 +1397,10 @@ function buildOperatorConsoleHtml(): string {
         return '<button type="button" data-scripted-turn="' + index + '" ' + disabled + '><span class="meta">' + status + ' | Turn ' + (index + 1) + '</span><br>' + escapeHtml(text) + '</button>';
       }).join("");
       const scriptedMetric = '<div class="metric"><span class="meta">Scripted Turns</span><strong>' + scriptedState.progressPct + '%</strong><span class="meta">' + scriptedState.matchedTurns + '/' + scriptedState.totalTurns + ' sent | ' + scriptedState.remainingTurns + ' remaining</span><span class="meta">' + escapeHtml(scriptedState.completed ? "complete" : scriptedState.nextTurnText || "queued") + '</span></div>';
-      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + runtimeMetric + scriptedMetric + pendingHtml + '</div><div class="workbench"><div class="stack"><section class="section"><h3 class="section-title">Pipecat Voice Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-record">Record / Stop Caller</button></div><span class="status">' + escapeHtml(state.voiceStatus) + '</span><span class="meta">Requires local bridge: npm run pipecat:voice. Audio path is browser mic -> Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS say local TTS -> browser playback.</span></section><section class="section"><h3 class="section-title">Operator Actions</h3><div class="actions">' + actionHtml + '</div></section><section class="section"><h3 class="section-title">Caller Script</h3><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></section><section class="section"><h3 class="section-title">Disposition</h3><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></section></div><div class="stack">' + assertHtml + liveProofHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section></div></div>';
+      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + runtimeMetric + scriptedMetric + pendingHtml + '</div><div class="workbench"><div class="stack">' + voiceControlsHtml() + '<section class="section"><h3 class="section-title">Operator Actions</h3><div class="actions">' + actionHtml + '</div></section><section class="section"><h3 class="section-title">Caller Script</h3><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></section><section class="section"><h3 class="section-title">Disposition</h3><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></section></div><div class="stack">' + assertHtml + liveProofHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section></div></div>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\\n\\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       root.querySelectorAll("button[data-scripted-turn]").forEach(function(button) { button.addEventListener("click", function() { const index = Number(button.dataset.scriptedTurn); if (Number.isInteger(index)) postScriptedTurn(index).catch(function(error) { setStatus(error.message); }); }); });
-      document.getElementById("voice-connect").addEventListener("click", function() { connectPipecatVoice().catch(function(error) { setStatus(error.message); }); });
-      document.getElementById("voice-record").addEventListener("click", function() { togglePipecatRecording().catch(function(error) { setStatus(error.message); }); });
+      attachVoiceControls();
       document.getElementById("caller-turn-form").addEventListener("submit", recordCallerTurn);
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
@@ -1499,6 +1568,79 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function getOptionalTrimmedString(value: unknown): string | undefined {
   return typeof value === "string" ? value.trim() : undefined;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function parseAssertEvaluationSpec(value: unknown): AssertEvaluationSpec | null {
+  if (!isRecord(value)) return null;
+  const agentGoal = value.agentGoal;
+  const systematization = value.systematization;
+  const testSetGeneration = value.testSetGeneration;
+  const judges = value.judges;
+
+  if (!isRecord(agentGoal) || !isRecord(systematization) || !isRecord(testSetGeneration) || !Array.isArray(judges)) {
+    return null;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.title !== "string" ||
+    typeof value.version !== "number" ||
+    typeof agentGoal.role !== "string" ||
+    typeof agentGoal.objective !== "string" ||
+    !isStringArray(agentGoal.requiredBehaviors) ||
+    !isStringArray(agentGoal.forbiddenBehaviors) ||
+    !isStringArray(agentGoal.conversationMemory) ||
+    !isStringArray(systematization.dimensions) ||
+    !isStringArray(systematization.coverageTargets) ||
+    !isStringArray(testSetGeneration.personas) ||
+    !isStringArray(testSetGeneration.scenarios) ||
+    !isStringArray(testSetGeneration.edgeCases)
+  ) {
+    return null;
+  }
+
+  const parsedJudges = judges.map((judge) => {
+    if (!isRecord(judge) || typeof judge.name !== "string" || (judge.type !== "llm" && judge.type !== "rule") || !isStringArray(judge.rubric)) {
+      return null;
+    }
+
+    return {
+      name: judge.name,
+      type: judge.type,
+      rubric: judge.rubric,
+    };
+  });
+
+  if (parsedJudges.some((judge) => judge === null)) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    version: value.version,
+    title: value.title,
+    agentGoal: {
+      role: agentGoal.role,
+      objective: agentGoal.objective,
+      requiredBehaviors: agentGoal.requiredBehaviors,
+      forbiddenBehaviors: agentGoal.forbiddenBehaviors,
+      conversationMemory: agentGoal.conversationMemory,
+    },
+    systematization: {
+      dimensions: systematization.dimensions,
+      coverageTargets: systematization.coverageTargets,
+    },
+    testSetGeneration: {
+      personas: testSetGeneration.personas,
+      scenarios: testSetGeneration.scenarios,
+      edgeCases: testSetGeneration.edgeCases,
+    },
+    judges: parsedJudges as AssertEvaluationSpec["judges"],
+  };
 }
 
 function hasInvalidOptionalString(value: unknown): boolean {
@@ -3688,6 +3830,16 @@ async function routeRequest(
       return;
     }
 
+    const conversationMode = body.conversationMode;
+    if (
+      conversationMode !== undefined &&
+      conversationMode !== "scripted" &&
+      conversationMode !== "free_caller"
+    ) {
+      writeBadRequest(response, "caller_turn_conversation_mode_invalid");
+      return;
+    }
+
     const timestamp = normalizeTimestamp(body.timestamp, "caller_turn_timestamp_invalid");
     if (typeof timestamp !== "string") {
       writeBadRequest(response, timestamp.error);
@@ -3701,7 +3853,9 @@ async function routeRequest(
     };
 
     try {
-      const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config);
+      const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config, {
+        conversationMode,
+      });
       writeJson(response, 200, buildCallPayload(snapshot));
     } catch {
       writeNotFound(response);

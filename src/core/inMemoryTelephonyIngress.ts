@@ -1,4 +1,5 @@
 import {
+  applyFreeCallerPipecatFlow,
   applyDeterministicPipecatFlow,
   applyOperatorSteer,
   buildPipecatFlowPrototypeStatus,
@@ -225,7 +226,12 @@ export class InMemoryTelephonyIngress {
     return cloneSnapshot(snapshot);
   }
 
-  async appendCallerTurn(callId: string, turn: TranscriptTurn, config: PocConfig): Promise<CallSnapshot> {
+  async appendCallerTurn(
+    callId: string,
+    turn: TranscriptTurn,
+    config: PocConfig,
+    options: { conversationMode?: "scripted" | "free_caller" } = {},
+  ): Promise<CallSnapshot> {
     const snapshot = this.calls.get(callId);
 
     if (!snapshot) {
@@ -255,7 +261,14 @@ export class InMemoryTelephonyIngress {
       },
     });
 
-    applyDeterministicPipecatFlow(snapshot, config, turn);
+    const conversationMode =
+      options.conversationMode ?? (snapshot.session.openclawSession.label === "pipecat-local-voice" ? "free_caller" : "scripted");
+
+    if (conversationMode === "free_caller") {
+      applyFreeCallerPipecatFlow(snapshot, turn);
+    } else {
+      applyDeterministicPipecatFlow(snapshot, config, turn);
+    }
 
     if (snapshot.flowState === "policy_hold") {
       recordLatencyMark(snapshot, "policy_hold_entered", turn.timestamp, "policyGate");

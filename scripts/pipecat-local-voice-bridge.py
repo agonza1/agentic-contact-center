@@ -187,7 +187,7 @@ async def handle_client(websocket: websockets.WebSocketServerProtocol) -> None:
                 json_http,
                 "POST",
                 f"{acc_url}/api/calls/{call_id}/caller-turn",
-                {"text": transcript},
+                {"text": transcript, "conversationMode": "free_caller"},
             )
             agent_text = latest_agent_text(call)
             audio_base64 = ""

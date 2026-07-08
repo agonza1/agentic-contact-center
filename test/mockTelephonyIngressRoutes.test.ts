@@ -1637,12 +1637,16 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /\/api\/demo\/run-end-to-end/);
     assert.match(response.body, /Pipecat Voice Caller/);
     assert.match(response.body, /Connect Voice/);
-    assert.match(response.body, /Record \/ Stop Caller/);
+    assert.match(response.body, /Unmute Caller/);
+    assert.match(response.body, /Mute Caller/);
     assert.match(response.body, /Voice disconnected/);
     assert.match(response.body, /npm run pipecat:voice/);
     assert.match(response.body, /MLX Whisper local STT/);
     assert.match(response.body, /macOS say local TTS/);
     assert.match(response.body, /connectPipecatVoice/);
+    assert.match(response.body, /togglePipecatMute/);
+    assert.match(response.body, /startVoiceSegment/);
+    assert.match(response.body, /voiceSegmentMs/);
     assert.match(response.body, /MediaRecorder/);
     assert.match(response.body, /new WebSocket/);
     assert.match(response.body, /Attention only/);
@@ -3991,6 +3995,57 @@ test("off-script caller turns pause the prototype for operator guidance", async 
     const lastAgentTurn = [...divergentPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
     assert.ok(lastAgentTurn);
     assert.equal(lastAgentTurn.text.toLowerCase().includes("requesting operator guidance"), true);
+  });
+});
+
+test("free caller voice turns get conversational agent responses instead of scripted hold", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const turn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help me with a billing problem?",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const payload = turn.payload as SnapshotPayload;
+
+    assert.equal(turn.statusCode, 200);
+    assert.notEqual(payload.flowState, "policy_hold");
+    assert.equal(payload.pipecatFlow.activeTool, "conversation_agent");
+    assert.equal(payload.events.some((event) => event.type === "free_caller_turn_processed"), true);
+
+    const lastAgentTurn = [...payload.transcript].reverse().find((entry) => entry.speaker === "agent");
+    assert.ok(lastAgentTurn);
+    assert.match(lastAgentTurn.text, /billing question/i);
+    assert.equal(lastAgentTurn.text.includes("approved cancellation-rescue script"), false);
+    assert.equal(lastAgentTurn.text.includes("requesting operator guidance"), false);
+  });
+});
+
+test("pipecat local voice sessions default caller turns to free caller mode", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const turn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I need to change the email address on my account.",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const payload = turn.payload as SnapshotPayload;
+
+    assert.equal(turn.statusCode, 200);
+    assert.equal(payload.flowState, "greet");
+    assert.equal(payload.pipecatFlow.activeTool, "conversation_agent");
+    assert.equal(payload.events.some((event) => event.type === "free_caller_turn_processed"), true);
+
+    const lastAgentTurn = [...payload.transcript].reverse().find((entry) => entry.speaker === "agent");
+    assert.ok(lastAgentTurn);
+    assert.match(lastAgentTurn.text, /update contact information/i);
   });
 });
 
