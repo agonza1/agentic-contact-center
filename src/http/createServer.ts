@@ -47,6 +47,8 @@ const maxTranscriptPageLimit = 100;
 const maxLatencyMarkPageLimit = 100;
 const maxCallListPageLimit = 100;
 const operatorConsoleRefreshIntervalMs = 5000;
+const operatorConsoleWorkboardCard = "82771d3a-de4d-4b6e-869c-328e8264d01e";
+const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
 let activeAssertEvaluationSpec = cloneAssertEvaluationSpec(defaultAssertEvaluationSpec);
 
 function buildRealtimeShimProofPayload(): object {
@@ -1083,7 +1085,7 @@ function buildOperatorConsoleHtml(): string {
     const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 3500, voiceStatus: "Voice disconnected", transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
-    const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
+    const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve", deny_offer: "Deny", takeover: "Barge In", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
     function setStatus(text) { document.getElementById("status").textContent = text; }
     function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { if (char === "&") return "&amp;"; if (char === "<") return "&lt;"; if (char === ">") return "&gt;"; return "&quot;"; }); }
     function humanLabel(value) { return String(value || "none").replace(/_/g, " "); }
@@ -1417,6 +1419,8 @@ function buildOperatorConsoleHtml(): string {
       const caveatsHtml = (liveProof.caveats || []).length ? '<ul class="caveats">' + liveProof.caveats.map(function(caveat) { return '<li>' + escapeHtml(caveat) + '</li>'; }).join("") + '</ul>' : '<span class="meta">No caveats recorded for this run.</span>';
       const asrDetail = liveProof.asr && (liveProof.asr.latestTranscriptText || liveProof.asr.blocker || liveProof.asr.nextAction) ? (liveProof.asr.latestTranscriptText || liveProof.asr.blocker || liveProof.asr.nextAction) : "no ASR events yet";
       const liveProofHtml = '<section class="proof-panel" aria-label="Live SIP proof"><div class="proof-header"><h3>Live SIP proof</h3><div class="badges"><span class="' + badgeClass + '">' + escapeHtml(liveProof.eval ? liveProof.eval.status : "not_review_ready") + '</span>' + labelBadges + '</div></div><div class="proof-grid"><div class="metric"><span class="meta">Run / Session</span><strong>' + escapeHtml((liveProof.run && liveProof.run.sessionId) || call.session.openclawSession.sessionId) + '</strong><span class="meta">Call: ' + escapeHtml((liveProof.run && liveProof.run.callId) || call.session.callId) + '</span><span class="meta">Provider: ' + escapeHtml((liveProof.run && liveProof.run.providerCallId) || call.session.providerCallId) + '</span></div><div class="metric"><span class="meta">Audio Capture</span><strong>' + escapeHtml(humanLabel(liveProof.audioCapture && liveProof.audioCapture.status)) + '</strong>' + pathHtml(liveProof.audioCapture && liveProof.audioCapture.audioWavPath, "WAV") + pathHtml(liveProof.audioCapture && liveProof.audioCapture.sipLogPath, "SIP log") + linkHtml(liveProof.audioCapture && liveProof.audioCapture.eventTrail, "Capture Events") + '</div><div class="metric"><span class="meta">Transcript / ASR</span><strong>' + escapeHtml(humanLabel(liveProof.asr && liveProof.asr.status)) + '</strong><span class="meta">' + escapeHtml(asrDetail) + '</span>' + pathHtml(liveProof.asr && liveProof.asr.evidencePath, "ASR evidence") + linkHtml(liveProof.asr && liveProof.asr.eventTrail, "ASR Events") + '</div><div class="metric"><span class="meta">Artifacts / Eval</span><strong>' + escapeHtml(isLiveProofReady ? "Reviewable" : "Blocked") + '</strong>' + linkHtml(liveProof.eval && liveProof.eval.proofRoute, "Proof") + linkHtml(liveProof.eval && liveProof.eval.artifactManifestRoute, "Artifacts") + linkHtml(liveProof.eval && liveProof.eval.transcriptRoute, "Transcript") + '</div><div class="metric"><span class="meta">Handoff State</span><strong>' + escapeHtml(humanLabel(liveProof.operator && liveProof.operator.handoffState)) + '</strong><span class="meta">Attention: ' + escapeHtml(liveProof.operator && liveProof.operator.attentionRequired ? "required" : "clear") + '</span><span class="meta">Pending: ' + escapeHtml((liveProof.operator && liveProof.operator.pendingAction) || "none") + '</span></div></div>' + caveatsHtml + '</section>';
+      const markers = call.controlMarkers || {};
+      const markerHtml = '<section class="section"><h3 class="section-title">Live Control Markers</h3><div class="evidence"><div class="metric"><span class="meta">Live Call State</span><strong>' + escapeHtml(markers.liveCall && markers.liveCall.status || "unknown") + '</strong><span class="meta">' + escapeHtml(markers.liveCall && markers.liveCall.providerCallId || call.session.providerCallId) + '</span></div><div class="metric"><span class="meta">Flow State</span><strong>' + escapeHtml(markers.flowState && markers.flowState.current || call.flowState) + '</strong><span class="meta">Tool: ' + escapeHtml(markers.flowState && markers.flowState.activeTool || "none") + '</span></div><div class="metric"><span class="meta">Transcript</span><strong>' + escapeHtml(markers.transcript && markers.transcript.turnCount !== undefined ? markers.transcript.turnCount : call.transcript.length) + '</strong>' + linkHtml(markers.transcript && markers.transcript.route, "Transcript Trail") + '</div><div class="metric"><span class="meta">Pending Approval</span><strong>' + escapeHtml(markers.pendingApproval && markers.pendingApproval.active ? "pending" : "clear") + '</strong><span class="meta">' + escapeHtml(markers.pendingApproval && markers.pendingApproval.recommendedAction || "none") + '</span>' + linkHtml(markers.pendingApproval && markers.pendingApproval.trail, "Approval Trail") + '</div><div class="metric"><span class="meta">Hold</span><strong>' + escapeHtml(markers.hold && markers.hold.active ? "active" : "clear") + '</strong><span class="meta">' + escapeHtml(markers.hold && markers.hold.reason || "none") + '</span>' + linkHtml(markers.hold && markers.hold.trail, "Hold Trail") + '</div><div class="metric"><span class="meta">Evidence</span><strong>' + escapeHtml(markers.evidence && markers.evidence.latestEventType || "none") + '</strong>' + linkHtml(markers.evidence && markers.evidence.eventTrail, "Event Trail") + linkHtml(markers.evidence && markers.evidence.proofRoute, "Proof") + '</div></div></section>';
       const evidenceHtml = '<div class="evidence" aria-label="Evidence markers"><div class="metric"><span class="meta">Latest Event</span><strong>' + escapeHtml(evidence.latestEventType || "none") + '</strong><span class="meta">' + escapeHtml(evidence.latestEventAt || "not recorded") + '</span><a href="' + escapeHtml(latestEventLink) + '">Event Trail</a></div><div class="metric"><span class="meta">Transcript Turns</span><strong>' + evidence.transcriptTurns + '</strong><a href="' + escapeHtml(evidenceLinks.transcript) + '">Transcript</a></div><div class="metric"><span class="meta">Latency Marks</span><strong>' + evidence.latencyMarkCount + '</strong><span class="meta">Over budget: ' + evidence.overBudgetLatencyMarkCount + '</span><a href="' + escapeHtml(latencyLink) + '">Latency</a></div><div class="metric"><span class="meta">Fallback</span><strong>' + escapeHtml(fallbackLabel) + '</strong><span class="meta">' + escapeHtml(fallbackDetail) + '</span><a href="' + escapeHtml(fallbackTrailLink) + '">Event Trail</a><a href="' + escapeHtml(fallbackQueueLink) + '">Fallback Queue</a>' + reasonTrailHtml + '</div><div class="metric"><span class="meta">Operator Notes</span><strong>' + evidence.operatorNoteCount + '</strong><span class="meta">' + escapeHtml(evidence.latestDisposition || evidence.latestOperatorNoteText || "none") + '</span><a href="' + escapeHtml(operatorNoteTrailLink) + '">Note Trail</a></div><div class="metric"><span class="meta">Proof Bundle</span><strong>' + evidence.eventCount + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Proof</a><a href="' + escapeHtml(evidenceLinks.artifacts) + '">Artifacts</a></div></div>';
       const assertHtml = '<section class="proof-panel" aria-label="Assert UI"><div class="proof-header"><h3>Assert UI</h3><div class="badges"><a class="badge" href="/assert/full">Full ASSERT</a><a class="badge" href="/assert">ACC Artifacts</a><a class="badge" href="/assert/spec">Eval Spec</a><span class="badge ok">' + escapeHtml(call.flowState === "wrap" && call.pipecatFlow.script.completed ? "call complete" : "collecting evidence") + '</span><span class="badge">' + escapeHtml(call.pipecatFlow.prototypeMode) + '</span></div></div><div class="proof-grid"><div class="metric"><span class="meta">Call State</span><strong>' + escapeHtml(call.flowState) + '</strong><span class="meta">Script: ' + escapeHtml(call.pipecatFlow.script.completed ? "complete" : "in progress") + '</span><span class="meta">Attention: ' + escapeHtml(call.attention.required ? "required" : "clear") + '</span></div><div class="metric"><span class="meta">Evidence Counts</span><strong>' + evidence.eventCount + ' events</strong><span class="meta">' + evidence.transcriptTurns + ' transcript turns</span><span class="meta">' + evidence.latencyMarkCount + ' latency marks</span></div><div class="metric"><span class="meta">Artifacts</span><strong>' + escapeHtml(evidence.operatorNoteCount > 0 ? "Disposition captured" : "No disposition yet") + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Open Proof JSON</a><a href="' + escapeHtml(evidenceLinks.artifacts) + '">Open Artifact Manifest</a><a href="' + escapeHtml(evidenceLinks.transcript) + '">Open Transcript JSON</a></div><div class="metric"><span class="meta">Assert Inputs</span><strong>' + escapeHtml(liveProof.eval && liveProof.eval.status ? liveProof.eval.status : "local proof bundle") + '</strong><span class="meta">Use npm run assert:export to write official ASSERT viewer artifacts, then npm run assert:viewer to browse them.</span></div></div></section>';
       const scriptedState = call.actionState.scriptedCallerTurnState || { matchedTurns: 0, totalTurns: (state.scriptedCallerTurns || []).length, remainingTurns: (state.scriptedCallerTurns || []).length, progressPct: 0, nextTurnIndex: 0, nextTurnText: null, completed: false };
@@ -1428,7 +1432,7 @@ function buildOperatorConsoleHtml(): string {
         return '<button type="button" data-scripted-turn="' + index + '" ' + disabled + '><span class="meta">' + status + ' | Turn ' + (index + 1) + '</span><br>' + escapeHtml(text) + '</button>';
       }).join("");
       const scriptedMetric = '<div class="metric"><span class="meta">Scripted Turns</span><strong>' + scriptedState.progressPct + '%</strong><span class="meta">' + scriptedState.matchedTurns + '/' + scriptedState.totalTurns + ' sent | ' + scriptedState.remainingTurns + ' remaining</span><span class="meta">' + escapeHtml(scriptedState.completed ? "complete" : scriptedState.nextTurnText || "queued") + '</span></div>';
-      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + runtimeMetric + scriptedMetric + pendingHtml + '</div><div class="workbench"><div class="stack">' + voiceControlsHtml() + '<section class="section"><h3 class="section-title">Operator Actions</h3><div class="actions">' + actionHtml + '</div></section><section class="section"><h3 class="section-title">Caller Script</h3><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></section><section class="section"><h3 class="section-title">Disposition</h3><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></section></div><div class="stack">' + assertHtml + liveProofHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section></div></div>';
+      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + runtimeMetric + scriptedMetric + pendingHtml + '</div><div class="workbench"><div class="stack">' + voiceControlsHtml() + '<section class="section"><h3 class="section-title">Operator Actions</h3><div class="actions">' + actionHtml + '</div></section><section class="section"><h3 class="section-title">Caller Script</h3><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></section><section class="section"><h3 class="section-title">Disposition</h3><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></section></div><div class="stack">' + assertHtml + liveProofHtml + markerHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section></div></div>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\\n\\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       root.querySelectorAll("button[data-scripted-turn]").forEach(function(button) { button.addEventListener("click", function() { const index = Number(button.dataset.scriptedTurn); if (Number.isInteger(index)) postScriptedTurn(index).catch(function(error) { setStatus(error.message); }); }); });
       attachVoiceControls();
@@ -2063,6 +2067,107 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
   };
 }
 
+function buildOperatorControlMarkers(snapshot: CallSnapshot) {
+  const attention = getAttentionMetadata(snapshot);
+  const latestEvent = snapshot.events.at(-1);
+  const latestTranscriptTurn = snapshot.transcript.at(-1);
+  const latestLatencyTrail = buildLatestLatencyTrail(snapshot);
+  const holdActive =
+    snapshot.flowState === "policy_hold" ||
+    snapshot.flowState === "operator_steer" ||
+    snapshot.operatorSteer.pending ||
+    snapshot.demoFallback.armed;
+  const liveCallStatus = snapshot.flowState === "wrap" ? "ended" : holdActive ? "held" : "active";
+  const pendingApprovalTrail = snapshot.operatorSteer.pending
+    ? snapshot.session.openclawSession.artifactLinks.events + "?type=operator_steer_requested&limit=1&order=desc"
+    : null;
+  const holdTrail = holdActive
+    ? snapshot.session.openclawSession.artifactLinks.events + "?detailText=" + encodeURIComponent(attention.reason ?? snapshot.flowState)
+    : null;
+
+  return {
+    workboardCard: operatorConsoleWorkboardCard,
+    issue: operatorConsoleIssue,
+    liveCall: {
+      status: liveCallStatus,
+      startedAt: snapshot.session.startedAt,
+      providerCallId: snapshot.session.providerCallId,
+      runtimeMode: snapshot.session.runtimeModeLabels,
+    },
+    flowState: {
+      current: snapshot.flowState,
+      activeTool: snapshot.pipecatFlow.activeTool,
+      scriptCompleted: snapshot.pipecatFlow.script.completed,
+      runtimeEngine: snapshot.pipecatFlow.runtimeEngine,
+    },
+    transcript: {
+      turnCount: snapshot.transcript.length,
+      latestSpeaker: latestTranscriptTurn?.speaker ?? null,
+      latestAt: latestTranscriptTurn?.timestamp ?? null,
+      route: snapshot.session.openclawSession.artifactLinks.transcript,
+    },
+    pendingApproval: {
+      active: snapshot.operatorSteer.pending,
+      recommendedAction: snapshot.operatorSteer.pending ? snapshot.operatorSteer.lastAction : null,
+      reason: snapshot.operatorSteer.pending ? snapshot.operatorSteer.lastReason : null,
+      requestedAt: snapshot.operatorSteer.pending ? snapshot.operatorSteer.requestedAt : null,
+      trail: pendingApprovalTrail,
+    },
+    hold: {
+      active: holdActive,
+      source: attention.source,
+      reason: attention.reason ?? (holdActive ? snapshot.flowState : null),
+      startedAt: attention.startedAt,
+      fallbackArmed: snapshot.demoFallback.armed,
+      trail: holdTrail,
+    },
+    evidence: {
+      latestEventType: latestEvent?.type ?? null,
+      latestEventAt: latestEvent?.at ?? null,
+      eventTrail: snapshot.session.openclawSession.artifactLinks.events,
+      proofRoute: snapshot.session.openclawSession.artifactLinks.proof,
+      latencyTrail: latestLatencyTrail ?? snapshot.session.openclawSession.artifactLinks.latencyMarks,
+    },
+    localDemoRuntime: {
+      worksWithMockedRuntime: snapshot.session.runtimeModeLabels.telephony === "mocked_telephony",
+      runtimeEngine: snapshot.pipecatFlow.runtimeEngine,
+      telephony: snapshot.session.runtimeModeLabels.telephony,
+    },
+  };
+}
+
+function buildOperatorActionProofTrail(snapshot: CallSnapshot) {
+  const proofEventTypes = new Set([
+    "operator_steer_requested",
+    "operator_steer_applied",
+    "operator_demo_paused",
+    "operator_offer_denied",
+    "operator_transfer_started",
+    "operator_takeover_started",
+    "operator_call_ended",
+    "operator_note_recorded",
+    "human_handoff_started",
+    "demo_fallback_armed",
+    "demo_fallback_disarmed",
+    "demo_fallback_triggered",
+  ]);
+
+  return snapshot.events
+    .filter((event) => proofEventTypes.has(event.type))
+    .map((event) => ({
+      type: event.type,
+      at: event.at,
+      action: getOptionalEventString(event.detail.action) ?? getOptionalEventString(event.detail.recommendation),
+      source: getOptionalEventString(event.detail.source),
+      sourceRoute: getOptionalEventString(event.detail.sourceRoute),
+      reason: getOptionalEventString(event.detail.reason),
+      confirmationAcknowledged:
+        typeof event.detail.confirmationAcknowledged === "boolean" ? event.detail.confirmationAcknowledged : null,
+      disposition: getOptionalEventString(event.detail.disposition),
+      eventTrail: snapshot.session.openclawSession.artifactLinks.events + "?type=" + encodeURIComponent(event.type),
+    }));
+}
+
 function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
   const latestEvent = snapshot.events.at(-1);
   const latestTranscriptTurn = snapshot.transcript.at(-1);
@@ -2153,6 +2258,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
   return {
     ...buildCallPayload(snapshot),
     liveProof: buildLiveProofSummary(snapshot),
+    controlMarkers: buildOperatorControlMarkers(snapshot),
     evidenceSummary: {
       latestEventType: latestEvent?.type ?? null,
       latestEventAt: latestEvent?.at ?? null,
@@ -2547,6 +2653,24 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       handoffStartedAt: handoffEvent?.at ?? null,
       attentionRequired: attention.required,
       attentionReason: attention.reason,
+    },
+    operatorConsoleControls: {
+      workboardCard: operatorConsoleWorkboardCard,
+      issue: operatorConsoleIssue,
+      acceptance: {
+        liveCallState: true,
+        transcriptVisible: snapshot.session.openclawSession.artifactLinks.transcript !== undefined,
+        flowStateVisible: true,
+        pendingApprovalMarkers: true,
+        holdMarkers: true,
+        evidenceMarkers: true,
+        mockedDemoRuntime: snapshot.session.runtimeModeLabels.telephony === "mocked_telephony",
+        operatorActionsRecorded: operatorActions.length > 0 || operatorNoteEvents.length > 0,
+      },
+      markers: buildOperatorControlMarkers(snapshot),
+      actionTrail: buildOperatorActionProofTrail(snapshot),
+      availableActions: operatorActionCatalog.map((entry) => entry.action),
+      controls: ["pause", "resume", "approve_offer", "deny_offer", "takeover", "transfer", "end_call", "operator_note"],
     },
     artifacts: snapshot.session.openclawSession.artifactLinks,
     evidenceRoutes: {

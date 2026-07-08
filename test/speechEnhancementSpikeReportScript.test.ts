@@ -6,6 +6,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
+function digestCaptureReplaySources(sources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>): string {
+  return createHash("sha256").update(JSON.stringify(sources)).digest("hex");
+}
+
 function runNode(args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] });
@@ -30,6 +34,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
   const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
   const latestOutputPath = path.join(tempDir, "speech-enhancement-spike-latest.json");
   const markdownOutputPath = path.join(tempDir, "speech-enhancement-spike.md");
+  const captureReplayTemplateOutputPath = path.join(tempDir, "speech-enhancement-capture-replay-template.json");
 
   try {
     const result = await runNode([
@@ -40,6 +45,8 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       latestOutputPath,
       "--markdown-out",
       markdownOutputPath,
+      "--capture-replay-template-out",
+      captureReplayTemplateOutputPath,
     ]);
 
     assert.equal(result.exitCode, 0, result.stderr);
@@ -48,13 +55,19 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       outputPath: string;
       latestOutputPath: string;
       markdownOutputPath: string;
+      captureReplayTemplateOutputPath: string;
+      captureReplaySourceDigest: string;
       runtimeLiveDemoEligible: boolean;
       runtimeBypassReasons: string[];
+      captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
     };
     assert.equal(summary.ok, true);
     assert.equal(summary.outputPath, outputPath);
     assert.equal(summary.latestOutputPath, latestOutputPath);
     assert.equal(summary.markdownOutputPath, markdownOutputPath);
+    assert.equal(summary.captureReplayTemplateOutputPath, captureReplayTemplateOutputPath);
+    assert.deepEqual(summary.captureReplaySources, []);
+    assert.equal(summary.captureReplaySourceDigest, digestCaptureReplaySources([]));
     assert.equal(summary.runtimeLiveDemoEligible, false);
     assert.deepEqual(summary.runtimeBypassReasons, ["feature_flag_disabled", "blocked_until_real_capture"]);
 
@@ -83,6 +96,8 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
         strictValidationCommand: string;
         nextEvidenceOwner: string;
       };
+      captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
       reviewGate: {
         issueCloseReady: boolean;
         checks: Record<string, boolean>;
@@ -113,9 +128,18 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     };
     const latestArtifact = JSON.parse(await readFile(latestOutputPath, "utf8"));
     const markdown = await readFile(markdownOutputPath, "utf8");
+    const captureReplayTemplate = JSON.parse(await readFile(captureReplayTemplateOutputPath, "utf8")) as {
+      capture_id: string;
+      audio_source_uri: string;
+      source_manifest_uri: string;
+      latency_setting_ms: number;
+      enhanced_rtc_asr: { cpu_percent_p95: number; cpu_cost_estimate: string };
+    };
 
     assert.equal(artifact.schemaVersion, 1);
     assert.equal(artifact.artifactType, "speech_enhancement_spike_report");
+    assert.deepEqual(artifact.captureReplaySources, []);
+    assert.equal(artifact.captureReplaySourceDigest, digestCaptureReplaySources([]));
     assert.equal(artifact.report.issue, "agonza1/agentic-contact-center#97");
     assert.equal(artifact.handoff.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/97");
     assert.equal(artifact.handoff.reviewRoute, "/api/realtime-shim/speech-enhancement-spike");
@@ -174,6 +198,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /Runtime bypass reasons: feature_flag_disabled, blocked_until_real_capture/);
     assert.equal(markdown.match(/## Evidence Coverage/g)?.length, 1);
     assert.match(markdown, /Real noisy capture replays: 0/);
+    assert.match(markdown, new RegExp(`Capture replay source digest: ${digestCaptureReplaySources([])}`));
     assert.match(markdown, /Strict artifact hashes: audio_sha256, source_manifest_sha256/);
     assert.match(markdown, /Passing real replay ids: None/);
     assert.match(markdown, /Blocked real replay ids: None/);
@@ -183,8 +208,13 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /Max added turn latency p95: 25 ms/);
     assert.match(markdown, /Max CPU p95: 80%/);
     assert.match(markdown, /Allowed CPU cost estimates: low, medium/);
+    assert.match(markdown, /Latency Profiles/);
+    assert.match(markdown, /12\.5 ms: live-demo-eligible; lookahead_frames=1; max_buffered_audio_ms=32\.5; expected_use=default; recommendation=recommended/);
+    assert.match(markdown, /75 ms: offline-only; lookahead_frames=4; max_buffered_audio_ms=95; expected_use=offline_review; recommendation=avoid_for_live_turns/);
     assert.match(markdown, /Real Capture Replay Evidence/);
     assert.match(markdown, /- None attached\./);
+    assert.match(markdown, /Capture Replay Sources/);
+    assert.match(markdown, /- None loaded\./);
     assert.match(markdown, /Replay Decisions/);
     assert.match(markdown, /synthetic-noisy-cancellation-rescue-001: enabled; latency_setting_ms=12\.5; wer_delta=0\.05; latency_headroom_ms=7; cpu_headroom_percent=38/);
     assert.match(markdown, /Review Checks/);
@@ -194,6 +224,12 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /realNoisyCaptureReplay: Attach one real noisy local SIP capture replay before closing Issue #97\./);
     assert.match(markdown, /Run: npm run proof:speech-enhancement -- --require-close-ready/);
     assert.match(markdown, /Strict artifact check: npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts\/speech-enhancement-real-capture-replay\.json/);
+    assert.equal(captureReplayTemplate.capture_id, "real-noisy-local-sip-001");
+    assert.equal(captureReplayTemplate.audio_source_uri, "artifacts/local-sip/real-noisy-local-sip-001.wav");
+    assert.equal(captureReplayTemplate.source_manifest_uri, "artifacts/local-sip/proof-manifest-001.json");
+    assert.equal(captureReplayTemplate.latency_setting_ms, 12.5);
+    assert.equal(captureReplayTemplate.enhanced_rtc_asr.cpu_percent_p95, 42);
+    assert.equal(captureReplayTemplate.enhanced_rtc_asr.cpu_cost_estimate, "medium");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -225,12 +261,16 @@ test("speech enhancement spike report script can enforce issue-close readiness",
       outputPath: string;
       latestOutputPath: string | null;
       markdownOutputPath: string | null;
+      captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
     };
     assert.equal(summary.ok, false);
     assert.equal(summary.issueCloseReady, false);
     assert.equal(summary.outputPath, outputPath);
     assert.equal(summary.latestOutputPath, null);
     assert.equal(summary.markdownOutputPath, null);
+    assert.deepEqual(summary.captureReplaySources, []);
+    assert.equal(summary.captureReplaySourceDigest, digestCaptureReplaySources([]));
     assert.equal(summary.checks.realNoisyCaptureReplay, false);
     assert.match(summary.failureReasons.realNoisyCaptureReplay, /real noisy local SIP capture/);
     assert.ok(summary.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
@@ -715,6 +755,8 @@ test("speech enhancement spike report accepts passing real capture replay eviden
         reasons: string[];
         wordErrorRateDelta: number;
       }>;
+      captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
     };
     assert.equal(summary.ok, true);
     assert.equal(summary.issueCloseReady, true);
@@ -722,6 +764,10 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.deepEqual(summary.realCaptureReplayIds, ["real-noisy-local-sip-001"]);
     assert.deepEqual(summary.passingRealCaptureReplayIds, ["real-noisy-local-sip-001"]);
     assert.deepEqual(summary.blockedRealCaptureReplayIds, []);
+    assert.deepEqual(summary.captureReplaySources, [
+      { captureId: "real-noisy-local-sip-001", path: captureReplayPath, strictArtifactsVerified: false },
+    ]);
+    assert.equal(summary.captureReplaySourceDigest, digestCaptureReplaySources(summary.captureReplaySources));
     assert.deepEqual(summary.realCaptureReplayEvidence.map((evidence) => ({
       captureId: evidence.captureId,
       status: evidence.status,
@@ -754,6 +800,11 @@ test("speech enhancement spike report accepts passing real capture replay eviden
       markdown,
       /real-noisy-local-sip-001: passing; wer_delta=0\.12; latency_headroom_ms=7; cpu_headroom_percent=38; failing_evidence=none; reasons=wer_improved, endpointing_stable, barge_in_risk_low, latency_within_budget, cpu_cost_allowed; audio=artifacts\/local-sip\/real-noisy-local-sip-001\.wav; source_manifest=artifacts\/local-sip\/proof-manifest-001\.json; runtime_host=local-rtc-asr-host/,
     );
+    assert.match(markdown, /Capture Replay Sources/);
+    assert.match(
+      markdown,
+      new RegExp("real-noisy-local-sip-001: path=" + captureReplayPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "; strict_artifacts=not_verified"),
+    );
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       report: {
@@ -773,6 +824,8 @@ test("speech enhancement spike report accepts passing real capture replay eviden
         }>;
         replayDecisions: Array<{ captureId: string; enableForLiveDemo: boolean }>;
       };
+      captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
       reviewGate: {
         issueCloseReady: boolean;
         checks: Record<string, boolean>;
@@ -798,6 +851,10 @@ test("speech enhancement spike report accepts passing real capture replay eviden
       };
     };
 
+    assert.deepEqual(artifact.captureReplaySources, [
+      { captureId: "real-noisy-local-sip-001", path: captureReplayPath, strictArtifactsVerified: false },
+    ]);
+    assert.equal(artifact.captureReplaySourceDigest, digestCaptureReplaySources(artifact.captureReplaySources));
     assert.equal(artifact.reviewGate.issueCloseReady, true);
     assert.deepEqual(Object.values(artifact.reviewGate.checks), [true, true, true, true, true, true, true]);
     assert.deepEqual(artifact.reviewGate.failureReasons, {});
@@ -973,14 +1030,28 @@ test("speech enhancement spike report accepts multiple real capture replay manif
     ]);
 
     assert.equal(result.exitCode, 0, result.stderr);
-    const summary = JSON.parse(result.stdout) as { ok: boolean; issueCloseReady: boolean };
+    const summary = JSON.parse(result.stdout) as {
+      ok: boolean;
+      issueCloseReady: boolean;
+      captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
+    };
     assert.equal(summary.ok, true);
     assert.equal(summary.issueCloseReady, true);
+    assert.deepEqual(summary.captureReplaySources, [
+      { captureId: "real-noisy-local-sip-101", path: firstCaptureReplayPath, strictArtifactsVerified: false },
+      { captureId: "real-noisy-local-sip-102", path: secondCaptureReplayPath, strictArtifactsVerified: false },
+    ]);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       report: { replayCoverage: { realNoisyCaptureReplayCount: number; baselineEnhancedPairs: number } };
+      captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
       reviewGate: { realCaptureReplayIds: string[]; passingRealCaptureReplayIds: string[] };
     };
+    assert.equal(summary.captureReplaySourceDigest, digestCaptureReplaySources(summary.captureReplaySources));
+    assert.deepEqual(artifact.captureReplaySources, summary.captureReplaySources);
+    assert.equal(artifact.captureReplaySourceDigest, summary.captureReplaySourceDigest);
     assert.equal(artifact.report.replayCoverage.realNoisyCaptureReplayCount, 2);
     assert.equal(artifact.report.replayCoverage.baselineEnhancedPairs, 3);
     assert.deepEqual(artifact.reviewGate.realCaptureReplayIds, ["real-noisy-local-sip-101", "real-noisy-local-sip-102"]);
@@ -1048,18 +1119,128 @@ test("speech enhancement spike report script loads capture replay manifests from
     ]);
 
     assert.equal(result.exitCode, 0, result.stderr);
-    const summary = JSON.parse(result.stdout) as { ok: boolean; issueCloseReady: boolean };
+    const summary = JSON.parse(result.stdout) as {
+      ok: boolean;
+      issueCloseReady: boolean;
+      captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
+    };
     assert.equal(summary.ok, true);
     assert.equal(summary.issueCloseReady, true);
+    assert.deepEqual(summary.captureReplaySources, [
+      { captureId: "real-noisy-local-sip-201", path: path.join(captureReplayDir, "a-capture.json"), strictArtifactsVerified: false },
+      { captureId: "real-noisy-local-sip-202", path: path.join(captureReplayDir, "b-capture.json"), strictArtifactsVerified: false },
+    ]);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       report: { replayCoverage: { realNoisyCaptureReplayCount: number; baselineEnhancedPairs: number } };
+      captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
       reviewGate: { realCaptureReplayIds: string[]; passingRealCaptureReplayIds: string[] };
     };
+    assert.equal(summary.captureReplaySourceDigest, digestCaptureReplaySources(summary.captureReplaySources));
+    assert.deepEqual(artifact.captureReplaySources, summary.captureReplaySources);
+    assert.equal(artifact.captureReplaySourceDigest, summary.captureReplaySourceDigest);
     assert.equal(artifact.report.replayCoverage.realNoisyCaptureReplayCount, 2);
     assert.equal(artifact.report.replayCoverage.baselineEnhancedPairs, 3);
     assert.deepEqual(artifact.reviewGate.realCaptureReplayIds, ["real-noisy-local-sip-201", "real-noisy-local-sip-202"]);
     assert.deepEqual(artifact.reviewGate.passingRealCaptureReplayIds, ["real-noisy-local-sip-201", "real-noisy-local-sip-202"]);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+
+test("speech enhancement spike report script rejects missing capture replay directories", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-missing-dir-"));
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+  const missingCaptureReplayDir = path.join(tempDir, "missing-captures");
+
+  try {
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay-dir",
+      missingCaptureReplayDir,
+    ]);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /Missing capture replay directory:/);
+    assert.match(result.stderr, new RegExp(missingCaptureReplayDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+
+test("speech enhancement spike report script deduplicates explicit and directory capture replay sources", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-dedupe-"));
+  const captureReplayDir = path.join(tempDir, "captures");
+  const captureReplayPath = path.join(captureReplayDir, "real-capture-replay.json");
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+
+  try {
+    await mkdir(captureReplayDir, { recursive: true });
+    await writeFile(
+      captureReplayPath,
+      JSON.stringify(
+        {
+          capture_id: "real-noisy-local-sip-301",
+          recorded_at: "2026-07-05T12:10:00.000Z",
+          audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-301.wav",
+          audio_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          source_manifest_uri: "artifacts/local-sip/real-noisy-local-sip-301-manifest.json",
+          source_manifest_sha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          noise_profile: "speakerphone fan noise",
+          scenario: "local SIP caller with repeatable noisy capture evidence",
+          latency_setting_ms: 12.5,
+          runtime_host: "local-rtc-asr-host",
+          baseline_rtc_asr: {
+            transcript: "I want to cansel my policy today",
+            word_error_rate_estimate: 0.18,
+            endpointing_stability: "acceptable",
+            barge_in_risk: "medium",
+          },
+          enhanced_rtc_asr: {
+            transcript: "I want to cancel my policy today",
+            word_error_rate_estimate: 0.06,
+            endpointing_stability: "stable",
+            barge_in_risk: "low",
+            added_turn_latency_ms_p95: 18,
+            cpu_percent_p95: 42,
+            cpu_cost_estimate: "medium",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay",
+      captureReplayPath,
+      "--capture-replay-dir",
+      captureReplayDir,
+      "--require-close-ready",
+    ]);
+
+    assert.equal(result.exitCode, 0, result.stderr);
+    const summary = JSON.parse(result.stdout) as {
+      ok: boolean;
+      issueCloseReady: boolean;
+      captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
+    };
+    assert.equal(summary.ok, true);
+    assert.equal(summary.issueCloseReady, true);
+    assert.deepEqual(summary.captureReplaySources, [
+      { captureId: "real-noisy-local-sip-301", path: captureReplayPath, strictArtifactsVerified: false },
+    ]);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

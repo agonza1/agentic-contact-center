@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 
@@ -15,7 +15,14 @@ const {
   validateSpeechEnhancementCaptureReplayManifest,
 } = require("../dist/src/core/speechEnhancementSpike.js");
 
-const valueFlags = new Set(["--capture-replay", "--capture-replay-dir", "--out", "--latest-out", "--markdown-out"]);
+const valueFlags = new Set([
+  "--capture-replay",
+  "--capture-replay-dir",
+  "--out",
+  "--latest-out",
+  "--markdown-out",
+  "--capture-replay-template-out",
+]);
 const booleanFlags = new Set(["--strict-capture-artifacts", "--require-close-ready"]);
 
 function validateCliArgs(argv) {
@@ -70,6 +77,7 @@ async function loadCaptureReplayMetrics() {
   const captureReplayPaths = await resolveCaptureReplayPaths();
   const strictCaptureArtifacts = hasArg("--strict-capture-artifacts");
   const metrics = [];
+  const sources = [];
   const seenCaptureIds = new Map();
 
   for (const captureReplayPath of captureReplayPaths) {
@@ -98,9 +106,24 @@ async function loadCaptureReplayMetrics() {
     }
 
     metrics.push(validation.metric);
+    sources.push({
+      captureId: validation.metric.captureId,
+      path: captureReplayPath,
+      strictArtifactsVerified: strictCaptureArtifacts,
+    });
   }
 
-  return metrics;
+  return { metrics, sources };
+}
+
+function buildCaptureReplaySourceDigest(sources) {
+  const digestInput = sources.map((source) => ({
+    captureId: source.captureId,
+    path: source.path,
+    strictArtifactsVerified: source.strictArtifactsVerified,
+  }));
+
+  return createHash("sha256").update(JSON.stringify(digestInput)).digest("hex");
 }
 
 async function resolveCaptureReplayPaths() {
@@ -109,6 +132,17 @@ async function resolveCaptureReplayPaths() {
   const directoryManifestPaths = [];
 
   for (const directoryPath of directoryPaths) {
+    const directoryStats = await stat(directoryPath).catch((error) => {
+      if (error && error.code === "ENOENT") {
+        throw new Error(`Missing capture replay directory: ${directoryPath}`);
+      }
+
+      throw error;
+    });
+    if (!directoryStats.isDirectory()) {
+      throw new Error(`Capture replay directory is not a directory: ${directoryPath}`);
+    }
+
     const entries = await readdir(directoryPath, { withFileTypes: true });
     directoryManifestPaths.push(
       ...entries
@@ -118,7 +152,7 @@ async function resolveCaptureReplayPaths() {
     );
   }
 
-  return [...explicitPaths, ...directoryManifestPaths];
+  return [...new Set([...explicitPaths, ...directoryManifestPaths])];
 }
 
 async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayPath, field) {
@@ -183,6 +217,40 @@ function resolveMarkdownOutputPath(outputPath) {
   return outputPath.replace(/\.json$/u, ".md");
 }
 
+function resolveCaptureReplayTemplateOutputPath() {
+  return resolveArgPath("--capture-replay-template-out");
+}
+
+function buildCaptureReplayTemplate() {
+  return {
+    capture_id: "real-noisy-local-sip-001",
+    recorded_at: "2026-07-08T00:00:00.000Z",
+    audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-001.wav",
+    audio_sha256: "replace_with_64_char_lowercase_sha256",
+    source_manifest_uri: "artifacts/local-sip/proof-manifest-001.json",
+    source_manifest_sha256: "replace_with_64_char_lowercase_sha256",
+    noise_profile: "describe_real_call_noise",
+    scenario: "local SIP caller replayed through baseline and enhanced rtc-asr paths",
+    runtime_host: "selected-rtc-asr-hostname",
+    baseline_rtc_asr: {
+      transcript: "baseline transcript from the same real noisy capture",
+      word_error_rate_estimate: 0.18,
+      endpointing_stability: "acceptable",
+      barge_in_risk: "medium",
+    },
+    enhanced_rtc_asr: {
+      transcript: "enhanced transcript from the same real noisy capture",
+      word_error_rate_estimate: 0.06,
+      endpointing_stability: "stable",
+      barge_in_risk: "low",
+      added_turn_latency_ms_p95: 18,
+      cpu_percent_p95: 42,
+      cpu_cost_estimate: "medium",
+    },
+    latency_setting_ms: 12.5,
+  };
+}
+
 async function writeJson(filePath, payload) {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
@@ -204,6 +272,11 @@ function buildMarkdownReport(artifact) {
     return "- [" + status + "] " + check;
   });
   const failureReasons = Object.entries(reviewGate.failureReasons).map(([check, reason]) => "- " + check + ": " + reason);
+  const latencyProfiles = report.latencyProfiles.map((profile) => {
+    const eligibility = profile.liveDemoEligible ? "live-demo-eligible" : "offline-only";
+
+    return `- ${profile.latencyMs} ms: ${eligibility}; lookahead_frames=${profile.lookaheadFrames}; max_buffered_audio_ms=${profile.maxBufferedAudioMs}; expected_use=${profile.expectedUse}; recommendation=${profile.recommendation}`;
+  });
   const replayEvidence = reviewGate.realCaptureReplayEvidence.map((evidence) => {
     const source = evidence.audioSourceUri ?? "missing audio source";
     const sourceManifest = evidence.sourceManifestUri ?? "missing source manifest";
@@ -213,6 +286,11 @@ function buildMarkdownReport(artifact) {
     const reasons = evidence.reasons.length > 0 ? evidence.reasons.join(", ") : "none";
 
     return `- ${evidence.captureId}: ${evidence.status}; wer_delta=${evidence.wordErrorRateDelta}; latency_headroom_ms=${evidence.addedLatencyBudgetHeadroomMs}; cpu_headroom_percent=${evidence.cpuP95BudgetHeadroomPercent}; failing_evidence=${failingEvidence}; reasons=${reasons}; audio=${source}; source_manifest=${sourceManifest}; runtime_host=${runtimeHost}`;
+  });
+  const captureReplaySources = artifact.captureReplaySources.map((source) => {
+    const strictArtifacts = source.strictArtifactsVerified ? "verified" : "not_verified";
+
+    return `- ${source.captureId}: path=${source.path}; strict_artifacts=${strictArtifacts}`;
   });
   const replayDecisions = report.replayDecisions.map((decision) => {
     const enabled = decision.enableForLiveDemo ? "enabled" : "blocked";
@@ -244,6 +322,7 @@ function buildMarkdownReport(artifact) {
     `- Baseline/enhanced pairs: ${report.replayCoverage.baselineEnhancedPairs}`,
     `- Live demo gate: ${report.replayCoverage.liveDemoGate}`,
     `- Strict artifact hashes: ${report.captureReplayContract.strictArtifactFields.join(", ")}`,
+    `- Capture replay source digest: ${artifact.captureReplaySourceDigest}`,
     `- Passing real replay ids: ${reviewGate.passingRealCaptureReplayIds.join(", ") || "None"}`,
     `- Blocked real replay ids: ${reviewGate.blockedRealCaptureReplayIds.join(", ") || "None"}`,
     "",
@@ -255,9 +334,17 @@ function buildMarkdownReport(artifact) {
     `- Max CPU p95: ${closeGate.maxCpuPercentP95}%`,
     `- Allowed CPU cost estimates: ${closeGate.allowedCpuCostEstimates.join(", ")}`,
     "",
+    "## Latency Profiles",
+    "",
+    ...latencyProfiles,
+    "",
     "## Real Capture Replay Evidence",
     "",
     ...(replayEvidence.length > 0 ? replayEvidence : ["- None attached."]),
+    "",
+    "## Capture Replay Sources",
+    "",
+    ...(captureReplaySources.length > 0 ? captureReplaySources : ["- None loaded."]),
     "",
     "## Replay Decisions",
     "",
@@ -293,9 +380,10 @@ async function main() {
   const outputPath = resolveOutputPath();
   const latestOutputPath = resolveLatestOutputPath();
   const markdownOutputPath = resolveMarkdownOutputPath(outputPath);
+  const captureReplayTemplateOutputPath = resolveCaptureReplayTemplateOutputPath();
   const requireCloseReady = hasArg("--require-close-ready");
-  const captureReplayMetrics = await loadCaptureReplayMetrics();
-  const report = buildSpeechEnhancementSpikeReport({ captureReplayMetrics });
+  const captureReplayInputs = await loadCaptureReplayMetrics();
+  const report = buildSpeechEnhancementSpikeReport({ captureReplayMetrics: captureReplayInputs.metrics });
   const runtimeConfig = resolveSpeechEnhancementRuntimeConfig({
     featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
     latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
@@ -314,6 +402,8 @@ async function main() {
     report,
     runtimeConfig,
     runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
+    captureReplaySources: captureReplayInputs.sources,
+    captureReplaySourceDigest: buildCaptureReplaySourceDigest(captureReplayInputs.sources),
     handoff: buildSpeechEnhancementReviewHandoff(),
     reviewGate: buildSpeechEnhancementReviewGate(report),
   };
@@ -325,12 +415,16 @@ async function main() {
   if (markdownOutputPath) {
     await writeText(markdownOutputPath, buildMarkdownReport(artifact));
   }
+  if (captureReplayTemplateOutputPath) {
+    await writeJson(captureReplayTemplateOutputPath, buildCaptureReplayTemplate());
+  }
 
   const summary = {
     ok: !requireCloseReady || artifact.reviewGate.issueCloseReady,
     outputPath,
     latestOutputPath: latestOutputPath ?? null,
     markdownOutputPath: markdownOutputPath ?? null,
+    captureReplayTemplateOutputPath: captureReplayTemplateOutputPath ?? null,
     issueCloseReady: artifact.reviewGate.issueCloseReady,
     runtimeLiveDemoEligible: artifact.runtimeReadiness.liveDemoEligible,
     runtimeBypassReasons: artifact.runtimeReadiness.bypassReasons,
@@ -342,6 +436,8 @@ async function main() {
     passingRealCaptureReplayIds: artifact.reviewGate.passingRealCaptureReplayIds,
     blockedRealCaptureReplayIds: artifact.reviewGate.blockedRealCaptureReplayIds,
     realCaptureReplayEvidence: artifact.reviewGate.realCaptureReplayEvidence,
+    captureReplaySources: artifact.captureReplaySources,
+    captureReplaySourceDigest: artifact.captureReplaySourceDigest,
   };
 
   console.log(JSON.stringify(summary));
