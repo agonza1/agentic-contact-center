@@ -99,7 +99,15 @@ interface OperatorConsolePayload {
   controls: {
     commandWrappers: string[];
     callReferenceFields: string[];
-    routes: { startDemoCall: string; callerTurn: string; scriptedTurn: string; steerCall: string; noteCall: string; consoleAction: string };
+    routes: {
+      startDemoCall: string;
+      runEndToEndDemo: string;
+      callerTurn: string;
+      scriptedTurn: string;
+      steerCall: string;
+      noteCall: string;
+      consoleAction: string;
+    };
     scriptedTurnControl: {
       method: string;
       postTemplate: string;
@@ -1212,6 +1220,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     ]);
     assert.deepEqual(consolePayload.controls.routes, {
       startDemoCall: "/api/demo/start",
+      runEndToEndDemo: "/api/demo/run-end-to-end",
       callerTurn: "/api/calls/{callId}/caller-turn",
       scriptedTurn: "/api/operator/console/scripted-turn",
       steerCall: "/api/calls/{callId}/operator-steer",
@@ -1622,7 +1631,20 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.equal(response.statusCode, 200);
     assert.equal(response.contentType, "text/html; charset=utf-8");
     assert.match(response.body, /<title>Operator Console<\/title>/);
-    assert.match(response.body, /Start Demo Call/);
+    assert.match(response.body, /Run Demo Flow/);
+    assert.match(response.body, /Start Empty Call/);
+    assert.match(response.body, /runDemoFlow/);
+    assert.match(response.body, /\/api\/demo\/run-end-to-end/);
+    assert.match(response.body, /Pipecat Voice Caller/);
+    assert.match(response.body, /Connect Voice/);
+    assert.match(response.body, /Record \/ Stop Caller/);
+    assert.match(response.body, /Voice disconnected/);
+    assert.match(response.body, /npm run pipecat:voice/);
+    assert.match(response.body, /MLX Whisper local STT/);
+    assert.match(response.body, /macOS say local TTS/);
+    assert.match(response.body, /connectPipecatVoice/);
+    assert.match(response.body, /MediaRecorder/);
+    assert.match(response.body, /new WebSocket/);
     assert.match(response.body, /Attention only/);
     assert.match(response.body, /Over-budget latency/);
     assert.match(response.body, /Flow state filter/);
@@ -1721,6 +1743,81 @@ test("GET /operator/console serves the local console with the full action set", 
     }
 
     assert.match(response.body, /Confirm /);
+  });
+});
+
+test("GET /assert serves an ASSERT-style artifact viewer", async () => {
+  await withServer(async (port) => {
+    const response = await requestText(port, "GET", "/assert");
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.contentType, "text/html; charset=utf-8");
+    assert.match(response.body, /<title>ASSERT Viewer<\/title>/);
+    assert.match(response.body, /Local ACC proof artifacts/);
+    assert.match(response.body, /\/api\/operator\/console\?limit=100&order=desc/);
+    assert.match(response.body, /const tabs = \["proof", "artifacts", "transcript", "events", "latency"\]/);
+    assert.match(response.body, /JSON\.stringify\(state\.artifacts\[state\.tab\]/);
+    assert.match(response.body, /Operator Console/);
+  });
+});
+
+test("GET / serves the operator console instead of a dead end", async () => {
+  await withServer(async (port) => {
+    const response = await requestText(port, "GET", "/");
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.contentType, "text/html; charset=utf-8");
+    assert.match(response.body, /<title>Operator Console<\/title>/);
+    assert.match(response.body, /Run Demo Flow/);
+  });
+});
+
+test("POST /api/demo/run-end-to-end executes a complete usable call flow", async () => {
+  await withServer(async (port) => {
+    const response = await requestJson(port, "POST", "/api/demo/run-end-to-end", {
+      openclawSessionId: "end-to-end-session",
+      openclawSessionLabel: "operator-console/end-to-end-test",
+    });
+    const payload = response.payload as {
+      ok: boolean;
+      route: string;
+      outcome: string;
+      steps: Array<{ step: string; ok: boolean; flowState: string; callId: string; detail: string }>;
+      call: SnapshotPayload;
+      operatorConsoleCall: { actionState: { scriptedCallerTurnState: { completed: boolean; progressPct: number } } };
+      proof: {
+        outcome: { flowState: string; scriptCompleted: boolean };
+        summary: { transcriptTurns: number; operatorNoteCount: number };
+      };
+    };
+
+    assert.equal(response.statusCode, 201);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.route, "/api/demo/run-end-to-end");
+    assert.equal(payload.outcome, "scripted_wrap_complete");
+    assert.deepEqual(
+      payload.steps.map((step) => step.step),
+      [
+        "start_call",
+        "caller_turn_1",
+        "caller_turn_2",
+        "caller_turn_3",
+        "operator_approve_offer",
+        "caller_wrap",
+        "operator_disposition",
+      ],
+    );
+    assert.equal(payload.steps.every((step) => step.ok && step.callId === payload.call.session.callId), true);
+    assert.equal(payload.call.flowState, "wrap");
+    assert.equal(payload.call.pipecatFlow.script.completed, true);
+    assert.equal(payload.call.operatorSteer.lastAction, "approve_offer");
+    assert.equal(payload.call.session.openclawSession.label, "operator-console/end-to-end-test");
+    assert.equal(payload.operatorConsoleCall.actionState.scriptedCallerTurnState.completed, true);
+    assert.equal(payload.operatorConsoleCall.actionState.scriptedCallerTurnState.progressPct, 100);
+    assert.equal(payload.proof.outcome.flowState, "wrap");
+    assert.equal(payload.proof.outcome.scriptCompleted, true);
+    assert.equal(payload.proof.summary.operatorNoteCount, 1);
+    assert.equal(payload.proof.summary.transcriptTurns >= 8, true);
   });
 });
 
@@ -4538,7 +4635,15 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
       schemaVersion: number;
       commandWrappers: string[];
       callReferenceFields: string[];
-      routes: { startDemoCall: string; callerTurn: string; scriptedTurn: string; steerCall: string; noteCall: string; consoleAction: string };
+      routes: {
+        startDemoCall: string;
+        runEndToEndDemo: string;
+        callerTurn: string;
+        scriptedTurn: string;
+        steerCall: string;
+        noteCall: string;
+        consoleAction: string;
+      };
       actions: Array<{
         action: string;
         requiresPendingCall: boolean;
@@ -4563,6 +4668,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     ]);
     assert.deepEqual(payload.routes, {
       startDemoCall: "/api/demo/start",
+      runEndToEndDemo: "/api/demo/run-end-to-end",
       callerTurn: "/api/calls/{callId}/caller-turn",
       scriptedTurn: "/api/operator/console/scripted-turn",
       steerCall: "/api/calls/{callId}/operator-steer",

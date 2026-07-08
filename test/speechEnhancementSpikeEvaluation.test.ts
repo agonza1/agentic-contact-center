@@ -129,6 +129,8 @@ test("speech enhancement runtime readiness exposes selected frame budget", () =>
       rtcAsrFrameMs: 20,
       lookaheadFrames: 1,
       maxBufferedAudioMs: 32.5,
+      expectedUse: "default",
+      recommendation: "recommended",
       liveDemoEligible: true,
       bypassWhen: [
         "added_turn_latency_p95_exceeds_candidate_budget",

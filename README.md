@@ -82,6 +82,19 @@ npm run pipecat:check
 
 This verifies the local `pipecat-ai` package boundary only. It does not open microphones, start live telephony, or use provider credentials.
 
+Local voice bridge setup:
+
+```bash
+npm run pipecat:voice:install
+npm run pipecat:voice
+```
+
+The first voice turn may download the configured MLX Whisper model. Override it with `ACC_LOCAL_STT_MODEL`, for example:
+
+```bash
+ACC_LOCAL_STT_MODEL=mlx-community/whisper-tiny.en-mlx npm run pipecat:voice
+```
+
 ## Run Locally
 
 Build and test first:
@@ -101,6 +114,11 @@ The server listens at `http://localhost:8026` by default. In another terminal, v
 ```bash
 npm run health:smoke
 ```
+
+Open the local console at `http://localhost:8026/` or `http://localhost:8026/operator/console`.
+Click **Run Demo Flow** to execute the complete mocked call: start call, send the seeded caller turns, hit policy hold, approve the safe offer, wrap the call, record a disposition, and expose the proof bundle.
+For an interactive free caller demo, run `npm run pipecat:voice` in another terminal, then start or select an empty call and use **Pipecat Voice Caller**. The audio path is browser mic -> local Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS `say` local TTS -> browser playback. If the bridge is not running, typed **Caller transcript turn** entries still exercise the same call-flow API but are not a voice demo.
+The **Assert UI** panel gives the minimum proof view: current call state, evidence counts, proof JSON, artifact manifest, and transcript JSON.
 
 Useful health assertions:
 
@@ -157,6 +175,7 @@ The flow enters `policy_hold` before unsafe retention offers, requests operator 
 
 - `GET /health`: service/config/runtime readiness.
 - `POST /api/demo/start`: create a mocked call session.
+- `POST /api/demo/run-end-to-end`: run the complete seeded call flow and return the final call snapshot, console payload, steps, and proof bundle.
 - `POST /api/signalwire/events`: exercise the local SignalWire bridge contract for `call.started`, `media.transcript`, `call.ended`, and fail-closed `call.error` events without production credentials.
 - `POST /api/calls/:callId/caller-turn`: append a caller transcript turn and advance the flow.
 - `POST /api/calls/:callId/operator-steer`: apply operator commands or direct actions, including pause/resume, approval, takeover, escalation, and safe call closeout.

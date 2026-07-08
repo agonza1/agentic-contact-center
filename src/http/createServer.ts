@@ -1059,14 +1059,14 @@ function buildOperatorConsoleHtml(): string {
 <body>
   <header>
     <div class="brand"><span class="brand-kicker">Agentic Contact Center</span><h1>Operator Console</h1></div>
-    <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" class="primary" id="start-demo">Start Demo Call</button><button type="button" id="refresh">Refresh</button></div>
+    <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" class="primary" id="run-demo-flow">Run Demo Flow</button><button type="button" id="start-demo">Start Empty Call</button><button type="button" id="refresh">Refresh</button></div>
   </header>
   <main>
     <section class="panel" aria-label="Live calls"><div class="panel-header"><h2>Live Calls</h2><span class="queue-count" id="queue-count">0 queued</span></div><div class="filters"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Attention only</label><label class="filter-toggle"><input type="checkbox" id="latency-over-budget-filter">Over-budget latency</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><select id="fallback-filter" aria-label="Fallback mode filter"><option value="">All fallback modes</option><option value="tool_timeout">Tool Timeout</option><option value="runtime_failure">Runtime Failure</option></select><select id="fallback-source-filter" aria-label="Fallback source filter"><option value="">All fallback sources</option><option value="tool_timeout_fail_closed">Tool Timeout Source</option><option value="pipecat_runtime_failure_fail_closed">Runtime Failure Source</option></select><input id="fallback-reason-filter" aria-label="Fallback reason filter" placeholder="Fallback reason"><select id="tool-filter" aria-label="Active tool filter"><option value="">All active tools</option><option value="get_current_slide">Get Current Slide</option><option value="goto_slide">Go To Slide</option><option value="pause_presentation">Pause Presentation</option><option value="ask_operator">Ask Operator</option></select><select id="script-completed-filter" aria-label="Script status filter"><option value="">All script states</option><option value="false">In progress</option><option value="true">Complete</option></select><select id="script-progress-filter" aria-label="Script minimum progress filter"><option value="">Any min progress</option><option value="25">25%+ scripted</option><option value="50">50%+ scripted</option><option value="75">75%+ scripted</option><option value="100">100% scripted</option></select><select id="script-max-progress-filter" aria-label="Script maximum progress filter"><option value="">Any max progress</option><option value="0">0% or less scripted</option><option value="25">25% or less scripted</option><option value="50">50% or less scripted</option><option value="75">75% or less scripted</option></select><input id="transcript-filter" placeholder="Transcript search"><button type="button" id="clear-filters">Clear</button></div><div class="call-list" id="calls"></div></section>
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs} };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voiceConnecting: false, voiceRecording: null, voiceChunks: [], voiceCallId: null, voiceStatus: "Voice disconnected" };
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
     const labels = { approve_offer: "Approve", deny_offer: "Deny", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
@@ -1114,6 +1114,7 @@ function buildOperatorConsoleHtml(): string {
       });
     }
     function hasDirtyDetailInput() {
+      if (state.voiceConnecting || (state.voiceRecording && state.voiceRecording.state === "recording")) return true;
       return ["caller-turn", "note", "disposition"].some(function(id) {
         const input = document.getElementById(id);
         return input && (document.activeElement === input || input.value.trim());
@@ -1149,6 +1150,15 @@ function buildOperatorConsoleHtml(): string {
       state.selectedCallId = payload.session.callId;
       await refresh();
     }
+    async function runDemoFlow() {
+      setStatus("Running full demo flow");
+      const response = await fetch("/api/demo/run-end-to-end", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ openclawSessionLabel: "operator-console/end-to-end" }) });
+      if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); setStatus(payload.error || "Demo flow failed"); return; }
+      const payload = await response.json();
+      state.selectedCallId = payload.call.session.callId;
+      await refresh();
+      setStatus("Demo flow complete");
+    }
     async function recordCallerTurn(event) {
       event.preventDefault();
       const call = selectedCall();
@@ -1161,6 +1171,78 @@ function buildOperatorConsoleHtml(): string {
     async function postCallerTurn(callId, text) {
       const response = await fetch("/api/calls/" + callId + "/caller-turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: text }) });
       if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); const message = payload.error || "Caller turn failed"; setStatus(message); throw new Error(message); }
+    }
+    function voiceBridgeUrl() { return "ws://" + window.location.hostname + ":8765"; }
+    function playAgentAudio(agentAudio) {
+      if (!agentAudio || !agentAudio.base64) return;
+      const audio = new Audio("data:" + (agentAudio.contentType || "audio/wav") + ";base64," + agentAudio.base64);
+      audio.play().catch(function(error) { setStatus("Agent audio blocked: " + error.message); });
+    }
+    async function connectPipecatVoice() {
+      const call = selectedCall();
+      if (!call) { await startDemoCall(); }
+      const activeCall = selectedCall();
+      state.voiceConnecting = true;
+      state.voiceStatus = "Connecting to Pipecat voice bridge";
+      const ws = new WebSocket(voiceBridgeUrl());
+      state.voiceWs = ws;
+      ws.onopen = function() {
+        ws.send(JSON.stringify({ type: "start", accUrl: window.location.origin, callId: activeCall ? activeCall.session.callId : null }));
+        state.voiceConnecting = false;
+        state.voiceStatus = "Connected to Pipecat voice bridge";
+        setStatus("Pipecat voice bridge connected");
+      };
+      ws.onmessage = async function(event) {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "started") {
+          state.voiceCallId = payload.callId;
+          state.selectedCallId = payload.callId;
+          state.voiceStatus = "Voice call " + payload.callId + " connected";
+          await refresh();
+          return;
+        }
+        if (payload.type === "turn" && payload.ok) {
+          state.selectedCallId = payload.callId;
+          state.voiceStatus = "Caller: " + payload.callerTranscript;
+          setStatus("Caller: " + payload.callerTranscript);
+          playAgentAudio(payload.agentAudio);
+          await refresh();
+          return;
+        }
+        if (payload.type === "error" || payload.ok === false) {
+          state.voiceStatus = payload.error || "Pipecat voice turn failed";
+          setStatus(payload.error || "Pipecat voice turn failed");
+        }
+      };
+      ws.onclose = function() { state.voiceConnecting = false; if (state.voiceWs === ws) state.voiceWs = null; state.voiceStatus = "Pipecat voice bridge disconnected"; setStatus("Pipecat voice bridge disconnected"); };
+      ws.onerror = function() { state.voiceConnecting = false; state.voiceStatus = "Pipecat voice bridge unavailable. Run npm run pipecat:voice"; setStatus(state.voiceStatus); };
+    }
+    async function togglePipecatRecording() {
+      if (!state.voiceWs || state.voiceWs.readyState !== WebSocket.OPEN) {
+        await connectPipecatVoice();
+      }
+      if (state.voiceRecording && state.voiceRecording.state === "recording") {
+        state.voiceRecording.stop();
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : undefined });
+      state.voiceChunks = [];
+      state.voiceRecording = recorder;
+      recorder.ondataavailable = function(event) { if (event.data.size > 0) state.voiceChunks.push(event.data); };
+      recorder.onstop = async function() {
+        stream.getTracks().forEach(function(track) { track.stop(); });
+        const blob = new Blob(state.voiceChunks, { type: recorder.mimeType || "audio/webm" });
+        const buffer = await blob.arrayBuffer();
+        if (state.voiceWs && state.voiceWs.readyState === WebSocket.OPEN) {
+          state.voiceWs.send(buffer);
+          state.voiceStatus = "Sent caller audio to local STT";
+          setStatus("Sent caller audio to Pipecat STT");
+        }
+      };
+      recorder.start();
+      state.voiceStatus = "Recording caller audio";
+      setStatus("Recording caller audio");
     }
     async function postScriptedTurn(expectedTurnIndex) {
       const call = selectedCall();
@@ -1235,6 +1317,7 @@ function buildOperatorConsoleHtml(): string {
       const asrDetail = liveProof.asr && (liveProof.asr.latestTranscriptText || liveProof.asr.blocker || liveProof.asr.nextAction) ? (liveProof.asr.latestTranscriptText || liveProof.asr.blocker || liveProof.asr.nextAction) : "no ASR events yet";
       const liveProofHtml = '<section class="proof-panel" aria-label="Live SIP proof"><div class="proof-header"><h3>Live SIP proof</h3><div class="badges"><span class="' + badgeClass + '">' + escapeHtml(liveProof.eval ? liveProof.eval.status : "not_review_ready") + '</span>' + labelBadges + '</div></div><div class="proof-grid"><div class="metric"><span class="meta">Run / Session</span><strong>' + escapeHtml((liveProof.run && liveProof.run.sessionId) || call.session.openclawSession.sessionId) + '</strong><span class="meta">Call: ' + escapeHtml((liveProof.run && liveProof.run.callId) || call.session.callId) + '</span><span class="meta">Provider: ' + escapeHtml((liveProof.run && liveProof.run.providerCallId) || call.session.providerCallId) + '</span></div><div class="metric"><span class="meta">Audio Capture</span><strong>' + escapeHtml(humanLabel(liveProof.audioCapture && liveProof.audioCapture.status)) + '</strong>' + pathHtml(liveProof.audioCapture && liveProof.audioCapture.audioWavPath, "WAV") + pathHtml(liveProof.audioCapture && liveProof.audioCapture.sipLogPath, "SIP log") + linkHtml(liveProof.audioCapture && liveProof.audioCapture.eventTrail, "Capture Events") + '</div><div class="metric"><span class="meta">Transcript / ASR</span><strong>' + escapeHtml(humanLabel(liveProof.asr && liveProof.asr.status)) + '</strong><span class="meta">' + escapeHtml(asrDetail) + '</span>' + pathHtml(liveProof.asr && liveProof.asr.evidencePath, "ASR evidence") + linkHtml(liveProof.asr && liveProof.asr.eventTrail, "ASR Events") + '</div><div class="metric"><span class="meta">Artifacts / Eval</span><strong>' + escapeHtml(isLiveProofReady ? "Reviewable" : "Blocked") + '</strong>' + linkHtml(liveProof.eval && liveProof.eval.proofRoute, "Proof") + linkHtml(liveProof.eval && liveProof.eval.artifactManifestRoute, "Artifacts") + linkHtml(liveProof.eval && liveProof.eval.transcriptRoute, "Transcript") + '</div><div class="metric"><span class="meta">Handoff State</span><strong>' + escapeHtml(humanLabel(liveProof.operator && liveProof.operator.handoffState)) + '</strong><span class="meta">Attention: ' + escapeHtml(liveProof.operator && liveProof.operator.attentionRequired ? "required" : "clear") + '</span><span class="meta">Pending: ' + escapeHtml((liveProof.operator && liveProof.operator.pendingAction) || "none") + '</span></div></div>' + caveatsHtml + '</section>';
       const evidenceHtml = '<div class="evidence" aria-label="Evidence markers"><div class="metric"><span class="meta">Latest Event</span><strong>' + escapeHtml(evidence.latestEventType || "none") + '</strong><span class="meta">' + escapeHtml(evidence.latestEventAt || "not recorded") + '</span><a href="' + escapeHtml(latestEventLink) + '">Event Trail</a></div><div class="metric"><span class="meta">Transcript Turns</span><strong>' + evidence.transcriptTurns + '</strong><a href="' + escapeHtml(evidenceLinks.transcript) + '">Transcript</a></div><div class="metric"><span class="meta">Latency Marks</span><strong>' + evidence.latencyMarkCount + '</strong><span class="meta">Over budget: ' + evidence.overBudgetLatencyMarkCount + '</span><a href="' + escapeHtml(latencyLink) + '">Latency</a></div><div class="metric"><span class="meta">Fallback</span><strong>' + escapeHtml(fallbackLabel) + '</strong><span class="meta">' + escapeHtml(fallbackDetail) + '</span><a href="' + escapeHtml(fallbackTrailLink) + '">Event Trail</a><a href="' + escapeHtml(fallbackQueueLink) + '">Fallback Queue</a>' + reasonTrailHtml + '</div><div class="metric"><span class="meta">Operator Notes</span><strong>' + evidence.operatorNoteCount + '</strong><span class="meta">' + escapeHtml(evidence.latestDisposition || evidence.latestOperatorNoteText || "none") + '</span><a href="' + escapeHtml(operatorNoteTrailLink) + '">Note Trail</a></div><div class="metric"><span class="meta">Proof Bundle</span><strong>' + evidence.eventCount + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Proof</a><a href="' + escapeHtml(evidenceLinks.artifacts) + '">Artifacts</a></div></div>';
+      const assertHtml = '<section class="proof-panel" aria-label="Assert UI"><div class="proof-header"><h3>Assert UI</h3><div class="badges"><span class="badge ok">' + escapeHtml(call.flowState === "wrap" && call.pipecatFlow.script.completed ? "call complete" : "collecting evidence") + '</span><span class="badge">' + escapeHtml(call.pipecatFlow.prototypeMode) + '</span></div></div><div class="proof-grid"><div class="metric"><span class="meta">Call State</span><strong>' + escapeHtml(call.flowState) + '</strong><span class="meta">Script: ' + escapeHtml(call.pipecatFlow.script.completed ? "complete" : "in progress") + '</span><span class="meta">Attention: ' + escapeHtml(call.attention.required ? "required" : "clear") + '</span></div><div class="metric"><span class="meta">Evidence Counts</span><strong>' + evidence.eventCount + ' events</strong><span class="meta">' + evidence.transcriptTurns + ' transcript turns</span><span class="meta">' + evidence.latencyMarkCount + ' latency marks</span></div><div class="metric"><span class="meta">Artifacts</span><strong>' + escapeHtml(evidence.operatorNoteCount > 0 ? "Disposition captured" : "No disposition yet") + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Open Proof JSON</a><a href="' + escapeHtml(evidenceLinks.artifacts) + '">Open Artifact Manifest</a><a href="' + escapeHtml(evidenceLinks.transcript) + '">Open Transcript JSON</a></div><div class="metric"><span class="meta">Assert Inputs</span><strong>' + escapeHtml(liveProof.eval && liveProof.eval.status ? liveProof.eval.status : "local proof bundle") + '</strong><span class="meta">Use the proof and artifact routes as the minimum evidence packet for Assert.</span></div></div></section>';
       const scriptedState = call.actionState.scriptedCallerTurnState || { matchedTurns: 0, totalTurns: (state.scriptedCallerTurns || []).length, remainingTurns: (state.scriptedCallerTurns || []).length, progressPct: 0, nextTurnIndex: 0, nextTurnText: null, completed: false };
       const scriptedTurns = (state.scriptedCallerTurns || []).map(function(text, index) {
         const isCompleted = index < scriptedState.matchedTurns;
@@ -1244,9 +1327,11 @@ function buildOperatorConsoleHtml(): string {
         return '<button type="button" data-scripted-turn="' + index + '" ' + disabled + '><span class="meta">' + status + ' | Turn ' + (index + 1) + '</span><br>' + escapeHtml(text) + '</button>';
       }).join("");
       const scriptedMetric = '<div class="metric"><span class="meta">Scripted Turns</span><strong>' + scriptedState.progressPct + '%</strong><span class="meta">' + scriptedState.matchedTurns + '/' + scriptedState.totalTurns + ' sent | ' + scriptedState.remainingTurns + ' remaining</span><span class="meta">' + escapeHtml(scriptedState.completed ? "complete" : scriptedState.nextTurnText || "queued") + '</span></div>';
-      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + runtimeMetric + scriptedMetric + pendingHtml + '</div><div class="workbench"><div class="stack"><section class="section"><h3 class="section-title">Operator Actions</h3><div class="actions">' + actionHtml + '</div></section><section class="section"><h3 class="section-title">Caller Script</h3><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></section><section class="section"><h3 class="section-title">Disposition</h3><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></section></div><div class="stack">' + liveProofHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section></div></div>';
+      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + runtimeMetric + scriptedMetric + pendingHtml + '</div><div class="workbench"><div class="stack"><section class="section"><h3 class="section-title">Pipecat Voice Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-record">Record / Stop Caller</button></div><span class="status">' + escapeHtml(state.voiceStatus) + '</span><span class="meta">Requires local bridge: npm run pipecat:voice. Audio path is browser mic -> Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS say local TTS -> browser playback.</span></section><section class="section"><h3 class="section-title">Operator Actions</h3><div class="actions">' + actionHtml + '</div></section><section class="section"><h3 class="section-title">Caller Script</h3><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></section><section class="section"><h3 class="section-title">Disposition</h3><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></section></div><div class="stack">' + assertHtml + liveProofHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section></div></div>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\\n\\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       root.querySelectorAll("button[data-scripted-turn]").forEach(function(button) { button.addEventListener("click", function() { const index = Number(button.dataset.scriptedTurn); if (Number.isInteger(index)) postScriptedTurn(index).catch(function(error) { setStatus(error.message); }); }); });
+      document.getElementById("voice-connect").addEventListener("click", function() { connectPipecatVoice().catch(function(error) { setStatus(error.message); }); });
+      document.getElementById("voice-record").addEventListener("click", function() { togglePipecatRecording().catch(function(error) { setStatus(error.message); }); });
       document.getElementById("caller-turn-form").addEventListener("submit", recordCallerTurn);
       document.getElementById("note-form").addEventListener("submit", recordNote);
     }
@@ -1257,6 +1342,7 @@ function buildOperatorConsoleHtml(): string {
       state.refreshTimer = setTimeout(function() { refresh({ auto: true }).catch(function(error) { setStatus(error.message); scheduleRefresh(); }); }, state.refreshIntervalMs || 5000);
     }
     document.addEventListener("visibilitychange", function() { if (document.hidden && state.refreshTimer) clearTimeout(state.refreshTimer); else refresh().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("run-demo-flow").addEventListener("click", function() { runDemoFlow().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("start-demo").addEventListener("click", function() { startDemoCall().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("refresh").addEventListener("click", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("attention-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
@@ -1272,6 +1358,116 @@ function buildOperatorConsoleHtml(): string {
     document.getElementById("script-max-progress-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("clear-filters").addEventListener("click", function() { document.getElementById("attention-filter").checked = false; document.getElementById("latency-over-budget-filter").checked = false; document.getElementById("flow-filter").value = ""; document.getElementById("fallback-filter").value = ""; document.getElementById("fallback-source-filter").value = ""; document.getElementById("fallback-reason-filter").value = ""; document.getElementById("tool-filter").value = ""; document.getElementById("script-completed-filter").value = ""; document.getElementById("script-progress-filter").value = ""; document.getElementById("script-max-progress-filter").value = ""; document.getElementById("transcript-filter").value = ""; refresh().catch(function(error) { setStatus(error.message); }); });
     refresh().catch(function(error) { setStatus(error.message); });
+  </script>
+</body>
+</html>`;
+}
+
+function buildAssertViewerHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ASSERT Viewer</title>
+  <style>
+    :root { --bg: #f6f8fa; --panel: #fff; --text: #24292f; --muted: #57606a; --line: #d0d7de; --accent: #0969da; --ok: #1a7f37; --warn: #9a6700; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    h1 { margin: 0; font-size: 18px; letter-spacing: 0; }
+    a { color: var(--accent); text-decoration: none; font-weight: 650; }
+    main { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); min-height: calc(100vh - 58px); }
+    aside { border-right: 1px solid var(--line); background: var(--panel); overflow: auto; }
+    section { min-width: 0; }
+    button, select { font: inherit; }
+    button { border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); cursor: pointer; }
+    button:hover { border-color: var(--accent); }
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .run { display: grid; gap: 6px; width: 100%; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; text-align: left; }
+    .run[aria-selected="true"] { border-left: 4px solid var(--accent); padding-left: 10px; background: #ddf4ff; }
+    .muted { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .badge { display: inline-flex; align-items: center; width: fit-content; min-height: 22px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .badge.ok { color: var(--ok); border-color: #4ac26b; background: #dafbe1; }
+    .badge.warn { color: var(--warn); border-color: #d4a72c; background: #fff8c5; }
+    .content { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; }
+    .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    .card { border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fff; min-width: 0; }
+    .card strong { display: block; font-size: 18px; overflow-wrap: anywhere; }
+    .tabs { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: #fff; overflow: auto; }
+    .tabs button { padding: 7px 10px; white-space: nowrap; }
+    .tabs button[aria-selected="true"] { color: #fff; border-color: var(--accent); background: var(--accent); }
+    pre { margin: 0; padding: 14px; overflow: auto; min-height: 0; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #0d1117; color: #e6edf3; }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } aside { max-height: 260px; border-right: 0; border-bottom: 1px solid var(--line); } .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>ASSERT Viewer</h1><div class="muted">Local ACC proof artifacts and call eval evidence</div></div>
+    <div class="toolbar"><a href="/operator/console">Operator Console</a><button type="button" id="refresh">Refresh</button></div>
+  </header>
+  <main>
+    <aside id="runs"></aside>
+    <section class="content">
+      <div class="summary" id="summary"></div>
+      <div class="tabs" id="tabs"></div>
+      <pre id="json">{}</pre>
+    </section>
+  </main>
+  <script>
+    const state = { calls: [], selectedCallId: null, tab: "proof", artifacts: {} };
+    const tabs = ["proof", "artifacts", "transcript", "events", "latency"];
+    function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { if (char === "&") return "&amp;"; if (char === "<") return "&lt;"; if (char === ">") return "&gt;"; return "&quot;"; }); }
+    function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
+    async function fetchJson(path) { const response = await fetch(path); if (!response.ok) throw new Error(path + " failed"); return response.json(); }
+    async function refresh() {
+      const payload = await fetchJson("/api/operator/console?limit=100&order=desc");
+      state.calls = payload.calls.items;
+      if (!state.calls.some(function(call) { return call.session.callId === state.selectedCallId; })) state.selectedCallId = state.calls[0] ? state.calls[0].session.callId : null;
+      await loadSelectedArtifact();
+      render();
+    }
+    async function loadSelectedArtifact() {
+      const call = selectedCall();
+      if (!call) return;
+      const links = call.evidenceSummary.links;
+      const loaders = {
+        proof: links.proof,
+        artifacts: links.artifacts,
+        transcript: links.transcript,
+        events: links.events,
+        latency: links.latencyMarks
+      };
+      state.artifacts = {};
+      await Promise.all(Object.entries(loaders).map(async function(entry) {
+        const key = entry[0], path = entry[1];
+        state.artifacts[key] = await fetchJson(path);
+      }));
+    }
+    async function selectCall(callId) { state.selectedCallId = callId; await loadSelectedArtifact(); render(); }
+    function renderRuns() {
+      const root = document.getElementById("runs");
+      root.innerHTML = state.calls.map(function(call) {
+        const complete = call.flowState === "wrap" && call.pipecatFlow.script.completed;
+        return '<button class="run" aria-selected="' + (call.session.callId === state.selectedCallId) + '" data-call-id="' + escapeHtml(call.session.callId) + '"><strong>' + escapeHtml(call.session.callId) + '</strong><span class="' + (complete ? "badge ok" : "badge warn") + '">' + escapeHtml(complete ? "complete" : call.flowState) + '</span><span class="muted">' + escapeHtml(call.session.openclawSession.label) + '</span><span class="muted">' + escapeHtml(call.evidenceSummary.eventCount + " events | " + call.evidenceSummary.transcriptTurns + " transcript turns") + '</span></button>';
+      }).join("") || '<div class="muted" style="padding:14px">No call artifacts yet</div>';
+      root.querySelectorAll("button[data-call-id]").forEach(function(button) { button.addEventListener("click", function() { selectCall(button.dataset.callId).catch(function(error) { document.getElementById("json").textContent = error.message; }); }); });
+    }
+    function renderSummary() {
+      const call = selectedCall();
+      const root = document.getElementById("summary");
+      if (!call) { root.innerHTML = ""; return; }
+      root.innerHTML = '<div class="card"><span class="muted">Call</span><strong>' + escapeHtml(call.session.callId) + '</strong><span class="muted">' + escapeHtml(call.session.providerCallId) + '</span></div><div class="card"><span class="muted">State</span><strong>' + escapeHtml(call.flowState) + '</strong><span class="muted">Script ' + escapeHtml(call.pipecatFlow.script.completed ? "complete" : "in progress") + '</span></div><div class="card"><span class="muted">Evidence</span><strong>' + escapeHtml(call.evidenceSummary.eventCount + " events") + '</strong><span class="muted">' + escapeHtml(call.evidenceSummary.latencyMarkCount + " latency marks") + '</span></div><div class="card"><span class="muted">Runtime</span><strong>' + escapeHtml(call.pipecatFlow.prototypeMode) + '</strong><span class="muted">' + escapeHtml(call.pipecatFlow.runtimeEngine) + '</span></div>';
+    }
+    function renderTabs() {
+      const root = document.getElementById("tabs");
+      root.innerHTML = tabs.map(function(tab) { return '<button type="button" aria-selected="' + (state.tab === tab) + '" data-tab="' + tab + '">' + escapeHtml(tab) + '</button>'; }).join("");
+      root.querySelectorAll("button[data-tab]").forEach(function(button) { button.addEventListener("click", function() { state.tab = button.dataset.tab; renderJson(); renderTabs(); }); });
+    }
+    function renderJson() { document.getElementById("json").textContent = JSON.stringify(state.artifacts[state.tab] || {}, null, 2); }
+    function render() { renderRuns(); renderSummary(); renderTabs(); renderJson(); }
+    document.getElementById("refresh").addEventListener("click", function() { refresh().catch(function(error) { document.getElementById("json").textContent = error.message; }); });
+    refresh().catch(function(error) { document.getElementById("json").textContent = error.message; });
   </script>
 </body>
 </html>`;
@@ -2165,6 +2361,7 @@ function buildOperatorActionsPayload() {
     callReferenceFields: ["callId", "providerCallId", "openclawSessionId", "openclawSessionLabel", "openclawSessionRef"],
     routes: {
       startDemoCall: "/api/demo/start",
+      runEndToEndDemo: "/api/demo/run-end-to-end",
       callerTurn: "/api/calls/{callId}/caller-turn",
       scriptedTurn: "/api/operator/console/scripted-turn",
       steerCall: "/api/calls/{callId}/operator-steer",
@@ -2227,6 +2424,90 @@ function buildSignalWireResponse(
     signalWireCallId,
     call: buildCallPayload(snapshot),
   };
+}
+
+async function runEndToEndDemoFlow(
+  ingress: InMemoryTelephonyIngress,
+  config: PocConfig,
+  options: StartCallOptions,
+) {
+  const started = await ingress.startCall(config, options);
+  const callId = started.session.callId;
+  const steps: Array<{
+    step: string;
+    ok: boolean;
+    flowState: FlowState;
+    callId: string;
+    detail: string;
+  }> = [
+    {
+      step: "start_call",
+      ok: true,
+      flowState: started.flowState,
+      callId,
+      detail: "Mock telephony call created.",
+    },
+  ];
+
+  let latest = started;
+  const scriptedTimestamps = [
+    "2026-06-11T20:45:01.000Z",
+    "2026-06-11T20:45:05.000Z",
+    "2026-06-11T20:45:09.000Z",
+  ];
+
+  for (const [index, text] of SCRIPTED_CALLER_TURNS.slice(0, 3).entries()) {
+    latest = await ingress.appendCallerTurn(
+      callId,
+      { speaker: "caller", text, timestamp: scriptedTimestamps[index] },
+      config,
+    );
+    steps.push({
+      step: `caller_turn_${index + 1}`,
+      ok: true,
+      flowState: latest.flowState,
+      callId,
+      detail: text,
+    });
+  }
+
+  latest = await ingress.applyOperatorSteer(callId, "approve_offer", "2026-06-11T20:45:11.000Z");
+  steps.push({
+    step: "operator_approve_offer",
+    ok: true,
+    flowState: latest.flowState,
+    callId,
+    detail: "Operator approved the safe retention response.",
+  });
+
+  latest = await ingress.appendCallerTurn(
+    callId,
+    { speaker: "caller", text: SCRIPTED_CALLER_TURNS[3], timestamp: "2026-06-11T20:45:15.000Z" },
+    config,
+  );
+  steps.push({
+    step: "caller_wrap",
+    ok: true,
+    flowState: latest.flowState,
+    callId,
+    detail: SCRIPTED_CALLER_TURNS[3],
+  });
+
+  latest = await ingress.recordOperatorNote(
+    callId,
+    "Demo completed end to end: policy hold, operator approval, safe retention wrap, and proof bundle are available.",
+    "2026-06-11T20:45:16.000Z",
+    "demo_completed",
+  );
+  steps.push({
+    step: "operator_disposition",
+    ok: true,
+    flowState: latest.flowState,
+    callId,
+    detail: "Disposition recorded as demo_completed.",
+  });
+
+  return { latest, steps };
 }
 
 async function resolveOperatorConsoleCallId(
@@ -2827,8 +3108,13 @@ async function routeRequest(
     return;
   }
 
-  if (request.method === "GET" && (pathname === "/operator" || pathname === "/operator/console")) {
+  if (request.method === "GET" && (pathname === "/" || pathname === "/operator" || pathname === "/operator/console")) {
     writeHtml(response, 200, buildOperatorConsoleHtml());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/assert") {
+    writeHtml(response, 200, buildAssertViewerHtml());
     return;
   }
 
@@ -2971,6 +3257,46 @@ async function routeRequest(
     } catch {
       writeNotFound(response);
     }
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/demo/run-end-to-end") {
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const openclawSessionId = body.openclawSessionId;
+    if (openclawSessionId !== undefined && (typeof openclawSessionId !== "string" || !openclawSessionId.trim())) {
+      writeBadRequest(response, "openclaw_session_id_invalid");
+      return;
+    }
+
+    const openclawSessionLabel = body.openclawSessionLabel;
+    if (
+      openclawSessionLabel !== undefined &&
+      (typeof openclawSessionLabel !== "string" || !openclawSessionLabel.trim())
+    ) {
+      writeBadRequest(response, "openclaw_session_label_invalid");
+      return;
+    }
+
+    const { latest, steps } = await runEndToEndDemoFlow(ingress, config, {
+      openclawSessionId: openclawSessionId?.trim(),
+      openclawSessionLabel: openclawSessionLabel?.trim() ?? "operator-console/end-to-end",
+    } satisfies StartCallOptions);
+
+    writeJson(response, 201, {
+      ok: true,
+      route: "/api/demo/run-end-to-end",
+      outcome: latest.flowState === "wrap" && latest.pipecatFlow.script.completed ? "scripted_wrap_complete" : "incomplete",
+      steps,
+      call: buildCallPayload(latest),
+      operatorConsoleCall: buildOperatorConsoleCallPayload(latest),
+      proof: buildCallProofBundlePayload(latest),
+    });
     return;
   }
 
