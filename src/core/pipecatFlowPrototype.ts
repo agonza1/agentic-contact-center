@@ -559,6 +559,8 @@ export function applyOperatorSteer(
   appendOperatorTurn(snapshot, `operator steer: ${action}`, timestamp);
   recordEvent(snapshot, "operator_steer_applied", timestamp, {
     action,
+    reason: reason ?? null,
+    pendingBeforeAction: wasPending,
     source: "mock_http_route",
     sourceRoute: audit.sourceRoute ?? null,
     confirmationAcknowledged: audit.confirmationAcknowledged ?? null,

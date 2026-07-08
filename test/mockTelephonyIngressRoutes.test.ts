@@ -11,6 +11,7 @@ interface SnapshotPayload {
     callId: string;
     providerCallId: string;
     startedAt: string;
+    runtimeModeLabels: Record<string, string>;
     openclawSession: {
       sessionId: string;
       label: string;
@@ -136,6 +137,17 @@ interface OperatorConsolePayload {
   calls: {
     items: Array<
       SnapshotPayload & {
+        controlMarkers: {
+          workboardCard: string;
+          issue: string;
+          liveCall: { status: string; startedAt: string; providerCallId: string; runtimeMode: Record<string, string> };
+          flowState: { current: string; activeTool: string | null; scriptCompleted: boolean; runtimeEngine: string };
+          transcript: { turnCount: number; latestSpeaker: string | null; latestAt: string | null; route: string };
+          pendingApproval: { active: boolean; recommendedAction: string | null; reason: string | null; requestedAt: string | null; trail: string | null };
+          hold: { active: boolean; source: string | null; reason: string | null; startedAt: string | null; fallbackArmed: boolean; trail: string | null };
+          evidence: { latestEventType: string | null; latestEventAt: string | null; eventTrail: string; proofRoute: string; latencyTrail: string };
+          localDemoRuntime: { worksWithMockedRuntime: boolean; runtimeEngine: string; telephony: string };
+        };
         evidenceSummary: {
           latestEventType: string | null;
           latestEventTrail: string | null;
@@ -1295,6 +1307,55 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(operatorConsoleCall.evidenceSummary.overBudgetLatencyMarkCount, 0);
     assert.equal(operatorConsoleCall.evidenceSummary.overBudgetLatencyTrail, null);
     assert.deepEqual(operatorConsoleCall.evidenceSummary.links, operatorConsoleCall.session.openclawSession.artifactLinks);
+    assert.deepEqual(operatorConsoleCall.controlMarkers, {
+      workboardCard: "82771d3a-de4d-4b6e-869c-328e8264d01e",
+      issue: "agonza1/agentic-contact-center#62",
+      liveCall: {
+        status: "held",
+        startedAt: operatorConsoleCall.session.startedAt,
+        providerCallId: operatorConsoleCall.session.providerCallId,
+        runtimeMode: operatorConsoleCall.session.runtimeModeLabels,
+      },
+      flowState: {
+        current: "operator_steer",
+        activeTool: "ask_operator",
+        scriptCompleted: false,
+        runtimeEngine: "pipecat-ai",
+      },
+      transcript: {
+        turnCount: 6,
+        latestSpeaker: "agent",
+        latestAt: "2026-06-10T14:10:10.000Z",
+        route: `/api/calls/${operatorCallId}/transcript`,
+      },
+      pendingApproval: {
+        active: true,
+        recommendedAction: "approve_offer",
+        reason: "safe_offer_review_requested",
+        requestedAt: "2026-06-10T14:10:10.000Z",
+        trail: `/api/calls/${operatorCallId}/events?type=operator_steer_requested&limit=1&order=desc`,
+      },
+      hold: {
+        active: true,
+        source: "operator_steer",
+        reason: "safe_offer_review_requested",
+        startedAt: "2026-06-10T14:10:10.000Z",
+        fallbackArmed: false,
+        trail: `/api/calls/${operatorCallId}/events?detailText=safe_offer_review_requested`,
+      },
+      evidence: {
+        latestEventType: "agent_turn_appended",
+        latestEventAt: "2026-06-10T14:10:10.000Z",
+        eventTrail: `/api/calls/${operatorCallId}/events`,
+        proofRoute: `/api/calls/${operatorCallId}/proof`,
+        latencyTrail: `/api/calls/${operatorCallId}/latency?stage=agent_response_ready&limit=1&order=desc`,
+      },
+      localDemoRuntime: {
+        worksWithMockedRuntime: true,
+        runtimeEngine: "pipecat-ai",
+        telephony: "mocked_telephony",
+      },
+    });
     assert.deepEqual(operatorConsoleCall.actionState, {
       attentionRequired: true,
       pendingApproval: true,
