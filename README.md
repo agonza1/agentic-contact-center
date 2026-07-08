@@ -8,10 +8,13 @@ The authoritative app for the current work is under `src/`. The older FastAPI/st
 
 - Mock telephony ingress for starting calls and appending caller turns.
 - Local Pipecat runtime mode for the seeded cancellation-rescue path, with provider credentials and live telephony mocked.
+- Free caller voice demo using browser microphone audio, a local Pipecat WebSocket bridge, MLX Whisper STT, and local macOS `say` TTS.
+- A simple goal-driven free-caller agent path that tracks prior turns, ignores low-information STT fragments, and avoids repeating the same clarification question.
 - Policy hold before risky retention responses.
 - Slack-style operator steer commands such as pause, resume, approve offer, jump slide, ask operator, arm fallback, and escalate.
 - Fail-closed fallback for `tool_timeout` and `runtime_failure` paths.
 - Operator/QA evidence through call snapshots, queue summaries, transcript pages, event trails, latency marks, and proof artifacts.
+- ASSERT-style artifact viewing plus an editable local evaluation spec surface for goal, success/failure checks, scenario seeds, prewritten blocks, generated YAML, and judge settings.
 
 ## Architecture
 
@@ -27,6 +30,21 @@ flowchart LR
     steer --> response
     steer --> handoff[Human handoff]
     state --> proof[Proof artifacts]
+```
+
+The browser voice demo follows this local path:
+
+```mermaid
+flowchart LR
+    caller[Caller in browser] --> bridge[Pipecat voice bridge]
+    bridge --> stt[MLX Whisper local STT]
+    stt --> api[ACC caller-turn API]
+    api --> agent[Free-caller goal agent]
+    agent --> tts[macOS say local TTS]
+    tts --> caller
+    agent --> evidence[Transcript, events, latency, proof]
+    evidence --> assert[ASSERT viewer and eval spec]
+    operator[Operator console] -. listen / steer .-> agent
 ```
 
 Main components:
@@ -47,7 +65,9 @@ The runtime is intentionally local and in-memory. Restarting the server clears c
 - Node.js 20 or newer.
 - npm.
 - Docker and Docker Compose, only if you want the containerized commands.
-- Python 3.11+ for `npm run pipecat:check` or if you are exploring the legacy `apps/api` prototype.
+- Python 3.11+ for `npm run pipecat:check`, `npm run pipecat:voice`, or if you are exploring the legacy `apps/api` prototype.
+- `ffmpeg` on `PATH` for the local voice bridge audio conversions.
+- macOS `say` for the current local TTS path.
 
 ## Configuration
 
@@ -117,8 +137,23 @@ npm run health:smoke
 
 Open the local console at `http://localhost:8026/` or `http://localhost:8026/operator/console`.
 Click **Run Demo Flow** to execute the complete mocked call: start call, send the seeded caller turns, hit policy hold, approve the safe offer, wrap the call, record a disposition, and expose the proof bundle.
-For an interactive free caller demo, run `npm run pipecat:voice` in another terminal, then start or select an empty call and use **Pipecat Voice Caller**. The audio path is browser mic -> local Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS `say` local TTS -> browser playback. If the bridge is not running, typed **Caller transcript turn** entries still exercise the same call-flow API but are not a voice demo.
-The **Assert UI** panel gives the minimum proof view: current call state, evidence counts, proof JSON, artifact manifest, and transcript JSON.
+
+For an interactive free caller voice demo:
+
+1. Run `npm run pipecat:voice` in another terminal.
+2. Open `http://localhost:8026/`.
+3. Use **Pipecat Voice Caller**.
+4. Click **Connect Voice**, allow microphone access, then speak naturally.
+5. Use **Mute Caller** / **Unmute Caller** during the session.
+
+The audio path is browser mic -> local Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS `say` local TTS -> browser playback. The bridge drops low-information STT fragments such as tiny filler words or dotted silence before they pollute the transcript. If the bridge is not running, typed **Caller transcript turn** entries still exercise the same call-flow API but are not a voice demo.
+
+The operator console includes a Mermaid **Demo Flow** diagram that shows where caller audio, the Pipecat bridge, the agent, the operator console, and ASSERT artifacts fit.
+
+ASSERT surfaces:
+
+- `http://localhost:8026/assert`: local artifact viewer with calls, proof, artifacts, transcript, events, and latency tabs.
+- `http://localhost:8026/assert/spec`: simplified editable eval spec with objective, success checks, failure checks, scenario seeds, prewritten blocks, generated `assert.yml`, and collapsed advanced judge/systematization settings.
 
 Useful health assertions:
 
@@ -188,6 +223,12 @@ The flow enters `policy_hold` before unsafe retention offers, requests operator 
 - `GET /api/realtime-shim/readiness`: summarize Issue #85 acceptance readiness, adapter shape, browser relay compatibility, reviewer packet, mocked pieces, and limitations from the proof evidence.
 - `GET /api/realtime-shim/speech-enhancement-spike`: summarize Issue #97 latency-configurable speech enhancement placement, candidate latency settings, replay metric shape, and feature-flag recommendation for rtc-asr.
 - `POST /api/realtime-shim/rpc`: exercise the `talk.session.*` Gateway relay RPC boundary with persistent local shim session state, including `talk.session.cancelInput` input-buffer cancellation, `talk.session.recordError` bounded Local STT failure evidence, and read-only `talk.session.getEvidence` QA snapshots.
+- `GET /assert`: serve the local ASSERT-style artifact viewer.
+- `GET /assert/spec`: serve the editable local ASSERT evaluation spec UI.
+- `GET /api/assert/spec`: return the active in-memory eval spec, reusable blocks, and generated YAML.
+- `POST /api/assert/spec/preview`: validate a draft eval spec and return generated YAML without saving.
+- `POST /api/assert/spec`: save the active in-memory eval spec for the running process.
+- `POST /api/assert/spec/reset`: reset the active eval spec to the default.
 - `GET /api/calls/:callId`: fetch the current call snapshot.
 - `GET /api/calls/:callId/transcript`: fetch filterable transcript pages.
 - `GET /api/calls/:callId/events`: fetch filterable event evidence, including detail-text search for QA audits.
@@ -273,6 +314,8 @@ The bundle writes `proof-bundle-manifest.json`, `conversation-agent-evals-assert
 - `npm run proof:realtime-shim`: build and write the issue #85 realtime shim proof artifact.
 - `npm run proof:speech-enhancement`: build and write the issue #97 speech enhancement spike artifact.
 - `npm run pipecat:check`: verify the local `pipecat-ai` runtime package boundary without live telephony.
+- `npm run pipecat:voice:install`: install Pipecat voice bridge dependencies into `.pipecat-runtime`.
+- `npm run pipecat:voice`: run the local browser voice bridge on `ws://127.0.0.1:8765`.
 - `npm run proof:pipecat`: run `pipecat:check` before the proof harness.
 - `npm run proof:bundle`: convert a proof JSON file into a ConversationAgentEvals-ready evidence bundle with media artifacts.
 - `npm run health:smoke`: poll `http://127.0.0.1:8026/health`.
@@ -301,7 +344,8 @@ The bundle writes `proof-bundle-manifest.json`, `conversation-agent-evals-assert
 ## Caveats
 
 - State is in-memory and process-local.
-- Telephony, OpenClaw, Pipecat, Slack, CRM, billing, and authentication are mocked or represented as deterministic contracts.
+- The local voice bridge uses real local STT/TTS plumbing, but telephony, OpenClaw, Slack, CRM, billing, account access, and authentication are mocked or represented as deterministic contracts.
+- `/api/assert/spec` saves the eval spec in memory for the running process; restart resets it to the default.
 - `apps/api` and `apps/web` are not covered by the root npm scripts or Docker runtime.
 
 ## FreeSWITCH and Local SIP Live Capture
