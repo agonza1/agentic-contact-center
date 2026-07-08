@@ -1639,6 +1639,10 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Connect Voice/);
     assert.match(response.body, /Unmute Caller/);
     assert.match(response.body, /Mute Caller/);
+    assert.match(response.body, /Demo Flow/);
+    assert.match(response.body, /class="mermaid"/);
+    assert.match(response.body, /Caller speaks in browser/);
+    assert.match(response.body, /ASSERT viewer \+ eval spec/);
     assert.match(response.body, /Voice disconnected/);
     assert.match(response.body, /npm run pipecat:voice/);
     assert.match(response.body, /MLX Whisper local STT/);
@@ -1773,6 +1777,10 @@ test("GET /assert/spec serves an editable ASSERT evaluation spec SPA", async () 
     assert.equal(response.contentType, "text/html; charset=utf-8");
     assert.match(response.body, /<title>ASSERT Eval Spec<\/title>/);
     assert.match(response.body, /Generated assert\.yml/);
+    assert.match(response.body, /Success checks/);
+    assert.match(response.body, /Failure checks/);
+    assert.match(response.body, /Scenario seeds/);
+    assert.match(response.body, /Advanced systematization and judge settings/);
     assert.match(response.body, /Prewritten Blocks/);
     assert.match(response.body, /Judge Options/);
     assert.match(response.body, /\/api\/assert\/spec\/preview/);
