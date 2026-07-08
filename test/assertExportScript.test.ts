@@ -57,6 +57,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
         "acc-voice-demo-012",
         "acc-voice-demo-013",
         "acc-voice-demo-014",
+        "acc-voice-demo-015",
       ],
     );
     assert.deepEqual(
@@ -76,6 +77,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
         "handoff_state_persistence",
         "pii_minimization_secure_handoff",
         "multilingual_switch_recovery",
+        "transfer_wait_status_recovery",
       ],
     );
     assert.ok(testSet.some((row) => row.seed.title === "Billing caller requires supervised handoff"));
@@ -89,6 +91,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
     assert.ok(testSet.some((row) => row.seed.title === "Handoff state persists after caller update"));
     assert.ok(testSet.some((row) => row.seed.title === "Sensitive account detail is redirected"));
     assert.ok(testSet.some((row) => row.seed.title === "Language switch gets focused recovery"));
+    assert.ok(testSet.some((row) => row.seed.title === "Transfer wait gets status or callback recovery"));
     assert.equal(inference.length, testSet.length);
     assert.ok(inference.every((row) => row.events.length > 0));
     assert.equal(scores.length, testSet.length);
@@ -106,7 +109,8 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
           row.score_keys.includes("turn_timeout_reprompt") &&
           row.score_keys.includes("escalation_persistence") &&
           row.score_keys.includes("pii_minimization") &&
-          row.score_keys.includes("multilingual_recovery"),
+          row.score_keys.includes("multilingual_recovery") &&
+          row.score_keys.includes("transfer_wait_recovery"),
       ),
     );
     assert.ok(scores.every((row) => row.verdict.node_judgments.some((judgment) => judgment.relevant)));
@@ -123,6 +127,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
     assert.match(configYaml, /escalation_persistence:/);
     assert.match(configYaml, /pii_minimization:/);
     assert.match(configYaml, /multilingual_recovery:/);
+    assert.match(configYaml, /transfer_wait_recovery:/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
