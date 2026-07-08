@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 
@@ -132,6 +132,17 @@ async function resolveCaptureReplayPaths() {
   const directoryManifestPaths = [];
 
   for (const directoryPath of directoryPaths) {
+    const directoryStats = await stat(directoryPath).catch((error) => {
+      if (error && error.code === "ENOENT") {
+        throw new Error(`Missing capture replay directory: ${directoryPath}`);
+      }
+
+      throw error;
+    });
+    if (!directoryStats.isDirectory()) {
+      throw new Error(`Capture replay directory is not a directory: ${directoryPath}`);
+    }
+
     const entries = await readdir(directoryPath, { withFileTypes: true });
     directoryManifestPaths.push(
       ...entries

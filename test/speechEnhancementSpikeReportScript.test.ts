@@ -1151,6 +1151,29 @@ test("speech enhancement spike report script loads capture replay manifests from
 });
 
 
+test("speech enhancement spike report script rejects missing capture replay directories", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-missing-dir-"));
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+  const missingCaptureReplayDir = path.join(tempDir, "missing-captures");
+
+  try {
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay-dir",
+      missingCaptureReplayDir,
+    ]);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /Missing capture replay directory:/);
+    assert.match(result.stderr, new RegExp(missingCaptureReplayDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+
 test("speech enhancement spike report script deduplicates explicit and directory capture replay sources", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-dedupe-"));
   const captureReplayDir = path.join(tempDir, "captures");
