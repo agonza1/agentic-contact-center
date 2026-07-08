@@ -119,6 +119,7 @@ export interface StartCallOptions {
 export interface OpenClawSessionEnvelope {
   sessionId: string;
   label: string;
+  ref: string;
   status: "attached_mock" | "attached_live" | "attach_failed_mock";
   attachError: string | null;
   eventTrailVersion: number;
@@ -129,6 +130,28 @@ export interface OpenClawSessionEnvelope {
     transcript: string;
     events: string;
     latencyMarks: string;
+  };
+  artifactRefs: Array<{
+    artifactId: string;
+    kind: "snapshot" | "manifest" | "proof" | "transcript" | "events" | "latency_marks" | "tool_calls";
+    href: string;
+    attachStatus: "attached" | "degraded";
+  }>;
+  evidenceSummary: {
+    mode: "local_mock_only" | "local_reference_only";
+    streamStatus: "attached" | "degraded";
+    transcriptTurns: number;
+    eventCount: number;
+    operatorActionCount: number;
+    toolCallCount: number;
+    fallbackEventCount: number;
+    handoffEventCount: number;
+    proofArtifactCount: number;
+    latestEventType: string | null;
+    latestEventAt: string | null;
+    latestTranscriptAt: string | null;
+    updatedAt: string;
+    failureSafe: boolean;
   };
 }
 

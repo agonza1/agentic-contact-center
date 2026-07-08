@@ -15,7 +15,28 @@ interface SnapshotPayload {
     openclawSession: {
       sessionId: string;
       label: string;
-      artifactLinks: { transcript: string; events: string; latencyMarks: string; proof: string };
+      ref: string;
+      status: string;
+      attachError?: string | null;
+      eventTrailVersion?: number;
+      artifactLinks: { snapshot?: string; artifacts?: string; transcript: string; events: string; latencyMarks: string; proof: string };
+      artifactRefs: Array<{ artifactId: string; href: string; attachStatus: string }>;
+      evidenceSummary: {
+        mode: string;
+        streamStatus: string;
+        transcriptTurns: number;
+        eventCount: number;
+        operatorActionCount: number;
+        toolCallCount: number;
+        fallbackEventCount: number;
+        handoffEventCount: number;
+        proofArtifactCount: number;
+        latestEventType: string | null;
+        latestEventAt: string | null;
+        latestTranscriptAt: string | null;
+        updatedAt: string;
+        failureSafe: boolean;
+      };
     };
   };
   flowState: string;
@@ -457,9 +478,27 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
         openclawSession: {
           sessionId: string;
           label: string;
+          ref: string;
           status: string;
           eventTrailVersion: number;
           artifactLinks: { snapshot: string; artifacts: string; proof: string; transcript: string; events: string; latencyMarks: string };
+          artifactRefs: Array<{ artifactId: string; href: string; attachStatus: string }>;
+          evidenceSummary: {
+            mode: string;
+            streamStatus: string;
+            transcriptTurns: number;
+            eventCount: number;
+            operatorActionCount: number;
+            toolCallCount: number;
+            fallbackEventCount: number;
+            handoffEventCount: number;
+            proofArtifactCount: number;
+            latestEventType: string | null;
+            latestEventAt: string | null;
+            latestTranscriptAt: string | null;
+            updatedAt: string;
+            failureSafe: boolean;
+          };
         };
       };
       scenario: { mode: string; policyProfile: string; fallbackMode: string };
@@ -480,7 +519,7 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
         credentialsMode: string;
         toolCoverage: string[];
       };
-      events: Array<{ type: string }>;
+      events: Array<{ type: string; at: string; detail: Record<string, string | number | boolean | null> }>;
       latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
       attention: { required: boolean; source: string | null; reason: string | null; startedAt: string | null; ageMs: number | null };
     };
@@ -491,6 +530,7 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
     assert.equal(startedPayload.session.openclawSession.label, "cluecon-demo/live-call");
     assert.equal(startedPayload.session.openclawSession.status, "attached_mock");
     assert.equal(startedPayload.session.openclawSession.eventTrailVersion, 1);
+    assert.equal(startedPayload.session.openclawSession.ref, "openclaw://sessions/heartbeat-session-42");
     assert.deepEqual(startedPayload.session.openclawSession.artifactLinks, {
       snapshot: `/api/calls/${startedPayload.session.callId}`,
       artifacts: `/api/calls/${startedPayload.session.callId}/artifacts`,
@@ -498,6 +538,26 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
       transcript: `/api/calls/${startedPayload.session.callId}/transcript`,
       events: `/api/calls/${startedPayload.session.callId}/events`,
       latencyMarks: `/api/calls/${startedPayload.session.callId}/latency`,
+    });
+    const openclawArtifactRefs = startedPayload.session.openclawSession.artifactRefs;
+    assert.equal(openclawArtifactRefs.length, 7);
+    assert.equal(openclawArtifactRefs.some((artifact) => artifact.artifactId === "tool-calls" && artifact.href.endsWith("/events?detailKey=runtimeEngine")), true);
+    assert.equal(openclawArtifactRefs.every((artifact) => artifact.attachStatus === "attached"), true);
+    assert.deepEqual(startedPayload.session.openclawSession.evidenceSummary, {
+      mode: "local_mock_only",
+      streamStatus: "attached",
+      transcriptTurns: 0,
+      eventCount: 3,
+      operatorActionCount: 0,
+      toolCallCount: 2,
+      fallbackEventCount: 0,
+      handoffEventCount: 0,
+      proofArtifactCount: 7,
+      latestEventType: "openclaw_session_attached",
+      latestEventAt: startedPayload.events[2].at,
+      latestTranscriptAt: null,
+      updatedAt: startedPayload.events[2].at,
+      failureSafe: true,
     });
     assert.equal(startedPayload.scenario.mode, "mocked_telephony");
     assert.equal(startedPayload.scenario.policyProfile, "retention_safe_mode");
@@ -513,6 +573,20 @@ test("mocked telephony ingress bootstraps and returns seeded scenario metadata",
       "pipecat_runtime_started",
       "openclaw_session_attached",
     ]);
+    assert.deepEqual(startedPayload.events[2].detail, {
+      sessionId: "heartbeat-session-42",
+      sessionLabel: "cluecon-demo/live-call",
+      sessionRef: "openclaw://sessions/heartbeat-session-42",
+      status: "attached_mock",
+      attachError: null,
+      attachmentMode: "local_mock_only",
+      externalSideEffects: false,
+      evidencePreserved: true,
+      artifactManifestPath: `/api/calls/${startedPayload.session.callId}/artifacts`,
+      transcriptPath: `/api/calls/${startedPayload.session.callId}/transcript`,
+      eventsPath: `/api/calls/${startedPayload.session.callId}/events`,
+      proofPath: `/api/calls/${startedPayload.session.callId}/proof`,
+    });
     assert.deepEqual(startedPayload.demoFallback, {
       armed: false,
       reason: null,
@@ -566,6 +640,11 @@ test("the risky offer boundary parks the flow in policy hold without promising a
     assert.equal(firstPayload.flowState, "diagnose");
     assert.equal(firstPayload.events.some((event) => event.type === "pipecat_runtime_turn_processed"), true);
     assert.deepEqual(firstPayload.transcript.map((turn) => turn.speaker), ["caller", "agent"]);
+    const firstOpenClawSummary = firstPayload.session.openclawSession.evidenceSummary;
+    assert.equal(firstOpenClawSummary.transcriptTurns, firstPayload.transcript.length);
+    assert.equal(firstOpenClawSummary.eventCount, firstPayload.events.length);
+    assert.equal(firstOpenClawSummary.toolCallCount > 0, true);
+    assert.equal(firstOpenClawSummary.latestTranscriptAt, "2026-06-10T14:00:00.000Z");
 
     const secondTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
       text: "The renewal increase is too high.",
@@ -3548,12 +3627,26 @@ test("demo start rejects non-object JSON payloads and invalid session envelope f
     assert.equal(attachFailurePayload.session.openclawSession.label, "cluecon-demo/attach-failure");
     assert.equal(attachFailurePayload.session.openclawSession.status, "attach_failed_mock");
     assert.equal(attachFailurePayload.session.openclawSession.attachError, "simulated_openclaw_session_attach_failure");
+    assert.equal((attachFailurePayload.session.openclawSession as any).ref, "openclaw://sessions/attach-failure-session");
+    assert.equal((attachFailurePayload.session.openclawSession as any).evidenceSummary.streamStatus, "degraded");
+    assert.equal((attachFailurePayload.session.openclawSession as any).evidenceSummary.failureSafe, true);
+    assert.equal(
+      ((attachFailurePayload.session.openclawSession as any).artifactRefs as Array<{ attachStatus: string }>).every(
+        (artifact) => artifact.attachStatus === "degraded",
+      ),
+      true,
+    );
     assert.equal(
       attachFailurePayload.events.some((event) => event.type === "openclaw_session_attach_failed"),
       true,
     );
     assert.equal(
-      attachFailurePayload.events.some((event) => event.detail.proofPath === `/api/calls/${attachFailurePayload.session.callId}/proof`),
+      attachFailurePayload.events.some(
+        (event) =>
+          event.detail.proofPath === `/api/calls/${attachFailurePayload.session.callId}/proof` &&
+          event.detail.externalSideEffects === false &&
+          event.detail.evidencePreserved === true,
+      ),
       true,
     );
 
