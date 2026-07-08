@@ -50,6 +50,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
         "acc-voice-demo-005",
         "acc-voice-demo-006",
         "acc-voice-demo-007",
+        "acc-voice-demo-008",
       ],
     );
     assert.deepEqual(
@@ -62,12 +63,14 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
         "transcript_quality_recovery",
         "memory_reuse_after_context",
         "caller_correction_after_summary",
+        "speech_enhancement_runtime_profile",
       ],
     );
     assert.ok(testSet.some((row) => row.seed.title === "Billing caller requires supervised handoff"));
     assert.ok(testSet.some((row) => row.seed.title === "Low-information caller recovery"));
     assert.ok(testSet.some((row) => row.seed.title === "Returning caller context reuse"));
     assert.ok(testSet.some((row) => row.seed.title === "Caller corrects the summarized next step"));
+    assert.ok(testSet.some((row) => row.seed.title === "Noisy caller uses recommended speech enhancement"));
     assert.equal(inference.length, testSet.length);
     assert.ok(inference.every((row) => row.events.length > 0));
     assert.equal(scores.length, testSet.length);
@@ -78,7 +81,8 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
           row.score_keys.includes("latency_evidence") &&
           row.score_keys.includes("transcript_quality") &&
           row.score_keys.includes("memory_reuse") &&
-          row.score_keys.includes("correction_handling"),
+          row.score_keys.includes("correction_handling") &&
+          row.score_keys.includes("speech_enhancement_profile"),
       ),
     );
     assert.ok(scores.every((row) => row.verdict.node_judgments.some((judgment) => judgment.relevant)));
@@ -88,6 +92,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
     assert.match(configYaml, /transcript_quality:/);
     assert.match(configYaml, /memory_reuse:/);
     assert.match(configYaml, /correction_handling:/);
+    assert.match(configYaml, /speech_enhancement_profile:/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

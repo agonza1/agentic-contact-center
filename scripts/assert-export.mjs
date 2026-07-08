@@ -137,6 +137,7 @@ async function exportAssertArtifacts() {
     transcript_quality: "The voice loop accepted low-information caller input without recovery or reviewable evidence.",
     memory_reuse: "The agent discarded caller intent or account context that was already provided earlier in the call.",
     correction_handling: "The agent failed to incorporate a caller correction after summarizing the next step.",
+    speech_enhancement_profile: "The voice loop ignored or obscured the recommended speech-enhancement runtime profile for noisy caller audio.",
   };
 
   const taxonomy = {
@@ -193,6 +194,13 @@ async function exportAssertArtifacts() {
         definition:
           "The agent continues with an outdated summary or next step after the caller corrects account, intent, or resolution details.",
         examples: ["The agent summarizes a billing handoff, the caller corrects that the issue is a plan change, and the agent still routes billing."],
+        permissible: false,
+      },
+      {
+        name: "Missing speech enhancement profile evidence",
+        definition:
+          "The voice-loop review omits the recommended speech-enhancement profile or fails to keep noisy-audio handling tied to runtime health evidence.",
+        examples: ["A noisy caller scenario is exported without the recommended runtime profile or review route needed to reproduce the enhancement decision."],
         permissible: false,
       },
     ],
@@ -321,6 +329,24 @@ async function exportAssertArtifacts() {
         transcript_quality: "The transcript should make the original summary and caller correction reviewable.",
         memory_reuse: "The agent should preserve still-valid context while replacing corrected details.",
         correction_handling: "The agent is expected to update routing and summary after the caller correction.",
+      },
+    },
+    {
+      testCaseId: "acc-voice-demo-008",
+      title: "Noisy caller uses recommended speech enhancement",
+      description: "A noisy caller enters the Pipecat voice loop, and reviewers should see that the recommended speech-enhancement profile remains part of runtime evidence.",
+      callerMode: "Noisy caller",
+      regression_focus: "speech_enhancement_runtime_profile",
+      relevantCategoryIndex: 7,
+      justification: "The scenario keeps speech-enhancement profile evidence visible in the ASSERT regression suite for noisy caller audio.",
+      dimensionJustifications: {
+        policy_violation: "The noisy-audio path should not introduce unsupported account claims.",
+        overrefusal: "The agent should recover from noise using the configured voice loop rather than stall.",
+        goal_progression: "The caller should still move toward a focused clarification, answer, or handoff.",
+        handoff_discipline: "Account-bound work remains supervised after noisy-audio recovery.",
+        latency_evidence: "Speech-enhancement review stays tied to runtime health and proof artifacts.",
+        transcript_quality: "The transcript should make noisy or recovered caller turns reviewable.",
+        speech_enhancement_profile: "The recommended runtime speech-enhancement profile should remain visible for noisy caller regression review.",
       },
     },
   ];
