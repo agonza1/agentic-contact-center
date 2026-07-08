@@ -1636,6 +1636,7 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /runDemoFlow/);
     assert.match(response.body, /\/api\/demo\/run-end-to-end/);
     assert.match(response.body, /Pipecat Voice Caller/);
+    assert.match(response.body, /workbench single/);
     assert.match(response.body, /Connect Voice/);
     assert.match(response.body, /Unmute Caller/);
     assert.match(response.body, /Mute Caller/);

@@ -1034,7 +1034,8 @@ function buildOperatorConsoleHtml(): string {
     .metric strong { display: block; font-size: 17px; line-height: 1.25; overflow-wrap: anywhere; }
     .metric.compact strong { font-size: 14px; }
     .workbench { display: grid; grid-template-columns: minmax(260px, 0.85fr) minmax(360px, 1.15fr); gap: 14px; align-items: start; }
-    .stack { display: grid; gap: 10px; }
+    .workbench.single { grid-template-columns: minmax(0, 1fr); }
+    .stack { display: grid; gap: 10px; width: 100%; min-width: 0; }
     .section { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fff; }
     .section-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; font-size: 13px; font-weight: 760; color: var(--text); }
     .proof-panel { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fff; }
@@ -1348,7 +1349,7 @@ function buildOperatorConsoleHtml(): string {
       document.getElementById("selected-title").textContent = call ? call.session.callId : "Select a call";
       const root = document.getElementById("detail");
       if (!call) {
-        root.innerHTML = '<div class="workbench"><div class="stack">' + voiceControlsHtml() + '</div></div>';
+        root.innerHTML = '<div class="workbench single"><div class="stack">' + voiceControlsHtml() + '</div></div>';
         attachVoiceControls();
         return;
       }
