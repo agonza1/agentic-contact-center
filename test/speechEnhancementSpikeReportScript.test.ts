@@ -172,6 +172,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /Runtime latency: 12\.5 ms/);
     assert.match(markdown, /Runtime frame budget: 1 lookahead frame\(s\), 32\.5 ms max buffered audio/);
     assert.match(markdown, /Runtime bypass reasons: feature_flag_disabled, blocked_until_real_capture/);
+    assert.equal(markdown.match(/## Evidence Coverage/g)?.length, 1);
     assert.match(markdown, /Real noisy capture replays: 0/);
     assert.match(markdown, /Strict artifact hashes: audio_sha256, source_manifest_sha256/);
     assert.match(markdown, /Passing real replay ids: None/);
