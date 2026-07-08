@@ -1051,8 +1051,9 @@ function buildOperatorConsoleHtml(): string {
     .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .scripted-turns { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
     .scripted-turns button { text-align: left; padding: 8px; }
-    .diagram { overflow: auto; }
-    .mermaid { min-width: 620px; margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+    .diagram { overflow: auto; min-height: 330px; }
+    .diagram .section-title { font-size: 15px; }
+    .mermaid { min-width: 980px; min-height: 270px; margin: 0; padding: 18px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: 18px; }
     .transcript { display: grid; gap: 8px; max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: var(--panel-soft); }
     .turn { display: grid; gap: 3px; max-width: 82%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
     .turn.caller { justify-self: start; border-left: 4px solid var(--accent); }
@@ -1335,7 +1336,7 @@ function buildOperatorConsoleHtml(): string {
     }
     function voiceControlsHtml() {
       const muteLabel = state.voiceMuted ? "Unmute Caller" : "Mute Caller";
-      return '<section class="section"><h3 class="section-title">Pipecat Voice Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute">' + muteLabel + '</button></div><span class="status">' + escapeHtml(state.voiceStatus) + '</span><span class="meta">Requires local bridge: npm run pipecat:voice. Audio path is browser mic -> Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS say local TTS -> browser playback.</span></section><section class="section diagram"><h3 class="section-title">Demo Flow</h3><pre class="mermaid">flowchart LR\\n  Caller[Caller speaks in browser] --> Bridge[Pipecat voice bridge]\\n  Bridge --> STT[Local MLX Whisper STT]\\n  STT --> Agent[Free-caller goal agent]\\n  Agent --> TTS[Local macOS TTS]\\n  TTS --> Caller\\n  Agent --> Artifacts[Proof + transcript + events]\\n  Operator[Operator console] -. listens / steers .-> Agent\\n  Artifacts --> Assert[ASSERT viewer + eval spec]</pre></section>';
+      return '<section class="section"><h3 class="section-title">Pipecat Voice Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute">' + muteLabel + '</button></div><span class="status">' + escapeHtml(state.voiceStatus) + '</span><span class="meta">Requires local bridge: npm run pipecat:voice. Audio path is browser mic -> Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS say local TTS -> browser playback.</span></section><section class="section diagram"><h3 class="section-title">Demo Flow</h3><pre class="mermaid">%%{init: {&quot;flowchart&quot;: {&quot;nodeSpacing&quot;: 70, &quot;rankSpacing&quot;: 90}, &quot;themeVariables&quot;: {&quot;fontSize&quot;: &quot;18px&quot;}}}%%\\nflowchart LR\\n  Caller[Caller speaks in browser] --> Bridge[Pipecat voice bridge]\\n  Bridge --> STT[Local MLX Whisper STT]\\n  STT --> Agent[Free-caller goal agent]\\n  Agent --> TTS[Local macOS TTS]\\n  TTS --> Caller\\n  Agent --> Artifacts[Proof + transcript + events]\\n  Operator[Operator console] -. listens / steers .-> Agent\\n  Artifacts --> Assert[ASSERT viewer + eval spec]</pre></section>';
     }
     function attachVoiceControls() {
       const connect = document.getElementById("voice-connect");
