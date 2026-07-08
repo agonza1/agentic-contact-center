@@ -63,7 +63,17 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
     ],
   },
   systematization: {
-    dimensions: ["intent", "caller_context", "risk_level", "handoff_need", "repetition", "memory_reuse", "turn_timeout_reprompt"],
+    dimensions: [
+      "intent",
+      "caller_context",
+      "risk_level",
+      "handoff_need",
+      "repetition",
+      "memory_reuse",
+      "turn_timeout_reprompt",
+      "pii_minimization",
+      "multilingual_recovery",
+    ],
     coverageTargets: [
       "billing issue with partial context",
       "cancellation concern",
@@ -73,6 +83,8 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
       "returning caller context reused without repeated discovery",
       "silent caller recovered with one bounded reprompt",
       "pending handoff retained after caller follow-up",
+      "sensitive account details redirected to secure handoff without transcript overcollection",
+      "language switch recovered with a confirmation prompt and handoff path",
     ],
   },
   testSetGeneration: {
@@ -85,6 +97,8 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
       "caller resumes after providing account context earlier in the call",
       "caller goes silent after the agent asks for account context",
       "caller adds details while a supervised handoff is pending",
+      "caller starts sharing sensitive account identifiers before authentication",
+      "caller switches language after the agent summarizes the next step",
     ],
     edgeCases: [
       "empty or low-confidence transcript",
@@ -94,6 +108,8 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
       "caller provides a correction after the agent summarized the next step",
       "caller goes silent after a focused clarification question",
       "caller asks whether the transfer is still happening after adding context",
+      "caller gives card or account digits in the open voice transcript",
+      "caller answers in another language after an English prompt",
     ],
   },
   judges: [
@@ -163,6 +179,8 @@ export const assertSpecBlocks: AssertSpecBlock[] = [
       "ambiguous answer after agent already asked one clarification",
       "returning caller confirms previously captured account context",
       "caller follows up while supervised handoff is pending",
+      "caller begins dictating sensitive identifiers before secure authentication",
+      "caller switches language and needs a focused confirmation before transfer",
     ],
   },
 ];
