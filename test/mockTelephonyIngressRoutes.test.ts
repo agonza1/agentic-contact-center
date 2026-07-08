@@ -1640,9 +1640,10 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Unmute Caller/);
     assert.match(response.body, /Mute Caller/);
     assert.match(response.body, /Demo Flow/);
-    assert.match(response.body, /class="mermaid"/);
-    assert.match(response.body, /Caller speaks in browser/);
-    assert.match(response.body, /ASSERT viewer \+ eval spec/);
+    assert.match(response.body, /class="demo-flow-svg"/);
+    assert.match(response.body, /browser mic/);
+    assert.match(response.body, /ASSERT/);
+    assert.match(response.body, /viewer \+ eval spec/);
     assert.match(response.body, /Voice disconnected/);
     assert.match(response.body, /npm run pipecat:voice/);
     assert.match(response.body, /MLX Whisper local STT/);
