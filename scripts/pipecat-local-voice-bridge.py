@@ -18,6 +18,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -76,6 +77,12 @@ def latest_agent_text(call: dict[str, Any]) -> str:
         if isinstance(turn, dict) and turn.get("speaker") == "agent" and isinstance(turn.get("text"), str):
             return turn["text"]
     return ""
+
+
+def is_low_information_transcript(text: str) -> bool:
+    compact = re.sub(r"[^A-Za-z0-9]+", "", text)
+    words = [word for word in re.split(r"\s+", text.strip()) if re.search(r"[A-Za-z0-9]", word)]
+    return len(compact) <= 2 or not words or bool(re.fullmatch(r"[\s.]+", text))
 
 
 def run_ffmpeg(input_path: Path, output_path: Path, *extra_args: str) -> None:
@@ -179,8 +186,17 @@ async def handle_client(websocket: websockets.WebSocketServerProtocol) -> None:
 
         try:
             transcript, stt_meta = await asyncio.to_thread(transcribe_audio, message, ".webm")
-            if not transcript:
-                await send_json(websocket, {"type": "turn", "ok": False, "error": "empty_transcript", "stt": stt_meta})
+            if not transcript or is_low_information_transcript(transcript):
+                await send_json(
+                    websocket,
+                    {
+                        "type": "turn",
+                        "ok": False,
+                        "error": "low_information_transcript",
+                        "callerTranscript": transcript,
+                        "stt": stt_meta,
+                    },
+                )
                 continue
 
             call = await asyncio.to_thread(
