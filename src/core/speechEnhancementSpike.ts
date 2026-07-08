@@ -936,6 +936,9 @@ export function buildSpeechEnhancementHealthSummary(): {
   runtimeProfileRecommendation: SpeechEnhancementLatencyProfile["recommendation"] | null;
   runtimeProfileBypassWhen: string[];
   runtimeLiveDemoEligible: boolean;
+  closeGateRequiredLatencyMs: number;
+  closeGateMaxAddedTurnLatencyMsP95: number;
+  closeGateMaxCpuPercentP95: number;
   liveDemoGate: string;
   issueCloseReady: boolean;
   reviewChecks: SpeechEnhancementReviewGate["checks"];
@@ -975,6 +978,9 @@ export function buildSpeechEnhancementHealthSummary(): {
     runtimeProfileRecommendation: runtimeReadiness.selectedLatencyProfile?.recommendation ?? null,
     runtimeProfileBypassWhen: runtimeReadiness.selectedLatencyProfile?.bypassWhen ?? [],
     runtimeLiveDemoEligible: runtimeReadiness.liveDemoEligible,
+    closeGateRequiredLatencyMs: report.closeGateProfile.requiredLatencySettingMs,
+    closeGateMaxAddedTurnLatencyMsP95: report.closeGateProfile.maxAddedTurnLatencyMsP95,
+    closeGateMaxCpuPercentP95: report.closeGateProfile.maxCpuPercentP95,
     liveDemoGate: report.replayCoverage.liveDemoGate,
     issueCloseReady: reviewGate.issueCloseReady,
     reviewChecks: reviewGate.checks,

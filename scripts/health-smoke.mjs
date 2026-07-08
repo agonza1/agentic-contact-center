@@ -34,6 +34,9 @@ function parseArgs(argv) {
     expectSpeechEnhancementRuntimeLiveDemoEligible: undefined,
     expectSpeechEnhancementRuntimeLookaheadFrames: undefined,
     expectSpeechEnhancementRuntimeMaxBufferedAudioMs: undefined,
+    expectSpeechEnhancementCloseGateRequiredLatencyMs: undefined,
+    expectSpeechEnhancementCloseGateMaxAddedTurnLatencyMsP95: undefined,
+    expectSpeechEnhancementCloseGateMaxCpuPercentP95: undefined,
     expectRuntimeSeams: [],
     expectPipecatTools: [],
     expectSpeechEnhancementMissingEvidence: [],
@@ -77,6 +80,9 @@ function parseArgs(argv) {
     '--expect-speech-enhancement-runtime-live-demo-eligible',
     '--expect-speech-enhancement-runtime-lookahead-frames',
     '--expect-speech-enhancement-runtime-max-buffered-audio-ms',
+    '--expect-speech-enhancement-close-gate-required-latency-ms',
+    '--expect-speech-enhancement-close-gate-max-added-turn-latency-ms-p95',
+    '--expect-speech-enhancement-close-gate-max-cpu-percent-p95',
     '--expect-speech-enhancement-missing-evidence',
     '--expect-speech-enhancement-blocker',
     '--expect-runtime-seam',
@@ -307,6 +313,24 @@ function parseArgs(argv) {
 
     if (arg === '--expect-speech-enhancement-runtime-max-buffered-audio-ms' && next) {
       args.expectSpeechEnhancementRuntimeMaxBufferedAudioMs = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-close-gate-required-latency-ms' && next) {
+      args.expectSpeechEnhancementCloseGateRequiredLatencyMs = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-close-gate-max-added-turn-latency-ms-p95' && next) {
+      args.expectSpeechEnhancementCloseGateMaxAddedTurnLatencyMsP95 = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-close-gate-max-cpu-percent-p95' && next) {
+      args.expectSpeechEnhancementCloseGateMaxCpuPercentP95 = next;
       index += 1;
       continue;
     }
@@ -681,6 +705,9 @@ async function getFailureReason(response, args) {
     ['runtimeLatencyMs', 'speech_enhancement_runtime_latency_ms', args.expectSpeechEnhancementRuntimeLatencyMs],
     ['runtimeLookaheadFrames', 'speech_enhancement_runtime_lookahead_frames', args.expectSpeechEnhancementRuntimeLookaheadFrames],
     ['runtimeMaxBufferedAudioMs', 'speech_enhancement_runtime_max_buffered_audio_ms', args.expectSpeechEnhancementRuntimeMaxBufferedAudioMs],
+    ['closeGateRequiredLatencyMs', 'speech_enhancement_close_gate_required_latency_ms', args.expectSpeechEnhancementCloseGateRequiredLatencyMs],
+    ['closeGateMaxAddedTurnLatencyMsP95', 'speech_enhancement_close_gate_max_added_turn_latency_ms_p95', args.expectSpeechEnhancementCloseGateMaxAddedTurnLatencyMsP95],
+    ['closeGateMaxCpuPercentP95', 'speech_enhancement_close_gate_max_cpu_percent_p95', args.expectSpeechEnhancementCloseGateMaxCpuPercentP95],
   ];
 
   for (const [field, flagName, rawExpectedValue] of speechEnhancementNumberExpectations) {

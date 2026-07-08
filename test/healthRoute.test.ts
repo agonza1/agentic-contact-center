@@ -76,6 +76,9 @@ test("GET /health returns config-backed demo metadata", async () => {
       runtimeProfileRecommendation: string | null;
       runtimeProfileBypassWhen: string[];
       runtimeLiveDemoEligible: boolean;
+      closeGateRequiredLatencyMs: number;
+      closeGateMaxAddedTurnLatencyMsP95: number;
+      closeGateMaxCpuPercentP95: number;
       liveDemoGate: string;
       issueCloseReady: boolean;
       reviewChecks: { realNoisyCaptureReplay: boolean; cpuRuntimeCost: boolean };
@@ -135,6 +138,9 @@ test("GET /health returns config-backed demo metadata", async () => {
     "barge_in_or_endpointing_regresses",
   ]);
   assert.equal(payload.speechEnhancement.runtimeLiveDemoEligible, false);
+  assert.equal(payload.speechEnhancement.closeGateRequiredLatencyMs, 12.5);
+  assert.equal(payload.speechEnhancement.closeGateMaxAddedTurnLatencyMsP95, 25);
+  assert.equal(payload.speechEnhancement.closeGateMaxCpuPercentP95, 80);
   assert.equal(payload.speechEnhancement.liveDemoGate, "blocked_until_real_capture");
   assert.equal(payload.speechEnhancement.issueCloseReady, false);
   assert.equal(payload.speechEnhancement.reviewChecks.realNoisyCaptureReplay, false);
