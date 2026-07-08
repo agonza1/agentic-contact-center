@@ -4210,6 +4210,56 @@ test("free caller billing flow captures follow-up details instead of repeating a
   });
 });
 
+test("free caller cancellation flow captures reason instead of repeating reason question", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Hello",
+      conversationMode: "free_caller",
+      timestamp: "2026-07-08T03:17:44.961Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I want to cancel my policy today.",
+      conversationMode: "free_caller",
+      timestamp: "2026-07-08T03:17:56.211Z",
+    });
+    const reason = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I just think it's too expensive.",
+      conversationMode: "free_caller",
+      timestamp: "2026-07-08T03:18:04.326Z",
+    });
+    const repeated = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I already said it.",
+      conversationMode: "free_caller",
+      timestamp: "2026-07-08T03:18:16.025Z",
+    });
+    const reasonPayload = reason.payload as SnapshotPayload;
+    const repeatedPayload = repeated.payload as SnapshotPayload;
+    const reasonAgentTurn = reasonPayload.transcript.at(-1)?.text ?? "";
+    const repeatedAgentTurn = repeatedPayload.transcript.at(-1)?.text ?? "";
+
+    assert.equal(reason.statusCode, 200);
+    assert.equal(repeated.statusCode, 200);
+    assert.match(reasonAgentTurn, /cancellation reason/i);
+    assert.equal(
+      reasonPayload.events.some((event) => event.detail.responseKind === "cancellation_reason_captured"),
+      true,
+    );
+    assert.match(repeatedAgentTurn, /you.re right|i have the cancellation reason|human specialist/i);
+    assert.doesNotMatch(reasonAgentTurn, /main reason you want to cancel/i);
+    assert.doesNotMatch(repeatedAgentTurn, /main reason you want to cancel/i);
+    assert.notEqual(repeatedAgentTurn, reasonAgentTurn);
+    assert.equal(
+      repeatedPayload.events.some((event) => event.detail.responseKind === "cancellation_reason_acknowledged"),
+      true,
+    );
+  });
+});
+
 test("free caller voice handles capabilities, low-information STT, and handoff details", async () => {
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start", {

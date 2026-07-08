@@ -375,6 +375,9 @@ function buildFreeCallerAgentResponse(
   const historyIntent = detectIntent(history);
   const intent = currentIntent ?? historyIntent;
   const billingSubtype = detectBillingSubtype(normalized) ?? detectBillingSubtype(history);
+  const cancellationReasonAsked =
+    alreadyAsked(previousAgentTurns, "main reason you want to cancel") ||
+    alreadyAsked(previousAgentTurns, "why you want to cancel");
 
   if (isLowInformationTranscript(normalized)) {
     return {
@@ -416,6 +419,22 @@ function buildFreeCallerAgentResponse(
     };
   }
 
+  if (historyIntent === "cancellation" && cancellationReasonAsked) {
+    if (/\b(already said|said it|told you|i did)\b/.test(normalized)) {
+      return {
+        response: "You’re right, I have the cancellation reason. I can prepare safe options now or bring in a human specialist.",
+        done: false,
+        responseKind: "cancellation_reason_acknowledged",
+      };
+    }
+
+    return {
+      response: "I’ll mark that as the cancellation reason and prepare safe options. Do you want a human specialist to take over?",
+      done: false,
+      responseKind: "cancellation_reason_captured",
+    };
+  }
+
   if (intent === "billing") {
     if (billingSubtype) {
       if (alreadyAsked(previousAgentTurns, "what amount or date should i attach")) {
@@ -449,7 +468,7 @@ function buildFreeCallerAgentResponse(
   }
 
   if (intent === "cancellation") {
-    if (alreadyAsked(previousAgentTurns, "why you want to cancel")) {
+    if (cancellationReasonAsked) {
       return {
         response: "I’ll mark this as a cancellation review and prepare safe options. Do you want a human specialist to take over?",
         done: false,
