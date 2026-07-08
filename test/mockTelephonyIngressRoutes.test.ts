@@ -4072,7 +4072,7 @@ test("free caller voice turns get conversational agent responses instead of scri
 
     const lastAgentTurn = [...payload.transcript].reverse().find((entry) => entry.speaker === "agent");
     assert.ok(lastAgentTurn);
-    assert.match(lastAgentTurn.text, /billing question/i);
+    assert.match(lastAgentTurn.text, /charge, renewal increase, refund, or payment issue/i);
     assert.equal(lastAgentTurn.text.includes("approved cancellation-rescue script"), false);
     assert.equal(lastAgentTurn.text.includes("requesting operator guidance"), false);
   });
@@ -4098,7 +4098,7 @@ test("pipecat local voice sessions default caller turns to free caller mode", as
 
     const lastAgentTurn = [...payload.transcript].reverse().find((entry) => entry.speaker === "agent");
     assert.ok(lastAgentTurn);
-    assert.match(lastAgentTurn.text, /update contact information/i);
+    assert.match(lastAgentTurn.text, /capture that account update/i);
   });
 });
 
@@ -4131,7 +4131,82 @@ test("free caller voice turns avoid repeating the same clarification question", 
     assert.equal(payload.events.some((event) => event.detail.goalSpecId === "local-free-caller-contact-center"), true);
     assert.equal(agentTurns.length, 3);
     assert.notEqual(agentTurns.at(-1), agentTurns.at(-2));
-    assert.match(agentTurns.at(-1) ?? "", /existing context/i);
+    assert.match(agentTurns.at(-1) ?? "", /move this forward/i);
+  });
+});
+
+test("free caller billing flow captures follow-up details instead of repeating amount question", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I have a billing problem.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "It is a renewal increase.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    const third = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "The amount is two hundred dollars.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+    const payload = third.payload as SnapshotPayload;
+    const agentTurns = payload.transcript.filter((entry) => entry.speaker === "agent").map((entry) => entry.text);
+
+    assert.equal(third.statusCode, 200);
+    assert.match(agentTurns.at(-1) ?? "", /added that detail/i);
+    assert.notEqual(agentTurns.at(-1), agentTurns.at(-2));
+  });
+});
+
+test("free caller voice handles capabilities, low-information STT, and handoff details", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I have a billing problem.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const capabilities = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "What can you do?",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    const capabilitiesPayload = capabilities.payload as SnapshotPayload;
+    assert.match(capabilitiesPayload.transcript.at(-1)?.text ?? "", /billing, cancellation, account updates/i);
+
+    const lowInfo = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: ". . . . . . .",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+    const lowInfoPayload = lowInfo.payload as SnapshotPayload;
+    assert.match(lowInfoPayload.transcript.at(-1)?.text ?? "", /didn.t catch/i);
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I would like to speak with a human agent.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:15.000Z",
+    });
+    const handoffDetail = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I would like them to help me cancel my account.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:20.000Z",
+    });
+    const handoffPayload = handoffDetail.payload as SnapshotPayload;
+    assert.match(handoffPayload.transcript.at(-1)?.text ?? "", /handoff summary/i);
+    assert.doesNotMatch(handoffPayload.transcript.at(-1)?.text ?? "", /one thing you want them to solve first/i);
   });
 });
 

@@ -332,6 +332,37 @@ function alreadyAsked(agentTurns: string[], fragment: string): boolean {
   return agentTurns.some((text) => text.includes(normalizedFragment));
 }
 
+function callerHistory(snapshot: CallSnapshot): string {
+  return normalizeText(snapshot.transcript.filter((turn) => turn.speaker === "caller").map((turn) => turn.text).join(" "));
+}
+
+function detectIntent(text: string): "billing" | "cancellation" | "account_update" | "handoff" | "service_info" | null {
+  if (/\b(human|agent|representative|operator|person|supervisor)\b/.test(text)) return "handoff";
+  if (/\b(bill|billing|charge|charged|payment|invoice|refund|renewal|price|cost)\b/.test(text)) return "billing";
+  if (/\b(cancel|cancellation|canceling|cancelled|council)\b/.test(text)) return "cancellation";
+  if (/\b(address|email|phone|contact|name|update|change)\b/.test(text)) return "account_update";
+  if (/\b(hours|open|close|location|office|website|app)\b/.test(text)) return "service_info";
+  return null;
+}
+
+function detectBillingSubtype(text: string): "charge" | "renewal" | "refund" | "payment" | null {
+  if (/\b(refund|credit|money back)\b/.test(text)) return "refund";
+  if (/\b(renewal|increase|went up|higher)\b/.test(text)) return "renewal";
+  if (/\b(payment|card|paid|autopay|failed)\b/.test(text)) return "payment";
+  if (/\b(charge|charged|invoice|bill)\b/.test(text)) return "charge";
+  return null;
+}
+
+function isLowInformationTranscript(text: string): boolean {
+  const withoutPunctuation = text.replace(/[^\p{L}\p{N}]+/gu, "").trim();
+  const words = text.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word));
+  return withoutPunctuation.length <= 2 || words.length === 0 || /^[.\s]+$/.test(text);
+}
+
+function isCapabilitiesQuestion(text: string): boolean {
+  return /\b(what can you do|what do you do|how can you help|what are my options)\b/.test(text);
+}
+
 function buildFreeCallerAgentResponse(
   snapshot: CallSnapshot,
   text: string,
@@ -339,66 +370,111 @@ function buildFreeCallerAgentResponse(
 ): { response: string; done: boolean; responseKind: string } {
   const normalized = normalizeText(text);
   const previousAgentTurns = priorAgentTurns(snapshot);
+  const history = callerHistory(snapshot);
+  const currentIntent = detectIntent(normalized);
+  const historyIntent = detectIntent(history);
+  const intent = currentIntent ?? historyIntent;
+  const billingSubtype = detectBillingSubtype(normalized) ?? detectBillingSubtype(history);
+
+  if (isLowInformationTranscript(normalized)) {
+    return {
+      response: "I didn’t catch that. Please say that again.",
+      done: false,
+      responseKind: "low_information_retry",
+    };
+  }
+
+  if (isCapabilitiesQuestion(normalized)) {
+    return {
+      response: "I can help with billing, cancellation, account updates, service questions, or getting a human operator.",
+      done: false,
+      responseKind: "capabilities",
+    };
+  }
+
+  if (alreadyAsked(previousAgentTurns, "what is the one thing you want them to solve first")) {
+    return {
+      response: "Got it. I’ll include that in the handoff summary and keep the call ready for an operator.",
+      done: false,
+      responseKind: "handoff_detail_captured",
+    };
+  }
 
   if (/\b(thanks|thank you|bye|goodbye|that's all|that is all)\b/.test(normalized)) {
     return {
-      response: "You are welcome. I have noted the conversation and I am closing the demo call now.",
+      response: "You are welcome. I noted the request and I am closing the demo call.",
       done: true,
       responseKind: "closing",
     };
   }
 
-  if (/\b(human|agent|representative|operator|person|supervisor)\b/.test(normalized)) {
+  if (intent === "handoff") {
     return {
-      response: "I can get a human involved. I will summarize what you told me so far and mark the call for operator follow-up.",
+      response: "I’ll prepare a handoff summary for a human operator. What is the one thing you want them to solve first?",
       done: false,
       responseKind: "handoff",
     };
   }
 
-  if (/\b(bill|billing|charge|charged|payment|invoice|refund|renewal|price|cost)\b/.test(normalized)) {
-    if (alreadyAsked(previousAgentTurns, "new charge, renewal increase, refund, or payment failure")) {
+  if (intent === "billing") {
+    if (billingSubtype) {
+      if (alreadyAsked(previousAgentTurns, "what amount or date should i attach")) {
+        return {
+          response: `Thanks. I added that detail to the ${billingSubtype} review and will route anything needing approval to a human specialist.`,
+          done: false,
+          responseKind: `billing_${billingSubtype}_captured`,
+        };
+      }
+
       return {
-        response: "Thanks, I have the billing issue in context. The next useful step is to verify the account and review the charge details; if a credit or refund is needed, I would route that for approval instead of promising it here.",
+        response: `Got it. I’ll start a ${billingSubtype} review. What amount or date should I attach to the case?`,
         done: false,
-        responseKind: "billing_followup",
+        responseKind: `billing_${billingSubtype}`,
+      };
+    }
+
+    if (alreadyAsked(previousAgentTurns, "charge, renewal increase, refund, or payment issue")) {
+      return {
+        response: "No problem. I’ll open this as a general billing review. What amount or date do you see on the bill?",
+        done: false,
+        responseKind: "billing_general_review",
       };
     }
 
     return {
-      response: "I can help with the billing question. Is this about a new charge, a renewal increase, a refund, or a payment failure?",
+      response: "I can help. Is it a charge, renewal increase, refund, or payment issue?",
       done: false,
       responseKind: "billing_clarify",
     };
   }
 
-  if (/\b(cancel|cancellation|canceling|cancelled)\b/.test(normalized)) {
+  if (intent === "cancellation") {
     if (alreadyAsked(previousAgentTurns, "why you want to cancel")) {
       return {
-        response: "I have the cancellation concern in context. I can review approved next steps and, if this needs a policy decision, prepare a handoff summary for a specialist.",
+        response: "I’ll mark this as a cancellation review and prepare safe options. Do you want a human specialist to take over?",
         done: false,
         responseKind: "cancellation_followup",
       };
     }
 
     return {
-      response: "I can help with a cancellation request. I will first understand why you want to cancel, then I can review approved options or connect you with the right specialist if the call needs a policy decision.",
+      response: "I can help with cancellation. What is the main reason you want to cancel?",
       done: false,
       responseKind: "cancellation_clarify",
     };
   }
 
-  if (/\b(address|email|phone|contact|name|update|change)\b/.test(normalized)) {
+  if (intent === "account_update") {
     return {
-      response: "I can help update contact information. I would verify the account, confirm the new details back to you, and record the change request for the account workflow.",
+      response: "I can capture that account update. What detail should be changed?",
       done: false,
       responseKind: "account_update",
     };
   }
 
-  if (/\b(hours|open|close|location|office|website|app)\b/.test(normalized)) {
+  if (intent === "service_info") {
     return {
-      response: "I can help with service information. Tell me the location, product, or account area you mean, and I will narrow the answer to that context.",
+      response: "I can help with service info. Which product or location should I check?",
       done: false,
       responseKind: "service_info",
     };
@@ -406,22 +482,22 @@ function buildFreeCallerAgentResponse(
 
   if (callerTurnCount === 1) {
     return {
-      response: "Hi, I am the local voice agent. I can help with billing, cancellation, account updates, or getting a human involved. What would you like to do next?",
+      response: "Hi, I can help with billing, cancellation, account updates, or a human handoff. What do you need today?",
       done: false,
       responseKind: "initial_capabilities",
     };
   }
 
-  if (alreadyAsked(previousAgentTurns, "billing, cancellation, an account update, or a handoff")) {
+  if (alreadyAsked(previousAgentTurns, "billing, cancellation, an account update")) {
     return {
-      response: "I heard that additional detail. I will keep the existing context and move toward the safest next step: either answer within the demo scope or prepare a handoff if the request needs account access.",
+      response: "Let’s move this forward. I can start a billing review, cancellation review, account update, or human handoff. Pick one.",
       done: false,
       responseKind: "ambiguous_followup",
     };
   }
 
   return {
-    response: "I heard you. To make sure I help correctly, can you tell me whether this is about billing, cancellation, an account update, or a handoff to a human?",
+    response: "Is this billing, cancellation, an account update, or a human handoff?",
     done: false,
     responseKind: "ambiguous_clarify",
   };

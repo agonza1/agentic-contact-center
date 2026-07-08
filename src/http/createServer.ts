@@ -1051,6 +1051,8 @@ function buildOperatorConsoleHtml(): string {
     .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .scripted-turns { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
     .scripted-turns button { text-align: left; padding: 8px; }
+    .diagram { overflow: auto; }
+    .mermaid { min-width: 620px; margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
     .transcript { display: grid; gap: 8px; max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: var(--panel-soft); }
     .turn { display: grid; gap: 3px; max-width: 82%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
     .turn.caller { justify-self: start; border-left: 4px solid var(--accent); }
@@ -1073,6 +1075,7 @@ function buildOperatorConsoleHtml(): string {
     <section class="panel" aria-label="Live calls"><div class="panel-header"><h2>Live Calls</h2><span class="queue-count" id="queue-count">0 queued</span></div><div class="filters"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Attention only</label><label class="filter-toggle"><input type="checkbox" id="latency-over-budget-filter">Over-budget latency</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><select id="fallback-filter" aria-label="Fallback mode filter"><option value="">All fallback modes</option><option value="tool_timeout">Tool Timeout</option><option value="runtime_failure">Runtime Failure</option></select><select id="fallback-source-filter" aria-label="Fallback source filter"><option value="">All fallback sources</option><option value="tool_timeout_fail_closed">Tool Timeout Source</option><option value="pipecat_runtime_failure_fail_closed">Runtime Failure Source</option></select><input id="fallback-reason-filter" aria-label="Fallback reason filter" placeholder="Fallback reason"><select id="tool-filter" aria-label="Active tool filter"><option value="">All active tools</option><option value="get_current_slide">Get Current Slide</option><option value="goto_slide">Go To Slide</option><option value="pause_presentation">Pause Presentation</option><option value="ask_operator">Ask Operator</option></select><select id="script-completed-filter" aria-label="Script status filter"><option value="">All script states</option><option value="false">In progress</option><option value="true">Complete</option></select><select id="script-progress-filter" aria-label="Script minimum progress filter"><option value="">Any min progress</option><option value="25">25%+ scripted</option><option value="50">50%+ scripted</option><option value="75">75%+ scripted</option><option value="100">100% scripted</option></select><select id="script-max-progress-filter" aria-label="Script maximum progress filter"><option value="">Any max progress</option><option value="0">0% or less scripted</option><option value="25">25% or less scripted</option><option value="50">50% or less scripted</option><option value="75">75% or less scripted</option></select><input id="transcript-filter" placeholder="Transcript search"><button type="button" id="clear-filters">Clear</button></div><div class="call-list" id="calls"></div></section>
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
+  <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"; mermaid.initialize({ startOnLoad: true, theme: "base" });</script>
   <script>
     const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 3500, voiceStatus: "Voice disconnected" };
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
@@ -1332,7 +1335,7 @@ function buildOperatorConsoleHtml(): string {
     }
     function voiceControlsHtml() {
       const muteLabel = state.voiceMuted ? "Unmute Caller" : "Mute Caller";
-      return '<section class="section"><h3 class="section-title">Pipecat Voice Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute">' + muteLabel + '</button></div><span class="status">' + escapeHtml(state.voiceStatus) + '</span><span class="meta">Requires local bridge: npm run pipecat:voice. Audio path is browser mic -> Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS say local TTS -> browser playback.</span></section>';
+      return '<section class="section"><h3 class="section-title">Pipecat Voice Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute">' + muteLabel + '</button></div><span class="status">' + escapeHtml(state.voiceStatus) + '</span><span class="meta">Requires local bridge: npm run pipecat:voice. Audio path is browser mic -> Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS say local TTS -> browser playback.</span></section><section class="section diagram"><h3 class="section-title">Demo Flow</h3><pre class="mermaid">flowchart LR\\n  Caller[Caller speaks in browser] --> Bridge[Pipecat voice bridge]\\n  Bridge --> STT[Local MLX Whisper STT]\\n  STT --> Agent[Free-caller goal agent]\\n  Agent --> TTS[Local macOS TTS]\\n  TTS --> Caller\\n  Agent --> Artifacts[Proof + transcript + events]\\n  Operator[Operator console] -. listens / steers .-> Agent\\n  Artifacts --> Assert[ASSERT viewer + eval spec]</pre></section>';
     }
     function attachVoiceControls() {
       const connect = document.getElementById("voice-connect");
@@ -1569,6 +1572,8 @@ function buildAssertSpecEditorHtml(): string {
     .muted { color: var(--muted); font-size: 12px; }
     .status { color: var(--ok); font-size: 12px; font-weight: 700; }
     .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    details { margin: 12px 0; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #f6f8fa; }
+    summary { cursor: pointer; font-weight: 750; }
     @media (max-width: 980px) { main, .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -1585,20 +1590,23 @@ function buildAssertSpecEditorHtml(): string {
       <label>Role<input id="role"></label>
       <label>Objective<textarea id="objective"></textarea></label>
       <div class="grid">
-        <label>Required behaviors<textarea id="requiredBehaviors"></textarea></label>
-        <label>Forbidden behaviors<textarea id="forbiddenBehaviors"></textarea></label>
+        <label>Success checks<textarea id="requiredBehaviors"></textarea></label>
+        <label>Failure checks<textarea id="forbiddenBehaviors"></textarea></label>
       </div>
+      <label>Scenario seeds<textarea id="scenarios"></textarea></label>
+      <details>
+      <summary>Advanced systematization and judge settings</summary>
       <label>Conversation memory keys<textarea id="conversationMemory"></textarea></label>
       <h2>Systematization / Test Set</h2>
       <div class="grid">
         <label>Dimensions<textarea id="dimensions"></textarea></label>
         <label>Coverage targets<textarea id="coverageTargets"></textarea></label>
         <label>Personas<textarea id="personas"></textarea></label>
-        <label>Scenarios<textarea id="scenarios"></textarea></label>
       </div>
       <label>Edge cases<textarea id="edgeCases"></textarea></label>
       <h2>Judge Options</h2>
       <label>Judges JSON<textarea id="judges"></textarea></label>
+      </details>
       <h2>Prewritten Blocks</h2>
       <div class="blocks" id="blocks"></div>
       <div class="actions"><span class="status" id="status">Loaded</span></div>
