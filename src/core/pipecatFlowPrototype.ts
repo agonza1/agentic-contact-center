@@ -392,19 +392,19 @@ function buildFreeCallerAgentResponse(
     };
   }
 
-  if (alreadyAsked(previousAgentTurns, "what is the one thing you want them to solve first")) {
-    return {
-      response: "Got it. I’ll include that in the handoff summary and keep the call ready for an operator.",
-      done: false,
-      responseKind: "handoff_detail_captured",
-    };
-  }
-
   if (/\b(thanks|thank you|bye|goodbye|that's all|that is all)\b/.test(normalized)) {
     return {
       response: "You are welcome. I noted the request and I am closing the demo call.",
       done: true,
       responseKind: "closing",
+    };
+  }
+
+  if (alreadyAsked(previousAgentTurns, "what is the one thing you want them to solve first")) {
+    return {
+      response: "Got it. I’ll include that in the handoff summary and keep the call ready for an operator.",
+      done: false,
+      responseKind: "handoff_detail_captured",
     };
   }
 

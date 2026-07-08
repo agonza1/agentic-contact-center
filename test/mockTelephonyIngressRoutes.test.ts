@@ -10,6 +10,7 @@ interface SnapshotPayload {
   session: {
     callId: string;
     providerCallId: string;
+    startedAt: string;
     openclawSession: {
       sessionId: string;
       label: string;
@@ -1885,6 +1886,12 @@ test("POST /api/demo/run-end-to-end executes a complete usable call flow", async
     assert.equal(payload.call.pipecatFlow.script.completed, true);
     assert.equal(payload.call.operatorSteer.lastAction, "approve_offer");
     assert.equal(payload.call.session.openclawSession.label, "operator-console/end-to-end-test");
+    const startedAtMs = Date.parse(payload.call.session.startedAt);
+    const callerOffsets = payload.call.transcript
+      .filter((turn) => turn.speaker === "caller")
+      .map((turn) => Date.parse(turn.timestamp ?? "") - startedAtMs);
+    assert.deepEqual(callerOffsets, [1_000, 5_000, 9_000, 15_000]);
+    assert.equal(Date.parse(payload.call.operatorSteer.respondedAt ?? "") - startedAtMs, 11_000);
     assert.equal(payload.operatorConsoleCall.actionState.scriptedCallerTurnState.completed, true);
     assert.equal(payload.operatorConsoleCall.actionState.scriptedCallerTurnState.progressPct, 100);
     assert.equal(payload.proof.outcome.flowState, "wrap");
@@ -4223,6 +4230,15 @@ test("free caller voice handles capabilities, low-information STT, and handoff d
     const handoffPayload = handoffDetail.payload as SnapshotPayload;
     assert.match(handoffPayload.transcript.at(-1)?.text ?? "", /handoff summary/i);
     assert.doesNotMatch(handoffPayload.transcript.at(-1)?.text ?? "", /one thing you want them to solve first/i);
+
+    const closed = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Thanks, bye.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:25.000Z",
+    });
+    const closedPayload = closed.payload as SnapshotPayload;
+    assert.equal(closedPayload.flowState, "wrap");
+    assert.match(closedPayload.transcript.at(-1)?.text ?? "", /closing the demo call/i);
   });
 });
 

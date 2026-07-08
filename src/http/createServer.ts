@@ -2796,11 +2796,9 @@ async function runEndToEndDemoFlow(
   ];
 
   let latest = started;
-  const scriptedTimestamps = [
-    "2026-06-11T20:45:01.000Z",
-    "2026-06-11T20:45:05.000Z",
-    "2026-06-11T20:45:09.000Z",
-  ];
+  const startedAtMs = new Date(started.session.startedAt).getTime();
+  const timestampAfter = (offsetMs: number) => new Date(startedAtMs + offsetMs).toISOString();
+  const scriptedTimestamps = [timestampAfter(1_000), timestampAfter(5_000), timestampAfter(9_000)];
 
   for (const [index, text] of SCRIPTED_CALLER_TURNS.slice(0, 3).entries()) {
     latest = await ingress.appendCallerTurn(
@@ -2817,7 +2815,7 @@ async function runEndToEndDemoFlow(
     });
   }
 
-  latest = await ingress.applyOperatorSteer(callId, "approve_offer", "2026-06-11T20:45:11.000Z");
+  latest = await ingress.applyOperatorSteer(callId, "approve_offer", timestampAfter(11_000));
   steps.push({
     step: "operator_approve_offer",
     ok: true,
@@ -2828,7 +2826,7 @@ async function runEndToEndDemoFlow(
 
   latest = await ingress.appendCallerTurn(
     callId,
-    { speaker: "caller", text: SCRIPTED_CALLER_TURNS[3], timestamp: "2026-06-11T20:45:15.000Z" },
+    { speaker: "caller", text: SCRIPTED_CALLER_TURNS[3], timestamp: timestampAfter(15_000) },
     config,
   );
   steps.push({
@@ -2842,7 +2840,7 @@ async function runEndToEndDemoFlow(
   latest = await ingress.recordOperatorNote(
     callId,
     "Demo completed end to end: policy hold, operator approval, safe retention wrap, and proof bundle are available.",
-    "2026-06-11T20:45:16.000Z",
+    timestampAfter(16_000),
     "demo_completed",
   );
   steps.push({
