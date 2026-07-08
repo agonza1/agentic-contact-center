@@ -199,6 +199,9 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /Max added turn latency p95: 25 ms/);
     assert.match(markdown, /Max CPU p95: 80%/);
     assert.match(markdown, /Allowed CPU cost estimates: low, medium/);
+    assert.match(markdown, /Latency Profiles/);
+    assert.match(markdown, /12\.5 ms: live-demo-eligible; lookahead_frames=1; max_buffered_audio_ms=32\.5; expected_use=default; recommendation=recommended/);
+    assert.match(markdown, /75 ms: offline-only; lookahead_frames=4; max_buffered_audio_ms=95; expected_use=offline_review; recommendation=avoid_for_live_turns/);
     assert.match(markdown, /Real Capture Replay Evidence/);
     assert.match(markdown, /- None attached\./);
     assert.match(markdown, /Replay Decisions/);

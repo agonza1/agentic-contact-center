@@ -251,6 +251,11 @@ function buildMarkdownReport(artifact) {
     return "- [" + status + "] " + check;
   });
   const failureReasons = Object.entries(reviewGate.failureReasons).map(([check, reason]) => "- " + check + ": " + reason);
+  const latencyProfiles = report.latencyProfiles.map((profile) => {
+    const eligibility = profile.liveDemoEligible ? "live-demo-eligible" : "offline-only";
+
+    return `- ${profile.latencyMs} ms: ${eligibility}; lookahead_frames=${profile.lookaheadFrames}; max_buffered_audio_ms=${profile.maxBufferedAudioMs}; expected_use=${profile.expectedUse}; recommendation=${profile.recommendation}`;
+  });
   const replayEvidence = reviewGate.realCaptureReplayEvidence.map((evidence) => {
     const source = evidence.audioSourceUri ?? "missing audio source";
     const sourceManifest = evidence.sourceManifestUri ?? "missing source manifest";
@@ -301,6 +306,10 @@ function buildMarkdownReport(artifact) {
     `- Max added turn latency p95: ${closeGate.maxAddedTurnLatencyMsP95} ms`,
     `- Max CPU p95: ${closeGate.maxCpuPercentP95}%`,
     `- Allowed CPU cost estimates: ${closeGate.allowedCpuCostEstimates.join(", ")}`,
+    "",
+    "## Latency Profiles",
+    "",
+    ...latencyProfiles,
     "",
     "## Real Capture Replay Evidence",
     "",
