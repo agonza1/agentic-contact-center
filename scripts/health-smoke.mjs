@@ -29,6 +29,7 @@ function parseArgs(argv) {
     expectSpeechEnhancementRuntimeBypassReason: undefined,
     expectSpeechEnhancementRuntimeProfileExpectedUse: undefined,
     expectSpeechEnhancementRuntimeProfileRecommendation: undefined,
+    expectSpeechEnhancementRuntimeProfileBypassWhen: [],
     expectSpeechEnhancementRuntimeBypassReasons: [],
     expectSpeechEnhancementRuntimeLiveDemoEligible: undefined,
     expectSpeechEnhancementRuntimeLookaheadFrames: undefined,
@@ -71,6 +72,7 @@ function parseArgs(argv) {
     '--expect-speech-enhancement-runtime-bypass-reason',
     '--expect-speech-enhancement-runtime-profile-expected-use',
     '--expect-speech-enhancement-runtime-profile-recommendation',
+    '--expect-speech-enhancement-runtime-profile-bypass-when',
     '--expect-speech-enhancement-runtime-bypass-reason-item',
     '--expect-speech-enhancement-runtime-live-demo-eligible',
     '--expect-speech-enhancement-runtime-lookahead-frames',
@@ -275,6 +277,12 @@ function parseArgs(argv) {
 
     if (arg === '--expect-speech-enhancement-runtime-profile-recommendation' && next) {
       args.expectSpeechEnhancementRuntimeProfileRecommendation = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-runtime-profile-bypass-when' && next) {
+      args.expectSpeechEnhancementRuntimeProfileBypassWhen.push(next);
       index += 1;
       continue;
     }
@@ -702,6 +710,16 @@ async function getFailureReason(response, args) {
 
     if (!Array.isArray(bypassReasons) || !bypassReasons.includes(expectedBypassReason)) {
       return `json_speechEnhancement_runtimeBypassReasons_missing(expected=${JSON.stringify(expectedBypassReason)},actual=${JSON.stringify(bypassReasons)})`;
+    }
+  }
+
+  for (const expectedProfileBypass of args.expectSpeechEnhancementRuntimeProfileBypassWhen) {
+    const profileBypassWhen = payload.speechEnhancement && typeof payload.speechEnhancement === 'object'
+      ? payload.speechEnhancement.runtimeProfileBypassWhen
+      : undefined;
+
+    if (!Array.isArray(profileBypassWhen) || !profileBypassWhen.includes(expectedProfileBypass)) {
+      return `json_speechEnhancement_runtimeProfileBypassWhen_missing(expected=${JSON.stringify(expectedProfileBypass)},actual=${JSON.stringify(profileBypassWhen)})`;
     }
   }
 
