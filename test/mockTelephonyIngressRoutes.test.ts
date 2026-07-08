@@ -1634,9 +1634,11 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /<title>Operator Console<\/title>/);
     assert.match(response.body, /Run Demo Flow/);
     assert.match(response.body, /Start Empty Call/);
+    assert.match(response.body, /href="\/assert\/full"/);
     assert.match(response.body, /href="\/assert"/);
     assert.match(response.body, /href="\/assert\/spec"/);
     assert.match(response.body, /Full ASSERT/);
+    assert.match(response.body, /ACC Artifacts/);
     assert.match(response.body, /Eval Spec/);
     assert.match(response.body, /runDemoFlow/);
     assert.match(response.body, /\/api\/demo\/run-end-to-end/);
@@ -1650,6 +1652,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /browser mic/);
     assert.match(response.body, /ASSERT/);
     assert.match(response.body, /viewer \+ eval spec/);
+    assert.match(response.body, /npm run assert:export/);
+    assert.match(response.body, /npm run assert:viewer/);
     assert.match(response.body, /Voice disconnected/);
     assert.match(response.body, /npm run pipecat:voice/);
     assert.match(response.body, /MLX Whisper local STT/);
@@ -1763,7 +1767,23 @@ test("GET /operator/console serves the local console with the full action set", 
   });
 });
 
-test("GET /assert serves an ASSERT-style artifact viewer", async () => {
+test("GET /assert/full embeds the upstream ASSERT local viewer with local navigation", async () => {
+  await withServer(async (port) => {
+    const response = await requestText(port, "GET", "/assert/full");
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.contentType, "text/html; charset=utf-8");
+    assert.match(response.body, /<title>Full ASSERT Viewer<\/title>/);
+    assert.match(response.body, /src="http:\/\/127\.0\.0\.1:5174"/);
+    assert.match(response.body, /npm run assert:export/);
+    assert.match(response.body, /npm run assert:viewer/);
+    assert.match(response.body, /href="\/operator\/console"/);
+    assert.match(response.body, /href="\/assert\/spec"/);
+    assert.match(response.body, /href="\/assert"/);
+  });
+});
+
+test("GET /assert serves an ACC local artifact viewer", async () => {
   await withServer(async (port) => {
     const response = await requestText(port, "GET", "/assert");
 
@@ -1771,6 +1791,7 @@ test("GET /assert serves an ASSERT-style artifact viewer", async () => {
     assert.equal(response.contentType, "text/html; charset=utf-8");
     assert.match(response.body, /<title>ASSERT Viewer<\/title>/);
     assert.match(response.body, /Local ACC proof artifacts/);
+    assert.match(response.body, /Full ASSERT/);
     assert.match(response.body, /\/api\/operator\/console\?limit=100&order=desc/);
     assert.match(response.body, /const tabs = \["proof", "artifacts", "transcript", "events", "latency"\]/);
     assert.match(response.body, /JSON\.stringify\(state\.artifacts\[state\.tab\]/);
