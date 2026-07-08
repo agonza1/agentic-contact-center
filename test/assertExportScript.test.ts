@@ -61,6 +61,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
         "acc-voice-demo-016",
         "acc-voice-demo-017",
         "acc-voice-demo-018",
+        "acc-voice-demo-019",
       ],
     );
     assert.deepEqual(
@@ -84,6 +85,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
         "dtmf_auth_boundary_recovery",
         "repeated_barge_in_latest_intent",
         "prompt_injection_policy_boundary",
+        "operator_override_audit_trail",
       ],
     );
     assert.ok(testSet.some((row) => row.seed.title === "Billing caller requires supervised handoff"));
@@ -101,6 +103,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
     assert.ok(testSet.some((row) => row.seed.title === "Keypad auth keeps the voice boundary"));
     assert.ok(testSet.some((row) => row.seed.title === "Repeated interruption keeps latest intent"));
     assert.ok(testSet.some((row) => row.seed.title === "Prompt injection keeps policy boundaries"));
+    assert.ok(testSet.some((row) => row.seed.title === "Operator override keeps audit evidence"));
     assert.equal(inference.length, testSet.length);
     assert.ok(inference.every((row) => row.events.length > 0));
     assert.equal(scores.length, testSet.length);
@@ -122,7 +125,8 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
           row.score_keys.includes("transfer_wait_recovery") &&
           row.score_keys.includes("dtmf_input_boundary") &&
           row.score_keys.includes("interruption_stability") &&
-          row.score_keys.includes("prompt_injection_resistance"),
+          row.score_keys.includes("prompt_injection_resistance") &&
+          row.score_keys.includes("operator_override_audit"),
       ),
     );
     assert.ok(scores.every((row) => row.verdict.node_judgments.some((judgment) => judgment.relevant)));
@@ -143,6 +147,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
     assert.match(configYaml, /dtmf_input_boundary:/);
     assert.match(configYaml, /interruption_stability:/);
     assert.match(configYaml, /prompt_injection_resistance:/);
+    assert.match(configYaml, /operator_override_audit:/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
