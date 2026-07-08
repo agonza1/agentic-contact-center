@@ -131,7 +131,7 @@ async function resolveCaptureReplayPaths() {
     );
   }
 
-  return [...explicitPaths, ...directoryManifestPaths];
+  return [...new Set([...explicitPaths, ...directoryManifestPaths])];
 }
 
 async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayPath, field) {

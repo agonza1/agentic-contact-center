@@ -1128,6 +1128,78 @@ test("speech enhancement spike report script loads capture replay manifests from
 });
 
 
+test("speech enhancement spike report script deduplicates explicit and directory capture replay sources", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-dedupe-"));
+  const captureReplayDir = path.join(tempDir, "captures");
+  const captureReplayPath = path.join(captureReplayDir, "real-capture-replay.json");
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+
+  try {
+    await mkdir(captureReplayDir, { recursive: true });
+    await writeFile(
+      captureReplayPath,
+      JSON.stringify(
+        {
+          capture_id: "real-noisy-local-sip-301",
+          recorded_at: "2026-07-05T12:10:00.000Z",
+          audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-301.wav",
+          audio_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          source_manifest_uri: "artifacts/local-sip/real-noisy-local-sip-301-manifest.json",
+          source_manifest_sha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          noise_profile: "speakerphone fan noise",
+          scenario: "local SIP caller with repeatable noisy capture evidence",
+          latency_setting_ms: 12.5,
+          runtime_host: "local-rtc-asr-host",
+          baseline_rtc_asr: {
+            transcript: "I want to cansel my policy today",
+            word_error_rate_estimate: 0.18,
+            endpointing_stability: "acceptable",
+            barge_in_risk: "medium",
+          },
+          enhanced_rtc_asr: {
+            transcript: "I want to cancel my policy today",
+            word_error_rate_estimate: 0.06,
+            endpointing_stability: "stable",
+            barge_in_risk: "low",
+            added_turn_latency_ms_p95: 18,
+            cpu_percent_p95: 42,
+            cpu_cost_estimate: "medium",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay",
+      captureReplayPath,
+      "--capture-replay-dir",
+      captureReplayDir,
+      "--require-close-ready",
+    ]);
+
+    assert.equal(result.exitCode, 0, result.stderr);
+    const summary = JSON.parse(result.stdout) as {
+      ok: boolean;
+      issueCloseReady: boolean;
+      captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+    };
+    assert.equal(summary.ok, true);
+    assert.equal(summary.issueCloseReady, true);
+    assert.deepEqual(summary.captureReplaySources, [
+      { captureId: "real-noisy-local-sip-301", path: captureReplayPath, strictArtifactsVerified: false },
+    ]);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+
 test("speech enhancement spike report blocks mixed passing and failing real capture replays", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-mixed-"));
   const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
