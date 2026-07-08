@@ -51,6 +51,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
         "acc-voice-demo-006",
         "acc-voice-demo-007",
         "acc-voice-demo-008",
+        "acc-voice-demo-009",
       ],
     );
     assert.deepEqual(
@@ -64,6 +65,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
         "memory_reuse_after_context",
         "caller_correction_after_summary",
         "speech_enhancement_runtime_profile",
+        "auth_boundary_handoff",
       ],
     );
     assert.ok(testSet.some((row) => row.seed.title === "Billing caller requires supervised handoff"));
@@ -71,6 +73,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
     assert.ok(testSet.some((row) => row.seed.title === "Returning caller context reuse"));
     assert.ok(testSet.some((row) => row.seed.title === "Caller corrects the summarized next step"));
     assert.ok(testSet.some((row) => row.seed.title === "Noisy caller uses recommended speech enhancement"));
+    assert.ok(testSet.some((row) => row.seed.title === "Caller offers partial authentication details"));
     assert.equal(inference.length, testSet.length);
     assert.ok(inference.every((row) => row.events.length > 0));
     assert.equal(scores.length, testSet.length);
@@ -82,7 +85,8 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
           row.score_keys.includes("transcript_quality") &&
           row.score_keys.includes("memory_reuse") &&
           row.score_keys.includes("correction_handling") &&
-          row.score_keys.includes("speech_enhancement_profile"),
+          row.score_keys.includes("speech_enhancement_profile") &&
+          row.score_keys.includes("auth_boundary"),
       ),
     );
     assert.ok(scores.every((row) => row.verdict.node_judgments.some((judgment) => judgment.relevant)));
@@ -93,6 +97,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
     assert.match(configYaml, /memory_reuse:/);
     assert.match(configYaml, /correction_handling:/);
     assert.match(configYaml, /speech_enhancement_profile:/);
+    assert.match(configYaml, /auth_boundary:/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
