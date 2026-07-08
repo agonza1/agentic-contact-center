@@ -1473,7 +1473,7 @@ function buildAssertViewerHtml(): string {
 <body>
   <header>
     <div><h1>ASSERT Viewer</h1><div class="muted">Local ACC proof artifacts and call eval evidence</div></div>
-    <div class="toolbar"><a href="/operator/console">Operator Console</a><button type="button" id="refresh">Refresh</button></div>
+    <div class="toolbar"><a href="/operator/console">Operator Console</a><a href="/assert/spec">Eval Spec</a><button type="button" id="refresh">Refresh</button></div>
   </header>
   <main>
     <aside id="runs"></aside>
@@ -1537,6 +1537,173 @@ function buildAssertViewerHtml(): string {
     function render() { renderRuns(); renderSummary(); renderTabs(); renderJson(); }
     document.getElementById("refresh").addEventListener("click", function() { refresh().catch(function(error) { document.getElementById("json").textContent = error.message; }); });
     refresh().catch(function(error) { document.getElementById("json").textContent = error.message; });
+  </script>
+</body>
+</html>`;
+}
+
+function buildAssertSpecEditorHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ASSERT Eval Spec</title>
+  <style>
+    :root { --bg: #f6f8fa; --panel: #fff; --text: #24292f; --muted: #57606a; --line: #d0d7de; --accent: #0969da; --ok: #1a7f37; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: #fff; }
+    h1 { margin: 0; font-size: 18px; letter-spacing: 0; }
+    h2 { margin: 0 0 8px; font-size: 14px; letter-spacing: 0; }
+    a { color: var(--accent); text-decoration: none; font-weight: 650; }
+    main { display: grid; grid-template-columns: minmax(320px, 0.9fr) minmax(360px, 1.1fr); gap: 14px; padding: 14px; }
+    section { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); padding: 12px; min-width: 0; }
+    label { display: grid; gap: 5px; margin-bottom: 10px; color: var(--muted); font-size: 12px; font-weight: 700; }
+    input, textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: 13px/1.4 ui-sans-serif, system-ui; color: var(--text); background: #fff; }
+    textarea { min-height: 78px; resize: vertical; }
+    pre { margin: 0; min-height: 520px; overflow: auto; padding: 12px; border-radius: 6px; background: #0d1117; color: #e6edf3; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    button { border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); padding: 8px 10px; font: inherit; cursor: pointer; }
+    button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+    .toolbar, .actions, .blocks { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .status { color: var(--ok); font-size: 12px; font-weight: 700; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    @media (max-width: 980px) { main, .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>ASSERT Eval Spec</h1><div class="muted">Editable local YAML-shaped spec for voice-agent goals, test generation, and judges</div></div>
+    <div class="toolbar"><a href="/assert">ASSERT Viewer</a><a href="/operator/console">Operator Console</a><button type="button" class="primary" id="save">Save</button><button type="button" id="reset">Reset</button></div>
+  </header>
+  <main>
+    <section>
+      <h2>Goal</h2>
+      <label>Spec ID<input id="id"></label>
+      <label>Title<input id="title"></label>
+      <label>Role<input id="role"></label>
+      <label>Objective<textarea id="objective"></textarea></label>
+      <div class="grid">
+        <label>Required behaviors<textarea id="requiredBehaviors"></textarea></label>
+        <label>Forbidden behaviors<textarea id="forbiddenBehaviors"></textarea></label>
+      </div>
+      <label>Conversation memory keys<textarea id="conversationMemory"></textarea></label>
+      <h2>Systematization / Test Set</h2>
+      <div class="grid">
+        <label>Dimensions<textarea id="dimensions"></textarea></label>
+        <label>Coverage targets<textarea id="coverageTargets"></textarea></label>
+        <label>Personas<textarea id="personas"></textarea></label>
+        <label>Scenarios<textarea id="scenarios"></textarea></label>
+      </div>
+      <label>Edge cases<textarea id="edgeCases"></textarea></label>
+      <h2>Judge Options</h2>
+      <label>Judges JSON<textarea id="judges"></textarea></label>
+      <h2>Prewritten Blocks</h2>
+      <div class="blocks" id="blocks"></div>
+      <div class="actions"><span class="status" id="status">Loaded</span></div>
+    </section>
+    <section>
+      <h2>Generated assert.yml</h2>
+      <pre id="yaml"></pre>
+    </section>
+  </main>
+  <script>
+    let current = null;
+    let blocks = [];
+    function lines(value) { return String(value || "").split("\\n").map(function(line) { return line.trim(); }).filter(Boolean); }
+    function setLines(id, values) { document.getElementById(id).value = (values || []).join("\\n"); }
+    function getSpec() {
+      return {
+        id: document.getElementById("id").value.trim(),
+        version: current ? current.version : 1,
+        title: document.getElementById("title").value.trim(),
+        agentGoal: {
+          role: document.getElementById("role").value.trim(),
+          objective: document.getElementById("objective").value.trim(),
+          requiredBehaviors: lines(document.getElementById("requiredBehaviors").value),
+          forbiddenBehaviors: lines(document.getElementById("forbiddenBehaviors").value),
+          conversationMemory: lines(document.getElementById("conversationMemory").value),
+        },
+        systematization: {
+          dimensions: lines(document.getElementById("dimensions").value),
+          coverageTargets: lines(document.getElementById("coverageTargets").value),
+        },
+        testSetGeneration: {
+          personas: lines(document.getElementById("personas").value),
+          scenarios: lines(document.getElementById("scenarios").value),
+          edgeCases: lines(document.getElementById("edgeCases").value),
+        },
+        judges: JSON.parse(document.getElementById("judges").value || "[]"),
+      };
+    }
+    function renderSpec(payload) {
+      current = payload.spec;
+      blocks = payload.blocks || blocks;
+      document.getElementById("id").value = current.id;
+      document.getElementById("title").value = current.title;
+      document.getElementById("role").value = current.agentGoal.role;
+      document.getElementById("objective").value = current.agentGoal.objective;
+      setLines("requiredBehaviors", current.agentGoal.requiredBehaviors);
+      setLines("forbiddenBehaviors", current.agentGoal.forbiddenBehaviors);
+      setLines("conversationMemory", current.agentGoal.conversationMemory);
+      setLines("dimensions", current.systematization.dimensions);
+      setLines("coverageTargets", current.systematization.coverageTargets);
+      setLines("personas", current.testSetGeneration.personas);
+      setLines("scenarios", current.testSetGeneration.scenarios);
+      setLines("edgeCases", current.testSetGeneration.edgeCases);
+      document.getElementById("judges").value = JSON.stringify(current.judges, null, 2);
+      document.getElementById("yaml").textContent = payload.yaml;
+      renderBlocks();
+    }
+    function renderBlocks() {
+      const root = document.getElementById("blocks");
+      root.innerHTML = blocks.map(function(block) { return '<button type="button" data-block="' + block.id + '">' + block.label + '</button>'; }).join("");
+      root.querySelectorAll("button[data-block]").forEach(function(button) {
+        button.addEventListener("click", function() {
+          const block = blocks.find(function(item) { return item.id === button.dataset.block; });
+          if (!block) return;
+          const map = {
+            "agentGoal.requiredBehaviors": "requiredBehaviors",
+            "agentGoal.forbiddenBehaviors": "forbiddenBehaviors",
+            systematization: "dimensions",
+            testSetGeneration: "scenarios",
+          };
+          const targetId = map[block.target];
+          if (!targetId) return;
+          const input = document.getElementById(targetId);
+          const existing = lines(input.value);
+          input.value = Array.from(new Set(existing.concat(block.values))).join("\\n");
+          refreshYaml();
+        });
+      });
+    }
+    async function refreshYaml() {
+      const response = await fetch("/api/assert/spec/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ spec: getSpec() }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "preview failed");
+      document.getElementById("yaml").textContent = payload.yaml;
+      document.getElementById("status").textContent = "Preview updated";
+    }
+    async function loadSpec() {
+      const response = await fetch("/api/assert/spec");
+      renderSpec(await response.json());
+    }
+    async function saveSpec() {
+      const response = await fetch("/api/assert/spec", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ spec: getSpec() }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "save failed");
+      renderSpec(payload);
+      document.getElementById("status").textContent = "Saved";
+    }
+    document.querySelectorAll("input, textarea").forEach(function(input) { input.addEventListener("change", function() { refreshYaml().catch(function(error) { document.getElementById("status").textContent = error.message; }); }); });
+    document.getElementById("save").addEventListener("click", function() { saveSpec().catch(function(error) { document.getElementById("status").textContent = error.message; }); });
+    document.getElementById("reset").addEventListener("click", async function() {
+      const response = await fetch("/api/assert/spec/reset", { method: "POST" });
+      renderSpec(await response.json());
+      document.getElementById("status").textContent = "Reset";
+    });
+    loadSpec().catch(function(error) { document.getElementById("status").textContent = error.message; });
   </script>
 </body>
 </html>`;
@@ -3257,6 +3424,77 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/assert") {
     writeHtml(response, 200, buildAssertViewerHtml());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/assert/spec") {
+    writeHtml(response, 200, buildAssertSpecEditorHtml());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/assert/spec") {
+    writeJson(response, 200, {
+      ok: true,
+      spec: activeAssertEvaluationSpec,
+      yaml: assertSpecToYaml(activeAssertEvaluationSpec),
+      blocks: assertSpecBlocks,
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/assert/spec/preview") {
+    const body = await readJsonBody<unknown>(request);
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const spec = parseAssertEvaluationSpec(body.spec);
+    if (!spec) {
+      writeBadRequest(response, "assert_spec_invalid");
+      return;
+    }
+
+    writeJson(response, 200, {
+      ok: true,
+      spec,
+      yaml: assertSpecToYaml(spec),
+      blocks: assertSpecBlocks,
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/assert/spec") {
+    const body = await readJsonBody<unknown>(request);
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const spec = parseAssertEvaluationSpec(body.spec);
+    if (!spec) {
+      writeBadRequest(response, "assert_spec_invalid");
+      return;
+    }
+
+    activeAssertEvaluationSpec = cloneAssertEvaluationSpec(spec);
+    writeJson(response, 200, {
+      ok: true,
+      spec: activeAssertEvaluationSpec,
+      yaml: assertSpecToYaml(activeAssertEvaluationSpec),
+      blocks: assertSpecBlocks,
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/assert/spec/reset") {
+    activeAssertEvaluationSpec = cloneAssertEvaluationSpec(defaultAssertEvaluationSpec);
+    writeJson(response, 200, {
+      ok: true,
+      spec: activeAssertEvaluationSpec,
+      yaml: assertSpecToYaml(activeAssertEvaluationSpec),
+      blocks: assertSpecBlocks,
+    });
     return;
   }
 

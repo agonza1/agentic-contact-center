@@ -1765,6 +1765,59 @@ test("GET /assert serves an ASSERT-style artifact viewer", async () => {
   });
 });
 
+test("GET /assert/spec serves an editable ASSERT evaluation spec SPA", async () => {
+  await withServer(async (port) => {
+    const response = await requestText(port, "GET", "/assert/spec");
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.contentType, "text/html; charset=utf-8");
+    assert.match(response.body, /<title>ASSERT Eval Spec<\/title>/);
+    assert.match(response.body, /Generated assert\.yml/);
+    assert.match(response.body, /Prewritten Blocks/);
+    assert.match(response.body, /Judge Options/);
+    assert.match(response.body, /\/api\/assert\/spec\/preview/);
+  });
+});
+
+test("ASSERT spec API returns YAML, blocks, preview, save, and reset", async () => {
+  await withServer(async (port) => {
+    const initial = await requestJson(port, "GET", "/api/assert/spec");
+    const initialPayload = initial.payload as {
+      spec: {
+        title: string;
+        agentGoal: { requiredBehaviors: string[] };
+      };
+      yaml: string;
+      blocks: Array<{ id: string }>;
+    };
+
+    assert.equal(initial.statusCode, 200);
+    assert.match(initialPayload.yaml, /agent_goal:/);
+    assert.equal(initialPayload.blocks.some((block) => block.id === "goal_free_caller"), true);
+
+    const spec = {
+      ...initialPayload.spec,
+      title: "Edited local voice spec",
+      agentGoal: {
+        ...initialPayload.spec.agentGoal,
+        requiredBehaviors: [...initialPayload.spec.agentGoal.requiredBehaviors, "Use the caller's prior answer before asking again."],
+      },
+    };
+
+    const preview = await requestJson(port, "POST", "/api/assert/spec/preview", { spec });
+    assert.equal(preview.statusCode, 200);
+    assert.match((preview.payload as { yaml: string }).yaml, /Edited local voice spec/);
+
+    const saved = await requestJson(port, "POST", "/api/assert/spec", { spec });
+    assert.equal(saved.statusCode, 200);
+    assert.equal((saved.payload as { spec: { title: string } }).spec.title, "Edited local voice spec");
+
+    const reset = await requestJson(port, "POST", "/api/assert/spec/reset");
+    assert.equal(reset.statusCode, 200);
+    assert.equal((reset.payload as { spec: { title: string } }).spec.title, initialPayload.spec.title);
+  });
+});
+
 test("GET / serves the operator console instead of a dead end", async () => {
   await withServer(async (port) => {
     const response = await requestText(port, "GET", "/");
@@ -4046,6 +4099,39 @@ test("pipecat local voice sessions default caller turns to free caller mode", as
     const lastAgentTurn = [...payload.transcript].reverse().find((entry) => entry.speaker === "agent");
     assert.ok(lastAgentTurn);
     assert.match(lastAgentTurn.text, /update contact information/i);
+  });
+});
+
+test("free caller voice turns avoid repeating the same clarification question", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Hello there.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I am not sure.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:05.000Z",
+    });
+    const third = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Still not sure.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+    const payload = third.payload as SnapshotPayload;
+    const agentTurns = payload.transcript.filter((entry) => entry.speaker === "agent").map((entry) => entry.text);
+
+    assert.equal(third.statusCode, 200);
+    assert.equal(payload.events.some((event) => event.detail.goalSpecId === "local-free-caller-contact-center"), true);
+    assert.equal(agentTurns.length, 3);
+    assert.notEqual(agentTurns.at(-1), agentTurns.at(-2));
+    assert.match(agentTurns.at(-1) ?? "", /existing context/i);
   });
 });
 
