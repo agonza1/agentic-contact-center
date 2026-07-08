@@ -27,6 +27,8 @@ function cloneSnapshot(snapshot: CallSnapshot): CallSnapshot {
       openclawSession: {
         ...snapshot.session.openclawSession,
         artifactLinks: { ...snapshot.session.openclawSession.artifactLinks },
+        artifactRefs: snapshot.session.openclawSession.artifactRefs.map((artifact) => ({ ...artifact })),
+        evidenceSummary: { ...snapshot.session.openclawSession.evidenceSummary },
       },
     },
     scenario: { ...snapshot.scenario },
@@ -59,6 +61,68 @@ function buildOpenClawArtifactLinks(callId: string) {
     transcript: `${basePath}/transcript`,
     events: `${basePath}/events`,
     latencyMarks: `${basePath}/latency`,
+  };
+}
+
+function buildOpenClawSessionRef(sessionId: string): string {
+  return `openclaw://sessions/${encodeURIComponent(sessionId)}`;
+}
+
+function buildOpenClawArtifactRefs(
+  links: ReturnType<typeof buildOpenClawArtifactLinks>,
+  attachStatus: "attached" | "degraded",
+) {
+  return [
+    { artifactId: "call-snapshot", kind: "snapshot" as const, href: links.snapshot, attachStatus },
+    { artifactId: "artifact-manifest", kind: "manifest" as const, href: links.artifacts, attachStatus },
+    { artifactId: "qa-proof-bundle", kind: "proof" as const, href: links.proof, attachStatus },
+    { artifactId: "transcript", kind: "transcript" as const, href: links.transcript, attachStatus },
+    { artifactId: "event-trail", kind: "events" as const, href: links.events, attachStatus },
+    { artifactId: "latency-marks", kind: "latency_marks" as const, href: links.latencyMarks, attachStatus },
+    {
+      artifactId: "tool-calls",
+      kind: "tool_calls" as const,
+      href: `${links.events}?detailKey=runtimeEngine`,
+      attachStatus,
+    },
+  ];
+}
+
+function refreshOpenClawSessionEvidence(snapshot: CallSnapshot, updatedAt = new Date().toISOString()): void {
+  const latestEvent = snapshot.events.at(-1);
+  const latestTranscriptTurn = snapshot.transcript.at(-1);
+  const operatorActionTypes = new Set([
+    "operator_steer_applied",
+    "operator_steer_requested",
+    "operator_demo_paused",
+    "operator_offer_denied",
+    "operator_transfer_started",
+    "operator_takeover_started",
+    "operator_call_ended",
+    "operator_note_recorded",
+  ]);
+  const fallbackEventCount = snapshot.events.filter((event) => event.type.includes("fallback")).length;
+  const handoffEventCount = snapshot.events.filter((event) => event.type === "human_handoff_started").length;
+  const runtimeToolEvents = snapshot.events.filter((event) =>
+    event.type === "pipecat_runtime_started" || event.type === "pipecat_runtime_turn_processed",
+  ).length;
+  const degraded = snapshot.session.openclawSession.status === "attach_failed_mock";
+
+  snapshot.session.openclawSession.evidenceSummary = {
+    mode: snapshot.session.runtimeModeLabels.telephony === "mocked_telephony" ? "local_mock_only" : "local_reference_only",
+    streamStatus: degraded ? "degraded" : "attached",
+    transcriptTurns: snapshot.transcript.length,
+    eventCount: snapshot.events.length,
+    operatorActionCount: snapshot.events.filter((event) => operatorActionTypes.has(event.type)).length,
+    toolCallCount: runtimeToolEvents + (snapshot.pipecatFlow.activeTool ? 1 : 0),
+    fallbackEventCount,
+    handoffEventCount,
+    proofArtifactCount: snapshot.session.openclawSession.artifactRefs.length,
+    latestEventType: latestEvent?.type ?? null,
+    latestEventAt: latestEvent?.at ?? null,
+    latestTranscriptAt: latestTranscriptTurn?.timestamp ?? null,
+    updatedAt,
+    failureSafe: snapshot.session.openclawSession.artifactRefs.length > 0 && snapshot.events.length > 0,
   };
 }
 
@@ -134,6 +198,9 @@ export class InMemoryTelephonyIngress {
     const openclawSessionId = options.openclawSessionId ?? `openclaw-call-${paddedSequence}`;
     const openclawSessionLabel = options.openclawSessionLabel ?? `${config.demoName}:${callId}`;
     const openclawAttachFailed = options.simulateOpenClawAttachFailure === true;
+    const openclawAttachStatus = openclawAttachFailed ? "degraded" : "attached";
+    const openclawArtifactLinks = buildOpenClawArtifactLinks(callId);
+    const openclawSessionRef = buildOpenClawSessionRef(openclawSessionId);
 
     const snapshot: CallSnapshot = {
       session: {
@@ -146,10 +213,28 @@ export class InMemoryTelephonyIngress {
         openclawSession: {
           sessionId: openclawSessionId,
           label: openclawSessionLabel,
+          ref: openclawSessionRef,
           status: openclawAttachFailed ? "attach_failed_mock" : runtimeModeLabels.telephony === "mocked_telephony" ? "attached_mock" : "attached_live",
           attachError: openclawAttachFailed ? "simulated_openclaw_session_attach_failure" : null,
           eventTrailVersion: 1,
-          artifactLinks: buildOpenClawArtifactLinks(callId),
+          artifactLinks: openclawArtifactLinks,
+          artifactRefs: buildOpenClawArtifactRefs(openclawArtifactLinks, openclawAttachStatus),
+          evidenceSummary: {
+            mode: runtimeModeLabels.telephony === "mocked_telephony" ? "local_mock_only" : "local_reference_only",
+            streamStatus: openclawAttachFailed ? "degraded" : "attached",
+            transcriptTurns: 0,
+            eventCount: 0,
+            operatorActionCount: 0,
+            toolCallCount: 0,
+            fallbackEventCount: 0,
+            handoffEventCount: 0,
+            proofArtifactCount: 0,
+            latestEventType: null,
+            latestEventAt: null,
+            latestTranscriptAt: null,
+            updatedAt: startedAt,
+            failureSafe: false,
+          },
         },
       },
       scenario: {
@@ -211,9 +296,16 @@ export class InMemoryTelephonyIngress {
           detail: {
             sessionId: openclawSessionId,
             sessionLabel: openclawSessionLabel,
+            sessionRef: openclawSessionRef,
             status: openclawAttachFailed ? "attach_failed_mock" : runtimeModeLabels.telephony === "mocked_telephony" ? "attached_mock" : "attached_live",
             attachError: openclawAttachFailed ? "simulated_openclaw_session_attach_failure" : null,
-            proofPath: `/api/calls/${callId}/proof`,
+            attachmentMode: runtimeModeLabels.telephony === "mocked_telephony" ? "local_mock_only" : "local_reference_only",
+            externalSideEffects: false,
+            evidencePreserved: true,
+            artifactManifestPath: openclawArtifactLinks.artifacts,
+            transcriptPath: openclawArtifactLinks.transcript,
+            eventsPath: openclawArtifactLinks.events,
+            proofPath: openclawArtifactLinks.proof,
           },
         },
       ],
@@ -222,6 +314,7 @@ export class InMemoryTelephonyIngress {
     };
 
     recordLatencyMark(snapshot, "call_bootstrapped", startedAt);
+    refreshOpenClawSessionEvidence(snapshot, startedAt);
     this.calls.set(callId, snapshot);
     return cloneSnapshot(snapshot);
   }
@@ -258,6 +351,7 @@ export class InMemoryTelephonyIngress {
         runtimeMode: snapshot.pipecatFlow.prototypeMode,
         transport: snapshot.pipecatFlow.transport,
         credentialsMode: snapshot.pipecatFlow.credentialsMode,
+        activeTool: snapshot.pipecatFlow.activeTool,
       },
     });
 
@@ -282,6 +376,7 @@ export class InMemoryTelephonyIngress {
       recordLatencyMark(snapshot, "agent_response_ready", turn.timestamp, "ttsFirstAudio");
     }
 
+    refreshOpenClawSessionEvidence(snapshot, turn.timestamp);
     return cloneSnapshot(snapshot);
   }
 
@@ -312,6 +407,7 @@ export class InMemoryTelephonyIngress {
     });
     recordLatencyMark(snapshot, evidence.eventType, recordedAt);
 
+    refreshOpenClawSessionEvidence(snapshot, recordedAt);
     return cloneSnapshot(snapshot);
   }
 
@@ -332,6 +428,7 @@ export class InMemoryTelephonyIngress {
     recordLatencyMark(snapshot, "operator_notified", timestamp, "operatorNotification");
     recordLatencyMark(snapshot, "agent_response_ready", timestamp, "ttsFirstAudio");
 
+    refreshOpenClawSessionEvidence(snapshot, timestamp);
     return cloneSnapshot(snapshot);
   }
 
@@ -358,6 +455,7 @@ export class InMemoryTelephonyIngress {
     recordLatencyMark(snapshot, "operator_notified", timestamp, "operatorNotification");
     recordLatencyMark(snapshot, "agent_response_ready", timestamp, "ttsFirstAudio");
 
+    refreshOpenClawSessionEvidence(snapshot, timestamp);
     return cloneSnapshot(snapshot);
   }
 
@@ -384,6 +482,7 @@ export class InMemoryTelephonyIngress {
       },
     });
 
+    refreshOpenClawSessionEvidence(snapshot, timestamp);
     return cloneSnapshot(snapshot);
   }
 
