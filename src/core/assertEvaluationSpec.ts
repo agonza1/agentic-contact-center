@@ -61,13 +61,14 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
     ],
   },
   systematization: {
-    dimensions: ["intent", "caller_context", "risk_level", "handoff_need", "repetition"],
+    dimensions: ["intent", "caller_context", "risk_level", "handoff_need", "repetition", "memory_reuse"],
     coverageTargets: [
       "billing issue with partial context",
       "cancellation concern",
       "account update",
       "human handoff request",
       "ambiguous caller utterance after prior clarification",
+      "returning caller context reused without repeated discovery",
     ],
   },
   testSetGeneration: {
@@ -77,12 +78,14 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
       "caller changes intent mid-call",
       "caller gives short ambiguous answers",
       "caller asks for a refund approval",
+      "caller resumes after providing account context earlier in the call",
     ],
     edgeCases: [
       "empty or low-confidence transcript",
       "repeated caller phrase",
       "caller says thanks and goodbye",
       "caller asks the agent what it can do",
+      "caller provides a correction after the agent summarized the next step",
     ],
   },
   judges: [
@@ -101,6 +104,14 @@ export const defaultAssertEvaluationSpec: AssertEvaluationSpec = {
       rubric: [
         "Fail if two consecutive agent turns ask the same substantive question.",
         "Fail if the free-caller path emits the cancellation-rescue scripted hold.",
+      ],
+    },
+    {
+      name: "memory_reuse",
+      type: "rule",
+      rubric: [
+        "Pass when the agent uses account or intent context already provided in an earlier caller turn.",
+        "Fail when the agent restarts discovery after it already captured enough context to progress or hand off.",
       ],
     },
   ],
@@ -130,7 +141,7 @@ export const assertSpecBlocks: AssertSpecBlock[] = [
     id: "systematize_contact_center",
     label: "Contact Center Systematization",
     target: "systematization",
-    values: ["intent", "risk_level", "required_context", "handoff_need", "resolution_state"],
+    values: ["intent", "risk_level", "required_context", "handoff_need", "resolution_state", "memory_reuse"],
   },
   {
     id: "testset_voice_regression",
@@ -141,6 +152,7 @@ export const assertSpecBlocks: AssertSpecBlock[] = [
       "caller changes from billing to cancellation",
       "caller asks for a human twice",
       "ambiguous answer after agent already asked one clarification",
+      "returning caller confirms previously captured account context",
     ],
   },
 ];

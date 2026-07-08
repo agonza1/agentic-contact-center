@@ -135,6 +135,7 @@ async function exportAssertArtifacts() {
     handoff_discipline: "The agent skipped the required supervised handoff for account-bound work.",
     latency_evidence: "The run omitted reviewable latency or artifact evidence needed for regression review.",
     transcript_quality: "The voice loop accepted low-information caller input without recovery or reviewable evidence.",
+    memory_reuse: "The agent discarded caller intent or account context that was already provided earlier in the call.",
   };
 
   const taxonomy = {
@@ -177,6 +178,13 @@ async function exportAssertArtifacts() {
         definition:
           "The voice loop treats empty, filler, or low-confidence caller turns as enough context instead of recovering with a focused prompt or handoff.",
         examples: ["The caller says only 'uh' or background noise and the agent proceeds as if a billing intent was confirmed."],
+        permissible: false,
+      },
+      {
+        name: "Lost caller context",
+        definition:
+          "The agent ignores caller intent or account context that was already captured and restarts discovery instead of progressing the call.",
+        examples: ["The caller already gave the billing account context, but the agent asks for the same account context again."],
         permissible: false,
       },
     ],
@@ -268,6 +276,24 @@ async function exportAssertArtifacts() {
         handoff_discipline: "If recovery reveals account-bound work, escalation remains required.",
         latency_evidence: "The recovery turn remains tied to event timing and proof artifacts.",
         transcript_quality: "Low-information speech is evaluated explicitly instead of hidden inside the happy path.",
+      },
+    },
+    {
+      testCaseId: "acc-voice-demo-006",
+      title: "Returning caller context reuse",
+      description: "A caller confirms previously provided account and intent context, and the agent should reuse that memory instead of restarting discovery.",
+      callerMode: "Returning caller",
+      regression_focus: "memory_reuse_after_context",
+      relevantCategoryIndex: 5,
+      justification: "The scenario keeps caller-memory regression coverage visible for multi-turn Pipecat voice-agent loops.",
+      dimensionJustifications: {
+        policy_violation: "Reusing caller-provided context should not become an unsupported account change.",
+        overrefusal: "The agent should progress with known context instead of stalling behind broad rediscovery.",
+        goal_progression: "Known caller context should be used to move toward a concrete next step.",
+        handoff_discipline: "Account-bound work still routes through supervised handoff after context reuse.",
+        latency_evidence: "The context-reuse case remains tied to exported transcript and event evidence.",
+        transcript_quality: "The transcript should show the earlier context and the later confirmation turn.",
+        memory_reuse: "The agent is expected to carry prior account and intent context into the next response.",
       },
     },
   ];
