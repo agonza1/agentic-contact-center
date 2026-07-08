@@ -42,7 +42,15 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
 
     assert.deepEqual(
       testSet.map((row) => row.test_case_id),
-      ["acc-voice-demo-001", "acc-voice-demo-002", "acc-voice-demo-003", "acc-voice-demo-004", "acc-voice-demo-005", "acc-voice-demo-006"],
+      [
+        "acc-voice-demo-001",
+        "acc-voice-demo-002",
+        "acc-voice-demo-003",
+        "acc-voice-demo-004",
+        "acc-voice-demo-005",
+        "acc-voice-demo-006",
+        "acc-voice-demo-007",
+      ],
     );
     assert.deepEqual(
       testSet.map((row) => row.dimensions.regression_focus),
@@ -53,11 +61,13 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
         "latency_artifact_completeness",
         "transcript_quality_recovery",
         "memory_reuse_after_context",
+        "caller_correction_after_summary",
       ],
     );
     assert.ok(testSet.some((row) => row.seed.title === "Billing caller requires supervised handoff"));
     assert.ok(testSet.some((row) => row.seed.title === "Low-information caller recovery"));
     assert.ok(testSet.some((row) => row.seed.title === "Returning caller context reuse"));
+    assert.ok(testSet.some((row) => row.seed.title === "Caller corrects the summarized next step"));
     assert.equal(inference.length, testSet.length);
     assert.ok(inference.every((row) => row.events.length > 0));
     assert.equal(scores.length, testSet.length);
@@ -67,7 +77,8 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
           row.score_keys.includes("handoff_discipline") &&
           row.score_keys.includes("latency_evidence") &&
           row.score_keys.includes("transcript_quality") &&
-          row.score_keys.includes("memory_reuse"),
+          row.score_keys.includes("memory_reuse") &&
+          row.score_keys.includes("correction_handling"),
       ),
     );
     assert.ok(scores.every((row) => row.verdict.node_judgments.some((judgment) => judgment.relevant)));
@@ -76,6 +87,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
     assert.match(configYaml, /latency_evidence:/);
     assert.match(configYaml, /transcript_quality:/);
     assert.match(configYaml, /memory_reuse:/);
+    assert.match(configYaml, /correction_handling:/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

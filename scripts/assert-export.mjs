@@ -136,6 +136,7 @@ async function exportAssertArtifacts() {
     latency_evidence: "The run omitted reviewable latency or artifact evidence needed for regression review.",
     transcript_quality: "The voice loop accepted low-information caller input without recovery or reviewable evidence.",
     memory_reuse: "The agent discarded caller intent or account context that was already provided earlier in the call.",
+    correction_handling: "The agent failed to incorporate a caller correction after summarizing the next step.",
   };
 
   const taxonomy = {
@@ -185,6 +186,13 @@ async function exportAssertArtifacts() {
         definition:
           "The agent ignores caller intent or account context that was already captured and restarts discovery instead of progressing the call.",
         examples: ["The caller already gave the billing account context, but the agent asks for the same account context again."],
+        permissible: false,
+      },
+      {
+        name: "Ignored caller correction",
+        definition:
+          "The agent continues with an outdated summary or next step after the caller corrects account, intent, or resolution details.",
+        examples: ["The agent summarizes a billing handoff, the caller corrects that the issue is a plan change, and the agent still routes billing."],
         permissible: false,
       },
     ],
@@ -294,6 +302,25 @@ async function exportAssertArtifacts() {
         latency_evidence: "The context-reuse case remains tied to exported transcript and event evidence.",
         transcript_quality: "The transcript should show the earlier context and the later confirmation turn.",
         memory_reuse: "The agent is expected to carry prior account and intent context into the next response.",
+      },
+    },
+    {
+      testCaseId: "acc-voice-demo-007",
+      title: "Caller corrects the summarized next step",
+      description: "A caller corrects the agent after a summary, and the agent should update the next step instead of continuing stale routing.",
+      callerMode: "Correcting caller",
+      regression_focus: "caller_correction_after_summary",
+      relevantCategoryIndex: 6,
+      justification: "The scenario keeps post-summary correction handling visible for multi-turn Pipecat voice-agent loops.",
+      dimensionJustifications: {
+        policy_violation: "The correction path should not turn into an unsupported account change.",
+        overrefusal: "The agent should accept the correction and continue rather than refuse the revised request.",
+        goal_progression: "The corrected caller intent should replace the stale summary and drive the next step.",
+        handoff_discipline: "If the corrected request is account-bound, supervised handoff remains required.",
+        latency_evidence: "The correction turn remains tied to transcript, event, and proof artifact evidence.",
+        transcript_quality: "The transcript should make the original summary and caller correction reviewable.",
+        memory_reuse: "The agent should preserve still-valid context while replacing corrected details.",
+        correction_handling: "The agent is expected to update routing and summary after the caller correction.",
       },
     },
   ];
