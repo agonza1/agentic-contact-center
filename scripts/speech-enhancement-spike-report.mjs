@@ -15,7 +15,14 @@ const {
   validateSpeechEnhancementCaptureReplayManifest,
 } = require("../dist/src/core/speechEnhancementSpike.js");
 
-const valueFlags = new Set(["--capture-replay", "--capture-replay-dir", "--out", "--latest-out", "--markdown-out"]);
+const valueFlags = new Set([
+  "--capture-replay",
+  "--capture-replay-dir",
+  "--out",
+  "--latest-out",
+  "--markdown-out",
+  "--capture-replay-template-out",
+]);
 const booleanFlags = new Set(["--strict-capture-artifacts", "--require-close-ready"]);
 
 function validateCliArgs(argv) {
@@ -189,6 +196,40 @@ function resolveMarkdownOutputPath(outputPath) {
   return outputPath.replace(/\.json$/u, ".md");
 }
 
+function resolveCaptureReplayTemplateOutputPath() {
+  return resolveArgPath("--capture-replay-template-out");
+}
+
+function buildCaptureReplayTemplate() {
+  return {
+    capture_id: "real-noisy-local-sip-001",
+    recorded_at: "2026-07-08T00:00:00.000Z",
+    audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-001.wav",
+    audio_sha256: "replace_with_64_char_lowercase_sha256",
+    source_manifest_uri: "artifacts/local-sip/proof-manifest-001.json",
+    source_manifest_sha256: "replace_with_64_char_lowercase_sha256",
+    noise_profile: "describe_real_call_noise",
+    scenario: "local SIP caller replayed through baseline and enhanced rtc-asr paths",
+    runtime_host: "selected-rtc-asr-hostname",
+    baseline_rtc_asr: {
+      transcript: "baseline transcript from the same real noisy capture",
+      word_error_rate_estimate: 0.18,
+      endpointing_stability: "acceptable",
+      barge_in_risk: "medium",
+    },
+    enhanced_rtc_asr: {
+      transcript: "enhanced transcript from the same real noisy capture",
+      word_error_rate_estimate: 0.06,
+      endpointing_stability: "stable",
+      barge_in_risk: "low",
+      added_turn_latency_ms_p95: 18,
+      cpu_percent_p95: 42,
+      cpu_cost_estimate: "medium",
+    },
+    latency_setting_ms: 12.5,
+  };
+}
+
 async function writeJson(filePath, payload) {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
@@ -299,6 +340,7 @@ async function main() {
   const outputPath = resolveOutputPath();
   const latestOutputPath = resolveLatestOutputPath();
   const markdownOutputPath = resolveMarkdownOutputPath(outputPath);
+  const captureReplayTemplateOutputPath = resolveCaptureReplayTemplateOutputPath();
   const requireCloseReady = hasArg("--require-close-ready");
   const captureReplayInputs = await loadCaptureReplayMetrics();
   const report = buildSpeechEnhancementSpikeReport({ captureReplayMetrics: captureReplayInputs.metrics });
@@ -332,12 +374,16 @@ async function main() {
   if (markdownOutputPath) {
     await writeText(markdownOutputPath, buildMarkdownReport(artifact));
   }
+  if (captureReplayTemplateOutputPath) {
+    await writeJson(captureReplayTemplateOutputPath, buildCaptureReplayTemplate());
+  }
 
   const summary = {
     ok: !requireCloseReady || artifact.reviewGate.issueCloseReady,
     outputPath,
     latestOutputPath: latestOutputPath ?? null,
     markdownOutputPath: markdownOutputPath ?? null,
+    captureReplayTemplateOutputPath: captureReplayTemplateOutputPath ?? null,
     issueCloseReady: artifact.reviewGate.issueCloseReady,
     runtimeLiveDemoEligible: artifact.runtimeReadiness.liveDemoEligible,
     runtimeBypassReasons: artifact.runtimeReadiness.bypassReasons,
