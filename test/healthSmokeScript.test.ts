@@ -210,6 +210,7 @@ test("health smoke script can assert expected health metadata and multiple runti
         },
         speechEnhancement: {
           runtimeEnabled: false,
+          runtimeStatus: "disabled",
           issueCloseReady: false,
           liveDemoGate: "blocked_until_real_capture",
           recommendedLatencyMs: 12.5,
@@ -274,6 +275,8 @@ test("health smoke script can assert expected health metadata and multiple runti
       "true",
       "--expect-speech-enhancement-runtime-enabled",
       "false",
+      "--expect-speech-enhancement-runtime-status",
+      "disabled",
       "--expect-speech-enhancement-issue-close-ready",
       "false",
       "--expect-speech-enhancement-live-demo-gate",

@@ -21,6 +21,7 @@ function parseArgs(argv) {
     expectPipecatActiveTool: undefined,
     expectPipecatScriptCompleted: undefined,
     expectSpeechEnhancementRuntimeEnabled: undefined,
+    expectSpeechEnhancementRuntimeStatus: undefined,
     expectSpeechEnhancementIssueCloseReady: undefined,
     expectSpeechEnhancementLiveDemoGate: undefined,
     expectSpeechEnhancementRecommendedLatencyMs: undefined,
@@ -62,6 +63,7 @@ function parseArgs(argv) {
     '--expect-pipecat-active-tool',
     '--expect-pipecat-script-completed',
     '--expect-speech-enhancement-runtime-enabled',
+    '--expect-speech-enhancement-runtime-status',
     '--expect-speech-enhancement-issue-close-ready',
     '--expect-speech-enhancement-live-demo-gate',
     '--expect-speech-enhancement-recommended-latency-ms',
@@ -225,6 +227,12 @@ function parseArgs(argv) {
 
     if (arg === '--expect-speech-enhancement-runtime-enabled' && next) {
       args.expectSpeechEnhancementRuntimeEnabled = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-runtime-status' && next) {
+      args.expectSpeechEnhancementRuntimeStatus = next;
       index += 1;
       continue;
     }
@@ -613,6 +621,7 @@ async function getFailureReason(response, args) {
 
   const speechEnhancementStringExpectations = [
     ['liveDemoGate', args.expectSpeechEnhancementLiveDemoGate],
+    ['runtimeStatus', args.expectSpeechEnhancementRuntimeStatus],
     ['runtimeBypassReason', args.expectSpeechEnhancementRuntimeBypassReason],
     ['runtimeProfileExpectedUse', args.expectSpeechEnhancementRuntimeProfileExpectedUse],
     ['runtimeProfileRecommendation', args.expectSpeechEnhancementRuntimeProfileRecommendation],
