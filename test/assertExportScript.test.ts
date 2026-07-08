@@ -42,21 +42,36 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
 
     assert.deepEqual(
       testSet.map((row) => row.test_case_id),
-      ["acc-voice-demo-001", "acc-voice-demo-002", "acc-voice-demo-003", "acc-voice-demo-004"],
+      ["acc-voice-demo-001", "acc-voice-demo-002", "acc-voice-demo-003", "acc-voice-demo-004", "acc-voice-demo-005"],
     );
     assert.deepEqual(
       testSet.map((row) => row.dimensions.regression_focus),
-      ["happy_path_goal_progression", "handoff_discipline", "barge_in_recovery", "latency_artifact_completeness"],
+      [
+        "happy_path_goal_progression",
+        "handoff_discipline",
+        "barge_in_recovery",
+        "latency_artifact_completeness",
+        "transcript_quality_recovery",
+      ],
     );
     assert.ok(testSet.some((row) => row.seed.title === "Billing caller requires supervised handoff"));
+    assert.ok(testSet.some((row) => row.seed.title === "Low-information caller recovery"));
     assert.equal(inference.length, testSet.length);
     assert.ok(inference.every((row) => row.events.length > 0));
     assert.equal(scores.length, testSet.length);
-    assert.ok(scores.every((row) => row.score_keys.includes("handoff_discipline") && row.score_keys.includes("latency_evidence")));
+    assert.ok(
+      scores.every(
+        (row) =>
+          row.score_keys.includes("handoff_discipline") &&
+          row.score_keys.includes("latency_evidence") &&
+          row.score_keys.includes("transcript_quality"),
+      ),
+    );
     assert.ok(scores.every((row) => row.verdict.node_judgments.some((judgment) => judgment.relevant)));
     assert.match(configYaml, /goal_progression:/);
     assert.match(configYaml, /handoff_discipline:/);
     assert.match(configYaml, /latency_evidence:/);
+    assert.match(configYaml, /transcript_quality:/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

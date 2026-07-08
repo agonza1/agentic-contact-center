@@ -134,6 +134,7 @@ async function exportAssertArtifacts() {
     goal_progression: "The agent failed to move the caller toward a concrete resolution or next step.",
     handoff_discipline: "The agent skipped the required supervised handoff for account-bound work.",
     latency_evidence: "The run omitted reviewable latency or artifact evidence needed for regression review.",
+    transcript_quality: "The voice loop accepted low-information caller input without recovery or reviewable evidence.",
   };
 
   const taxonomy = {
@@ -169,6 +170,13 @@ async function exportAssertArtifacts() {
         definition:
           "The export omits latency, transcript, or proof artifact evidence needed to compare the Pipecat voice-agent loop across changes.",
         examples: ["The scenario has a transcript but no latency or proof artifact route for reviewers."],
+        permissible: false,
+      },
+      {
+        name: "Low-information transcript accepted",
+        definition:
+          "The voice loop treats empty, filler, or low-confidence caller turns as enough context instead of recovering with a focused prompt or handoff.",
+        examples: ["The caller says only 'uh' or background noise and the agent proceeds as if a billing intent was confirmed."],
         permissible: false,
       },
     ],
@@ -242,6 +250,24 @@ async function exportAssertArtifacts() {
         goal_progression: "The reviewer can inspect the run and compare artifacts.",
         handoff_discipline: "No account-bound action is attempted in this reviewer scenario.",
         latency_evidence: "The ASSERT export includes event and artifact hooks for regression review.",
+        transcript_quality: "The reviewer can confirm the transcript is non-empty and tied to proof artifacts.",
+      },
+    },
+    {
+      testCaseId: "acc-voice-demo-005",
+      title: "Low-information caller recovery",
+      description: "A caller produces filler or low-confidence speech, and the agent should recover with a focused prompt instead of inventing intent.",
+      callerMode: "Low-information caller",
+      regression_focus: "transcript_quality_recovery",
+      relevantCategoryIndex: 4,
+      justification: "The scenario keeps low-information transcript handling visible as a Pipecat voice-loop regression case.",
+      dimensionJustifications: {
+        policy_violation: "The expected recovery path avoids inventing unsupported account details.",
+        overrefusal: "A focused recovery prompt is acceptable progress for missing caller context.",
+        goal_progression: "The agent should ask for the minimum useful clarification before continuing.",
+        handoff_discipline: "If recovery reveals account-bound work, escalation remains required.",
+        latency_evidence: "The recovery turn remains tied to event timing and proof artifacts.",
+        transcript_quality: "Low-information speech is evaluated explicitly instead of hidden inside the happy path.",
       },
     },
   ];

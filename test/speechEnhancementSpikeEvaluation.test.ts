@@ -121,6 +121,7 @@ test("speech enhancement runtime readiness exposes selected frame budget", () =>
   const runtimeConfig = resolveSpeechEnhancementRuntimeConfig({ featureFlag: "enabled", latencyMs: "12.5" });
 
   assert.deepEqual(buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report), {
+    status: "ready",
     enabled: true,
     latencyMs: 12.5,
     liveDemoEligible: true,
