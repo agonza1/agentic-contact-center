@@ -116,6 +116,16 @@ async function loadCaptureReplayMetrics() {
   return { metrics, sources };
 }
 
+function buildCaptureReplaySourceDigest(sources) {
+  const digestInput = sources.map((source) => ({
+    captureId: source.captureId,
+    path: source.path,
+    strictArtifactsVerified: source.strictArtifactsVerified,
+  }));
+
+  return createHash("sha256").update(JSON.stringify(digestInput)).digest("hex");
+}
+
 async function resolveCaptureReplayPaths() {
   const explicitPaths = resolveArgPaths("--capture-replay");
   const directoryPaths = resolveArgPaths("--capture-replay-dir");
@@ -301,6 +311,7 @@ function buildMarkdownReport(artifact) {
     `- Baseline/enhanced pairs: ${report.replayCoverage.baselineEnhancedPairs}`,
     `- Live demo gate: ${report.replayCoverage.liveDemoGate}`,
     `- Strict artifact hashes: ${report.captureReplayContract.strictArtifactFields.join(", ")}`,
+    `- Capture replay source digest: ${artifact.captureReplaySourceDigest}`,
     `- Passing real replay ids: ${reviewGate.passingRealCaptureReplayIds.join(", ") || "None"}`,
     `- Blocked real replay ids: ${reviewGate.blockedRealCaptureReplayIds.join(", ") || "None"}`,
     "",
@@ -381,6 +392,7 @@ async function main() {
     runtimeConfig,
     runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
     captureReplaySources: captureReplayInputs.sources,
+    captureReplaySourceDigest: buildCaptureReplaySourceDigest(captureReplayInputs.sources),
     handoff: buildSpeechEnhancementReviewHandoff(),
     reviewGate: buildSpeechEnhancementReviewGate(report),
   };
@@ -414,6 +426,7 @@ async function main() {
     blockedRealCaptureReplayIds: artifact.reviewGate.blockedRealCaptureReplayIds,
     realCaptureReplayEvidence: artifact.reviewGate.realCaptureReplayEvidence,
     captureReplaySources: artifact.captureReplaySources,
+    captureReplaySourceDigest: artifact.captureReplaySourceDigest,
   };
 
   console.log(JSON.stringify(summary));

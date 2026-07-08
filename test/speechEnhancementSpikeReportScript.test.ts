@@ -6,6 +6,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
+function digestCaptureReplaySources(sources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>): string {
+  return createHash("sha256").update(JSON.stringify(sources)).digest("hex");
+}
+
 function runNode(args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] });
@@ -52,6 +56,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       latestOutputPath: string;
       markdownOutputPath: string;
       captureReplayTemplateOutputPath: string;
+      captureReplaySourceDigest: string;
       runtimeLiveDemoEligible: boolean;
       runtimeBypassReasons: string[];
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
@@ -62,6 +67,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.equal(summary.markdownOutputPath, markdownOutputPath);
     assert.equal(summary.captureReplayTemplateOutputPath, captureReplayTemplateOutputPath);
     assert.deepEqual(summary.captureReplaySources, []);
+    assert.equal(summary.captureReplaySourceDigest, digestCaptureReplaySources([]));
     assert.equal(summary.runtimeLiveDemoEligible, false);
     assert.deepEqual(summary.runtimeBypassReasons, ["feature_flag_disabled", "blocked_until_real_capture"]);
 
@@ -91,6 +97,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
         nextEvidenceOwner: string;
       };
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
       reviewGate: {
         issueCloseReady: boolean;
         checks: Record<string, boolean>;
@@ -132,6 +139,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.equal(artifact.schemaVersion, 1);
     assert.equal(artifact.artifactType, "speech_enhancement_spike_report");
     assert.deepEqual(artifact.captureReplaySources, []);
+    assert.equal(artifact.captureReplaySourceDigest, digestCaptureReplaySources([]));
     assert.equal(artifact.report.issue, "agonza1/agentic-contact-center#97");
     assert.equal(artifact.handoff.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/97");
     assert.equal(artifact.handoff.reviewRoute, "/api/realtime-shim/speech-enhancement-spike");
@@ -190,6 +198,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /Runtime bypass reasons: feature_flag_disabled, blocked_until_real_capture/);
     assert.equal(markdown.match(/## Evidence Coverage/g)?.length, 1);
     assert.match(markdown, /Real noisy capture replays: 0/);
+    assert.match(markdown, new RegExp(`Capture replay source digest: ${digestCaptureReplaySources([])}`));
     assert.match(markdown, /Strict artifact hashes: audio_sha256, source_manifest_sha256/);
     assert.match(markdown, /Passing real replay ids: None/);
     assert.match(markdown, /Blocked real replay ids: None/);
@@ -253,6 +262,7 @@ test("speech enhancement spike report script can enforce issue-close readiness",
       latestOutputPath: string | null;
       markdownOutputPath: string | null;
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
     };
     assert.equal(summary.ok, false);
     assert.equal(summary.issueCloseReady, false);
@@ -260,6 +270,7 @@ test("speech enhancement spike report script can enforce issue-close readiness",
     assert.equal(summary.latestOutputPath, null);
     assert.equal(summary.markdownOutputPath, null);
     assert.deepEqual(summary.captureReplaySources, []);
+    assert.equal(summary.captureReplaySourceDigest, digestCaptureReplaySources([]));
     assert.equal(summary.checks.realNoisyCaptureReplay, false);
     assert.match(summary.failureReasons.realNoisyCaptureReplay, /real noisy local SIP capture/);
     assert.ok(summary.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
@@ -745,6 +756,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
         wordErrorRateDelta: number;
       }>;
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
     };
     assert.equal(summary.ok, true);
     assert.equal(summary.issueCloseReady, true);
@@ -755,6 +767,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.deepEqual(summary.captureReplaySources, [
       { captureId: "real-noisy-local-sip-001", path: captureReplayPath, strictArtifactsVerified: false },
     ]);
+    assert.equal(summary.captureReplaySourceDigest, digestCaptureReplaySources(summary.captureReplaySources));
     assert.deepEqual(summary.realCaptureReplayEvidence.map((evidence) => ({
       captureId: evidence.captureId,
       status: evidence.status,
@@ -812,6 +825,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
         replayDecisions: Array<{ captureId: string; enableForLiveDemo: boolean }>;
       };
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
       reviewGate: {
         issueCloseReady: boolean;
         checks: Record<string, boolean>;
@@ -840,6 +854,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.deepEqual(artifact.captureReplaySources, [
       { captureId: "real-noisy-local-sip-001", path: captureReplayPath, strictArtifactsVerified: false },
     ]);
+    assert.equal(artifact.captureReplaySourceDigest, digestCaptureReplaySources(artifact.captureReplaySources));
     assert.equal(artifact.reviewGate.issueCloseReady, true);
     assert.deepEqual(Object.values(artifact.reviewGate.checks), [true, true, true, true, true, true, true]);
     assert.deepEqual(artifact.reviewGate.failureReasons, {});
@@ -1019,6 +1034,7 @@ test("speech enhancement spike report accepts multiple real capture replay manif
       ok: boolean;
       issueCloseReady: boolean;
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
     };
     assert.equal(summary.ok, true);
     assert.equal(summary.issueCloseReady, true);
@@ -1030,9 +1046,12 @@ test("speech enhancement spike report accepts multiple real capture replay manif
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       report: { replayCoverage: { realNoisyCaptureReplayCount: number; baselineEnhancedPairs: number } };
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
       reviewGate: { realCaptureReplayIds: string[]; passingRealCaptureReplayIds: string[] };
     };
+    assert.equal(summary.captureReplaySourceDigest, digestCaptureReplaySources(summary.captureReplaySources));
     assert.deepEqual(artifact.captureReplaySources, summary.captureReplaySources);
+    assert.equal(artifact.captureReplaySourceDigest, summary.captureReplaySourceDigest);
     assert.equal(artifact.report.replayCoverage.realNoisyCaptureReplayCount, 2);
     assert.equal(artifact.report.replayCoverage.baselineEnhancedPairs, 3);
     assert.deepEqual(artifact.reviewGate.realCaptureReplayIds, ["real-noisy-local-sip-101", "real-noisy-local-sip-102"]);
@@ -1104,6 +1123,7 @@ test("speech enhancement spike report script loads capture replay manifests from
       ok: boolean;
       issueCloseReady: boolean;
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
     };
     assert.equal(summary.ok, true);
     assert.equal(summary.issueCloseReady, true);
@@ -1115,9 +1135,12 @@ test("speech enhancement spike report script loads capture replay manifests from
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       report: { replayCoverage: { realNoisyCaptureReplayCount: number; baselineEnhancedPairs: number } };
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
       reviewGate: { realCaptureReplayIds: string[]; passingRealCaptureReplayIds: string[] };
     };
+    assert.equal(summary.captureReplaySourceDigest, digestCaptureReplaySources(summary.captureReplaySources));
     assert.deepEqual(artifact.captureReplaySources, summary.captureReplaySources);
+    assert.equal(artifact.captureReplaySourceDigest, summary.captureReplaySourceDigest);
     assert.equal(artifact.report.replayCoverage.realNoisyCaptureReplayCount, 2);
     assert.equal(artifact.report.replayCoverage.baselineEnhancedPairs, 3);
     assert.deepEqual(artifact.reviewGate.realCaptureReplayIds, ["real-noisy-local-sip-201", "real-noisy-local-sip-202"]);
@@ -1188,6 +1211,7 @@ test("speech enhancement spike report script deduplicates explicit and directory
       ok: boolean;
       issueCloseReady: boolean;
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      captureReplaySourceDigest: string;
     };
     assert.equal(summary.ok, true);
     assert.equal(summary.issueCloseReady, true);
