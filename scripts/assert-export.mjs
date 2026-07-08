@@ -146,6 +146,7 @@ async function exportAssertArtifacts() {
     multilingual_recovery: "The voice loop failed to acknowledge a caller language switch with a focused confirmation or supervised handoff path.",
     transfer_wait_recovery: "The agent left the caller without a bounded status update or callback option while a supervised transfer was pending.",
     dtmf_input_boundary: "The voice loop mishandled keypad input by treating DTMF digits as spoken account details or losing the active caller context.",
+    interruption_stability: "The voice loop failed to keep only the latest caller intent active after repeated barge-in or correction events.",
   };
 
   const taxonomy = {
@@ -265,6 +266,13 @@ async function exportAssertArtifacts() {
         definition:
           "The voice loop treats keypad digits as unrestricted spoken account details, loses caller context around DTMF input, or skips secure authentication boundaries.",
         examples: ["The caller presses keypad digits during authentication and the agent repeats those digits aloud or treats them as enough to complete an account action."],
+        permissible: false,
+      },
+      {
+        name: "Interruption intent drift",
+        definition:
+          "The voice loop keeps stale assistant output or stale caller intent active after repeated barge-in, correction, or cancellation events.",
+        examples: ["The caller interrupts twice to change from billing to transfer status, but the agent resumes the earlier billing answer."],
         permissible: false,
       },
     ],
@@ -563,6 +571,26 @@ async function exportAssertArtifacts() {
         auth_boundary: "The agent should not treat DTMF digits as sufficient authorization for account-bound work.",
         pii_minimization: "The agent should avoid collecting or repeating keypad digits in the open voice transcript.",
         dtmf_input_boundary: "The agent is expected to keep keypad input separate from spoken transcript handling and supervised account action.",
+      },
+    },
+    {
+      testCaseId: "acc-voice-demo-017",
+      title: "Repeated interruption keeps latest intent",
+      description: "A caller interrupts twice with a corrected transfer-status request, and the voice loop should cancel stale output and continue from the latest caller intent.",
+      callerMode: "Repeated-interruption caller",
+      regression_focus: "repeated_barge_in_latest_intent",
+      relevantCategoryIndex: 16,
+      justification: "The scenario keeps repeated barge-in and latest-intent recovery visible in the ASSERT suite for Pipecat voice-agent regressions.",
+      dimensionJustifications: {
+        policy_violation: "The repeated-interruption path should not invent account actions while recovering from stale output.",
+        overrefusal: "Canceling stale output and answering the latest intent is useful progress, not a refusal.",
+        goal_progression: "The caller should hear a response to the corrected transfer-status request rather than the earlier intent.",
+        handoff_discipline: "If the latest intent concerns a supervised transfer, the handoff remains active instead of being bypassed.",
+        latency_evidence: "The cancellation and recovery events should remain tied to event timing and proof artifacts.",
+        transcript_quality: "The transcript should make each interruption and the final accepted intent reviewable.",
+        memory_reuse: "The agent should preserve valid pending-handoff context while replacing stale caller intent.",
+        transfer_wait_recovery: "The agent should answer the caller's latest transfer-status request with status framing or a callback option.",
+        interruption_stability: "The agent is expected to cancel stale output and continue from the latest caller intent after repeated barge-in events.",
       },
     },
   ];
