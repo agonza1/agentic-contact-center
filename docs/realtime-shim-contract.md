@@ -140,6 +140,6 @@ This confirms `rtc-asr#203` is the right upstream support card: it should add a 
 
 ## Ownership
 
-- `agentic-contact-center`: keeps this adapter contract, mocked local response policy, and demo fallback behavior.
-- `rtc-asr`: owns Local STT v1 lifecycle checks and sidecar benchmark artifacts.
+- [`agentic-contact-center`](https://github.com/agonza1/agentic-contact-center): keeps this adapter contract, mocked local response policy, and demo fallback behavior.
+- [`rtc-asr`](https://github.com/agonza1/rtc-asr): owns Local STT v1 lifecycle checks and sidecar benchmark artifacts.
 - Future OpenClaw integration: registers the local realtime provider and wires the Gateway relay shim while preserving the existing Talk button, options, transcript display, and playback path.

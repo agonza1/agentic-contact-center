@@ -85,6 +85,11 @@ def is_low_information_transcript(text: str) -> bool:
     return len(compact) <= 2 or not words or bool(re.fullmatch(r"[\s.]+", text))
 
 
+def is_incomplete_transcript(text: str) -> bool:
+    normalized = text.strip()
+    return normalized.endswith("...") or normalized.endswith("…")
+
+
 def run_ffmpeg(input_path: Path, output_path: Path, *extra_args: str) -> None:
     subprocess.run(
         ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(input_path), *extra_args, str(output_path)],
@@ -193,6 +198,19 @@ async def handle_client(websocket: websockets.WebSocketServerProtocol) -> None:
                         "type": "turn",
                         "ok": False,
                         "error": "low_information_transcript",
+                        "callerTranscript": transcript,
+                        "stt": stt_meta,
+                    },
+                )
+                continue
+
+            if is_incomplete_transcript(transcript):
+                await send_json(
+                    websocket,
+                    {
+                        "type": "turn",
+                        "ok": False,
+                        "error": "incomplete_transcript_retry",
                         "callerTranscript": transcript,
                         "stt": stt_meta,
                     },

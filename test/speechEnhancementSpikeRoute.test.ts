@@ -116,6 +116,8 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         requiredCaptureKind: string;
         fixtureManifestPath: string;
         requiredFields: string[];
+        strictArtifactFields: string[];
+        strictArtifactChecks: string[];
         comparisonPairs: string[];
         minimumPassingCriteria: string[];
       };
@@ -139,6 +141,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         strictValidationCommand: string;
         nextEvidenceOwner: string;
       };
+      strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
     };
 
     assert.equal(payload.ok, true);
@@ -262,6 +265,15 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.ok(payload.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.added_turn_latency_ms_p95"));
     assert.ok(payload.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.cpu_percent_p95"));
     assert.ok(payload.captureReplayContract.requiredFields.includes("latency_setting_ms"));
+    assert.deepEqual(payload.captureReplayContract.strictArtifactChecks, [
+      "exists",
+      "sha256_matches",
+      "artifact_uri_is_workspace_relative",
+      "source_manifest_json_object",
+      "source_manifest_identity_fields_present",
+      "source_manifest_capture_id_matches",
+      "source_manifest_audio_source_uri_matches",
+    ]);
     assert.ok(
       payload.captureReplayContract.minimumPassingCriteria.some((criterion) => criterion.includes("word error")),
     );
@@ -302,6 +314,11 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
     );
     assert.equal(payload.reviewHandoff.nextEvidenceOwner, "agentic_contact_center");
+    assert.deepEqual(payload.strictArtifactVerification, {
+      requiredForClose: true,
+      verified: false,
+      reason: "attach_real_capture_replay_before_strict_artifact_verification",
+    });
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 
@@ -425,6 +442,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-template can inclu
       contract: {
         fixtureManifestPath: string;
         strictArtifactFields: string[];
+        strictArtifactChecks: string[];
         minimumPassingCriteria: string[];
       };
       validation: { command: string; route: string };
@@ -437,6 +455,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-template can inclu
       "artifacts/speech-enhancement-real-capture-replay.json",
     );
     assert.ok(payload.contract.strictArtifactFields.includes("audio_sha256"));
+    assert.ok(payload.contract.strictArtifactChecks.includes("sha256_matches"));
     assert.ok(payload.contract.minimumPassingCriteria.some((criterion) => criterion.includes("CPU p95")));
     assert.equal(payload.validation.route, "/api/realtime-shim/speech-enhancement-spike");
     assert.equal(
@@ -524,6 +543,7 @@ test("POST /api/realtime-shim/speech-enhancement-spike/capture-replay/validate g
       validation: { manifestOk: boolean; evaluation: { issueCloseReady: boolean } };
       reviewGate: { issueCloseReady: boolean; passingRealCaptureReplayIds: string[]; nextEvidence: string[] };
       runtimeReadiness: { status: string; liveDemoEligible: boolean; bypassReasons: string[] };
+      strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
     };
 
     assert.equal(response.statusCode, 200);
@@ -537,6 +557,11 @@ test("POST /api/realtime-shim/speech-enhancement-spike/capture-replay/validate g
     assert.equal(payload.runtimeReadiness.status, "ready");
     assert.equal(payload.runtimeReadiness.liveDemoEligible, true);
     assert.deepEqual(payload.runtimeReadiness.bypassReasons, []);
+    assert.deepEqual(payload.strictArtifactVerification, {
+      requiredForClose: true,
+      verified: false,
+      reason: "run_with_strict_capture_artifacts_before_closing",
+    });
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 

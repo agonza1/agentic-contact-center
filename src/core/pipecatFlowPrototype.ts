@@ -363,6 +363,10 @@ function isCapabilitiesQuestion(text: string): boolean {
   return /\b(what can you do|what do you do|how can you help|what are my options)\b/.test(text);
 }
 
+function isAffirmativeResponse(text: string): boolean {
+  return /\b(yes|yeah|yep|yup|please|sure|ok|okay|correct|sounds good|go ahead|do it|take over)\b/.test(text);
+}
+
 function buildFreeCallerAgentResponse(
   snapshot: CallSnapshot,
   text: string,
@@ -378,6 +382,7 @@ function buildFreeCallerAgentResponse(
   const cancellationReasonAsked =
     alreadyAsked(previousAgentTurns, "main reason you want to cancel") ||
     alreadyAsked(previousAgentTurns, "why you want to cancel");
+  const humanSpecialistAsked = alreadyAsked(previousAgentTurns, "human specialist to take over");
 
   if (isLowInformationTranscript(normalized)) {
     return {
@@ -420,6 +425,15 @@ function buildFreeCallerAgentResponse(
   }
 
   if (historyIntent === "cancellation" && cancellationReasonAsked) {
+    if (humanSpecialistAsked && isAffirmativeResponse(normalized)) {
+      return {
+        response:
+          "Understood. I have the cancellation reason and I am handing this to a human specialist now. I will stop automated responses here.",
+        done: true,
+        responseKind: "cancellation_handoff_confirmed",
+      };
+    }
+
     if (/\b(already said|said it|told you|i did)\b/.test(normalized)) {
       return {
         response: "You’re right, I have the cancellation reason. I can prepare safe options now or bring in a human specialist.",
@@ -534,6 +548,13 @@ export function applyFreeCallerPipecatFlow(snapshot: CallSnapshot, turn: Transcr
     goalSpecId: defaultAssertEvaluationSpec.id,
     responseKind,
   });
+
+  if (responseKind === "cancellation_handoff_confirmed") {
+    recordEvent(snapshot, "human_handoff_started", turn.timestamp, {
+      operatorChannel: snapshot.scenario.operatorChannel,
+      source: "free_caller_cancellation_confirmation",
+    });
+  }
 
   if (callerTurnCount === 1) {
     transitionFlowState(snapshot, "greet", turn.timestamp, "free_caller_connected");

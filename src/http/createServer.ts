@@ -31,6 +31,7 @@ import {
   buildSpeechEnhancementRuntimeReadiness,
   buildSpeechEnhancementReviewHandoff,
   buildSpeechEnhancementSpikeReport,
+  buildSpeechEnhancementStrictArtifactVerification,
   resolveSpeechEnhancementRuntimeConfig,
   validateSpeechEnhancementCaptureReplayManifest,
 } from "../core/speechEnhancementSpike";
@@ -1101,7 +1102,7 @@ function buildOperatorConsoleHtml(): string {
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 3500, voiceStatus: "Voice disconnected", transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
     const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve", deny_offer: "Deny", takeover: "Barge In", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
@@ -1225,6 +1226,90 @@ function buildOperatorConsoleHtml(): string {
       if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); const message = payload.error || "Caller turn failed"; setStatus(message); throw new Error(message); }
     }
     function voiceBridgeUrl() { return "ws://" + window.location.hostname + ":8765"; }
+    function voiceBridgeStatusClass() {
+      if (state.voiceBridge.status === "running") return "badge ok";
+      if (state.voiceBridge.status === "checking") return "badge";
+      if (state.voiceBridge.status === "offline") return "badge warn";
+      return "badge";
+    }
+    function voiceBridgeStatusLabel() {
+      if (state.voiceBridge.status === "running") return "Bridge running";
+      if (state.voiceBridge.status === "checking") return "Checking bridge";
+      if (state.voiceBridge.status === "offline") return "Bridge offline";
+      return "Bridge unknown";
+    }
+    function updateVoiceBridgeStatus(status, detail) {
+      state.voiceBridge.status = status;
+      state.voiceBridge.detail = detail;
+      state.voiceBridge.checkedAt = new Date().toLocaleTimeString();
+      const badge = document.getElementById("voice-bridge-status");
+      const detailNode = document.getElementById("voice-bridge-detail");
+      if (badge) {
+        badge.className = voiceBridgeStatusClass();
+        badge.textContent = voiceBridgeStatusLabel();
+      }
+      if (detailNode) {
+        detailNode.textContent = state.voiceBridge.detail + " | last check " + state.voiceBridge.checkedAt;
+      }
+    }
+    async function probeVoiceBridge(options) {
+      if (state.voiceBridge.probing) return;
+      const now = Date.now();
+      if (!(options && options.force) && state.voiceBridge.lastProbeAt && now - state.voiceBridge.lastProbeAt < 10000) return;
+      state.voiceBridge.probing = true;
+      state.voiceBridge.lastProbeAt = now;
+      updateVoiceBridgeStatus("checking", "Opening " + voiceBridgeUrl());
+      await new Promise(function(resolve) {
+        let done = false;
+        const ws = new WebSocket(voiceBridgeUrl());
+        const timer = window.setTimeout(function() {
+          finish("offline", "No ready message from " + voiceBridgeUrl() + ". Run npm run pipecat:voice.");
+        }, 1600);
+        function finish(status, detail) {
+          if (done) return;
+          done = true;
+          window.clearTimeout(timer);
+          try { ws.close(); } catch (error) {}
+          state.voiceBridge.probing = false;
+          updateVoiceBridgeStatus(status, detail);
+          resolve();
+        }
+        ws.onmessage = function(event) {
+          try {
+            const payload = JSON.parse(event.data);
+            if (payload.type === "ready" && payload.ok) {
+              const version = payload.pipecat && payload.pipecat.pipecatVersion ? "pipecat " + payload.pipecat.pipecatVersion : "ready";
+              finish("running", "Connected to " + voiceBridgeUrl() + " (" + version + ")");
+              return;
+            }
+          } catch (error) {}
+          finish("running", "Connected to " + voiceBridgeUrl());
+        };
+        ws.onopen = function() {
+          window.setTimeout(function() {
+            finish("running", "WebSocket opened at " + voiceBridgeUrl());
+          }, 500);
+        };
+        ws.onerror = function() {
+          finish("offline", "Cannot reach " + voiceBridgeUrl() + ". Run npm run pipecat:voice.");
+        };
+        ws.onclose = function() {
+          finish("offline", "Cannot reach " + voiceBridgeUrl() + ". Run npm run pipecat:voice.");
+        };
+      });
+    }
+    function startVoiceBridgeProbing() {
+      if (state.voiceBridgeTimer) return;
+      function tick() {
+        state.voiceBridgeTimer = null;
+        probeVoiceBridge({ force: true })
+          .catch(function(error) { setStatus(error.message); })
+          .finally(function() {
+            state.voiceBridgeTimer = window.setTimeout(tick, state.voiceBridgeIntervalMs);
+          });
+      }
+      tick();
+    }
     function playAgentAudio(agentAudio, onEnded) {
       if (!agentAudio || !agentAudio.base64) { if (onEnded) onEnded(); return; }
       const audio = new Audio("data:" + (agentAudio.contentType || "audio/wav") + ";base64," + agentAudio.base64);
@@ -1290,6 +1375,7 @@ function buildOperatorConsoleHtml(): string {
       const ws = new WebSocket(voiceBridgeUrl());
       state.voiceWs = ws;
       ws.onopen = function() {
+        updateVoiceBridgeStatus("running", "Connected to " + voiceBridgeUrl());
         ws.send(JSON.stringify({ type: "start", accUrl: window.location.origin, callId: activeCall ? activeCall.session.callId : null }));
         state.voiceConnecting = false;
         state.voiceStatus = "Connected to Pipecat voice bridge";
@@ -1324,8 +1410,8 @@ function buildOperatorConsoleHtml(): string {
           if (!state.voiceMuted) startVoiceSegment().catch(function(error) { setStatus(error.message); });
         }
       };
-      ws.onclose = function() { state.voiceConnecting = false; state.voiceProcessing = false; state.voiceMuted = true; stopVoiceStream(); if (state.voiceWs === ws) state.voiceWs = null; state.voiceStatus = "Pipecat voice bridge disconnected"; setStatus("Pipecat voice bridge disconnected"); };
-      ws.onerror = function() { state.voiceConnecting = false; state.voiceStatus = "Pipecat voice bridge unavailable. Run npm run pipecat:voice"; setStatus(state.voiceStatus); };
+      ws.onclose = function() { state.voiceConnecting = false; state.voiceProcessing = false; state.voiceMuted = true; stopVoiceStream(); if (state.voiceWs === ws) state.voiceWs = null; state.voiceStatus = "Pipecat voice bridge disconnected"; updateVoiceBridgeStatus("offline", "Pipecat voice bridge disconnected"); setStatus("Pipecat voice bridge disconnected"); };
+      ws.onerror = function() { state.voiceConnecting = false; state.voiceStatus = "Pipecat voice bridge unavailable. Run npm run pipecat:voice"; updateVoiceBridgeStatus("offline", "Cannot reach " + voiceBridgeUrl() + ". Run npm run pipecat:voice."); setStatus(state.voiceStatus); };
     }
     async function togglePipecatMute() {
       if (!state.voiceWs || state.voiceWs.readyState !== WebSocket.OPEN) {
@@ -1376,7 +1462,8 @@ function buildOperatorConsoleHtml(): string {
     }
     function voiceControlsHtml() {
       const muteLabel = state.voiceMuted ? "Unmute Caller" : "Mute Caller";
-      return '<section class="section"><h3 class="section-title">Pipecat Voice Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute">' + muteLabel + '</button></div><span class="status">' + escapeHtml(state.voiceStatus) + '</span><span class="meta">Requires local bridge: npm run pipecat:voice. Audio path is browser mic -> Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS say local TTS -> browser playback.</span></section><section class="section diagram"><h3 class="section-title">Demo Flow</h3><svg class="demo-flow-svg" viewBox="0 0 980 360" role="img" aria-label="Caller audio flows through Pipecat, local STT, the agent, local TTS, operator controls, and ASSERT artifacts" preserveAspectRatio="xMidYMid meet"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0969da"/></marker><style>.node{fill:#ffffff;stroke:#d0d7de;stroke-width:2}.primaryNode{fill:#ddf4ff;stroke:#0969da;stroke-width:2}.artifactNode{fill:#dafbe1;stroke:#1a7f37;stroke-width:2}.label{font:700 17px system-ui,sans-serif;fill:#24292f}.small{font:600 13px system-ui,sans-serif;fill:#57606a}.line{stroke:#0969da;stroke-width:3;fill:none;marker-end:url(#arrow)}.softLine{stroke:#57606a;stroke-width:2.5;stroke-dasharray:7 6;fill:none;marker-end:url(#arrow)}</style></defs><rect class="primaryNode" x="30" y="58" width="145" height="82" rx="10"/><text class="label" x="103" y="92" text-anchor="middle">Caller</text><text class="small" x="103" y="116" text-anchor="middle">browser mic</text><rect class="node" x="225" y="58" width="150" height="82" rx="10"/><text class="label" x="300" y="88" text-anchor="middle">Pipecat</text><text class="small" x="300" y="112" text-anchor="middle">voice bridge</text><rect class="node" x="425" y="58" width="150" height="82" rx="10"/><text class="label" x="500" y="88" text-anchor="middle">Local STT</text><text class="small" x="500" y="112" text-anchor="middle">MLX Whisper</text><rect class="primaryNode" x="625" y="58" width="150" height="82" rx="10"/><text class="label" x="700" y="88" text-anchor="middle">Agent</text><text class="small" x="700" y="112" text-anchor="middle">goal + memory</text><rect class="node" x="825" y="58" width="125" height="82" rx="10"/><text class="label" x="888" y="88" text-anchor="middle">Local TTS</text><text class="small" x="888" y="112" text-anchor="middle">macOS say</text><rect class="artifactNode" x="515" y="225" width="170" height="82" rx="10"/><text class="label" x="600" y="255" text-anchor="middle">Artifacts</text><text class="small" x="600" y="279" text-anchor="middle">proof + transcript</text><rect class="artifactNode" x="742" y="225" width="178" height="82" rx="10"/><text class="label" x="831" y="255" text-anchor="middle">ASSERT</text><text class="small" x="831" y="279" text-anchor="middle">viewer + eval spec</text><rect class="node" x="210" y="225" width="180" height="82" rx="10"/><text class="label" x="300" y="255" text-anchor="middle">Operator</text><text class="small" x="300" y="279" text-anchor="middle">listen / steer</text><path class="line" d="M175 99 H225"/><path class="line" d="M375 99 H425"/><path class="line" d="M575 99 H625"/><path class="line" d="M775 99 H825"/><path class="line" d="M888 140 C888 178 816 178 775 140"/><path class="line" d="M700 140 V225"/><path class="line" d="M685 266 H742"/><path class="softLine" d="M390 266 C470 266 520 185 625 120"/></svg></section>';
+      const bridgeDetail = state.voiceBridge.detail + (state.voiceBridge.checkedAt ? " | last check " + state.voiceBridge.checkedAt : "");
+      return '<section class="section"><h3 class="section-title">Pipecat Voice Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute">' + muteLabel + '</button></div><div class="actions"><span id="voice-bridge-status" class="' + voiceBridgeStatusClass() + '">' + escapeHtml(voiceBridgeStatusLabel()) + '</span><span class="status">' + escapeHtml(state.voiceStatus) + '</span></div><span class="meta" id="voice-bridge-detail">' + escapeHtml(bridgeDetail) + '</span><span class="meta">Requires local bridge: npm run pipecat:voice. Audio path is browser mic -> Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS say local TTS -> browser playback.</span></section><section class="section diagram"><h3 class="section-title">Demo Flow</h3><svg class="demo-flow-svg" viewBox="0 0 980 360" role="img" aria-label="Caller audio flows through Pipecat, local STT, the agent, local TTS, operator controls, and ASSERT artifacts" preserveAspectRatio="xMidYMid meet"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0969da"/></marker><style>.node{fill:#ffffff;stroke:#d0d7de;stroke-width:2}.primaryNode{fill:#ddf4ff;stroke:#0969da;stroke-width:2}.artifactNode{fill:#dafbe1;stroke:#1a7f37;stroke-width:2}.label{font:700 17px system-ui,sans-serif;fill:#24292f}.small{font:600 13px system-ui,sans-serif;fill:#57606a}.line{stroke:#0969da;stroke-width:3;fill:none;marker-end:url(#arrow)}.softLine{stroke:#57606a;stroke-width:2.5;stroke-dasharray:7 6;fill:none;marker-end:url(#arrow)}</style></defs><rect class="primaryNode" x="30" y="58" width="145" height="82" rx="10"/><text class="label" x="103" y="92" text-anchor="middle">Caller</text><text class="small" x="103" y="116" text-anchor="middle">browser mic</text><rect class="node" x="225" y="58" width="150" height="82" rx="10"/><text class="label" x="300" y="88" text-anchor="middle">Pipecat</text><text class="small" x="300" y="112" text-anchor="middle">voice bridge</text><rect class="node" x="425" y="58" width="150" height="82" rx="10"/><text class="label" x="500" y="88" text-anchor="middle">Local STT</text><text class="small" x="500" y="112" text-anchor="middle">MLX Whisper</text><rect class="primaryNode" x="625" y="58" width="150" height="82" rx="10"/><text class="label" x="700" y="88" text-anchor="middle">Agent</text><text class="small" x="700" y="112" text-anchor="middle">goal + memory</text><rect class="node" x="825" y="58" width="125" height="82" rx="10"/><text class="label" x="888" y="88" text-anchor="middle">Local TTS</text><text class="small" x="888" y="112" text-anchor="middle">macOS say</text><rect class="artifactNode" x="515" y="225" width="170" height="82" rx="10"/><text class="label" x="600" y="255" text-anchor="middle">Artifacts</text><text class="small" x="600" y="279" text-anchor="middle">proof + transcript</text><rect class="artifactNode" x="742" y="225" width="178" height="82" rx="10"/><text class="label" x="831" y="255" text-anchor="middle">ASSERT</text><text class="small" x="831" y="279" text-anchor="middle">viewer + eval spec</text><rect class="node" x="210" y="225" width="180" height="82" rx="10"/><text class="label" x="300" y="255" text-anchor="middle">Operator</text><text class="small" x="300" y="279" text-anchor="middle">listen / steer</text><path class="line" d="M175 99 H225"/><path class="line" d="M375 99 H425"/><path class="line" d="M575 99 H625"/><path class="line" d="M775 99 H825"/><path class="line" d="M888 140 C888 178 816 178 775 140"/><path class="line" d="M700 140 V225"/><path class="line" d="M685 266 H742"/><path class="softLine" d="M390 266 C470 266 520 185 625 120"/></svg></section>';
     }
     function attachVoiceControls() {
       const connect = document.getElementById("voice-connect");
@@ -1412,7 +1499,7 @@ function buildOperatorConsoleHtml(): string {
         const title = titleText ? ' title="' + escapeHtml(titleText) + '"' : "";
         return '<button type="button" data-action="' + action + '" class="' + cssClass + '" ' + disabled + title + '>' + escapeHtml(labels[action] || action.replace(/_/g, " ")) + '</button>';
       }).join("");
-      const transcriptHtml = call.transcript.slice(-10).map(function(turn) {
+      const transcriptHtml = call.transcript.map(function(turn) {
         return '<div class="turn ' + escapeHtml(turn.speaker) + '"><b>' + escapeHtml(turn.speaker) + '</b><span>' + escapeHtml(turn.text) + '</span></div>';
       }).join("");
       const pendingHtml = call.actionState.pendingApprovalDetails ? '<div class="metric"><span class="meta">Approval</span><strong>' + escapeHtml(labels[call.actionState.pendingApprovalDetails.recommendedAction] || call.actionState.pendingApprovalDetails.recommendedAction.replace(/_/g, " ")) + '</strong><span class="meta">' + escapeHtml(call.actionState.pendingApprovalDetails.approvalPrompt) + '</span><span class="meta">' + escapeHtml(call.actionState.pendingApprovalDetails.reason || "no reason") + '</span></div>' : '';
@@ -1481,7 +1568,9 @@ function buildOperatorConsoleHtml(): string {
     document.getElementById("script-progress-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("script-max-progress-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("clear-filters").addEventListener("click", function() { document.getElementById("attention-filter").checked = false; document.getElementById("latency-over-budget-filter").checked = false; document.getElementById("flow-filter").value = ""; document.getElementById("fallback-filter").value = ""; document.getElementById("fallback-source-filter").value = ""; document.getElementById("fallback-reason-filter").value = ""; document.getElementById("tool-filter").value = ""; document.getElementById("script-completed-filter").value = ""; document.getElementById("script-progress-filter").value = ""; document.getElementById("script-max-progress-filter").value = ""; document.getElementById("transcript-filter").value = ""; refresh().catch(function(error) { setStatus(error.message); }); });
-    refresh().catch(function(error) { setStatus(error.message); });
+    refresh()
+      .then(startVoiceBridgeProbing)
+      .catch(function(error) { setStatus(error.message); startVoiceBridgeProbing(); });
   </script>
 </body>
 </html>`;
@@ -3915,6 +4004,9 @@ async function routeRequest(
       validation,
       reviewGate: buildSpeechEnhancementReviewGate(report),
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
+      strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification([
+        { strictArtifactsVerified: false },
+      ]),
     });
     return;
   }
@@ -3931,6 +4023,7 @@ async function routeRequest(
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
       reviewGate: buildSpeechEnhancementReviewGate(report),
       reviewHandoff: buildSpeechEnhancementReviewHandoff(),
+      strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification(),
     });
     return;
   }

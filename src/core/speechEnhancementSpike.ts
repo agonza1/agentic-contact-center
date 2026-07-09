@@ -103,6 +103,15 @@ export interface SpeechEnhancementCaptureReplayContract {
   fixtureManifestPath: "artifacts/speech-enhancement-real-capture-replay.json";
   requiredFields: string[];
   strictArtifactFields: string[];
+  strictArtifactChecks: Array<
+    | "exists"
+    | "sha256_matches"
+    | "artifact_uri_is_workspace_relative"
+    | "source_manifest_json_object"
+    | "source_manifest_identity_fields_present"
+    | "source_manifest_capture_id_matches"
+    | "source_manifest_audio_source_uri_matches"
+  >;
   comparisonPairs: Array<"baseline_rtc_asr" | "enhanced_rtc_asr">;
   minimumPassingCriteria: string[];
 }
@@ -236,6 +245,19 @@ export interface SpeechEnhancementReviewHandoff {
   validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
   strictValidationCommand: "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json";
   nextEvidenceOwner: "agentic_contact_center";
+}
+
+export interface SpeechEnhancementStrictArtifactVerificationSource {
+  strictArtifactsVerified: boolean;
+}
+
+export interface SpeechEnhancementStrictArtifactVerification {
+  requiredForClose: true;
+  verified: boolean;
+  reason:
+    | "all_loaded_capture_replay_artifacts_verified"
+    | "run_with_strict_capture_artifacts_before_closing"
+    | "attach_real_capture_replay_before_strict_artifact_verification";
 }
 
 export interface SpeechEnhancementReviewGate {
@@ -461,6 +483,13 @@ export function validateSpeechEnhancementCaptureReplayManifest(
   }
   if (!hasArtifactUriField(manifest, "source_manifest_uri")) {
     missingFields.push("source_manifest_uri.artifacts_relative_path_required");
+  }
+  if (
+    hasArtifactUriField(manifest, "audio_source_uri") &&
+    hasArtifactUriField(manifest, "source_manifest_uri") &&
+    manifest.audio_source_uri === manifest.source_manifest_uri
+  ) {
+    missingFields.push("source_manifest_uri.distinct_from_audio_source_uri");
   }
   if (hasStringField(manifest, "capture_id") && !realNoisyLocalSipCaptureIdPattern.test(manifest.capture_id as string)) {
     missingFields.push("capture_id.real_noisy_local_sip_required");
@@ -888,7 +917,21 @@ export function buildSpeechEnhancementSpikeReport(
         "enhanced_rtc_asr.cpu_cost_estimate",
         "latency_setting_ms",
       ],
-      strictArtifactFields: ["audio_sha256", "source_manifest_sha256"],
+      strictArtifactFields: [
+        "audio_source_uri",
+        "audio_sha256",
+        "source_manifest_uri",
+        "source_manifest_sha256",
+      ],
+      strictArtifactChecks: [
+        "exists",
+        "sha256_matches",
+        "artifact_uri_is_workspace_relative",
+        "source_manifest_json_object",
+        "source_manifest_identity_fields_present",
+        "source_manifest_capture_id_matches",
+        "source_manifest_audio_source_uri_matches",
+      ],
       comparisonPairs: ["baseline_rtc_asr", "enhanced_rtc_asr"],
       minimumPassingCriteria: [
         "enhanced word error estimate improves over baseline",
@@ -989,8 +1032,10 @@ export function buildSpeechEnhancementHealthSummary(): {
   missingEvidence: string[];
   blockers: string[];
   nextEvidence: string[];
+  nextAction: SpeechEnhancementReviewGate["nextAction"];
   passingRealCaptureReplayIds: string[];
   blockedRealCaptureReplayIds: string[];
+  strictArtifactVerification: SpeechEnhancementStrictArtifactVerification;
   captureReplayFixturePath: SpeechEnhancementCaptureReplayContract["fixtureManifestPath"];
   validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
   strictValidationCommand: SpeechEnhancementReviewHandoff["strictValidationCommand"];
@@ -998,6 +1043,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   const report = buildSpeechEnhancementSpikeReport();
   const reviewGate = buildSpeechEnhancementReviewGate(report);
   const handoff = buildSpeechEnhancementReviewHandoff();
+  const strictArtifactVerification = buildSpeechEnhancementStrictArtifactVerification();
   const runtimeConfig = resolveSpeechEnhancementRuntimeConfig({
     featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
     latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
@@ -1032,8 +1078,10 @@ export function buildSpeechEnhancementHealthSummary(): {
     missingEvidence: reviewGate.nextEvidence,
     blockers: reviewGate.blockers,
     nextEvidence: reviewGate.nextEvidence,
+    nextAction: reviewGate.nextAction,
     passingRealCaptureReplayIds: reviewGate.passingRealCaptureReplayIds,
     blockedRealCaptureReplayIds: reviewGate.blockedRealCaptureReplayIds,
+    strictArtifactVerification,
     captureReplayFixturePath: report.captureReplayContract.fixtureManifestPath,
     validationCommand: handoff.validationCommand,
     strictValidationCommand: handoff.strictValidationCommand,
@@ -1049,6 +1097,24 @@ export function buildSpeechEnhancementReviewHandoff(): SpeechEnhancementReviewHa
     strictValidationCommand:
       "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
     nextEvidenceOwner: "agentic_contact_center",
+  };
+}
+
+export function buildSpeechEnhancementStrictArtifactVerification(
+  sources: SpeechEnhancementStrictArtifactVerificationSource[] = [],
+  strictCaptureArtifacts = false,
+): SpeechEnhancementStrictArtifactVerification {
+  const hasCaptureReplay = sources.length > 0;
+  const verified = hasCaptureReplay && strictCaptureArtifacts && sources.every((source) => source.strictArtifactsVerified);
+
+  return {
+    requiredForClose: true,
+    verified,
+    reason: verified
+      ? "all_loaded_capture_replay_artifacts_verified"
+      : hasCaptureReplay
+        ? "run_with_strict_capture_artifacts_before_closing"
+        : "attach_real_capture_replay_before_strict_artifact_verification",
   };
 }
 

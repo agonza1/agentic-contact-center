@@ -12,6 +12,7 @@ const {
   buildSpeechEnhancementReviewHandoff,
   buildSpeechEnhancementRuntimeReadiness,
   buildSpeechEnhancementSpikeReport,
+  buildSpeechEnhancementStrictArtifactVerification,
   resolveSpeechEnhancementRuntimeConfig,
   validateSpeechEnhancementCaptureReplayManifest,
 } = require("../dist/src/core/speechEnhancementSpike.js");
@@ -97,12 +98,13 @@ async function loadCaptureReplayMetrics() {
     seenCaptureIds.set(validation.metric.captureId, captureReplayPath);
 
     if (strictCaptureArtifacts) {
-      await assertCaptureArtifact(payload.audio_source_uri, payload.audio_sha256, captureReplayPath, "audio_source_uri");
+      await assertCaptureArtifact(payload.audio_source_uri, payload.audio_sha256, captureReplayPath, "audio_source_uri", payload);
       await assertCaptureArtifact(
         payload.source_manifest_uri,
         payload.source_manifest_sha256,
         captureReplayPath,
         "source_manifest_uri",
+        payload,
       );
     }
 
@@ -169,7 +171,7 @@ async function collectCaptureReplayManifestPaths(directoryPath) {
   return manifestPaths.sort();
 }
 
-async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayPath, field) {
+async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayPath, field, captureReplay) {
   const artifactPath = path.resolve(process.cwd(), artifactUri);
   let contents;
 
@@ -191,6 +193,47 @@ async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayP
   if (actualSha256 !== expectedSha256.toLowerCase()) {
     throw new Error(
       `Capture replay artifact hash mismatch for ${field}: ${captureReplayPath}: expected ${expectedSha256}, got ${actualSha256}`,
+    );
+  }
+
+  if (field === "source_manifest_uri") {
+    assertSourceManifestJson(contents, captureReplayPath, artifactUri, captureReplay);
+  }
+}
+
+function assertSourceManifestJson(contents, captureReplayPath, artifactUri, captureReplay) {
+  let sourceManifest;
+
+  try {
+    sourceManifest = JSON.parse(contents.toString("utf8"));
+  } catch {
+    throw new Error(`Invalid source manifest JSON for strict capture replay artifact: ${captureReplayPath}: ${artifactUri}`);
+  }
+
+  if (typeof sourceManifest !== "object" || sourceManifest === null || Array.isArray(sourceManifest)) {
+    throw new Error(`Invalid source manifest JSON object for strict capture replay artifact: ${captureReplayPath}: ${artifactUri}`);
+  }
+
+  assertRequiredSourceManifestField(sourceManifest, "capture_id", captureReplay.capture_id, captureReplayPath, artifactUri);
+  assertRequiredSourceManifestField(
+    sourceManifest,
+    "audio_source_uri",
+    captureReplay.audio_source_uri,
+    captureReplayPath,
+    artifactUri,
+  );
+}
+
+function assertRequiredSourceManifestField(sourceManifest, field, expectedValue, captureReplayPath, artifactUri) {
+  if (typeof sourceManifest[field] !== "string" || sourceManifest[field].trim().length === 0) {
+    throw new Error(
+      `Missing source manifest ${field} for strict capture replay artifact: ${captureReplayPath}: ${artifactUri}`,
+    );
+  }
+
+  if (sourceManifest[field] !== expectedValue) {
+    throw new Error(
+      `Source manifest ${field} mismatch for strict capture replay artifact: ${captureReplayPath}: ${artifactUri}: expected ${expectedValue}, got ${sourceManifest[field]}`,
     );
   }
 }
@@ -267,13 +310,15 @@ function buildMarkdownReport(artifact) {
   });
   const replayEvidence = reviewGate.realCaptureReplayEvidence.map((evidence) => {
     const source = evidence.audioSourceUri ?? "missing audio source";
+    const audioSha256 = evidence.audioSha256 ?? "missing audio sha256";
     const sourceManifest = evidence.sourceManifestUri ?? "missing source manifest";
+    const sourceManifestSha256 = evidence.sourceManifestSha256 ?? "missing source manifest sha256";
     const runtimeHost = evidence.runtimeHost ?? "missing runtime host";
 
     const failingEvidence = evidence.failingEvidence.length > 0 ? evidence.failingEvidence.join(", ") : "none";
     const reasons = evidence.reasons.length > 0 ? evidence.reasons.join(", ") : "none";
 
-    return `- ${evidence.captureId}: ${evidence.status}; wer_delta=${evidence.wordErrorRateDelta}; latency_headroom_ms=${evidence.addedLatencyBudgetHeadroomMs}; cpu_headroom_percent=${evidence.cpuP95BudgetHeadroomPercent}; failing_evidence=${failingEvidence}; reasons=${reasons}; audio=${source}; source_manifest=${sourceManifest}; runtime_host=${runtimeHost}`;
+    return `- ${evidence.captureId}: ${evidence.status}; wer_delta=${evidence.wordErrorRateDelta}; latency_headroom_ms=${evidence.addedLatencyBudgetHeadroomMs}; cpu_headroom_percent=${evidence.cpuP95BudgetHeadroomPercent}; failing_evidence=${failingEvidence}; reasons=${reasons}; audio=${source}; audio_sha256=${audioSha256}; source_manifest=${sourceManifest}; source_manifest_sha256=${sourceManifestSha256}; runtime_host=${runtimeHost}`;
   });
   const captureReplaySources = artifact.captureReplaySources.map((source) => {
     const strictArtifacts = source.strictArtifactsVerified ? "verified" : "not_verified";
@@ -309,7 +354,9 @@ function buildMarkdownReport(artifact) {
     `- Real noisy capture replays: ${report.replayCoverage.realNoisyCaptureReplayCount}`,
     `- Baseline/enhanced pairs: ${report.replayCoverage.baselineEnhancedPairs}`,
     `- Live demo gate: ${report.replayCoverage.liveDemoGate}`,
-    `- Strict artifact hashes: ${report.captureReplayContract.strictArtifactFields.join(", ")}`,
+    `- Strict artifact fields: ${report.captureReplayContract.strictArtifactFields.join(", ")}`,
+    `- Strict artifact verification: ${artifact.strictArtifactVerification.verified ? "verified" : "not_verified"}`,
+    `- Strict artifact verification reason: ${artifact.strictArtifactVerification.reason}`,
     `- Capture replay source digest: ${artifact.captureReplaySourceDigest}`,
     `- Passing real replay ids: ${reviewGate.passingRealCaptureReplayIds.join(", ") || "None"}`,
     `- Blocked real replay ids: ${reviewGate.blockedRealCaptureReplayIds.join(", ") || "None"}`,
@@ -376,6 +423,7 @@ async function main() {
   const markdownOutputPath = resolveMarkdownOutputPath(outputPath);
   const captureReplayTemplateOutputPath = resolveCaptureReplayTemplateOutputPath();
   const requireCloseReady = hasArg("--require-close-ready");
+  const strictCaptureArtifacts = hasArg("--strict-capture-artifacts");
   const captureReplayInputs = await loadCaptureReplayMetrics();
   const report = buildSpeechEnhancementSpikeReport({ captureReplayMetrics: captureReplayInputs.metrics });
   const runtimeConfig = resolveSpeechEnhancementRuntimeConfig({
@@ -398,6 +446,10 @@ async function main() {
     runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
     captureReplaySources: captureReplayInputs.sources,
     captureReplaySourceDigest: buildCaptureReplaySourceDigest(captureReplayInputs.sources),
+    strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification(
+      captureReplayInputs.sources,
+      strictCaptureArtifacts,
+    ),
     handoff: buildSpeechEnhancementReviewHandoff(),
     reviewGate: buildSpeechEnhancementReviewGate(report),
   };
@@ -425,6 +477,7 @@ async function main() {
     checks: artifact.reviewGate.checks,
     failureReasons: artifact.reviewGate.failureReasons,
     blockers: artifact.reviewGate.blockers,
+    strictArtifactVerification: artifact.strictArtifactVerification,
     nextEvidence: artifact.reviewGate.nextEvidence,
     nextAction: artifact.reviewGate.nextAction,
     realCaptureReplayIds: artifact.reviewGate.realCaptureReplayIds,
@@ -433,6 +486,7 @@ async function main() {
     realCaptureReplayEvidence: artifact.reviewGate.realCaptureReplayEvidence,
     captureReplaySources: artifact.captureReplaySources,
     captureReplaySourceDigest: artifact.captureReplaySourceDigest,
+    strictArtifactChecks: report.captureReplayContract.strictArtifactChecks,
   };
 
   console.log(JSON.stringify(summary));

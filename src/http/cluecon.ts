@@ -292,6 +292,10 @@ function buildBasePayload(
     ok: true,
     route: "/api/cluecon",
     issue: "agonza1/agentic-contact-center#177",
+    sourceRepos: {
+      agenticContactCenter: "https://github.com/agonza1/agentic-contact-center",
+      rtcAsr: "https://github.com/agonza1/rtc-asr",
+    },
     workboardCard: "85ea5a1a-3a68-4e5d-ac1d-10d5851017ae",
     activeWorkboardCard: clueConProofEvalCard,
     title: "From SIP to Tokens: Deterministic Telephony Meets Real-Time Voice AI",
@@ -321,6 +325,7 @@ function buildBasePayload(
       {
         id: "acc",
         label: "ACC app",
+        repoUrl: "https://github.com/agonza1/agentic-contact-center",
         status: "ready",
         detail: `${config.demoName} HTTP runtime is serving local demo and proof routes.`,
         caveat: "Local process only; not a hosted production deployment.",
@@ -339,6 +344,7 @@ function buildBasePayload(
       {
         id: "rtc_asr",
         label: "rtc-asr Local STT v1",
+        repoUrl: "https://github.com/agonza1/rtc-asr",
         status: rtcAsrProbe?.status ?? "fixture",
         detail: rtcAsrProbe?.detail ?? "Readiness and stream events are shown from fixture mode unless rtc-asr is reachable locally.",
         caveat: rtcAsrProbe?.configured
@@ -552,7 +558,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     let data = window.__CLUECON__;
     const state = { slide: 0, proof: null, brain: JSON.parse(JSON.stringify(data.brainBlocks)), brainSession: null };
     function esc(value) { return String(value).replace(/[&<>\"]/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;"); }
-    function renderReadiness() { document.getElementById("readiness").innerHTML = data.readiness.map(item => '<article class="card metric"><span class="badge ' + esc(item.status) + '">' + esc(item.status) + '</span><strong>' + esc(item.label) + '</strong><span class="muted">' + esc(item.detail) + '</span><span class="muted">' + esc(item.caveat) + '</span></article>').join(""); }
+    function renderReadiness() { document.getElementById("readiness").innerHTML = data.readiness.map(item => '<article class="card metric"><span class="badge ' + esc(item.status) + '">' + esc(item.status) + '</span><strong>' + esc(item.label) + '</strong>' + (item.repoUrl ? '<a class="muted" href="' + esc(item.repoUrl) + '" target="_blank" rel="noreferrer">GitHub repo</a>' : '') + '<span class="muted">' + esc(item.detail) + '</span><span class="muted">' + esc(item.caveat) + '</span></article>').join(""); }
     function renderBrain() { const session = state.brainSession ? state.brainSession.session : { id: "cluecon-agent-brain-demo", activeTool: "operator.approve_offer", policyState: "policy_hold_requires_operator_approval" }; document.getElementById("brain-state").innerHTML = '<span class="badge ready">session scoped</span><h3>' + esc(session.id) + '</h3><span class="muted">Tool: ' + esc(session.activeTool) + ' / Policy: ' + esc(session.policyState) + '</span>'; document.getElementById("brain").innerHTML = state.brain.map((block, index) => '<article class="plain"><h3>' + esc(block.file) + '</h3><textarea data-brain="' + index + '">' + esc(block.summary) + '</textarea><span class="muted">Affects: ' + esc(block.affects.join(", ")) + '</span></article>').join(""); document.querySelectorAll("textarea[data-brain]").forEach(input => input.addEventListener("change", () => { state.brain[Number(input.dataset.brain)].summary = input.value; })); }
     function renderAsrPanel() { document.getElementById("asr-events").innerHTML = data.asrPanel.fixtureEvents.map(event => '<article class="plain"><span class="badge ' + (event.state === "error" ? "blocked" : "fixture") + '">' + esc(event.state) + '</span><h3>' + esc(event.text) + '</h3><span class="muted">Latency: ' + esc(event.latencyMs === null ? "unavailable" : event.latencyMs + " ms") + '</span></article>').join(""); document.getElementById("asr-benchmarks").innerHTML = ['<article class="card metric"><span class="muted">Contract</span><strong>' + esc(data.asrPanel.contract) + '</strong><span class="muted">' + esc(data.asrPanel.endpointHints.join(" / ")) + '</span></article>'].concat(data.asrPanel.benchmarks.map(item => '<article class="card metric"><span class="muted">' + esc(item.label) + '</span><strong>' + esc(item.value) + '</strong><span class="muted">' + esc(item.caveat) + '</span></article>')).join(""); }
     function renderProofCards() { document.getElementById("proof-cards").innerHTML = data.proofPreview.includes.map(item => '<article class="card metric"><span class="muted">Proof field</span><strong>' + esc(item) + '</strong></article>').join(""); document.getElementById("eval-scorecard").innerHTML = data.proofPreview.scorecardChecks.map(item => '<div class="event"><strong>' + esc(item) + '</strong><span class="muted">Waiting for eval proof run.</span></div>').join(""); }

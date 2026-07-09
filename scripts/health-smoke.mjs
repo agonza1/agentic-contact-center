@@ -39,6 +39,9 @@ function parseArgs(argv) {
     expectSpeechEnhancementCloseGateRequiredLatencyMs: undefined,
     expectSpeechEnhancementCloseGateMaxAddedTurnLatencyMsP95: undefined,
     expectSpeechEnhancementCloseGateMaxCpuPercentP95: undefined,
+    expectSpeechEnhancementStrictArtifactRequiredForClose: undefined,
+    expectSpeechEnhancementStrictArtifactVerified: undefined,
+    expectSpeechEnhancementStrictArtifactReason: undefined,
     expectRuntimeSeams: [],
     expectPipecatTools: [],
     expectSpeechEnhancementMissingEvidence: [],
@@ -89,6 +92,9 @@ function parseArgs(argv) {
     '--expect-speech-enhancement-close-gate-required-latency-ms',
     '--expect-speech-enhancement-close-gate-max-added-turn-latency-ms-p95',
     '--expect-speech-enhancement-close-gate-max-cpu-percent-p95',
+    '--expect-speech-enhancement-strict-artifact-required-for-close',
+    '--expect-speech-enhancement-strict-artifact-verified',
+    '--expect-speech-enhancement-strict-artifact-reason',
     '--expect-speech-enhancement-missing-evidence',
     '--expect-speech-enhancement-blocker',
     '--expect-speech-enhancement-passing-replay-id',
@@ -355,6 +361,24 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-speech-enhancement-strict-artifact-required-for-close' && next) {
+      args.expectSpeechEnhancementStrictArtifactRequiredForClose = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-strict-artifact-verified' && next) {
+      args.expectSpeechEnhancementStrictArtifactVerified = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-speech-enhancement-strict-artifact-reason' && next) {
+      args.expectSpeechEnhancementStrictArtifactReason = next;
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-speech-enhancement-missing-evidence' && next) {
       args.expectSpeechEnhancementMissingEvidence.push(next);
       index += 1;
@@ -445,6 +469,13 @@ function hasJsonExpectations(args) {
     args.expectSpeechEnhancementRuntimeLiveDemoEligible,
     args.expectSpeechEnhancementRuntimeLookaheadFrames,
     args.expectSpeechEnhancementRuntimeMaxBufferedAudioMs,
+    args.expectSpeechEnhancementCloseGateRequiredLatencyMs,
+    args.expectSpeechEnhancementCloseGateMaxAddedTurnLatencyMsP95,
+    args.expectSpeechEnhancementCloseGateMaxCpuPercentP95,
+    args.expectSpeechEnhancementRuntimeStatus,
+    args.expectSpeechEnhancementStrictArtifactRequiredForClose,
+    args.expectSpeechEnhancementStrictArtifactVerified,
+    args.expectSpeechEnhancementStrictArtifactReason,
   ].some((expectedValue) => expectedValue !== undefined)
     || args.expectProductionReadinessBlockers.length > 0
     || args.expectSpeechEnhancementRuntimeBypassReasons.length > 0
@@ -525,6 +556,9 @@ function validateNumberExpectations(args) {
     ['speech_enhancement_runtime_latency_ms', args.expectSpeechEnhancementRuntimeLatencyMs],
     ['speech_enhancement_runtime_lookahead_frames', args.expectSpeechEnhancementRuntimeLookaheadFrames],
     ['speech_enhancement_runtime_max_buffered_audio_ms', args.expectSpeechEnhancementRuntimeMaxBufferedAudioMs],
+    ['speech_enhancement_close_gate_required_latency_ms', args.expectSpeechEnhancementCloseGateRequiredLatencyMs],
+    ['speech_enhancement_close_gate_max_added_turn_latency_ms_p95', args.expectSpeechEnhancementCloseGateMaxAddedTurnLatencyMsP95],
+    ['speech_enhancement_close_gate_max_cpu_percent_p95', args.expectSpeechEnhancementCloseGateMaxCpuPercentP95],
   ];
 
   for (const [flagName, rawValue] of numberExpectations) {
@@ -550,6 +584,8 @@ function validateBooleanExpectations(args) {
     ['speech_enhancement_runtime_enabled', args.expectSpeechEnhancementRuntimeEnabled],
     ['speech_enhancement_issue_close_ready', args.expectSpeechEnhancementIssueCloseReady],
     ['speech_enhancement_runtime_live_demo_eligible', args.expectSpeechEnhancementRuntimeLiveDemoEligible],
+    ['speech_enhancement_strict_artifact_required_for_close', args.expectSpeechEnhancementStrictArtifactRequiredForClose],
+    ['speech_enhancement_strict_artifact_verified', args.expectSpeechEnhancementStrictArtifactVerified],
   ];
 
   for (const [flagName, rawValue] of booleanExpectations) {
@@ -851,6 +887,45 @@ async function getFailureReason(response, args) {
 
     if (!Array.isArray(replayIds) || !replayIds.includes(expectedReplayId)) {
       return `json_speechEnhancement_blockedRealCaptureReplayIds_missing(expected=${JSON.stringify(expectedReplayId)},actual=${JSON.stringify(replayIds)})`;
+    }
+  }
+
+  const strictArtifactVerification = payload.speechEnhancement && typeof payload.speechEnhancement === 'object'
+    && payload.speechEnhancement.strictArtifactVerification && typeof payload.speechEnhancement.strictArtifactVerification === 'object'
+    ? payload.speechEnhancement.strictArtifactVerification
+    : undefined;
+
+  const speechEnhancementStrictArtifactBooleanExpectations = [
+    [
+      'requiredForClose',
+      'speech_enhancement_strict_artifact_required_for_close',
+      args.expectSpeechEnhancementStrictArtifactRequiredForClose,
+    ],
+    ['verified', 'speech_enhancement_strict_artifact_verified', args.expectSpeechEnhancementStrictArtifactVerified],
+  ];
+
+  for (const [field, flagName, rawExpectedValue] of speechEnhancementStrictArtifactBooleanExpectations) {
+    if (rawExpectedValue === undefined) {
+      continue;
+    }
+
+    const parsedExpectation = parseBooleanExpectation(flagName, rawExpectedValue);
+    if (parsedExpectation.error) {
+      return parsedExpectation.error;
+    }
+
+    const actualValue = strictArtifactVerification ? strictArtifactVerification[field] : undefined;
+
+    if (actualValue !== parsedExpectation.expectedValue) {
+      return `json_speechEnhancement_strictArtifactVerification_${field}_mismatch(expected=${JSON.stringify(parsedExpectation.expectedValue)},actual=${JSON.stringify(actualValue)})`;
+    }
+  }
+
+  if (args.expectSpeechEnhancementStrictArtifactReason !== undefined) {
+    const actualValue = strictArtifactVerification ? strictArtifactVerification.reason : undefined;
+
+    if (actualValue !== args.expectSpeechEnhancementStrictArtifactReason) {
+      return `json_speechEnhancement_strictArtifactVerification_reason_mismatch(expected=${JSON.stringify(args.expectSpeechEnhancementStrictArtifactReason)},actual=${JSON.stringify(actualValue)})`;
     }
   }
 
