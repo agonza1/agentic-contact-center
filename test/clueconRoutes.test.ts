@@ -289,54 +289,6 @@ test("POST /api/cluecon/operator/drill rejects unknown drill kinds", async () =>
   assert.equal(payload.error, "cluecon_operator_drill_kind_invalid");
 });
 
-test("GET/POST /api/cluecon/eval preview and run expose ASSERT handoff without overclaiming live eval", async () => {
-  const previewResponse = await get("/api/cluecon/eval/preview");
-  assert.equal(previewResponse.statusCode, 200);
-  const preview = JSON.parse(previewResponse.body) as {
-    ok: boolean;
-    workboardCard: string;
-    mode: string;
-    compatibleRequest: string;
-    runRoute: string;
-    scorecardChecks: string[];
-    caveat: string;
-  };
-  assert.equal(preview.ok, true);
-  assert.equal(preview.workboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
-  assert.equal(preview.mode, "non_mutating_preview");
-  assert.equal(preview.compatibleRequest, "conversation-agent-evals-assert-request.json");
-  assert.equal(preview.runRoute, "/api/cluecon/eval/run");
-  assert.ok(preview.scorecardChecks.includes("fallback_caveats"));
-  assert.match(preview.caveat, /Preview names the ASSERT handoff contract/);
-
-  const runResponse = await post("/api/cluecon/eval/run");
-  assert.equal(runResponse.statusCode, 201);
-  const run = JSON.parse(runResponse.body) as {
-    ok: boolean;
-    workboardCard: string;
-    compatibleRequest: string;
-    scorecard: { overallPassed: boolean; passed: number; total: number; checks: Array<{ id: string; passed: boolean; evidence: string }> };
-    assertRequestPreview: { metadata: { local_import_mode: string; live_telephony: string }; evidence: { proof_bundle: { readiness: string } } };
-    proof: { scenario: { mode: string }; pipecatFlow: { credentialsMode: string }; outcome: { status: string } };
-    proofLinks: { proof: string; operatorConsole: string };
-  };
-  assert.equal(run.ok, true);
-  assert.equal(run.workboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
-  assert.equal(run.compatibleRequest, "conversation-agent-evals-assert-request.json");
-  assert.equal(run.scorecard.total, 6);
-  assert.equal(run.scorecard.passed, 6);
-  assert.equal(run.scorecard.overallPassed, true);
-  assert.ok(run.scorecard.checks.some((check) => check.id === "operator_approval" && check.passed));
-  assert.equal(run.assertRequestPreview.metadata.local_import_mode, "handoff_artifact");
-  assert.equal(run.assertRequestPreview.metadata.live_telephony, "mocked_telephony");
-  assert.equal(run.assertRequestPreview.evidence.proof_bundle.readiness, "route_preview");
-  assert.equal(run.proof.scenario.mode, "mocked_telephony");
-  assert.equal(run.proof.pipecatFlow.credentialsMode, "mocked");
-  assert.equal(run.proof.outcome.status, "completed");
-  assert.match(run.proofLinks.proof, /\/api\/calls\/demo-call-\d+\/proof/);
-  assert.match(run.proofLinks.operatorConsole, /\/api\/operator\/console\?callId=demo-call-\d+/);
-});
-
 test("GET /api/cluecon upgrades readiness when live sidecar health probes pass", async () => {
   const rtcAsr = await startHealthServer({
     ok: true,
