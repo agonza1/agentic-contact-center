@@ -105,6 +105,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
         failureReasons: Record<string, string>;
         blockers: string[];
         nextEvidence: string[];
+        nextAction: { owner: string; action: string; command: string; reason: string };
         realCaptureReplayIds: string[];
         passingRealCaptureReplayIds: string[];
         blockedRealCaptureReplayIds: string[];
@@ -189,6 +190,13 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(artifact.reviewGate.failureReasons.realNoisyCaptureReplay, /real noisy local SIP capture/);
     assert.ok(artifact.reviewGate.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
     assert.ok(artifact.reviewGate.nextEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));
+    assert.deepEqual(artifact.reviewGate.nextAction, {
+      owner: "agentic_contact_center",
+      action: "attach_real_capture_replay",
+      command:
+        "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
+      reason: "Attach one real noisy local SIP capture replay before closing Issue #97.",
+    });
     assert.deepEqual(artifact.reviewGate.realCaptureReplayIds, []);
     assert.deepEqual(artifact.reviewGate.passingRealCaptureReplayIds, []);
     assert.deepEqual(artifact.reviewGate.blockedRealCaptureReplayIds, []);
@@ -227,6 +235,8 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /- \[ \] wordErrorImproved/);
     assert.match(markdown, /Failure Reasons/);
     assert.match(markdown, /realNoisyCaptureReplay: Attach one real noisy local SIP capture replay before closing Issue #97\./);
+    assert.match(markdown, /Next Action/);
+    assert.match(markdown, /Action: attach_real_capture_replay/);
     assert.match(markdown, /Run: npm run proof:speech-enhancement -- --require-close-ready/);
     assert.match(markdown, /Strict artifact check: npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts\/speech-enhancement-real-capture-replay\.json/);
     assert.equal(captureReplayTemplate.capture_id, "real-noisy-local-sip-001");
@@ -260,6 +270,7 @@ test("speech enhancement spike report script can enforce issue-close readiness",
       failureReasons: Record<string, string>;
       blockers: string[];
       nextEvidence: string[];
+      nextAction: { owner: string; action: string; command: string; reason: string };
       realCaptureReplayIds: string[];
       passingRealCaptureReplayIds: string[];
       blockedRealCaptureReplayIds: string[];
@@ -280,6 +291,8 @@ test("speech enhancement spike report script can enforce issue-close readiness",
     assert.match(summary.failureReasons.realNoisyCaptureReplay, /real noisy local SIP capture/);
     assert.ok(summary.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
     assert.ok(summary.nextEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));
+    assert.equal(summary.nextAction.action, "attach_real_capture_replay");
+    assert.equal(summary.nextAction.owner, "agentic_contact_center");
     assert.deepEqual(summary.realCaptureReplayIds, []);
     assert.deepEqual(summary.passingRealCaptureReplayIds, []);
     assert.deepEqual(summary.blockedRealCaptureReplayIds, []);
