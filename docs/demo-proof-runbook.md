@@ -78,6 +78,8 @@ For deeper review, the full artifact also contains:
 
 ## Generate proof bundle for ConversationAgentEvals
 
+ACC integrates with [ConversationAgentEvals](https://github.com/agonza1/ConversationAgentEvals) through generated evidence, not through a runtime dependency. The ACC app and local proof scripts stay self-contained; the handoff file is `conversation-agent-evals-assert-request.json`, shaped as an `AssertRunCreateRequest` for a ConversationAgentEvals sidecar or review workflow.
+
 After the Pipecat-gated proof run, create the evaluable bundle:
 
 ```bash
@@ -94,7 +96,18 @@ Inspect `artifacts/agentic-call-center-demo/proof-bundle-manifest.json` and conf
 - evaluator ingress: `conversation-agent-evals-assert-request.json` shaped as an `AssertRunCreateRequest`
 - limits: no production credentials, no live telephony, seeded local audio capture, and Local STT v1 contract replay unless `RTC_ASR_WS_URL` is supplied
 
-Use the request JSON as the handoff artifact for ConversationAgentEvals. It includes transcript, conversation, call media, action trace, final state, the full proof bundle, and Local STT v1 evidence.
+Use `artifacts/agentic-call-center-demo/conversation-agent-evals-assert-request.json` as the handoff artifact for ConversationAgentEvals. It includes transcript, conversation, call media, action trace, final state, the full proof bundle, and Local STT v1 evidence.
+
+This differs from the local ASSERT viewer workflow:
+
+```bash
+npm run assert:export
+npm run assert:viewer
+```
+
+`npm run assert:export` writes local ASSERT viewer artifacts under `artifacts/results/agentic-contact-center-voice-demo/...`. `npm run proof:bundle` writes the ConversationAgentEvals request payload plus the evidence files it references.
+
+For local SIP proof runs, `npm run proof:live-sip-bundle` also emits a `conversation-agent-evals-assert-request.json` in its selected output directory. That request is only review-ready when the live-capture manifest says `reviewReady: true`; generated self-tests and missing `rtc-asr` evidence are explicitly marked as blockers.
 
 ## QA handoff notes
 
