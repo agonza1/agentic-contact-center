@@ -1,0 +1,39 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const source = () => readFileSync("scripts/pipecat-local-voice-bridge.py", "utf8");
+
+test("Pipecat voice bridge uses rtc-asr and Kokoro instead of old local engines", () => {
+  const bridge = source();
+
+  assert.doesNotMatch(bridge, /import\s+mlx_whisper/);
+  assert.doesNotMatch(bridge, /subprocess\.run\(\["say"/);
+  assert.doesNotMatch(bridge, /synthesize_say/);
+  assert.match(bridge, /InputAudioRawFrame/);
+  assert.match(bridge, /STTService/);
+  assert.match(bridge, /TTSService/);
+  assert.match(bridge, /websockets\.connect\(self\.rtc_asr_ws_url/);
+  assert.match(bridge, /"type": "start"/);
+  assert.match(bridge, /"version": "local-stt\.v1"/);
+  assert.match(bridge, /"type": "finalize"/);
+  assert.match(bridge, /"engine": "rtc-asr"/);
+  assert.match(bridge, /"engine": "kokoro"/);
+  assert.match(bridge, /KOKORO_SPEECH_PATH/);
+});
+
+test("Pipecat voice bridge reports fail-closed readiness and engine evidence", () => {
+  const bridge = source();
+
+  assert.match(bridge, /"ok": readiness\.ok/);
+  assert.match(bridge, /"error": "sidecar_unavailable"/);
+  assert.match(bridge, /rtc-asr health or \/v1\/models did not expose model\/backend metadata/);
+  assert.match(bridge, /"mediaFlow": "pipecat_frames"/);
+  assert.match(bridge, /"stt": result\.stt_meta/);
+  assert.match(bridge, /"tts": result\.tts_meta/);
+});
+
+test("Pipecat voice check script is exposed", () => {
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  assert.equal(pkg.scripts["pipecat:voice:check"], "python3 scripts/pipecat-local-voice-bridge.py --check-sidecars");
+});

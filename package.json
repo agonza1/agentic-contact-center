@@ -14,6 +14,7 @@
     "docker:smoke": "sh -c 'cleanup(){ docker compose down --remove-orphans; }; trap cleanup EXIT; docker compose up --build -d app && node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health'",
     "pipecat:check": "python3 scripts/pipecat-local-runtime.py --self-test",
     "pipecat:voice:install": "python3 -m pip install --target .pipecat-runtime -r requirements-pipecat-voice.txt",
+    "pipecat:voice:check": "python3 scripts/pipecat-local-voice-bridge.py --check-sidecars",
     "pipecat:voice": "python3 scripts/pipecat-local-voice-bridge.py",
     "assert:export": "npm run build && node scripts/assert-export.mjs",
     "assert:viewer:install": "node scripts/assert-viewer.mjs --install-only",

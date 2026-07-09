@@ -17,8 +17,13 @@ Environment variables:
 - `PORT`: optional HTTP port for `npm start`; defaults to `8026`.
 - `POC_CONFIG_PATH`: optional path to a JSON config file; defaults to `config/poc.config.example.json`.
 - `LOCAL_UID` / `LOCAL_GID`: optional Docker proof runner ownership override for Linux bind-mounted artifacts.
-- `ACC_LOCAL_STT_MODEL`: optional MLX Whisper model override for the local Pipecat voice bridge.
-- `RTC_ASR_WS_URL`: optional local `rtc-asr` sidecar URL for later live proof bundle runs.
+- `RTC_ASR_BASE_URL`: rtc-asr HTTP base URL for health checks; defaults to `http://127.0.0.1:8080`.
+- `RTC_ASR_WS_URL`: rtc-asr Local STT v1 websocket URL; defaults to `ws://127.0.0.1:8080/v1/stt/stream`.
+- `RTC_ASR_MODEL`: evidence label for the rtc-asr model selected from benchmark artifacts; defaults to `mlx-community/parakeet-tdt_ctc-110m`.
+- `KOKORO_BASE_URL`: Kokoro HTTP base URL; defaults to `http://127.0.0.1:8880`.
+- `KOKORO_HEALTH_PATH`: Kokoro health path; defaults to `/health`.
+- `KOKORO_SPEECH_PATH`: Kokoro speech endpoint; defaults to `/v1/audio/speech`.
+- `KOKORO_VOICE`: Kokoro voice id; defaults to `af_heart`.
 
 There is no `.env` file in the current Node app.
 
@@ -31,13 +36,21 @@ npm run pipecat:check
 
 This verifies the local `pipecat-ai` package boundary only. It does not open microphones, start live telephony, or use provider credentials.
 
-## Local voice bridge model override
+## Local voice bridge sidecars
 
-The first voice turn may download the configured MLX Whisper model. Override it with `ACC_LOCAL_STT_MODEL`, for example:
+The browser voice bridge requires rtc-asr and Kokoro to be running before live voice turns. rtc-asr owns ASR model loading and Kokoro owns speech synthesis. The default rtc-asr evidence label is `mlx-community/parakeet-tdt_ctc-110m`, chosen from the checked-in rtc-asr MLX service benchmark lane as the fast small English contact-center option (`docs/benchmark-results/parakeet-mlx-110m-service-2026-06-21.json`). Override only when rtc-asr is configured with a different model:
 
 ```bash
-ACC_LOCAL_STT_MODEL=mlx-community/whisper-tiny.en-mlx npm run pipecat:voice
+export RTC_ASR_BASE_URL=http://127.0.0.1:8080
+export RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream
+export RTC_ASR_MODEL=mlx-community/parakeet-tdt_ctc-110m
+export KOKORO_BASE_URL=http://127.0.0.1:8880
+export KOKORO_VOICE=af_heart
+npm run pipecat:voice:check
+npm run pipecat:voice
 ```
+
+The bridge ready payload and each successful `turn.evidence` report `stt.engine=rtc-asr` and `tts.engine=kokoro`, plus sidecar health or elapsed timing.
 
 ## Demo flow
 
@@ -166,6 +179,7 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `npm run proof:speech-enhancement`: build and write the speech enhancement spike artifact.
 - `npm run pipecat:check`: verify the local `pipecat-ai` runtime package boundary without live telephony.
 - `npm run pipecat:voice:install`: install Pipecat voice bridge dependencies into `.pipecat-runtime`.
+- `npm run pipecat:voice:check`: verify rtc-asr and Kokoro health before opening the browser microphone path.
 - `npm run pipecat:voice`: run the local browser voice bridge on `ws://127.0.0.1:8765`.
 - `npm run assert:export`: generate official ASSERT local-viewer artifacts under `artifacts/results/agentic-contact-center-voice-demo/...`.
 - `npm run assert:viewer:install`: clone and install the upstream ASSERT viewer into `.assert-viewer/`.
