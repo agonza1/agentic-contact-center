@@ -82,6 +82,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       "sha256_matches",
       "artifact_uri_is_workspace_relative",
       "source_manifest_json_object",
+      "source_manifest_identity_fields_present",
       "source_manifest_capture_id_matches",
       "source_manifest_audio_source_uri_matches",
     ]);
@@ -208,6 +209,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       "sha256_matches",
       "artifact_uri_is_workspace_relative",
       "source_manifest_json_object",
+      "source_manifest_identity_fields_present",
       "source_manifest_capture_id_matches",
       "source_manifest_audio_source_uri_matches",
     ]);
@@ -1537,7 +1539,11 @@ test("speech enhancement spike report strict mode verifies capture artifact file
   const audioUri = `artifacts/${path.basename(artifactDir)}/real-noisy-local-sip-201.wav`;
   const sourceManifestUri = `artifacts/${path.basename(artifactDir)}/proof-manifest-201.json`;
   const audioContents = "fake wav evidence for strict hash validation\n";
-  const sourceManifestContents = "{\"proof\":\"strict replay source\"}\n";
+  const sourceManifestContents = JSON.stringify({
+    proof: "strict replay source",
+    capture_id: "real-noisy-local-sip-201",
+    audio_source_uri: audioUri,
+  });
   const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 
   try {
