@@ -909,7 +909,12 @@ export function buildSpeechEnhancementSpikeReport(
         "enhanced_rtc_asr.cpu_cost_estimate",
         "latency_setting_ms",
       ],
-      strictArtifactFields: ["audio_sha256", "source_manifest_sha256"],
+      strictArtifactFields: [
+        "audio_source_uri",
+        "audio_sha256",
+        "source_manifest_uri",
+        "source_manifest_sha256",
+      ],
       strictArtifactChecks: ["exists", "sha256_matches", "artifact_uri_is_workspace_relative"],
       comparisonPairs: ["baseline_rtc_asr", "enhanced_rtc_asr"],
       minimumPassingCriteria: [

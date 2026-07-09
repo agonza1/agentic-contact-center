@@ -310,7 +310,7 @@ function buildMarkdownReport(artifact) {
     `- Real noisy capture replays: ${report.replayCoverage.realNoisyCaptureReplayCount}`,
     `- Baseline/enhanced pairs: ${report.replayCoverage.baselineEnhancedPairs}`,
     `- Live demo gate: ${report.replayCoverage.liveDemoGate}`,
-    `- Strict artifact hashes: ${report.captureReplayContract.strictArtifactFields.join(", ")}`,
+    `- Strict artifact fields: ${report.captureReplayContract.strictArtifactFields.join(", ")}`,
     `- Strict artifact verification: ${artifact.strictArtifactVerification.verified ? "verified" : "not_verified"}`,
     `- Strict artifact verification reason: ${artifact.strictArtifactVerification.reason}`,
     `- Capture replay source digest: ${artifact.captureReplaySourceDigest}`,
