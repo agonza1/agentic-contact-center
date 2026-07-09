@@ -1380,15 +1380,36 @@ function buildOperatorConsoleHtml(): string {
       await ensureVoiceStream();
       const ws = new WebSocket(voiceBridgeUrl());
       state.voiceWs = ws;
-      ws.onopen = function() {
+      let ready = false;
+      function startVoiceCall() {
+        if (ready) return;
+        ready = true;
         updateVoiceBridgeStatus("running", "Connected to " + voiceBridgeUrl());
         ws.send(JSON.stringify({ type: "start", accUrl: window.location.origin, callId: activeCall ? activeCall.session.callId : null }));
+      }
+      function blockVoiceStart(detail) {
         state.voiceConnecting = false;
-        state.voiceStatus = "Connected to Pipecat voice bridge";
-        setStatus("Pipecat voice bridge connected");
+        state.voiceProcessing = false;
+        state.voiceMuted = true;
+        state.voiceStatus = detail || "Pipecat voice bridge blocked";
+        updateVoiceBridgeStatus("degraded", state.voiceStatus);
+        setStatus(state.voiceStatus);
+        stopVoiceStream();
+        try { ws.close(); } catch (error) {}
+      }
+      ws.onopen = function() {
+        updateVoiceBridgeStatus("checking", "Waiting for ready message from " + voiceBridgeUrl());
       };
       ws.onmessage = async function(event) {
         const payload = JSON.parse(event.data);
+        if (payload.type === "ready") {
+          if (payload.ok === false) {
+            blockVoiceStart(payload.detail || "Pipecat voice bridge blocked");
+            return;
+          }
+          startVoiceCall();
+          return;
+        }
         if (payload.type === "started") {
           if (payload.ok === false) {
             state.voiceConnecting = false;
@@ -1403,6 +1424,7 @@ function buildOperatorConsoleHtml(): string {
           }
           state.voiceCallId = payload.callId;
           state.selectedCallId = payload.callId;
+          state.voiceConnecting = false;
           state.voiceMuted = false;
           state.voiceStatus = "Voice call " + payload.callId + " connected. Listening";
           await refresh();
