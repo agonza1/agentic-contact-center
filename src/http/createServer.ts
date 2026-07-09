@@ -3916,6 +3916,9 @@ async function routeRequest(
       validation,
       reviewGate: buildSpeechEnhancementReviewGate(report),
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
+      strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification([
+        { strictArtifactsVerified: false },
+      ]),
     });
     return;
   }

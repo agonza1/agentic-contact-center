@@ -539,6 +539,7 @@ test("POST /api/realtime-shim/speech-enhancement-spike/capture-replay/validate g
       validation: { manifestOk: boolean; evaluation: { issueCloseReady: boolean } };
       reviewGate: { issueCloseReady: boolean; passingRealCaptureReplayIds: string[]; nextEvidence: string[] };
       runtimeReadiness: { status: string; liveDemoEligible: boolean; bypassReasons: string[] };
+      strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
     };
 
     assert.equal(response.statusCode, 200);
@@ -552,6 +553,11 @@ test("POST /api/realtime-shim/speech-enhancement-spike/capture-replay/validate g
     assert.equal(payload.runtimeReadiness.status, "ready");
     assert.equal(payload.runtimeReadiness.liveDemoEligible, true);
     assert.deepEqual(payload.runtimeReadiness.bypassReasons, []);
+    assert.deepEqual(payload.strictArtifactVerification, {
+      requiredForClose: true,
+      verified: false,
+      reason: "run_with_strict_capture_artifacts_before_closing",
+    });
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 
