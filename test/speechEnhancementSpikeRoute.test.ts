@@ -373,3 +373,64 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-template returns r
     server.close();
   }
 });
+
+test("GET /api/realtime-shim/speech-enhancement-spike/capture-template can include contract metadata", async () => {
+  const server = buildHttpServer(loadPocConfig());
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const responseBody = await new Promise<string>((resolve, reject) => {
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port: address.port,
+          path: "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1",
+          method: "GET",
+        },
+        (response) => {
+          let body = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => {
+            body += chunk;
+          });
+          response.on("end", () => resolve(body));
+        },
+      );
+
+      req.on("error", reject);
+      req.end();
+    });
+
+    const payload = JSON.parse(responseBody) as {
+      template: { capture_id: string; latency_setting_ms: number };
+      contract: {
+        fixtureManifestPath: string;
+        strictArtifactFields: string[];
+        minimumPassingCriteria: string[];
+      };
+      validation: { command: string; route: string };
+    };
+
+    assert.equal(payload.template.capture_id, "real-noisy-local-sip-001");
+    assert.equal(payload.template.latency_setting_ms, 12.5);
+    assert.equal(
+      payload.contract.fixtureManifestPath,
+      "artifacts/speech-enhancement-real-capture-replay.json",
+    );
+    assert.ok(payload.contract.strictArtifactFields.includes("audio_sha256"));
+    assert.ok(payload.contract.minimumPassingCriteria.some((criterion) => criterion.includes("CPU p95")));
+    assert.equal(payload.validation.route, "/api/realtime-shim/speech-enhancement-spike");
+    assert.equal(
+      payload.validation.command,
+      "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
+    );
+  } finally {
+    server.close();
+  }
+});

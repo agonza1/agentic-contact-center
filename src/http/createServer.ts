@@ -3587,7 +3587,26 @@ async function routeRequest(
   }
 
   if (request.method === "GET" && pathname === "/api/realtime-shim/speech-enhancement-spike/capture-template") {
-    writeJson(response, 200, buildSpeechEnhancementCaptureReplayTemplate());
+    const template = buildSpeechEnhancementCaptureReplayTemplate();
+    const includeContract = ["1", "true"].includes(
+      (requestUrl.searchParams.get("includeContract") ?? "").toLowerCase(),
+    );
+
+    if (!includeContract) {
+      writeJson(response, 200, template);
+      return;
+    }
+
+    const report = buildSpeechEnhancementSpikeReport();
+    const handoff = buildSpeechEnhancementReviewHandoff();
+    writeJson(response, 200, {
+      template,
+      contract: report.captureReplayContract,
+      validation: {
+        command: handoff.strictValidationCommand,
+        route: handoff.reviewRoute,
+      },
+    });
     return;
   }
 
