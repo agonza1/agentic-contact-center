@@ -325,6 +325,8 @@ function buildMarkdownReport(artifact) {
     `- Baseline/enhanced pairs: ${report.replayCoverage.baselineEnhancedPairs}`,
     `- Live demo gate: ${report.replayCoverage.liveDemoGate}`,
     `- Strict artifact hashes: ${report.captureReplayContract.strictArtifactFields.join(", ")}`,
+    `- Strict artifact verification: ${artifact.strictArtifactVerification.verified ? "verified" : "not_verified"}`,
+    `- Strict artifact verification reason: ${artifact.strictArtifactVerification.reason}`,
     `- Capture replay source digest: ${artifact.captureReplaySourceDigest}`,
     `- Passing real replay ids: ${reviewGate.passingRealCaptureReplayIds.join(", ") || "None"}`,
     `- Blocked real replay ids: ${reviewGate.blockedRealCaptureReplayIds.join(", ") || "None"}`,
