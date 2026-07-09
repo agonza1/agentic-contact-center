@@ -1,5 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
+import { buildClueConHtml, buildClueConPayload } from "./cluecon";
+
 import {
   assertSpecBlocks,
   assertSpecToYaml,
@@ -3630,6 +3632,21 @@ async function routeRequest(
     const body = await readJsonBody<unknown>(request);
     const payload = buildRealtimeShimRpcResponse(realtimeShim, body) as { ok?: boolean };
     writeJson(response, payload.ok === false ? 400 : 200, payload);
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/cluecon") {
+    writeJson(response, 200, buildClueConPayload(config));
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/cluecon") {
+    writeHtml(response, 200, buildClueConHtml(config, "scroll"));
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/cluecon/present") {
+    writeHtml(response, 200, buildClueConHtml(config, "present"));
     return;
   }
 
