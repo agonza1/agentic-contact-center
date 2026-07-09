@@ -5,7 +5,11 @@ import { createServer, request, type Server } from "node:http";
 import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildHttpServer } from "../src/http/createServer";
 
-async function get(path: string): Promise<{ statusCode: number; body: string; contentType: string }> {
+async function requestPath(
+  path: string,
+  method = "GET",
+  body?: unknown,
+): Promise<{ statusCode: number; body: string; contentType: string }> {
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const address = server.address();
@@ -15,7 +19,16 @@ async function get(path: string): Promise<{ statusCode: number; body: string; co
 
   try {
     return await new Promise((resolve, reject) => {
-      const req = request({ host: "127.0.0.1", port: address.port, path, method: "GET" }, (response) => {
+      const requestBody = body === undefined ? undefined : JSON.stringify(body);
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port: address.port,
+          path,
+          method,
+          headers: requestBody ? { "content-type": "application/json" } : undefined,
+        },
+        (response) => {
         let body = "";
         response.setEncoding("utf8");
         response.on("data", (chunk) => {
@@ -30,11 +43,22 @@ async function get(path: string): Promise<{ statusCode: number; body: string; co
         });
       });
       req.on("error", reject);
+      if (requestBody) {
+        req.write(requestBody);
+      }
       req.end();
     });
   } finally {
     server.close();
   }
+}
+
+async function get(path: string): Promise<{ statusCode: number; body: string; contentType: string }> {
+  return requestPath(path);
+}
+
+async function post(path: string, body?: unknown): Promise<{ statusCode: number; body: string; contentType: string }> {
+  return requestPath(path, "POST", body);
 }
 
 async function withEnv<T>(values: Record<string, string | undefined>, run: () => Promise<T>): Promise<T> {
@@ -99,17 +123,20 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   const payload = JSON.parse(response.body) as {
     ok: boolean;
     workboardCard: string;
+    activeWorkboardCard: string;
     routes: { scrollable: string; present: string; scriptedDemo: string };
     readiness: Array<{ id: string; status: string; caveat: string }>;
     liveProbes: Array<{ id: string; configured: boolean; status: string; ok: boolean; metadata: Record<string, unknown> }>;
     scenario: { callerTurns: string[]; failureDrills: string[] };
     asrPanel: { contract: string; streamStates: string[]; fixtureEvents: Array<{ state: string }>; benchmarks: Array<{ label: string }> };
     brainBlocks: Array<{ file: string; affects: string[] }>;
+    brainPanel: { previewRoute: string; applyRoute: string; resetRoute: string; safeMutation: string; activeFiles: string[] };
     proofPreview: { compatibleRequest: string; includes: string[] };
   };
 
   assert.equal(payload.ok, true);
   assert.equal(payload.workboardCard, "85ea5a1a-3a68-4e5d-ac1d-10d5851017ae");
+  assert.equal(payload.activeWorkboardCard, "71d60b43-0de0-4a67-bb60-d6539780c3a4");
   assert.equal(payload.routes.scrollable, "/cluecon");
   assert.equal(payload.routes.present, "/cluecon/present");
   assert.equal(payload.routes.scriptedDemo, "/api/demo/run-end-to-end");
@@ -124,8 +151,87 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.ok(payload.asrPanel.fixtureEvents.some((event) => event.state === "error"));
   assert.ok(payload.asrPanel.benchmarks.some((benchmark) => benchmark.label === "first partial"));
   assert.ok(payload.brainBlocks.some((block) => block.file === "policy.md" && block.affects.includes("policy hold")));
+  assert.equal(payload.brainPanel.previewRoute, "/api/cluecon/brain/preview");
+  assert.equal(payload.brainPanel.safeMutation, "session_scoped_in_memory");
+  assert.equal(payload.brainPanel.previewRoute, "/api/cluecon/brain/preview");
+  assert.equal(payload.brainPanel.applyRoute, "/api/cluecon/brain/apply");
+  assert.equal(payload.brainPanel.resetRoute, "/api/cluecon/brain/reset");
+  assert.equal(payload.brainPanel.safeMutation, "session_scoped_in_memory");
+  assert.ok(payload.brainPanel.activeFiles.includes("policy.md"));
   assert.equal(payload.proofPreview.compatibleRequest, "conversation-agent-evals-assert-request.json");
   assert.ok(payload.proofPreview.includes.includes("ASR/TTS caveats"));
+});
+
+test("POST /api/cluecon/brain preview, apply, and reset keep edits session-scoped", async () => {
+  const initialResponse = await get("/api/cluecon");
+  assert.equal(initialResponse.statusCode, 200);
+  const initialPayload = JSON.parse(initialResponse.body) as {
+    brainBlocks: Array<{ file: string; summary: string; affects: string[] }>;
+  };
+  const editedBlocks = initialPayload.brainBlocks.map((block) =>
+    block.file === "policy.md"
+      ? { ...block, summary: "Require explicit operator approval before any retention offer is quoted." }
+      : block,
+  );
+
+  const previewResponse = await post("/api/cluecon/brain/preview", { blocks: editedBlocks });
+  assert.equal(previewResponse.statusCode, 200);
+  const preview = JSON.parse(previewResponse.body) as {
+    ok: boolean;
+    previewOnly: boolean;
+    changedFiles: string[];
+    evidence: { mutation: string; corruptsRuntime: boolean };
+  };
+  assert.equal(preview.ok, true);
+  assert.equal(preview.previewOnly, true);
+  assert.ok(preview.changedFiles.includes("policy.md"));
+  assert.equal(preview.evidence.mutation, "preview_only");
+  assert.equal(preview.evidence.corruptsRuntime, false);
+
+  const applyResponse = await post("/api/cluecon/brain/apply", { blocks: editedBlocks });
+  assert.equal(applyResponse.statusCode, 200);
+  const applied = JSON.parse(applyResponse.body) as {
+    ok: boolean;
+    applied: boolean;
+    mutation: string;
+    corruptsRuntime: boolean;
+    activeBrainBlocks: Array<{ file: string; summary: string }>;
+    brainPanel: { activeFiles: string[] };
+  };
+  assert.equal(applied.ok, true);
+  assert.equal(applied.applied, true);
+  assert.equal(applied.mutation, "session_scoped_in_memory");
+  assert.equal(applied.corruptsRuntime, false);
+  assert.ok(applied.brainPanel.activeFiles.includes("policy.md"));
+  assert.equal(
+    applied.activeBrainBlocks.find((block) => block.file === "policy.md")?.summary,
+    "Require explicit operator approval before any retention offer is quoted.",
+  );
+
+  const resetResponse = await post("/api/cluecon/brain/reset");
+  assert.equal(resetResponse.statusCode, 200);
+  const reset = JSON.parse(resetResponse.body) as {
+    ok: boolean;
+    reset: boolean;
+    activeBrainBlocks: Array<{ file: string; summary: string }>;
+  };
+  assert.equal(reset.ok, true);
+  assert.equal(reset.reset, true);
+  assert.equal(
+    reset.activeBrainBlocks.find((block) => block.file === "policy.md")?.summary,
+    "Pause before risky offers, require operator approval, and fail closed on runtime uncertainty.",
+  );
+});
+
+test("POST /api/cluecon/brain/apply rejects unsafe missing policy blocks", async () => {
+  const response = await post("/api/cluecon/brain/apply", {
+    blocks: [{ file: "mission.md", summary: "Too little evidence control.", affects: ["agent response"] }],
+  });
+  assert.equal(response.statusCode, 400);
+  const payload = JSON.parse(response.body) as { ok: boolean; errors: string[]; corruptsRuntime: boolean };
+  assert.equal(payload.ok, false);
+  assert.ok(payload.errors.includes("policy.md block is required for the ClueCon agent panel"));
+  assert.equal(payload.corruptsRuntime, false);
 });
 
 test("GET /api/cluecon upgrades readiness when live sidecar health probes pass", async () => {
