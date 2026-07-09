@@ -60,6 +60,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       runtimeLiveDemoEligible: boolean;
       runtimeBypassReasons: string[];
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      strictArtifactChecks: string[];
     };
     assert.equal(summary.ok, true);
     assert.equal(summary.outputPath, outputPath);
@@ -70,6 +71,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.equal(summary.captureReplaySourceDigest, digestCaptureReplaySources([]));
     assert.equal(summary.runtimeLiveDemoEligible, false);
     assert.deepEqual(summary.runtimeBypassReasons, ["feature_flag_disabled", "blocked_until_real_capture"]);
+    assert.deepEqual(summary.strictArtifactChecks, ["exists", "sha256_matches", "artifact_uri_is_workspace_relative"]);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       schemaVersion: number;
@@ -241,7 +243,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /Failure Reasons/);
     assert.match(markdown, /realNoisyCaptureReplay: Attach one real noisy local SIP capture replay before closing Issue #97\./);
     assert.match(markdown, /Next Action/);
-    assert.match(markdown, /Action: attach_real_capture_replay/);
+    assert.equal(markdown.match(/Action: attach_real_capture_replay/g)?.length, 1);
     assert.match(markdown, /Run: npm run proof:speech-enhancement -- --require-close-ready/);
     assert.match(markdown, /Strict artifact check: npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts\/speech-enhancement-real-capture-replay\.json/);
     assert.equal(captureReplayTemplate.capture_id, "real-noisy-local-sip-001");

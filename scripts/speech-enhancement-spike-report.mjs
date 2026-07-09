@@ -433,6 +433,7 @@ async function main() {
     realCaptureReplayEvidence: artifact.reviewGate.realCaptureReplayEvidence,
     captureReplaySources: artifact.captureReplaySources,
     captureReplaySourceDigest: artifact.captureReplaySourceDigest,
+    strictArtifactChecks: report.captureReplayContract.strictArtifactChecks,
   };
 
   console.log(JSON.stringify(summary));
