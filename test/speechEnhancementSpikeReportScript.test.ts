@@ -77,7 +77,14 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     });
     assert.equal(summary.runtimeLiveDemoEligible, false);
     assert.deepEqual(summary.runtimeBypassReasons, ["feature_flag_disabled", "blocked_until_real_capture"]);
-    assert.deepEqual(summary.strictArtifactChecks, ["exists", "sha256_matches", "artifact_uri_is_workspace_relative"]);
+    assert.deepEqual(summary.strictArtifactChecks, [
+      "exists",
+      "sha256_matches",
+      "artifact_uri_is_workspace_relative",
+      "source_manifest_json_object",
+      "source_manifest_capture_id_matches",
+      "source_manifest_audio_source_uri_matches",
+    ]);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       schemaVersion: number;
@@ -200,6 +207,9 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       "exists",
       "sha256_matches",
       "artifact_uri_is_workspace_relative",
+      "source_manifest_json_object",
+      "source_manifest_capture_id_matches",
+      "source_manifest_audio_source_uri_matches",
     ]);
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("runtime_host"));
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.cpu_percent_p95"));

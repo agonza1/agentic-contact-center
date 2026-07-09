@@ -269,6 +269,9 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       "exists",
       "sha256_matches",
       "artifact_uri_is_workspace_relative",
+      "source_manifest_json_object",
+      "source_manifest_capture_id_matches",
+      "source_manifest_audio_source_uri_matches",
     ]);
     assert.ok(
       payload.captureReplayContract.minimumPassingCriteria.some((criterion) => criterion.includes("word error")),
