@@ -156,6 +156,26 @@ ASSERT surfaces:
 - `http://localhost:8026/assert`: ACC local artifact view with calls, proof, artifacts, transcript, events, and latency tabs.
 - `http://localhost:8026/assert/spec`: simplified editable eval spec with objective, success checks, failure checks, scenario seeds, prewritten blocks, generated `assert.yml`, and collapsed advanced judge/systematization settings.
 
+ConversationAgentEvals integration:
+
+ACC does not run [ConversationAgentEvals](https://github.com/agonza1/ConversationAgentEvals) as an in-process dependency or call a ConversationAgentEvals API during normal local demos. Instead, ACC generates handoff artifacts that ConversationAgentEvals can ingest or review. The main bridge is `conversation-agent-evals-assert-request.json`, shaped as an `AssertRunCreateRequest`, with transcript, conversation, media, action trace, final state, proof bundle, and Local STT evidence pointers.
+
+Use the local ASSERT flow when you want to inspect ACC's own exported regression artifacts:
+
+```bash
+npm run assert:export
+npm run assert:viewer
+```
+
+Use the proof-bundle flow when you want a ConversationAgentEvals-ready handoff:
+
+```bash
+npm run proof:pipecat -- --out artifacts/agentic-call-center-demo/source-proof.json --latest-out artifacts/demo-proof-latest.json
+npm run proof:bundle -- --proof artifacts/agentic-call-center-demo/source-proof.json --out-dir artifacts/agentic-call-center-demo
+```
+
+The handoff request lands at `artifacts/agentic-call-center-demo/conversation-agent-evals-assert-request.json`. See [docs/demo-proof-runbook.md](docs/demo-proof-runbook.md) for the inspection checklist and expected artifact set.
+
 Useful health assertions:
 
 ```bash
@@ -305,7 +325,7 @@ npm run proof:pipecat -- --out artifacts/agentic-call-center-demo/source-proof.j
 npm run proof:bundle -- --proof artifacts/agentic-call-center-demo/source-proof.json --out-dir artifacts/agentic-call-center-demo
 ```
 
-The bundle writes `proof-bundle-manifest.json`, `conversation-agent-evals-assert-request.json`, transcript/action/final-state files, a seeded local WAV caller capture, SVG operator-console screenshots, an animated GIF recording, and Local STT v1 framing evidence for the `rtc-asr` boundary. It remains local and mocked: live telephony and provider credentials are not used. Set `RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream` for a later live local `rtc-asr` sidecar run.
+The bundle writes `proof-bundle-manifest.json`, `conversation-agent-evals-assert-request.json`, transcript/action/final-state files, a seeded local WAV caller capture, SVG operator-console screenshots, an animated GIF recording, and Local STT v1 framing evidence for the `rtc-asr` boundary. `conversation-agent-evals-assert-request.json` is the `AssertRunCreateRequest` handoff for ConversationAgentEvals; the other files are evidence artifacts referenced by that request. It remains local and mocked: live telephony and provider credentials are not used. Set `RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream` for a later live local `rtc-asr` sidecar run.
 
 ## Scripts
 
