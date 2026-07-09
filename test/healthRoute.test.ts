@@ -97,6 +97,7 @@ test("GET /health returns config-backed demo metadata", async () => {
       nextAction: { owner: string; action: string; command: string; reason: string };
       passingRealCaptureReplayIds: string[];
       blockedRealCaptureReplayIds: string[];
+      strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
       captureReplayFixturePath: string;
       validationCommand: string;
       strictValidationCommand: string;
@@ -183,6 +184,11 @@ test("GET /health returns config-backed demo metadata", async () => {
   });
   assert.deepEqual(payload.speechEnhancement.passingRealCaptureReplayIds, []);
   assert.deepEqual(payload.speechEnhancement.blockedRealCaptureReplayIds, []);
+  assert.deepEqual(payload.speechEnhancement.strictArtifactVerification, {
+    requiredForClose: true,
+    verified: false,
+    reason: "attach_real_capture_replay_before_strict_artifact_verification",
+  });
   assert.equal(
     payload.speechEnhancement.captureReplayFixturePath,
     "artifacts/speech-enhancement-real-capture-replay.json",

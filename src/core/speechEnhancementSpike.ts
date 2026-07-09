@@ -1007,6 +1007,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   nextAction: SpeechEnhancementReviewGate["nextAction"];
   passingRealCaptureReplayIds: string[];
   blockedRealCaptureReplayIds: string[];
+  strictArtifactVerification: SpeechEnhancementStrictArtifactVerification;
   captureReplayFixturePath: SpeechEnhancementCaptureReplayContract["fixtureManifestPath"];
   validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
   strictValidationCommand: SpeechEnhancementReviewHandoff["strictValidationCommand"];
@@ -1014,6 +1015,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   const report = buildSpeechEnhancementSpikeReport();
   const reviewGate = buildSpeechEnhancementReviewGate(report);
   const handoff = buildSpeechEnhancementReviewHandoff();
+  const strictArtifactVerification = buildSpeechEnhancementStrictArtifactVerification();
   const runtimeConfig = resolveSpeechEnhancementRuntimeConfig({
     featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
     latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
@@ -1051,6 +1053,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     nextAction: reviewGate.nextAction,
     passingRealCaptureReplayIds: reviewGate.passingRealCaptureReplayIds,
     blockedRealCaptureReplayIds: reviewGate.blockedRealCaptureReplayIds,
+    strictArtifactVerification,
     captureReplayFixturePath: report.captureReplayContract.fixtureManifestPath,
     validationCommand: handoff.validationCommand,
     strictValidationCommand: handoff.strictValidationCommand,
