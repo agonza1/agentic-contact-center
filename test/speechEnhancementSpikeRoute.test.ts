@@ -305,3 +305,71 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     }
   }
 });
+
+test("GET /api/realtime-shim/speech-enhancement-spike/capture-template returns reusable manifest shape", async () => {
+  const server = buildHttpServer(loadPocConfig());
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const responseBody = await new Promise<string>((resolve, reject) => {
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port: address.port,
+          path: "/api/realtime-shim/speech-enhancement-spike/capture-template",
+          method: "GET",
+        },
+        (response) => {
+          let body = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => {
+            body += chunk;
+          });
+          response.on("end", () => resolve(body));
+        },
+      );
+
+      req.on("error", reject);
+      req.end();
+    });
+
+    const payload = JSON.parse(responseBody) as {
+      capture_id: string;
+      audio_source_uri: string;
+      audio_sha256: string;
+      source_manifest_uri: string;
+      source_manifest_sha256: string;
+      baseline_rtc_asr: { endpointing_stability: string; barge_in_risk: string };
+      enhanced_rtc_asr: {
+        endpointing_stability: string;
+        barge_in_risk: string;
+        added_turn_latency_ms_p95: number;
+        cpu_percent_p95: number;
+        cpu_cost_estimate: string;
+      };
+      latency_setting_ms: number;
+    };
+
+    assert.equal(payload.capture_id, "real-noisy-local-sip-001");
+    assert.equal(payload.audio_source_uri, "artifacts/local-sip/real-noisy-local-sip-001.wav");
+    assert.equal(payload.audio_sha256, "replace_with_64_char_lowercase_sha256");
+    assert.equal(payload.source_manifest_uri, "artifacts/local-sip/proof-manifest-001.json");
+    assert.equal(payload.source_manifest_sha256, "replace_with_64_char_lowercase_sha256");
+    assert.equal(payload.baseline_rtc_asr.endpointing_stability, "acceptable");
+    assert.equal(payload.baseline_rtc_asr.barge_in_risk, "medium");
+    assert.equal(payload.enhanced_rtc_asr.endpointing_stability, "stable");
+    assert.equal(payload.enhanced_rtc_asr.barge_in_risk, "low");
+    assert.equal(payload.enhanced_rtc_asr.added_turn_latency_ms_p95, 18);
+    assert.equal(payload.enhanced_rtc_asr.cpu_percent_p95, 42);
+    assert.equal(payload.enhanced_rtc_asr.cpu_cost_estimate, "medium");
+    assert.equal(payload.latency_setting_ms, 12.5);
+  } finally {
+    server.close();
+  }
+});

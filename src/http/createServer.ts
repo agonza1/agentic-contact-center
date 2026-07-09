@@ -13,6 +13,7 @@ import { LocalRealtimeShimPrototype } from "../core/localRealtimeShimPrototype";
 import { getPipecatPrototypeHealth, SCRIPTED_CALLER_TURNS } from "../core/pipecatFlowPrototype";
 import { REALTIME_SHIM_RPCS } from "../core/realtimeShimContract";
 import {
+  buildSpeechEnhancementCaptureReplayTemplate,
   buildSpeechEnhancementHealthSummary,
   buildSpeechEnhancementReviewGate,
   buildSpeechEnhancementRuntimeReadiness,
@@ -3582,6 +3583,11 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/api/realtime-shim/readiness") {
     writeJson(response, 200, buildRealtimeShimReadinessPayload());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/realtime-shim/speech-enhancement-spike/capture-template") {
+    writeJson(response, 200, buildSpeechEnhancementCaptureReplayTemplate());
     return;
   }
 
