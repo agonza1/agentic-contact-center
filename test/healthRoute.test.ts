@@ -63,6 +63,7 @@ test("GET /health returns config-backed demo metadata", async () => {
       issue: string;
       issueUrl: string;
       reviewRoute: string;
+      captureTemplateRoute: string;
       recommendedLatencyMs: number;
       runtimeEnv: { featureFlag: string; latencyMs: string };
       runtimeStatus: string;
@@ -115,6 +116,10 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.speechEnhancement.issue, "agonza1/agentic-contact-center#97");
   assert.equal(payload.speechEnhancement.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/97");
   assert.equal(payload.speechEnhancement.reviewRoute, "/api/realtime-shim/speech-enhancement-spike");
+  assert.equal(
+    payload.speechEnhancement.captureTemplateRoute,
+    "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1",
+  );
   assert.equal(payload.speechEnhancement.recommendedLatencyMs, 12.5);
   assert.deepEqual(payload.speechEnhancement.runtimeEnv, {
     featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT",

@@ -133,6 +133,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       reviewHandoff: {
         issueUrl: string;
         reviewRoute: string;
+        captureTemplateRoute: string;
         validationCommand: string;
         strictValidationCommand: string;
         nextEvidenceOwner: string;
@@ -283,6 +284,10 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.deepEqual(payload.reviewGate.realCaptureReplayIds, []);
     assert.equal(payload.reviewHandoff.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/97");
     assert.equal(payload.reviewHandoff.reviewRoute, "/api/realtime-shim/speech-enhancement-spike");
+    assert.equal(
+      payload.reviewHandoff.captureTemplateRoute,
+      "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1",
+    );
     assert.equal(payload.reviewHandoff.validationCommand, "npm run proof:speech-enhancement -- --require-close-ready");
     assert.equal(
       payload.reviewHandoff.strictValidationCommand,
@@ -303,5 +308,134 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     } else {
       process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS = previousLatencyMs;
     }
+  }
+});
+
+test("GET /api/realtime-shim/speech-enhancement-spike/capture-template returns reusable manifest shape", async () => {
+  const server = buildHttpServer(loadPocConfig());
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const responseBody = await new Promise<string>((resolve, reject) => {
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port: address.port,
+          path: "/api/realtime-shim/speech-enhancement-spike/capture-template",
+          method: "GET",
+        },
+        (response) => {
+          let body = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => {
+            body += chunk;
+          });
+          response.on("end", () => resolve(body));
+        },
+      );
+
+      req.on("error", reject);
+      req.end();
+    });
+
+    const payload = JSON.parse(responseBody) as {
+      capture_id: string;
+      audio_source_uri: string;
+      audio_sha256: string;
+      source_manifest_uri: string;
+      source_manifest_sha256: string;
+      baseline_rtc_asr: { endpointing_stability: string; barge_in_risk: string };
+      enhanced_rtc_asr: {
+        endpointing_stability: string;
+        barge_in_risk: string;
+        added_turn_latency_ms_p95: number;
+        cpu_percent_p95: number;
+        cpu_cost_estimate: string;
+      };
+      latency_setting_ms: number;
+    };
+
+    assert.equal(payload.capture_id, "real-noisy-local-sip-001");
+    assert.equal(payload.audio_source_uri, "artifacts/local-sip/real-noisy-local-sip-001.wav");
+    assert.equal(payload.audio_sha256, "replace_with_64_char_lowercase_sha256");
+    assert.equal(payload.source_manifest_uri, "artifacts/local-sip/proof-manifest-001.json");
+    assert.equal(payload.source_manifest_sha256, "replace_with_64_char_lowercase_sha256");
+    assert.equal(payload.baseline_rtc_asr.endpointing_stability, "acceptable");
+    assert.equal(payload.baseline_rtc_asr.barge_in_risk, "medium");
+    assert.equal(payload.enhanced_rtc_asr.endpointing_stability, "stable");
+    assert.equal(payload.enhanced_rtc_asr.barge_in_risk, "low");
+    assert.equal(payload.enhanced_rtc_asr.added_turn_latency_ms_p95, 18);
+    assert.equal(payload.enhanced_rtc_asr.cpu_percent_p95, 42);
+    assert.equal(payload.enhanced_rtc_asr.cpu_cost_estimate, "medium");
+    assert.equal(payload.latency_setting_ms, 12.5);
+  } finally {
+    server.close();
+  }
+});
+
+test("GET /api/realtime-shim/speech-enhancement-spike/capture-template can include contract metadata", async () => {
+  const server = buildHttpServer(loadPocConfig());
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const responseBody = await new Promise<string>((resolve, reject) => {
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port: address.port,
+          path: "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1",
+          method: "GET",
+        },
+        (response) => {
+          let body = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => {
+            body += chunk;
+          });
+          response.on("end", () => resolve(body));
+        },
+      );
+
+      req.on("error", reject);
+      req.end();
+    });
+
+    const payload = JSON.parse(responseBody) as {
+      template: { capture_id: string; latency_setting_ms: number };
+      contract: {
+        fixtureManifestPath: string;
+        strictArtifactFields: string[];
+        minimumPassingCriteria: string[];
+      };
+      validation: { command: string; route: string };
+    };
+
+    assert.equal(payload.template.capture_id, "real-noisy-local-sip-001");
+    assert.equal(payload.template.latency_setting_ms, 12.5);
+    assert.equal(
+      payload.contract.fixtureManifestPath,
+      "artifacts/speech-enhancement-real-capture-replay.json",
+    );
+    assert.ok(payload.contract.strictArtifactFields.includes("audio_sha256"));
+    assert.ok(payload.contract.minimumPassingCriteria.some((criterion) => criterion.includes("CPU p95")));
+    assert.equal(payload.validation.route, "/api/realtime-shim/speech-enhancement-spike");
+    assert.equal(
+      payload.validation.command,
+      "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
+    );
+  } finally {
+    server.close();
   }
 });

@@ -7,6 +7,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 
 const {
+  buildSpeechEnhancementCaptureReplayTemplate,
   buildSpeechEnhancementReviewGate,
   buildSpeechEnhancementReviewHandoff,
   buildSpeechEnhancementRuntimeReadiness,
@@ -222,33 +223,7 @@ function resolveCaptureReplayTemplateOutputPath() {
 }
 
 function buildCaptureReplayTemplate() {
-  return {
-    capture_id: "real-noisy-local-sip-001",
-    recorded_at: "2026-07-08T00:00:00.000Z",
-    audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-001.wav",
-    audio_sha256: "replace_with_64_char_lowercase_sha256",
-    source_manifest_uri: "artifacts/local-sip/proof-manifest-001.json",
-    source_manifest_sha256: "replace_with_64_char_lowercase_sha256",
-    noise_profile: "describe_real_call_noise",
-    scenario: "local SIP caller replayed through baseline and enhanced rtc-asr paths",
-    runtime_host: "selected-rtc-asr-hostname",
-    baseline_rtc_asr: {
-      transcript: "baseline transcript from the same real noisy capture",
-      word_error_rate_estimate: 0.18,
-      endpointing_stability: "acceptable",
-      barge_in_risk: "medium",
-    },
-    enhanced_rtc_asr: {
-      transcript: "enhanced transcript from the same real noisy capture",
-      word_error_rate_estimate: 0.06,
-      endpointing_stability: "stable",
-      barge_in_risk: "low",
-      added_turn_latency_ms_p95: 18,
-      cpu_percent_p95: 42,
-      cpu_cost_estimate: "medium",
-    },
-    latency_setting_ms: 12.5,
-  };
+  return buildSpeechEnhancementCaptureReplayTemplate();
 }
 
 async function writeJson(filePath, payload) {
