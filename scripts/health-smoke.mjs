@@ -20,6 +20,8 @@ function parseArgs(argv) {
     expectPipecatRuntimeCheckLiveTelephonyRequired: undefined,
     expectPipecatActiveTool: undefined,
     expectPipecatScriptCompleted: undefined,
+    expectProductionReady: undefined,
+    expectProductionReadinessBlockers: [],
     expectSpeechEnhancementRuntimeEnabled: undefined,
     expectSpeechEnhancementRuntimeStatus: undefined,
     expectSpeechEnhancementIssueCloseReady: undefined,
@@ -68,6 +70,8 @@ function parseArgs(argv) {
     '--expect-pipecat-runtime-check-live-telephony-required',
     '--expect-pipecat-active-tool',
     '--expect-pipecat-script-completed',
+    '--expect-production-ready',
+    '--expect-production-readiness-blocker',
     '--expect-speech-enhancement-runtime-enabled',
     '--expect-speech-enhancement-runtime-status',
     '--expect-speech-enhancement-issue-close-ready',
@@ -233,6 +237,18 @@ function parseArgs(argv) {
 
     if (arg === '--expect-pipecat-script-completed' && next) {
       args.expectPipecatScriptCompleted = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-production-ready' && next) {
+      args.expectProductionReady = next;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--expect-production-readiness-blocker' && next) {
+      args.expectProductionReadinessBlockers.push(next);
       index += 1;
       continue;
     }
@@ -417,6 +433,7 @@ function hasJsonExpectations(args) {
     args.expectPipecatRuntimeCheckLiveTelephonyRequired,
     args.expectPipecatActiveTool,
     args.expectPipecatScriptCompleted,
+    args.expectProductionReady,
     args.expectSpeechEnhancementRuntimeEnabled,
     args.expectSpeechEnhancementIssueCloseReady,
     args.expectSpeechEnhancementLiveDemoGate,
@@ -429,6 +446,7 @@ function hasJsonExpectations(args) {
     args.expectSpeechEnhancementRuntimeLookaheadFrames,
     args.expectSpeechEnhancementRuntimeMaxBufferedAudioMs,
   ].some((expectedValue) => expectedValue !== undefined)
+    || args.expectProductionReadinessBlockers.length > 0
     || args.expectSpeechEnhancementRuntimeBypassReasons.length > 0
     || args.expectRuntimeSeams.length > 0
     || args.expectPipecatTools.length > 0
@@ -528,6 +546,7 @@ function validateBooleanExpectations(args) {
     ['pipecat_ready', args.expectPipecatReady],
     ['pipecat_script_completed', args.expectPipecatScriptCompleted],
     ['pipecat_runtime_check_live_telephony_required', args.expectPipecatRuntimeCheckLiveTelephonyRequired],
+    ['production_ready', args.expectProductionReady],
     ['speech_enhancement_runtime_enabled', args.expectSpeechEnhancementRuntimeEnabled],
     ['speech_enhancement_issue_close_ready', args.expectSpeechEnhancementIssueCloseReady],
     ['speech_enhancement_runtime_live_demo_eligible', args.expectSpeechEnhancementRuntimeLiveDemoEligible],
@@ -633,6 +652,33 @@ async function getFailureReason(response, args) {
 
     if (actualValue !== parsedExpectation.expectedValue) {
       return `json_pipecatFlow_script_completed_mismatch(expected=${JSON.stringify(parsedExpectation.expectedValue)},actual=${JSON.stringify(actualValue)})`;
+    }
+  }
+
+  if (args.expectProductionReady !== undefined) {
+    const parsedExpectation = parseBooleanExpectation('production_ready', args.expectProductionReady);
+    if (parsedExpectation.error) {
+      return parsedExpectation.error;
+    }
+
+    const productionReadiness = payload.productionReadiness && typeof payload.productionReadiness === 'object'
+      ? payload.productionReadiness
+      : undefined;
+    const actualValue = productionReadiness ? productionReadiness.productionReady : undefined;
+
+    if (actualValue !== parsedExpectation.expectedValue) {
+      return `json_productionReadiness_productionReady_mismatch(expected=${JSON.stringify(parsedExpectation.expectedValue)},actual=${JSON.stringify(actualValue)})`;
+    }
+  }
+
+  for (const expectedBlocker of args.expectProductionReadinessBlockers) {
+    const productionReadiness = payload.productionReadiness && typeof payload.productionReadiness === 'object'
+      ? payload.productionReadiness
+      : undefined;
+    const blockers = productionReadiness ? productionReadiness.blockers : undefined;
+
+    if (!Array.isArray(blockers) || !blockers.includes(expectedBlocker)) {
+      return `json_productionReadiness_blockers_missing(expected=${JSON.stringify(expectedBlocker)},actual=${JSON.stringify(blockers)})`;
     }
   }
 

@@ -19,6 +19,8 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(dockerfile, /HEALTHCHECK[\s\S]*scripts\/health-smoke\.mjs/);
   assert.match(dockerfile, /--expect-pipecat-prototype-mode pipecat_local_runtime/);
   assert.match(dockerfile, /--expect-pipecat-runtime-check-command "npm run pipecat:check"/);
+  assert.match(dockerfile, /--expect-production-ready false/);
+  assert.match(dockerfile, /--expect-production-readiness-blocker provider_credentials_mocked/);
   assert.match(dockerfile, /CMD \["node", "dist\/src\/index\.js"\]/);
 
   assert.match(compose, /app:\n[\s\S]*target: runtime/);
@@ -27,6 +29,8 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /app:\n[\s\S]*scripts\/health-smoke\.mjs/);
   assert.match(compose, /app:\n[\s\S]*--expect-pipecat-prototype-mode/);
   assert.match(compose, /app:\n[\s\S]*npm run pipecat:check/);
+  assert.match(compose, /app:\n[\s\S]*--expect-production-ready/);
+  assert.match(compose, /app:\n[\s\S]*provider_credentials_mocked/);
   assert.match(compose, /proof:\n[\s\S]*profiles: \["proof"\]/);
   assert.match(compose, /proof:\n[\s\S]*scripts\/demo-proof\.mjs/);
   assert.match(compose, /proof:\n[\s\S]*artifacts\/demo-proof-docker\.json/);

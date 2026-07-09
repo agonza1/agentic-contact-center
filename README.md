@@ -47,7 +47,7 @@ npm test
 npm start
 ```
 
-The server listens at `http://localhost:8026` by default. In another terminal, verify health:
+The server listens at `http://localhost:8026` by default. In another terminal, verify health. The health payload separates `demoReady` from `productionReady`; the default POC is demo-ready but production-blocked because telephony, credentials, and state persistence are still local/mocked.
 
 ```bash
 npm run health:smoke
