@@ -1816,6 +1816,7 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.doesNotMatch(response.body, /call\.transcript\.slice\(-10\)/);
     assert.match(response.body, /startVoiceSegment/);
     assert.match(response.body, /voiceSegmentMs/);
+    assert.match(response.body, /voiceSegmentMs: 9000/);
     assert.match(response.body, /MediaRecorder/);
     assert.match(response.body, /new WebSocket/);
     assert.match(response.body, /Attention only/);
@@ -4423,6 +4424,49 @@ test("free caller cancellation flow captures reason instead of repeating reason 
       repeatedPayload.events.some((event) => event.detail.responseKind === "cancellation_reason_acknowledged"),
       true,
     );
+  });
+});
+
+test("free caller cancellation flow treats yes as human handoff confirmation", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Hello.",
+      conversationMode: "free_caller",
+      timestamp: "2026-07-09T22:11:03.174Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I would like to cancel.",
+      conversationMode: "free_caller",
+      timestamp: "2026-07-09T22:11:36.681Z",
+    });
+    await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Running costs are too high.",
+      conversationMode: "free_caller",
+      timestamp: "2026-07-09T22:11:45.375Z",
+    });
+    const confirmed = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Yes, please.",
+      conversationMode: "free_caller",
+      timestamp: "2026-07-09T22:12:06.914Z",
+    });
+    const payload = confirmed.payload as SnapshotPayload;
+    const latestAgentTurn = payload.transcript.at(-1)?.text ?? "";
+
+    assert.equal(confirmed.statusCode, 200);
+    assert.equal(payload.flowState, "wrap");
+    assert.match(latestAgentTurn, /handing this to a human specialist/i);
+    assert.doesNotMatch(latestAgentTurn, /do you want a human specialist to take over/i);
+    assert.equal(
+      payload.events.some((event) => event.detail.responseKind === "cancellation_handoff_confirmed"),
+      true,
+    );
+    assert.equal(payload.events.some((event) => event.type === "human_handoff_started"), true);
+    assert.equal(payload.session.openclawSession.evidenceSummary.handoffEventCount, 1);
   });
 });
 
