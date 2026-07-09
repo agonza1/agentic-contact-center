@@ -31,6 +31,7 @@ import {
   buildSpeechEnhancementRuntimeReadiness,
   buildSpeechEnhancementReviewHandoff,
   buildSpeechEnhancementSpikeReport,
+  buildSpeechEnhancementStrictArtifactVerification,
   resolveSpeechEnhancementRuntimeConfig,
   validateSpeechEnhancementCaptureReplayManifest,
 } from "../core/speechEnhancementSpike";
@@ -3931,6 +3932,7 @@ async function routeRequest(
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
       reviewGate: buildSpeechEnhancementReviewGate(report),
       reviewHandoff: buildSpeechEnhancementReviewHandoff(),
+      strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification(),
     });
     return;
   }

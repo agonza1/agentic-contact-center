@@ -239,6 +239,19 @@ export interface SpeechEnhancementReviewHandoff {
   nextEvidenceOwner: "agentic_contact_center";
 }
 
+export interface SpeechEnhancementStrictArtifactVerificationSource {
+  strictArtifactsVerified: boolean;
+}
+
+export interface SpeechEnhancementStrictArtifactVerification {
+  requiredForClose: true;
+  verified: boolean;
+  reason:
+    | "all_loaded_capture_replay_artifacts_verified"
+    | "run_with_strict_capture_artifacts_before_closing"
+    | "attach_real_capture_replay_before_strict_artifact_verification";
+}
+
 export interface SpeechEnhancementReviewGate {
   issueCloseReady: boolean;
   checks: Record<
@@ -1051,6 +1064,24 @@ export function buildSpeechEnhancementReviewHandoff(): SpeechEnhancementReviewHa
     strictValidationCommand:
       "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
     nextEvidenceOwner: "agentic_contact_center",
+  };
+}
+
+export function buildSpeechEnhancementStrictArtifactVerification(
+  sources: SpeechEnhancementStrictArtifactVerificationSource[] = [],
+  strictCaptureArtifacts = false,
+): SpeechEnhancementStrictArtifactVerification {
+  const hasCaptureReplay = sources.length > 0;
+  const verified = hasCaptureReplay && strictCaptureArtifacts && sources.every((source) => source.strictArtifactsVerified);
+
+  return {
+    requiredForClose: true,
+    verified,
+    reason: verified
+      ? "all_loaded_capture_replay_artifacts_verified"
+      : hasCaptureReplay
+        ? "run_with_strict_capture_artifacts_before_closing"
+        : "attach_real_capture_replay_before_strict_artifact_verification",
   };
 }
 

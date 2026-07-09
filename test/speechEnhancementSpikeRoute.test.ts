@@ -141,6 +141,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         strictValidationCommand: string;
         nextEvidenceOwner: string;
       };
+      strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
     };
 
     assert.equal(payload.ok, true);
@@ -309,6 +310,11 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
     );
     assert.equal(payload.reviewHandoff.nextEvidenceOwner, "agentic_contact_center");
+    assert.deepEqual(payload.strictArtifactVerification, {
+      requiredForClose: true,
+      verified: false,
+      reason: "attach_real_capture_replay_before_strict_artifact_verification",
+    });
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 
