@@ -476,6 +476,13 @@ export function validateSpeechEnhancementCaptureReplayManifest(
   if (!hasArtifactUriField(manifest, "source_manifest_uri")) {
     missingFields.push("source_manifest_uri.artifacts_relative_path_required");
   }
+  if (
+    hasArtifactUriField(manifest, "audio_source_uri") &&
+    hasArtifactUriField(manifest, "source_manifest_uri") &&
+    manifest.audio_source_uri === manifest.source_manifest_uri
+  ) {
+    missingFields.push("source_manifest_uri.distinct_from_audio_source_uri");
+  }
   if (hasStringField(manifest, "capture_id") && !realNoisyLocalSipCaptureIdPattern.test(manifest.capture_id as string)) {
     missingFields.push("capture_id.real_noisy_local_sip_required");
   }
