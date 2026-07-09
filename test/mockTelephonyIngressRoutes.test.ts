@@ -1787,13 +1787,13 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Connect Voice/);
     assert.match(response.body, /Unmute Caller/);
     assert.match(response.body, /Mute Caller/);
-    assert.match(response.body, /Check Bridge/);
+    assert.doesNotMatch(response.body, /Check Bridge/);
     assert.match(response.body, /Bridge unknown/);
     assert.match(response.body, /Bridge running/);
     assert.match(response.body, /Bridge offline/);
     assert.match(response.body, /voice-bridge-status/);
     assert.match(response.body, /voice-bridge-detail/);
-    assert.match(response.body, /voice-bridge-check/);
+    assert.match(response.body, /voiceBridgeIntervalMs: 5000/);
     assert.match(response.body, /Demo Flow/);
     assert.match(response.body, /class="demo-flow-svg"/);
     assert.match(response.body, /browser mic/);
@@ -1808,6 +1808,7 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /connectPipecatVoice/);
     assert.match(response.body, /togglePipecatMute/);
     assert.match(response.body, /probeVoiceBridge/);
+    assert.match(response.body, /startVoiceBridgeProbing/);
     assert.match(response.body, /voiceBridgeUrl/);
     assert.match(response.body, /captureTranscriptScroll/);
     assert.match(response.body, /restoreTranscriptScroll/);
