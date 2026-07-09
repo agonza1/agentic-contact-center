@@ -201,10 +201,16 @@ async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayP
 }
 
 function assertSourceManifestJson(contents, captureReplayPath, artifactUri) {
+  let sourceManifest;
+
   try {
-    JSON.parse(contents.toString("utf8"));
+    sourceManifest = JSON.parse(contents.toString("utf8"));
   } catch {
     throw new Error(`Invalid source manifest JSON for strict capture replay artifact: ${captureReplayPath}: ${artifactUri}`);
+  }
+
+  if (typeof sourceManifest !== "object" || sourceManifest === null || Array.isArray(sourceManifest)) {
+    throw new Error(`Invalid source manifest JSON object for strict capture replay artifact: ${captureReplayPath}: ${artifactUri}`);
   }
 }
 
