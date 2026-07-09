@@ -253,6 +253,12 @@ export interface SpeechEnhancementReviewGate {
   failureReasons: Record<string, string>;
   blockers: string[];
   nextEvidence: string[];
+  nextAction: {
+    owner: SpeechEnhancementReviewHandoff["nextEvidenceOwner"];
+    action: "attach_real_capture_replay" | "ready_to_close";
+    command: SpeechEnhancementReviewHandoff["strictValidationCommand"];
+    reason: string;
+  };
   realCaptureReplayIds: string[];
   passingRealCaptureReplayIds: string[];
   blockedRealCaptureReplayIds: string[];
@@ -1092,6 +1098,7 @@ export function buildSpeechEnhancementReviewGate(
       cpuRuntimeCost: "Measured enhanced CPU p95 must stay at or below 80% on the selected rtc-asr host.",
     }).filter(([check]) => !checks[check as keyof typeof checks]),
   );
+  const handoff = buildSpeechEnhancementReviewHandoff();
 
   return {
     issueCloseReady,
@@ -1099,6 +1106,16 @@ export function buildSpeechEnhancementReviewGate(
     failureReasons,
     blockers: [...report.acceptanceReadiness.remainingBeforeIssueClose, ...blockedReplayMessages],
     nextEvidence: report.replayCoverage.missingEvidence,
+    nextAction: {
+      owner: handoff.nextEvidenceOwner,
+      action: issueCloseReady ? "ready_to_close" : "attach_real_capture_replay",
+      command: handoff.strictValidationCommand,
+      reason: issueCloseReady
+        ? "Issue #97 close gates have a passing real noisy local SIP replay."
+        : failureReasons.realNoisyCaptureReplay ??
+          blockedReplayMessages[0] ??
+          "Attach a passing real noisy local SIP capture replay before closing Issue #97.",
+    },
     realCaptureReplayIds: realCaptureReplayDecisions.map((decision) => decision.captureId),
     passingRealCaptureReplayIds,
     blockedRealCaptureReplayIds,

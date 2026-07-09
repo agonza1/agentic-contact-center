@@ -127,6 +127,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         failureReasons: Record<string, string>;
         blockers: string[];
         nextEvidence: string[];
+        nextAction: { owner: string; action: string; command: string; reason: string };
         realCaptureReplayIds: string[];
         realCaptureReplayEvidence: Array<{ captureId: string; status: "passing" | "blocked" }>;
       };
@@ -281,6 +282,13 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.match(payload.reviewGate.failureReasons.realNoisyCaptureReplay, /real noisy local SIP capture/);
     assert.ok(payload.reviewGate.blockers.some((blocker) => blocker.includes("real noisy local SIP capture")));
     assert.ok(payload.reviewGate.nextEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));
+    assert.deepEqual(payload.reviewGate.nextAction, {
+      owner: "agentic_contact_center",
+      action: "attach_real_capture_replay",
+      command:
+        "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
+      reason: "Attach one real noisy local SIP capture replay before closing Issue #97.",
+    });
     assert.deepEqual(payload.reviewGate.realCaptureReplayIds, []);
     assert.equal(payload.reviewHandoff.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/97");
     assert.equal(payload.reviewHandoff.reviewRoute, "/api/realtime-shim/speech-enhancement-spike");
