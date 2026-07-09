@@ -127,6 +127,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     routes: { scrollable: string; present: string; scriptedDemo: string; operatorDrill: string; evalPreview: string; evalRun: string };
     readiness: Array<{ id: string; status: string; caveat: string }>;
     liveProbes: Array<{ id: string; configured: boolean; status: string; ok: boolean; metadata: Record<string, unknown> }>;
+    demoGoal: { issue: string; statement: string; chain: string[]; successSignal: string };
     scenario: { callerTurns: string[]; failureDrills: string[] };
     asrPanel: { contract: string; streamStates: string[]; fixtureEvents: Array<{ state: string }>; benchmarks: Array<{ label: string }> };
     brainBlocks: Array<{ file: string; affects: string[] }>;
@@ -138,6 +139,9 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.ok, true);
   assert.equal(payload.workboardCard, "85ea5a1a-3a68-4e5d-ac1d-10d5851017ae");
   assert.equal(payload.activeWorkboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
+  assert.equal(payload.demoGoal.issue, "agonza1/agentic-contact-center#177");
+  assert.deepEqual(payload.demoGoal.chain, ["sip", "pipecat", "rtc_asr", "openclaw_agent", "kokoro_tts", "conversation_agent_evals"]);
+  assert.match(payload.demoGoal.successSignal, /scorecard passes/);
   assert.equal(payload.routes.scrollable, "/cluecon");
   assert.equal(payload.routes.present, "/cluecon/present");
   assert.equal(payload.routes.scriptedDemo, "/api/demo/run-end-to-end");

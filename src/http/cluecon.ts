@@ -297,6 +297,12 @@ function buildBasePayload(
     title: "From SIP to Tokens: Deterministic Telephony Meets Real-Time Voice AI",
     thesis:
       "SIP gives deterministic call state. Pipecat gives the media runtime. rtc-asr gives the local STT boundary. OpenClaw-style harnessing controls the agent. Kokoro speaks locally. ConversationAgentEvals / ASSERT proves whether the workflow completed safely.",
+    demoGoal: {
+      issue: "agonza1/agentic-contact-center#177",
+      statement: "Run one inspectable local cancellation-rescue call from SIP ingress through Pipecat, rtc-asr, OpenClaw agent control, Kokoro/local TTS, and ASSERT proof.",
+      chain: ["sip", "pipecat", "rtc_asr", "openclaw_agent", "kokoro_tts", "conversation_agent_evals"],
+      successSignal: "The scorecard passes with transcript, operator action, latency, fallback caveat, and proof-bundle evidence attached.",
+    },
     routes: {
       scrollable: "/cluecon",
       present: "/cluecon/present",
