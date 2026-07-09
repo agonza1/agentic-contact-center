@@ -124,8 +124,9 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     ok: boolean;
     workboardCard: string;
     activeWorkboardCard: string;
+    sourceRepos: { agenticContactCenter: string; rtcAsr: string };
     routes: { scrollable: string; present: string; scriptedDemo: string; operatorDrill: string; evalPreview: string; evalRun: string };
-    readiness: Array<{ id: string; status: string; caveat: string }>;
+    readiness: Array<{ id: string; status: string; caveat: string; repoUrl?: string }>;
     liveProbes: Array<{ id: string; configured: boolean; status: string; ok: boolean; metadata: Record<string, unknown> }>;
     demoGoal: { issue: string; statement: string; chain: string[]; successSignal: string };
     scenario: { callerTurns: string[]; failureDrills: string[] };
@@ -139,6 +140,8 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.ok, true);
   assert.equal(payload.workboardCard, "85ea5a1a-3a68-4e5d-ac1d-10d5851017ae");
   assert.equal(payload.activeWorkboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
+  assert.equal(payload.sourceRepos.agenticContactCenter, "https://github.com/agonza1/agentic-contact-center");
+  assert.equal(payload.sourceRepos.rtcAsr, "https://github.com/agonza1/rtc-asr");
   assert.equal(payload.demoGoal.issue, "agonza1/agentic-contact-center#177");
   assert.deepEqual(payload.demoGoal.chain, ["sip", "pipecat", "rtc_asr", "openclaw_agent", "kokoro_tts", "conversation_agent_evals"]);
   assert.match(payload.demoGoal.successSignal, /scorecard passes/);
@@ -149,7 +152,8 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.routes.evalPreview, "/api/cluecon/eval/preview");
   assert.equal(payload.routes.evalRun, "/api/cluecon/eval/run");
   assert.ok(payload.readiness.some((item) => item.id === "pipecat" && item.status === "ready"));
-  assert.ok(payload.readiness.some((item) => item.id === "rtc_asr" && /blocker state/.test(item.caveat)));
+  assert.ok(payload.readiness.some((item) => item.id === "acc" && item.repoUrl === "https://github.com/agonza1/agentic-contact-center"));
+  assert.ok(payload.readiness.some((item) => item.id === "rtc_asr" && item.repoUrl === "https://github.com/agonza1/rtc-asr" && /blocker state/.test(item.caveat)));
   assert.ok(payload.liveProbes.some((probe) => probe.id === "rtc_asr" && probe.configured === false && probe.status === "fixture"));
   assert.ok(payload.liveProbes.some((probe) => probe.id === "kokoro" && probe.configured === false && probe.status === "fixture"));
   assert.equal(payload.scenario.callerTurns.length, 4);
@@ -393,6 +397,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Run eval proof/);
   assert.match(narrative.body, /window\.__CLUECON__/);
   assert.match(narrative.body, /rtc-asr is measurable and swappable/);
+  assert.match(narrative.body, /https:\/\/github\.com\/agonza1\/rtc-asr/);
   assert.match(narrative.body, /renderAsrPanel/);
   assert.match(narrative.body, /runEvalProof/);
   assert.match(narrative.body, /class="scroll"/);

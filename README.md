@@ -27,7 +27,7 @@ flowchart LR
     evidence --> evals[ASSERT and ConversationAgentEvals handoff]
 ```
 
-The TypeScript service in `src/` owns the HTTP routes, in-memory call state, local Pipecat flow contract, operator steer, fallback, and evidence. `docs/realtime-shim-contract.md` maps the OpenAI Realtime-style web voice lifecycle to the local `rtc-asr` / Local STT v1 sidecar contract. The runtime is intentionally local and in-memory; restarting the server clears calls.
+The TypeScript service in `src/` owns the HTTP routes, in-memory call state, local Pipecat flow contract, operator steer, fallback, and evidence. `docs/realtime-shim-contract.md` maps the OpenAI Realtime-style web voice lifecycle to the local [`rtc-asr`](https://github.com/agonza1/rtc-asr) / Local STT v1 sidecar contract. The runtime is intentionally local and in-memory; restarting the server clears calls.
 
 ## Prerequisites
 
