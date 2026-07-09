@@ -194,6 +194,18 @@ async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayP
       `Capture replay artifact hash mismatch for ${field}: ${captureReplayPath}: expected ${expectedSha256}, got ${actualSha256}`,
     );
   }
+
+  if (field === "source_manifest_uri") {
+    assertSourceManifestJson(contents, captureReplayPath, artifactUri);
+  }
+}
+
+function assertSourceManifestJson(contents, captureReplayPath, artifactUri) {
+  try {
+    JSON.parse(contents.toString("utf8"));
+  } catch {
+    throw new Error(`Invalid source manifest JSON for strict capture replay artifact: ${captureReplayPath}: ${artifactUri}`);
+  }
 }
 
 function resolveOutputPath() {
