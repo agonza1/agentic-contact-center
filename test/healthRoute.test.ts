@@ -94,6 +94,7 @@ test("GET /health returns config-backed demo metadata", async () => {
       missingEvidence: string[];
       blockers: string[];
       nextEvidence: string[];
+      nextAction: { owner: string; action: string; command: string; reason: string };
       passingRealCaptureReplayIds: string[];
       blockedRealCaptureReplayIds: string[];
       captureReplayFixturePath: string;
@@ -173,6 +174,13 @@ test("GET /health returns config-backed demo metadata", async () => {
   );
   assert.ok(payload.speechEnhancement.blockers.some((item) => item.includes("real noisy local SIP capture")));
   assert.deepEqual(payload.speechEnhancement.nextEvidence, payload.speechEnhancement.missingEvidence);
+  assert.deepEqual(payload.speechEnhancement.nextAction, {
+    owner: "agentic_contact_center",
+    action: "attach_real_capture_replay",
+    command:
+      "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
+    reason: "Attach one real noisy local SIP capture replay before closing Issue #97.",
+  });
   assert.deepEqual(payload.speechEnhancement.passingRealCaptureReplayIds, []);
   assert.deepEqual(payload.speechEnhancement.blockedRealCaptureReplayIds, []);
   assert.equal(

@@ -1004,6 +1004,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   missingEvidence: string[];
   blockers: string[];
   nextEvidence: string[];
+  nextAction: SpeechEnhancementReviewGate["nextAction"];
   passingRealCaptureReplayIds: string[];
   blockedRealCaptureReplayIds: string[];
   captureReplayFixturePath: SpeechEnhancementCaptureReplayContract["fixtureManifestPath"];
@@ -1047,6 +1048,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     missingEvidence: reviewGate.nextEvidence,
     blockers: reviewGate.blockers,
     nextEvidence: reviewGate.nextEvidence,
+    nextAction: reviewGate.nextAction,
     passingRealCaptureReplayIds: reviewGate.passingRealCaptureReplayIds,
     blockedRealCaptureReplayIds: reviewGate.blockedRealCaptureReplayIds,
     captureReplayFixturePath: report.captureReplayContract.fixtureManifestPath,
