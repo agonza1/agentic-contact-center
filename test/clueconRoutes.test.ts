@@ -124,13 +124,14 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     ok: boolean;
     workboardCard: string;
     activeWorkboardCard: string;
-    routes: { scrollable: string; present: string; scriptedDemo: string };
+    routes: { scrollable: string; present: string; scriptedDemo: string; operatorDrill: string };
     readiness: Array<{ id: string; status: string; caveat: string }>;
     liveProbes: Array<{ id: string; configured: boolean; status: string; ok: boolean; metadata: Record<string, unknown> }>;
     scenario: { callerTurns: string[]; failureDrills: string[] };
     asrPanel: { contract: string; streamStates: string[]; fixtureEvents: Array<{ state: string }>; benchmarks: Array<{ label: string }> };
     brainBlocks: Array<{ file: string; affects: string[] }>;
     brainPanel: { previewRoute: string; applyRoute: string; resetRoute: string; safeMutation: string; activeFiles: string[] };
+    operatorCockpit: { workboardCard: string; drillRoute: string; modes: string[]; drillKinds: string[]; actions: string[] };
     proofPreview: { compatibleRequest: string; includes: string[] };
   };
 
@@ -140,6 +141,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.routes.scrollable, "/cluecon");
   assert.equal(payload.routes.present, "/cluecon/present");
   assert.equal(payload.routes.scriptedDemo, "/api/demo/run-end-to-end");
+  assert.equal(payload.routes.operatorDrill, "/api/cluecon/operator/drill");
   assert.ok(payload.readiness.some((item) => item.id === "pipecat" && item.status === "ready"));
   assert.ok(payload.readiness.some((item) => item.id === "rtc_asr" && /blocker state/.test(item.caveat)));
   assert.ok(payload.liveProbes.some((probe) => probe.id === "rtc_asr" && probe.configured === false && probe.status === "fixture"));
@@ -152,12 +154,15 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.ok(payload.asrPanel.benchmarks.some((benchmark) => benchmark.label === "first partial"));
   assert.ok(payload.brainBlocks.some((block) => block.file === "policy.md" && block.affects.includes("policy hold")));
   assert.equal(payload.brainPanel.previewRoute, "/api/cluecon/brain/preview");
-  assert.equal(payload.brainPanel.safeMutation, "session_scoped_in_memory");
-  assert.equal(payload.brainPanel.previewRoute, "/api/cluecon/brain/preview");
   assert.equal(payload.brainPanel.applyRoute, "/api/cluecon/brain/apply");
   assert.equal(payload.brainPanel.resetRoute, "/api/cluecon/brain/reset");
   assert.equal(payload.brainPanel.safeMutation, "session_scoped_in_memory");
   assert.ok(payload.brainPanel.activeFiles.includes("policy.md"));
+  assert.equal(payload.operatorCockpit.workboardCard, "3ea982b1-627a-4698-8b02-0c270b688237");
+  assert.equal(payload.operatorCockpit.drillRoute, "/api/cluecon/operator/drill");
+  assert.ok(payload.operatorCockpit.modes.includes("operator_click_simulation"));
+  assert.ok(payload.operatorCockpit.drillKinds.includes("transfer"));
+  assert.ok(payload.operatorCockpit.actions.includes("takeover"));
   assert.equal(payload.proofPreview.compatibleRequest, "conversation-agent-evals-assert-request.json");
   assert.ok(payload.proofPreview.includes.includes("ASR/TTS caveats"));
 });
@@ -232,6 +237,50 @@ test("POST /api/cluecon/brain/apply rejects unsafe missing policy blocks", async
   assert.equal(payload.ok, false);
   assert.ok(payload.errors.includes("policy.md block is required for the ClueCon agent panel"));
   assert.equal(payload.corruptsRuntime, false);
+});
+
+test("POST /api/cluecon/operator/drill runs fail-closed and operator action drills", async () => {
+  const fallbackResponse = await post("/api/cluecon/operator/drill", { kind: "runtime_failure" });
+  assert.equal(fallbackResponse.statusCode, 201);
+  const fallback = JSON.parse(fallbackResponse.body) as {
+    ok: boolean;
+    workboardCard: string;
+    kind: string;
+    outcome: string;
+    summary: string;
+    simulatedEvents: string[];
+    call: { flowState: string; demoFallback: { mode: string | null; reason: string | null }; session: { openclawSession: { label: string } } };
+    proofLinks: { proof: string; operatorConsole: string };
+  };
+  assert.equal(fallback.ok, true);
+  assert.equal(fallback.workboardCard, "3ea982b1-627a-4698-8b02-0c270b688237");
+  assert.equal(fallback.kind, "runtime_failure");
+  assert.equal(fallback.outcome, "fail_closed_handoff");
+  assert.match(fallback.summary, /fail-closed human handoff/);
+  assert.ok(fallback.simulatedEvents.includes("call_error_fail_closed"));
+  assert.equal(fallback.call.demoFallback.mode, "runtime_failure");
+  assert.match(fallback.call.demoFallback.reason ?? "", /runtime_failure ClueCon operator drill/);
+  assert.match(fallback.proofLinks.proof, /\/api\/calls\/demo-call-\d+\/proof/);
+  assert.match(fallback.proofLinks.operatorConsole, /openclawSessionLabel=cluecon%2Foperator-runtime_failure/);
+
+  const transferResponse = await post("/api/cluecon/operator/drill", { kind: "transfer" });
+  assert.equal(transferResponse.statusCode, 201);
+  const transfer = JSON.parse(transferResponse.body) as {
+    outcome: string;
+    call: { flowState: string; operatorSteer: { lastAction: string | null }; events: Array<{ type: string }> };
+  };
+  assert.equal(transfer.outcome, "operator_transfer");
+  assert.equal(transfer.call.flowState, "wrap");
+  assert.equal(transfer.call.operatorSteer.lastAction, "transfer");
+  assert.ok(transfer.call.events.some((event) => event.type === "operator_transfer_started"));
+});
+
+test("POST /api/cluecon/operator/drill rejects unknown drill kinds", async () => {
+  const response = await post("/api/cluecon/operator/drill", { kind: "magic_success" });
+  assert.equal(response.statusCode, 400);
+  const payload = JSON.parse(response.body) as { ok: boolean; error: string };
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error, "cluecon_operator_drill_kind_invalid");
 });
 
 test("GET /api/cluecon upgrades readiness when live sidecar health probes pass", async () => {
