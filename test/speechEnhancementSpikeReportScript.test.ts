@@ -843,7 +843,7 @@ test("speech enhancement spike report reports strict artifact verification statu
     assert.match(markdown, /Failure Reasons\n\n- None\./);
     assert.match(
       markdown,
-      /real-noisy-local-sip-001: passing; wer_delta=0\.12; latency_headroom_ms=7; cpu_headroom_percent=38; failing_evidence=none; reasons=wer_improved, endpointing_stable, barge_in_risk_low, latency_within_budget, cpu_cost_allowed; audio=artifacts\/local-sip\/real-noisy-local-sip-001\.wav; source_manifest=artifacts\/local-sip\/proof-manifest-001\.json; runtime_host=local-rtc-asr-host/,
+      /real-noisy-local-sip-001: passing; wer_delta=0\.12; latency_headroom_ms=7; cpu_headroom_percent=38; failing_evidence=none; reasons=wer_improved, endpointing_stable, barge_in_risk_low, latency_within_budget, cpu_cost_allowed; audio=artifacts\/local-sip\/real-noisy-local-sip-001\.wav; audio_sha256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; source_manifest=artifacts\/local-sip\/proof-manifest-001\.json; source_manifest_sha256=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd; runtime_host=local-rtc-asr-host/,
     );
     assert.match(markdown, /Capture Replay Sources/);
     assert.match(

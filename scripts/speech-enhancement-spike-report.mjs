@@ -268,13 +268,15 @@ function buildMarkdownReport(artifact) {
   });
   const replayEvidence = reviewGate.realCaptureReplayEvidence.map((evidence) => {
     const source = evidence.audioSourceUri ?? "missing audio source";
+    const audioSha256 = evidence.audioSha256 ?? "missing audio sha256";
     const sourceManifest = evidence.sourceManifestUri ?? "missing source manifest";
+    const sourceManifestSha256 = evidence.sourceManifestSha256 ?? "missing source manifest sha256";
     const runtimeHost = evidence.runtimeHost ?? "missing runtime host";
 
     const failingEvidence = evidence.failingEvidence.length > 0 ? evidence.failingEvidence.join(", ") : "none";
     const reasons = evidence.reasons.length > 0 ? evidence.reasons.join(", ") : "none";
 
-    return `- ${evidence.captureId}: ${evidence.status}; wer_delta=${evidence.wordErrorRateDelta}; latency_headroom_ms=${evidence.addedLatencyBudgetHeadroomMs}; cpu_headroom_percent=${evidence.cpuP95BudgetHeadroomPercent}; failing_evidence=${failingEvidence}; reasons=${reasons}; audio=${source}; source_manifest=${sourceManifest}; runtime_host=${runtimeHost}`;
+    return `- ${evidence.captureId}: ${evidence.status}; wer_delta=${evidence.wordErrorRateDelta}; latency_headroom_ms=${evidence.addedLatencyBudgetHeadroomMs}; cpu_headroom_percent=${evidence.cpuP95BudgetHeadroomPercent}; failing_evidence=${failingEvidence}; reasons=${reasons}; audio=${source}; audio_sha256=${audioSha256}; source_manifest=${sourceManifest}; source_manifest_sha256=${sourceManifestSha256}; runtime_host=${runtimeHost}`;
   });
   const captureReplaySources = artifact.captureReplaySources.map((source) => {
     const strictArtifacts = source.strictArtifactsVerified ? "verified" : "not_verified";
