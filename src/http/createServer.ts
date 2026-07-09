@@ -6,6 +6,7 @@ import {
   buildClueConPayload,
   buildClueConPayloadWithLiveProbes,
   clueConAgentBrainCard,
+  clueConOperatorCockpitCard,
   defaultClueConBrainBlocks,
   normalizeClueConBrainBlocks,
 } from "./cluecon";
@@ -3026,6 +3027,105 @@ async function runEndToEndDemoFlow(
   return { latest, steps };
 }
 
+type ClueConOperatorDrillKind =
+  | "scripted_approve"
+  | "tool_timeout"
+  | "runtime_failure"
+  | "transfer"
+  | "takeover"
+  | "end_call";
+
+function isClueConOperatorDrillKind(value: unknown): value is ClueConOperatorDrillKind {
+  return (
+    value === "scripted_approve" ||
+    value === "tool_timeout" ||
+    value === "runtime_failure" ||
+    value === "transfer" ||
+    value === "takeover" ||
+    value === "end_call"
+  );
+}
+
+async function runClueConOperatorDrill(
+  ingress: InMemoryTelephonyIngress,
+  config: PocConfig,
+  kind: ClueConOperatorDrillKind,
+) {
+  if (kind === "scripted_approve") {
+    const { latest, steps } = await runEndToEndDemoFlow(ingress, config, {
+      openclawSessionLabel: "cluecon/operator-scripted-approve",
+    });
+    return {
+      latest,
+      steps,
+      summary: "scripted_approve -> policy hold, operator approval, safe wrap, and proof bundle.",
+      outcome: "scripted_wrap_complete",
+    };
+  }
+
+  const started = await ingress.startCall(config, {
+    openclawSessionLabel: `cluecon/operator-${kind}`,
+    source: "mock_http_route",
+  });
+  const callId = started.session.callId;
+  const startedAtMs = new Date(started.session.startedAt).getTime();
+  const timestampAfter = (offsetMs: number) => new Date(startedAtMs + offsetMs).toISOString();
+  const steps: Array<{ step: string; ok: boolean; flowState: FlowState; callId: string; detail: string }> = [
+    { step: "call_started", ok: true, flowState: started.flowState, callId, detail: "ClueCon operator cockpit started a simulated call." },
+  ];
+
+  let latest = started;
+  for (const [index, text] of SCRIPTED_CALLER_TURNS.slice(0, 3).entries()) {
+    latest = await ingress.appendCallerTurn(
+      callId,
+      { speaker: "caller", text, timestamp: timestampAfter(1_000 + index * 4_000) },
+      config,
+    );
+    steps.push({
+      step: `media_transcript_${index + 1}`,
+      ok: true,
+      flowState: latest.flowState,
+      callId,
+      detail: text,
+    });
+  }
+
+  if (kind === "tool_timeout" || kind === "runtime_failure") {
+    latest = await ingress.triggerFallback(callId, kind, timestampAfter(14_000), `${kind} ClueCon operator drill`);
+    steps.push({
+      step: "call_error_fail_closed",
+      ok: true,
+      flowState: latest.flowState,
+      callId,
+      detail: `${kind} produced a fail-closed human handoff.`,
+    });
+    return {
+      latest,
+      steps,
+      summary: `${kind} -> fail-closed human handoff; no improvised offer.`,
+      outcome: "fail_closed_handoff",
+    };
+  }
+
+  latest = await ingress.applyOperatorSteer(callId, kind, timestampAfter(14_000), `${kind} ClueCon operator drill`, {
+    sourceRoute: "/api/cluecon/operator/drill",
+    confirmationAcknowledged: true,
+  });
+  steps.push({
+    step: `operator_${kind}`,
+    ok: true,
+    flowState: latest.flowState,
+    callId,
+    detail: `${kind} was applied through the ClueCon operator cockpit.`,
+  });
+  return {
+    latest,
+    steps,
+    summary: `${kind} -> operator cockpit applied bounded control and preserved evidence.`,
+    outcome: `operator_${kind}`,
+  };
+}
+
 async function resolveOperatorConsoleCallId(
   body: Record<string, unknown>,
   ingress: InMemoryTelephonyIngress,
@@ -3736,6 +3836,42 @@ async function routeRequest(
       activeBrainBlocks: activeClueConBrainBlocks,
       brainPanel: payload.brainPanel,
       evidenceTrail: activeClueConBrainEvidence.slice(-8),
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/cluecon/operator/drill") {
+    const body = await readJsonBody<unknown>(request);
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    if (!isClueConOperatorDrillKind(body.kind)) {
+      writeBadRequest(response, "cluecon_operator_drill_kind_invalid");
+      return;
+    }
+
+    const drill = await runClueConOperatorDrill(ingress, config, body.kind);
+    const proof = buildCallProofBundlePayload(drill.latest);
+    writeJson(response, 201, {
+      ok: true,
+      route: "/api/cluecon/operator/drill",
+      workboardCard: clueConOperatorCockpitCard,
+      kind: body.kind,
+      outcome: drill.outcome,
+      summary: drill.summary,
+      simulatedEvents: drill.steps.map((step) => step.step),
+      steps: drill.steps,
+      call: buildCallPayload(drill.latest),
+      operatorConsoleCall: buildOperatorConsoleCallPayload(drill.latest),
+      proof,
+      proofLinks: {
+        snapshot: drill.latest.session.openclawSession.artifactLinks.snapshot,
+        events: drill.latest.session.openclawSession.artifactLinks.events,
+        proof: drill.latest.session.openclawSession.artifactLinks.proof,
+        operatorConsole: `/api/operator/console?openclawSessionLabel=${encodeURIComponent(drill.latest.session.openclawSession.label)}`,
+      },
     });
     return;
   }
