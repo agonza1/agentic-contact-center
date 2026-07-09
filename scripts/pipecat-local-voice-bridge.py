@@ -16,6 +16,7 @@ import contextlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -92,6 +93,7 @@ class BridgeReadiness:
     rtc_asr: ProbeResult
     kokoro: ProbeResult
     acc: ProbeResult
+    ffmpeg: ProbeResult
     stt_model: str
     stt_backend: str
 
@@ -165,6 +167,49 @@ def probe_json(url: str, service_id: str, timeout: float = 1.5) -> ProbeResult:
         )
 
 
+def probe_ffmpeg() -> ProbeResult:
+    started = time.perf_counter()
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        return ProbeResult(
+            id="ffmpeg",
+            ok=False,
+            status="offline",
+            url="PATH",
+            detail="ffmpeg is not available on PATH",
+            error="not_found",
+            response_ms=round((time.perf_counter() - started) * 1000),
+        )
+    try:
+        completed = subprocess.run(
+            [ffmpeg_path, "-version"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        first_line = completed.stdout.splitlines()[0] if completed.stdout else "ffmpeg available"
+        return ProbeResult(
+            id="ffmpeg",
+            ok=True,
+            status="ready",
+            url=ffmpeg_path,
+            detail="ffmpeg responded",
+            metadata={"version": first_line},
+            response_ms=round((time.perf_counter() - started) * 1000),
+        )
+    except Exception as exc:
+        return ProbeResult(
+            id="ffmpeg",
+            ok=False,
+            status="degraded",
+            url=ffmpeg_path,
+            detail="ffmpeg is installed but did not respond to -version",
+            error=str(exc),
+            response_ms=round((time.perf_counter() - started) * 1000),
+        )
+
+
 def pick_model_metadata(health: dict[str, Any], models_payload: dict[str, Any] | None) -> tuple[str, str]:
     env_model = os.environ.get("RTC_ASR_MODEL") or DEFAULT_RTC_ASR_MODEL
     backend = str(health.get("backend") or health.get("runtime") or health.get("device") or DEFAULT_RTC_ASR_BACKEND)
@@ -197,6 +242,7 @@ def check_readiness(acc_url: str = DEFAULT_ACC_URL) -> BridgeReadiness:
     rtc_probe = probe_json(rtc_health_url, "rtc-asr")
     kokoro_probe = probe_json(kokoro_health_url, "kokoro")
     acc_probe = probe_json(acc_health_url, "acc")
+    ffmpeg_probe = probe_ffmpeg()
     models_payload = None
     if rtc_probe.ok:
         with contextlib.suppress(Exception):
@@ -204,8 +250,8 @@ def check_readiness(acc_url: str = DEFAULT_ACC_URL) -> BridgeReadiness:
     stt_model, stt_backend = pick_model_metadata(rtc_probe.metadata, models_payload)
     if models_payload:
         rtc_probe.metadata = {**rtc_probe.metadata, "models": models_payload.get("models") or models_payload.get("data")}
-    ok = rtc_probe.ok and kokoro_probe.ok and acc_probe.ok and stt_model != "unknown" and stt_backend != "unknown"
-    blockers = [probe.detail for probe in (rtc_probe, kokoro_probe, acc_probe) if not probe.ok]
+    ok = rtc_probe.ok and kokoro_probe.ok and acc_probe.ok and ffmpeg_probe.ok and stt_model != "unknown" and stt_backend != "unknown"
+    blockers = [probe.detail for probe in (rtc_probe, kokoro_probe, acc_probe, ffmpeg_probe) if not probe.ok]
     if stt_model == "unknown" or stt_backend == "unknown":
         blockers.append("rtc-asr health or /v1/models did not expose model/backend metadata")
     return BridgeReadiness(
@@ -214,6 +260,7 @@ def check_readiness(acc_url: str = DEFAULT_ACC_URL) -> BridgeReadiness:
         rtc_asr=rtc_probe,
         kokoro=kokoro_probe,
         acc=acc_probe,
+        ffmpeg=ffmpeg_probe,
         stt_model=stt_model,
         stt_backend=stt_backend,
     )
@@ -525,6 +572,9 @@ def ready_payload(readiness: BridgeReadiness) -> dict[str, Any]:
             "sidecar": readiness.kokoro.__dict__,
         },
         "acc": readiness.acc.__dict__,
+        "localAudio": {
+            "ffmpeg": readiness.ffmpeg.__dict__,
+        },
     }
 
 

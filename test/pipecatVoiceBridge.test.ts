@@ -27,6 +27,8 @@ test("Pipecat voice bridge reports fail-closed readiness and engine evidence", (
 
   assert.match(bridge, /"ok": readiness\.ok/);
   assert.match(bridge, /"error": "sidecar_unavailable"/);
+  assert.match(bridge, /ffmpeg is not available on PATH/);
+  assert.match(bridge, /"localAudio"/);
   assert.match(bridge, /rtc-asr health or \/v1\/models did not expose model\/backend metadata/);
   assert.match(bridge, /"mediaFlow": "pipecat_frames"/);
   assert.match(bridge, /"stt": result\.stt_meta/);
