@@ -124,7 +124,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     ok: boolean;
     workboardCard: string;
     activeWorkboardCard: string;
-    routes: { scrollable: string; present: string; scriptedDemo: string; operatorDrill: string };
+    routes: { scrollable: string; present: string; scriptedDemo: string; operatorDrill: string; evalPreview: string; evalRun: string };
     readiness: Array<{ id: string; status: string; caveat: string }>;
     liveProbes: Array<{ id: string; configured: boolean; status: string; ok: boolean; metadata: Record<string, unknown> }>;
     scenario: { callerTurns: string[]; failureDrills: string[] };
@@ -132,16 +132,18 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     brainBlocks: Array<{ file: string; affects: string[] }>;
     brainPanel: { previewRoute: string; applyRoute: string; resetRoute: string; safeMutation: string; activeFiles: string[] };
     operatorCockpit: { workboardCard: string; drillRoute: string; modes: string[]; drillKinds: string[]; actions: string[] };
-    proofPreview: { compatibleRequest: string; includes: string[] };
+    proofPreview: { workboardCard: string; previewRoute: string; runRoute: string; compatibleRequest: string; includes: string[]; scorecardChecks: string[] };
   };
 
   assert.equal(payload.ok, true);
   assert.equal(payload.workboardCard, "85ea5a1a-3a68-4e5d-ac1d-10d5851017ae");
-  assert.equal(payload.activeWorkboardCard, "71d60b43-0de0-4a67-bb60-d6539780c3a4");
+  assert.equal(payload.activeWorkboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
   assert.equal(payload.routes.scrollable, "/cluecon");
   assert.equal(payload.routes.present, "/cluecon/present");
   assert.equal(payload.routes.scriptedDemo, "/api/demo/run-end-to-end");
   assert.equal(payload.routes.operatorDrill, "/api/cluecon/operator/drill");
+  assert.equal(payload.routes.evalPreview, "/api/cluecon/eval/preview");
+  assert.equal(payload.routes.evalRun, "/api/cluecon/eval/run");
   assert.ok(payload.readiness.some((item) => item.id === "pipecat" && item.status === "ready"));
   assert.ok(payload.readiness.some((item) => item.id === "rtc_asr" && /blocker state/.test(item.caveat)));
   assert.ok(payload.liveProbes.some((probe) => probe.id === "rtc_asr" && probe.configured === false && probe.status === "fixture"));
@@ -163,8 +165,12 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.ok(payload.operatorCockpit.modes.includes("operator_click_simulation"));
   assert.ok(payload.operatorCockpit.drillKinds.includes("transfer"));
   assert.ok(payload.operatorCockpit.actions.includes("takeover"));
+  assert.equal(payload.proofPreview.workboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
   assert.equal(payload.proofPreview.compatibleRequest, "conversation-agent-evals-assert-request.json");
+  assert.equal(payload.proofPreview.previewRoute, "/api/cluecon/eval/preview");
+  assert.equal(payload.proofPreview.runRoute, "/api/cluecon/eval/run");
   assert.ok(payload.proofPreview.includes.includes("ASR/TTS caveats"));
+  assert.ok(payload.proofPreview.scorecardChecks.includes("operator_approval"));
 });
 
 test("POST /api/cluecon/brain preview, apply, and reset keep edits session-scoped", async () => {
@@ -283,6 +289,54 @@ test("POST /api/cluecon/operator/drill rejects unknown drill kinds", async () =>
   assert.equal(payload.error, "cluecon_operator_drill_kind_invalid");
 });
 
+test("GET/POST /api/cluecon/eval preview and run expose ASSERT handoff without overclaiming live eval", async () => {
+  const previewResponse = await get("/api/cluecon/eval/preview");
+  assert.equal(previewResponse.statusCode, 200);
+  const preview = JSON.parse(previewResponse.body) as {
+    ok: boolean;
+    workboardCard: string;
+    mode: string;
+    compatibleRequest: string;
+    runRoute: string;
+    scorecardChecks: string[];
+    caveat: string;
+  };
+  assert.equal(preview.ok, true);
+  assert.equal(preview.workboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
+  assert.equal(preview.mode, "non_mutating_preview");
+  assert.equal(preview.compatibleRequest, "conversation-agent-evals-assert-request.json");
+  assert.equal(preview.runRoute, "/api/cluecon/eval/run");
+  assert.ok(preview.scorecardChecks.includes("fallback_caveats"));
+  assert.match(preview.caveat, /Preview names the ASSERT handoff contract/);
+
+  const runResponse = await post("/api/cluecon/eval/run");
+  assert.equal(runResponse.statusCode, 201);
+  const run = JSON.parse(runResponse.body) as {
+    ok: boolean;
+    workboardCard: string;
+    compatibleRequest: string;
+    scorecard: { overallPassed: boolean; passed: number; total: number; checks: Array<{ id: string; passed: boolean; evidence: string }> };
+    assertRequestPreview: { metadata: { local_import_mode: string; live_telephony: string }; evidence: { proof_bundle: { readiness: string } } };
+    proof: { scenario: { mode: string }; pipecatFlow: { credentialsMode: string }; outcome: { status: string } };
+    proofLinks: { proof: string; operatorConsole: string };
+  };
+  assert.equal(run.ok, true);
+  assert.equal(run.workboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
+  assert.equal(run.compatibleRequest, "conversation-agent-evals-assert-request.json");
+  assert.equal(run.scorecard.total, 6);
+  assert.equal(run.scorecard.passed, 6);
+  assert.equal(run.scorecard.overallPassed, true);
+  assert.ok(run.scorecard.checks.some((check) => check.id === "operator_approval" && check.passed));
+  assert.equal(run.assertRequestPreview.metadata.local_import_mode, "handoff_artifact");
+  assert.equal(run.assertRequestPreview.metadata.live_telephony, "mocked_telephony");
+  assert.equal(run.assertRequestPreview.evidence.proof_bundle.readiness, "route_preview");
+  assert.equal(run.proof.scenario.mode, "mocked_telephony");
+  assert.equal(run.proof.pipecatFlow.credentialsMode, "mocked");
+  assert.equal(run.proof.outcome.status, "completed");
+  assert.match(run.proofLinks.proof, /\/api\/calls\/demo-call-\d+\/proof/);
+  assert.match(run.proofLinks.operatorConsole, /\/api\/operator\/console\?callId=demo-call-\d+/);
+});
+
 test("GET /api/cluecon upgrades readiness when live sidecar health probes pass", async () => {
   const rtcAsr = await startHealthServer({
     ok: true,
@@ -329,19 +383,68 @@ test("GET /api/cluecon upgrades readiness when live sidecar health probes pass",
   }
 });
 
+
+test("GET/POST /api/cluecon/eval expose ASSERT handoff preview and scorecard", async () => {
+  const previewResponse = await get("/api/cluecon/eval/preview");
+  assert.equal(previewResponse.statusCode, 200);
+  const preview = JSON.parse(previewResponse.body) as {
+    ok: boolean;
+    workboardCard: string;
+    mode: string;
+    compatibleRequest: string;
+    runRoute: string;
+    scorecardChecks: string[];
+    evidenceArtifacts: string[];
+  };
+  assert.equal(preview.ok, true);
+  assert.equal(preview.workboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
+  assert.equal(preview.mode, "non_mutating_preview");
+  assert.equal(preview.compatibleRequest, "conversation-agent-evals-assert-request.json");
+  assert.equal(preview.runRoute, "/api/cluecon/eval/run");
+  assert.ok(preview.scorecardChecks.includes("policy_hold"));
+  assert.ok(preview.evidenceArtifacts.includes("action_trace"));
+
+  const runResponse = await post("/api/cluecon/eval/run");
+  assert.equal(runResponse.statusCode, 201);
+  const run = JSON.parse(runResponse.body) as {
+    ok: boolean;
+    workboardCard: string;
+    compatibleRequest: string;
+    scorecard: { overallPassed: boolean; passed: number; total: number; checks: Array<{ id: string; passed: boolean; evidence: string }> };
+    assertRequestPreview: { spec_ref: { assert_project: string }; evidence: { transcript: { readiness: string }; proof_bundle: { routes: { transcript: string } } }; metadata: { compatible_file: string } };
+    proofLinks: { proof: string; operatorConsole: string };
+  };
+  assert.equal(run.ok, true);
+  assert.equal(run.workboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
+  assert.equal(run.compatibleRequest, "conversation-agent-evals-assert-request.json");
+  assert.equal(run.scorecard.overallPassed, true);
+  assert.equal(run.scorecard.passed, run.scorecard.total);
+  assert.ok(run.scorecard.checks.some((check) => check.id === "operator_approval" && check.passed));
+  assert.equal(run.assertRequestPreview.spec_ref.assert_project, "conversation-agent-evals");
+  assert.equal(run.assertRequestPreview.evidence.transcript.readiness, "inline_preview");
+  assert.match(run.assertRequestPreview.evidence.proof_bundle.routes.transcript, /\/api\/calls\/demo-call-\d+\/transcript/);
+  assert.equal(run.assertRequestPreview.metadata.compatible_file, "conversation-agent-evals-assert-request.json");
+  assert.match(run.proofLinks.proof, /\/api\/calls\/demo-call-\d+\/proof/);
+  assert.match(run.proofLinks.operatorConsole, /\/api\/operator\/console\?callId=demo-call-\d+/);
+});
+
 test("GET /cluecon and /cluecon/present render the interactive presentation shells", async () => {
   const narrative = await get("/cluecon");
   assert.equal(narrative.statusCode, 200);
   assert.match(narrative.contentType, /text\/html/);
   assert.match(narrative.body, /From SIP to Tokens/);
   assert.match(narrative.body, /Run scripted demo/);
+  assert.match(narrative.body, /Run eval proof/);
   assert.match(narrative.body, /window\.__CLUECON__/);
   assert.match(narrative.body, /rtc-asr is measurable and swappable/);
   assert.match(narrative.body, /renderAsrPanel/);
+  assert.match(narrative.body, /runEvalProof/);
   assert.match(narrative.body, /class="scroll"/);
 
   const present = await get("/cluecon/present");
   assert.equal(present.statusCode, 200);
   assert.match(present.body, /class="present"/);
   assert.match(present.body, /ArrowRight/);
+  assert.match(present.body, /Run eval proof/);
+  assert.match(present.body, /eval-scorecard/);
 });

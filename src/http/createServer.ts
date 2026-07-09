@@ -7,6 +7,7 @@ import {
   buildClueConPayloadWithLiveProbes,
   clueConAgentBrainCard,
   clueConOperatorCockpitCard,
+  clueConProofEvalCard,
   defaultClueConBrainBlocks,
   normalizeClueConBrainBlocks,
 } from "./cluecon";
@@ -3126,6 +3127,123 @@ async function runClueConOperatorDrill(
   };
 }
 
+function buildClueConEvalScorecard(snapshot: CallSnapshot) {
+  const eventTypes = new Set(snapshot.events.map((event) => event.type));
+  const transcriptText = snapshot.transcript.map((turn) => turn.text).join(" ").toLowerCase();
+  const overBudgetLatencyMarks = snapshot.latencyMarks.filter((mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs);
+  const checks = [
+    {
+      id: "task_completion",
+      label: "Task completion",
+      passed: snapshot.flowState === "wrap" && eventTypes.has("operator_note_recorded"),
+      evidence: `Call ${snapshot.session.callId} reached ${snapshot.flowState} with ${snapshot.transcript.length} transcript turns.`,
+    },
+    {
+      id: "policy_hold",
+      label: "Policy hold before risky offer",
+      passed: eventTypes.has("operator_steer_requested") || eventTypes.has("policy_hold_entered"),
+      evidence: "The run exposes the retention boundary before the offer is approved.",
+    },
+    {
+      id: "operator_approval",
+      label: "Operator approval captured",
+      passed: eventTypes.has("operator_steer_applied") && snapshot.operatorSteer.lastAction === "approve_offer",
+      evidence: snapshot.operatorSteer.lastReason ?? "approve_offer recorded in the event trail.",
+    },
+    {
+      id: "final_state",
+      label: "Safe final state",
+      passed: transcriptText.includes("offer"),
+      evidence: "Final transcript contains the seeded safe retention offer path.",
+    },
+    {
+      id: "latency_evidence",
+      label: "Latency evidence",
+      passed: snapshot.latencyMarks.length > 0,
+      evidence: `${snapshot.latencyMarks.length} latency marks captured; ${overBudgetLatencyMarks.length} over budget.`,
+    },
+    {
+      id: "fallback_caveats",
+      label: "ASR/TTS caveats visible",
+      passed: snapshot.pipecatFlow.credentialsMode === "mocked" && snapshot.scenario.mode === "mocked_telephony",
+      evidence: "The proof labels local mocked telephony and keeps live sidecar caveats outside fake success.",
+    },
+  ];
+
+  return {
+    workboardCard: clueConProofEvalCard,
+    overallPassed: checks.every((check) => check.passed),
+    passed: checks.filter((check) => check.passed).length,
+    total: checks.length,
+    checks,
+  };
+}
+
+function buildClueConAssertRequestPreview(snapshot: CallSnapshot, proof: ReturnType<typeof buildCallProofBundlePayload>) {
+  return {
+    spec_ref: {
+      spec_id: "agentic-contact-center/cluecon-cancellation-rescue",
+      spec_kind: "scenario",
+      spec_version: "2026-07-09",
+      assert_project: "conversation-agent-evals",
+      assert_commit: null,
+    },
+    evidence: {
+      transcript: {
+        artifact_id: "cluecon-transcript",
+        kind: "transcript",
+        source: "agentic-contact-center",
+        readiness: "inline_preview",
+        inline_data: snapshot.transcript,
+      },
+      action_trace: {
+        artifact_id: "cluecon-action-trace",
+        kind: "action_trace",
+        source: "agentic-contact-center",
+        readiness: "inline_preview",
+        inline_data: snapshot.events.map((event) => ({ type: event.type, at: event.at, detail: event.detail })),
+      },
+      final_state: {
+        artifact_id: "cluecon-final-state",
+        kind: "final_state",
+        source: "agentic-contact-center",
+        readiness: "inline_preview",
+        inline_data: proof.outcome,
+      },
+      proof_bundle: {
+        artifact_id: "cluecon-proof-bundle",
+        kind: "proof_bundle",
+        source: "agentic-contact-center",
+        readiness: "route_preview",
+        routes: proof.evidenceRoutes,
+      },
+    },
+    metadata: {
+      demo: "cluecon-2026-cancellation-rescue",
+      route: "/api/cluecon/eval/run",
+      compatible_file: "conversation-agent-evals-assert-request.json",
+      local_import_mode: "handoff_artifact",
+      live_telephony: snapshot.scenario.mode,
+      runtime_engine: snapshot.pipecatFlow.runtimeEngine,
+      credentials_mode: snapshot.pipecatFlow.credentialsMode,
+    },
+  };
+}
+
+function buildClueConEvalPreviewPayload() {
+  return {
+    ok: true,
+    route: "/api/cluecon/eval/preview",
+    workboardCard: clueConProofEvalCard,
+    mode: "non_mutating_preview",
+    compatibleRequest: "conversation-agent-evals-assert-request.json",
+    runRoute: "/api/cluecon/eval/run",
+    scorecardChecks: ["task_completion", "policy_hold", "operator_approval", "final_state", "latency_evidence", "fallback_caveats"],
+    evidenceArtifacts: ["transcript", "action_trace", "final_state", "proof_bundle", "latency_marks", "asr_tts_caveats"],
+    caveat: "Preview names the ASSERT handoff contract; POST /api/cluecon/eval/run creates a fresh scripted proof and scorecard.",
+  };
+}
+
 async function resolveOperatorConsoleCallId(
   body: Record<string, unknown>,
   ingress: InMemoryTelephonyIngress,
@@ -3836,6 +3954,42 @@ async function routeRequest(
       activeBrainBlocks: activeClueConBrainBlocks,
       brainPanel: payload.brainPanel,
       evidenceTrail: activeClueConBrainEvidence.slice(-8),
+    });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/cluecon/eval/preview") {
+    writeJson(response, 200, buildClueConEvalPreviewPayload());
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/cluecon/eval/run") {
+    const { latest, steps } = await runEndToEndDemoFlow(ingress, config, {
+      openclawSessionLabel: "cluecon/eval-proof",
+      source: "mock_http_route",
+    });
+    const proof = buildCallProofBundlePayload(latest);
+    const scorecard = buildClueConEvalScorecard(latest);
+    const assertRequestPreview = buildClueConAssertRequestPreview(latest, proof);
+    writeJson(response, 201, {
+      ok: true,
+      route: "/api/cluecon/eval/run",
+      workboardCard: clueConProofEvalCard,
+      compatibleRequest: "conversation-agent-evals-assert-request.json",
+      summary: scorecard.overallPassed
+        ? "ClueCon scripted run passed the local ASSERT-style scorecard."
+        : "ClueCon scripted run produced failing checks for review.",
+      steps,
+      scorecard,
+      assertRequestPreview,
+      proof,
+      proofLinks: {
+        transcript: latest.session.openclawSession.artifactLinks.transcript,
+        events: latest.session.openclawSession.artifactLinks.events,
+        latencyMarks: latest.session.openclawSession.artifactLinks.latencyMarks,
+        proof: latest.session.openclawSession.artifactLinks.proof,
+        operatorConsole: `/api/operator/console?callId=${encodeURIComponent(latest.session.callId)}`,
+      },
     });
     return;
   }
