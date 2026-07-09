@@ -98,12 +98,13 @@ async function loadCaptureReplayMetrics() {
     seenCaptureIds.set(validation.metric.captureId, captureReplayPath);
 
     if (strictCaptureArtifacts) {
-      await assertCaptureArtifact(payload.audio_source_uri, payload.audio_sha256, captureReplayPath, "audio_source_uri");
+      await assertCaptureArtifact(payload.audio_source_uri, payload.audio_sha256, captureReplayPath, "audio_source_uri", payload);
       await assertCaptureArtifact(
         payload.source_manifest_uri,
         payload.source_manifest_sha256,
         captureReplayPath,
         "source_manifest_uri",
+        payload,
       );
     }
 
@@ -170,7 +171,7 @@ async function collectCaptureReplayManifestPaths(directoryPath) {
   return manifestPaths.sort();
 }
 
-async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayPath, field) {
+async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayPath, field, captureReplay) {
   const artifactPath = path.resolve(process.cwd(), artifactUri);
   let contents;
 
@@ -196,11 +197,11 @@ async function assertCaptureArtifact(artifactUri, expectedSha256, captureReplayP
   }
 
   if (field === "source_manifest_uri") {
-    assertSourceManifestJson(contents, captureReplayPath, artifactUri);
+    assertSourceManifestJson(contents, captureReplayPath, artifactUri, captureReplay);
   }
 }
 
-function assertSourceManifestJson(contents, captureReplayPath, artifactUri) {
+function assertSourceManifestJson(contents, captureReplayPath, artifactUri, captureReplay) {
   let sourceManifest;
 
   try {
@@ -211,6 +212,27 @@ function assertSourceManifestJson(contents, captureReplayPath, artifactUri) {
 
   if (typeof sourceManifest !== "object" || sourceManifest === null || Array.isArray(sourceManifest)) {
     throw new Error(`Invalid source manifest JSON object for strict capture replay artifact: ${captureReplayPath}: ${artifactUri}`);
+  }
+
+  assertOptionalSourceManifestField(sourceManifest, "capture_id", captureReplay.capture_id, captureReplayPath, artifactUri);
+  assertOptionalSourceManifestField(
+    sourceManifest,
+    "audio_source_uri",
+    captureReplay.audio_source_uri,
+    captureReplayPath,
+    artifactUri,
+  );
+}
+
+function assertOptionalSourceManifestField(sourceManifest, field, expectedValue, captureReplayPath, artifactUri) {
+  if (!(field in sourceManifest)) {
+    return;
+  }
+
+  if (sourceManifest[field] !== expectedValue) {
+    throw new Error(
+      `Source manifest ${field} mismatch for strict capture replay artifact: ${captureReplayPath}: ${artifactUri}: expected ${expectedValue}, got ${sourceManifest[field]}`,
+    );
   }
 }
 
