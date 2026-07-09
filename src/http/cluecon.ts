@@ -1,8 +1,190 @@
 import { SCRIPTED_CALLER_TURNS, getPipecatPrototypeHealth } from "../core/pipecatFlowPrototype";
 import type { PocConfig } from "../core/types";
 
-export function buildClueConPayload(config: PocConfig) {
+type ClueConReadinessStatus = "ready" | "blocked" | "fixture" | "configured";
+
+interface ClueConReadinessItem {
+  id: string;
+  label: string;
+  status: ClueConReadinessStatus;
+  detail: string;
+  caveat: string;
+}
+
+interface ClueConSidecarProbe {
+  id: string;
+  label: string;
+  configured: boolean;
+  status: ClueConReadinessStatus;
+  url: string | null;
+  healthPath: string | null;
+  ok: boolean;
+  responseMs: number | null;
+  detail: string;
+  error: string | null;
+  metadata: Record<string, unknown>;
+}
+
+interface ClueConProbeOptions {
+  rtcAsrBaseUrl?: string;
+  rtcAsrHealthPath?: string;
+  kokoroBaseUrl?: string;
+  kokoroHealthPath?: string;
+  pipecatVoiceUrl?: string;
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+}
+
+const defaultProbeTimeoutMs = 600;
+
+function trimEnv(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function joinUrl(baseUrl: string, path: string): string {
+  const normalizedBase = baseUrl.replace(/\/+$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${normalizedBase}${normalizedPath}`;
+}
+
+function normalizeHealthPath(value: string | undefined, fallback: string): string {
+  return trimEnv(value) ?? fallback;
+}
+
+function probeMetadata(payload: unknown): Record<string, unknown> {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return {};
+  }
+  const record = payload as Record<string, unknown>;
+  return Object.fromEntries(
+    ["status", "ready", "backend", "model", "service", "version", "voices"].flatMap((key) =>
+      key in record ? [[key, record[key]]] : [],
+    ),
+  );
+}
+
+async function probeHttpSidecar({
+  id,
+  label,
+  baseUrl,
+  healthPath,
+  configuredDetail,
+  missingDetail,
+  timeoutMs,
+  fetchImpl,
+}: {
+  id: string;
+  label: string;
+  baseUrl?: string;
+  healthPath: string;
+  configuredDetail: string;
+  missingDetail: string;
+  timeoutMs: number;
+  fetchImpl: typeof fetch;
+}): Promise<ClueConSidecarProbe> {
+  if (!baseUrl) {
+    return {
+      id,
+      label,
+      configured: false,
+      status: "fixture",
+      url: null,
+      healthPath,
+      ok: false,
+      responseMs: null,
+      detail: missingDetail,
+      error: null,
+      metadata: {},
+    };
+  }
+
+  const url = joinUrl(baseUrl, healthPath);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const started = Date.now();
+
+  try {
+    const response = await fetchImpl(url, { signal: controller.signal });
+    const responseMs = Date.now() - started;
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    const metadata = probeMetadata(payload);
+    const explicitOk = payload && typeof payload === "object" && "ok" in payload ? Boolean((payload as { ok?: unknown }).ok) : true;
+    const ready = response.ok && explicitOk;
+    return {
+      id,
+      label,
+      configured: true,
+      status: ready ? "ready" : "blocked",
+      url,
+      healthPath,
+      ok: ready,
+      responseMs,
+      detail: ready ? configuredDetail : `${label} responded but is not ready.`,
+      error: ready ? null : `HTTP ${response.status}`,
+      metadata,
+    };
+  } catch (error) {
+    return {
+      id,
+      label,
+      configured: true,
+      status: "blocked",
+      url,
+      healthPath,
+      ok: false,
+      responseMs: Date.now() - started,
+      detail: `${label} is configured but unreachable.`,
+      error: error instanceof Error ? error.message : String(error),
+      metadata: {},
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function pipecatVoiceProbe(pipecatVoiceUrl?: string): ClueConSidecarProbe {
+  if (!pipecatVoiceUrl) {
+    return {
+      id: "pipecat_voice",
+      label: "Pipecat voice bridge",
+      configured: false,
+      status: "fixture",
+      url: null,
+      healthPath: null,
+      ok: false,
+      responseMs: null,
+      detail: "Browser voice bridge URL is not configured; scripted mode remains valid.",
+      error: null,
+      metadata: {},
+    };
+  }
+  return {
+    id: "pipecat_voice",
+    label: "Pipecat voice bridge",
+    configured: true,
+    status: "configured",
+    url: pipecatVoiceUrl,
+    healthPath: null,
+    ok: true,
+    responseMs: null,
+    detail: "Browser voice bridge URL is configured; websocket liveness is verified by the browser voice flow.",
+    error: null,
+    metadata: { transport: "websocket" },
+  };
+}
+
+function buildBasePayload(config: PocConfig, liveProbes: ClueConSidecarProbe[] = []) {
   const pipecat = getPipecatPrototypeHealth();
+  const probeById = new Map(liveProbes.map((probe) => [probe.id, probe]));
+  const rtcAsrProbe = probeById.get("rtc_asr");
+  const kokoroProbe = probeById.get("kokoro");
+  const pipecatVoice = probeById.get("pipecat_voice");
 
   return {
     ok: true,
@@ -22,6 +204,7 @@ export function buildClueConPayload(config: PocConfig) {
       realtimeShimReadiness: "/api/realtime-shim/readiness",
       realtimeShimProof: "/api/realtime-shim/proof",
     },
+    liveProbes,
     readiness: [
       {
         id: "acc",
@@ -33,23 +216,31 @@ export function buildClueConPayload(config: PocConfig) {
       {
         id: "pipecat",
         label: "Pipecat transport",
-        status: pipecat.ready ? "ready" : "blocked",
-        detail: `${pipecat.runtimeEngine} via ${pipecat.transport}; verify with ${pipecat.runtimeCheck.command}.`,
-        caveat: "Browser voice needs the local Pipecat bridge; scripted mode remains valid without it.",
+        status: pipecatVoice?.status === "configured" ? "configured" : pipecat.ready ? "ready" : "blocked",
+        detail: pipecatVoice?.configured
+          ? `${pipecat.runtimeEngine} via ${pipecat.transport}; browser bridge configured at ${pipecatVoice.url}.`
+          : `${pipecat.runtimeEngine} via ${pipecat.transport}; verify with ${pipecat.runtimeCheck.command}.`,
+        caveat: pipecatVoice?.configured
+          ? "Websocket liveness is exercised by browser voice mode; scripted mode remains valid without it."
+          : "Browser voice needs the local Pipecat bridge; scripted mode remains valid without it.",
       },
       {
         id: "rtc_asr",
         label: "rtc-asr Local STT v1",
-        status: "fixture",
-        detail: "Readiness and stream events are shown from fixture mode unless rtc-asr is reachable locally.",
-        caveat: "Unavailable rtc-asr is a blocker state, not a fake transcript.",
+        status: rtcAsrProbe?.status ?? "fixture",
+        detail: rtcAsrProbe?.detail ?? "Readiness and stream events are shown from fixture mode unless rtc-asr is reachable locally.",
+        caveat: rtcAsrProbe?.configured
+          ? `Probe ${rtcAsrProbe.ok ? "passed" : "failed"} at ${rtcAsrProbe.url}.`
+          : "Unavailable rtc-asr is a blocker state, not a fake transcript.",
       },
       {
         id: "kokoro",
         label: "Kokoro TTS",
-        status: "fixture",
-        detail: "Kokoro is marked unavailable for this slice and falls back to text/local TTS.",
-        caveat: "The UI is honest about TTS fallback during the talk path.",
+        status: kokoroProbe?.status ?? "fixture",
+        detail: kokoroProbe?.detail ?? "Kokoro is marked unavailable for this slice and falls back to text/local TTS.",
+        caveat: kokoroProbe?.configured
+          ? `Probe ${kokoroProbe.ok ? "passed" : "failed"} at ${kokoroProbe.url}.`
+          : "The UI is honest about TTS fallback during the talk path.",
       },
       {
         id: "eval",
@@ -68,8 +259,9 @@ export function buildClueConPayload(config: PocConfig) {
     asrPanel: {
       provider: "rtc-asr Local STT v1",
       contract: "PCM16 16 kHz mono in; transcript events out",
-      status: "fixture_blocker",
+      status: rtcAsrProbe?.ok ? "live_ready" : "fixture_blocker",
       endpointHints: ["GET /health", "GET /v1/models", "WS /v1/stt/stream"],
+      liveProbe: rtcAsrProbe ?? null,
       streamStates: ["connected", "ready", "partial", "final", "canceled", "error"],
       fixtureEvents: [
         { state: "connected", text: "local Pipecat bridge opened an ASR stream", latencyMs: 34 },
@@ -97,6 +289,48 @@ export function buildClueConPayload(config: PocConfig) {
       primaryClaim: "The demo is complete when the evidence proves the workflow completed safely.",
     },
   };
+}
+
+export function buildClueConPayload(config: PocConfig) {
+  return buildBasePayload(config);
+}
+
+export async function buildClueConPayloadWithLiveProbes(
+  config: PocConfig,
+  options: ClueConProbeOptions = {},
+) {
+  const env = process.env;
+  const timeoutMs = options.timeoutMs ?? defaultProbeTimeoutMs;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const rtcAsrBaseUrl = options.rtcAsrBaseUrl ?? trimEnv(env.RTC_ASR_BASE_URL);
+  const kokoroBaseUrl = options.kokoroBaseUrl ?? trimEnv(env.KOKORO_BASE_URL);
+  const pipecatVoiceUrl = options.pipecatVoiceUrl ?? trimEnv(env.PIPECAT_VOICE_WS_URL) ?? trimEnv(env.ACC_PIPECAT_VOICE_WS_URL);
+
+  const liveProbes = await Promise.all([
+    probeHttpSidecar({
+      id: "rtc_asr",
+      label: "rtc-asr Local STT v1",
+      baseUrl: rtcAsrBaseUrl,
+      healthPath: normalizeHealthPath(options.rtcAsrHealthPath ?? env.RTC_ASR_HEALTH_PATH, "/health"),
+      configuredDetail: "rtc-asr health probe is reachable for live ASR readiness.",
+      missingDetail: "RTC_ASR_BASE_URL is not set; ASR panel stays in fixture/blocker mode.",
+      timeoutMs,
+      fetchImpl,
+    }),
+    probeHttpSidecar({
+      id: "kokoro",
+      label: "Kokoro TTS",
+      baseUrl: kokoroBaseUrl,
+      healthPath: normalizeHealthPath(options.kokoroHealthPath ?? env.KOKORO_HEALTH_PATH, "/health"),
+      configuredDetail: "Kokoro health probe is reachable for local TTS readiness.",
+      missingDetail: "KOKORO_BASE_URL is not set; TTS panel stays in text/local fallback mode.",
+      timeoutMs,
+      fetchImpl,
+    }),
+    Promise.resolve(pipecatVoiceProbe(pipecatVoiceUrl)),
+  ]);
+
+  return buildBasePayload(config, liveProbes);
 }
 
 function escapeHtml(value: string): string {
@@ -188,7 +422,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present"):
   </main>
   <script>window.__CLUECON__ = ${data};</script>
   <script>
-    const data = window.__CLUECON__;
+    let data = window.__CLUECON__;
     const state = { slide: 0, proof: null, brain: JSON.parse(JSON.stringify(data.brainBlocks)) };
     function esc(value) { return String(value).replace(/[&<>\"]/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;"); }
     function renderReadiness() { document.getElementById("readiness").innerHTML = data.readiness.map(item => '<article class="card metric"><span class="badge ' + esc(item.status) + '">' + esc(item.status) + '</span><strong>' + esc(item.label) + '</strong><span class="muted">' + esc(item.detail) + '</span><span class="muted">' + esc(item.caveat) + '</span></article>').join(""); }
@@ -198,13 +432,14 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present"):
     function renderTimeline(call) { const events = call ? call.events.slice(-8) : []; document.getElementById("timeline").innerHTML = events.map(event => '<div class="event"><strong>' + esc(event.type) + '</strong><span class="muted">' + esc(JSON.stringify(event.detail)) + '</span></div>').join("") || '<div class="plain muted">Timeline will populate from the scripted call events.</div>'; }
     function renderSlides() { document.querySelectorAll("[data-slide]").forEach(el => el.classList.toggle("active", Number(el.dataset.slide) === state.slide)); }
     function summarizeProof(proof) { return { compatibleRequest: data.proofPreview.compatibleRequest, callId: proof.callId, outcome: proof.outcome, summary: proof.summary, transcriptTurns: Array.isArray(proof.transcript) ? proof.transcript.length : 0, eventCount: Array.isArray(proof.events) ? proof.events.length : 0, latencyMarks: Array.isArray(proof.latencyMarks) ? proof.latencyMarks.length : 0, fallback: proof.demoFallback, caveats: proof.pii, artifactLinks: proof.artifacts }; }
+    async function refreshLiveProbes() { try { const response = await fetch("/api/cluecon"); if (!response.ok) return; data = await response.json(); window.__CLUECON__ = data; renderReadiness(); renderAsrPanel(); } catch (error) { console.warn("ClueCon live probe refresh failed", error); } }
     async function runDemo() { const buttons = document.querySelectorAll("button"); buttons.forEach(button => button.disabled = true); document.getElementById("demo-screen").textContent = "Running scripted cancellation-rescue proof..."; try { const response = await fetch(data.routes.scriptedDemo, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ openclawSessionLabel: "cluecon/vertical-slice" }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "demo failed"); state.proof = payload.proof; const transcript = payload.call.transcript.map(turn => turn.speaker + ": " + turn.text).join("\n"); document.getElementById("demo-screen").textContent = transcript; document.getElementById("proof-json").textContent = JSON.stringify(summarizeProof(payload.proof), null, 2); renderTimeline(payload.call); } catch (error) { document.getElementById("demo-screen").textContent = String(error.message || error); } finally { buttons.forEach(button => button.disabled = false); } }
     function previewBrain() { document.getElementById("proof-json").textContent = JSON.stringify({ previewOnly: true, activeBrainBlocks: state.brain, caveat: "Preview does not mutate the local runtime until an apply endpoint is intentionally added." }, null, 2); state.slide = ${mode === "present" ? 5 : 4}; renderSlides(); }
     function resetBrain() { state.brain = JSON.parse(JSON.stringify(data.brainBlocks)); renderBrain(); }
     async function runFallbackDrill(mode) { const buttons = document.querySelectorAll("button"); buttons.forEach(button => button.disabled = true); try { const start = await fetch("/api/demo/start", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ openclawSessionLabel: "cluecon/" + mode + "-drill" }) }); const started = await start.json(); if (!start.ok) throw new Error(started.error || "start failed"); const fallback = await fetch("/api/calls/" + encodeURIComponent(started.session.callId) + "/fallback", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode, reason: mode + " ClueCon drill" }) }); const call = await fallback.json(); if (!fallback.ok) throw new Error(call.error || "fallback failed"); const proofResponse = await fetch("/api/calls/" + encodeURIComponent(started.session.callId) + "/proof"); const proof = await proofResponse.json(); document.getElementById("demo-screen").textContent = mode + " -> fail-closed human handoff; no improvised offer."; document.getElementById("proof-json").textContent = JSON.stringify(summarizeProof(proof), null, 2); renderTimeline(call); } finally { buttons.forEach(button => button.disabled = false); } }
     function drill(kind) { const messages = { asr: "rtc_asr_unavailable -> visible ASR blocker; scripted fixture remains labeled and no fake live transcript is claimed.", tts: "tts_unavailable -> text/local-TTS fallback; Kokoro remains marked unavailable." }; const message = messages[kind] || "unavailable drill"; document.getElementById("demo-screen").textContent = message; document.getElementById("proof-json").textContent = JSON.stringify({ failureDrill: kind, honestState: message, caveat: "Preview blocker only; scripted path is still available for talk continuity." }, null, 2); }
     document.getElementById("run-demo").addEventListener("click", runDemo); document.getElementById("run-demo-top").addEventListener("click", runDemo); document.getElementById("drill-tool").addEventListener("click", () => runFallbackDrill("tool_timeout").catch(error => { document.getElementById("demo-screen").textContent = String(error.message || error); })); document.getElementById("drill-runtime").addEventListener("click", () => runFallbackDrill("runtime_failure").catch(error => { document.getElementById("demo-screen").textContent = String(error.message || error); })); document.getElementById("drill-asr").addEventListener("click", () => drill("asr")); document.getElementById("drill-tts").addEventListener("click", () => drill("tts")); document.getElementById("preview-brain").addEventListener("click", previewBrain); document.getElementById("reset-brain").addEventListener("click", resetBrain); document.getElementById("next").addEventListener("click", () => { state.slide = Math.min(5, state.slide + 1); renderSlides(); }); document.getElementById("prev").addEventListener("click", () => { state.slide = Math.max(0, state.slide - 1); renderSlides(); }); document.addEventListener("keydown", event => { if (event.key === "ArrowRight" || event.key === "PageDown") { state.slide = Math.min(5, state.slide + 1); renderSlides(); } if (event.key === "ArrowLeft" || event.key === "PageUp") { state.slide = Math.max(0, state.slide - 1); renderSlides(); } });
-    renderReadiness(); renderAsrPanel(); renderBrain(); renderProofCards(); renderTimeline(null); renderSlides();
+    renderReadiness(); renderAsrPanel(); renderBrain(); renderProofCards(); renderTimeline(null); renderSlides(); refreshLiveProbes();
   </script>
 </body>
 </html>`;

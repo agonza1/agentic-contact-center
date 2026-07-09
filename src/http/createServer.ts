@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
-import { buildClueConHtml, buildClueConPayload } from "./cluecon";
+import { buildClueConHtml, buildClueConPayload, buildClueConPayloadWithLiveProbes } from "./cluecon";
 
 import {
   assertSpecBlocks,
@@ -3636,7 +3636,7 @@ async function routeRequest(
   }
 
   if (request.method === "GET" && pathname === "/api/cluecon") {
-    writeJson(response, 200, buildClueConPayload(config));
+    writeJson(response, 200, await buildClueConPayloadWithLiveProbes(config));
     return;
   }
 
