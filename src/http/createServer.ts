@@ -1,6 +1,14 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
-import { buildClueConHtml, buildClueConPayload, buildClueConPayloadWithLiveProbes } from "./cluecon";
+import {
+  buildClueConBrainPreview,
+  buildClueConHtml,
+  buildClueConPayload,
+  buildClueConPayloadWithLiveProbes,
+  clueConAgentBrainCard,
+  defaultClueConBrainBlocks,
+  normalizeClueConBrainBlocks,
+} from "./cluecon";
 
 import {
   assertSpecBlocks,
@@ -53,6 +61,11 @@ const operatorConsoleRefreshIntervalMs = 5000;
 const operatorConsoleWorkboardCard = "82771d3a-de4d-4b6e-869c-328e8264d01e";
 const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
 let activeAssertEvaluationSpec = cloneAssertEvaluationSpec(defaultAssertEvaluationSpec);
+let activeClueConBrainBlocks = defaultClueConBrainBlocks();
+let activeClueConBrainRevision = 1;
+const activeClueConBrainEvidence: Array<{ id: string; type: "preview" | "apply" | "reset"; revision: number; changedFiles: string[]; createdAt: string }> = [
+  { id: "brain-seed-1", type: "apply", revision: 1, changedFiles: activeClueConBrainBlocks.map((block) => block.file), createdAt: "2026-07-09T00:00:00.000Z" },
+];
 
 function buildRealtimeShimProofPayload(): object {
   const shim = new LocalRealtimeShimPrototype();
@@ -3636,17 +3649,104 @@ async function routeRequest(
   }
 
   if (request.method === "GET" && pathname === "/api/cluecon") {
-    writeJson(response, 200, await buildClueConPayloadWithLiveProbes(config));
+    writeJson(response, 200, await buildClueConPayloadWithLiveProbes(config, {}, activeClueConBrainBlocks));
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/cluecon/brain/preview") {
+    const body = await readJsonBody<unknown>(request);
+    const preview = buildClueConBrainPreview(body, activeClueConBrainBlocks) as { ok: boolean };
+    activeClueConBrainEvidence.push({
+      id: `brain-preview-${activeClueConBrainEvidence.length + 1}`,
+      type: "preview",
+      revision: activeClueConBrainRevision,
+      changedFiles: "changedFiles" in preview && Array.isArray(preview.changedFiles) ? preview.changedFiles as string[] : [],
+      createdAt: new Date().toISOString(),
+    });
+    writeJson(response, preview.ok ? 200 : 400, {
+      ...preview,
+      workboardCard: clueConAgentBrainCard,
+      revision: activeClueConBrainRevision,
+      evidenceTrail: activeClueConBrainEvidence.slice(-8),
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/cluecon/brain/apply") {
+    const body = await readJsonBody<unknown>(request);
+    const normalized = normalizeClueConBrainBlocks(body);
+    if (!normalized.ok) {
+      writeJson(response, 400, {
+        ok: false,
+        errors: normalized.errors,
+        workboardCard: clueConAgentBrainCard,
+        mutation: "rejected",
+        corruptsRuntime: false,
+      });
+      return;
+    }
+
+    const previousByFile = new Map(activeClueConBrainBlocks.map((block) => [block.file, block.summary]));
+    const changedFiles = normalized.blocks
+      .filter((block) => previousByFile.get(block.file) !== block.summary)
+      .map((block) => block.file);
+    activeClueConBrainBlocks = normalized.blocks;
+    activeClueConBrainRevision += 1;
+    activeClueConBrainEvidence.push({
+      id: `brain-apply-${activeClueConBrainRevision}`,
+      type: "apply",
+      revision: activeClueConBrainRevision,
+      changedFiles,
+      createdAt: new Date().toISOString(),
+    });
+    const payload = buildClueConPayload(config, activeClueConBrainBlocks);
+    writeJson(response, 200, {
+      ok: true,
+      applied: true,
+      mutation: "session_scoped_in_memory",
+      corruptsRuntime: false,
+      workboardCard: clueConAgentBrainCard,
+      revision: activeClueConBrainRevision,
+      changedFiles,
+      activeBrainBlocks: activeClueConBrainBlocks,
+      brainPanel: payload.brainPanel,
+      evidenceTrail: activeClueConBrainEvidence.slice(-8),
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/cluecon/brain/reset") {
+    activeClueConBrainBlocks = defaultClueConBrainBlocks();
+    activeClueConBrainRevision += 1;
+    activeClueConBrainEvidence.push({
+      id: `brain-reset-${activeClueConBrainRevision}`,
+      type: "reset",
+      revision: activeClueConBrainRevision,
+      changedFiles: activeClueConBrainBlocks.map((block) => block.file),
+      createdAt: new Date().toISOString(),
+    });
+    const payload = buildClueConPayload(config, activeClueConBrainBlocks);
+    writeJson(response, 200, {
+      ok: true,
+      reset: true,
+      mutation: "session_scoped_in_memory",
+      corruptsRuntime: false,
+      workboardCard: clueConAgentBrainCard,
+      revision: activeClueConBrainRevision,
+      activeBrainBlocks: activeClueConBrainBlocks,
+      brainPanel: payload.brainPanel,
+      evidenceTrail: activeClueConBrainEvidence.slice(-8),
+    });
     return;
   }
 
   if (request.method === "GET" && pathname === "/cluecon") {
-    writeHtml(response, 200, buildClueConHtml(config, "scroll"));
+    writeHtml(response, 200, buildClueConHtml(config, "scroll", activeClueConBrainBlocks));
     return;
   }
 
   if (request.method === "GET" && pathname === "/cluecon/present") {
-    writeHtml(response, 200, buildClueConHtml(config, "present"));
+    writeHtml(response, 200, buildClueConHtml(config, "present", activeClueConBrainBlocks));
     return;
   }
 

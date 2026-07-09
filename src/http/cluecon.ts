@@ -35,7 +35,103 @@ interface ClueConProbeOptions {
   fetchImpl?: typeof fetch;
 }
 
+export interface ClueConBrainBlock {
+  file: string;
+  summary: string;
+  affects: string[];
+}
+
+export const clueConAgentBrainCard = "71d60b43-0de0-4a67-bb60-d6539780c3a4";
 const defaultProbeTimeoutMs = 600;
+const defaultBrainBlockRows: Array<[string, string, string]> = [
+  ["mission.md", "Rescue an at-risk cancellation only inside approved retention boundaries.", "agent response, final state"],
+  ["policy.md", "Pause before risky offers, require operator approval, and fail closed on runtime uncertainty.", "policy hold, fallback"],
+  ["tools.md", "Expose bounded call controls, slide controls, proof export, and operator steer actions.", "active tool, action trace"],
+  ["operator.md", "Ask for human steer at the retention boundary and record approval or escalation evidence.", "operator hold, proof bundle"],
+  ["fallback.md", "Escalate to a human instead of improvising when ASR, TTS, tools, or runtime are unavailable.", "handoff, caveats"],
+  ["eval.md", "Score task completion, policy compliance, final state, latency, and evidence quality.", "ASSERT request, scorecard"],
+];
+
+export function defaultClueConBrainBlocks(): ClueConBrainBlock[] {
+  return defaultBrainBlockRows.map(([file, summary, affects]) => ({
+    file,
+    summary,
+    affects: affects.split(/,\s*/),
+  }));
+}
+
+function normalizeBrainBlock(input: unknown, index: number): { block?: ClueConBrainBlock; errors: string[] } {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return { errors: [`brain block ${index + 1} must be an object`] };
+  }
+  const record = input as Record<string, unknown>;
+  const file = typeof record.file === "string" ? record.file.trim() : "";
+  const summary = typeof record.summary === "string" ? record.summary.trim() : "";
+  const affects = Array.isArray(record.affects)
+    ? record.affects.filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(Boolean)
+    : [];
+  const errors: string[] = [];
+  if (!/^[a-z0-9_-]+\.md$/i.test(file)) {
+    errors.push(`brain block ${index + 1} file must be a markdown filename`);
+  }
+  if (summary.length < 12) {
+    errors.push(`brain block ${file || index + 1} summary must be at least 12 characters`);
+  }
+  if (!affects.length) {
+    errors.push(`brain block ${file || index + 1} must declare affected evidence fields`);
+  }
+  if (errors.length) {
+    return { errors };
+  }
+  return { block: { file, summary, affects }, errors: [] };
+}
+
+export function normalizeClueConBrainBlocks(input: unknown): { ok: boolean; blocks: ClueConBrainBlock[]; errors: string[] } {
+  const source = input && typeof input === "object" && !Array.isArray(input) && "blocks" in input
+    ? (input as { blocks?: unknown }).blocks
+    : input;
+  if (!Array.isArray(source)) {
+    return { ok: false, blocks: [], errors: ["blocks must be an array"] };
+  }
+  const blocks: ClueConBrainBlock[] = [];
+  const errors: string[] = [];
+  for (const [index, item] of source.entries()) {
+    const normalized = normalizeBrainBlock(item, index);
+    errors.push(...normalized.errors);
+    if (normalized.block) {
+      blocks.push(normalized.block);
+    }
+  }
+  if (!blocks.some((block) => block.file === "policy.md")) {
+    errors.push("policy.md block is required for the ClueCon agent panel");
+  }
+  if (!blocks.some((block) => block.file === "fallback.md")) {
+    errors.push("fallback.md block is required for the ClueCon agent panel");
+  }
+  return { ok: errors.length === 0, blocks, errors };
+}
+
+export function buildClueConBrainPreview(input: unknown, currentBlocks: ClueConBrainBlock[]) {
+  const normalized = normalizeClueConBrainBlocks(input);
+  const currentByFile = new Map(currentBlocks.map((block) => [block.file, block.summary]));
+  const changedFiles = normalized.blocks
+    .filter((block) => currentByFile.get(block.file) !== block.summary)
+    .map((block) => block.file);
+
+  return {
+    ok: normalized.ok,
+    previewOnly: true,
+    errors: normalized.errors,
+    changedFiles,
+    activeBrainBlocks: normalized.blocks,
+    evidence: {
+      sessionLabel: "cluecon/agent-brain-preview",
+      mutation: "preview_only",
+      corruptsRuntime: false,
+      affectedEvidence: Array.from(new Set(normalized.blocks.flatMap((block) => block.affects))),
+    },
+  };
+}
 
 function trimEnv(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -179,7 +275,11 @@ function pipecatVoiceProbe(pipecatVoiceUrl?: string): ClueConSidecarProbe {
   };
 }
 
-function buildBasePayload(config: PocConfig, liveProbes: ClueConSidecarProbe[] = []) {
+function buildBasePayload(
+  config: PocConfig,
+  liveProbes: ClueConSidecarProbe[] = [],
+  brainBlocks: ClueConBrainBlock[] = defaultClueConBrainBlocks(),
+) {
   const pipecat = getPipecatPrototypeHealth();
   const probeById = new Map(liveProbes.map((probe) => [probe.id, probe]));
   const rtcAsrProbe = probeById.get("rtc_asr");
@@ -191,6 +291,7 @@ function buildBasePayload(config: PocConfig, liveProbes: ClueConSidecarProbe[] =
     route: "/api/cluecon",
     issue: "agonza1/agentic-contact-center#177",
     workboardCard: "85ea5a1a-3a68-4e5d-ac1d-10d5851017ae",
+    activeWorkboardCard: clueConAgentBrainCard,
     title: "From SIP to Tokens: Deterministic Telephony Meets Real-Time Voice AI",
     thesis:
       "SIP gives deterministic call state. Pipecat gives the media runtime. rtc-asr gives the local STT boundary. OpenClaw-style harnessing controls the agent. Kokoro speaks locally. ConversationAgentEvals / ASSERT proves whether the workflow completed safely.",
@@ -275,14 +376,14 @@ function buildBasePayload(config: PocConfig, liveProbes: ClueConSidecarProbe[] =
         { label: "RTF", value: "0.41x", caveat: "example Local STT v1 target" },
       ],
     },
-    brainBlocks: [
-      ["mission.md", "Rescue an at-risk cancellation only inside approved retention boundaries.", "agent response, final state"],
-      ["policy.md", "Pause before risky offers, require operator approval, and fail closed on runtime uncertainty.", "policy hold, fallback"],
-      ["tools.md", "Expose bounded call controls, slide controls, proof export, and operator steer actions.", "active tool, action trace"],
-      ["operator.md", "Ask for human steer at the retention boundary and record approval or escalation evidence.", "operator hold, proof bundle"],
-      ["fallback.md", "Escalate to a human instead of improvising when ASR, TTS, tools, or runtime are unavailable.", "handoff, caveats"],
-      ["eval.md", "Score task completion, policy compliance, final state, latency, and evidence quality.", "ASSERT request, scorecard"],
-    ].map(([file, summary, affects]) => ({ file, summary, affects: String(affects).split(/,\s*/) })),
+    brainBlocks,
+    brainPanel: {
+      previewRoute: "/api/cluecon/brain/preview",
+      applyRoute: "/api/cluecon/brain/apply",
+      resetRoute: "/api/cluecon/brain/reset",
+      safeMutation: "session_scoped_in_memory",
+      activeFiles: brainBlocks.map((block) => block.file),
+    },
     proofPreview: {
       includes: ["transcript", "events", "action trace", "latency marks", "final state", "fallback state", "OpenClaw artifact links", "ASR/TTS caveats"],
       compatibleRequest: "conversation-agent-evals-assert-request.json",
@@ -291,13 +392,14 @@ function buildBasePayload(config: PocConfig, liveProbes: ClueConSidecarProbe[] =
   };
 }
 
-export function buildClueConPayload(config: PocConfig) {
-  return buildBasePayload(config);
+export function buildClueConPayload(config: PocConfig, brainBlocks?: ClueConBrainBlock[]) {
+  return buildBasePayload(config, [], brainBlocks);
 }
 
 export async function buildClueConPayloadWithLiveProbes(
   config: PocConfig,
   options: ClueConProbeOptions = {},
+  brainBlocks?: ClueConBrainBlock[],
 ) {
   const env = process.env;
   const timeoutMs = options.timeoutMs ?? defaultProbeTimeoutMs;
@@ -330,7 +432,7 @@ export async function buildClueConPayloadWithLiveProbes(
     Promise.resolve(pipecatVoiceProbe(pipecatVoiceUrl)),
   ]);
 
-  return buildBasePayload(config, liveProbes);
+  return buildBasePayload(config, liveProbes, brainBlocks);
 }
 
 function escapeHtml(value: string): string {
@@ -342,8 +444,8 @@ function escapeHtml(value: string): string {
   });
 }
 
-export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present"): string {
-  const payload = buildClueConPayload(config);
+export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", brainBlocks?: ClueConBrainBlock[]): string {
+  const payload = buildClueConPayload(config, brainBlocks);
   const data = JSON.stringify(payload);
   const bodyClass = mode === "present" ? "present" : "scroll";
 
@@ -417,16 +519,16 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present"):
     <section class="section-band slide" data-slide="1" id="map"><div class="two"><div><span class="kicker">System map</span><h2>Every boundary is visible.</h2><p class="subhead">Deterministic telephony state, Pipecat media transport, local ASR, agent policy/tool control, operator steer, TTS fallback, and evaluation evidence are separate contracts.</p><svg class="arch" viewBox="0 0 980 380" role="img" aria-label="On-prem voice agent architecture"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#2457a6"/></marker></defs><rect class="nodeAccent" x="24" y="74" width="130" height="74" rx="8"/><text class="label" x="89" y="105" text-anchor="middle">Caller</text><text class="small" x="89" y="126" text-anchor="middle">SIP / browser</text><rect class="node" x="194" y="74" width="132" height="74" rx="8"/><text class="label" x="260" y="105" text-anchor="middle">Pipecat</text><text class="small" x="260" y="126" text-anchor="middle">transport</text><rect class="nodeWarn" x="366" y="74" width="132" height="74" rx="8"/><text class="label" x="432" y="105" text-anchor="middle">rtc-asr</text><text class="small" x="432" y="126" text-anchor="middle">Local STT v1</text><rect class="nodeAccent" x="538" y="74" width="144" height="74" rx="8"/><text class="label" x="610" y="105" text-anchor="middle">OpenClaw</text><text class="small" x="610" y="126" text-anchor="middle">agent harness</text><rect class="nodeWarn" x="722" y="74" width="112" height="74" rx="8"/><text class="label" x="778" y="105" text-anchor="middle">Kokoro</text><text class="small" x="778" y="126" text-anchor="middle">TTS</text><rect class="node" x="298" y="236" width="160" height="78" rx="8"/><text class="label" x="378" y="267" text-anchor="middle">Operator</text><text class="small" x="378" y="288" text-anchor="middle">approve / handoff</text><rect class="nodeAccent" x="536" y="236" width="158" height="78" rx="8"/><text class="label" x="615" y="267" text-anchor="middle">Proof bundle</text><text class="small" x="615" y="288" text-anchor="middle">events + latency</text><rect class="nodeAccent" x="748" y="236" width="160" height="78" rx="8"/><text class="label" x="828" y="267" text-anchor="middle">ASSERT eval</text><text class="small" x="828" y="288" text-anchor="middle">scorecard</text><path class="line" d="M154 111 H194"/><path class="line" d="M326 111 H366"/><path class="line" d="M498 111 H538"/><path class="line" d="M682 111 H722"/><path class="line" d="M610 148 V236"/><path class="line" d="M694 275 H748"/><path class="line" d="M458 275 H536"/><path class="line" d="M378 236 C412 184 496 154 538 126"/></svg></div><div class="grid" id="readiness"></div></div></section>
     <section class="section-band slide" data-slide="2" id="demo"><span class="kicker">Scripted cancellation rescue</span><h2>Run the operator-safe story end to end.</h2><div class="two"><div class="demo-shell"><div class="actions"><button class="primary" id="run-demo" type="button">Run scripted demo</button><button id="drill-tool" type="button" class="danger">Tool timeout drill</button><button id="drill-runtime" type="button" class="danger">Runtime failure drill</button><button id="drill-asr" type="button">rtc-asr unavailable</button><button id="drill-tts" type="button">TTS unavailable</button></div><div class="screen" id="demo-screen">Ready. Scripted mode needs no external credentials.</div></div><div class="timeline" id="timeline"></div></div></section>
     <section class="section-band slide" data-slide="3" id="asr"><span class="kicker">ASR boundary</span><h2>rtc-asr is measurable and swappable.</h2><div class="two"><div><p class="subhead">The ClueCon path treats speech recognition as a provider contract, not agent magic: normalized PCM16 enters the sidecar and timestamped transcript events leave it.</p><div class="asr-events" id="asr-events"></div></div><div class="grid" id="asr-benchmarks"></div></div></section>
-    <section class="section-band slide" data-slide="4" id="agent"><span class="kicker">Agent harness</span><h2>Markdown brain blocks are part of the runtime story.</h2><div class="brain" id="brain"></div><div class="actions"><button id="preview-brain" type="button">Preview edits</button><button id="reset-brain" type="button">Reset</button></div></section>
+    <section class="section-band slide" data-slide="4" id="agent"><span class="kicker">Agent harness</span><h2>Markdown brain blocks are part of the runtime story.</h2><div class="brain" id="brain"></div><div class="actions"><button id="preview-brain" type="button">Preview edits</button><button id="apply-brain" type="button" class="primary">Apply to session</button><button id="reset-brain" type="button">Reset</button></div></section>
     <section class="section-band slide" data-slide="5" id="proof"><span class="kicker">Evidence finish line</span><h2>The demo ends at proof, not speech.</h2><div class="two"><div class="grid" id="proof-cards"></div><pre class="proof-pre" id="proof-json">Run the scripted demo to preview the proof bundle and ASSERT handoff.</pre></div></section>
   </main>
   <script>window.__CLUECON__ = ${data};</script>
   <script>
     let data = window.__CLUECON__;
-    const state = { slide: 0, proof: null, brain: JSON.parse(JSON.stringify(data.brainBlocks)) };
+    const state = { slide: 0, proof: null, brain: JSON.parse(JSON.stringify(data.brainBlocks)), brainSession: null };
     function esc(value) { return String(value).replace(/[&<>\"]/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;"); }
     function renderReadiness() { document.getElementById("readiness").innerHTML = data.readiness.map(item => '<article class="card metric"><span class="badge ' + esc(item.status) + '">' + esc(item.status) + '</span><strong>' + esc(item.label) + '</strong><span class="muted">' + esc(item.detail) + '</span><span class="muted">' + esc(item.caveat) + '</span></article>').join(""); }
-    function renderBrain() { document.getElementById("brain").innerHTML = state.brain.map((block, index) => '<article class="plain"><h3>' + esc(block.file) + '</h3><textarea data-brain="' + index + '">' + esc(block.summary) + '</textarea><span class="muted">Affects: ' + esc(block.affects.join(", ")) + '</span></article>').join(""); document.querySelectorAll("textarea[data-brain]").forEach(input => input.addEventListener("change", () => { state.brain[Number(input.dataset.brain)].summary = input.value; })); }
+    function renderBrain() { const session = state.brainSession ? state.brainSession.session : { id: "cluecon-agent-brain-demo", activeTool: "operator.approve_offer", policyState: "policy_hold_requires_operator_approval" }; document.getElementById("brain-state").innerHTML = '<span class="badge ready">session scoped</span><h3>' + esc(session.id) + '</h3><span class="muted">Tool: ' + esc(session.activeTool) + ' / Policy: ' + esc(session.policyState) + '</span>'; document.getElementById("brain").innerHTML = state.brain.map((block, index) => '<article class="plain"><h3>' + esc(block.file) + '</h3><textarea data-brain="' + index + '">' + esc(block.summary) + '</textarea><span class="muted">Affects: ' + esc(block.affects.join(", ")) + '</span></article>').join(""); document.querySelectorAll("textarea[data-brain]").forEach(input => input.addEventListener("change", () => { state.brain[Number(input.dataset.brain)].summary = input.value; })); }
     function renderAsrPanel() { document.getElementById("asr-events").innerHTML = data.asrPanel.fixtureEvents.map(event => '<article class="plain"><span class="badge ' + (event.state === "error" ? "blocked" : "fixture") + '">' + esc(event.state) + '</span><h3>' + esc(event.text) + '</h3><span class="muted">Latency: ' + esc(event.latencyMs === null ? "unavailable" : event.latencyMs + " ms") + '</span></article>').join(""); document.getElementById("asr-benchmarks").innerHTML = ['<article class="card metric"><span class="muted">Contract</span><strong>' + esc(data.asrPanel.contract) + '</strong><span class="muted">' + esc(data.asrPanel.endpointHints.join(" / ")) + '</span></article>'].concat(data.asrPanel.benchmarks.map(item => '<article class="card metric"><span class="muted">' + esc(item.label) + '</span><strong>' + esc(item.value) + '</strong><span class="muted">' + esc(item.caveat) + '</span></article>')).join(""); }
     function renderProofCards() { document.getElementById("proof-cards").innerHTML = data.proofPreview.includes.map(item => '<article class="card metric"><span class="muted">Proof field</span><strong>' + esc(item) + '</strong></article>').join(""); }
     function renderTimeline(call) { const events = call ? call.events.slice(-8) : []; document.getElementById("timeline").innerHTML = events.map(event => '<div class="event"><strong>' + esc(event.type) + '</strong><span class="muted">' + esc(JSON.stringify(event.detail)) + '</span></div>').join("") || '<div class="plain muted">Timeline will populate from the scripted call events.</div>'; }
@@ -434,11 +536,12 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present"):
     function summarizeProof(proof) { return { compatibleRequest: data.proofPreview.compatibleRequest, callId: proof.callId, outcome: proof.outcome, summary: proof.summary, transcriptTurns: Array.isArray(proof.transcript) ? proof.transcript.length : 0, eventCount: Array.isArray(proof.events) ? proof.events.length : 0, latencyMarks: Array.isArray(proof.latencyMarks) ? proof.latencyMarks.length : 0, fallback: proof.demoFallback, caveats: proof.pii, artifactLinks: proof.artifacts }; }
     async function refreshLiveProbes() { try { const response = await fetch("/api/cluecon"); if (!response.ok) return; data = await response.json(); window.__CLUECON__ = data; renderReadiness(); renderAsrPanel(); } catch (error) { console.warn("ClueCon live probe refresh failed", error); } }
     async function runDemo() { const buttons = document.querySelectorAll("button"); buttons.forEach(button => button.disabled = true); document.getElementById("demo-screen").textContent = "Running scripted cancellation-rescue proof..."; try { const response = await fetch(data.routes.scriptedDemo, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ openclawSessionLabel: "cluecon/vertical-slice" }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "demo failed"); state.proof = payload.proof; const transcript = payload.call.transcript.map(turn => turn.speaker + ": " + turn.text).join("\n"); document.getElementById("demo-screen").textContent = transcript; document.getElementById("proof-json").textContent = JSON.stringify(summarizeProof(payload.proof), null, 2); renderTimeline(payload.call); } catch (error) { document.getElementById("demo-screen").textContent = String(error.message || error); } finally { buttons.forEach(button => button.disabled = false); } }
-    function previewBrain() { document.getElementById("proof-json").textContent = JSON.stringify({ previewOnly: true, activeBrainBlocks: state.brain, caveat: "Preview does not mutate the local runtime until an apply endpoint is intentionally added." }, null, 2); state.slide = ${mode === "present" ? 5 : 4}; renderSlides(); }
-    function resetBrain() { state.brain = JSON.parse(JSON.stringify(data.brainBlocks)); renderBrain(); }
+    async function previewBrain() { const response = await fetch(data.brainPanel.previewRoute, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ blocks: state.brain }) }); const payload = await response.json(); document.getElementById("proof-json").textContent = JSON.stringify(payload, null, 2); state.slide = ${mode === "present" ? 5 : 4}; renderSlides(); }
+    async function applyBrain() { const response = await fetch(data.brainPanel.applyRoute, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ blocks: state.brain }) }); const payload = await response.json(); document.getElementById("proof-json").textContent = JSON.stringify(payload, null, 2); if (!response.ok) return; data.brainBlocks = payload.activeBrainBlocks; data.brainPanel = payload.brainPanel; state.brain = JSON.parse(JSON.stringify(payload.activeBrainBlocks)); renderBrain(); }
+    async function resetBrain() { const response = await fetch(data.brainPanel.resetRoute, { method: "POST" }); const payload = await response.json(); document.getElementById("proof-json").textContent = JSON.stringify(payload, null, 2); data.brainBlocks = payload.activeBrainBlocks; data.brainPanel = payload.brainPanel; state.brain = JSON.parse(JSON.stringify(payload.activeBrainBlocks)); renderBrain(); }
     async function runFallbackDrill(mode) { const buttons = document.querySelectorAll("button"); buttons.forEach(button => button.disabled = true); try { const start = await fetch("/api/demo/start", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ openclawSessionLabel: "cluecon/" + mode + "-drill" }) }); const started = await start.json(); if (!start.ok) throw new Error(started.error || "start failed"); const fallback = await fetch("/api/calls/" + encodeURIComponent(started.session.callId) + "/fallback", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode, reason: mode + " ClueCon drill" }) }); const call = await fallback.json(); if (!fallback.ok) throw new Error(call.error || "fallback failed"); const proofResponse = await fetch("/api/calls/" + encodeURIComponent(started.session.callId) + "/proof"); const proof = await proofResponse.json(); document.getElementById("demo-screen").textContent = mode + " -> fail-closed human handoff; no improvised offer."; document.getElementById("proof-json").textContent = JSON.stringify(summarizeProof(proof), null, 2); renderTimeline(call); } finally { buttons.forEach(button => button.disabled = false); } }
     function drill(kind) { const messages = { asr: "rtc_asr_unavailable -> visible ASR blocker; scripted fixture remains labeled and no fake live transcript is claimed.", tts: "tts_unavailable -> text/local-TTS fallback; Kokoro remains marked unavailable." }; const message = messages[kind] || "unavailable drill"; document.getElementById("demo-screen").textContent = message; document.getElementById("proof-json").textContent = JSON.stringify({ failureDrill: kind, honestState: message, caveat: "Preview blocker only; scripted path is still available for talk continuity." }, null, 2); }
-    document.getElementById("run-demo").addEventListener("click", runDemo); document.getElementById("run-demo-top").addEventListener("click", runDemo); document.getElementById("drill-tool").addEventListener("click", () => runFallbackDrill("tool_timeout").catch(error => { document.getElementById("demo-screen").textContent = String(error.message || error); })); document.getElementById("drill-runtime").addEventListener("click", () => runFallbackDrill("runtime_failure").catch(error => { document.getElementById("demo-screen").textContent = String(error.message || error); })); document.getElementById("drill-asr").addEventListener("click", () => drill("asr")); document.getElementById("drill-tts").addEventListener("click", () => drill("tts")); document.getElementById("preview-brain").addEventListener("click", previewBrain); document.getElementById("reset-brain").addEventListener("click", resetBrain); document.getElementById("next").addEventListener("click", () => { state.slide = Math.min(5, state.slide + 1); renderSlides(); }); document.getElementById("prev").addEventListener("click", () => { state.slide = Math.max(0, state.slide - 1); renderSlides(); }); document.addEventListener("keydown", event => { if (event.key === "ArrowRight" || event.key === "PageDown") { state.slide = Math.min(5, state.slide + 1); renderSlides(); } if (event.key === "ArrowLeft" || event.key === "PageUp") { state.slide = Math.max(0, state.slide - 1); renderSlides(); } });
+    document.getElementById("run-demo").addEventListener("click", runDemo); document.getElementById("run-demo-top").addEventListener("click", runDemo); document.getElementById("drill-tool").addEventListener("click", () => runFallbackDrill("tool_timeout").catch(error => { document.getElementById("demo-screen").textContent = String(error.message || error); })); document.getElementById("drill-runtime").addEventListener("click", () => runFallbackDrill("runtime_failure").catch(error => { document.getElementById("demo-screen").textContent = String(error.message || error); })); document.getElementById("drill-asr").addEventListener("click", () => drill("asr")); document.getElementById("drill-tts").addEventListener("click", () => drill("tts")); document.getElementById("preview-brain").addEventListener("click", () => previewBrain().catch(error => { document.getElementById("proof-json").textContent = String(error.message || error); })); document.getElementById("apply-brain").addEventListener("click", () => applyBrain().catch(error => { document.getElementById("proof-json").textContent = String(error.message || error); })); document.getElementById("reset-brain").addEventListener("click", () => resetBrain().catch(error => { document.getElementById("proof-json").textContent = String(error.message || error); })); document.getElementById("next").addEventListener("click", () => { state.slide = Math.min(5, state.slide + 1); renderSlides(); }); document.getElementById("prev").addEventListener("click", () => { state.slide = Math.max(0, state.slide - 1); renderSlides(); }); document.addEventListener("keydown", event => { if (event.key === "ArrowRight" || event.key === "PageDown") { state.slide = Math.min(5, state.slide + 1); renderSlides(); } if (event.key === "ArrowLeft" || event.key === "PageUp") { state.slide = Math.max(0, state.slide - 1); renderSlides(); } });
     renderReadiness(); renderAsrPanel(); renderBrain(); renderProofCards(); renderTimeline(null); renderSlides(); refreshLiveProbes();
   </script>
 </body>
