@@ -1156,6 +1156,79 @@ test("speech enhancement spike report script loads capture replay manifests from
 });
 
 
+test("speech enhancement spike report script loads nested capture replay directories deterministically", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-nested-dir-"));
+  const captureReplayDir = path.join(tempDir, "captures");
+  const nestedCaptureReplayDir = path.join(captureReplayDir, "nested", "local-sip");
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+
+  const buildCaptureReplay = (captureId: string, recordedAt: string) => ({
+    capture_id: captureId,
+    recorded_at: recordedAt,
+    audio_source_uri: `artifacts/local-sip/${captureId}.wav`,
+    audio_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    source_manifest_uri: `artifacts/local-sip/${captureId}-manifest.json`,
+    source_manifest_sha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    noise_profile: "speakerphone fan noise",
+    scenario: "local SIP caller with nested noisy capture evidence",
+    latency_setting_ms: 12.5,
+    runtime_host: "local-rtc-asr-host",
+    baseline_rtc_asr: {
+      transcript: "I want to cansel my policy today",
+      word_error_rate_estimate: 0.18,
+      endpointing_stability: "acceptable",
+      barge_in_risk: "medium",
+    },
+    enhanced_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.06,
+      endpointing_stability: "stable",
+      barge_in_risk: "low",
+      added_turn_latency_ms_p95: 18,
+      cpu_percent_p95: 42,
+      cpu_cost_estimate: "medium",
+    },
+  });
+
+  try {
+    await mkdir(nestedCaptureReplayDir, { recursive: true });
+    await writeFile(
+      path.join(nestedCaptureReplayDir, "b-nested-capture.json"),
+      JSON.stringify(buildCaptureReplay("real-noisy-local-sip-402", "2026-07-05T12:20:00.000Z"), null, 2),
+      "utf8",
+    );
+    await writeFile(
+      path.join(captureReplayDir, "a-root-capture.json"),
+      JSON.stringify(buildCaptureReplay("real-noisy-local-sip-401", "2026-07-05T12:15:00.000Z"), null, 2),
+      "utf8",
+    );
+    await writeFile(path.join(nestedCaptureReplayDir, "notes.txt"), "ignored", "utf8");
+
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay-dir",
+      captureReplayDir,
+      "--require-close-ready",
+    ]);
+
+    assert.equal(result.exitCode, 0, result.stderr);
+    const summary = JSON.parse(result.stdout) as {
+      ok: boolean;
+      captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+    };
+    assert.equal(summary.ok, true);
+    assert.deepEqual(summary.captureReplaySources, [
+      { captureId: "real-noisy-local-sip-401", path: path.join(captureReplayDir, "a-root-capture.json"), strictArtifactsVerified: false },
+      { captureId: "real-noisy-local-sip-402", path: path.join(nestedCaptureReplayDir, "b-nested-capture.json"), strictArtifactsVerified: false },
+    ]);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+
 test("speech enhancement spike report script rejects missing capture replay directories", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-missing-dir-"));
   const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
