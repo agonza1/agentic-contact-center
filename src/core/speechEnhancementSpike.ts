@@ -328,7 +328,7 @@ function hasParseableIsoStringField(record: Record<string, unknown>, field: stri
 }
 
 function hasSha256Field(record: Record<string, unknown>, field: string): boolean {
-  return typeof record[field] === "string" && new RegExp("^[a-f0-9]{64}$", "i").test(record[field]);
+  return typeof record[field] === "string" && /^[a-f0-9]{64}$/u.test(record[field]);
 }
 
 function hasArtifactUriField(record: Record<string, unknown>, field: string): boolean {
