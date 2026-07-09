@@ -32,6 +32,7 @@ import {
   buildSpeechEnhancementReviewHandoff,
   buildSpeechEnhancementSpikeReport,
   resolveSpeechEnhancementRuntimeConfig,
+  validateSpeechEnhancementCaptureReplayManifest,
 } from "../core/speechEnhancementSpike";
 import { runtimeSeams } from "../core/seams";
 import type {
@@ -3839,6 +3840,34 @@ async function routeRequest(
         command: handoff.strictValidationCommand,
         route: handoff.reviewRoute,
       },
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate") {
+    const body = await readJsonBody<unknown>(request);
+    const validation = validateSpeechEnhancementCaptureReplayManifest(body);
+
+    if (!validation.manifestOk || !validation.metric) {
+      writeJson(response, 400, {
+        ok: false,
+        route: "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate",
+        validation,
+      });
+      return;
+    }
+
+    const report = buildSpeechEnhancementSpikeReport({ captureReplayMetrics: [validation.metric] });
+    const runtimeConfig = resolveSpeechEnhancementRuntimeConfig({
+      featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
+      latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
+    });
+    writeJson(response, 200, {
+      ok: true,
+      route: "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate",
+      validation,
+      reviewGate: buildSpeechEnhancementReviewGate(report),
+      runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
     });
     return;
   }
