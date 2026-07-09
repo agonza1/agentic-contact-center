@@ -48,6 +48,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     routes: { scrollable: string; present: string; scriptedDemo: string };
     readiness: Array<{ id: string; status: string; caveat: string }>;
     scenario: { callerTurns: string[]; failureDrills: string[] };
+    asrPanel: { contract: string; streamStates: string[]; fixtureEvents: Array<{ state: string }>; benchmarks: Array<{ label: string }> };
     brainBlocks: Array<{ file: string; affects: string[] }>;
     proofPreview: { compatibleRequest: string; includes: string[] };
   };
@@ -61,6 +62,10 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.ok(payload.readiness.some((item) => item.id === "rtc_asr" && /blocker state/.test(item.caveat)));
   assert.equal(payload.scenario.callerTurns.length, 4);
   assert.ok(payload.scenario.failureDrills.includes("tts_unavailable"));
+  assert.equal(payload.asrPanel.contract, "PCM16 16 kHz mono in; transcript events out");
+  assert.ok(payload.asrPanel.streamStates.includes("partial"));
+  assert.ok(payload.asrPanel.fixtureEvents.some((event) => event.state === "error"));
+  assert.ok(payload.asrPanel.benchmarks.some((benchmark) => benchmark.label === "first partial"));
   assert.ok(payload.brainBlocks.some((block) => block.file === "policy.md" && block.affects.includes("policy hold")));
   assert.equal(payload.proofPreview.compatibleRequest, "conversation-agent-evals-assert-request.json");
   assert.ok(payload.proofPreview.includes.includes("ASR/TTS caveats"));
@@ -73,6 +78,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /From SIP to Tokens/);
   assert.match(narrative.body, /Run scripted demo/);
   assert.match(narrative.body, /window\.__CLUECON__/);
+  assert.match(narrative.body, /rtc-asr is measurable and swappable/);
+  assert.match(narrative.body, /renderAsrPanel/);
   assert.match(narrative.body, /class="scroll"/);
 
   const present = await get("/cluecon/present");
