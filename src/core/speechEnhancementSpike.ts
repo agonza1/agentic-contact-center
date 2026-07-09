@@ -232,6 +232,7 @@ export interface SpeechEnhancementRuntimeReadiness {
 export interface SpeechEnhancementReviewHandoff {
   issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97";
   reviewRoute: "/api/realtime-shim/speech-enhancement-spike";
+  captureTemplateRoute: "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1";
   validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
   strictValidationCommand: "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json";
   nextEvidenceOwner: "agentic_contact_center";
@@ -958,6 +959,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   issue: string;
   issueUrl: SpeechEnhancementReviewHandoff["issueUrl"];
   reviewRoute: SpeechEnhancementReviewHandoff["reviewRoute"];
+  captureTemplateRoute: SpeechEnhancementReviewHandoff["captureTemplateRoute"];
   recommendedLatencyMs: number;
   runtimeEnv: SpeechEnhancementRuntimeConfig["env"];
   runtimeStatus: SpeechEnhancementRuntimeReadiness["status"];
@@ -1000,6 +1002,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     issue: report.issue,
     issueUrl: handoff.issueUrl,
     reviewRoute: handoff.reviewRoute,
+    captureTemplateRoute: handoff.captureTemplateRoute,
     recommendedLatencyMs: report.decision.recommendedLatencyMs,
     runtimeEnv: runtimeConfig.env,
     runtimeStatus: runtimeReadiness.status,
@@ -1035,6 +1038,7 @@ export function buildSpeechEnhancementReviewHandoff(): SpeechEnhancementReviewHa
   return {
     issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97",
     reviewRoute: "/api/realtime-shim/speech-enhancement-spike",
+    captureTemplateRoute: "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1",
     validationCommand: "npm run proof:speech-enhancement -- --require-close-ready",
     strictValidationCommand:
       "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",

@@ -92,6 +92,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       handoff: {
         issueUrl: string;
         reviewRoute: string;
+        captureTemplateRoute: string;
         validationCommand: string;
         strictValidationCommand: string;
         nextEvidenceOwner: string;
@@ -143,6 +144,10 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.equal(artifact.report.issue, "agonza1/agentic-contact-center#97");
     assert.equal(artifact.handoff.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/97");
     assert.equal(artifact.handoff.reviewRoute, "/api/realtime-shim/speech-enhancement-spike");
+    assert.equal(
+      artifact.handoff.captureTemplateRoute,
+      "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1",
+    );
     assert.equal(artifact.handoff.validationCommand, "npm run proof:speech-enhancement -- --require-close-ready");
     assert.equal(
       artifact.handoff.strictValidationCommand,

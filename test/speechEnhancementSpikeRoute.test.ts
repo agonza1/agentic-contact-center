@@ -133,6 +133,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       reviewHandoff: {
         issueUrl: string;
         reviewRoute: string;
+        captureTemplateRoute: string;
         validationCommand: string;
         strictValidationCommand: string;
         nextEvidenceOwner: string;
@@ -283,6 +284,10 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.deepEqual(payload.reviewGate.realCaptureReplayIds, []);
     assert.equal(payload.reviewHandoff.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/97");
     assert.equal(payload.reviewHandoff.reviewRoute, "/api/realtime-shim/speech-enhancement-spike");
+    assert.equal(
+      payload.reviewHandoff.captureTemplateRoute,
+      "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1",
+    );
     assert.equal(payload.reviewHandoff.validationCommand, "npm run proof:speech-enhancement -- --require-close-ready");
     assert.equal(
       payload.reviewHandoff.strictValidationCommand,
