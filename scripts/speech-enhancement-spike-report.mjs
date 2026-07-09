@@ -127,6 +127,21 @@ function buildCaptureReplaySourceDigest(sources) {
   return createHash("sha256").update(JSON.stringify(digestInput)).digest("hex");
 }
 
+function buildStrictArtifactVerification(sources, strictCaptureArtifacts) {
+  const hasCaptureReplay = sources.length > 0;
+  const verified = hasCaptureReplay && strictCaptureArtifacts && sources.every((source) => source.strictArtifactsVerified);
+
+  return {
+    requiredForClose: true,
+    verified,
+    reason: verified
+      ? "all_loaded_capture_replay_artifacts_verified"
+      : hasCaptureReplay
+        ? "run_with_strict_capture_artifacts_before_closing"
+        : "attach_real_capture_replay_before_strict_artifact_verification",
+  };
+}
+
 async function resolveCaptureReplayPaths() {
   const explicitPaths = resolveArgPaths("--capture-replay");
   const directoryPaths = resolveArgPaths("--capture-replay-dir");
@@ -376,6 +391,7 @@ async function main() {
   const markdownOutputPath = resolveMarkdownOutputPath(outputPath);
   const captureReplayTemplateOutputPath = resolveCaptureReplayTemplateOutputPath();
   const requireCloseReady = hasArg("--require-close-ready");
+  const strictCaptureArtifacts = hasArg("--strict-capture-artifacts");
   const captureReplayInputs = await loadCaptureReplayMetrics();
   const report = buildSpeechEnhancementSpikeReport({ captureReplayMetrics: captureReplayInputs.metrics });
   const runtimeConfig = resolveSpeechEnhancementRuntimeConfig({
@@ -398,6 +414,7 @@ async function main() {
     runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
     captureReplaySources: captureReplayInputs.sources,
     captureReplaySourceDigest: buildCaptureReplaySourceDigest(captureReplayInputs.sources),
+    strictArtifactVerification: buildStrictArtifactVerification(captureReplayInputs.sources, strictCaptureArtifacts),
     handoff: buildSpeechEnhancementReviewHandoff(),
     reviewGate: buildSpeechEnhancementReviewGate(report),
   };
@@ -425,6 +442,7 @@ async function main() {
     checks: artifact.reviewGate.checks,
     failureReasons: artifact.reviewGate.failureReasons,
     blockers: artifact.reviewGate.blockers,
+    strictArtifactVerification: artifact.strictArtifactVerification,
     nextEvidence: artifact.reviewGate.nextEvidence,
     nextAction: artifact.reviewGate.nextAction,
     realCaptureReplayIds: artifact.reviewGate.realCaptureReplayIds,

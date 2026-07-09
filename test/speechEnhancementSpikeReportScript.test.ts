@@ -60,6 +60,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       runtimeLiveDemoEligible: boolean;
       runtimeBypassReasons: string[];
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
+      strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
       strictArtifactChecks: string[];
     };
     assert.equal(summary.ok, true);
@@ -69,6 +70,11 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.equal(summary.captureReplayTemplateOutputPath, captureReplayTemplateOutputPath);
     assert.deepEqual(summary.captureReplaySources, []);
     assert.equal(summary.captureReplaySourceDigest, digestCaptureReplaySources([]));
+    assert.deepEqual(summary.strictArtifactVerification, {
+      requiredForClose: true,
+      verified: false,
+      reason: "attach_real_capture_replay_before_strict_artifact_verification",
+    });
     assert.equal(summary.runtimeLiveDemoEligible, false);
     assert.deepEqual(summary.runtimeBypassReasons, ["feature_flag_disabled", "blocked_until_real_capture"]);
     assert.deepEqual(summary.strictArtifactChecks, ["exists", "sha256_matches", "artifact_uri_is_workspace_relative"]);
@@ -101,6 +107,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       };
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
       captureReplaySourceDigest: string;
+      strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
       reviewGate: {
         issueCloseReady: boolean;
         checks: Record<string, boolean>;
@@ -711,7 +718,7 @@ test("speech enhancement spike report keeps high measured CPU p95 review-blocked
   }
 });
 
-test("speech enhancement spike report accepts passing real capture replay evidence", async () => {
+test("speech enhancement spike report reports strict artifact verification status", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-real-"));
   const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
   const markdownOutputPath = path.join(tempDir, "speech-enhancement-spike.md");
@@ -770,6 +777,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
       ok: boolean;
       issueCloseReady: boolean;
       blockers: string[];
+      strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
       realCaptureReplayIds: string[];
       passingRealCaptureReplayIds: string[];
       blockedRealCaptureReplayIds: string[];
@@ -786,6 +794,11 @@ test("speech enhancement spike report accepts passing real capture replay eviden
     assert.equal(summary.ok, true);
     assert.equal(summary.issueCloseReady, true);
     assert.deepEqual(summary.blockers, []);
+    assert.deepEqual(summary.strictArtifactVerification, {
+      requiredForClose: true,
+      verified: false,
+      reason: "run_with_strict_capture_artifacts_before_closing",
+    });
     assert.deepEqual(summary.realCaptureReplayIds, ["real-noisy-local-sip-001"]);
     assert.deepEqual(summary.passingRealCaptureReplayIds, ["real-noisy-local-sip-001"]);
     assert.deepEqual(summary.blockedRealCaptureReplayIds, []);
@@ -851,6 +864,7 @@ test("speech enhancement spike report accepts passing real capture replay eviden
       };
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
       captureReplaySourceDigest: string;
+      strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
       reviewGate: {
         issueCloseReady: boolean;
         checks: Record<string, boolean>;
@@ -880,6 +894,11 @@ test("speech enhancement spike report accepts passing real capture replay eviden
       { captureId: "real-noisy-local-sip-001", path: captureReplayPath, strictArtifactsVerified: false },
     ]);
     assert.equal(artifact.captureReplaySourceDigest, digestCaptureReplaySources(artifact.captureReplaySources));
+    assert.deepEqual(artifact.strictArtifactVerification, {
+      requiredForClose: true,
+      verified: false,
+      reason: "run_with_strict_capture_artifacts_before_closing",
+    });
     assert.equal(artifact.reviewGate.issueCloseReady, true);
     assert.deepEqual(Object.values(artifact.reviewGate.checks), [true, true, true, true, true, true, true]);
     assert.deepEqual(artifact.reviewGate.failureReasons, {});
@@ -1555,9 +1574,18 @@ test("speech enhancement spike report strict mode verifies capture artifact file
     ]);
 
     assert.equal(result.exitCode, 0, result.stderr);
-    const summary = JSON.parse(result.stdout) as { ok: boolean; issueCloseReady: boolean };
+    const summary = JSON.parse(result.stdout) as {
+      ok: boolean;
+      issueCloseReady: boolean;
+      strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
+    };
     assert.equal(summary.ok, true);
     assert.equal(summary.issueCloseReady, true);
+    assert.deepEqual(summary.strictArtifactVerification, {
+      requiredForClose: true,
+      verified: true,
+      reason: "all_loaded_capture_replay_artifacts_verified",
+    });
   } finally {
     await rm(tempDir, { recursive: true, force: true });
     await rm(artifactDir, { recursive: true, force: true });
