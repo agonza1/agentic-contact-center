@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const source = () => readFileSync("scripts/pipecat-local-voice-bridge.py", "utf8");
+const consoleSource = () => readFileSync("src/http/createServer.ts", "utf8");
 
 test("Pipecat voice bridge uses rtc-asr and Kokoro instead of old local engines", () => {
   const bridge = source();
@@ -38,4 +39,18 @@ test("Pipecat voice bridge reports fail-closed readiness and engine evidence", (
 test("Pipecat voice check script is exposed", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
   assert.equal(pkg.scripts["pipecat:voice:check"], "python3 scripts/pipecat-local-voice-bridge.py --check-sidecars");
+});
+
+
+test("operator console surfaces fail-closed voice bridge readiness", () => {
+  const source = consoleSource();
+
+  assert.match(source, /state\.voiceBridge\.status === "degraded"/);
+  assert.match(source, /return "Bridge blocked"/);
+  assert.match(source, /payload\.type === "ready" && payload\.ok === false/);
+  assert.match(source, /finish\("degraded", payload\.detail/);
+  assert.match(source, /payload\.type === "started"/);
+  assert.match(source, /payload\.ok === false/);
+  assert.match(source, /updateVoiceBridgeStatus\("degraded", ready\.detail \|\| state\.voiceStatus\)/);
+  assert.match(source, /stopVoiceStream\(\)/);
 });

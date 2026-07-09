@@ -1229,12 +1229,14 @@ function buildOperatorConsoleHtml(): string {
     function voiceBridgeStatusClass() {
       if (state.voiceBridge.status === "running") return "badge ok";
       if (state.voiceBridge.status === "checking") return "badge";
+      if (state.voiceBridge.status === "degraded") return "badge warn";
       if (state.voiceBridge.status === "offline") return "badge warn";
       return "badge";
     }
     function voiceBridgeStatusLabel() {
       if (state.voiceBridge.status === "running") return "Bridge running";
       if (state.voiceBridge.status === "checking") return "Checking bridge";
+      if (state.voiceBridge.status === "degraded") return "Bridge blocked";
       if (state.voiceBridge.status === "offline") return "Bridge offline";
       return "Bridge unknown";
     }
@@ -1280,6 +1282,10 @@ function buildOperatorConsoleHtml(): string {
             if (payload.type === "ready" && payload.ok) {
               const version = payload.pipecat && payload.pipecat.pipecatVersion ? "pipecat " + payload.pipecat.pipecatVersion : "ready";
               finish("running", "Connected to " + voiceBridgeUrl() + " (" + version + ")");
+              return;
+            }
+            if (payload.type === "ready" && payload.ok === false) {
+              finish("degraded", payload.detail || "Bridge is running but rtc-asr, Kokoro, or ffmpeg is not ready.");
               return;
             }
           } catch (error) {}
@@ -1384,6 +1390,17 @@ function buildOperatorConsoleHtml(): string {
       ws.onmessage = async function(event) {
         const payload = JSON.parse(event.data);
         if (payload.type === "started") {
+          if (payload.ok === false) {
+            state.voiceConnecting = false;
+            state.voiceProcessing = false;
+            state.voiceMuted = true;
+            state.voiceStatus = payload.error || "Pipecat voice bridge blocked";
+            const ready = payload.ready || {};
+            updateVoiceBridgeStatus("degraded", ready.detail || state.voiceStatus);
+            setStatus(state.voiceStatus);
+            stopVoiceStream();
+            return;
+          }
           state.voiceCallId = payload.callId;
           state.selectedCallId = payload.callId;
           state.voiceMuted = false;
