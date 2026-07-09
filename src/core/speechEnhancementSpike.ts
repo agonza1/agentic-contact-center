@@ -103,6 +103,7 @@ export interface SpeechEnhancementCaptureReplayContract {
   fixtureManifestPath: "artifacts/speech-enhancement-real-capture-replay.json";
   requiredFields: string[];
   strictArtifactFields: string[];
+  strictArtifactChecks: Array<"exists" | "sha256_matches" | "artifact_uri_is_workspace_relative">;
   comparisonPairs: Array<"baseline_rtc_asr" | "enhanced_rtc_asr">;
   minimumPassingCriteria: string[];
 }
@@ -889,6 +890,7 @@ export function buildSpeechEnhancementSpikeReport(
         "latency_setting_ms",
       ],
       strictArtifactFields: ["audio_sha256", "source_manifest_sha256"],
+      strictArtifactChecks: ["exists", "sha256_matches", "artifact_uri_is_workspace_relative"],
       comparisonPairs: ["baseline_rtc_asr", "enhanced_rtc_asr"],
       minimumPassingCriteria: [
         "enhanced word error estimate improves over baseline",

@@ -116,6 +116,8 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         requiredCaptureKind: string;
         fixtureManifestPath: string;
         requiredFields: string[];
+        strictArtifactFields: string[];
+        strictArtifactChecks: string[];
         comparisonPairs: string[];
         minimumPassingCriteria: string[];
       };
@@ -262,6 +264,11 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.ok(payload.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.added_turn_latency_ms_p95"));
     assert.ok(payload.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.cpu_percent_p95"));
     assert.ok(payload.captureReplayContract.requiredFields.includes("latency_setting_ms"));
+    assert.deepEqual(payload.captureReplayContract.strictArtifactChecks, [
+      "exists",
+      "sha256_matches",
+      "artifact_uri_is_workspace_relative",
+    ]);
     assert.ok(
       payload.captureReplayContract.minimumPassingCriteria.some((criterion) => criterion.includes("word error")),
     );
@@ -425,6 +432,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-template can inclu
       contract: {
         fixtureManifestPath: string;
         strictArtifactFields: string[];
+        strictArtifactChecks: string[];
         minimumPassingCriteria: string[];
       };
       validation: { command: string; route: string };
@@ -437,6 +445,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-template can inclu
       "artifacts/speech-enhancement-real-capture-replay.json",
     );
     assert.ok(payload.contract.strictArtifactFields.includes("audio_sha256"));
+    assert.ok(payload.contract.strictArtifactChecks.includes("sha256_matches"));
     assert.ok(payload.contract.minimumPassingCriteria.some((criterion) => criterion.includes("CPU p95")));
     assert.equal(payload.validation.route, "/api/realtime-shim/speech-enhancement-spike");
     assert.equal(

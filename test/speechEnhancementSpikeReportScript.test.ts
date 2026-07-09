@@ -85,7 +85,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
           maxCpuPercentP95: number;
           allowedCpuCostEstimates: string[];
         };
-        captureReplayContract: { fixtureManifestPath: string; requiredFields: string[]; strictArtifactFields: string[] };
+        captureReplayContract: { fixtureManifestPath: string; requiredFields: string[]; strictArtifactFields: string[]; strictArtifactChecks: string[] };
       };
       runtimeConfig: { enabled: boolean; latencyMs: number; bypassReason?: string; env: { featureFlag: string; latencyMs: string } };
       runtimeReadiness: { enabled: boolean; latencyMs: number; liveDemoEligible: boolean; frameBudget: { rtcAsrFrameMs: number; lookaheadFrames: number | null; maxBufferedAudioMs: number | null }; bypassReasons: string[] };
@@ -182,6 +182,11 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("audio_sha256"));
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("source_manifest_sha256"));
     assert.deepEqual(artifact.report.captureReplayContract.strictArtifactFields, ["audio_sha256", "source_manifest_sha256"]);
+    assert.deepEqual(artifact.report.captureReplayContract.strictArtifactChecks, [
+      "exists",
+      "sha256_matches",
+      "artifact_uri_is_workspace_relative",
+    ]);
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("runtime_host"));
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.cpu_percent_p95"));
     assert.equal(artifact.reviewGate.issueCloseReady, false);
