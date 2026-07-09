@@ -49,6 +49,13 @@ test("GET /health returns config-backed demo metadata", async () => {
     fallbackMode: string;
     latencyBudgetsMs: { asrPartial: number; policyGate: number; operatorNotification: number; ttsFirstAudio: number };
     runtimeSeams: string[];
+    productionReadiness: {
+      demoReady: boolean;
+      productionReady: boolean;
+      statePersistence: string;
+      requiredForProduction: string[];
+      blockers: string[];
+    };
     pipecatFlow: {
       ready: boolean;
       prototypeMode: string;
@@ -103,6 +110,14 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.fallbackMode, config.policy.fallbackMode);
   assert.deepEqual(payload.latencyBudgetsMs, config.latencyBudgetsMs);
   assert.equal(payload.runtimeSeams.includes("flow engine"), true);
+  assert.equal(payload.productionReadiness.demoReady, true);
+  assert.equal(payload.productionReadiness.productionReady, false);
+  assert.equal(payload.productionReadiness.statePersistence, "in_memory");
+  assert.equal(payload.productionReadiness.requiredForProduction.includes("signalwire_live_telephony"), true);
+  assert.equal(payload.productionReadiness.requiredForProduction.includes("persistent_call_state"), true);
+  assert.equal(payload.productionReadiness.blockers.includes("live_telephony_not_enabled"), true);
+  assert.equal(payload.productionReadiness.blockers.includes("provider_credentials_mocked"), true);
+  assert.equal(payload.productionReadiness.blockers.includes("state_store_in_memory"), true);
   assert.equal(payload.pipecatFlow.ready, true);
   assert.equal(payload.pipecatFlow.prototypeMode, "pipecat_local_runtime");
   assert.equal(payload.pipecatFlow.transport, "local_process");

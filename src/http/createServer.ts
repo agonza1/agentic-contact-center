@@ -3779,6 +3779,51 @@ async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
   }
 }
 
+function buildProductionReadiness(
+  config: PocConfig,
+  pipecatFlow: ReturnType<typeof getPipecatPrototypeHealth>,
+): {
+  demoReady: boolean;
+  productionReady: boolean;
+  statePersistence: "in_memory";
+  requiredForProduction: string[];
+  blockers: string[];
+} {
+  const blockers: string[] = [];
+
+  if (config.mode !== "signalwire_live") {
+    blockers.push("live_telephony_not_enabled");
+  }
+
+  if (config.provider.callId.startsWith("mock-")) {
+    blockers.push("provider_call_id_is_mock");
+  }
+
+  if (pipecatFlow.credentialsMode === "mocked") {
+    blockers.push("provider_credentials_mocked");
+  }
+
+  if (!pipecatFlow.runtimeCheck.liveTelephonyRequired) {
+    blockers.push("runtime_check_does_not_require_live_telephony");
+  }
+
+  blockers.push("state_store_in_memory");
+
+  return {
+    demoReady: true,
+    productionReady: blockers.length === 0,
+    statePersistence: "in_memory",
+    requiredForProduction: [
+      "signalwire_live_telephony",
+      "real_provider_credentials",
+      "persistent_call_state",
+      "live_rtc_asr_evidence",
+      "operator_auth_and_audit",
+    ],
+    blockers,
+  };
+}
+
 async function routeRequest(
   request: IncomingMessage,
   response: ServerResponse,
@@ -3793,6 +3838,7 @@ async function routeRequest(
   const pathname = requestUrl.pathname;
 
   if (request.method === "GET" && pathname === "/health") {
+    const pipecatFlow = getPipecatPrototypeHealth();
     writeJson(response, 200, {
       ok: true,
       demoName: config.demoName,
@@ -3804,7 +3850,8 @@ async function routeRequest(
       fallbackMode: config.policy.fallbackMode,
       latencyBudgetsMs: config.latencyBudgetsMs,
       runtimeSeams,
-      pipecatFlow: getPipecatPrototypeHealth(),
+      pipecatFlow,
+      productionReadiness: buildProductionReadiness(config, pipecatFlow),
       speechEnhancement: buildSpeechEnhancementHealthSummary(),
     });
     return;

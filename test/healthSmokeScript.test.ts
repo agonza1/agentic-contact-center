@@ -193,6 +193,12 @@ test("health smoke script can assert expected health metadata and multiple runti
         operatorChannel: "slack",
         fallbackMode: "tool_timeout",
         runtimeSeams: ["flow engine", "mocked telephony ingress"],
+        productionReadiness: {
+          demoReady: true,
+          productionReady: false,
+          statePersistence: "in_memory",
+          blockers: ["live_telephony_not_enabled", "provider_credentials_mocked", "state_store_in_memory"],
+        },
         pipecatFlow: {
           ready: true,
           prototypeMode: "pipecat_local_runtime",
@@ -257,6 +263,14 @@ test("health smoke script can assert expected health metadata and multiple runti
       "mocked telephony ingress",
       "--expect-pipecat-ready",
       "true",
+      "--expect-production-ready",
+      "false",
+      "--expect-production-readiness-blocker",
+      "live_telephony_not_enabled",
+      "--expect-production-readiness-blocker",
+      "provider_credentials_mocked",
+      "--expect-production-readiness-blocker",
+      "state_store_in_memory",
       "--expect-pipecat-prototype-mode",
       "pipecat_local_runtime",
       "--expect-pipecat-transport",
@@ -329,6 +343,34 @@ test("health smoke script can assert expected health metadata and multiple runti
 
     assert.equal(result.code, 0);
     assert.match(result.stdout, /Health probe succeeded/);
+  });
+});
+
+test("health smoke script reports production readiness mismatches", async () => {
+  await withServer((request, response) => {
+    if (request.url !== "/health") {
+      response.writeHead(404).end();
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, productionReadiness: { productionReady: true, blockers: [] } }));
+  }, async (port) => {
+    const result = await runProbe([
+      "--url",
+      `http://127.0.0.1:${port}/health`,
+      "--expect-production-ready",
+      "false",
+      "--expect-production-readiness-blocker",
+      "provider_credentials_mocked",
+      "--timeout-ms",
+      "200",
+      "--interval-ms",
+      "25",
+    ]);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /json_productionReadiness_productionReady_mismatch/);
   });
 });
 
