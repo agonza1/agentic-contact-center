@@ -439,3 +439,109 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-template can inclu
     server.close();
   }
 });
+
+
+test("POST /api/realtime-shim/speech-enhancement-spike/capture-replay/validate gates a real replay manifest", async () => {
+  const previousFeatureFlag = process.env.RTC_ASR_SPEECH_ENHANCEMENT;
+  const previousLatencyMs = process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS;
+  process.env.RTC_ASR_SPEECH_ENHANCEMENT = "enabled";
+  process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS = "12.5";
+  const server = buildHttpServer(loadPocConfig());
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const body = JSON.stringify({
+      capture_id: "real-noisy-local-sip-validate-001",
+      recorded_at: "2026-07-05T15:45:00Z",
+      audio_source_uri: "artifacts/local-sip/real-noisy-local-sip-validate-001.wav",
+      audio_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      source_manifest_uri: "artifacts/local-sip/proof-manifest-validate-001.json",
+      source_manifest_sha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      noise_profile: "speakerphone fan noise",
+      scenario: "seeded caller with real local SIP noise",
+      runtime_host: "local-rtc-asr-host",
+      baseline_rtc_asr: {
+        transcript: "I want to cancel my policy today",
+        word_error_rate_estimate: 0.14,
+        endpointing_stability: "acceptable",
+        barge_in_risk: "medium",
+      },
+      enhanced_rtc_asr: {
+        transcript: "I want to cancel my policy today",
+        word_error_rate_estimate: 0.08,
+        endpointing_stability: "stable",
+        barge_in_risk: "low",
+        added_turn_latency_ms_p95: 19,
+        cpu_percent_p95: 44,
+        cpu_cost_estimate: "medium",
+      },
+      latency_setting_ms: 12.5,
+    });
+
+    const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port: address.port,
+          path: "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate",
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "content-length": Buffer.byteLength(body),
+          },
+        },
+        (res) => {
+          let responseBody = "";
+          res.setEncoding("utf8");
+          res.on("data", (chunk) => {
+            responseBody += chunk;
+          });
+          res.on("end", () => resolve({ statusCode: res.statusCode ?? 0, body: responseBody }));
+        },
+      );
+
+      req.on("error", reject);
+      req.end(body);
+    });
+
+    const payload = JSON.parse(response.body) as {
+      ok: boolean;
+      route: string;
+      validation: { manifestOk: boolean; evaluation: { issueCloseReady: boolean } };
+      reviewGate: { issueCloseReady: boolean; passingRealCaptureReplayIds: string[]; nextEvidence: string[] };
+      runtimeReadiness: { status: string; liveDemoEligible: boolean; bypassReasons: string[] };
+    };
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.route, "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate");
+    assert.equal(payload.validation.manifestOk, true);
+    assert.equal(payload.validation.evaluation.issueCloseReady, true);
+    assert.equal(payload.reviewGate.issueCloseReady, true);
+    assert.deepEqual(payload.reviewGate.passingRealCaptureReplayIds, ["real-noisy-local-sip-validate-001"]);
+    assert.deepEqual(payload.reviewGate.nextEvidence, []);
+    assert.equal(payload.runtimeReadiness.status, "ready");
+    assert.equal(payload.runtimeReadiness.liveDemoEligible, true);
+    assert.deepEqual(payload.runtimeReadiness.bypassReasons, []);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+
+    if (previousFeatureFlag === undefined) {
+      delete process.env.RTC_ASR_SPEECH_ENHANCEMENT;
+    } else {
+      process.env.RTC_ASR_SPEECH_ENHANCEMENT = previousFeatureFlag;
+    }
+
+    if (previousLatencyMs === undefined) {
+      delete process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS;
+    } else {
+      process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS = previousLatencyMs;
+    }
+  }
+});
