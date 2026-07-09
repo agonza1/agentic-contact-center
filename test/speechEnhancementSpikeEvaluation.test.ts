@@ -549,6 +549,41 @@ test("speech enhancement capture replay manifest rejects generic real capture id
   assert.equal(validation.evaluation, undefined);
 });
 
+test("speech enhancement capture replay manifest requires lowercase sha256 evidence", () => {
+  const validation = validateSpeechEnhancementCaptureReplayManifest({
+    capture_id: "real-noisy-local-sip-uppercase-hash",
+    recorded_at: "2026-07-05T15:45:00Z",
+    audio_source_uri: "artifacts/local-sip-real-noisy-uppercase-hash.wav",
+    audio_sha256: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    source_manifest_uri: "artifacts/local-sip/proof-manifest-uppercase-hash.json",
+    source_manifest_sha256: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+    noise_profile: "speakerphone fan noise",
+    scenario: "seeded caller with real local SIP noise",
+    runtime_host: "local-rtc-asr-host",
+    baseline_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.14,
+      endpointing_stability: "acceptable",
+      barge_in_risk: "medium",
+    },
+    enhanced_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.08,
+      endpointing_stability: "stable",
+      barge_in_risk: "low",
+      added_turn_latency_ms_p95: 19,
+      cpu_percent_p95: 44,
+      cpu_cost_estimate: "medium",
+    },
+    latency_setting_ms: 12.5,
+  });
+
+  assert.equal(validation.manifestOk, false);
+  assert.deepEqual(validation.missingFields, ["audio_sha256", "source_manifest_sha256"]);
+  assert.equal(validation.metric, undefined);
+  assert.equal(validation.evaluation, undefined);
+});
+
 test("speech enhancement capture replay manifest names missing fields", () => {
   const validation = validateSpeechEnhancementCaptureReplayManifest({
     capture_id: "real-noisy-local-sip-002",
