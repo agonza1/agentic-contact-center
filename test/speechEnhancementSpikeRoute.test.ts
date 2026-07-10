@@ -242,8 +242,8 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.equal(payload.replayDecisions[0].enableForLiveDemo, true);
     assert.deepEqual(payload.replayDecisions[0].reasons, [
       "wer_improved",
-      "endpointing_stable",
-      "barge_in_risk_low",
+      "endpointing_no_regression",
+      "barge_in_risk_no_regression",
       "latency_within_budget",
       "cpu_cost_allowed",
     ]);

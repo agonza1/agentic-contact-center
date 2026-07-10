@@ -843,8 +843,8 @@ test("speech enhancement spike report reports strict artifact verification statu
         failingEvidence: [],
         reasons: [
           "wer_improved",
-          "endpointing_stable",
-          "barge_in_risk_low",
+          "endpointing_no_regression",
+          "barge_in_risk_no_regression",
           "latency_within_budget",
           "cpu_cost_allowed",
         ],
@@ -860,7 +860,7 @@ test("speech enhancement spike report reports strict artifact verification statu
     assert.match(markdown, /Failure Reasons\n\n- None\./);
     assert.match(
       markdown,
-      /real-noisy-local-sip-001: passing; wer_delta=0\.12; latency_headroom_ms=7; cpu_headroom_percent=38; failing_evidence=none; reasons=wer_improved, endpointing_stable, barge_in_risk_low, latency_within_budget, cpu_cost_allowed; audio=artifacts\/local-sip\/real-noisy-local-sip-001\.wav; audio_sha256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; source_manifest=artifacts\/local-sip\/proof-manifest-001\.json; source_manifest_sha256=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd; runtime_host=local-rtc-asr-host/,
+      /real-noisy-local-sip-001: passing; wer_delta=0\.12; latency_headroom_ms=7; cpu_headroom_percent=38; failing_evidence=none; reasons=wer_improved, endpointing_no_regression, barge_in_risk_no_regression, latency_within_budget, cpu_cost_allowed; audio=artifacts\/local-sip\/real-noisy-local-sip-001\.wav; audio_sha256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; source_manifest=artifacts\/local-sip\/proof-manifest-001\.json; source_manifest_sha256=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd; runtime_host=local-rtc-asr-host/,
     );
     assert.match(markdown, /Capture Replay Sources/);
     assert.match(
@@ -956,8 +956,8 @@ test("speech enhancement spike report reports strict artifact verification statu
         failingEvidence: [],
         reasons: [
           "wer_improved",
-          "endpointing_stable",
-          "barge_in_risk_low",
+          "endpointing_no_regression",
+          "barge_in_risk_no_regression",
           "latency_within_budget",
           "cpu_cost_allowed",
         ],
@@ -1040,8 +1040,8 @@ test("speech enhancement spike report accepts no-worse endpointing and barge-in 
     assert.deepEqual(artifact.reviewGate.nextEvidence, []);
     assert.equal(decision?.captureId, "real-noisy-local-sip-006");
     assert.equal(decision?.enableForLiveDemo, true);
-    assert.ok(decision?.reasons.includes("endpointing_stable"));
-    assert.ok(decision?.reasons.includes("barge_in_risk_low"));
+    assert.ok(decision?.reasons.includes("endpointing_no_regression"));
+    assert.ok(decision?.reasons.includes("barge_in_risk_no_regression"));
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

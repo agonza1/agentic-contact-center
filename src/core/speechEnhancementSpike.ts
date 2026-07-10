@@ -665,8 +665,8 @@ export function evaluateSpeechEnhancementReplayMetric(
     failingEvidence,
     reasons: [
       wordErrorImproved ? "wer_improved" : "wer_not_improved",
-      endpointingOk ? "endpointing_stable" : "endpointing_not_stable",
-      bargeInOk ? "barge_in_risk_low" : "barge_in_risk_not_low",
+      endpointingOk ? "endpointing_no_regression" : "endpointing_not_stable",
+      bargeInOk ? "barge_in_risk_no_regression" : "barge_in_risk_not_low",
       latencyOk ? "latency_within_budget" : "latency_over_budget",
       cpuOk ? "cpu_cost_allowed" : "cpu_cost_high",
     ],
