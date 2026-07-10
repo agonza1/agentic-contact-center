@@ -4067,6 +4067,7 @@ async function routeRequest(
       route: "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate",
       validation,
       reviewGate: buildSpeechEnhancementReviewGate(report),
+      handoff: buildSpeechEnhancementReviewHandoff(),
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
       captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
       strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification([
