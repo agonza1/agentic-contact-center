@@ -4044,6 +4044,26 @@ async function routeRequest(
     return;
   }
 
+  if (request.method === "GET" && pathname === "/api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate") {
+    const report = buildSpeechEnhancementSpikeReport();
+    const runtimeConfig = resolveSpeechEnhancementRuntimeConfig({
+      featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
+      latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
+    });
+
+    writeJson(response, 200, {
+      ok: true,
+      route: "/api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate",
+      issue: "agonza1/agentic-contact-center#97",
+      reviewGate: buildSpeechEnhancementReviewGate(report),
+      runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
+      strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification(),
+      handoff: buildSpeechEnhancementReviewHandoff(),
+      captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
+    });
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate") {
     const body = await readJsonBody<unknown>(request);
     const validation = validateSpeechEnhancementCaptureReplayManifest(body);
