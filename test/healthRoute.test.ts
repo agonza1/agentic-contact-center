@@ -72,6 +72,7 @@ test("GET /health returns config-backed demo metadata", async () => {
       reviewRoute: string;
       captureTemplateRoute: string;
       captureReplayChecklistRoute: string;
+      captureReplayCloseGateRoute: string;
       captureReplayValidationRoute: string;
       captureTemplateCommand: string;
       recommendedLatencyMs: number;
@@ -143,6 +144,10 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(
     payload.speechEnhancement.captureReplayChecklistRoute,
     "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist",
+  );
+  assert.equal(
+    payload.speechEnhancement.captureReplayCloseGateRoute,
+    "/api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate",
   );
   assert.equal(
     payload.speechEnhancement.captureReplayValidationRoute,

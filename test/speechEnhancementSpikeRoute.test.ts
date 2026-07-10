@@ -553,6 +553,91 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-replay/checklist e
 });
 
 
+test("GET /api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate exposes current close readiness", async () => {
+  const previousFeatureFlag = process.env.RTC_ASR_SPEECH_ENHANCEMENT;
+  const previousLatencyMs = process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS;
+  process.env.RTC_ASR_SPEECH_ENHANCEMENT = "enabled";
+  process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS = "12.5";
+  const server = buildHttpServer(loadPocConfig());
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const responseBody = await new Promise<string>((resolve, reject) => {
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port: address.port,
+          path: "/api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate",
+          method: "GET",
+        },
+        (response) => {
+          let body = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => {
+            body += chunk;
+          });
+          response.on("end", () => resolve(body));
+        },
+      );
+
+      req.on("error", reject);
+      req.end();
+    });
+
+    const payload = JSON.parse(responseBody) as {
+      ok: boolean;
+      route: string;
+      issue: string;
+      closeGateStatus: string;
+      reviewGate: { issueCloseReady: boolean; nextAction: { action: string; command: string }; nextEvidence: string[] };
+      runtimeReadiness: { status: string; liveDemoEligible: boolean; bypassReasons: string[] };
+      strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
+      handoff: { strictValidationCommand: string };
+      captureReplayChecklist: Array<{ step: string; command: string }>;
+    };
+
+    assert.equal(payload.ok, true);
+    assert.equal(payload.route, "/api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate");
+    assert.equal(payload.issue, "agonza1/agentic-contact-center#97");
+    assert.equal(payload.closeGateStatus, "blocked_before_real_capture");
+    assert.equal(payload.reviewGate.issueCloseReady, false);
+    assert.equal(payload.reviewGate.nextAction.action, "attach_real_capture_replay");
+    assert.equal(payload.reviewGate.nextAction.command, payload.handoff.strictValidationCommand);
+    assert.ok(payload.reviewGate.nextEvidence.includes("real_noisy_local_sip_capture_baseline_vs_enhanced_replay"));
+    assert.equal(payload.runtimeReadiness.status, "blocked");
+    assert.equal(payload.runtimeReadiness.liveDemoEligible, false);
+    assert.deepEqual(payload.runtimeReadiness.bypassReasons, ["blocked_until_real_capture"]);
+    assert.deepEqual(payload.strictArtifactVerification, {
+      requiredForClose: true,
+      verified: false,
+      reason: "attach_real_capture_replay_before_strict_artifact_verification",
+    });
+    assert.equal(payload.captureReplayChecklist.at(-1)?.step, "run_close_gate");
+    assert.equal(payload.captureReplayChecklist.at(-1)?.command, payload.handoff.strictValidationCommand);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+
+    if (previousFeatureFlag === undefined) {
+      delete process.env.RTC_ASR_SPEECH_ENHANCEMENT;
+    } else {
+      process.env.RTC_ASR_SPEECH_ENHANCEMENT = previousFeatureFlag;
+    }
+
+    if (previousLatencyMs === undefined) {
+      delete process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS;
+    } else {
+      process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS = previousLatencyMs;
+    }
+  }
+});
+
+
 test("POST /api/realtime-shim/speech-enhancement-spike/capture-replay/validate gates a real replay manifest", async () => {
   const previousFeatureFlag = process.env.RTC_ASR_SPEECH_ENHANCEMENT;
   const previousLatencyMs = process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS;
