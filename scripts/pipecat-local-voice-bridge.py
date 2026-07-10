@@ -90,6 +90,7 @@ class ProbeResult:
 class BridgeReadiness:
     ok: bool
     detail: str
+    blockers: list[str]
     rtc_asr: ProbeResult
     kokoro: ProbeResult
     acc: ProbeResult
@@ -257,6 +258,7 @@ def check_readiness(acc_url: str = DEFAULT_ACC_URL) -> BridgeReadiness:
     return BridgeReadiness(
         ok=ok,
         detail="ready" if ok else "; ".join(blockers),
+        blockers=blockers,
         rtc_asr=rtc_probe,
         kokoro=kokoro_probe,
         acc=acc_probe,
@@ -550,6 +552,8 @@ def ready_payload(readiness: BridgeReadiness) -> dict[str, Any]:
         "ok": readiness.ok,
         "status": "ready" if readiness.ok else "offline",
         "detail": readiness.detail,
+        "blockers": readiness.blockers,
+        "nextAction": "open a browser voice turn" if readiness.ok else "start rtc-asr, Kokoro, ACC, and ffmpeg locally, then rerun npm run pipecat:voice:check",
         "pipecat": {
             "runtimeMode": "pipecat_local_voice_bridge",
             "runtimeEngine": "pipecat-ai",

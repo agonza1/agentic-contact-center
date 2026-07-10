@@ -28,6 +28,8 @@ test("Pipecat voice bridge reports fail-closed readiness and engine evidence", (
 
   assert.match(bridge, /"ok": readiness\.ok/);
   assert.match(bridge, /"error": "sidecar_unavailable"/);
+  assert.match(bridge, /"blockers": readiness\.blockers/);
+  assert.match(bridge, /"nextAction": .*npm run pipecat:voice:check/);
   assert.match(bridge, /ffmpeg is not available on PATH/);
   assert.match(bridge, /"localAudio"/);
   assert.match(bridge, /rtc-asr health or \/v1\/models did not expose model\/backend metadata/);
