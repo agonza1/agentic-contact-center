@@ -624,6 +624,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate 
       strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
       handoff: { strictValidationCommand: string };
       captureReplayChecklist: Array<{ step: string; command: string }>;
+      nextChecklistStep: { step: string; command: string; status: string; reason: string };
     };
 
     assert.equal(payload.ok, true);
@@ -647,6 +648,16 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate 
     });
     assert.equal(payload.captureReplayChecklist.at(-1)?.step, "run_close_gate");
     assert.equal(payload.captureReplayChecklist.at(-1)?.command, payload.handoff.strictValidationCommand);
+    assert.equal(payload.nextChecklistStep.step, "record_real_noisy_local_sip");
+    assert.equal(payload.nextChecklistStep.status, "blocked");
+    assert.equal(
+      payload.nextChecklistStep.command,
+      "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
+    );
+    assert.equal(
+      payload.nextChecklistStep.reason,
+      "Attach one real noisy local SIP capture replay before closing Issue #97.",
+    );
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 

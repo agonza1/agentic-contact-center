@@ -293,6 +293,31 @@ export function buildSpeechEnhancementCaptureReplayChecklist(): SpeechEnhancemen
   ];
 }
 
+export interface SpeechEnhancementCaptureReplayNextStep extends SpeechEnhancementCaptureReplayChecklistItem {
+  status: "blocked" | "ready_to_close";
+  reason: string;
+}
+
+export function buildSpeechEnhancementCaptureReplayNextStep(
+  reviewGate: SpeechEnhancementReviewGate,
+): SpeechEnhancementCaptureReplayNextStep {
+  if (reviewGate.issueCloseReady) {
+    const closeStep = buildSpeechEnhancementCaptureReplayChecklist().at(-1)!;
+    return {
+      ...closeStep,
+      status: "ready_to_close",
+      reason: "All Issue #97 close-gate checks passed; run the strict close command before closing the issue.",
+    };
+  }
+
+  const captureStep = buildSpeechEnhancementCaptureReplayChecklist()[0]!;
+  return {
+    ...captureStep,
+    status: "blocked",
+    reason: reviewGate.nextAction.reason,
+  };
+}
+
 export interface SpeechEnhancementStrictArtifactVerificationSource {
   strictArtifactsVerified: boolean;
 }
@@ -1086,6 +1111,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   blockers: string[];
   nextEvidence: string[];
   nextAction: SpeechEnhancementReviewGate["nextAction"];
+  nextChecklistStep: SpeechEnhancementCaptureReplayNextStep;
   passingRealCaptureReplayIds: string[];
   blockedRealCaptureReplayIds: string[];
   strictArtifactVerification: SpeechEnhancementStrictArtifactVerification;
@@ -1137,6 +1163,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     blockers: reviewGate.blockers,
     nextEvidence: reviewGate.nextEvidence,
     nextAction: reviewGate.nextAction,
+    nextChecklistStep: buildSpeechEnhancementCaptureReplayNextStep(reviewGate),
     passingRealCaptureReplayIds: reviewGate.passingRealCaptureReplayIds,
     blockedRealCaptureReplayIds: reviewGate.blockedRealCaptureReplayIds,
     strictArtifactVerification,
