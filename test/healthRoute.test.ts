@@ -106,6 +106,7 @@ test("GET /health returns config-backed demo metadata", async () => {
       blockers: string[];
       nextEvidence: string[];
       nextAction: { owner: string; action: string; command: string; reason: string };
+      nextChecklistStep: { step: string; owner: string; evidence: string; command: string; status: string; reason: string };
       passingRealCaptureReplayIds: string[];
       blockedRealCaptureReplayIds: string[];
       strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
@@ -218,6 +219,15 @@ test("GET /health returns config-backed demo metadata", async () => {
     command:
       "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
     reason: "Attach one real noisy local SIP capture replay before closing Issue #97.",
+  });
+  assert.deepEqual(payload.speechEnhancement.nextChecklistStep, {
+    step: "record_real_noisy_local_sip",
+    owner: "agentic_contact_center",
+    evidence: "Real noisy local SIP audio plus source manifest with matching capture_id and audio_source_uri.",
+    command:
+      "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
+    status: "blocked",
+    reason: payload.speechEnhancement.nextAction.reason,
   });
   assert.deepEqual(payload.speechEnhancement.passingRealCaptureReplayIds, []);
   assert.deepEqual(payload.speechEnhancement.blockedRealCaptureReplayIds, []);

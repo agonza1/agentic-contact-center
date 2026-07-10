@@ -26,6 +26,7 @@ import { getPipecatPrototypeHealth, SCRIPTED_CALLER_TURNS } from "../core/pipeca
 import { REALTIME_SHIM_RPCS } from "../core/realtimeShimContract";
 import {
   buildSpeechEnhancementCaptureReplayChecklist,
+  buildSpeechEnhancementCaptureReplayNextStep,
   buildSpeechEnhancementCaptureReplayTemplate,
   buildSpeechEnhancementHealthSummary,
   buildSpeechEnhancementReviewGate,
@@ -4067,6 +4068,7 @@ async function routeRequest(
       strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification(),
       handoff: buildSpeechEnhancementReviewHandoff(),
       captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
+      nextChecklistStep: buildSpeechEnhancementCaptureReplayNextStep(reviewGate),
     });
     return;
   }
