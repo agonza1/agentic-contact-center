@@ -4051,11 +4051,14 @@ async function routeRequest(
       latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
     });
 
+    const reviewGate = buildSpeechEnhancementReviewGate(report);
+
     writeJson(response, 200, {
       ok: true,
       route: "/api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate",
       issue: "agonza1/agentic-contact-center#97",
-      reviewGate: buildSpeechEnhancementReviewGate(report),
+      closeGateStatus: reviewGate.issueCloseReady ? "ready_to_close" : "blocked_before_real_capture",
+      reviewGate,
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
       strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification(),
       handoff: buildSpeechEnhancementReviewHandoff(),

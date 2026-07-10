@@ -594,6 +594,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate 
       ok: boolean;
       route: string;
       issue: string;
+      closeGateStatus: string;
       reviewGate: { issueCloseReady: boolean; nextAction: { action: string; command: string }; nextEvidence: string[] };
       runtimeReadiness: { status: string; liveDemoEligible: boolean; bypassReasons: string[] };
       strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
@@ -604,6 +605,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate 
     assert.equal(payload.ok, true);
     assert.equal(payload.route, "/api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate");
     assert.equal(payload.issue, "agonza1/agentic-contact-center#97");
+    assert.equal(payload.closeGateStatus, "blocked_before_real_capture");
     assert.equal(payload.reviewGate.issueCloseReady, false);
     assert.equal(payload.reviewGate.nextAction.action, "attach_real_capture_replay");
     assert.equal(payload.reviewGate.nextAction.command, payload.handoff.strictValidationCommand);
