@@ -1306,9 +1306,7 @@ function buildOperatorConsoleHtml(): string {
           finish("running", "Connected to " + voiceBridgeUrl());
         };
         ws.onopen = function() {
-          window.setTimeout(function() {
-            finish("running", "WebSocket opened at " + voiceBridgeUrl());
-          }, 500);
+          updateVoiceBridgeStatus("checking", "Waiting for ready message from " + voiceBridgeUrl());
         };
         ws.onerror = function() {
           finish("offline", "Cannot reach " + voiceBridgeUrl() + ". Run npm run pipecat:voice.");

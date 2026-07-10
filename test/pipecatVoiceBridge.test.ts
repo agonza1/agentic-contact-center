@@ -70,6 +70,7 @@ test("operator console surfaces fail-closed voice bridge readiness", () => {
   assert.match(source, /payload\.type === "ready" && payload\.ok === false/);
   assert.match(source, /finish\("degraded", formatVoiceBridgeReadyDetail\(payload\)\)/);
   assert.match(source, /Waiting for ready message from/);
+  assert.doesNotMatch(source, /WebSocket opened at/);
   assert.match(source, /function startVoiceCall\(readyPayload\)/);
   assert.match(source, /function blockVoiceStart\(detail\)/);
   assert.match(source, /payload\.type === "ready"/);
