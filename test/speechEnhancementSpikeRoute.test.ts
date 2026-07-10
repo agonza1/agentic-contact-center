@@ -137,6 +137,8 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         issueUrl: string;
         reviewRoute: string;
         captureTemplateRoute: string;
+        captureReplayChecklistRoute: string;
+        captureReplayValidationRoute: string;
         captureTemplateCommand: string;
         validationCommand: string;
         strictValidationCommand: string;
@@ -310,6 +312,14 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1",
     );
     assert.equal(
+      payload.reviewHandoff.captureReplayChecklistRoute,
+      "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist",
+    );
+    assert.equal(
+      payload.reviewHandoff.captureReplayValidationRoute,
+      "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate",
+    );
+    assert.equal(
       payload.reviewHandoff.captureTemplateCommand,
       "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
     );
@@ -463,7 +473,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-template can inclu
     assert.ok(payload.contract.strictArtifactFields.includes("audio_sha256"));
     assert.ok(payload.contract.strictArtifactChecks.includes("sha256_matches"));
     assert.ok(payload.contract.minimumPassingCriteria.some((criterion) => criterion.includes("CPU p95")));
-    assert.equal(payload.validation.route, "/api/realtime-shim/speech-enhancement-spike");
+    assert.equal(payload.validation.route, "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate");
     assert.equal(
       payload.validation.command,
       "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
@@ -516,13 +526,21 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-replay/checklist e
       route: string;
       issue: string;
       captureReplayChecklist: Array<{ step: string; owner: string; evidence: string; command: string }>;
-      handoff: { captureReplayChecklistRoute: string; strictValidationCommand: string };
+      handoff: {
+        captureReplayChecklistRoute: string;
+        captureReplayValidationRoute: string;
+        strictValidationCommand: string;
+      };
     };
 
     assert.equal(payload.ok, true);
     assert.equal(payload.route, "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist");
     assert.equal(payload.issue, "agonza1/agentic-contact-center#97");
     assert.equal(payload.handoff.captureReplayChecklistRoute, payload.route);
+    assert.equal(
+      payload.handoff.captureReplayValidationRoute,
+      "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate",
+    );
     assert.deepEqual(
       payload.captureReplayChecklist.map((item) => item.step),
       ["record_real_noisy_local_sip", "run_baseline_rtc_asr", "run_enhanced_rtc_asr", "verify_artifacts", "run_close_gate"],

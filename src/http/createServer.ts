@@ -4026,7 +4026,7 @@ async function routeRequest(
       contract: report.captureReplayContract,
       validation: {
         command: handoff.strictValidationCommand,
-        route: handoff.reviewRoute,
+        route: handoff.captureReplayValidationRoute,
       },
       captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
     });
