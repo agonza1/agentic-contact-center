@@ -1240,6 +1240,13 @@ function buildOperatorConsoleHtml(): string {
       if (state.voiceBridge.status === "offline") return "Bridge offline";
       return "Bridge unknown";
     }
+    function formatVoiceBridgeReadyDetail(payload) {
+      const blockers = Array.isArray(payload.blockers) ? payload.blockers.filter(Boolean) : [];
+      const detail = payload.detail || "Bridge is running but rtc-asr, Kokoro, ACC, or ffmpeg is not ready.";
+      const nextAction = payload.nextAction ? " Next: " + payload.nextAction + "." : "";
+      const blockerDetail = blockers.length ? " Blockers: " + blockers.slice(0, 3).join("; ") + (blockers.length > 3 ? "; +" + (blockers.length - 3) + " more" : "") + "." : "";
+      return detail + blockerDetail + nextAction;
+    }
     function updateVoiceBridgeStatus(status, detail) {
       state.voiceBridge.status = status;
       state.voiceBridge.detail = detail;
@@ -1285,7 +1292,7 @@ function buildOperatorConsoleHtml(): string {
               return;
             }
             if (payload.type === "ready" && payload.ok === false) {
-              finish("degraded", payload.detail || "Bridge is running but rtc-asr, Kokoro, or ffmpeg is not ready.");
+              finish("degraded", formatVoiceBridgeReadyDetail(payload));
               return;
             }
           } catch (error) {}
@@ -1404,7 +1411,7 @@ function buildOperatorConsoleHtml(): string {
         const payload = JSON.parse(event.data);
         if (payload.type === "ready") {
           if (payload.ok === false) {
-            blockVoiceStart(payload.detail || "Pipecat voice bridge blocked");
+            blockVoiceStart(formatVoiceBridgeReadyDetail(payload));
             return;
           }
           startVoiceCall();
@@ -1417,7 +1424,7 @@ function buildOperatorConsoleHtml(): string {
             state.voiceMuted = true;
             state.voiceStatus = payload.error || "Pipecat voice bridge blocked";
             const ready = payload.ready || {};
-            updateVoiceBridgeStatus("degraded", ready.detail || state.voiceStatus);
+            updateVoiceBridgeStatus("degraded", ready.detail ? formatVoiceBridgeReadyDetail(ready) : state.voiceStatus);
             setStatus(state.voiceStatus);
             stopVoiceStream();
             return;
