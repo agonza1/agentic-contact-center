@@ -8,7 +8,7 @@ The active app is the TypeScript service under `src/`. The older FastAPI/static-
 
 - Voice-agent demo that keeps control of call state, policy holds, operator decisions, fallback, and evidence.
 - Local Pipecat path for the seeded cancellation-rescue scenario, with live telephony and provider credentials mocked.
-- Browser caller demo using microphone audio, a local Pipecat WebSocket bridge, MLX Whisper STT, and macOS `say` TTS.
+- Browser caller demo using microphone audio, a local Pipecat WebSocket bridge, rtc-asr Local STT v1, and Kokoro TTS.
 - Operator console for pause/resume, safe-offer approval, takeover, transfer, end-call, fallback drills, notes, queue filters, and proof links.
 - QA evidence through transcripts, event trails, latency marks, call snapshots, proof bundles, ASSERT exports, and ConversationAgentEvals-ready handoff artifacts.
 
@@ -34,7 +34,7 @@ The TypeScript service in `src/` owns the HTTP routes, in-memory call state, loc
 - Node.js 20 or newer and npm.
 - Python 3.11+ for optional Pipecat checks or the local voice bridge.
 - `ffmpeg` on `PATH` for local voice bridge audio conversions.
-- macOS `say` for the current local TTS path.
+- Running rtc-asr and Kokoro sidecars for the live browser voice bridge.
 - Docker and Docker Compose only for containerized commands.
 
 No production credentials are required for the mocked POC. SignalWire, CRM, billing, auth, account access, live telephony, Slack posting, and OpenClaw actions are mocked or represented as deterministic contracts.
@@ -59,20 +59,21 @@ Generate reviewable JSON evidence with `npm run proof -- --out artifacts/demo-pr
 
 ## Local Voice Demo
 
-Install and run the voice bridge in a second terminal:
+With rtc-asr and Kokoro already running locally, install and run the voice bridge in another terminal:
 
 ```bash
 npm run pipecat:voice:install
+npm run pipecat:voice:check
 npm run pipecat:voice
 ```
 
 Then open `http://localhost:8026/`, use **Pipecat Voice Caller**, click **Connect Voice**, allow microphone access, and speak naturally. The audio path is:
 
 ```text
-browser mic -> local Pipecat bridge -> MLX Whisper local STT -> ACC call API -> macOS say TTS -> browser playback
+browser mic -> local Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> browser playback
 ```
 
-The first voice turn may download the configured MLX Whisper model. Typed caller turns still exercise the same call-flow API when the bridge is not running. See `docs/runtime-reference.md` for model overrides and deeper runtime commands.
+rtc-asr owns model loading and selection; the bridge reports `stt.engine=rtc-asr` and `tts.engine=kokoro` in ready and turn evidence. Typed caller turns still exercise the same call-flow API when the bridge is not running. See `docs/runtime-reference.md` for sidecar URLs, model notes, and deeper runtime commands.
 
 ## ConversationAgentEvals Integration
 

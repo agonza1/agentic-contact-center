@@ -1803,8 +1803,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /npm run assert:viewer/);
     assert.match(response.body, /Voice disconnected/);
     assert.match(response.body, /npm run pipecat:voice/);
-    assert.match(response.body, /MLX Whisper local STT/);
-    assert.match(response.body, /macOS say local TTS/);
+    assert.match(response.body, /rtc-asr Local STT v1/);
+    assert.match(response.body, /Kokoro TTS/);
     assert.match(response.body, /connectPipecatVoice/);
     assert.match(response.body, /togglePipecatMute/);
     assert.match(response.body, /probeVoiceBridge/);

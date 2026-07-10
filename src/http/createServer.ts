@@ -1229,14 +1229,30 @@ function buildOperatorConsoleHtml(): string {
     function voiceBridgeStatusClass() {
       if (state.voiceBridge.status === "running") return "badge ok";
       if (state.voiceBridge.status === "checking") return "badge";
+      if (state.voiceBridge.status === "degraded") return "badge warn";
       if (state.voiceBridge.status === "offline") return "badge warn";
       return "badge";
     }
     function voiceBridgeStatusLabel() {
       if (state.voiceBridge.status === "running") return "Bridge running";
       if (state.voiceBridge.status === "checking") return "Checking bridge";
+      if (state.voiceBridge.status === "degraded") return "Bridge blocked";
       if (state.voiceBridge.status === "offline") return "Bridge offline";
       return "Bridge unknown";
+    }
+    function formatVoiceBridgeReadyDetail(payload) {
+      const blockers = Array.isArray(payload.blockers) ? payload.blockers.filter(Boolean) : [];
+      const detail = payload.detail || "Bridge is running but rtc-asr, Kokoro, ACC, or ffmpeg is not ready.";
+      const nextAction = payload.nextAction ? " Next: " + payload.nextAction + "." : "";
+      const blockerDetail = blockers.length ? " Blockers: " + blockers.slice(0, 3).join("; ") + (blockers.length > 3 ? "; +" + (blockers.length - 3) + " more" : "") + "." : "";
+      return detail + blockerDetail + nextAction;
+    }
+    function formatVoiceBridgeEngineEvidence(payload) {
+      const stt = payload && payload.stt ? payload.stt : {};
+      const tts = payload && payload.tts ? payload.tts : {};
+      const sttEvidence = stt.engine ? stt.engine + (stt.model && stt.model !== "unknown" ? " " + stt.model : "") : "rtc-asr";
+      const ttsEvidence = tts.engine ? tts.engine + (tts.voice ? " " + tts.voice : "") : "Kokoro";
+      return "STT " + sttEvidence + "; TTS " + ttsEvidence;
     }
     function updateVoiceBridgeStatus(status, detail) {
       state.voiceBridge.status = status;
@@ -1279,16 +1295,18 @@ function buildOperatorConsoleHtml(): string {
             const payload = JSON.parse(event.data);
             if (payload.type === "ready" && payload.ok) {
               const version = payload.pipecat && payload.pipecat.pipecatVersion ? "pipecat " + payload.pipecat.pipecatVersion : "ready";
-              finish("running", "Connected to " + voiceBridgeUrl() + " (" + version + ")");
+              finish("running", "Connected to " + voiceBridgeUrl() + " (" + version + "; " + formatVoiceBridgeEngineEvidence(payload) + ")");
+              return;
+            }
+            if (payload.type === "ready" && payload.ok === false) {
+              finish("degraded", formatVoiceBridgeReadyDetail(payload));
               return;
             }
           } catch (error) {}
           finish("running", "Connected to " + voiceBridgeUrl());
         };
         ws.onopen = function() {
-          window.setTimeout(function() {
-            finish("running", "WebSocket opened at " + voiceBridgeUrl());
-          }, 500);
+          updateVoiceBridgeStatus("checking", "Waiting for ready message from " + voiceBridgeUrl());
         };
         ws.onerror = function() {
           finish("offline", "Cannot reach " + voiceBridgeUrl() + ". Run npm run pipecat:voice.");
@@ -1374,18 +1392,51 @@ function buildOperatorConsoleHtml(): string {
       await ensureVoiceStream();
       const ws = new WebSocket(voiceBridgeUrl());
       state.voiceWs = ws;
-      ws.onopen = function() {
-        updateVoiceBridgeStatus("running", "Connected to " + voiceBridgeUrl());
+      let ready = false;
+      function startVoiceCall(readyPayload) {
+        if (ready) return;
+        ready = true;
+        updateVoiceBridgeStatus("running", "Connected to " + voiceBridgeUrl() + " (" + formatVoiceBridgeEngineEvidence(readyPayload || {}) + ")");
         ws.send(JSON.stringify({ type: "start", accUrl: window.location.origin, callId: activeCall ? activeCall.session.callId : null }));
+      }
+      function blockVoiceStart(detail) {
         state.voiceConnecting = false;
-        state.voiceStatus = "Connected to Pipecat voice bridge";
-        setStatus("Pipecat voice bridge connected");
+        state.voiceProcessing = false;
+        state.voiceMuted = true;
+        state.voiceStatus = detail || "Pipecat voice bridge blocked";
+        updateVoiceBridgeStatus("degraded", state.voiceStatus);
+        setStatus(state.voiceStatus);
+        stopVoiceStream();
+        try { ws.close(); } catch (error) {}
+      }
+      ws.onopen = function() {
+        updateVoiceBridgeStatus("checking", "Waiting for ready message from " + voiceBridgeUrl());
       };
       ws.onmessage = async function(event) {
         const payload = JSON.parse(event.data);
+        if (payload.type === "ready") {
+          if (payload.ok === false) {
+            blockVoiceStart(formatVoiceBridgeReadyDetail(payload));
+            return;
+          }
+          startVoiceCall(payload);
+          return;
+        }
         if (payload.type === "started") {
+          if (payload.ok === false) {
+            state.voiceConnecting = false;
+            state.voiceProcessing = false;
+            state.voiceMuted = true;
+            state.voiceStatus = payload.error || "Pipecat voice bridge blocked";
+            const ready = payload.ready || {};
+            updateVoiceBridgeStatus("degraded", ready.detail ? formatVoiceBridgeReadyDetail(ready) : state.voiceStatus);
+            setStatus(state.voiceStatus);
+            stopVoiceStream();
+            return;
+          }
           state.voiceCallId = payload.callId;
           state.selectedCallId = payload.callId;
+          state.voiceConnecting = false;
           state.voiceMuted = false;
           state.voiceStatus = "Voice call " + payload.callId + " connected. Listening";
           await refresh();
@@ -1463,7 +1514,7 @@ function buildOperatorConsoleHtml(): string {
     function voiceControlsHtml() {
       const muteLabel = state.voiceMuted ? "Unmute Caller" : "Mute Caller";
       const bridgeDetail = state.voiceBridge.detail + (state.voiceBridge.checkedAt ? " | last check " + state.voiceBridge.checkedAt : "");
-      return '<section class="section"><h3 class="section-title">Pipecat Voice Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute">' + muteLabel + '</button></div><div class="actions"><span id="voice-bridge-status" class="' + voiceBridgeStatusClass() + '">' + escapeHtml(voiceBridgeStatusLabel()) + '</span><span class="status">' + escapeHtml(state.voiceStatus) + '</span></div><span class="meta" id="voice-bridge-detail">' + escapeHtml(bridgeDetail) + '</span><span class="meta">Requires local bridge: npm run pipecat:voice. Audio path is browser mic -> Pipecat Python bridge -> MLX Whisper local STT -> ACC call API -> macOS say local TTS -> browser playback.</span></section><section class="section diagram"><h3 class="section-title">Demo Flow</h3><svg class="demo-flow-svg" viewBox="0 0 980 360" role="img" aria-label="Caller audio flows through Pipecat, local STT, the agent, local TTS, operator controls, and ASSERT artifacts" preserveAspectRatio="xMidYMid meet"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0969da"/></marker><style>.node{fill:#ffffff;stroke:#d0d7de;stroke-width:2}.primaryNode{fill:#ddf4ff;stroke:#0969da;stroke-width:2}.artifactNode{fill:#dafbe1;stroke:#1a7f37;stroke-width:2}.label{font:700 17px system-ui,sans-serif;fill:#24292f}.small{font:600 13px system-ui,sans-serif;fill:#57606a}.line{stroke:#0969da;stroke-width:3;fill:none;marker-end:url(#arrow)}.softLine{stroke:#57606a;stroke-width:2.5;stroke-dasharray:7 6;fill:none;marker-end:url(#arrow)}</style></defs><rect class="primaryNode" x="30" y="58" width="145" height="82" rx="10"/><text class="label" x="103" y="92" text-anchor="middle">Caller</text><text class="small" x="103" y="116" text-anchor="middle">browser mic</text><rect class="node" x="225" y="58" width="150" height="82" rx="10"/><text class="label" x="300" y="88" text-anchor="middle">Pipecat</text><text class="small" x="300" y="112" text-anchor="middle">voice bridge</text><rect class="node" x="425" y="58" width="150" height="82" rx="10"/><text class="label" x="500" y="88" text-anchor="middle">Local STT</text><text class="small" x="500" y="112" text-anchor="middle">MLX Whisper</text><rect class="primaryNode" x="625" y="58" width="150" height="82" rx="10"/><text class="label" x="700" y="88" text-anchor="middle">Agent</text><text class="small" x="700" y="112" text-anchor="middle">goal + memory</text><rect class="node" x="825" y="58" width="125" height="82" rx="10"/><text class="label" x="888" y="88" text-anchor="middle">Local TTS</text><text class="small" x="888" y="112" text-anchor="middle">macOS say</text><rect class="artifactNode" x="515" y="225" width="170" height="82" rx="10"/><text class="label" x="600" y="255" text-anchor="middle">Artifacts</text><text class="small" x="600" y="279" text-anchor="middle">proof + transcript</text><rect class="artifactNode" x="742" y="225" width="178" height="82" rx="10"/><text class="label" x="831" y="255" text-anchor="middle">ASSERT</text><text class="small" x="831" y="279" text-anchor="middle">viewer + eval spec</text><rect class="node" x="210" y="225" width="180" height="82" rx="10"/><text class="label" x="300" y="255" text-anchor="middle">Operator</text><text class="small" x="300" y="279" text-anchor="middle">listen / steer</text><path class="line" d="M175 99 H225"/><path class="line" d="M375 99 H425"/><path class="line" d="M575 99 H625"/><path class="line" d="M775 99 H825"/><path class="line" d="M888 140 C888 178 816 178 775 140"/><path class="line" d="M700 140 V225"/><path class="line" d="M685 266 H742"/><path class="softLine" d="M390 266 C470 266 520 185 625 120"/></svg></section>';
+      return '<section class="section"><h3 class="section-title">Pipecat Voice Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute">' + muteLabel + '</button></div><div class="actions"><span id="voice-bridge-status" class="' + voiceBridgeStatusClass() + '">' + escapeHtml(voiceBridgeStatusLabel()) + '</span><span class="status">' + escapeHtml(state.voiceStatus) + '</span></div><span class="meta" id="voice-bridge-detail">' + escapeHtml(bridgeDetail) + '</span><span class="meta">Requires rtc-asr, Kokoro, and local bridge: npm run pipecat:voice. Audio path is browser mic -> Pipecat Python bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> browser playback.</span></section><section class="section diagram"><h3 class="section-title">Demo Flow</h3><svg class="demo-flow-svg" viewBox="0 0 980 360" role="img" aria-label="Caller audio flows through Pipecat, rtc-asr, the agent, Kokoro, operator controls, and ASSERT artifacts" preserveAspectRatio="xMidYMid meet"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0969da"/></marker><style>.node{fill:#ffffff;stroke:#d0d7de;stroke-width:2}.primaryNode{fill:#ddf4ff;stroke:#0969da;stroke-width:2}.artifactNode{fill:#dafbe1;stroke:#1a7f37;stroke-width:2}.label{font:700 17px system-ui,sans-serif;fill:#24292f}.small{font:600 13px system-ui,sans-serif;fill:#57606a}.line{stroke:#0969da;stroke-width:3;fill:none;marker-end:url(#arrow)}.softLine{stroke:#57606a;stroke-width:2.5;stroke-dasharray:7 6;fill:none;marker-end:url(#arrow)}</style></defs><rect class="primaryNode" x="30" y="58" width="145" height="82" rx="10"/><text class="label" x="103" y="92" text-anchor="middle">Caller</text><text class="small" x="103" y="116" text-anchor="middle">browser mic</text><rect class="node" x="225" y="58" width="150" height="82" rx="10"/><text class="label" x="300" y="88" text-anchor="middle">Pipecat</text><text class="small" x="300" y="112" text-anchor="middle">voice bridge</text><rect class="node" x="425" y="58" width="150" height="82" rx="10"/><text class="label" x="500" y="88" text-anchor="middle">rtc-asr</text><text class="small" x="500" y="112" text-anchor="middle">Local STT v1</text><rect class="primaryNode" x="625" y="58" width="150" height="82" rx="10"/><text class="label" x="700" y="88" text-anchor="middle">Agent</text><text class="small" x="700" y="112" text-anchor="middle">goal + memory</text><rect class="node" x="825" y="58" width="125" height="82" rx="10"/><text class="label" x="888" y="88" text-anchor="middle">Kokoro</text><text class="small" x="888" y="112" text-anchor="middle">TTS sidecar</text><rect class="artifactNode" x="515" y="225" width="170" height="82" rx="10"/><text class="label" x="600" y="255" text-anchor="middle">Artifacts</text><text class="small" x="600" y="279" text-anchor="middle">proof + transcript</text><rect class="artifactNode" x="742" y="225" width="178" height="82" rx="10"/><text class="label" x="831" y="255" text-anchor="middle">ASSERT</text><text class="small" x="831" y="279" text-anchor="middle">viewer + eval spec</text><rect class="node" x="210" y="225" width="180" height="82" rx="10"/><text class="label" x="300" y="255" text-anchor="middle">Operator</text><text class="small" x="300" y="279" text-anchor="middle">listen / steer</text><path class="line" d="M175 99 H225"/><path class="line" d="M375 99 H425"/><path class="line" d="M575 99 H625"/><path class="line" d="M775 99 H825"/><path class="line" d="M888 140 C888 178 816 178 775 140"/><path class="line" d="M700 140 V225"/><path class="line" d="M685 266 H742"/><path class="softLine" d="M390 266 C470 266 520 185 625 120"/></svg></section>';
     }
     function attachVoiceControls() {
       const connect = document.getElementById("voice-connect");

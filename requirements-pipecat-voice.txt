@@ -1,2 +1,2 @@
 pipecat-ai==1.4.0
-mlx-whisper==0.4.3
+websockets==15.0.1
