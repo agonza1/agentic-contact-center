@@ -137,6 +137,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         issueUrl: string;
         reviewRoute: string;
         captureTemplateRoute: string;
+        captureTemplateCommand: string;
         validationCommand: string;
         strictValidationCommand: string;
         nextEvidenceOwner: string;
@@ -307,6 +308,10 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.equal(
       payload.reviewHandoff.captureTemplateRoute,
       "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1",
+    );
+    assert.equal(
+      payload.reviewHandoff.captureTemplateCommand,
+      "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
     );
     assert.equal(payload.reviewHandoff.validationCommand, "npm run proof:speech-enhancement -- --require-close-ready");
     assert.equal(

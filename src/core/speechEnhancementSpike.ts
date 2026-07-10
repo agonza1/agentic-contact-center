@@ -242,6 +242,7 @@ export interface SpeechEnhancementReviewHandoff {
   issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97";
   reviewRoute: "/api/realtime-shim/speech-enhancement-spike";
   captureTemplateRoute: "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1";
+  captureTemplateCommand: "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json";
   validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
   strictValidationCommand: "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json";
   nextEvidenceOwner: "agentic_contact_center";
@@ -1037,6 +1038,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   blockedRealCaptureReplayIds: string[];
   strictArtifactVerification: SpeechEnhancementStrictArtifactVerification;
   captureReplayFixturePath: SpeechEnhancementCaptureReplayContract["fixtureManifestPath"];
+  captureTemplateCommand: SpeechEnhancementReviewHandoff["captureTemplateCommand"];
   validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
   strictValidationCommand: SpeechEnhancementReviewHandoff["strictValidationCommand"];
 } {
@@ -1083,6 +1085,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     blockedRealCaptureReplayIds: reviewGate.blockedRealCaptureReplayIds,
     strictArtifactVerification,
     captureReplayFixturePath: report.captureReplayContract.fixtureManifestPath,
+    captureTemplateCommand: handoff.captureTemplateCommand,
     validationCommand: handoff.validationCommand,
     strictValidationCommand: handoff.strictValidationCommand,
   };
@@ -1093,6 +1096,8 @@ export function buildSpeechEnhancementReviewHandoff(): SpeechEnhancementReviewHa
     issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97",
     reviewRoute: "/api/realtime-shim/speech-enhancement-spike",
     captureTemplateRoute: "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1",
+    captureTemplateCommand:
+      "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
     validationCommand: "npm run proof:speech-enhancement -- --require-close-ready",
     strictValidationCommand:
       "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
