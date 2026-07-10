@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildSpeechEnhancementSpikeReport,
+  buildSpeechEnhancementCaptureReplayNextStep,
   buildSpeechEnhancementReviewGate,
   buildSpeechEnhancementReplayDiagnostics,
   buildSpeechEnhancementRuntimeReadiness,
@@ -85,6 +86,49 @@ test("speech enhancement replay diagnostics preserve tiny over-budget deficits",
 });
 
 
+
+test("speech enhancement checklist advances when real capture replay is attached but blocked", () => {
+  const validation = validateSpeechEnhancementCaptureReplayManifest({
+    capture_id: "real-noisy-local-sip-blocked-001",
+    recorded_at: "2026-07-05T15:45:00Z",
+    audio_source_uri: "artifacts/local-sip-real-noisy-blocked-001.wav",
+    audio_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    source_manifest_uri: "artifacts/local-sip/proof-manifest-blocked-001.json",
+    source_manifest_sha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    noise_profile: "speakerphone fan noise",
+    scenario: "seeded caller with real local SIP noise",
+    runtime_host: "local-rtc-asr-host",
+    baseline_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.14,
+      endpointing_stability: "acceptable",
+      barge_in_risk: "medium",
+    },
+    enhanced_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.14,
+      endpointing_stability: "unstable",
+      barge_in_risk: "high",
+      added_turn_latency_ms_p95: 31,
+      cpu_percent_p95: 86,
+      cpu_cost_estimate: "high",
+    },
+    latency_setting_ms: 12.5,
+  });
+
+  assert.ok(validation.metric);
+
+  const report = buildSpeechEnhancementSpikeReport({ captureReplayMetrics: [validation.metric] });
+  const reviewGate = buildSpeechEnhancementReviewGate(report);
+  const nextStep = buildSpeechEnhancementCaptureReplayNextStep(reviewGate);
+
+  assert.equal(reviewGate.checks.realNoisyCaptureReplay, true);
+  assert.equal(reviewGate.issueCloseReady, false);
+  assert.deepEqual(reviewGate.blockedRealCaptureReplayIds, ["real-noisy-local-sip-blocked-001"]);
+  assert.equal(nextStep.step, "run_enhanced_rtc_asr");
+  assert.equal(nextStep.status, "blocked");
+  assert.match(nextStep.reason, /does not pass all Issue #97 close gates/);
+});
 
 test("speech enhancement runtime readiness exposes selected frame budget", () => {
   const validation = validateSpeechEnhancementCaptureReplayManifest({
