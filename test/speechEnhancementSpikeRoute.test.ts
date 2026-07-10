@@ -526,6 +526,14 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-replay/checklist e
       route: string;
       issue: string;
       captureReplayChecklist: Array<{ step: string; owner: string; evidence: string; command: string }>;
+      closeGateProfile: {
+        requiredCaptureIdPrefix: string;
+        requiredLatencySettingMs: number;
+        maxAddedTurnLatencyMsP95: number;
+        maxCpuPercentP95: number;
+        allowedCpuCostEstimates: string[];
+      };
+      captureReplayContract: { fixtureManifestPath: string; requiredFields: string[]; minimumPassingCriteria: string[] };
       handoff: {
         captureReplayChecklistRoute: string;
         captureReplayValidationRoute: string;
@@ -537,6 +545,19 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-replay/checklist e
     assert.equal(payload.route, "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist");
     assert.equal(payload.issue, "agonza1/agentic-contact-center#97");
     assert.equal(payload.handoff.captureReplayChecklistRoute, payload.route);
+    assert.deepEqual(payload.closeGateProfile, {
+      requiredCaptureIdPrefix: "real-noisy-local-sip-",
+      requiredLatencySettingMs: 12.5,
+      maxAddedTurnLatencyMsP95: 25,
+      maxCpuPercentP95: 80,
+      allowedCpuCostEstimates: ["low", "medium"],
+    });
+    assert.equal(
+      payload.captureReplayContract.fixtureManifestPath,
+      "artifacts/speech-enhancement-real-capture-replay.json",
+    );
+    assert.ok(payload.captureReplayContract.requiredFields.includes("source_manifest_sha256"));
+    assert.ok(payload.captureReplayContract.minimumPassingCriteria.some((criterion) => criterion.includes("CPU p95")));
     assert.equal(
       payload.handoff.captureReplayValidationRoute,
       "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate",
