@@ -253,6 +253,9 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, new RegExp(`Capture replay source digest: ${digestCaptureReplaySources([])}`));
     assert.match(markdown, /Strict artifact fields: audio_source_uri, audio_sha256, source_manifest_uri, source_manifest_sha256/);
     assert.match(markdown, /Strict artifact verification: not_verified/);
+    assert.match(markdown, /Strict artifact source count: 0/);
+    assert.match(markdown, /Strict artifact verified source count: 0/);
+    assert.match(markdown, /Strict artifact unverified source count: 0/);
     assert.match(markdown, /Strict artifact verification reason: attach_real_capture_replay_before_strict_artifact_verification/);
     assert.match(markdown, /Passing real replay ids: None/);
     assert.match(markdown, /Blocked real replay ids: None/);
