@@ -4034,11 +4034,15 @@ async function routeRequest(
   }
 
   if (request.method === "GET" && pathname === "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist") {
+    const report = buildSpeechEnhancementSpikeReport();
+
     writeJson(response, 200, {
       ok: true,
       route: "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist",
       issue: "agonza1/agentic-contact-center#97",
       captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
+      closeGateProfile: report.closeGateProfile,
+      captureReplayContract: report.captureReplayContract,
       handoff: buildSpeechEnhancementReviewHandoff(),
     });
     return;
