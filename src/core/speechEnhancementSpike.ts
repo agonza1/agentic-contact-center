@@ -116,6 +116,13 @@ export interface SpeechEnhancementCaptureReplayContract {
   minimumPassingCriteria: string[];
 }
 
+export interface SpeechEnhancementCaptureReplayChecklistItem {
+  step: "record_real_noisy_local_sip" | "run_baseline_rtc_asr" | "run_enhanced_rtc_asr" | "verify_artifacts" | "run_close_gate";
+  owner: "agentic_contact_center" | "rtc_asr";
+  evidence: string;
+  command: string;
+}
+
 export interface SpeechEnhancementCaptureReplayManifest {
   capture_id: string;
   recorded_at: string;
@@ -246,6 +253,41 @@ export interface SpeechEnhancementReviewHandoff {
   validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
   strictValidationCommand: "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json";
   nextEvidenceOwner: "agentic_contact_center";
+}
+
+export function buildSpeechEnhancementCaptureReplayChecklist(): SpeechEnhancementCaptureReplayChecklistItem[] {
+  return [
+    {
+      step: "record_real_noisy_local_sip",
+      owner: "agentic_contact_center",
+      evidence: "Real noisy local SIP audio plus source manifest with matching capture_id and audio_source_uri.",
+      command: "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
+    },
+    {
+      step: "run_baseline_rtc_asr",
+      owner: "rtc_asr",
+      evidence: "baseline_rtc_asr transcript, WER estimate, endpointing stability, and barge-in risk for the same capture.",
+      command: "Fill baseline_rtc_asr in artifacts/speech-enhancement-real-capture-replay.json",
+    },
+    {
+      step: "run_enhanced_rtc_asr",
+      owner: "rtc_asr",
+      evidence: "enhanced_rtc_asr transcript, WER estimate, added p95 latency, CPU p95, and CPU cost for 12.5 ms latency.",
+      command: "Fill enhanced_rtc_asr and latency_setting_ms in artifacts/speech-enhancement-real-capture-replay.json",
+    },
+    {
+      step: "verify_artifacts",
+      owner: "agentic_contact_center",
+      evidence: "Workspace-relative audio and source manifest artifacts whose lowercase sha256 values match the replay manifest.",
+      command: "npm run proof:speech-enhancement -- --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
+    },
+    {
+      step: "run_close_gate",
+      owner: "agentic_contact_center",
+      evidence: "Issue #97 review gate is close-ready with no blocked real capture replay IDs.",
+      command: "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
+    },
+  ];
 }
 
 export interface SpeechEnhancementStrictArtifactVerificationSource {

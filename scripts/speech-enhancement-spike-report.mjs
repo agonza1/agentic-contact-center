@@ -7,6 +7,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 
 const {
+  buildSpeechEnhancementCaptureReplayChecklist,
   buildSpeechEnhancementCaptureReplayTemplate,
   buildSpeechEnhancementReviewGate,
   buildSpeechEnhancementReviewHandoff,
@@ -450,6 +451,7 @@ async function main() {
       captureReplayInputs.sources,
       strictCaptureArtifacts,
     ),
+    captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
     handoff: buildSpeechEnhancementReviewHandoff(),
     reviewGate: buildSpeechEnhancementReviewGate(report),
   };
@@ -487,6 +489,7 @@ async function main() {
     captureReplaySources: artifact.captureReplaySources,
     captureReplaySourceDigest: artifact.captureReplaySourceDigest,
     strictArtifactChecks: report.captureReplayContract.strictArtifactChecks,
+    captureReplayChecklist: artifact.captureReplayChecklist,
   };
 
   console.log(JSON.stringify(summary));

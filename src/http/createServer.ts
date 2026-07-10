@@ -25,6 +25,7 @@ import { LocalRealtimeShimPrototype } from "../core/localRealtimeShimPrototype";
 import { getPipecatPrototypeHealth, SCRIPTED_CALLER_TURNS } from "../core/pipecatFlowPrototype";
 import { REALTIME_SHIM_RPCS } from "../core/realtimeShimContract";
 import {
+  buildSpeechEnhancementCaptureReplayChecklist,
   buildSpeechEnhancementCaptureReplayTemplate,
   buildSpeechEnhancementHealthSummary,
   buildSpeechEnhancementReviewGate,
@@ -4027,6 +4028,18 @@ async function routeRequest(
         command: handoff.strictValidationCommand,
         route: handoff.reviewRoute,
       },
+      captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
+    });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist") {
+    writeJson(response, 200, {
+      ok: true,
+      route: "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist",
+      issue: "agonza1/agentic-contact-center#97",
+      captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
+      handoff: buildSpeechEnhancementReviewHandoff(),
     });
     return;
   }
@@ -4055,6 +4068,7 @@ async function routeRequest(
       validation,
       reviewGate: buildSpeechEnhancementReviewGate(report),
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
+      captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
       strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification([
         { strictArtifactsVerified: false },
       ]),
@@ -4074,6 +4088,7 @@ async function routeRequest(
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
       reviewGate: buildSpeechEnhancementReviewGate(report),
       reviewHandoff: buildSpeechEnhancementReviewHandoff(),
+      captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
       strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification(),
     });
     return;

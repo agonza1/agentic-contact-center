@@ -451,6 +451,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-template can inclu
         minimumPassingCriteria: string[];
       };
       validation: { command: string; route: string };
+      captureReplayChecklist: Array<{ step: string; owner: string; command: string }>;
     };
 
     assert.equal(payload.template.capture_id, "real-noisy-local-sip-001");
@@ -467,6 +468,66 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-template can inclu
       payload.validation.command,
       "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
     );
+    assert.deepEqual(
+      payload.captureReplayChecklist.map((item) => item.step),
+      ["record_real_noisy_local_sip", "run_baseline_rtc_asr", "run_enhanced_rtc_asr", "verify_artifacts", "run_close_gate"],
+    );
+    assert.equal(payload.captureReplayChecklist[1].owner, "rtc_asr");
+  } finally {
+    server.close();
+  }
+});
+
+test("GET /api/realtime-shim/speech-enhancement-spike/capture-replay/checklist exposes ordered close-gate steps", async () => {
+  const server = buildHttpServer(loadPocConfig());
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const responseBody = await new Promise<string>((resolve, reject) => {
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port: address.port,
+          path: "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist",
+          method: "GET",
+        },
+        (response) => {
+          let body = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => {
+            body += chunk;
+          });
+          response.on("end", () => resolve(body));
+        },
+      );
+
+      req.on("error", reject);
+      req.end();
+    });
+
+    const payload = JSON.parse(responseBody) as {
+      ok: boolean;
+      route: string;
+      issue: string;
+      captureReplayChecklist: Array<{ step: string; owner: string; evidence: string; command: string }>;
+      handoff: { strictValidationCommand: string };
+    };
+
+    assert.equal(payload.ok, true);
+    assert.equal(payload.route, "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist");
+    assert.equal(payload.issue, "agonza1/agentic-contact-center#97");
+    assert.deepEqual(
+      payload.captureReplayChecklist.map((item) => item.step),
+      ["record_real_noisy_local_sip", "run_baseline_rtc_asr", "run_enhanced_rtc_asr", "verify_artifacts", "run_close_gate"],
+    );
+    assert.equal(payload.captureReplayChecklist.at(-1)?.command, payload.handoff.strictValidationCommand);
+    assert.ok(payload.captureReplayChecklist.every((item) => item.evidence.length > 0));
   } finally {
     server.close();
   }
