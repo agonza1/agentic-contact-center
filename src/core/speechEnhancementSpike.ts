@@ -249,6 +249,8 @@ export interface SpeechEnhancementReviewHandoff {
   issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97";
   reviewRoute: "/api/realtime-shim/speech-enhancement-spike";
   captureTemplateRoute: "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1";
+  captureReplayChecklistRoute: "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist";
+  captureReplayValidationRoute: "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate";
   captureTemplateCommand: "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json";
   validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
   strictValidationCommand: "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json";
@@ -1052,6 +1054,8 @@ export function buildSpeechEnhancementHealthSummary(): {
   issueUrl: SpeechEnhancementReviewHandoff["issueUrl"];
   reviewRoute: SpeechEnhancementReviewHandoff["reviewRoute"];
   captureTemplateRoute: SpeechEnhancementReviewHandoff["captureTemplateRoute"];
+  captureReplayChecklistRoute: SpeechEnhancementReviewHandoff["captureReplayChecklistRoute"];
+  captureReplayValidationRoute: SpeechEnhancementReviewHandoff["captureReplayValidationRoute"];
   recommendedLatencyMs: number;
   runtimeEnv: SpeechEnhancementRuntimeConfig["env"];
   runtimeStatus: SpeechEnhancementRuntimeReadiness["status"];
@@ -1099,6 +1103,8 @@ export function buildSpeechEnhancementHealthSummary(): {
     issueUrl: handoff.issueUrl,
     reviewRoute: handoff.reviewRoute,
     captureTemplateRoute: handoff.captureTemplateRoute,
+    captureReplayChecklistRoute: handoff.captureReplayChecklistRoute,
+    captureReplayValidationRoute: handoff.captureReplayValidationRoute,
     recommendedLatencyMs: report.decision.recommendedLatencyMs,
     runtimeEnv: runtimeConfig.env,
     runtimeStatus: runtimeReadiness.status,
@@ -1138,6 +1144,8 @@ export function buildSpeechEnhancementReviewHandoff(): SpeechEnhancementReviewHa
     issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97",
     reviewRoute: "/api/realtime-shim/speech-enhancement-spike",
     captureTemplateRoute: "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1",
+    captureReplayChecklistRoute: "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist",
+    captureReplayValidationRoute: "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate",
     captureTemplateCommand:
       "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
     validationCommand: "npm run proof:speech-enhancement -- --require-close-ready",
