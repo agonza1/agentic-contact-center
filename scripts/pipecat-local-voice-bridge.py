@@ -550,6 +550,7 @@ class PipecatVoiceTurnPipeline:
 
 def ready_payload(readiness: BridgeReadiness) -> dict[str, Any]:
     pipecat_version = importlib.metadata.version("pipecat-ai")
+    review_status = "ready_for_voice_turn" if readiness.ok else "blocked_by_local_sidecars"
     return {
         "type": "ready",
         "ok": readiness.ok,
@@ -557,6 +558,18 @@ def ready_payload(readiness: BridgeReadiness) -> dict[str, Any]:
         "detail": readiness.detail,
         "blockers": readiness.blockers,
         "nextAction": "open a browser voice turn" if readiness.ok else "start rtc-asr, Kokoro, ACC, and ffmpeg locally, then rerun npm run pipecat:voice:check",
+        "reviewGate": {
+            "status": review_status,
+            "ready": readiness.ok,
+            "blockerCount": len(readiness.blockers),
+            "requiredServices": {
+                "rtcAsr": readiness.rtc_asr.ok,
+                "kokoro": readiness.kokoro.ok,
+                "acc": readiness.acc.ok,
+                "ffmpeg": readiness.ffmpeg.ok,
+            },
+            "verificationCommand": "npm run pipecat:voice:check",
+        },
         "pipecat": {
             "runtimeMode": "pipecat_local_voice_bridge",
             "runtimeEngine": "pipecat-ai",
