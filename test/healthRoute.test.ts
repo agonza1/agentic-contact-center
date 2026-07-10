@@ -207,6 +207,9 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.deepEqual(payload.speechEnhancement.strictArtifactVerification, {
     requiredForClose: true,
     verified: false,
+    sourceCount: 0,
+    verifiedSourceCount: 0,
+    unverifiedSourceCount: 0,
     reason: "attach_real_capture_replay_before_strict_artifact_verification",
   });
   assert.equal(
