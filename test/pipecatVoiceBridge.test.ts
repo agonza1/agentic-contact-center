@@ -29,6 +29,8 @@ test("Pipecat voice bridge reports fail-closed readiness and engine evidence", (
   assert.match(bridge, /"ok": readiness\.ok/);
   assert.match(bridge, /status = "ready" if ok else "degraded"/);
   assert.match(bridge, /"status": readiness\.status/);
+  assert.match(bridge, /"checkedAt": checked_at/);
+  assert.match(bridge, /datetime\.now\(UTC\)\.isoformat/);
   assert.match(bridge, /"error": "sidecar_unavailable"/);
   assert.match(bridge, /"blockers": readiness\.blockers/);
   assert.match(bridge, /"nextAction": .*npm run pipecat:voice:check/);

@@ -25,6 +25,7 @@ import urllib.error
 import urllib.request
 import wave
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -551,16 +552,19 @@ class PipecatVoiceTurnPipeline:
 def ready_payload(readiness: BridgeReadiness) -> dict[str, Any]:
     pipecat_version = importlib.metadata.version("pipecat-ai")
     review_status = "ready_for_voice_turn" if readiness.ok else "blocked_by_local_sidecars"
+    checked_at = datetime.now(UTC).isoformat(timespec="seconds")
     return {
         "type": "ready",
         "ok": readiness.ok,
         "status": readiness.status,
+        "checkedAt": checked_at,
         "detail": readiness.detail,
         "blockers": readiness.blockers,
         "nextAction": "open a browser voice turn" if readiness.ok else "start rtc-asr, Kokoro, ACC, and ffmpeg locally, then rerun npm run pipecat:voice:check",
         "reviewGate": {
             "status": review_status,
             "ready": readiness.ok,
+            "checkedAt": checked_at,
             "blockerCount": len(readiness.blockers),
             "requiredServices": {
                 "rtcAsr": readiness.rtc_asr.ok,
