@@ -568,6 +568,20 @@ def ready_payload(readiness: BridgeReadiness) -> dict[str, Any]:
                 "acc": readiness.acc.ok,
                 "ffmpeg": readiness.ffmpeg.ok,
             },
+            "serviceUrls": {
+                "rtcAsrHealth": readiness.rtc_asr.url,
+                "rtcAsrStream": DEFAULT_RTC_ASR_WS_URL,
+                "kokoroHealth": readiness.kokoro.url,
+                "kokoroSpeech": join_url(DEFAULT_KOKORO_BASE_URL, DEFAULT_KOKORO_SPEECH_PATH),
+                "accHealth": readiness.acc.url,
+                "ffmpeg": readiness.ffmpeg.url,
+            },
+            "expectedTurnEvidence": {
+                "readyOk": readiness.ok,
+                "sttEngine": "rtc-asr",
+                "ttsEngine": "kokoro",
+                "browserPlayback": "wav_base64",
+            },
             "verificationCommand": "npm run pipecat:voice:check",
         },
         "pipecat": {

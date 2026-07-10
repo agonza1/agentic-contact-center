@@ -36,6 +36,11 @@ test("Pipecat voice bridge reports fail-closed readiness and engine evidence", (
   assert.match(bridge, /"status": review_status/);
   assert.match(bridge, /"blocked_by_local_sidecars"/);
   assert.match(bridge, /"requiredServices"/);
+  assert.match(bridge, /"serviceUrls"/);
+  assert.match(bridge, /"rtcAsrStream": DEFAULT_RTC_ASR_WS_URL/);
+  assert.match(bridge, /"kokoroSpeech": join_url\(DEFAULT_KOKORO_BASE_URL, DEFAULT_KOKORO_SPEECH_PATH\)/);
+  assert.match(bridge, /"expectedTurnEvidence"/);
+  assert.match(bridge, /"browserPlayback": "wav_base64"/);
   assert.match(bridge, /"verificationCommand": "npm run pipecat:voice:check"/);
   assert.match(bridge, /ffmpeg is not available on PATH/);
   assert.match(bridge, /"localAudio"/);
