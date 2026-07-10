@@ -640,7 +640,22 @@ async def handle_client(websocket: websockets.WebSocketServerProtocol) -> None:
                 if not call_id:
                     started = json_http("POST", f"{acc_url}/api/demo/start", {"openclawSessionLabel": "pipecat-local-voice"})
                     call_id = started["session"]["callId"]
-                await send_json(websocket, {"type": "started", "ok": True, "callId": call_id, "accUrl": acc_url})
+                ready = ready_payload(readiness)
+                await send_json(
+                    websocket,
+                    {
+                        "type": "started",
+                        "ok": True,
+                        "callId": call_id,
+                        "accUrl": acc_url,
+                        "ready": ready,
+                        "evidence": {
+                            "reviewGate": ready["reviewGate"],
+                            "stt": ready["stt"],
+                            "tts": ready["tts"],
+                        },
+                    },
+                )
                 continue
 
             if payload.get("type") == "stop":
