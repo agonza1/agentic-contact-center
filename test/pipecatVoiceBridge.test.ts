@@ -29,6 +29,8 @@ test("Pipecat voice bridge reports fail-closed readiness and engine evidence", (
   assert.match(bridge, /"ok": readiness\.ok/);
   assert.match(bridge, /status = "ready" if ok else "degraded"/);
   assert.match(bridge, /"status": readiness\.status/);
+  assert.match(bridge, /"checkedAt": checked_at/);
+  assert.match(bridge, /datetime\.now\(UTC\)\.isoformat/);
   assert.match(bridge, /"error": "sidecar_unavailable"/);
   assert.match(bridge, /"blockers": readiness\.blockers/);
   assert.match(bridge, /"nextAction": .*npm run pipecat:voice:check/);
@@ -46,6 +48,10 @@ test("Pipecat voice bridge reports fail-closed readiness and engine evidence", (
   assert.match(bridge, /"localAudio"/);
   assert.match(bridge, /rtc-asr health or \/v1\/models did not expose model\/backend metadata/);
   assert.match(bridge, /"mediaFlow": "pipecat_frames"/);
+  assert.match(bridge, /"ready": ready/);
+  assert.match(bridge, /"reviewGate": ready\["reviewGate"\]/);
+  assert.match(bridge, /"stt": ready\["stt"\]/);
+  assert.match(bridge, /"tts": ready\["tts"\]/);
   assert.match(bridge, /"stt": result\.stt_meta/);
   assert.match(bridge, /"tts": result\.tts_meta/);
 });
