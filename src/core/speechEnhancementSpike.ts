@@ -1077,6 +1077,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   closeGateRequiredLatencyMs: number;
   closeGateMaxAddedTurnLatencyMsP95: number;
   closeGateMaxCpuPercentP95: number;
+  captureReplayCoverage: SpeechEnhancementReplayCoverage;
   liveDemoGate: string;
   issueCloseReady: boolean;
   reviewChecks: SpeechEnhancementReviewGate["checks"];
@@ -1127,6 +1128,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     closeGateRequiredLatencyMs: report.closeGateProfile.requiredLatencySettingMs,
     closeGateMaxAddedTurnLatencyMsP95: report.closeGateProfile.maxAddedTurnLatencyMsP95,
     closeGateMaxCpuPercentP95: report.closeGateProfile.maxCpuPercentP95,
+    captureReplayCoverage: report.replayCoverage,
     liveDemoGate: report.replayCoverage.liveDemoGate,
     issueCloseReady: reviewGate.issueCloseReady,
     reviewChecks: reviewGate.checks,
