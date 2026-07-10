@@ -332,6 +332,9 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.deepEqual(payload.strictArtifactVerification, {
       requiredForClose: true,
       verified: false,
+      sourceCount: 0,
+      verifiedSourceCount: 0,
+      unverifiedSourceCount: 0,
       reason: "attach_real_capture_replay_before_strict_artifact_verification",
     });
   } finally {
@@ -637,6 +640,9 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate 
     assert.deepEqual(payload.strictArtifactVerification, {
       requiredForClose: true,
       verified: false,
+      sourceCount: 0,
+      verifiedSourceCount: 0,
+      unverifiedSourceCount: 0,
       reason: "attach_real_capture_replay_before_strict_artifact_verification",
     });
     assert.equal(payload.captureReplayChecklist.at(-1)?.step, "run_close_gate");
@@ -755,6 +761,9 @@ test("POST /api/realtime-shim/speech-enhancement-spike/capture-replay/validate g
     assert.deepEqual(payload.strictArtifactVerification, {
       requiredForClose: true,
       verified: false,
+      sourceCount: 1,
+      verifiedSourceCount: 0,
+      unverifiedSourceCount: 1,
       reason: "run_with_strict_capture_artifacts_before_closing",
     });
   } finally {

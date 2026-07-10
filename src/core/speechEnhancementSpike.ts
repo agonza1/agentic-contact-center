@@ -300,6 +300,9 @@ export interface SpeechEnhancementStrictArtifactVerificationSource {
 export interface SpeechEnhancementStrictArtifactVerification {
   requiredForClose: true;
   verified: boolean;
+  sourceCount: number;
+  verifiedSourceCount: number;
+  unverifiedSourceCount: number;
   reason:
     | "all_loaded_capture_replay_artifacts_verified"
     | "run_with_strict_capture_artifacts_before_closing"
@@ -1164,11 +1167,16 @@ export function buildSpeechEnhancementStrictArtifactVerification(
   strictCaptureArtifacts = false,
 ): SpeechEnhancementStrictArtifactVerification {
   const hasCaptureReplay = sources.length > 0;
-  const verified = hasCaptureReplay && strictCaptureArtifacts && sources.every((source) => source.strictArtifactsVerified);
+  const verifiedSourceCount = sources.filter((source) => source.strictArtifactsVerified).length;
+  const unverifiedSourceCount = sources.length - verifiedSourceCount;
+  const verified = hasCaptureReplay && strictCaptureArtifacts && unverifiedSourceCount === 0;
 
   return {
     requiredForClose: true,
     verified,
+    sourceCount: sources.length,
+    verifiedSourceCount,
+    unverifiedSourceCount,
     reason: verified
       ? "all_loaded_capture_replay_artifacts_verified"
       : hasCaptureReplay

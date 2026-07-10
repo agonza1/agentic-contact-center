@@ -73,6 +73,9 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.deepEqual(summary.strictArtifactVerification, {
       requiredForClose: true,
       verified: false,
+      sourceCount: 0,
+      verifiedSourceCount: 0,
+      unverifiedSourceCount: 0,
       reason: "attach_real_capture_replay_before_strict_artifact_verification",
     });
     assert.equal(summary.runtimeLiveDemoEligible, false);
@@ -250,6 +253,9 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, new RegExp(`Capture replay source digest: ${digestCaptureReplaySources([])}`));
     assert.match(markdown, /Strict artifact fields: audio_source_uri, audio_sha256, source_manifest_uri, source_manifest_sha256/);
     assert.match(markdown, /Strict artifact verification: not_verified/);
+    assert.match(markdown, /Strict artifact source count: 0/);
+    assert.match(markdown, /Strict artifact verified source count: 0/);
+    assert.match(markdown, /Strict artifact unverified source count: 0/);
     assert.match(markdown, /Strict artifact verification reason: attach_real_capture_replay_before_strict_artifact_verification/);
     assert.match(markdown, /Passing real replay ids: None/);
     assert.match(markdown, /Blocked real replay ids: None/);
@@ -821,6 +827,9 @@ test("speech enhancement spike report reports strict artifact verification statu
     assert.deepEqual(summary.strictArtifactVerification, {
       requiredForClose: true,
       verified: false,
+      sourceCount: 1,
+      verifiedSourceCount: 0,
+      unverifiedSourceCount: 1,
       reason: "run_with_strict_capture_artifacts_before_closing",
     });
     assert.deepEqual(summary.realCaptureReplayIds, ["real-noisy-local-sip-001"]);
@@ -921,6 +930,9 @@ test("speech enhancement spike report reports strict artifact verification statu
     assert.deepEqual(artifact.strictArtifactVerification, {
       requiredForClose: true,
       verified: false,
+      sourceCount: 1,
+      verifiedSourceCount: 0,
+      unverifiedSourceCount: 1,
       reason: "run_with_strict_capture_artifacts_before_closing",
     });
     assert.equal(artifact.reviewGate.issueCloseReady, true);
@@ -1612,6 +1624,9 @@ test("speech enhancement spike report strict mode verifies capture artifact file
     assert.deepEqual(summary.strictArtifactVerification, {
       requiredForClose: true,
       verified: true,
+      sourceCount: 1,
+      verifiedSourceCount: 1,
+      unverifiedSourceCount: 0,
       reason: "all_loaded_capture_replay_artifacts_verified",
     });
   } finally {
