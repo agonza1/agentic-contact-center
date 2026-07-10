@@ -71,6 +71,7 @@ test("GET /health returns config-backed demo metadata", async () => {
       issueUrl: string;
       reviewRoute: string;
       captureTemplateRoute: string;
+      captureReplayChecklistRoute: string;
       captureTemplateCommand: string;
       recommendedLatencyMs: number;
       runtimeEnv: { featureFlag: string; latencyMs: string };
@@ -137,6 +138,10 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(
     payload.speechEnhancement.captureTemplateRoute,
     "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1",
+  );
+  assert.equal(
+    payload.speechEnhancement.captureReplayChecklistRoute,
+    "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist",
   );
   assert.equal(
     payload.speechEnhancement.captureTemplateCommand,

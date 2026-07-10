@@ -516,12 +516,13 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-replay/checklist e
       route: string;
       issue: string;
       captureReplayChecklist: Array<{ step: string; owner: string; evidence: string; command: string }>;
-      handoff: { strictValidationCommand: string };
+      handoff: { captureReplayChecklistRoute: string; strictValidationCommand: string };
     };
 
     assert.equal(payload.ok, true);
     assert.equal(payload.route, "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist");
     assert.equal(payload.issue, "agonza1/agentic-contact-center#97");
+    assert.equal(payload.handoff.captureReplayChecklistRoute, payload.route);
     assert.deepEqual(
       payload.captureReplayChecklist.map((item) => item.step),
       ["record_real_noisy_local_sip", "run_baseline_rtc_asr", "run_enhanced_rtc_asr", "verify_artifacts", "run_close_gate"],
