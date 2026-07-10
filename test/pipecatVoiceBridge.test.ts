@@ -59,13 +59,16 @@ test("operator console surfaces fail-closed voice bridge readiness", () => {
   assert.match(source, /function formatVoiceBridgeReadyDetail\(payload\)/);
   assert.match(source, /payload\.nextAction/);
   assert.match(source, /blockers\.slice\(0, 3\)/);
+  assert.match(source, /function formatVoiceBridgeEngineEvidence\(payload\)/);
+  assert.match(source, /formatVoiceBridgeEngineEvidence\(payload\)/);
+  assert.match(source, /formatVoiceBridgeEngineEvidence\(readyPayload \|\| \{\}\)/);
   assert.match(source, /payload\.type === "ready" && payload\.ok === false/);
   assert.match(source, /finish\("degraded", formatVoiceBridgeReadyDetail\(payload\)\)/);
   assert.match(source, /Waiting for ready message from/);
-  assert.match(source, /function startVoiceCall\(\)/);
+  assert.match(source, /function startVoiceCall\(readyPayload\)/);
   assert.match(source, /function blockVoiceStart\(detail\)/);
   assert.match(source, /payload\.type === "ready"/);
-  assert.match(source, /startVoiceCall\(\)/);
+  assert.match(source, /startVoiceCall\(payload\)/);
   assert.match(source, /payload\.type === "started"/);
   assert.match(source, /payload\.ok === false/);
   assert.match(source, /updateVoiceBridgeStatus\("degraded", ready\.detail \? formatVoiceBridgeReadyDetail\(ready\) : state\.voiceStatus\)/);

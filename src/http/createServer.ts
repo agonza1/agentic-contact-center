@@ -1247,6 +1247,13 @@ function buildOperatorConsoleHtml(): string {
       const blockerDetail = blockers.length ? " Blockers: " + blockers.slice(0, 3).join("; ") + (blockers.length > 3 ? "; +" + (blockers.length - 3) + " more" : "") + "." : "";
       return detail + blockerDetail + nextAction;
     }
+    function formatVoiceBridgeEngineEvidence(payload) {
+      const stt = payload && payload.stt ? payload.stt : {};
+      const tts = payload && payload.tts ? payload.tts : {};
+      const sttEvidence = stt.engine ? stt.engine + (stt.model && stt.model !== "unknown" ? " " + stt.model : "") : "rtc-asr";
+      const ttsEvidence = tts.engine ? tts.engine + (tts.voice ? " " + tts.voice : "") : "Kokoro";
+      return "STT " + sttEvidence + "; TTS " + ttsEvidence;
+    }
     function updateVoiceBridgeStatus(status, detail) {
       state.voiceBridge.status = status;
       state.voiceBridge.detail = detail;
@@ -1288,7 +1295,7 @@ function buildOperatorConsoleHtml(): string {
             const payload = JSON.parse(event.data);
             if (payload.type === "ready" && payload.ok) {
               const version = payload.pipecat && payload.pipecat.pipecatVersion ? "pipecat " + payload.pipecat.pipecatVersion : "ready";
-              finish("running", "Connected to " + voiceBridgeUrl() + " (" + version + ")");
+              finish("running", "Connected to " + voiceBridgeUrl() + " (" + version + "; " + formatVoiceBridgeEngineEvidence(payload) + ")");
               return;
             }
             if (payload.type === "ready" && payload.ok === false) {
@@ -1388,10 +1395,10 @@ function buildOperatorConsoleHtml(): string {
       const ws = new WebSocket(voiceBridgeUrl());
       state.voiceWs = ws;
       let ready = false;
-      function startVoiceCall() {
+      function startVoiceCall(readyPayload) {
         if (ready) return;
         ready = true;
-        updateVoiceBridgeStatus("running", "Connected to " + voiceBridgeUrl());
+        updateVoiceBridgeStatus("running", "Connected to " + voiceBridgeUrl() + " (" + formatVoiceBridgeEngineEvidence(readyPayload || {}) + ")");
         ws.send(JSON.stringify({ type: "start", accUrl: window.location.origin, callId: activeCall ? activeCall.session.callId : null }));
       }
       function blockVoiceStart(detail) {
@@ -1414,7 +1421,7 @@ function buildOperatorConsoleHtml(): string {
             blockVoiceStart(formatVoiceBridgeReadyDetail(payload));
             return;
           }
-          startVoiceCall();
+          startVoiceCall(payload);
           return;
         }
         if (payload.type === "started") {
