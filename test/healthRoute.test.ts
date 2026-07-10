@@ -91,6 +91,13 @@ test("GET /health returns config-backed demo metadata", async () => {
       closeGateRequiredLatencyMs: number;
       closeGateMaxAddedTurnLatencyMsP95: number;
       closeGateMaxCpuPercentP95: number;
+      captureReplayCoverage: {
+        syntheticNoisyReplayCount: number;
+        realNoisyCaptureReplayCount: number;
+        baselineEnhancedPairs: number;
+        liveDemoGate: string;
+        missingEvidence: string[];
+      };
       liveDemoGate: string;
       issueCloseReady: boolean;
       reviewChecks: { realNoisyCaptureReplay: boolean; cpuRuntimeCost: boolean };
@@ -183,6 +190,16 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.speechEnhancement.closeGateRequiredLatencyMs, 12.5);
   assert.equal(payload.speechEnhancement.closeGateMaxAddedTurnLatencyMsP95, 25);
   assert.equal(payload.speechEnhancement.closeGateMaxCpuPercentP95, 80);
+  assert.deepEqual(payload.speechEnhancement.captureReplayCoverage, {
+    syntheticNoisyReplayCount: 1,
+    realNoisyCaptureReplayCount: 0,
+    baselineEnhancedPairs: 1,
+    liveDemoGate: "blocked_until_real_capture",
+    missingEvidence: [
+      "real_noisy_local_sip_capture_baseline_vs_enhanced_replay",
+      "measured_cpu_cost_on_selected_rtc_asr_host_under_80_percent_p95",
+    ],
+  });
   assert.equal(payload.speechEnhancement.liveDemoGate, "blocked_until_real_capture");
   assert.equal(payload.speechEnhancement.issueCloseReady, false);
   assert.equal(payload.speechEnhancement.reviewChecks.realNoisyCaptureReplay, false);
