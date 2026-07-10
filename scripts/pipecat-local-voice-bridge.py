@@ -89,6 +89,7 @@ class ProbeResult:
 @dataclass
 class BridgeReadiness:
     ok: bool
+    status: str
     detail: str
     blockers: list[str]
     rtc_asr: ProbeResult
@@ -255,8 +256,10 @@ def check_readiness(acc_url: str = DEFAULT_ACC_URL) -> BridgeReadiness:
     blockers = [probe.detail for probe in (rtc_probe, kokoro_probe, acc_probe, ffmpeg_probe) if not probe.ok]
     if stt_model == "unknown" or stt_backend == "unknown":
         blockers.append("rtc-asr health or /v1/models did not expose model/backend metadata")
+    status = "ready" if ok else "degraded" if any(probe.ok for probe in (rtc_probe, kokoro_probe, acc_probe, ffmpeg_probe)) else "offline"
     return BridgeReadiness(
         ok=ok,
+        status=status,
         detail="ready" if ok else "; ".join(blockers),
         blockers=blockers,
         rtc_asr=rtc_probe,
@@ -550,7 +553,7 @@ def ready_payload(readiness: BridgeReadiness) -> dict[str, Any]:
     return {
         "type": "ready",
         "ok": readiness.ok,
-        "status": "ready" if readiness.ok else "offline",
+        "status": readiness.status,
         "detail": readiness.detail,
         "blockers": readiness.blockers,
         "nextAction": "open a browser voice turn" if readiness.ok else "start rtc-asr, Kokoro, ACC, and ffmpeg locally, then rerun npm run pipecat:voice:check",
