@@ -35,11 +35,18 @@ async function api(path, options = {}) {
 function render(session) {
   state.fallbackEnabled = Boolean(session.poc?.fallback?.enabled);
   document.getElementById("toggle-fallback").textContent = state.fallbackEnabled ? "Disable fallback" : "Enable fallback";
+  const runtimeModeLabels = session.poc?.runtime_labels || session.session?.runtimeModeLabels || {};
   document.getElementById("session-summary").textContent = JSON.stringify({
     session_id: session.session_id,
     deck_name: session.deck_name,
     status: session.presentation_status,
     current_slide: session.current_slide,
+  }, null, 2);
+  document.getElementById("runtime-labels").textContent = JSON.stringify({
+    telephony: runtimeModeLabels.telephony || "unknown",
+    media: runtimeModeLabels.media || "unknown",
+    rtc_asr: runtimeModeLabels.rtc_asr || runtimeModeLabels.rtcAsr || "unknown",
+    credentials: runtimeModeLabels.credentials || runtimeModeLabels.credentialsMode || "unknown",
   }, null, 2);
   document.getElementById("poc-status").textContent = JSON.stringify(session.poc, null, 2);
   document.getElementById("recent-events").textContent = JSON.stringify(session.recent_events, null, 2);
@@ -50,6 +57,24 @@ async function refresh() {
   if (!state.sessionId) return;
   const session = await api(`/api/poc/sessions/${state.sessionId}`);
   render(session);
+}
+
+async function refreshMediaEngineReadiness() {
+  const statusNode = document.getElementById("media-engine");
+  try {
+    const readiness = await api("/api/pipecat-media-engine/readiness");
+    const adapters = readiness.sharedEngineContract?.requiredAdapters || [];
+    statusNode.textContent = JSON.stringify({
+      status: readiness.status,
+      review_ready: readiness.reviewReady,
+      browser_webrtc: adapters.find((adapter) => adapter.id === "browser_webrtc")?.implementedNow || false,
+      local_sip: adapters.find((adapter) => adapter.id === "sip_freeswitch_rtp")?.implementedNow || false,
+      signalwire_trunk: adapters.find((adapter) => adapter.id === "signalwire_sip_trunk")?.implementedNow || false,
+      blocker: readiness.reviewBlockers?.[0] || null,
+    }, null, 2);
+  } catch (error) {
+    statusNode.textContent = JSON.stringify({ status: "unavailable", detail: error.message }, null, 2);
+  }
 }
 
 document.getElementById("create-session").addEventListener("click", async () => {
@@ -103,3 +128,5 @@ document.getElementById("send-question").addEventListener("click", async () => {
   const session = await api(`/api/poc/sessions/${state.sessionId}/question`, { method: "POST", body: { question, channel: "text" } });
   render(session);
 });
+
+refreshMediaEngineReadiness();
