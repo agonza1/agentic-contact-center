@@ -753,6 +753,7 @@ test("POST /api/realtime-shim/speech-enhancement-spike/capture-replay/validate g
       reviewGate: { issueCloseReady: boolean; passingRealCaptureReplayIds: string[]; nextEvidence: string[] };
       handoff: { captureReplayValidationRoute: string; strictValidationCommand: string };
       captureReplayChecklist: Array<{ command: string }>;
+      nextChecklistStep: { status: string; step: string; command: string };
       runtimeReadiness: { status: string; liveDemoEligible: boolean; bypassReasons: string[] };
       strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
     };
@@ -767,6 +768,14 @@ test("POST /api/realtime-shim/speech-enhancement-spike/capture-replay/validate g
     assert.deepEqual(payload.reviewGate.nextEvidence, []);
     assert.equal(payload.handoff.captureReplayValidationRoute, payload.route);
     assert.equal(payload.handoff.strictValidationCommand, payload.captureReplayChecklist.at(-1)?.command);
+    assert.deepEqual(payload.nextChecklistStep, {
+      step: "run_close_gate",
+      owner: "agentic_contact_center",
+      evidence: "Issue #97 review gate is close-ready with no blocked real capture replay IDs.",
+      command: "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
+      status: "ready_to_close",
+      reason: "All Issue #97 close-gate checks passed; run the strict close command before closing the issue.",
+    });
     assert.equal(payload.runtimeReadiness.status, "ready");
     assert.equal(payload.runtimeReadiness.liveDemoEligible, true);
     assert.deepEqual(payload.runtimeReadiness.bypassReasons, []);
