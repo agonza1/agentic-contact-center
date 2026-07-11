@@ -135,6 +135,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
         reviewRoute: string;
         captureTemplateRoute: string;
         captureTemplateCommand: string;
+        sourceManifestTemplateCommand: string;
         validationCommand: string;
         strictValidationCommand: string;
         nextEvidenceOwner: string;
@@ -206,6 +207,10 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.equal(
       artifact.handoff.captureTemplateCommand,
       "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
+    );
+    assert.equal(
+      artifact.handoff.sourceManifestTemplateCommand,
+      "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json --source-manifest-template-out artifacts/local-sip/proof-manifest-001.json",
     );
     assert.equal(artifact.handoff.validationCommand, "npm run proof:speech-enhancement -- --require-close-ready");
     assert.equal(

@@ -75,6 +75,7 @@ test("GET /health returns config-backed demo metadata", async () => {
       captureReplayCloseGateRoute: string;
       captureReplayValidationRoute: string;
       captureTemplateCommand: string;
+      sourceManifestTemplateCommand: string;
       recommendedLatencyMs: number;
       runtimeEnv: { featureFlag: string; latencyMs: string };
       runtimeStatus: string;
@@ -168,6 +169,10 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(
     payload.speechEnhancement.captureTemplateCommand,
     "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
+  );
+  assert.equal(
+    payload.speechEnhancement.sourceManifestTemplateCommand,
+    "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json --source-manifest-template-out artifacts/local-sip/proof-manifest-001.json",
   );
   assert.equal(payload.speechEnhancement.recommendedLatencyMs, 12.5);
   assert.deepEqual(payload.speechEnhancement.runtimeEnv, {
