@@ -4091,14 +4091,17 @@ async function routeRequest(
       featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
       latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
     });
+    const reviewGate = buildSpeechEnhancementReviewGate(report);
+
     writeJson(response, 200, {
       ok: true,
       route: "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate",
       validation,
-      reviewGate: buildSpeechEnhancementReviewGate(report),
+      reviewGate,
       handoff: buildSpeechEnhancementReviewHandoff(),
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
       captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
+      nextChecklistStep: buildSpeechEnhancementCaptureReplayNextStep(reviewGate),
       strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification([
         { strictArtifactsVerified: false },
       ]),

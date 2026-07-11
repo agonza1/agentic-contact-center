@@ -111,6 +111,7 @@ export interface SpeechEnhancementCaptureReplayContract {
     | "source_manifest_identity_fields_present"
     | "source_manifest_capture_id_matches"
     | "source_manifest_audio_source_uri_matches"
+    | "source_manifest_recorded_at_matches"
   >;
   comparisonPairs: Array<"baseline_rtc_asr" | "enhanced_rtc_asr">;
   minimumPassingCriteria: string[];
@@ -301,8 +302,10 @@ export interface SpeechEnhancementCaptureReplayNextStep extends SpeechEnhancemen
 export function buildSpeechEnhancementCaptureReplayNextStep(
   reviewGate: SpeechEnhancementReviewGate,
 ): SpeechEnhancementCaptureReplayNextStep {
+  const checklist = buildSpeechEnhancementCaptureReplayChecklist();
+
   if (reviewGate.issueCloseReady) {
-    const closeStep = buildSpeechEnhancementCaptureReplayChecklist().at(-1)!;
+    const closeStep = checklist.at(-1)!;
     return {
       ...closeStep,
       status: "ready_to_close",
@@ -310,9 +313,14 @@ export function buildSpeechEnhancementCaptureReplayNextStep(
     };
   }
 
-  const captureStep = buildSpeechEnhancementCaptureReplayChecklist()[0]!;
+  const nextStep = reviewGate.checks.realNoisyCaptureReplay
+    ? reviewGate.checks.baselineEnhancedPairs
+      ? checklist[2]!
+      : checklist[1]!
+    : checklist[0]!;
+
   return {
-    ...captureStep,
+    ...nextStep,
     status: "blocked",
     reason: reviewGate.nextAction.reason,
   };
@@ -1005,6 +1013,7 @@ export function buildSpeechEnhancementSpikeReport(
         "source_manifest_identity_fields_present",
         "source_manifest_capture_id_matches",
         "source_manifest_audio_source_uri_matches",
+        "source_manifest_recorded_at_matches",
       ],
       comparisonPairs: ["baseline_rtc_asr", "enhanced_rtc_asr"],
       minimumPassingCriteria: [

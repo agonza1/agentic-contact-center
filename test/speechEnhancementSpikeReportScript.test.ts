@@ -62,6 +62,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
       strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
       strictArtifactChecks: string[];
+      nextChecklistStep: { step: string; owner: string; evidence: string; command: string; status: string; reason: string };
     };
     assert.equal(summary.ok, true);
     assert.equal(summary.outputPath, outputPath);
@@ -88,7 +89,17 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       "source_manifest_identity_fields_present",
       "source_manifest_capture_id_matches",
       "source_manifest_audio_source_uri_matches",
+      "source_manifest_recorded_at_matches",
     ]);
+    assert.deepEqual(summary.nextChecklistStep, {
+      step: "record_real_noisy_local_sip",
+      owner: "agentic_contact_center",
+      evidence: "Real noisy local SIP audio plus source manifest with matching capture_id and audio_source_uri.",
+      command:
+        "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
+      status: "blocked",
+      reason: "Attach one real noisy local SIP capture replay before closing Issue #97.",
+    });
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       schemaVersion: number;
@@ -120,6 +131,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       captureReplaySources: Array<{ captureId: string; path: string; strictArtifactsVerified: boolean }>;
       captureReplaySourceDigest: string;
       strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
+      nextChecklistStep: { step: string; owner: string; evidence: string; command: string; status: string; reason: string };
       reviewGate: {
         issueCloseReady: boolean;
         checks: Record<string, boolean>;
@@ -220,6 +232,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       "source_manifest_identity_fields_present",
       "source_manifest_capture_id_matches",
       "source_manifest_audio_source_uri_matches",
+      "source_manifest_recorded_at_matches",
     ]);
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("runtime_host"));
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.cpu_percent_p95"));
@@ -236,6 +249,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
         "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
       reason: "Attach one real noisy local SIP capture replay before closing Issue #97.",
     });
+    assert.deepEqual(artifact.nextChecklistStep, summary.nextChecklistStep);
     assert.deepEqual(artifact.reviewGate.realCaptureReplayIds, []);
     assert.deepEqual(artifact.reviewGate.passingRealCaptureReplayIds, []);
     assert.deepEqual(artifact.reviewGate.blockedRealCaptureReplayIds, []);
@@ -281,6 +295,9 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /realNoisyCaptureReplay: Attach one real noisy local SIP capture replay before closing Issue #97\./);
     assert.match(markdown, /Next Action/);
     assert.equal(markdown.match(/Action: attach_real_capture_replay/g)?.length, 1);
+    assert.match(markdown, /Next Checklist Step/);
+    assert.match(markdown, /Step: record_real_noisy_local_sip/);
+    assert.match(markdown, /Status: blocked/);
     assert.match(markdown, /Run: npm run proof:speech-enhancement -- --require-close-ready/);
     assert.match(markdown, /Strict artifact check: npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts\/speech-enhancement-real-capture-replay\.json/);
     assert.equal(captureReplayTemplate.capture_id, "real-noisy-local-sip-001");
@@ -1560,6 +1577,7 @@ test("speech enhancement spike report strict mode verifies capture artifact file
     proof: "strict replay source",
     capture_id: "real-noisy-local-sip-201",
     audio_source_uri: audioUri,
+    recorded_at: "2026-07-06T13:10:00.000Z",
   });
   const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 
@@ -1912,6 +1930,79 @@ test("speech enhancement spike report strict mode rejects source manifest audio 
     await rm(artifactDir, { recursive: true, force: true });
   }
 });
+
+test("speech enhancement spike report strict mode rejects source manifest recorded-at mismatches", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-strict-manifest-recorded-"));
+  const artifactDir = path.join(process.cwd(), "artifacts", `strict-capture-${path.basename(tempDir)}`);
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+  const captureReplayPath = path.join(tempDir, "real-capture-replay.json");
+  const audioUri = `artifacts/${path.basename(artifactDir)}/real-noisy-local-sip-206.wav`;
+  const sourceManifestUri = `artifacts/${path.basename(artifactDir)}/proof-manifest-206.json`;
+  const audioContents = "fake wav evidence for strict source manifest timestamp validation\n";
+  const sourceManifestContents = JSON.stringify({
+    capture_id: "real-noisy-local-sip-206",
+    audio_source_uri: audioUri,
+    recorded_at: "2026-07-06T13:29:00.000Z",
+  });
+  const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
+
+  try {
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(path.join(process.cwd(), audioUri), audioContents, "utf8");
+    await writeFile(path.join(process.cwd(), sourceManifestUri), sourceManifestContents, "utf8");
+    await writeFile(
+      captureReplayPath,
+      JSON.stringify(
+        {
+          capture_id: "real-noisy-local-sip-206",
+          recorded_at: "2026-07-06T13:28:00.000Z",
+          audio_source_uri: audioUri,
+          audio_sha256: sha256(audioContents),
+          source_manifest_uri: sourceManifestUri,
+          source_manifest_sha256: sha256(sourceManifestContents),
+          noise_profile: "cafe_noise",
+          scenario: "local SIP caller with mismatched strict source manifest timestamp evidence",
+          latency_setting_ms: 12.5,
+          runtime_host: "local-rtc-asr-host",
+          baseline_rtc_asr: {
+            transcript: "I need to cansel my policy",
+            word_error_rate_estimate: 0.18,
+            endpointing_stability: "acceptable",
+            barge_in_risk: "medium",
+          },
+          enhanced_rtc_asr: {
+            transcript: "I need to cancel my policy",
+            word_error_rate_estimate: 0.06,
+            endpointing_stability: "stable",
+            barge_in_risk: "low",
+            added_turn_latency_ms_p95: 18,
+            cpu_percent_p95: 42,
+            cpu_cost_estimate: "medium",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay",
+      captureReplayPath,
+      "--strict-capture-artifacts",
+    ]);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /Source manifest recorded_at mismatch for strict capture replay artifact/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
+
 
 test("speech enhancement spike report strict mode rejects missing capture artifact files", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-strict-missing-"));
