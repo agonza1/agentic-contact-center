@@ -160,6 +160,21 @@ export interface SpeechEnhancementCaptureReplayTemplate extends SpeechEnhancemen
   source_manifest_sha256: "replace_with_64_char_lowercase_sha256";
 }
 
+export interface SpeechEnhancementSourceManifestTemplate {
+  capture_id: SpeechEnhancementCaptureReplayTemplate["capture_id"];
+  audio_source_uri: SpeechEnhancementCaptureReplayTemplate["audio_source_uri"];
+  recorded_at: SpeechEnhancementCaptureReplayTemplate["recorded_at"];
+  noise_profile: SpeechEnhancementCaptureReplayTemplate["noise_profile"];
+  scenario: SpeechEnhancementCaptureReplayTemplate["scenario"];
+  runtime_host: SpeechEnhancementCaptureReplayTemplate["runtime_host"];
+  source: {
+    kind: "local_sip_noisy_capture";
+    sample_rate_hz: 16000;
+    channel_count: 1;
+    format: "pcm_s16le_wav";
+  };
+}
+
 export interface SpeechEnhancementCaptureReplayValidation {
   manifestOk: boolean;
   missingFields: string[];
@@ -1090,6 +1105,25 @@ export function buildSpeechEnhancementCaptureReplayTemplate(): SpeechEnhancement
       cpu_cost_estimate: "medium",
     },
     latency_setting_ms: 12.5,
+  };
+}
+
+export function buildSpeechEnhancementSourceManifestTemplate(): SpeechEnhancementSourceManifestTemplate {
+  const template = buildSpeechEnhancementCaptureReplayTemplate();
+
+  return {
+    capture_id: template.capture_id,
+    audio_source_uri: template.audio_source_uri,
+    recorded_at: template.recorded_at,
+    noise_profile: template.noise_profile,
+    scenario: template.scenario,
+    runtime_host: template.runtime_host,
+    source: {
+      kind: "local_sip_noisy_capture",
+      sample_rate_hz: 16000,
+      channel_count: 1,
+      format: "pcm_s16le_wav",
+    },
   };
 }
 

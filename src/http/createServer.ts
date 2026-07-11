@@ -29,6 +29,7 @@ import {
   buildSpeechEnhancementCaptureReplayNextStep,
   buildSpeechEnhancementCaptureReplayTemplate,
   buildSpeechEnhancementHealthSummary,
+  buildSpeechEnhancementSourceManifestTemplate,
   buildSpeechEnhancementReviewGate,
   buildSpeechEnhancementRuntimeReadiness,
   buildSpeechEnhancementReviewHandoff,
@@ -4024,6 +4025,7 @@ async function routeRequest(
     const handoff = buildSpeechEnhancementReviewHandoff();
     writeJson(response, 200, {
       template,
+      sourceManifestTemplate: buildSpeechEnhancementSourceManifestTemplate(),
       contract: report.captureReplayContract,
       validation: {
         command: handoff.strictValidationCommand,
