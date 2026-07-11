@@ -86,6 +86,9 @@ test("GET /health returns config-backed demo metadata", async () => {
       runtimeMaxBufferedAudioMs: number | null;
       runtimeProfileExpectedUse: string | null;
       runtimeProfileRecommendation: string | null;
+      runtimeProfileId: string | null;
+      runtimeProfileEnvValue: string | null;
+      runtimeProfileEnableCommand: string | null;
       runtimeProfileBypassWhen: string[];
       runtimeLiveDemoEligible: boolean;
       closeGateRequiredLatencyMs: number;
@@ -182,6 +185,12 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.speechEnhancement.runtimeMaxBufferedAudioMs, 32.5);
   assert.equal(payload.speechEnhancement.runtimeProfileExpectedUse, "default");
   assert.equal(payload.speechEnhancement.runtimeProfileRecommendation, "recommended");
+  assert.equal(payload.speechEnhancement.runtimeProfileId, "latency_12_5_ms");
+  assert.equal(payload.speechEnhancement.runtimeProfileEnvValue, "12.5");
+  assert.equal(
+    payload.speechEnhancement.runtimeProfileEnableCommand,
+    "RTC_ASR_SPEECH_ENHANCEMENT=enabled RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS=12.5 npm run proof:realtime-shim",
+  );
   assert.deepEqual(payload.speechEnhancement.runtimeProfileBypassWhen, [
     "added_turn_latency_p95_exceeds_candidate_budget",
     "enhanced_cpu_percent_p95_exceeds_80",

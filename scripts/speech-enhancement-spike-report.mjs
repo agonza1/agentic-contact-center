@@ -320,7 +320,7 @@ function buildMarkdownReport(artifact) {
   const latencyProfiles = report.latencyProfiles.map((profile) => {
     const eligibility = profile.liveDemoEligible ? "live-demo-eligible" : "offline-only";
 
-    return `- ${profile.latencyMs} ms: ${eligibility}; lookahead_frames=${profile.lookaheadFrames}; max_buffered_audio_ms=${profile.maxBufferedAudioMs}; expected_use=${profile.expectedUse}; recommendation=${profile.recommendation}`;
+    return `- ${profile.profileId}: ${profile.latencyMs} ms: ${eligibility}; env_value=${profile.envValue}; enable_command=${profile.enableCommand}; lookahead_frames=${profile.lookaheadFrames}; max_buffered_audio_ms=${profile.maxBufferedAudioMs}; expected_use=${profile.expectedUse}; recommendation=${profile.recommendation}`;
   });
   const replayEvidence = reviewGate.realCaptureReplayEvidence.map((evidence) => {
     const source = evidence.audioSourceUri ?? "missing audio source";
