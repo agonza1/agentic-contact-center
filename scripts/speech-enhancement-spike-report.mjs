@@ -8,6 +8,7 @@ const require = createRequire(import.meta.url);
 
 const {
   buildSpeechEnhancementCaptureReplayChecklist,
+  buildSpeechEnhancementCaptureReplayNextStep,
   buildSpeechEnhancementCaptureReplayTemplate,
   buildSpeechEnhancementReviewGate,
   buildSpeechEnhancementReviewHandoff,
@@ -412,6 +413,15 @@ function buildMarkdownReport(artifact) {
     `- Action: ${reviewGate.nextAction.action}`,
     `- Reason: ${reviewGate.nextAction.reason}`,
     "",
+    "## Next Checklist Step",
+    "",
+    `- Step: ${artifact.nextChecklistStep.step}`,
+    `- Owner: ${artifact.nextChecklistStep.owner}`,
+    `- Status: ${artifact.nextChecklistStep.status}`,
+    `- Evidence: ${artifact.nextChecklistStep.evidence}`,
+    `- Command: ${artifact.nextChecklistStep.command}`,
+    `- Reason: ${artifact.nextChecklistStep.reason}`,
+    "",
     "## Validation",
     "",
     `Run: ${artifact.handoff.validationCommand}`,
@@ -459,6 +469,7 @@ async function main() {
     handoff: buildSpeechEnhancementReviewHandoff(),
     reviewGate: buildSpeechEnhancementReviewGate(report),
   };
+  artifact.nextChecklistStep = buildSpeechEnhancementCaptureReplayNextStep(artifact.reviewGate);
 
   await writeJson(outputPath, artifact);
   if (latestOutputPath) {
@@ -494,6 +505,7 @@ async function main() {
     captureReplaySourceDigest: artifact.captureReplaySourceDigest,
     strictArtifactChecks: report.captureReplayContract.strictArtifactChecks,
     captureReplayChecklist: artifact.captureReplayChecklist,
+    nextChecklistStep: artifact.nextChecklistStep,
   };
 
   console.log(JSON.stringify(summary));
