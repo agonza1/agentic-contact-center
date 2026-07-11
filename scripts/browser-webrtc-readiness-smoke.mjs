@@ -28,6 +28,10 @@ if (browserWebRtc.readiness?.acc?.status !== "ready") failures.push("ACC readine
 if (browserWebRtc.readiness?.pipecatWebrtcBridge?.status !== "signaling_ready") failures.push("Pipecat WebRTC bridge readiness must be signaling_ready");
 if (browserWebRtc.readiness?.rtcAsr?.engine !== "rtc-asr") failures.push("rtc-asr readiness must be present");
 if (browserWebRtc.readiness?.kokoro?.engine !== "kokoro") failures.push("Kokoro readiness must be present");
+if (browserWebRtc.contract?.signalingRoute !== "POST /api/browser-webrtc/session") failures.push("contract.signalingRoute must be POST /api/browser-webrtc/session");
+if (!browserWebRtc.contract?.bridgeOfferRoute?.endsWith("/api/webrtc/offer")) failures.push("contract.bridgeOfferRoute must target the Pipecat WebRTC offer route");
+if (browserWebRtc.contract?.media?.input !== "opus over WebRTC from browser microphone") failures.push("contract.media.input must describe browser WebRTC audio");
+if (browserWebRtc.legacyChunkBridge?.intendedForNormalBrowserVoice !== false) failures.push("legacyChunkBridge must be isolated from normal browser voice");
 
 if (failures.length) {
   console.error("Browser WebRTC readiness check failed:");
