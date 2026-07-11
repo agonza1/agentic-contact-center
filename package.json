@@ -31,7 +31,8 @@
     "proof:live-sip-bundle": "node scripts/live-sip-proof-bundle.mjs",
     "proof:realtime-shim": "npm run build && node scripts/realtime-shim-proof.mjs",
     "browser-webrtc:check": "node scripts/browser-webrtc-readiness-smoke.mjs",
-    "pipecat:voice:readiness": "node scripts/browser-webrtc-readiness-smoke.mjs"
+    "pipecat:voice:readiness": "node scripts/browser-webrtc-readiness-smoke.mjs",
+    "browser-webrtc:live-proof": "node scripts/browser-webrtc-live-proof.mjs"
   },
   "engines": {
     "node": ">=20"
