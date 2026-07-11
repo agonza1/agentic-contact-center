@@ -22,6 +22,7 @@ import {
 import { compareTimestamps, getAttentionMetadata } from "../core/attention";
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { LocalRealtimeShimPrototype } from "../core/localRealtimeShimPrototype";
+import { buildPipecatMediaEngineReadinessPayload } from "../core/pipecatMediaEngineReadiness";
 import { getPipecatPrototypeHealth, SCRIPTED_CALLER_TURNS } from "../core/pipecatFlowPrototype";
 import { REALTIME_SHIM_RPCS } from "../core/realtimeShimContract";
 import {
@@ -4008,6 +4009,11 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/api/realtime-shim/readiness") {
     writeJson(response, 200, buildRealtimeShimReadinessPayload());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/pipecat-media-engine/readiness") {
+    writeJson(response, 200, buildPipecatMediaEngineReadinessPayload());
     return;
   }
 

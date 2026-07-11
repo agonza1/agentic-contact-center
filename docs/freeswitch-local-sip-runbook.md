@@ -2,6 +2,14 @@
 
 This path avoids production SignalWire credentials and public exposure. It uses a local SIP extension first, while preserving the same `/api/live-sip/events` adapter for future SignalWire SIP trunk inbound calls.
 
+For the shared Pipecat media-engine contract, run ACC and inspect:
+
+```sh
+curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness
+```
+
+That route is the Issue #214 review surface for browser WebRTC, local SIP/FreeSWITCH, and future SignalWire SIP trunk audio. It currently reports the browser Pipecat voice bridge as implemented and the SIP/FreeSWITCH realtime RTP adapter as blocked; the SIP proof steps below still capture live media/proof artifacts and must not be treated as completed bidirectional Pipecat RTP streaming.
+
 ## Ports and credentials
 
 - Agentic Contact Center: `http://127.0.0.1:8026`
@@ -103,3 +111,5 @@ ACC_TELEPHONY_MODE=signalwire_live ACC_BASE_URL=http://127.0.0.1:8026 node scrip
 ```
 
 No production SignalWire secrets are stored in this repo.
+
+SignalWire past-call ingestion is not covered by this live SIP path. If historical call import is needed, add a separate importer; the realtime path remains SignalWire SIP trunk -> FreeSWITCH -> Pipecat.

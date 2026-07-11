@@ -52,6 +52,16 @@ npm run pipecat:voice
 
 The bridge ready payload and each successful `turn.evidence` report `stt.engine=rtc-asr` and `tts.engine=kokoro`, plus sidecar health or elapsed timing.
 
+## Unified Pipecat media-engine readiness
+
+Issue #214 tracks the target shared media engine for browser WebRTC, local SIP/FreeSWITCH, and future SignalWire SIP trunk audio. The current reviewable contract is exposed at:
+
+```bash
+curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness
+```
+
+The payload is intentionally not a fake green light. It marks the browser Pipecat voice bridge as implemented, keeps the local SIP/FreeSWITCH proof bundle behavior intact, and reports the remaining blocker: FreeSWITCH RTP is not yet streamed bidirectionally through Pipecat frames for realtime SIP caller playback. SignalWire is documented as a future SIP trunk -> FreeSWITCH/Pipecat route; historical/past-call import remains a separate importer task.
+
 ## Demo flow
 
 Seeded caller turns for the cancellation-rescue script:
@@ -153,6 +163,7 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `GET /api/operator/actions`: expose the Slack-ready operator action catalog with command examples, reason/pending-call requirements, HTTP body templates, and outcome hints for console buttons.
 - `GET /api/realtime-shim/proof`: expose deterministic Gateway relay and Local STT v1 evidence for the mocked realtime shim path.
 - `GET /api/realtime-shim/readiness`: summarize adapter shape, browser relay compatibility, reviewer packet, mocked pieces, and limitations from proof evidence.
+- `GET /api/pipecat-media-engine/readiness`: expose the Issue #214 shared browser WebRTC, local SIP/FreeSWITCH, and SignalWire SIP trunk Pipecat media-engine contract, including the current realtime SIP RTP blocker.
 - `GET /api/realtime-shim/speech-enhancement-spike`: summarize latency-configurable speech enhancement placement, candidate latency settings, replay metric shape, and feature-flag recommendation for `rtc-asr`.
 - `POST /api/realtime-shim/rpc`: exercise the `talk.session.*` Gateway relay RPC boundary with persistent local shim session state.
 - `GET /assert/full`: serve the local navigation wrapper around the upstream ASSERT viewer on `http://127.0.0.1:5174`.
