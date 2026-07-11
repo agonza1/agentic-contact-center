@@ -726,6 +726,81 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate 
   }
 });
 
+test("POST /api/realtime-shim/speech-enhancement-spike/capture-replay/validate returns close-gate status for invalid manifests", async () => {
+  const server = buildHttpServer(loadPocConfig());
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const body = JSON.stringify({
+      capture_id: "synthetic-noisy-replay",
+      recorded_at: "2026-07-05T15:45:00Z",
+    });
+
+    const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port: address.port,
+          path: "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate",
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "content-length": Buffer.byteLength(body),
+          },
+        },
+        (res) => {
+          let responseBody = "";
+          res.setEncoding("utf8");
+          res.on("data", (chunk) => {
+            responseBody += chunk;
+          });
+          res.on("end", () => resolve({ statusCode: res.statusCode ?? 0, body: responseBody }));
+        },
+      );
+
+      req.on("error", reject);
+      req.end(body);
+    });
+
+    const payload = JSON.parse(response.body) as {
+      ok: boolean;
+      validation: { manifestOk: boolean; missingFields: string[] };
+      closeGateStatus: string;
+      reviewGate: { issueCloseReady: boolean; nextEvidence: string[] };
+      strictArtifactVerification: { verified: boolean; reason: string };
+      nextChecklistStep: { status: string; step: string };
+    };
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.validation.manifestOk, false);
+    assert.ok(payload.validation.missingFields.includes("capture_id.real_noisy_local_sip_required"));
+    assert.equal(payload.closeGateStatus, "blocked_before_real_capture");
+    assert.equal(payload.reviewGate.issueCloseReady, false);
+    assert.deepEqual(payload.reviewGate.nextEvidence, [
+      "real_noisy_local_sip_capture_baseline_vs_enhanced_replay",
+      "measured_cpu_cost_on_selected_rtc_asr_host_under_80_percent_p95",
+    ]);
+    assert.deepEqual(payload.strictArtifactVerification, {
+      requiredForClose: true,
+      verified: false,
+      sourceCount: 0,
+      verifiedSourceCount: 0,
+      unverifiedSourceCount: 0,
+      reason: "attach_real_capture_replay_before_strict_artifact_verification",
+    });
+    assert.equal(payload.nextChecklistStep.status, "blocked");
+    assert.equal(payload.nextChecklistStep.step, "record_real_noisy_local_sip");
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  }
+});
 
 test("POST /api/realtime-shim/speech-enhancement-spike/capture-replay/validate gates a real replay manifest", async () => {
   const previousFeatureFlag = process.env.RTC_ASR_SPEECH_ENHANCEMENT;

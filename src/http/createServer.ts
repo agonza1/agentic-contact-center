@@ -4081,10 +4081,18 @@ async function routeRequest(
     const validation = validateSpeechEnhancementCaptureReplayManifest(body);
 
     if (!validation.manifestOk || !validation.metric) {
+      const report = buildSpeechEnhancementSpikeReport();
+      const reviewGate = buildSpeechEnhancementReviewGate(report);
+      const strictArtifactVerification = buildSpeechEnhancementStrictArtifactVerification();
+
       writeJson(response, 400, {
         ok: false,
         route: "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate",
         validation,
+        closeGateStatus: resolveSpeechEnhancementCloseGateStatus(reviewGate, strictArtifactVerification),
+        reviewGate,
+        strictArtifactVerification,
+        nextChecklistStep: buildSpeechEnhancementCaptureReplayNextStep(reviewGate),
       });
       return;
     }
