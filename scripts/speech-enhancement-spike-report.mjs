@@ -233,6 +233,8 @@ function assertSourceManifestJson(contents, captureReplayPath, artifactUri, capt
     artifactUri,
   );
   assertRequiredSourceManifestField(sourceManifest, "recorded_at", captureReplay.recorded_at, captureReplayPath, artifactUri);
+  assertRequiredSourceManifestField(sourceManifest, "noise_profile", captureReplay.noise_profile, captureReplayPath, artifactUri);
+  assertRequiredSourceManifestField(sourceManifest, "runtime_host", captureReplay.runtime_host, captureReplayPath, artifactUri);
 }
 
 function assertRequiredSourceManifestField(sourceManifest, field, expectedValue, captureReplayPath, artifactUri) {

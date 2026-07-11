@@ -92,6 +92,8 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       "source_manifest_capture_id_matches",
       "source_manifest_audio_source_uri_matches",
       "source_manifest_recorded_at_matches",
+      "source_manifest_noise_profile_matches",
+      "source_manifest_runtime_host_matches",
     ]);
     assert.deepEqual(summary.nextChecklistStep, {
       step: "record_real_noisy_local_sip",
@@ -237,6 +239,8 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       "source_manifest_capture_id_matches",
       "source_manifest_audio_source_uri_matches",
       "source_manifest_recorded_at_matches",
+      "source_manifest_noise_profile_matches",
+      "source_manifest_runtime_host_matches",
     ]);
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("runtime_host"));
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.cpu_percent_p95"));
@@ -1586,6 +1590,8 @@ test("speech enhancement spike report strict mode verifies capture artifact file
     capture_id: "real-noisy-local-sip-201",
     audio_source_uri: audioUri,
     recorded_at: "2026-07-06T13:10:00.000Z",
+    noise_profile: "cafe_noise",
+    runtime_host: "local-rtc-asr-host",
   });
   const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 
