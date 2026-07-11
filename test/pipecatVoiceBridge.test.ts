@@ -46,6 +46,8 @@ test("Pipecat voice bridge reports fail-closed readiness and engine evidence", (
   assert.match(bridge, /"verificationCommand": "npm run pipecat:voice:check"/);
   assert.match(bridge, /ffmpeg is not available on PATH/);
   assert.match(bridge, /"localAudio"/);
+  assert.match(bridge, /legacy WebSocket\/webm proof plumbing/);
+  assert.match(bridge, /normal browser WebRTC operation should not use this path/);
   assert.match(bridge, /rtc-asr health or \/v1\/models did not expose model\/backend metadata/);
   assert.match(bridge, /"mediaFlow": "pipecat_frames"/);
   assert.match(bridge, /"ready": ready/);
@@ -56,9 +58,18 @@ test("Pipecat voice bridge reports fail-closed readiness and engine evidence", (
   assert.match(bridge, /"tts": result\.tts_meta/);
 });
 
-test("Pipecat voice check script is exposed", () => {
+test("Pipecat voice readiness scripts distinguish WebRTC from the legacy ffmpeg bridge", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  const smoke = readFileSync("scripts/browser-webrtc-readiness-smoke.mjs", "utf8");
+
+  assert.equal(pkg.scripts["browser-webrtc:check"], "node scripts/browser-webrtc-readiness-smoke.mjs");
+  assert.equal(pkg.scripts["pipecat:voice:readiness"], "node scripts/browser-webrtc-readiness-smoke.mjs");
   assert.equal(pkg.scripts["pipecat:voice:check"], "python3 scripts/pipecat-local-voice-bridge.py --check-sidecars");
+  assert.match(smoke, /browserWebRtc\.normalOperation\?\.transport !== "webrtc"/);
+  assert.match(smoke, /mediaRecorderRequired !== false/);
+  assert.match(smoke, /ffmpegRequired !== false/);
+  assert.match(smoke, /pipecatWebrtcBridge\?\.status !== "signaling_ready"/);
+  assert.match(smoke, /Browser WebRTC readiness OK/);
 });
 
 
@@ -66,23 +77,20 @@ test("operator console surfaces fail-closed voice bridge readiness", () => {
   const source = consoleSource();
 
   assert.match(source, /state\.voiceBridge\.status === "degraded"/);
-  assert.match(source, /return "Bridge blocked"/);
+  assert.match(source, /return "WebRTC blocked"/);
+  assert.match(source, /function browserWebrtcReadinessUrl\(\)/);
+  assert.match(source, /return "\/api\/browser-webrtc\/readiness"/);
   assert.match(source, /function formatVoiceBridgeReadyDetail\(payload\)/);
-  assert.match(source, /payload\.nextAction/);
+  assert.match(source, /payload\.nextActions/);
   assert.match(source, /blockers\.slice\(0, 3\)/);
   assert.match(source, /function formatVoiceBridgeEngineEvidence\(payload\)/);
   assert.match(source, /formatVoiceBridgeEngineEvidence\(payload\)/);
-  assert.match(source, /formatVoiceBridgeEngineEvidence\(readyPayload \|\| \{\}\)/);
-  assert.match(source, /payload\.type === "ready" && payload\.ok === false/);
-  assert.match(source, /finish\("degraded", formatVoiceBridgeReadyDetail\(payload\)\)/);
-  assert.match(source, /Waiting for ready message from/);
-  assert.doesNotMatch(source, /WebSocket opened at/);
-  assert.match(source, /function startVoiceCall\(readyPayload\)/);
-  assert.match(source, /function blockVoiceStart\(detail\)/);
-  assert.match(source, /payload\.type === "ready"/);
-  assert.match(source, /startVoiceCall\(payload\)/);
-  assert.match(source, /payload\.type === "started"/);
-  assert.match(source, /payload\.ok === false/);
-  assert.match(source, /updateVoiceBridgeStatus\("degraded", ready\.detail \? formatVoiceBridgeReadyDetail\(ready\) : state\.voiceStatus\)/);
+  assert.match(source, /fetch\(browserWebrtcReadinessUrl\(\)\)/);
+  assert.match(source, /payload\.ok/);
+  assert.match(source, /new RTCPeerConnection/);
+  assert.match(source, /fetch\("\/api\/browser-webrtc\/session"/);
+  assert.match(source, /getUserMedia/);
+  assert.doesNotMatch(source, /new WebSocket/);
+  assert.doesNotMatch(source, /new MediaRecorder/);
   assert.match(source, /stopVoiceStream\(\)/);
 });

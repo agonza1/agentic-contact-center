@@ -8,7 +8,7 @@ The active app is the TypeScript service under `src/`. The older FastAPI/static-
 
 - Voice-agent demo that keeps control of call state, policy holds, operator decisions, fallback, and evidence.
 - Local Pipecat path for the seeded cancellation-rescue scenario, with live telephony and provider credentials mocked.
-- Browser caller demo using microphone audio, a local Pipecat WebSocket bridge, rtc-asr Local STT v1, and Kokoro TTS.
+- Browser caller demo contract for realtime WebRTC into Pipecat, with rtc-asr Local STT v1 and Kokoro TTS preserved as the intended sidecars.
 - Operator console for pause/resume, safe-offer approval, takeover, transfer, end-call, fallback drills, notes, queue filters, and proof links.
 - QA evidence through transcripts, event trails, latency marks, call snapshots, proof bundles, ASSERT exports, and ConversationAgentEvals-ready handoff artifacts.
 
@@ -33,8 +33,8 @@ The TypeScript service in `src/` owns the HTTP routes, in-memory call state, loc
 
 - Node.js 20 or newer and npm.
 - Python 3.11+ for optional Pipecat checks or the local voice bridge.
-- `ffmpeg` on `PATH` for local voice bridge audio conversions.
-- Running rtc-asr and Kokoro sidecars for the live browser voice bridge.
+- Running rtc-asr and Kokoro sidecars for the live browser voice path.
+- Optional: `ffmpeg` on `PATH` only for the legacy local WebSocket chunk bridge. The intended browser WebRTC path does not require `ffmpeg` for normal operation.
 - Docker and Docker Compose only for containerized commands.
 
 No production credentials are required for the mocked POC. SignalWire, CRM, billing, auth, account access, live telephony, Slack posting, and OpenClaw actions are mocked or represented as deterministic contracts.
@@ -57,9 +57,28 @@ Open `http://localhost:8026/` or `http://localhost:8026/operator/console`, then 
 
 Generate reviewable JSON evidence with `npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json`.
 
-## Local Voice Demo
+## Browser WebRTC Voice Readiness
 
-With rtc-asr and Kokoro already running locally, install and run the voice bridge in another terminal:
+The intended non-SIP browser voice path is:
+
+```text
+browser mic -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC/browser playback
+```
+
+The Issue #213 browser path exposes ACC readiness plus a WebRTC offer/answer proxy into the local Pipecat bridge. Check readiness with:
+
+```bash
+curl -fsS http://127.0.0.1:8026/api/browser-webrtc/readiness
+npm run browser-webrtc:check -- --url http://127.0.0.1:8026/health
+```
+
+The readiness payload distinguishes ACC, the Pipecat WebRTC bridge endpoint, rtc-asr, Kokoro, the legacy chunk bridge, and the fact that normal WebRTC browser voice must not require `MediaRecorder` webm chunks or `ffmpeg`. The ACC server proxies browser SDP offers from `POST /api/browser-webrtc/session` to `BROWSER_WEBRTC_BRIDGE_URL` (default `http://127.0.0.1:8766`).
+
+## Legacy Local Voice Bridge
+
+The older local voice bridge remains available only as legacy proof plumbing. It records browser webm chunks over a local WebSocket and uses `ffmpeg` for conversion, so it is not the normal browser voice path for Issue #213.
+
+With rtc-asr, Kokoro, and `ffmpeg` already running locally, install and run the legacy bridge in another terminal:
 
 ```bash
 npm run pipecat:voice:install
@@ -67,13 +86,13 @@ npm run pipecat:voice:check
 npm run pipecat:voice
 ```
 
-Then open `http://localhost:8026/`, use **Pipecat Voice Caller**, click **Connect Voice**, allow microphone access, and speak naturally. The audio path is:
+The legacy audio path is:
 
 ```text
-browser mic -> local Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> browser playback
+browser mic -> MediaRecorder webm chunks -> local Pipecat WebSocket bridge -> ffmpeg -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> browser playback
 ```
 
-rtc-asr owns model loading and selection; the bridge reports `stt.engine=rtc-asr` and `tts.engine=kokoro` in ready and turn evidence. Typed caller turns still exercise the same call-flow API when the bridge is not running. See `docs/runtime-reference.md` for sidecar URLs, model notes, and deeper runtime commands.
+rtc-asr owns model loading and selection; the legacy bridge reports `stt.engine=rtc-asr` and `tts.engine=kokoro` in ready and turn evidence. Typed caller turns still exercise the same call-flow API when the bridge is not running. See `docs/runtime-reference.md` for sidecar URLs, model notes, and deeper runtime commands.
 
 ## ConversationAgentEvals Integration
 

@@ -36,9 +36,26 @@ npm run pipecat:check
 
 This verifies the local `pipecat-ai` package boundary only. It does not open microphones, start live telephony, or use provider credentials.
 
-## Local voice bridge sidecars
+## Browser WebRTC voice readiness
 
-The browser voice bridge requires rtc-asr and Kokoro to be running before live voice turns. rtc-asr owns ASR model loading and Kokoro owns speech synthesis. The default rtc-asr evidence label is `mlx-community/parakeet-tdt_ctc-110m`, chosen from the checked-in rtc-asr MLX service benchmark lane as the fast small English contact-center option (`docs/benchmark-results/parakeet-mlx-110m-service-2026-06-21.json`). Override only when rtc-asr is configured with a different model:
+Issue #213 moves the intended non-SIP browser voice path to realtime WebRTC into Pipecat:
+
+```text
+browser mic -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC/browser playback
+```
+
+This repository now exposes the contract/readiness surface for that path:
+
+```bash
+curl -fsS http://127.0.0.1:8026/api/browser-webrtc/readiness
+npm run browser-webrtc:check -- --url http://127.0.0.1:8026/health
+```
+
+The payload reports `status=ready_for_pipecat_webrtc_bridge` when the ACC contract is ready. Browser SDP offers are accepted at `POST /api/browser-webrtc/session` and proxied to `BROWSER_WEBRTC_BRIDGE_URL` (default `http://127.0.0.1:8766`); failures are reported as Pipecat WebRTC bridge blockers instead of falling back to webm chunks. It also reports `normalOperation.ffmpegRequired=false` and `normalOperation.mediaRecorderRequired=false` so normal browser voice is no longer defined around webm chunks or local conversion.
+
+## Legacy local voice bridge sidecars
+
+The old local WebSocket chunk bridge remains as legacy proof plumbing only. It requires rtc-asr, Kokoro, and `ffmpeg` before live voice turns because browser audio arrives as webm chunks. rtc-asr owns ASR model loading and Kokoro owns speech synthesis. The default rtc-asr evidence label is `mlx-community/parakeet-tdt_ctc-110m`, chosen from the checked-in rtc-asr MLX service benchmark lane as the fast small English contact-center option (`docs/benchmark-results/parakeet-mlx-110m-service-2026-06-21.json`). Override only when rtc-asr is configured with a different model:
 
 ```bash
 export RTC_ASR_BASE_URL=http://127.0.0.1:8080
@@ -50,7 +67,7 @@ npm run pipecat:voice:check
 npm run pipecat:voice
 ```
 
-The bridge ready payload and each successful `turn.evidence` report `stt.engine=rtc-asr` and `tts.engine=kokoro`, plus sidecar health or elapsed timing.
+The legacy bridge ready payload and each successful `turn.evidence` report `stt.engine=rtc-asr` and `tts.engine=kokoro`, plus sidecar health or elapsed timing. This legacy bridge is not the Issue #213 normal browser voice path.
 
 ## Demo flow
 
@@ -153,6 +170,8 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `GET /api/operator/actions`: expose the Slack-ready operator action catalog with command examples, reason/pending-call requirements, HTTP body templates, and outcome hints for console buttons.
 - `GET /api/realtime-shim/proof`: expose deterministic Gateway relay and Local STT v1 evidence for the mocked realtime shim path.
 - `GET /api/realtime-shim/readiness`: summarize adapter shape, browser relay compatibility, reviewer packet, mocked pieces, and limitations from proof evidence.
+- `GET /api/browser-webrtc/readiness`: expose the Issue #213 browser WebRTC voice contract, dependency readiness, bridge endpoint, and legacy chunk bridge isolation.
+- `POST /api/browser-webrtc/session`: validate browser SDP offers, allocate or preserve an ACC call ID, and proxy offer/answer signaling to the local Pipecat WebRTC bridge.
 - `GET /api/realtime-shim/speech-enhancement-spike`: summarize latency-configurable speech enhancement placement, candidate latency settings, replay metric shape, and feature-flag recommendation for `rtc-asr`.
 - `POST /api/realtime-shim/rpc`: exercise the `talk.session.*` Gateway relay RPC boundary with persistent local shim session state.
 - `GET /assert/full`: serve the local navigation wrapper around the upstream ASSERT viewer on `http://127.0.0.1:5174`.
@@ -179,8 +198,10 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `npm run proof:speech-enhancement`: build and write the speech enhancement spike artifact.
 - `npm run pipecat:check`: verify the local `pipecat-ai` runtime package boundary without live telephony.
 - `npm run pipecat:voice:install`: install Pipecat voice bridge dependencies into `.pipecat-runtime`.
-- `npm run pipecat:voice:check`: verify rtc-asr and Kokoro health before opening the browser microphone path.
-- `npm run pipecat:voice`: run the local browser voice bridge on `ws://127.0.0.1:8765`.
+- `npm run browser-webrtc:check`: verify `/health` exposes the normal browser WebRTC path with ACC, Pipecat bridge, rtc-asr, and Kokoro readiness and no normal-path `ffmpeg` requirement.
+- `npm run pipecat:voice:readiness`: alias for the browser WebRTC readiness smoke check.
+- `npm run pipecat:voice:check`: verify rtc-asr, Kokoro, ACC, and `ffmpeg` health for the legacy WebSocket chunk bridge.
+- `npm run pipecat:voice`: run the legacy local browser chunk bridge on `ws://127.0.0.1:8765`.
 - `npm run assert:export`: generate official ASSERT local-viewer artifacts under `artifacts/results/agentic-contact-center-voice-demo/...`.
 - `npm run assert:viewer:install`: clone and install the upstream ASSERT viewer into `.assert-viewer/`.
 - `npm run assert:viewer`: run the upstream ASSERT viewer against this repo's `artifacts/results` at `http://127.0.0.1:5174`.
