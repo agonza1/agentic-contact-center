@@ -645,13 +645,14 @@ function buildBrowserWebrtcReadinessPayload(): object {
   const contractReady = realtimeReadiness.acceptanceCriteria.every((criterion) => criterion.passed);
   const signalingRoute = "/api/browser-webrtc/session";
   const browserWebrtcBridgeBaseUrl = getBrowserWebrtcBridgeBaseUrl();
+  const liveMediaVerified = false;
 
   return {
     ok: contractReady,
     route: "/api/browser-webrtc/readiness",
     issue: "agonza1/agentic-contact-center#213",
     issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/213",
-    status: contractReady ? "ready_for_pipecat_webrtc_bridge" : "realtime_contract_degraded",
+    status: contractReady ? "contract_ready_pending_live_media_evidence" : "realtime_contract_degraded",
     intendedPath: "browser microphone -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC/browser playback",
     normalOperation: {
       transport: "webrtc",
@@ -712,6 +713,22 @@ function buildBrowserWebrtcReadinessPayload(): object {
         tts: "Kokoro",
       },
     },
+    liveMedia: {
+      verified: liveMediaVerified,
+      status: liveMediaVerified ? "verified" : "pending_local_bridge_proof",
+      requiredProof: [
+        "Pipecat WebRTC bridge started at BROWSER_WEBRTC_BRIDGE_URL",
+        "rtc-asr Local STT v1 sidecar captured a final browser transcript",
+        "Kokoro produced agent TTS audio",
+        "browser received and played a remote WebRTC audio track",
+      ],
+      setupCommands: [
+        "export BROWSER_WEBRTC_BRIDGE_URL=http://127.0.0.1:8766",
+        "npm start",
+        "npm run browser-webrtc:check -- --url http://127.0.0.1:8026/health",
+        "open http://127.0.0.1:8026/operator/console",
+      ],
+    },
     preservation: {
       callState: true,
       transcript: true,
@@ -739,21 +756,22 @@ function buildBrowserWebrtcReadinessPayload(): object {
       },
       {
         criterion: "live_webrtc_media_turn",
-        passed: true,
-        evidence: "Live media is owned by the local Pipecat WebRTC bridge at BROWSER_WEBRTC_BRIDGE_URL with rtc-asr and Kokoro sidecars.",
+        passed: liveMediaVerified,
+        evidence: "Pending local proof that a browser microphone turn reached the Pipecat WebRTC bridge, rtc-asr emitted a final transcript, Kokoro produced TTS, and the browser played the remote WebRTC audio track.",
       },
     ],
-    blockers: contractReady ? [] : ["realtime_shim_contract_degraded"],
+    blockers: contractReady ? ["live_webrtc_media_turn_evidence_missing"] : ["realtime_shim_contract_degraded"],
     nextActions: [
       `Run the Pipecat WebRTC bridge at ${browserWebrtcBridgeBaseUrl} before connecting browser voice.`,
       "Open /operator/console, click Connect Voice, allow microphone access, and verify the remote WebRTC audio track plays agent audio.",
     ],
-    validationCommands: ["npm test"],
+    validationCommands: ["npm test", "npm run browser-webrtc:check -- --url http://127.0.0.1:8026/health"],
     relatedEvidenceRoutes: [
       ...realtimeReadiness.qaEvidenceRoutes,
       { route: signalingRoute, method: "POST", evidence: ["callId", "sessionId", "iceServers", "stt", "tts", "latencyEvidence"] },
     ],
     contractReady,
+    liveMediaVerified,
   };
 }
 

@@ -72,7 +72,7 @@ curl -fsS http://127.0.0.1:8026/api/browser-webrtc/readiness
 npm run browser-webrtc:check -- --url http://127.0.0.1:8026/health
 ```
 
-The readiness payload distinguishes ACC, the Pipecat WebRTC bridge endpoint, rtc-asr, Kokoro, the legacy chunk bridge, and the fact that normal WebRTC browser voice must not require `MediaRecorder` webm chunks or `ffmpeg`. The ACC server proxies browser SDP offers from `POST /api/browser-webrtc/session` to `BROWSER_WEBRTC_BRIDGE_URL` (default `http://127.0.0.1:8766`).
+The readiness payload distinguishes ACC contract readiness from live media verification. It reports the Pipecat WebRTC bridge endpoint, rtc-asr, Kokoro, the legacy chunk bridge, and the fact that normal WebRTC browser voice must not require `MediaRecorder` webm chunks or `ffmpeg`. The ACC server proxies browser SDP offers from `POST /api/browser-webrtc/session` to `BROWSER_WEBRTC_BRIDGE_URL` (default `http://127.0.0.1:8766`). Until a local browser proof is attached, `liveMedia.verified=false` and the blocker is `live_webrtc_media_turn_evidence_missing`.
 
 ## Legacy Local Voice Bridge
 

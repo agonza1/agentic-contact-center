@@ -68,16 +68,23 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
       };
       preservation: Record<string, boolean | string>;
       acceptanceProgress: Array<{ criterion: string; passed: boolean; evidence: string }>;
+      liveMedia: {
+        verified: boolean;
+        status: string;
+        requiredProof: string[];
+        setupCommands: string[];
+      };
       blockers: string[];
       nextActions: string[];
       validationCommands: string[];
       contractReady: boolean;
+      liveMediaVerified: boolean;
     };
 
     assert.equal(payload.ok, true);
     assert.equal(payload.route, "/api/browser-webrtc/readiness");
     assert.equal(payload.issue, "agonza1/agentic-contact-center#213");
-    assert.equal(payload.status, "ready_for_pipecat_webrtc_bridge");
+    assert.equal(payload.status, "contract_ready_pending_live_media_evidence");
     assert.match(payload.intendedPath, /browser microphone -> WebRTC -> Pipecat bridge/);
     assert.deepEqual(payload.normalOperation, {
       transport: "webrtc",
@@ -126,13 +133,23 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
         readiness_distinguishes_acc_pipecat_webrtc_rtc_asr_kokoro: true,
         normal_browser_voice_does_not_require_mediarecorder_or_ffmpeg: true,
         browser_offer_answer_signaling: true,
-        live_webrtc_media_turn: true,
+        live_webrtc_media_turn: false,
       },
     );
-    assert.deepEqual(payload.blockers, []);
+    assert.equal(payload.liveMedia.verified, false);
+    assert.equal(payload.liveMedia.status, "pending_local_bridge_proof");
+    assert.deepEqual(payload.liveMedia.requiredProof, [
+      "Pipecat WebRTC bridge started at BROWSER_WEBRTC_BRIDGE_URL",
+      "rtc-asr Local STT v1 sidecar captured a final browser transcript",
+      "Kokoro produced agent TTS audio",
+      "browser received and played a remote WebRTC audio track",
+    ]);
+    assert.ok(payload.liveMedia.setupCommands.some((command) => command.includes("BROWSER_WEBRTC_BRIDGE_URL")));
+    assert.deepEqual(payload.blockers, ["live_webrtc_media_turn_evidence_missing"]);
     assert.match(payload.nextActions[0] ?? "", /Pipecat WebRTC bridge/);
-    assert.deepEqual(payload.validationCommands, ["npm test"]);
+    assert.deepEqual(payload.validationCommands, ["npm test", "npm run browser-webrtc:check -- --url http://127.0.0.1:8026/health"]);
     assert.equal(payload.contractReady, true);
+    assert.equal(payload.liveMediaVerified, false);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {

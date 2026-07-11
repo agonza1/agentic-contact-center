@@ -84,8 +84,10 @@ test("GET /health returns config-backed demo metadata", async () => {
         ffmpegRequired: boolean;
         intendedForNormalBrowserVoice: boolean;
       };
+      liveMedia: { verified: boolean; status: string };
       blockers: string[];
       contractReady: boolean;
+      liveMediaVerified: boolean;
     };
     speechEnhancement: {
       issue: string;
@@ -171,7 +173,7 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.browserWebRtc.ok, true);
   assert.equal(payload.browserWebRtc.route, "/api/browser-webrtc/readiness");
   assert.equal(payload.browserWebRtc.issue, "agonza1/agentic-contact-center#213");
-  assert.equal(payload.browserWebRtc.status, "ready_for_pipecat_webrtc_bridge");
+  assert.equal(payload.browserWebRtc.status, "contract_ready_pending_live_media_evidence");
   assert.deepEqual(payload.browserWebRtc.normalOperation, {
     transport: "webrtc",
     browserCapture: "getUserMedia MediaStreamTrack",
@@ -188,8 +190,11 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.browserWebRtc.legacyChunkBridge.mediaRecorderRequired, true);
   assert.equal(payload.browserWebRtc.legacyChunkBridge.ffmpegRequired, true);
   assert.equal(payload.browserWebRtc.legacyChunkBridge.intendedForNormalBrowserVoice, false);
-  assert.deepEqual(payload.browserWebRtc.blockers, []);
+  assert.equal(payload.browserWebRtc.liveMedia.verified, false);
+  assert.equal(payload.browserWebRtc.liveMedia.status, "pending_local_bridge_proof");
+  assert.deepEqual(payload.browserWebRtc.blockers, ["live_webrtc_media_turn_evidence_missing"]);
   assert.equal(payload.browserWebRtc.contractReady, true);
+  assert.equal(payload.browserWebRtc.liveMediaVerified, false);
   assert.equal(payload.speechEnhancement.issue, "agonza1/agentic-contact-center#97");
   assert.equal(payload.speechEnhancement.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/97");
   assert.equal(payload.speechEnhancement.reviewRoute, "/api/realtime-shim/speech-enhancement-spike");

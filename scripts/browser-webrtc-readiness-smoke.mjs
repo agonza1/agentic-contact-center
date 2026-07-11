@@ -20,7 +20,7 @@ const browserWebRtc = payload.browserWebRtc ?? payload;
 const failures = [];
 
 if (browserWebRtc.ok !== true) failures.push("browserWebRtc.ok must be true");
-if (browserWebRtc.status !== "ready_for_pipecat_webrtc_bridge") failures.push("browserWebRtc.status must be ready_for_pipecat_webrtc_bridge");
+if (browserWebRtc.status !== "contract_ready_pending_live_media_evidence") failures.push("browserWebRtc.status must be contract_ready_pending_live_media_evidence");
 if (browserWebRtc.normalOperation?.transport !== "webrtc") failures.push("normalOperation.transport must be webrtc");
 if (browserWebRtc.normalOperation?.mediaRecorderRequired !== false) failures.push("normalOperation.mediaRecorderRequired must be false");
 if (browserWebRtc.normalOperation?.ffmpegRequired !== false) failures.push("normalOperation.ffmpegRequired must be false");
@@ -31,6 +31,8 @@ if (browserWebRtc.readiness?.kokoro?.engine !== "kokoro") failures.push("Kokoro 
 if (browserWebRtc.contract?.signalingRoute !== "POST /api/browser-webrtc/session") failures.push("contract.signalingRoute must be POST /api/browser-webrtc/session");
 if (!browserWebRtc.contract?.bridgeOfferRoute?.endsWith("/api/webrtc/offer")) failures.push("contract.bridgeOfferRoute must target the Pipecat WebRTC offer route");
 if (browserWebRtc.contract?.media?.input !== "opus over WebRTC from browser microphone") failures.push("contract.media.input must describe browser WebRTC audio");
+if (browserWebRtc.liveMedia?.verified !== false) failures.push("liveMedia.verified must remain false until local browser media proof is attached");
+if (!browserWebRtc.blockers?.includes("live_webrtc_media_turn_evidence_missing")) failures.push("live media evidence blocker must be reported");
 if (browserWebRtc.legacyChunkBridge?.intendedForNormalBrowserVoice !== false) failures.push("legacyChunkBridge must be isolated from normal browser voice");
 
 if (failures.length) {

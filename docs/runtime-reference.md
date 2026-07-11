@@ -51,7 +51,7 @@ curl -fsS http://127.0.0.1:8026/api/browser-webrtc/readiness
 npm run browser-webrtc:check -- --url http://127.0.0.1:8026/health
 ```
 
-The payload reports `status=ready_for_pipecat_webrtc_bridge` when the ACC contract is ready. Browser SDP offers are accepted at `POST /api/browser-webrtc/session` and proxied to `BROWSER_WEBRTC_BRIDGE_URL` (default `http://127.0.0.1:8766`); failures are reported as Pipecat WebRTC bridge blockers instead of falling back to webm chunks. It also reports `normalOperation.ffmpegRequired=false` and `normalOperation.mediaRecorderRequired=false` so normal browser voice is no longer defined around webm chunks or local conversion.
+The payload reports `status=contract_ready_pending_live_media_evidence` when the ACC signaling contract is ready but a local browser media proof has not been attached. Browser SDP offers are accepted at `POST /api/browser-webrtc/session` and proxied to `BROWSER_WEBRTC_BRIDGE_URL` (default `http://127.0.0.1:8766`); failures are reported as Pipecat WebRTC bridge blockers instead of falling back to webm chunks. It also reports `normalOperation.ffmpegRequired=false`, `normalOperation.mediaRecorderRequired=false`, and `liveMedia.verified=false` so reviewers can separate contract readiness from the remaining local proof that browser mic audio reaches rtc-asr and Kokoro audio plays back through WebRTC.
 
 ## Legacy local voice bridge sidecars
 
