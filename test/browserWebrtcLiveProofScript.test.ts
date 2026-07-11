@@ -33,7 +33,7 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
       reviewReady: boolean;
       runtimeModeLabels: { browserTransport: string; pipecat: string; rtcAsr: string; tts: string; browserPlayback: string };
       checks: Record<string, boolean>;
-      setup: { commands: string[]; pipecatWebrtcBridgeUrl: string; rtcAsrWsUrl: string; kokoroBaseUrl: string };
+      setup: { commands: string[]; evidenceTemplateCommand: string; pipecatWebrtcBridgeUrl: string; rtcAsrWsUrl: string; kokoroBaseUrl: string };
       reviewGate: { missingProof: string[]; nextActions: string[] };
     };
     assert.equal(manifest.reviewReady, false);
@@ -60,6 +60,8 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
     assert.equal(manifest.setup.rtcAsrWsUrl, "ws://127.0.0.1:8080/v1/stt/stream");
     assert.ok(manifest.setup.commands.some((command) => command.includes("browser-webrtc:check")));
     assert.ok(manifest.setup.commands.some((command) => command.includes("browser-webrtc:live-proof")));
+    assert.match(manifest.setup.evidenceTemplateCommand, /--write-template/);
+    assert.ok(manifest.reviewGate.nextActions.some((action) => action.includes("evidence template")));
     assert.ok(manifest.reviewGate.nextActions.some((action) => action.includes("browser-webrtc:live-proof")));
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -109,6 +111,38 @@ test("browser WebRTC live proof gate accepts captured media-turn evidence", asyn
     assert.deepEqual(manifest.reviewGate.missingProof, []);
     assert.ok(manifest.setup.commands.some((command) => command.includes("pipecat:voice:check")));
     assert.ok(manifest.artifactIntegrity.some((artifact) => artifact.artifactId === "browser-webrtc-live-evidence" && artifact.readiness === "ready" && artifact.sizeBytes > 0));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("browser WebRTC live proof gate writes a fill-in evidence template", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-browser-webrtc-template-"));
+  const templatePath = path.join(tempDir, "proof.template.json");
+
+  try {
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        ["scripts/browser-webrtc-live-proof.mjs", "--require-review-ready", "--write-template", templatePath, "--out-dir", tempDir],
+        { cwd: repoRoot, timeout: 10_000, encoding: "utf8" },
+      ),
+      (error: any) => {
+        assert.equal(error.code, 2);
+        return true;
+      },
+    );
+
+    const template = JSON.parse(await readFile(templatePath, "utf8")) as { events: Array<Record<string, unknown>> };
+    assert.equal(template.events.length, 4);
+    assert.ok(template.events.some((event) => event.type === "pipecat.webrtc.offer_answer"));
+    assert.ok(template.events.some((event) => event.type === "rtc-asr.transcript.final" && event.final === true));
+    assert.ok(template.events.some((event) => event.type === "kokoro.tts.audio"));
+    assert.ok(template.events.some((event) => event.type === "browser.remote.audio.played"));
+
+    const manifest = JSON.parse(await readFile(path.join(tempDir, "browser-webrtc-live-proof-manifest.json"), "utf8")) as { setup: { evidenceTemplatePath: string } };
+    assert.equal(manifest.setup.evidenceTemplatePath, templatePath);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

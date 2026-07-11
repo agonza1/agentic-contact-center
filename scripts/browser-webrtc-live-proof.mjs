@@ -13,6 +13,7 @@ function getArg(name, fallback = undefined) {
 
 const outDir = getArg("--out-dir", "artifacts/browser-webrtc-live-proof");
 const evidencePath = getArg("--evidence");
+const templatePath = getArg("--write-template");
 const requireReviewReady = args.includes("--require-review-ready");
 
 const setupCommands = [
@@ -99,7 +100,47 @@ async function artifactIntegrity(filePath) {
   }
 }
 
+async function writeEvidenceTemplate(filePath) {
+  if (!filePath) return null;
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const template = {
+    capturedAt: new Date().toISOString(),
+    captureNotes: "Replace placeholder values with one real local browser media turn.",
+    events: [
+      {
+        type: "pipecat.webrtc.offer_answer",
+        transport: "webrtc",
+        bridge: "pipecat",
+        bridgeUrl: process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766",
+        sessionId: "replace-with-browser-webrtc-session-id",
+      },
+      {
+        type: "rtc-asr.transcript.final",
+        engine: "rtc-asr",
+        final: true,
+        transcript: "replace with the final caller transcript heard from the browser microphone",
+        source: process.env.RTC_ASR_WS_URL ?? "ws://127.0.0.1:8080/v1/stt/stream",
+      },
+      {
+        type: "kokoro.tts.audio",
+        engine: "kokoro",
+        audioBytes: 0,
+        source: process.env.KOKORO_BASE_URL ?? "http://127.0.0.1:8880",
+      },
+      {
+        type: "browser.remote.audio.played",
+        target: "browser",
+        track: "remote audio",
+        playedMs: 0,
+      },
+    ],
+  };
+  await writeFile(filePath, `${JSON.stringify(template, null, 2)}\n`, "utf8");
+  return filePath;
+}
+
 await mkdir(outDir, { recursive: true });
+const evidenceTemplatePath = await writeEvidenceTemplate(templatePath);
 
 const evidence = await readEvidence(evidencePath);
 const validation = evidence.payload ? validateEvidence(evidence.payload) : {
@@ -140,6 +181,7 @@ const manifest = {
     rtcAsrWsUrl: process.env.RTC_ASR_WS_URL ?? "ws://127.0.0.1:8080/v1/stt/stream",
     kokoroBaseUrl: process.env.KOKORO_BASE_URL ?? "http://127.0.0.1:8880",
     commands: setupCommands,
+    evidenceTemplateCommand: "npm run browser-webrtc:live-proof -- --write-template artifacts/browser-webrtc-live-proof/proof.template.json",
   },
   checks: validation.checks,
   artifactIntegrity: await artifactIntegrity(evidencePath),
@@ -148,12 +190,17 @@ const manifest = {
     missingProof: validation.missingProof,
     nextActions: validation.reviewReady ? [] : [
       "Start the Pipecat WebRTC bridge, rtc-asr, and Kokoro sidecars using manifest.setup.commands.",
+      "Optionally write a fill-in evidence template with manifest.setup.evidenceTemplateCommand.",
       "Open /operator/console, connect browser voice, speak one caller turn, and capture bridge/browser proof JSON.",
       "Rerun npm run browser-webrtc:live-proof -- --evidence <proof.json> --require-review-ready.",
     ],
   },
   blockers,
 };
+
+if (evidenceTemplatePath) {
+  manifest.setup.evidenceTemplatePath = evidenceTemplatePath;
+}
 
 const manifestPath = path.join(outDir, "browser-webrtc-live-proof-manifest.json");
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
