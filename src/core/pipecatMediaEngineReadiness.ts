@@ -4,6 +4,14 @@ const issue214Url = "https://github.com/agonza1/agentic-contact-center/issues/21
 export function buildPipecatMediaEngineReadinessPayload() {
   const realtimeRtpBlocker =
     "FreeSWITCH RTP is not yet streamed bidirectionally through Pipecat frames; the current SIP bridge records/captures media, posts ACC events, and can attach rtc-asr evidence after capture.";
+  const nextUnblockedSlice = {
+    id: "sip_rtp_to_pipecat_input_frames",
+    title: "Decode FreeSWITCH RTP into Pipecat input frames",
+    adapter: "sip_freeswitch_rtp",
+    entryPoint: "scripts/freeswitch-acc-bridge.mjs",
+    targetContract: "PCMU/8000 RTP -> PCM16 -> Pipecat InputAudioRawFrame -> rtc-asr final transcript",
+    verification: "Add a deterministic RTP frame fixture that proves the bridge can emit Pipecat-compatible PCM16 input frames before wiring live playback.",
+  };
 
   return {
     ok: true,
@@ -63,6 +71,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       "Feed rtc-asr final transcripts from the SIP media adapter directly into the shared ACC call-turn loop during the call.",
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
     ],
+    nextUnblockedSlice,
     reviewBlockers: [realtimeRtpBlocker],
     acceptanceCriteria: [
       {

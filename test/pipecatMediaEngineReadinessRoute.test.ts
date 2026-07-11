@@ -78,6 +78,14 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       true,
     );
     assert.equal(payload.remainingWork.some((item: string) => item.includes("FreeSWITCH RTP adapter")), true);
+    assert.deepEqual(payload.nextUnblockedSlice, {
+      id: "sip_rtp_to_pipecat_input_frames",
+      title: "Decode FreeSWITCH RTP into Pipecat input frames",
+      adapter: "sip_freeswitch_rtp",
+      entryPoint: "scripts/freeswitch-acc-bridge.mjs",
+      targetContract: "PCMU/8000 RTP -> PCM16 -> Pipecat InputAudioRawFrame -> rtc-asr final transcript",
+      verification: "Add a deterministic RTP frame fixture that proves the bridge can emit Pipecat-compatible PCM16 input frames before wiring live playback.",
+    });
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

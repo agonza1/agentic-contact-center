@@ -70,6 +70,8 @@ async function refreshMediaEngineReadiness() {
       browser_webrtc: adapters.find((adapter) => adapter.id === "browser_webrtc")?.implementedNow || false,
       local_sip: adapters.find((adapter) => adapter.id === "sip_freeswitch_rtp")?.implementedNow || false,
       signalwire_trunk: adapters.find((adapter) => adapter.id === "signalwire_sip_trunk")?.implementedNow || false,
+      next_slice: readiness.nextUnblockedSlice?.id || null,
+      next_slice_verification: readiness.nextUnblockedSlice?.verification || null,
       blocker: readiness.reviewBlockers?.[0] || null,
     }, null, 2);
   } catch (error) {

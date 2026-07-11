@@ -12,4 +12,6 @@ test("operator console surfaces runtime labels and Pipecat media-engine readines
   assert.match(app, /\/api\/pipecat-media-engine\/readiness/);
   assert.match(app, /sip_freeswitch_rtp/);
   assert.match(app, /signalwire_sip_trunk/);
+  assert.match(app, /nextUnblockedSlice/);
+  assert.match(app, /next_slice_verification/);
 });
