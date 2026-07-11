@@ -31,16 +31,39 @@ export function rtpPcmuPacketToPipecatInputFrame(packet: Buffer): PipecatInputAu
   }
 
   const version = packet[0] >> 6;
+  const hasPadding = (packet[0] & 0x20) !== 0;
+  const hasExtension = (packet[0] & 0x10) !== 0;
   const csrcCount = packet[0] & 0x0f;
   const payloadType = packet[1] & 0x7f;
-  const headerBytes = 12 + csrcCount * 4;
+  let headerBytes = 12 + csrcCount * 4;
   if (version !== 2) {
     throw new Error("rtp_version_unsupported");
   }
   if (payloadType !== 0) {
     throw new Error("rtp_payload_type_not_pcmu");
   }
-  if (packet.length <= headerBytes) {
+  if (packet.length < headerBytes) {
+    throw new Error("rtp_header_truncated");
+  }
+
+  if (hasExtension) {
+    if (packet.length < headerBytes + 4) {
+      throw new Error("rtp_extension_header_truncated");
+    }
+    const extensionLengthBytes = packet.readUInt16BE(headerBytes + 2) * 4;
+    headerBytes += 4 + extensionLengthBytes;
+  }
+
+  let payloadEnd = packet.length;
+  if (hasPadding) {
+    const paddingBytes = packet[packet.length - 1];
+    if (paddingBytes === 0 || paddingBytes > packet.length - headerBytes) {
+      throw new Error("rtp_padding_invalid");
+    }
+    payloadEnd -= paddingBytes;
+  }
+
+  if (payloadEnd <= headerBytes) {
     throw new Error("rtp_payload_missing");
   }
 
@@ -52,6 +75,6 @@ export function rtpPcmuPacketToPipecatInputFrame(packet: Buffer): PipecatInputAu
     sequenceNumber: packet.readUInt16BE(2),
     timestamp: packet.readUInt32BE(4),
     ssrc: packet.readUInt32BE(8),
-    pcm16: decodePcmuToPcm16(packet.subarray(headerBytes)),
+    pcm16: decodePcmuToPcm16(packet.subarray(headerBytes, payloadEnd)),
   };
 }

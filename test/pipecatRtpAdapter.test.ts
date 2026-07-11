@@ -37,6 +37,19 @@ test("RTP PCMU packets decode into Pipecat-compatible PCM16 input frames", () =>
   );
 });
 
+test("RTP PCMU adapter skips RTP extension headers and padding bytes", () => {
+  const packet = rtpPacket([0xbe, 0xde, 0x00, 0x01, 0x99, 0x88, 0x77, 0x66, 0xfe, 0x7e, 0x00, 0x00, 0x03]);
+  packet[0] = 0xb0;
+
+  const frame = rtpPcmuPacketToPipecatInputFrame(packet);
+
+  assert.equal(frame.pcm16.length, 4);
+  assert.deepEqual(
+    [frame.pcm16.readInt16LE(0), frame.pcm16.readInt16LE(2)],
+    [decodePcmuSample(0xfe), decodePcmuSample(0x7e)],
+  );
+});
+
 test("RTP PCMU adapter rejects non-PCMU and empty media packets before Pipecat handoff", () => {
   const nonPcmu = rtpPacket([0xff]);
   nonPcmu[1] = 0x08;
