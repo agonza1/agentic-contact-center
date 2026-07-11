@@ -363,6 +363,22 @@ export interface SpeechEnhancementStrictArtifactVerification {
     | "attach_real_capture_replay_before_strict_artifact_verification";
 }
 
+export type SpeechEnhancementCloseGateStatus =
+  | "blocked_before_real_capture"
+  | "blocked_before_strict_artifacts"
+  | "ready_to_close";
+
+export function resolveSpeechEnhancementCloseGateStatus(
+  reviewGate: SpeechEnhancementReviewGate,
+  strictArtifactVerification: SpeechEnhancementStrictArtifactVerification = buildSpeechEnhancementStrictArtifactVerification(),
+): SpeechEnhancementCloseGateStatus {
+  if (!reviewGate.issueCloseReady) {
+    return "blocked_before_real_capture";
+  }
+
+  return strictArtifactVerification.verified ? "ready_to_close" : "blocked_before_strict_artifacts";
+}
+
 export interface SpeechEnhancementReviewGate {
   issueCloseReady: boolean;
   checks: Record<
@@ -1162,6 +1178,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   runtimeProfileEnableCommand: string | null;
   runtimeProfileBypassWhen: string[];
   runtimeLiveDemoEligible: boolean;
+  closeGateStatus: SpeechEnhancementCloseGateStatus;
   closeGateRequiredLatencyMs: number;
   closeGateMaxAddedTurnLatencyMsP95: number;
   closeGateMaxCpuPercentP95: number;
@@ -1217,6 +1234,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     runtimeProfileEnableCommand: runtimeReadiness.selectedLatencyProfile?.enableCommand ?? null,
     runtimeProfileBypassWhen: runtimeReadiness.selectedLatencyProfile?.bypassWhen ?? [],
     runtimeLiveDemoEligible: runtimeReadiness.liveDemoEligible,
+    closeGateStatus: resolveSpeechEnhancementCloseGateStatus(reviewGate, strictArtifactVerification),
     closeGateRequiredLatencyMs: report.closeGateProfile.requiredLatencySettingMs,
     closeGateMaxAddedTurnLatencyMsP95: report.closeGateProfile.maxAddedTurnLatencyMsP95,
     closeGateMaxCpuPercentP95: report.closeGateProfile.maxCpuPercentP95,

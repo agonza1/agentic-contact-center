@@ -25,6 +25,7 @@ function parseArgs(argv) {
     expectSpeechEnhancementRuntimeEnabled: undefined,
     expectSpeechEnhancementRuntimeStatus: undefined,
     expectSpeechEnhancementIssueCloseReady: undefined,
+    expectSpeechEnhancementCloseGateStatus: undefined,
     expectSpeechEnhancementLiveDemoGate: undefined,
     expectSpeechEnhancementRecommendedLatencyMs: undefined,
     expectSpeechEnhancementRuntimeLatencyMs: undefined,
@@ -78,6 +79,7 @@ function parseArgs(argv) {
     '--expect-speech-enhancement-runtime-enabled',
     '--expect-speech-enhancement-runtime-status',
     '--expect-speech-enhancement-issue-close-ready',
+    '--expect-speech-enhancement-close-gate-status',
     '--expect-speech-enhancement-live-demo-gate',
     '--expect-speech-enhancement-recommended-latency-ms',
     '--expect-speech-enhancement-runtime-latency-ms',
@@ -277,6 +279,12 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--expect-speech-enhancement-close-gate-status' && next) {
+      args.expectSpeechEnhancementCloseGateStatus = next;
+      index += 1;
+      continue;
+    }
+
     if (arg === '--expect-speech-enhancement-live-demo-gate' && next) {
       args.expectSpeechEnhancementLiveDemoGate = next;
       index += 1;
@@ -469,6 +477,7 @@ function hasJsonExpectations(args) {
     args.expectSpeechEnhancementRuntimeLiveDemoEligible,
     args.expectSpeechEnhancementRuntimeLookaheadFrames,
     args.expectSpeechEnhancementRuntimeMaxBufferedAudioMs,
+    args.expectSpeechEnhancementCloseGateStatus,
     args.expectSpeechEnhancementCloseGateRequiredLatencyMs,
     args.expectSpeechEnhancementCloseGateMaxAddedTurnLatencyMsP95,
     args.expectSpeechEnhancementCloseGateMaxCpuPercentP95,
@@ -753,6 +762,7 @@ async function getFailureReason(response, args) {
 
   const speechEnhancementStringExpectations = [
     ['liveDemoGate', args.expectSpeechEnhancementLiveDemoGate],
+    ['closeGateStatus', args.expectSpeechEnhancementCloseGateStatus],
     ['runtimeStatus', args.expectSpeechEnhancementRuntimeStatus],
     ['runtimeBypassReason', args.expectSpeechEnhancementRuntimeBypassReason],
     ['runtimeProfileExpectedUse', args.expectSpeechEnhancementRuntimeProfileExpectedUse],

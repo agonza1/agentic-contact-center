@@ -36,6 +36,7 @@ import {
   buildSpeechEnhancementSpikeReport,
   buildSpeechEnhancementStrictArtifactVerification,
   resolveSpeechEnhancementRuntimeConfig,
+  resolveSpeechEnhancementCloseGateStatus,
   validateSpeechEnhancementCaptureReplayManifest,
 } from "../core/speechEnhancementSpike";
 import { runtimeSeams } from "../core/seams";
@@ -4064,7 +4065,7 @@ async function routeRequest(
       ok: true,
       route: "/api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate",
       issue: "agonza1/agentic-contact-center#97",
-      closeGateStatus: reviewGate.issueCloseReady ? "ready_to_close" : "blocked_before_real_capture",
+      closeGateStatus: resolveSpeechEnhancementCloseGateStatus(reviewGate),
       reviewGate,
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
       strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification(),
@@ -4080,10 +4081,18 @@ async function routeRequest(
     const validation = validateSpeechEnhancementCaptureReplayManifest(body);
 
     if (!validation.manifestOk || !validation.metric) {
+      const report = buildSpeechEnhancementSpikeReport();
+      const reviewGate = buildSpeechEnhancementReviewGate(report);
+      const strictArtifactVerification = buildSpeechEnhancementStrictArtifactVerification();
+
       writeJson(response, 400, {
         ok: false,
         route: "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate",
         validation,
+        closeGateStatus: resolveSpeechEnhancementCloseGateStatus(reviewGate, strictArtifactVerification),
+        reviewGate,
+        strictArtifactVerification,
+        nextChecklistStep: buildSpeechEnhancementCaptureReplayNextStep(reviewGate),
       });
       return;
     }
@@ -4103,6 +4112,10 @@ async function routeRequest(
       handoff: buildSpeechEnhancementReviewHandoff(),
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
       captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
+      closeGateStatus: resolveSpeechEnhancementCloseGateStatus(
+        reviewGate,
+        buildSpeechEnhancementStrictArtifactVerification([{ strictArtifactsVerified: false }]),
+      ),
       nextChecklistStep: buildSpeechEnhancementCaptureReplayNextStep(reviewGate),
       strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification([
         { strictArtifactsVerified: false },
@@ -4117,14 +4130,19 @@ async function routeRequest(
       featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
       latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
     });
+    const reviewGate = buildSpeechEnhancementReviewGate(report);
+    const strictArtifactVerification = buildSpeechEnhancementStrictArtifactVerification();
+
     writeJson(response, 200, {
       ...report,
       runtimeConfig,
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
-      reviewGate: buildSpeechEnhancementReviewGate(report),
+      closeGateStatus: resolveSpeechEnhancementCloseGateStatus(reviewGate, strictArtifactVerification),
+      reviewGate,
       reviewHandoff: buildSpeechEnhancementReviewHandoff(),
       captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
-      strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification(),
+      nextChecklistStep: buildSpeechEnhancementCaptureReplayNextStep(reviewGate),
+      strictArtifactVerification,
     });
     return;
   }
