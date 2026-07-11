@@ -240,3 +240,68 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
     await new Promise<void>((resolve, reject) => bridge.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+test("POST /api/browser-webrtc/session fails closed when Pipecat bridge is unavailable", async () => {
+  const bridge = createServer((_request, response) => {
+    response.statusCode = 503;
+    response.setHeader("content-type", "application/json; charset=utf-8");
+    response.end(JSON.stringify({ ok: false, error: "bridge_booting" }));
+  });
+  await new Promise<void>((resolve) => bridge.listen(0, "127.0.0.1", resolve));
+  const bridgeAddress = bridge.address();
+  if (!bridgeAddress || typeof bridgeAddress === "string") {
+    throw new Error("Expected an ephemeral bridge TCP port");
+  }
+  const previousBridgeUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL;
+  process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const { statusCode, responseBody } = await new Promise<{ statusCode: number; responseBody: string }>((resolve, reject) => {
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port: address.port,
+          path: "/api/browser-webrtc/session",
+          method: "POST",
+          headers: { "content-type": "application/json" },
+        },
+        (response) => {
+          let body = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => { body += chunk; });
+          response.on("end", () => resolve({ statusCode: response.statusCode ?? 0, responseBody: body }));
+        },
+      );
+      req.on("error", reject);
+      req.end(JSON.stringify({ type: "offer", sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=browser\r\nt=0 0\r\n" }));
+    });
+
+    const payload = JSON.parse(responseBody) as {
+      ok: boolean;
+      error: string;
+      bridgeStatus: number;
+      bridge: { error?: string };
+    };
+
+    assert.equal(statusCode, 502);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.error, "pipecat_webrtc_bridge_offer_failed");
+    assert.equal(payload.bridgeStatus, 503);
+    assert.equal(payload.bridge.error, "bridge_booting");
+  } finally {
+    if (previousBridgeUrl === undefined) {
+      delete process.env.BROWSER_WEBRTC_BRIDGE_URL;
+    } else {
+      process.env.BROWSER_WEBRTC_BRIDGE_URL = previousBridgeUrl;
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => bridge.close((error) => error ? reject(error) : resolve()));
+  }
+});
