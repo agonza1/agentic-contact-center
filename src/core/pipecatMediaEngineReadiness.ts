@@ -10,7 +10,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
     adapter: "sip_freeswitch_rtp",
     entryPoint: "scripts/freeswitch-acc-bridge.mjs",
     targetContract: "PCMU/8000 RTP -> PCM16 -> Pipecat InputAudioRawFrame -> rtc-asr final transcript",
-    verification: "Add a deterministic RTP frame fixture that proves the bridge can emit Pipecat-compatible PCM16 input frames before wiring live playback.",
+    verification: "test/pipecatRtpAdapter.test.ts proves deterministic PCMU RTP packets can become Pipecat-compatible PCM16 input frames before wiring live playback.",
   };
 
   return {
@@ -66,7 +66,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       "Operator console payloads label local_sip, signalwire_live, live_capture, generated_media, rtc_asr_live, and rtc_asr_blocked modes.",
     ],
     remainingWork: [
-      "Implement a FreeSWITCH RTP adapter that decodes inbound RTP to Pipecat InputAudioRawFrame in realtime.",
+      "Wire the deterministic RTP PCMU decoder into the FreeSWITCH bridge receive loop and emit realtime Pipecat InputAudioRawFrame objects.",
       "Stream Kokoro/Pipecat TTSAudioRawFrame output back to FreeSWITCH RTP for SIP caller playback.",
       "Feed rtc-asr final transcripts from the SIP media adapter directly into the shared ACC call-turn loop during the call.",
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
@@ -100,9 +100,9 @@ export function buildPipecatMediaEngineReadinessPayload() {
         evidence: "SignalWire future path is SIP trunk -> FreeSWITCH/Pipecat; past-call import is not part of the realtime trunk path.",
       },
       {
-        name: "tests_cover_readiness_contract",
+        name: "rtp_pcmu_fixture_decodes_to_pipecat_input_frame",
         passed: true,
-        evidence: "test/pipecatMediaEngineReadinessRoute.test.ts covers the route shape and blocker.",
+        evidence: "test/pipecatRtpAdapter.test.ts covers the deterministic PCMU RTP -> PCM16 InputAudioRawFrame fixture.",
       },
     ],
     validationCommands: ["npm test", "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness"],

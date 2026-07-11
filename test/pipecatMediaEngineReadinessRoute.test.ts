@@ -77,14 +77,18 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "signalwire_past_call_gap_explicit").passed,
       true,
     );
-    assert.equal(payload.remainingWork.some((item: string) => item.includes("FreeSWITCH RTP adapter")), true);
+    assert.equal(
+      payload.acceptanceCriteria.find((criterion: any) => criterion.name === "rtp_pcmu_fixture_decodes_to_pipecat_input_frame").passed,
+      true,
+    );
+    assert.equal(payload.remainingWork.some((item: string) => item.includes("deterministic RTP PCMU decoder")), true);
     assert.deepEqual(payload.nextUnblockedSlice, {
       id: "sip_rtp_to_pipecat_input_frames",
       title: "Decode FreeSWITCH RTP into Pipecat input frames",
       adapter: "sip_freeswitch_rtp",
       entryPoint: "scripts/freeswitch-acc-bridge.mjs",
       targetContract: "PCMU/8000 RTP -> PCM16 -> Pipecat InputAudioRawFrame -> rtc-asr final transcript",
-      verification: "Add a deterministic RTP frame fixture that proves the bridge can emit Pipecat-compatible PCM16 input frames before wiring live playback.",
+      verification: "test/pipecatRtpAdapter.test.ts proves deterministic PCMU RTP packets can become Pipecat-compatible PCM16 input frames before wiring live playback.",
     });
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
