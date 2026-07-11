@@ -6,6 +6,7 @@ export type PipecatInputAudioFrameFixture = {
   sequenceNumber: number;
   timestamp: number;
   ssrc: number;
+  durationMs: number;
   pcm16: Buffer;
 };
 
@@ -51,6 +52,9 @@ export function rtpPcmuPacketToPipecatInputFrame(packet: Buffer): PipecatInputAu
       throw new Error("rtp_extension_header_truncated");
     }
     const extensionLengthBytes = packet.readUInt16BE(headerBytes + 2) * 4;
+    if (packet.length < headerBytes + 4 + extensionLengthBytes) {
+      throw new Error("rtp_extension_body_truncated");
+    }
     headerBytes += 4 + extensionLengthBytes;
   }
 
@@ -67,6 +71,8 @@ export function rtpPcmuPacketToPipecatInputFrame(packet: Buffer): PipecatInputAu
     throw new Error("rtp_payload_missing");
   }
 
+  const payload = packet.subarray(headerBytes, payloadEnd);
+
   return {
     frameType: "InputAudioRawFrame",
     audioFormat: "pcm_s16le",
@@ -75,6 +81,7 @@ export function rtpPcmuPacketToPipecatInputFrame(packet: Buffer): PipecatInputAu
     sequenceNumber: packet.readUInt16BE(2),
     timestamp: packet.readUInt32BE(4),
     ssrc: packet.readUInt32BE(8),
-    pcm16: decodePcmuToPcm16(packet.subarray(headerBytes, payloadEnd)),
+    durationMs: (payload.length / 8000) * 1000,
+    pcm16: decodePcmuToPcm16(payload),
   };
 }
