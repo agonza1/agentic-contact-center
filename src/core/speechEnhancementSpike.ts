@@ -275,6 +275,7 @@ export interface SpeechEnhancementReviewHandoff {
   captureReplayCloseGateRoute: "/api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate";
   captureReplayValidationRoute: "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate";
   captureTemplateCommand: "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json";
+  sourceManifestTemplateCommand: "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json --source-manifest-template-out artifacts/local-sip/proof-manifest-001.json";
   validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
   strictValidationCommand: "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json";
   nextEvidenceOwner: "agentic_contact_center";
@@ -1197,6 +1198,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   strictArtifactVerification: SpeechEnhancementStrictArtifactVerification;
   captureReplayFixturePath: SpeechEnhancementCaptureReplayContract["fixtureManifestPath"];
   captureTemplateCommand: SpeechEnhancementReviewHandoff["captureTemplateCommand"];
+  sourceManifestTemplateCommand: SpeechEnhancementReviewHandoff["sourceManifestTemplateCommand"];
   validationCommand: "npm run proof:speech-enhancement -- --require-close-ready";
   strictValidationCommand: SpeechEnhancementReviewHandoff["strictValidationCommand"];
 } {
@@ -1253,6 +1255,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     strictArtifactVerification,
     captureReplayFixturePath: report.captureReplayContract.fixtureManifestPath,
     captureTemplateCommand: handoff.captureTemplateCommand,
+    sourceManifestTemplateCommand: handoff.sourceManifestTemplateCommand,
     validationCommand: handoff.validationCommand,
     strictValidationCommand: handoff.strictValidationCommand,
   };
@@ -1268,6 +1271,8 @@ export function buildSpeechEnhancementReviewHandoff(): SpeechEnhancementReviewHa
     captureReplayValidationRoute: "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate",
     captureTemplateCommand:
       "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
+    sourceManifestTemplateCommand:
+      "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json --source-manifest-template-out artifacts/local-sip/proof-manifest-001.json",
     validationCommand: "npm run proof:speech-enhancement -- --require-close-ready",
     strictValidationCommand:
       "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
