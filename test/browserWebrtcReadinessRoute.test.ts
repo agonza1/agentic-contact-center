@@ -170,7 +170,13 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
       evidence: { pipecatTransport: "webrtc", stt: { engine: "rtc-asr" }, tts: { engine: "kokoro" } },
     }));
   });
-  await new Promise<void>((resolve) => bridge.listen(8766, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => bridge.listen(0, "127.0.0.1", resolve));
+  const bridgeAddress = bridge.address();
+  if (!bridgeAddress || typeof bridgeAddress === "string") {
+    throw new Error("Expected an ephemeral bridge TCP port");
+  }
+  const previousBridgeUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL;
+  process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
 
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -225,6 +231,11 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
     assert.equal(bridgeRequest?.callId, payload.callId);
     assert.match(bridgeRequest?.accUrl ?? "", new RegExp(String(address.port)));
   } finally {
+    if (previousBridgeUrl === undefined) {
+      delete process.env.BROWSER_WEBRTC_BRIDGE_URL;
+    } else {
+      process.env.BROWSER_WEBRTC_BRIDGE_URL = previousBridgeUrl;
+    }
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     await new Promise<void>((resolve, reject) => bridge.close((error) => error ? reject(error) : resolve()));
   }

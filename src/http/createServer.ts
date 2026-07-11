@@ -69,7 +69,9 @@ const maxCallListPageLimit = 100;
 const operatorConsoleRefreshIntervalMs = 5000;
 const operatorConsoleWorkboardCard = "82771d3a-de4d-4b6e-869c-328e8264d01e";
 const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
-const browserWebrtcBridgeBaseUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766";
+function getBrowserWebrtcBridgeBaseUrl(): string {
+  return process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766";
+}
 let activeAssertEvaluationSpec = cloneAssertEvaluationSpec(defaultAssertEvaluationSpec);
 let activeClueConBrainBlocks = defaultClueConBrainBlocks();
 let activeClueConBrainRevision = 1;
@@ -642,6 +644,7 @@ function buildBrowserWebrtcReadinessPayload(): object {
   };
   const contractReady = realtimeReadiness.acceptanceCriteria.every((criterion) => criterion.passed);
   const signalingRoute = "/api/browser-webrtc/session";
+  const browserWebrtcBridgeBaseUrl = getBrowserWebrtcBridgeBaseUrl();
 
   return {
     ok: contractReady,
@@ -755,6 +758,7 @@ function buildBrowserWebrtcReadinessPayload(): object {
 }
 
 function buildBrowserWebrtcBridgeOfferUrl(): string {
+  const browserWebrtcBridgeBaseUrl = getBrowserWebrtcBridgeBaseUrl();
   return `${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/offer`;
 }
 
