@@ -460,7 +460,24 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-template can inclu
     });
 
     const payload = JSON.parse(responseBody) as {
-      template: { capture_id: string; latency_setting_ms: number };
+      template: {
+        capture_id: string;
+        audio_source_uri: string;
+        recorded_at: string;
+        noise_profile: string;
+        scenario: string;
+        runtime_host: string;
+        latency_setting_ms: number;
+      };
+      sourceManifestTemplate: {
+        capture_id: string;
+        audio_source_uri: string;
+        recorded_at: string;
+        noise_profile: string;
+        scenario: string;
+        runtime_host: string;
+        source: { kind: string; sample_rate_hz: number; channel_count: number; format: string };
+      };
       contract: {
         fixtureManifestPath: string;
         strictArtifactFields: string[];
@@ -473,6 +490,30 @@ test("GET /api/realtime-shim/speech-enhancement-spike/capture-template can inclu
 
     assert.equal(payload.template.capture_id, "real-noisy-local-sip-001");
     assert.equal(payload.template.latency_setting_ms, 12.5);
+    assert.deepEqual(
+      {
+        capture_id: payload.sourceManifestTemplate.capture_id,
+        audio_source_uri: payload.sourceManifestTemplate.audio_source_uri,
+        recorded_at: payload.sourceManifestTemplate.recorded_at,
+        noise_profile: payload.sourceManifestTemplate.noise_profile,
+        scenario: payload.sourceManifestTemplate.scenario,
+        runtime_host: payload.sourceManifestTemplate.runtime_host,
+      },
+      {
+        capture_id: payload.template.capture_id,
+        audio_source_uri: payload.template.audio_source_uri,
+        recorded_at: payload.template.recorded_at,
+        noise_profile: payload.template.noise_profile,
+        scenario: payload.template.scenario,
+        runtime_host: payload.template.runtime_host,
+      },
+    );
+    assert.deepEqual(payload.sourceManifestTemplate.source, {
+      kind: "local_sip_noisy_capture",
+      sample_rate_hz: 16000,
+      channel_count: 1,
+      format: "pcm_s16le_wav",
+    });
     assert.equal(
       payload.contract.fixtureManifestPath,
       "artifacts/speech-enhancement-real-capture-replay.json",
