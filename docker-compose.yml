@@ -45,6 +45,8 @@ services:
         - "false"
         - --expect-speech-enhancement-issue-close-ready
         - "false"
+        - --expect-speech-enhancement-close-gate-status
+        - blocked_before_real_capture
         - --expect-speech-enhancement-live-demo-gate
         - blocked_until_real_capture
         - --expect-speech-enhancement-recommended-latency-ms

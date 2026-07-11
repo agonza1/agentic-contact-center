@@ -647,8 +647,8 @@ test("health smoke script reports speech enhancement readiness mismatches in the
     const result = await runProbe([
       "--url",
       `http://127.0.0.1:${port}/health`,
-      "--expect-speech-enhancement-runtime-enabled",
-      "true",
+      "--expect-speech-enhancement-close-gate-status",
+      "ready_to_close",
       "--timeout-ms",
       "200",
       "--interval-ms",
@@ -656,7 +656,7 @@ test("health smoke script reports speech enhancement readiness mismatches in the
     ]);
 
     assert.equal(result.code, 1);
-    assert.match(result.stderr, /Last failure: json_speechEnhancement_runtimeEnabled_mismatch\(expected=true,actual=false\)/);
+    assert.match(result.stderr, /Last failure: json_speechEnhancement_closeGateStatus_mismatch\(expected="ready_to_close",actual=undefined\)/);
   });
 });
 
