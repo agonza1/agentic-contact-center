@@ -36,6 +36,7 @@ import {
   buildSpeechEnhancementSpikeReport,
   buildSpeechEnhancementStrictArtifactVerification,
   resolveSpeechEnhancementRuntimeConfig,
+  resolveSpeechEnhancementCloseGateStatus,
   validateSpeechEnhancementCaptureReplayManifest,
 } from "../core/speechEnhancementSpike";
 import { runtimeSeams } from "../core/seams";
@@ -4064,7 +4065,7 @@ async function routeRequest(
       ok: true,
       route: "/api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate",
       issue: "agonza1/agentic-contact-center#97",
-      closeGateStatus: reviewGate.issueCloseReady ? "ready_to_close" : "blocked_before_real_capture",
+      closeGateStatus: resolveSpeechEnhancementCloseGateStatus(reviewGate),
       reviewGate,
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
       strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification(),
@@ -4103,6 +4104,10 @@ async function routeRequest(
       handoff: buildSpeechEnhancementReviewHandoff(),
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
       captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
+      closeGateStatus: resolveSpeechEnhancementCloseGateStatus(
+        reviewGate,
+        buildSpeechEnhancementStrictArtifactVerification([{ strictArtifactsVerified: false }]),
+      ),
       nextChecklistStep: buildSpeechEnhancementCaptureReplayNextStep(reviewGate),
       strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification([
         { strictArtifactsVerified: false },

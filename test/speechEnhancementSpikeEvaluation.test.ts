@@ -7,6 +7,8 @@ import {
   buildSpeechEnhancementReviewGate,
   buildSpeechEnhancementReplayDiagnostics,
   buildSpeechEnhancementRuntimeReadiness,
+  buildSpeechEnhancementStrictArtifactVerification,
+  resolveSpeechEnhancementCloseGateStatus,
   evaluateSpeechEnhancementReplayMetric,
   resolveSpeechEnhancementRuntimeConfig,
   validateSpeechEnhancementCaptureReplayManifest,
@@ -83,6 +85,50 @@ test("speech enhancement replay diagnostics preserve tiny over-budget deficits",
     addedLatencyBudgetHeadroomMs: -0.01,
     cpuP95BudgetHeadroomPercent: -0.01,
   });
+});
+
+test("speech enhancement close gate status requires strict artifact verification", () => {
+  const validation = validateSpeechEnhancementCaptureReplayManifest({
+    capture_id: "real-noisy-local-sip-status-001",
+    recorded_at: "2026-07-05T15:45:00Z",
+    audio_source_uri: "artifacts/local-sip-real-noisy-status-001.wav",
+    audio_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    source_manifest_uri: "artifacts/local-sip/proof-manifest-status-001.json",
+    source_manifest_sha256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    noise_profile: "speakerphone fan noise",
+    scenario: "seeded caller with real local SIP noise",
+    runtime_host: "local-rtc-asr-host",
+    baseline_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.14,
+      endpointing_stability: "acceptable",
+      barge_in_risk: "medium",
+    },
+    enhanced_rtc_asr: {
+      transcript: "I want to cancel my policy today",
+      word_error_rate_estimate: 0.08,
+      endpointing_stability: "stable",
+      barge_in_risk: "low",
+      added_turn_latency_ms_p95: 19,
+      cpu_percent_p95: 44,
+      cpu_cost_estimate: "medium",
+    },
+    latency_setting_ms: 12.5,
+  });
+
+  assert.ok(validation.metric);
+  const reviewGate = buildSpeechEnhancementReviewGate(
+    buildSpeechEnhancementSpikeReport({ captureReplayMetrics: [validation.metric] }),
+  );
+
+  assert.equal(resolveSpeechEnhancementCloseGateStatus(reviewGate), "blocked_before_strict_artifacts");
+  assert.equal(
+    resolveSpeechEnhancementCloseGateStatus(
+      reviewGate,
+      buildSpeechEnhancementStrictArtifactVerification([{ strictArtifactsVerified: true }], true),
+    ),
+    "ready_to_close",
+  );
 });
 
 

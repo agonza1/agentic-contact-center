@@ -801,6 +801,7 @@ test("POST /api/realtime-shim/speech-enhancement-spike/capture-replay/validate g
       route: string;
       validation: { manifestOk: boolean; evaluation: { issueCloseReady: boolean } };
       reviewGate: { issueCloseReady: boolean; passingRealCaptureReplayIds: string[]; nextEvidence: string[] };
+      closeGateStatus: string;
       handoff: { captureReplayValidationRoute: string; strictValidationCommand: string };
       captureReplayChecklist: Array<{ command: string }>;
       nextChecklistStep: { status: string; step: string; command: string };
@@ -814,6 +815,7 @@ test("POST /api/realtime-shim/speech-enhancement-spike/capture-replay/validate g
     assert.equal(payload.validation.manifestOk, true);
     assert.equal(payload.validation.evaluation.issueCloseReady, true);
     assert.equal(payload.reviewGate.issueCloseReady, true);
+    assert.equal(payload.closeGateStatus, "blocked_before_strict_artifacts");
     assert.deepEqual(payload.reviewGate.passingRealCaptureReplayIds, ["real-noisy-local-sip-validate-001"]);
     assert.deepEqual(payload.reviewGate.nextEvidence, []);
     assert.equal(payload.handoff.captureReplayValidationRoute, payload.route);
