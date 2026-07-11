@@ -88,6 +88,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       "source_manifest_identity_fields_present",
       "source_manifest_capture_id_matches",
       "source_manifest_audio_source_uri_matches",
+      "source_manifest_recorded_at_matches",
     ]);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
@@ -220,6 +221,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       "source_manifest_identity_fields_present",
       "source_manifest_capture_id_matches",
       "source_manifest_audio_source_uri_matches",
+      "source_manifest_recorded_at_matches",
     ]);
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("runtime_host"));
     assert.ok(artifact.report.captureReplayContract.requiredFields.includes("enhanced_rtc_asr.cpu_percent_p95"));
@@ -1560,6 +1562,7 @@ test("speech enhancement spike report strict mode verifies capture artifact file
     proof: "strict replay source",
     capture_id: "real-noisy-local-sip-201",
     audio_source_uri: audioUri,
+    recorded_at: "2026-07-06T13:10:00.000Z",
   });
   const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 
@@ -1912,6 +1915,79 @@ test("speech enhancement spike report strict mode rejects source manifest audio 
     await rm(artifactDir, { recursive: true, force: true });
   }
 });
+
+test("speech enhancement spike report strict mode rejects source manifest recorded-at mismatches", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-strict-manifest-recorded-"));
+  const artifactDir = path.join(process.cwd(), "artifacts", `strict-capture-${path.basename(tempDir)}`);
+  const outputPath = path.join(tempDir, "speech-enhancement-spike.json");
+  const captureReplayPath = path.join(tempDir, "real-capture-replay.json");
+  const audioUri = `artifacts/${path.basename(artifactDir)}/real-noisy-local-sip-206.wav`;
+  const sourceManifestUri = `artifacts/${path.basename(artifactDir)}/proof-manifest-206.json`;
+  const audioContents = "fake wav evidence for strict source manifest timestamp validation\n";
+  const sourceManifestContents = JSON.stringify({
+    capture_id: "real-noisy-local-sip-206",
+    audio_source_uri: audioUri,
+    recorded_at: "2026-07-06T13:29:00.000Z",
+  });
+  const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
+
+  try {
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(path.join(process.cwd(), audioUri), audioContents, "utf8");
+    await writeFile(path.join(process.cwd(), sourceManifestUri), sourceManifestContents, "utf8");
+    await writeFile(
+      captureReplayPath,
+      JSON.stringify(
+        {
+          capture_id: "real-noisy-local-sip-206",
+          recorded_at: "2026-07-06T13:28:00.000Z",
+          audio_source_uri: audioUri,
+          audio_sha256: sha256(audioContents),
+          source_manifest_uri: sourceManifestUri,
+          source_manifest_sha256: sha256(sourceManifestContents),
+          noise_profile: "cafe_noise",
+          scenario: "local SIP caller with mismatched strict source manifest timestamp evidence",
+          latency_setting_ms: 12.5,
+          runtime_host: "local-rtc-asr-host",
+          baseline_rtc_asr: {
+            transcript: "I need to cansel my policy",
+            word_error_rate_estimate: 0.18,
+            endpointing_stability: "acceptable",
+            barge_in_risk: "medium",
+          },
+          enhanced_rtc_asr: {
+            transcript: "I need to cancel my policy",
+            word_error_rate_estimate: 0.06,
+            endpointing_stability: "stable",
+            barge_in_risk: "low",
+            added_turn_latency_ms_p95: 18,
+            cpu_percent_p95: 42,
+            cpu_cost_estimate: "medium",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runNode([
+      "scripts/speech-enhancement-spike-report.mjs",
+      "--out",
+      outputPath,
+      "--capture-replay",
+      captureReplayPath,
+      "--strict-capture-artifacts",
+    ]);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /Source manifest recorded_at mismatch for strict capture replay artifact/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
+
 
 test("speech enhancement spike report strict mode rejects missing capture artifact files", async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), "acc-speech-enhancement-strict-missing-"));

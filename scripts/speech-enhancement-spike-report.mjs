@@ -223,6 +223,7 @@ function assertSourceManifestJson(contents, captureReplayPath, artifactUri, capt
     captureReplayPath,
     artifactUri,
   );
+  assertRequiredSourceManifestField(sourceManifest, "recorded_at", captureReplay.recorded_at, captureReplayPath, artifactUri);
 }
 
 function assertRequiredSourceManifestField(sourceManifest, field, expectedValue, captureReplayPath, artifactUri) {

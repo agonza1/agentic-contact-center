@@ -111,6 +111,7 @@ export interface SpeechEnhancementCaptureReplayContract {
     | "source_manifest_identity_fields_present"
     | "source_manifest_capture_id_matches"
     | "source_manifest_audio_source_uri_matches"
+    | "source_manifest_recorded_at_matches"
   >;
   comparisonPairs: Array<"baseline_rtc_asr" | "enhanced_rtc_asr">;
   minimumPassingCriteria: string[];
@@ -1012,6 +1013,7 @@ export function buildSpeechEnhancementSpikeReport(
         "source_manifest_identity_fields_present",
         "source_manifest_capture_id_matches",
         "source_manifest_audio_source_uri_matches",
+        "source_manifest_recorded_at_matches",
       ],
       comparisonPairs: ["baseline_rtc_asr", "enhanced_rtc_asr"],
       minimumPassingCriteria: [
