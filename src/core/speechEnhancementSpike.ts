@@ -7,6 +7,7 @@ export interface SpeechEnhancementLatencyCandidate {
 }
 
 export interface SpeechEnhancementLatencyProfile {
+  profileId: "latency_12_5_ms" | "latency_25_ms" | "latency_50_ms" | "latency_75_ms";
   latencyMs: number;
   rtcAsrFrameMs: 20;
   lookaheadFrames: number;
@@ -14,6 +15,8 @@ export interface SpeechEnhancementLatencyProfile {
   expectedUse: SpeechEnhancementLatencyCandidate["expectedUse"];
   recommendation: SpeechEnhancementLatencyCandidate["recommendation"];
   liveDemoEligible: boolean;
+  envValue: string;
+  enableCommand: string;
   bypassWhen: string[];
 }
 
@@ -848,20 +851,28 @@ export function buildSpeechEnhancementSpikeReport(
     },
   ];
 
-  const latencyProfiles: SpeechEnhancementLatencyProfile[] = candidates.map((candidate) => ({
-    latencyMs: candidate.algorithmicLatencyMs,
-    rtcAsrFrameMs: 20,
-    lookaheadFrames: Math.ceil(candidate.algorithmicLatencyMs / 20),
-    maxBufferedAudioMs: candidate.algorithmicLatencyMs + 20,
-    expectedUse: candidate.expectedUse,
-    recommendation: candidate.recommendation,
-    liveDemoEligible: candidate.recommendation !== "avoid_for_live_turns",
-    bypassWhen: [
-      "added_turn_latency_p95_exceeds_candidate_budget",
-      "enhanced_cpu_percent_p95_exceeds_80",
-      "barge_in_or_endpointing_regresses",
-    ],
-  }));
+  const latencyProfiles: SpeechEnhancementLatencyProfile[] = candidates.map((candidate) => {
+    const envValue = String(candidate.algorithmicLatencyMs);
+    const profileId = `latency_${envValue.replace(".", "_")}_ms` as SpeechEnhancementLatencyProfile["profileId"];
+
+    return {
+      profileId,
+      latencyMs: candidate.algorithmicLatencyMs,
+      rtcAsrFrameMs: 20,
+      lookaheadFrames: Math.ceil(candidate.algorithmicLatencyMs / 20),
+      maxBufferedAudioMs: candidate.algorithmicLatencyMs + 20,
+      expectedUse: candidate.expectedUse,
+      recommendation: candidate.recommendation,
+      liveDemoEligible: candidate.recommendation !== "avoid_for_live_turns",
+      envValue,
+      enableCommand: `RTC_ASR_SPEECH_ENHANCEMENT=enabled RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS=${envValue} npm run proof:realtime-shim`,
+      bypassWhen: [
+        "added_turn_latency_p95_exceeds_candidate_budget",
+        "enhanced_cpu_percent_p95_exceeds_80",
+        "barge_in_or_endpointing_regresses",
+      ],
+    };
+  });
 
   const replayMetrics: SpeechEnhancementReplayMetric[] = [
     {
@@ -1146,6 +1157,9 @@ export function buildSpeechEnhancementHealthSummary(): {
   runtimeMaxBufferedAudioMs: number | null;
   runtimeProfileExpectedUse: SpeechEnhancementLatencyProfile["expectedUse"] | null;
   runtimeProfileRecommendation: SpeechEnhancementLatencyProfile["recommendation"] | null;
+  runtimeProfileId: SpeechEnhancementLatencyProfile["profileId"] | null;
+  runtimeProfileEnvValue: string | null;
+  runtimeProfileEnableCommand: string | null;
   runtimeProfileBypassWhen: string[];
   runtimeLiveDemoEligible: boolean;
   closeGateRequiredLatencyMs: number;
@@ -1198,6 +1212,9 @@ export function buildSpeechEnhancementHealthSummary(): {
     runtimeMaxBufferedAudioMs: runtimeReadiness.frameBudget.maxBufferedAudioMs,
     runtimeProfileExpectedUse: runtimeReadiness.selectedLatencyProfile?.expectedUse ?? null,
     runtimeProfileRecommendation: runtimeReadiness.selectedLatencyProfile?.recommendation ?? null,
+    runtimeProfileId: runtimeReadiness.selectedLatencyProfile?.profileId ?? null,
+    runtimeProfileEnvValue: runtimeReadiness.selectedLatencyProfile?.envValue ?? null,
+    runtimeProfileEnableCommand: runtimeReadiness.selectedLatencyProfile?.enableCommand ?? null,
     runtimeProfileBypassWhen: runtimeReadiness.selectedLatencyProfile?.bypassWhen ?? [],
     runtimeLiveDemoEligible: runtimeReadiness.liveDemoEligible,
     closeGateRequiredLatencyMs: report.closeGateProfile.requiredLatencySettingMs,

@@ -51,6 +51,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       pipelinePlacement: { recommendedOwner: string; stage: string; preservedContracts: string[] };
       candidates: Array<{ algorithmicLatencyMs: number; withinConversationalBudget: boolean; recommendation: string }>;
       latencyProfiles: Array<{
+        profileId: string;
         latencyMs: number;
         rtcAsrFrameMs: number;
         lookaheadFrames: number;
@@ -58,6 +59,8 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         expectedUse: string;
         recommendation: string;
         liveDemoEligible: boolean;
+        envValue: string;
+        enableCommand: string;
         bypassWhen: string[];
       }>;
       replayMetrics: Array<{
@@ -166,6 +169,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       [12.5, 25, 50, 75],
     );
     assert.deepEqual(payload.latencyProfiles[0], {
+      profileId: "latency_12_5_ms",
       latencyMs: 12.5,
       rtcAsrFrameMs: 20,
       lookaheadFrames: 1,
@@ -173,6 +177,8 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       expectedUse: "default",
       recommendation: "recommended",
       liveDemoEligible: true,
+      envValue: "12.5",
+      enableCommand: "RTC_ASR_SPEECH_ENHANCEMENT=enabled RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS=12.5 npm run proof:realtime-shim",
       bypassWhen: [
         "added_turn_latency_p95_exceeds_candidate_budget",
         "enhanced_cpu_percent_p95_exceeds_80",
