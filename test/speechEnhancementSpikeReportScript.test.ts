@@ -268,6 +268,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.match(markdown, /# Speech Enhancement Spike Report/);
     assert.match(markdown, /Decision: go_for_feature_flagged_spike at 12\.5 ms/);
     assert.match(markdown, /Review gate: blocked/);
+    assert.match(markdown, /Close gate status: blocked_before_real_capture/);
     assert.match(markdown, /Runtime readiness: bypassed/);
     assert.match(markdown, /Runtime latency: 12\.5 ms/);
     assert.match(markdown, /Runtime frame budget: 1 lookahead frame\(s\), 32\.5 ms max buffered audio/);

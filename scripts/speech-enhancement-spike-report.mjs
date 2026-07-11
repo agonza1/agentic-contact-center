@@ -353,6 +353,7 @@ function buildMarkdownReport(artifact) {
     `Issue: ${artifact.handoff.issueUrl}`,
     `Decision: ${report.decision.status} at ${recommended} ms`,
     `Review gate: ${reviewGate.issueCloseReady ? "close-ready" : "blocked"}`,
+    `Close gate status: ${artifact.closeGateStatus}`,
     `Runtime readiness: ${artifact.runtimeReadiness.liveDemoEligible ? "live-demo-eligible" : "bypassed"}`,
     `Runtime latency: ${artifact.runtimeReadiness.latencyMs} ms`,
     `Runtime frame budget: ${artifact.runtimeReadiness.frameBudget.lookaheadFrames !== null ? artifact.runtimeReadiness.frameBudget.lookaheadFrames : "unknown"} lookahead frame(s), ${artifact.runtimeReadiness.frameBudget.maxBufferedAudioMs !== null ? artifact.runtimeReadiness.frameBudget.maxBufferedAudioMs : "unknown"} ms max buffered audio`,
