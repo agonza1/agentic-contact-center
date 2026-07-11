@@ -10,7 +10,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
     adapter: "sip_freeswitch_rtp",
     entryPoint: "scripts/freeswitch-acc-bridge.mjs",
     targetContract: "PCMU/8000 RTP -> PCM16 -> Pipecat InputAudioRawFrame -> rtc-asr final transcript",
-    verification: "test/pipecatRtpAdapter.test.ts proves deterministic PCMU RTP packets can become Pipecat-compatible PCM16 input frames before wiring live playback.",
+    verification: "test/pipecatRtpAdapter.test.ts proves deterministic PCMU RTP packets can become Pipecat-compatible PCM16 input frames and batch sequence-gap metadata before wiring live playback.",
   };
 
   return {
@@ -102,7 +102,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       {
         name: "rtp_pcmu_fixture_decodes_to_pipecat_input_frame",
         passed: true,
-        evidence: "test/pipecatRtpAdapter.test.ts covers the deterministic PCMU RTP -> PCM16 InputAudioRawFrame fixture.",
+        evidence: "test/pipecatRtpAdapter.test.ts covers deterministic PCMU RTP -> PCM16 InputAudioRawFrame fixtures plus batch sequence-gap metadata.",
       },
     ],
     validationCommands: ["npm test", "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness"],

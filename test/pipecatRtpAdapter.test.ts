@@ -1,18 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { decodePcmuSample, rtpPcmuPacketToPipecatInputFrame } from "../src/core/pipecatRtpAdapter";
+import { decodePcmuSample, rtpPcmuPacketToPipecatInputFrame, rtpPcmuPacketsToPipecatInputFrameBatch } from "../src/core/pipecatRtpAdapter";
 
-function rtpPacket(payload: number[]): Buffer {
+function rtpPacket(payload: number[], sequenceNumber = 0x1234, timestamp = 0x00000320): Buffer {
   return Buffer.from([
     0x80,
     0x00,
-    0x12,
-    0x34,
-    0x00,
-    0x00,
-    0x03,
-    0x20,
+    (sequenceNumber >> 8) & 0xff,
+    sequenceNumber & 0xff,
+    (timestamp >> 24) & 0xff,
+    (timestamp >> 16) & 0xff,
+    (timestamp >> 8) & 0xff,
+    timestamp & 0xff,
     0xca,
     0xfe,
     0xba,
@@ -49,6 +49,20 @@ test("RTP PCMU adapter skips RTP extension headers and padding bytes", () => {
     [frame.pcm16.readInt16LE(0), frame.pcm16.readInt16LE(2)],
     [decodePcmuSample(0xfe), decodePcmuSample(0x7e)],
   );
+});
+
+test("RTP PCMU adapter batches frames and reports sequence gaps before bridge handoff", () => {
+  const batch = rtpPcmuPacketsToPipecatInputFrameBatch([
+    rtpPacket([0xfe, 0x7e], 0xfffe, 160),
+    rtpPacket([0xfe], 0xffff, 162),
+    rtpPacket([0x7e], 0x0001, 163),
+  ]);
+
+  assert.equal(batch.frameType, "InputAudioRawFrameBatch");
+  assert.equal(batch.packetCount, 3);
+  assert.equal(batch.totalDurationMs, 0.5);
+  assert.deepEqual(batch.frames.map((frame) => frame.sequenceNumber), [0xfffe, 0xffff, 0x0001]);
+  assert.deepEqual(batch.sequenceGaps, [{ after: 0xffff, before: 0x0001 }]);
 });
 
 test("RTP PCMU adapter rejects non-PCMU and empty media packets before Pipecat handoff", () => {
