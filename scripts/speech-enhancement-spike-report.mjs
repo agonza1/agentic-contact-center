@@ -15,6 +15,7 @@ const {
   buildSpeechEnhancementRuntimeReadiness,
   buildSpeechEnhancementSpikeReport,
   buildSpeechEnhancementStrictArtifactVerification,
+  resolveSpeechEnhancementCloseGateStatus,
   resolveSpeechEnhancementRuntimeConfig,
   validateSpeechEnhancementCaptureReplayManifest,
 } = require("../dist/src/core/speechEnhancementSpike.js");
@@ -129,14 +130,6 @@ function buildCaptureReplaySourceDigest(sources) {
   }));
 
   return createHash("sha256").update(JSON.stringify(digestInput)).digest("hex");
-}
-
-function resolveCloseGateStatus(reviewGate, strictArtifactVerification) {
-  if (!reviewGate.issueCloseReady) {
-    return "blocked_before_real_capture";
-  }
-
-  return strictArtifactVerification.verified ? "ready_to_close" : "blocked_before_strict_artifacts";
 }
 
 async function resolveCaptureReplayPaths() {
@@ -482,7 +475,10 @@ async function main() {
     reviewGate: buildSpeechEnhancementReviewGate(report),
   };
   artifact.nextChecklistStep = buildSpeechEnhancementCaptureReplayNextStep(artifact.reviewGate);
-  artifact.closeGateStatus = resolveCloseGateStatus(artifact.reviewGate, artifact.strictArtifactVerification);
+  artifact.closeGateStatus = resolveSpeechEnhancementCloseGateStatus(
+    artifact.reviewGate,
+    artifact.strictArtifactVerification,
+  );
 
   await writeJson(outputPath, artifact);
   if (latestOutputPath) {
