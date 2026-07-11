@@ -131,6 +131,14 @@ function buildCaptureReplaySourceDigest(sources) {
   return createHash("sha256").update(JSON.stringify(digestInput)).digest("hex");
 }
 
+function resolveCloseGateStatus(reviewGate, strictArtifactVerification) {
+  if (!reviewGate.issueCloseReady) {
+    return "blocked_before_real_capture";
+  }
+
+  return strictArtifactVerification.verified ? "ready_to_close" : "blocked_before_strict_artifacts";
+}
+
 async function resolveCaptureReplayPaths() {
   const explicitPaths = resolveArgPaths("--capture-replay");
   const directoryPaths = resolveArgPaths("--capture-replay-dir");
@@ -470,6 +478,7 @@ async function main() {
     reviewGate: buildSpeechEnhancementReviewGate(report),
   };
   artifact.nextChecklistStep = buildSpeechEnhancementCaptureReplayNextStep(artifact.reviewGate);
+  artifact.closeGateStatus = resolveCloseGateStatus(artifact.reviewGate, artifact.strictArtifactVerification);
 
   await writeJson(outputPath, artifact);
   if (latestOutputPath) {
@@ -484,6 +493,7 @@ async function main() {
 
   const summary = {
     ok: !requireCloseReady || artifact.reviewGate.issueCloseReady,
+    closeGateStatus: artifact.closeGateStatus,
     outputPath,
     latestOutputPath: latestOutputPath ?? null,
     markdownOutputPath: markdownOutputPath ?? null,

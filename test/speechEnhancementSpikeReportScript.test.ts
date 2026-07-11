@@ -52,6 +52,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.equal(result.exitCode, 0, result.stderr);
     const summary = JSON.parse(result.stdout) as {
       ok: boolean;
+      closeGateStatus: string;
       outputPath: string;
       latestOutputPath: string;
       markdownOutputPath: string;
@@ -65,6 +66,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       nextChecklistStep: { step: string; owner: string; evidence: string; command: string; status: string; reason: string };
     };
     assert.equal(summary.ok, true);
+    assert.equal(summary.closeGateStatus, "blocked_before_real_capture");
     assert.equal(summary.outputPath, outputPath);
     assert.equal(summary.latestOutputPath, latestOutputPath);
     assert.equal(summary.markdownOutputPath, markdownOutputPath);
@@ -104,6 +106,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       schemaVersion: number;
       artifactType: string;
+      closeGateStatus: string;
       report: {
         issue: string;
         proposedConfig: { featureFlag: string };
@@ -173,6 +176,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
 
     assert.equal(artifact.schemaVersion, 1);
     assert.equal(artifact.artifactType, "speech_enhancement_spike_report");
+    assert.equal(artifact.closeGateStatus, "blocked_before_real_capture");
     assert.deepEqual(artifact.captureReplaySources, []);
     assert.equal(artifact.captureReplaySourceDigest, digestCaptureReplaySources([]));
     assert.equal(artifact.report.issue, "agonza1/agentic-contact-center#97");
@@ -326,6 +330,7 @@ test("speech enhancement spike report script can enforce issue-close readiness",
     assert.equal(result.exitCode, 1);
     const summary = JSON.parse(result.stdout) as {
       ok: boolean;
+      closeGateStatus: string;
       issueCloseReady: boolean;
       checks: Record<string, boolean>;
       failureReasons: Record<string, string>;
@@ -342,6 +347,7 @@ test("speech enhancement spike report script can enforce issue-close readiness",
       captureReplaySourceDigest: string;
     };
     assert.equal(summary.ok, false);
+    assert.equal(summary.closeGateStatus, "blocked_before_real_capture");
     assert.equal(summary.issueCloseReady, false);
     assert.equal(summary.outputPath, outputPath);
     assert.equal(summary.latestOutputPath, null);
@@ -822,6 +828,7 @@ test("speech enhancement spike report reports strict artifact verification statu
     assert.equal(result.exitCode, 0, result.stderr);
     const summary = JSON.parse(result.stdout) as {
       ok: boolean;
+      closeGateStatus: string;
       issueCloseReady: boolean;
       blockers: string[];
       strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
@@ -839,6 +846,7 @@ test("speech enhancement spike report reports strict artifact verification statu
       captureReplaySourceDigest: string;
     };
     assert.equal(summary.ok, true);
+    assert.equal(summary.closeGateStatus, "blocked_before_strict_artifacts");
     assert.equal(summary.issueCloseReady, true);
     assert.deepEqual(summary.blockers, []);
     assert.deepEqual(summary.strictArtifactVerification, {
@@ -1634,10 +1642,12 @@ test("speech enhancement spike report strict mode verifies capture artifact file
     assert.equal(result.exitCode, 0, result.stderr);
     const summary = JSON.parse(result.stdout) as {
       ok: boolean;
+      closeGateStatus: string;
       issueCloseReady: boolean;
       strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
     };
     assert.equal(summary.ok, true);
+    assert.equal(summary.closeGateStatus, "ready_to_close");
     assert.equal(summary.issueCloseReady, true);
     assert.deepEqual(summary.strictArtifactVerification, {
       requiredForClose: true,
