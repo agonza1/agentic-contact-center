@@ -4130,14 +4130,19 @@ async function routeRequest(
       featureFlag: process.env.RTC_ASR_SPEECH_ENHANCEMENT,
       latencyMs: process.env.RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS,
     });
+    const reviewGate = buildSpeechEnhancementReviewGate(report);
+    const strictArtifactVerification = buildSpeechEnhancementStrictArtifactVerification();
+
     writeJson(response, 200, {
       ...report,
       runtimeConfig,
       runtimeReadiness: buildSpeechEnhancementRuntimeReadiness(runtimeConfig, report),
-      reviewGate: buildSpeechEnhancementReviewGate(report),
+      closeGateStatus: resolveSpeechEnhancementCloseGateStatus(reviewGate, strictArtifactVerification),
+      reviewGate,
       reviewHandoff: buildSpeechEnhancementReviewHandoff(),
       captureReplayChecklist: buildSpeechEnhancementCaptureReplayChecklist(),
-      strictArtifactVerification: buildSpeechEnhancementStrictArtifactVerification(),
+      nextChecklistStep: buildSpeechEnhancementCaptureReplayNextStep(reviewGate),
+      strictArtifactVerification,
     });
     return;
   }

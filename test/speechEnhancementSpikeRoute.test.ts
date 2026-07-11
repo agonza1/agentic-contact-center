@@ -115,6 +115,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         maxCpuPercentP95: number;
         allowedCpuCostEstimates: string[];
       };
+      closeGateStatus: string;
       captureReplayContract: {
         requiredCaptureKind: string;
         fixtureManifestPath: string;
@@ -136,11 +137,19 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         realCaptureReplayIds: string[];
         realCaptureReplayEvidence: Array<{ captureId: string; status: "passing" | "blocked" }>;
       };
+      nextChecklistStep: {
+        step: string;
+        owner: string;
+        status: string;
+        command: string;
+        reason: string;
+      };
       reviewHandoff: {
         issueUrl: string;
         reviewRoute: string;
         captureTemplateRoute: string;
         captureReplayChecklistRoute: string;
+        captureReplayCloseGateRoute: string;
         captureReplayValidationRoute: string;
         captureTemplateCommand: string;
         validationCommand: string;
@@ -314,12 +323,17 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
       reason: "Attach one real noisy local SIP capture replay before closing Issue #97.",
     });
+    assert.equal(payload.closeGateStatus, "blocked_before_real_capture");
     assert.deepEqual(payload.reviewGate.realCaptureReplayIds, []);
     assert.equal(payload.reviewHandoff.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/97");
     assert.equal(payload.reviewHandoff.reviewRoute, "/api/realtime-shim/speech-enhancement-spike");
     assert.equal(
       payload.reviewHandoff.captureTemplateRoute,
       "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1",
+    );
+    assert.equal(
+      payload.reviewHandoff.captureReplayCloseGateRoute,
+      "/api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate",
     );
     assert.equal(
       payload.reviewHandoff.captureReplayChecklistRoute,
@@ -347,6 +361,11 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
       unverifiedSourceCount: 0,
       reason: "attach_real_capture_replay_before_strict_artifact_verification",
     });
+    assert.equal(payload.nextChecklistStep.step, "record_real_noisy_local_sip");
+    assert.equal(payload.nextChecklistStep.owner, "agentic_contact_center");
+    assert.equal(payload.nextChecklistStep.status, "blocked");
+    assert.match(payload.nextChecklistStep.command, /capture-replay-template-out/);
+    assert.match(payload.nextChecklistStep.reason, /real noisy local SIP capture/);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 
