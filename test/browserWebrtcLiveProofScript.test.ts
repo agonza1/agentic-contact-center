@@ -33,6 +33,7 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
       reviewReady: boolean;
       runtimeModeLabels: { browserTransport: string; pipecat: string; rtcAsr: string; tts: string; browserPlayback: string };
       checks: Record<string, boolean>;
+      setup: { commands: string[]; pipecatWebrtcBridgeUrl: string; rtcAsrWsUrl: string; kokoroBaseUrl: string };
       reviewGate: { missingProof: string[]; nextActions: string[] };
     };
     assert.equal(manifest.reviewReady, false);
@@ -55,6 +56,10 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
       "kokoroAudio",
       "browserRemoteAudio",
     ]);
+    assert.equal(manifest.setup.pipecatWebrtcBridgeUrl, "http://127.0.0.1:8766");
+    assert.equal(manifest.setup.rtcAsrWsUrl, "ws://127.0.0.1:8080/v1/stt/stream");
+    assert.ok(manifest.setup.commands.some((command) => command.includes("browser-webrtc:check")));
+    assert.ok(manifest.setup.commands.some((command) => command.includes("browser-webrtc:live-proof")));
     assert.ok(manifest.reviewGate.nextActions.some((action) => action.includes("browser-webrtc:live-proof")));
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -93,6 +98,7 @@ test("browser WebRTC live proof gate accepts captured media-turn evidence", asyn
       reviewReady: boolean;
       runtimeModeLabels: { pipecat: string; rtcAsr: string; tts: string; browserPlayback: string };
       artifactIntegrity: Array<{ artifactId: string; readiness: string; sizeBytes: number }>;
+      setup: { commands: string[] };
       reviewGate: { missingProof: string[] };
     };
     assert.equal(manifest.reviewReady, true);
@@ -101,6 +107,7 @@ test("browser WebRTC live proof gate accepts captured media-turn evidence", asyn
     assert.equal(manifest.runtimeModeLabels.tts, "kokoro_live");
     assert.equal(manifest.runtimeModeLabels.browserPlayback, "remote_audio_live");
     assert.deepEqual(manifest.reviewGate.missingProof, []);
+    assert.ok(manifest.setup.commands.some((command) => command.includes("pipecat:voice:check")));
     assert.ok(manifest.artifactIntegrity.some((artifact) => artifact.artifactId === "browser-webrtc-live-evidence" && artifact.readiness === "ready" && artifact.sizeBytes > 0));
   } finally {
     await rm(tempDir, { recursive: true, force: true });
