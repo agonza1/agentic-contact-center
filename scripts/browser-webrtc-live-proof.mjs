@@ -78,6 +78,23 @@ function hasPositiveNumber(value) {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
+function nestedRecord(record, key) {
+  const value = record[key];
+  return isRecord(value) ? value : {};
+}
+
+function hasBrowserRemoteAudioStats(record) {
+  const inboundRtpAudio = nestedRecord(record, "inboundRtpAudio");
+  const audioElement = nestedRecord(record, "audioElement");
+  return (
+    textIncludes(record, "browser") &&
+    textIncludes(record, "remote") &&
+    textIncludes(record, "audio") &&
+    (hasPositiveNumber(inboundRtpAudio.packetsReceived) || hasPositiveNumber(inboundRtpAudio.bytesReceived)) &&
+    (hasPositiveNumber(audioElement.currentTime) || audioElement.paused === false || audioElement.readyState === "have_enough_data")
+  );
+}
+
 function validateEvidence(payload) {
   const records = flattenRecords(payload);
   const checks = {
@@ -96,7 +113,7 @@ function validateEvidence(payload) {
       return textIncludes(record, "kokoro") && (textIncludes(record, "audio") || textIncludes(record, "tts")) && (hasPositiveNumber(record.audioBytes) || audioUrl.trim().length > 0 || audioSha256.trim().length > 0);
     }),
     browserRemoteAudio: records.some((record) => {
-      return textIncludes(record, "browser") && textIncludes(record, "remote") && textIncludes(record, "audio") && (hasPositiveNumber(record.playedMs) || record.played === true || record.heard === true);
+      return textIncludes(record, "browser") && textIncludes(record, "remote") && textIncludes(record, "audio") && (hasPositiveNumber(record.playedMs) || record.played === true || record.heard === true || hasBrowserRemoteAudioStats(record));
     }),
   };
 
@@ -149,6 +166,14 @@ async function writeEvidenceTemplate(filePath) {
         target: "browser",
         track: "remote audio",
         playedMs: 0,
+        inboundRtpAudio: {
+          packetsReceived: 0,
+          bytesReceived: 0,
+        },
+        audioElement: {
+          currentTime: 0,
+          paused: true,
+        },
       },
     ],
   };

@@ -81,7 +81,14 @@ test("browser WebRTC live proof gate accepts captured media-turn evidence", asyn
           { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-123" },
           { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "I need billing help.", final: true },
           { type: "kokoro.tts.audio", engine: "kokoro", audioBytes: 4096 },
-          { type: "browser.remote.audio.played", target: "browser", track: "remote audio", playedMs: 1200 },
+          {
+            type: "browser.remote.audio.played",
+            target: "browser",
+            track: "remote audio",
+            playedMs: 0,
+            inboundRtpAudio: { packetsReceived: 12, bytesReceived: 4096 },
+            audioElement: { currentTime: 1.2, paused: false },
+          },
         ],
       }, null, 2),
       "utf8",
@@ -139,7 +146,10 @@ test("browser WebRTC live proof gate writes a fill-in evidence template", async 
     assert.ok(template.events.some((event) => event.type === "pipecat.webrtc.offer_answer"));
     assert.ok(template.events.some((event) => event.type === "rtc-asr.transcript.final" && event.final === true));
     assert.ok(template.events.some((event) => event.type === "kokoro.tts.audio"));
-    assert.ok(template.events.some((event) => event.type === "browser.remote.audio.played"));
+    const browserAudioTemplate = template.events.find((event) => event.type === "browser.remote.audio.played");
+    assert.ok(browserAudioTemplate);
+    assert.deepEqual(browserAudioTemplate.inboundRtpAudio, { packetsReceived: 0, bytesReceived: 0 });
+    assert.deepEqual(browserAudioTemplate.audioElement, { currentTime: 0, paused: true });
 
     const manifest = JSON.parse(await readFile(path.join(tempDir, "browser-webrtc-live-proof-manifest.json"), "utf8")) as { setup: { evidenceTemplatePath: string } };
     assert.equal(manifest.setup.evidenceTemplatePath, templatePath);
