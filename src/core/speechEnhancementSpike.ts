@@ -1178,6 +1178,7 @@ export function buildSpeechEnhancementHealthSummary(): {
   runtimeProfileEnableCommand: string | null;
   runtimeProfileBypassWhen: string[];
   runtimeLiveDemoEligible: boolean;
+  closeGateStatus: SpeechEnhancementCloseGateStatus;
   closeGateRequiredLatencyMs: number;
   closeGateMaxAddedTurnLatencyMsP95: number;
   closeGateMaxCpuPercentP95: number;
@@ -1233,6 +1234,7 @@ export function buildSpeechEnhancementHealthSummary(): {
     runtimeProfileEnableCommand: runtimeReadiness.selectedLatencyProfile?.enableCommand ?? null,
     runtimeProfileBypassWhen: runtimeReadiness.selectedLatencyProfile?.bypassWhen ?? [],
     runtimeLiveDemoEligible: runtimeReadiness.liveDemoEligible,
+    closeGateStatus: resolveSpeechEnhancementCloseGateStatus(reviewGate, strictArtifactVerification),
     closeGateRequiredLatencyMs: report.closeGateProfile.requiredLatencySettingMs,
     closeGateMaxAddedTurnLatencyMsP95: report.closeGateProfile.maxAddedTurnLatencyMsP95,
     closeGateMaxCpuPercentP95: report.closeGateProfile.maxCpuPercentP95,
