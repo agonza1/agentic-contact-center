@@ -70,17 +70,34 @@ function textIncludes(record, pattern) {
   return JSON.stringify(record).toLowerCase().includes(pattern);
 }
 
+function hasPlaceholderText(value) {
+  return typeof value === "string" && /replace with|replace-with|placeholder/i.test(value);
+}
+
+function hasPositiveNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 function validateEvidence(payload) {
   const records = flattenRecords(payload);
   const checks = {
-    pipecatWebrtcBridge: records.some((record) => textIncludes(record, "pipecat") && textIncludes(record, "webrtc")),
+    pipecatWebrtcBridge: records.some((record) => {
+      const sessionId = typeof record.sessionId === "string" ? record.sessionId : "";
+      return textIncludes(record, "pipecat") && textIncludes(record, "webrtc") && sessionId.trim().length > 0 && !hasPlaceholderText(sessionId);
+    }),
     rtcAsrFinalTranscript: records.some((record) => {
       const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
       const transcript = typeof record.transcript === "string" ? record.transcript : typeof record.text === "string" ? record.text : "";
-      return textIncludes(record, "rtc-asr") && (type.includes("final") || record.final === true || record.isFinal === true) && transcript.trim().length > 0;
+      return textIncludes(record, "rtc-asr") && (type.includes("final") || record.final === true || record.isFinal === true) && transcript.trim().length > 0 && !hasPlaceholderText(transcript);
     }),
-    kokoroAudio: records.some((record) => textIncludes(record, "kokoro") && (textIncludes(record, "audio") || textIncludes(record, "tts"))),
-    browserRemoteAudio: records.some((record) => textIncludes(record, "browser") && textIncludes(record, "remote") && textIncludes(record, "audio")),
+    kokoroAudio: records.some((record) => {
+      const audioUrl = typeof record.audioUrl === "string" ? record.audioUrl : typeof record.url === "string" ? record.url : "";
+      const audioSha256 = typeof record.audioSha256 === "string" ? record.audioSha256 : typeof record.sha256 === "string" ? record.sha256 : "";
+      return textIncludes(record, "kokoro") && (textIncludes(record, "audio") || textIncludes(record, "tts")) && (hasPositiveNumber(record.audioBytes) || audioUrl.trim().length > 0 || audioSha256.trim().length > 0);
+    }),
+    browserRemoteAudio: records.some((record) => {
+      return textIncludes(record, "browser") && textIncludes(record, "remote") && textIncludes(record, "audio") && (hasPositiveNumber(record.playedMs) || record.played === true || record.heard === true);
+    }),
   };
 
   return {

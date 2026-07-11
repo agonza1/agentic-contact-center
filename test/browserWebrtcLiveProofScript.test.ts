@@ -78,7 +78,7 @@ test("browser WebRTC live proof gate accepts captured media-turn evidence", asyn
       evidencePath,
       JSON.stringify({
         events: [
-          { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat" },
+          { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-123" },
           { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "I need billing help.", final: true },
           { type: "kokoro.tts.audio", engine: "kokoro", audioBytes: 4096 },
           { type: "browser.remote.audio.played", target: "browser", track: "remote audio", playedMs: 1200 },
@@ -143,6 +143,66 @@ test("browser WebRTC live proof gate writes a fill-in evidence template", async 
 
     const manifest = JSON.parse(await readFile(path.join(tempDir, "browser-webrtc-live-proof-manifest.json"), "utf8")) as { setup: { evidenceTemplatePath: string } };
     assert.equal(manifest.setup.evidenceTemplatePath, templatePath);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+
+test("browser WebRTC live proof gate rejects the unfilled template as evidence", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-browser-webrtc-template-evidence-"));
+  const templatePath = path.join(tempDir, "proof.template.json");
+
+  try {
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        ["scripts/browser-webrtc-live-proof.mjs", "--require-review-ready", "--write-template", templatePath, "--out-dir", tempDir],
+        { cwd: repoRoot, timeout: 10_000, encoding: "utf8" },
+      ),
+      (error: any) => {
+        assert.equal(error.code, 2);
+        return true;
+      },
+    );
+
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        ["scripts/browser-webrtc-live-proof.mjs", "--require-review-ready", "--evidence", templatePath, "--out-dir", tempDir],
+        { cwd: repoRoot, timeout: 10_000, encoding: "utf8" },
+      ),
+      (error: any) => {
+        assert.equal(error.code, 2);
+        const summary = JSON.parse(error.stdout.slice(error.stdout.indexOf("{")).trim()) as { reviewReady: boolean; blockers: string[] };
+        assert.equal(summary.reviewReady, false);
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("pipecatWebrtcBridge")));
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("rtcAsrFinalTranscript")));
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("kokoroAudio")));
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("browserRemoteAudio")));
+        return true;
+      },
+    );
+
+    const manifest = JSON.parse(await readFile(path.join(tempDir, "browser-webrtc-live-proof-manifest.json"), "utf8")) as {
+      reviewReady: boolean;
+      checks: Record<string, boolean>;
+      reviewGate: { missingProof: string[] };
+    };
+    assert.equal(manifest.reviewReady, false);
+    assert.deepEqual(manifest.checks, {
+      pipecatWebrtcBridge: false,
+      rtcAsrFinalTranscript: false,
+      kokoroAudio: false,
+      browserRemoteAudio: false,
+    });
+    assert.deepEqual(manifest.reviewGate.missingProof, [
+      "pipecatWebrtcBridge",
+      "rtcAsrFinalTranscript",
+      "kokoroAudio",
+      "browserRemoteAudio",
+    ]);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
