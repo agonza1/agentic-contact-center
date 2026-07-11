@@ -35,6 +35,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
   const latestOutputPath = path.join(tempDir, "speech-enhancement-spike-latest.json");
   const markdownOutputPath = path.join(tempDir, "speech-enhancement-spike.md");
   const captureReplayTemplateOutputPath = path.join(tempDir, "speech-enhancement-capture-replay-template.json");
+  const sourceManifestTemplateOutputPath = path.join(tempDir, "speech-enhancement-source-manifest-template.json");
 
   try {
     const result = await runNode([
@@ -47,6 +48,8 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       markdownOutputPath,
       "--capture-replay-template-out",
       captureReplayTemplateOutputPath,
+      "--source-manifest-template-out",
+      sourceManifestTemplateOutputPath,
     ]);
 
     assert.equal(result.exitCode, 0, result.stderr);
@@ -57,6 +60,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       latestOutputPath: string;
       markdownOutputPath: string;
       captureReplayTemplateOutputPath: string;
+      sourceManifestTemplateOutputPath: string;
       captureReplaySourceDigest: string;
       runtimeLiveDemoEligible: boolean;
       runtimeBypassReasons: string[];
@@ -71,6 +75,7 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.equal(summary.latestOutputPath, latestOutputPath);
     assert.equal(summary.markdownOutputPath, markdownOutputPath);
     assert.equal(summary.captureReplayTemplateOutputPath, captureReplayTemplateOutputPath);
+    assert.equal(summary.sourceManifestTemplateOutputPath, sourceManifestTemplateOutputPath);
     assert.deepEqual(summary.captureReplaySources, []);
     assert.equal(summary.captureReplaySourceDigest, digestCaptureReplaySources([]));
     assert.deepEqual(summary.strictArtifactVerification, {
@@ -175,6 +180,15 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
       source_manifest_uri: string;
       latency_setting_ms: number;
       enhanced_rtc_asr: { cpu_percent_p95: number; cpu_cost_estimate: string };
+    };
+    const sourceManifestTemplate = JSON.parse(await readFile(sourceManifestTemplateOutputPath, "utf8")) as {
+      capture_id: string;
+      audio_source_uri: string;
+      recorded_at: string;
+      noise_profile: string;
+      scenario: string;
+      runtime_host: string;
+      source: { kind: string; sample_rate_hz: number; channel_count: number; format: string };
     };
 
     assert.equal(artifact.schemaVersion, 1);
@@ -317,6 +331,17 @@ test("speech enhancement spike report script writes review-gated artifact", asyn
     assert.equal(captureReplayTemplate.latency_setting_ms, 12.5);
     assert.equal(captureReplayTemplate.enhanced_rtc_asr.cpu_percent_p95, 42);
     assert.equal(captureReplayTemplate.enhanced_rtc_asr.cpu_cost_estimate, "medium");
+    assert.equal(sourceManifestTemplate.capture_id, captureReplayTemplate.capture_id);
+    assert.equal(sourceManifestTemplate.audio_source_uri, captureReplayTemplate.audio_source_uri);
+    assert.equal(sourceManifestTemplate.recorded_at, "2026-07-08T00:00:00.000Z");
+    assert.equal(sourceManifestTemplate.noise_profile, "describe_real_call_noise");
+    assert.equal(sourceManifestTemplate.runtime_host, "selected-rtc-asr-hostname");
+    assert.deepEqual(sourceManifestTemplate.source, {
+      kind: "local_sip_noisy_capture",
+      sample_rate_hz: 16000,
+      channel_count: 1,
+      format: "pcm_s16le_wav",
+    });
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
