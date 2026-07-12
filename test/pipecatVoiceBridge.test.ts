@@ -103,6 +103,20 @@ test("Pipecat browser WebRTC bridge cancels remote audio on caller barge-in", ()
 });
 
 
+
+test("Pipecat browser WebRTC bridge serializes finalized turns", () => {
+  const bridge = browserWebrtcBridgeSource();
+
+  assert.match(bridge, /self\.turn_queue: asyncio\.Queue\[bytes\] = asyncio\.Queue\(\)/);
+  assert.match(bridge, /self\.turn_worker = asyncio\.create_task\(self\.consume_turn_queue\(\)\)/);
+  assert.match(bridge, /def enqueue_turn\(self, pcm16_16k: bytes\) -> None:/);
+  assert.match(bridge, /async def consume_turn_queue\(self\) -> None:/);
+  assert.match(bridge, /await self\.run_turn\(pcm16_16k\)/);
+  assert.match(bridge, /self\.turn_queue\.task_done\(\)/);
+  assert.match(bridge, /pipeline\.enqueue_turn\(pcm_turn\)/);
+  assert.doesNotMatch(bridge, /asyncio\.create_task\(pipeline\.run_turn\(pcm_turn\)\)/);
+});
+
 test("operator console surfaces fail-closed voice bridge readiness", () => {
   const source = consoleSource();
 
