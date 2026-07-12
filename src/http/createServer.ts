@@ -5010,7 +5010,8 @@ async function routeRequest(
           writeBadRequest(response, "live_sip_playback_sent_packet_count_exceeds_packet_count");
           return;
         }
-        if (body.rtpSocketSendReady === true && (!sentPacketCount || remotePort === null)) {
+        const remoteHost = getOptionalTrimmedString(body.remoteHost);
+        if (body.rtpSocketSendReady === true && (!sentPacketCount || remotePort === null || !remoteHost)) {
           writeBadRequest(response, "live_sip_playback_socket_send_evidence_incomplete");
           return;
         }
@@ -5033,7 +5034,7 @@ async function routeRequest(
             sentPacketCount,
             totalDurationMs,
             ssrc,
-            remoteHost: getOptionalTrimmedString(body.remoteHost) ?? null,
+            remoteHost: remoteHost ?? null,
             remotePort,
             lastSentAt: getOptionalTrimmedString(body.lastSentAt) ?? null,
             evidencePath: getOptionalTrimmedString(body.evidencePath) ?? null,

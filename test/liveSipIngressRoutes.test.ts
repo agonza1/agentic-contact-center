@@ -108,11 +108,25 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
       rtpSocketSendReady: true,
       packetCount: 2,
       sentPacketCount: 2,
+      remoteHost: "127.0.0.1",
       remotePort: 40002,
       callerPlaybackConfirmed: true,
     });
     assert.equal(invalidConfirmedPlayback.statusCode, 400);
     assert.equal(invalidConfirmedPlayback.payload.error, "live_sip_playback_confirmation_evidence_required");
+
+    const invalidPlaybackMissingHost = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.playback",
+      timestamp: "2026-06-30T10:00:02.460Z",
+      sipCallId: "sip-proof-1",
+      outboundRtpReady: true,
+      rtpSocketSendReady: true,
+      packetCount: 2,
+      sentPacketCount: 2,
+      remotePort: 40002,
+    });
+    assert.equal(invalidPlaybackMissingHost.statusCode, 400);
+    assert.equal(invalidPlaybackMissingHost.payload.error, "live_sip_playback_socket_send_evidence_incomplete");
 
     const invalidPlaybackPortZero = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.playback",

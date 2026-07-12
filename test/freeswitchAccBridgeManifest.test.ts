@@ -876,7 +876,9 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
           nextSequenceNumber: 3,
           nextTimestamp: 480,
           ssrc: 0xacc0ffee,
-          lastSentAt: "2026-06-30T10:00:02.220Z"
+          lastSentAt: "2026-06-30T10:00:02.220Z",
+          callerPlaybackConfirmed: true,
+          callerPlaybackEvidencePath: "artifacts/freeswitch-live/caller-playback-proof.json"
         }
       });
       console.log(JSON.stringify(manifest));
@@ -888,6 +890,42 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     const readyManifest = JSON.parse(readyResult.stdout) as typeof manifest;
     assert.equal(readyManifest.reviewReady, true);
     assert.equal(readyManifest.artifacts.rtcAsrEvidence, rtcAsrEvidencePath);
+
+    const socketOnlyScript = `
+      const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
+      const manifest = await buildFreeswitchLiveProofManifest({
+        uuid: "fs-proof-socket-only",
+        accCallId: "demo-call-socket-only",
+        destination: "8600",
+        wavPath: ${JSON.stringify(audioPath)},
+        logPath: ${JSON.stringify(logPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
+        telephonyMode: "local_sip",
+        remoteRtp: { address: "127.0.0.1", port: 40002 },
+        pipecatOutboundRtpEvidence: {
+          outboundRtpReady: true,
+          rtpSocketSendReady: true,
+          packetCount: 3,
+          sentPacketCount: 3,
+          remoteHost: "127.0.0.1",
+          remotePort: 40002,
+          totalDurationMs: 60,
+          nextSequenceNumber: 3,
+          nextTimestamp: 480,
+          ssrc: 0xacc0ffee,
+          lastSentAt: "2026-06-30T10:00:02.220Z"
+        }
+      });
+      console.log(JSON.stringify(manifest));
+    `;
+    const socketOnlyResult = await execFileAsync(process.execPath, ["--input-type=module", "--eval", socketOnlyScript], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const socketOnlyManifest = JSON.parse(socketOnlyResult.stdout) as typeof manifest;
+    assert.equal(socketOnlyManifest.reviewReady, false);
+    assert.ok(socketOnlyManifest.blockers.some((blocker) => blocker.includes("caller-audible playback proof")));
     assert.ok(readyManifest.artifactIntegrity.some((artifact) => artifact.artifactId === "rtc-asr-transcript-evidence" && artifact.readiness === "ready"));
 
     const readyBundleDir = path.join(tempDir, "ready-bundle");
@@ -1042,7 +1080,9 @@ test("FreeSWITCH bridge manifest accepts nested OpenAI realtime transcript evide
           nextSequenceNumber: 3,
           nextTimestamp: 480,
           ssrc: 0xacc0ffee,
-          lastSentAt: "2026-06-30T10:00:02.220Z"
+          lastSentAt: "2026-06-30T10:00:02.220Z",
+          callerPlaybackConfirmed: true,
+          callerPlaybackEvidencePath: "artifacts/freeswitch-live/caller-playback-proof.json"
         }
       });
       console.log(JSON.stringify(manifest));
@@ -1106,7 +1146,9 @@ test("FreeSWITCH bridge manifest accepts string-wrapped rtc-asr evidence", async
           nextSequenceNumber: 3,
           nextTimestamp: 480,
           ssrc: 0xacc0ffee,
-          lastSentAt: "2026-06-30T10:00:02.220Z"
+          lastSentAt: "2026-06-30T10:00:02.220Z",
+          callerPlaybackConfirmed: true,
+          callerPlaybackEvidencePath: "artifacts/freeswitch-live/caller-playback-proof.json"
         }
       });
       console.log(JSON.stringify(manifest));
@@ -1166,7 +1208,9 @@ test("FreeSWITCH bridge manifest accepts wrapped channel ASR evidence", async ()
           nextSequenceNumber: 3,
           nextTimestamp: 480,
           ssrc: 0xacc0ffee,
-          lastSentAt: "2026-06-30T10:00:02.220Z"
+          lastSentAt: "2026-06-30T10:00:02.220Z",
+          callerPlaybackConfirmed: true,
+          callerPlaybackEvidencePath: "artifacts/freeswitch-live/caller-playback-proof.json"
         }
       });
       console.log(JSON.stringify(manifest));

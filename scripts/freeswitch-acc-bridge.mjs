@@ -529,7 +529,9 @@ export class PipecatRtpPlaybackSink {
       this.errors.push({ at: nowIso(), error: "rtp_playback_remote_port_missing" });
       return [];
     }
-    for (const packet of packets) {
+    const packetIntervalMs = (this.options.samplesPerPacket / 8000) * 1000;
+    for (const [index, packet] of packets.entries()) {
+      if (index > 0) await sleep(packetIntervalMs);
       await new Promise((resolve) => {
         socket.send(packet, this.options.remotePort, this.options.remoteHost, (error) => {
           if (error) this.errors.push({ at: nowIso(), error: error instanceof Error ? error.message : String(error) });
@@ -778,6 +780,14 @@ function playbackTargetMatchesCallerRtp(remoteRtp, playbackEvidence) {
   return playbackEvidence.remoteHost === remoteRtp.address && playbackEvidence.remotePort === remoteRtp.port;
 }
 
+function playbackHasCallerAudibleProof(playbackEvidence) {
+  return playbackEvidence?.callerPlaybackConfirmed === true && typeof playbackEvidence.callerPlaybackEvidencePath === "string" && playbackEvidence.callerPlaybackEvidencePath.trim().length > 0;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function buildFreeswitchLiveProofManifest(options) {
   const audioStats = await stat(options.wavPath).catch(() => null);
   const logStats = await stat(options.logPath).catch(() => null);
@@ -790,7 +800,9 @@ export async function buildFreeswitchLiveProofManifest(options) {
   const pipecatOutboundRtpEvidence = options.pipecatOutboundRtpEvidence ?? null;
   const outboundPlaybackTargetMatchedCallerRtp = playbackTargetMatchesCallerRtp(options.remoteRtp, pipecatOutboundRtpEvidence);
   const outboundPlaybackReviewReady =
-    pipecatOutboundRtpEvidence?.rtpSocketSendReady === true && outboundPlaybackTargetMatchedCallerRtp;
+    pipecatOutboundRtpEvidence?.rtpSocketSendReady === true &&
+    outboundPlaybackTargetMatchedCallerRtp &&
+    playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence);
   const rtcAsrStreamEvidence = options.rtcAsrStreamEvidence ?? null;
   const runtimeModeLabels = {
     telephony: options.telephonyMode,
@@ -815,6 +827,8 @@ export async function buildFreeswitchLiveProofManifest(options) {
     blockers.push("FreeSWITCH caller playback RTP was not sent, so SIP bidirectional playback is not proven.");
   } else if (!outboundPlaybackTargetMatchedCallerRtp) {
     blockers.push("FreeSWITCH caller playback RTP was sent, but the playback target did not match the caller RTP target.");
+  } else if (!playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence)) {
+    blockers.push("FreeSWITCH caller playback RTP was sent to the caller target, but no caller-audible playback proof is attached.");
   }
 
   const nextActions = [];
@@ -838,6 +852,8 @@ export async function buildFreeswitchLiveProofManifest(options) {
     nextActions.push("Send Kokoro/Pipecat RTP playback to the FreeSWITCH caller target before marking the proof review-ready.");
   } else if (!outboundPlaybackTargetMatchedCallerRtp) {
     nextActions.push("Discover the caller RTP target from FreeSWITCH media headers and send playback RTP to that target.");
+  } else if (!playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence)) {
+    nextActions.push("Attach caller-audible playback proof, such as a softphone capture/check artifact, before marking the proof review-ready.");
   }
 
   const artifactIntegrity = [];
@@ -899,7 +915,9 @@ export async function buildFreeswitchLiveProofManifest(options) {
       blocker: outboundPlaybackReviewReady
         ? null
         : pipecatOutboundRtpEvidence?.rtpSocketSendReady
-          ? "Pipecat/Kokoro TTSAudioRawFrame output was sent, but not to the discovered FreeSWITCH caller RTP target."
+          ? outboundPlaybackTargetMatchedCallerRtp
+            ? "Pipecat/Kokoro TTSAudioRawFrame output was sent to the caller RTP target, but no caller-audible playback proof is attached."
+            : "Pipecat/Kokoro TTSAudioRawFrame output was sent, but not to the discovered FreeSWITCH caller RTP target."
         : pipecatOutboundRtpEvidence?.outboundRtpReady
           ? "Kokoro/Pipecat output and TTSAudioRawFrame fixtures can be packetized as RTP, but they have not been sent to a FreeSWITCH caller RTP target yet."
           : "Kokoro/Pipecat TTSAudioRawFrame output is not yet connected to the FreeSWITCH RTP playback socket for SIP caller playback.",
