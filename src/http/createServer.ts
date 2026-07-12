@@ -1320,7 +1320,7 @@ function buildOperatorConsoleHtml(): string {
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceBridgeEvidence: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
     const repoHeadEvidence = ${JSON.stringify(getRepoHeadEvidence())};
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
@@ -1542,6 +1542,7 @@ function buildOperatorConsoleHtml(): string {
         state.voiceRemoteAudio = null;
       }
       state.voiceBridgeEvidence = null;
+      state.voiceBridgeAnswer = null;
       state.voiceSessionId = null;
       if (state.voiceStream) {
         state.voiceStream.getTracks().forEach(function(track) { track.stop(); });
@@ -1598,6 +1599,7 @@ function buildOperatorConsoleHtml(): string {
           bridge: "pipecat",
           callId: state.voiceCallId,
           sessionId: state.voiceSessionId,
+          answer: state.voiceBridgeAnswer,
           bridgeResponse: bridge,
         },
         {
@@ -1715,6 +1717,7 @@ function buildOperatorConsoleHtml(): string {
         }
         await pc.setRemoteDescription({ type: payload.type, sdp: payload.sdp });
         state.voiceBridgeEvidence = payload.evidence || null;
+        state.voiceBridgeAnswer = { type: payload.type, sdp: payload.sdp, sessionId: payload.sessionId, callId: payload.callId };
         state.voiceSessionId = payload.sessionId;
         state.voiceCallId = payload.callId;
         state.selectedCallId = payload.callId;

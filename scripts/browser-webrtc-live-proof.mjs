@@ -144,6 +144,20 @@ function proofId(value) {
   return typeof value === "string" && value.trim().length > 0 && !hasPlaceholderText(value) ? value.trim() : "";
 }
 
+function hasWebrtcAnswerSdp(record) {
+  const candidates = [
+    record,
+    nestedRecord(record, "answer"),
+    nestedRecord(record, "response"),
+    nestedRecord(record, "bridgeResponse"),
+  ];
+  return candidates.some((candidate) => {
+    const type = typeof candidate.type === "string" ? candidate.type.toLowerCase() : "";
+    const sdp = firstString(candidate.sdp, candidate.answerSdp, candidate.localDescriptionSdp);
+    return type === "answer" && sdp.trim().startsWith("v=0") && !hasPlaceholderText(sdp);
+  });
+}
+
 function uniqueProofIds(values) {
   return [...new Set(values.map(proofId).filter(Boolean))];
 }
@@ -296,6 +310,9 @@ function hasBrowserRemoteAudioStats(record) {
 function validateEvidence(payload, expectedGitHead) {
   const records = flattenRecords(payload);
   const expectedHead = typeof expectedGitHead === "string" ? expectedGitHead.toLowerCase() : null;
+  const pipecatWebrtcAnswerSdp = records.some((record) => {
+    return textIncludes(record, "pipecat") && textIncludes(record, "webrtc") && hasWebrtcAnswerSdp(record);
+  });
   const checks = {
     evidenceCorrelation: hasConsistentProofCorrelation(payload, records),
     repoHeadEvidence: expectedHead ? records.some((record) => evidenceHeadSha(record) === expectedHead) : true,
@@ -325,6 +342,9 @@ function validateEvidence(payload, expectedGitHead) {
 
   return {
     checks,
+    evidenceSummary: {
+      pipecatWebrtcAnswerSdp,
+    },
     reviewReady: Object.values(checks).every(Boolean),
     missingProof: Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name),
   };
@@ -426,6 +446,10 @@ async function writeEvidenceTemplate(filePath) {
         bridge: "pipecat",
         bridgeUrl: process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766",
         sessionId: "replace-with-browser-webrtc-session-id",
+        answer: {
+          type: "answer",
+          sdp: "replace with the WebRTC answer SDP copied from /api/browser-webrtc/session",
+        },
         bridgeResponse: {
           session_id: "replace-with-browser-webrtc-session-id",
           type: "answer",
@@ -489,6 +513,9 @@ const validation = evidence.payload ? validateEvidence(evidence.payload, expecte
     browserRemoteAudio: false,
   },
   reviewReady: false,
+  evidenceSummary: {
+    pipecatWebrtcAnswerSdp: false,
+  },
   missingProof: [
     ...(expectedGitHead ? ["repoHeadEvidence"] : []),
     "browserMicrophoneUplink",
@@ -532,6 +559,7 @@ const manifest = {
     sidecarProbeCommand: "npm run browser-webrtc:live-proof -- --probe-sidecars --out-dir artifacts/browser-webrtc-live-proof/sidecar-preflight",
   },
   checks: validation.checks,
+  evidenceSummary: validation.evidenceSummary,
   sidecarConnectivity: await sidecarConnectivity(),
   artifactIntegrity: await artifactIntegrity(evidencePath),
   reviewGate: {
