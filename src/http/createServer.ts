@@ -4372,8 +4372,8 @@ async function routeRequest(
       }
 
       const answerType = getOptionalTrimmedString(bridgeResponse.payload.type);
-      const answerSdp = getOptionalTrimmedString(bridgeResponse.payload.sdp);
-      if (!bridgeResponse.status.toString().startsWith("2") || answerType !== "answer" || !answerSdp) {
+      const answerSdp = typeof bridgeResponse.payload.sdp === "string" ? bridgeResponse.payload.sdp : "";
+      if (!bridgeResponse.status.toString().startsWith("2") || answerType !== "answer" || !answerSdp.trim()) {
         writeJson(response, 502, {
           ok: false,
           error: "pipecat_webrtc_bridge_offer_failed",

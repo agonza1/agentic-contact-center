@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const source = () => readFileSync("scripts/pipecat-local-voice-bridge.py", "utf8");
+const browserWebrtcBridgeSource = () => readFileSync("scripts/pipecat-browser-webrtc-bridge.py", "utf8");
 const consoleSource = () => readFileSync("src/http/createServer.ts", "utf8");
 
 test("Pipecat voice bridge uses rtc-asr and Kokoro instead of old local engines", () => {
@@ -73,6 +74,19 @@ test("Pipecat voice readiness scripts distinguish WebRTC from the legacy ffmpeg 
 });
 
 
+test("Pipecat browser WebRTC bridge normalizes answer SDP for Chrome", () => {
+  const bridge = browserWebrtcBridgeSource();
+
+  assert.match(bridge, /def normalize_browser_answer_sdp\(sdp: str\) -> str:/);
+  assert.match(bridge, /aiortc 1\.14 can emit a=setup after ICE candidates/);
+  assert.match(bridge, /if line\.startswith\("a=fingerprint:"\)/);
+  assert.match(bridge, /reordered\[insert_at \+ 1:insert_at \+ 1\] = setup_lines/);
+  assert.match(bridge, /return "\\r\\n"\.join\(output\) \+ "\\r\\n"/);
+  assert.match(bridge, /answer_sdp = normalize_browser_answer_sdp\(pc\.localDescription\.sdp\)/);
+  assert.match(bridge, /"sdp": answer_sdp/);
+});
+
+
 test("operator console surfaces fail-closed voice bridge readiness", () => {
   const source = consoleSource();
 
@@ -101,6 +115,8 @@ test("operator console surfaces fail-closed voice bridge readiness", () => {
   assert.match(source, /window\.__ACC_BROWSER_WEBRTC_LIVE_PROOF__ = proof/);
   assert.match(source, /evidence: state\.voiceBridgeEvidence/);
   assert.match(source, /fetch\("\/api\/browser-webrtc\/session"/);
+  assert.match(source, /typeof bridgeResponse\.payload\.sdp === "string" \? bridgeResponse\.payload\.sdp : ""/);
+  assert.match(source, /!answerSdp\.trim\(\)/);
   assert.match(source, /getUserMedia/);
   assert.doesNotMatch(source, /new WebSocket/);
   assert.doesNotMatch(source, /new MediaRecorder/);

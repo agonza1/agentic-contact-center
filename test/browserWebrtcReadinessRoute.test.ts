@@ -240,7 +240,7 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
     assert.equal(payload.ok, true);
     assert.equal(payload.route, "/api/browser-webrtc/session");
     assert.equal(payload.type, "answer");
-    assert.match(payload.sdp, /^v=0/);
+    assert.equal(payload.sdp, "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=ACC Pipecat WebRTC\r\nt=0 0\r\n");
     assert.equal(payload.iceServers[0].urls, "stun:stun.l.google.com:19302");
     assert.equal(payload.evidence.mediaRecorderRequired, false);
     assert.equal(payload.evidence.ffmpegRequired, false);

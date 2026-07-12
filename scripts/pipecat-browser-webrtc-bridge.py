@@ -338,6 +338,43 @@ def resample_pcm16_mono(pcm: bytes, from_rate: int, to_rate: int) -> bytes:
     return converted
 
 
+def normalize_browser_answer_sdp(sdp: str) -> str:
+    """Keep aiortc answer SDP semantically identical but Chrome-parseable.
+
+    aiortc 1.14 can emit a=setup after ICE candidates. Chrome rejects that
+    answer shape even though the DTLS role itself is valid, so move setup next
+    to the fingerprint block within each media section.
+    """
+    normalized = sdp.replace("\r\n", "\n").strip().split("\n")
+    session_lines: list[str] = []
+    media_sections: list[list[str]] = []
+    current: list[str] | None = None
+    for line in normalized:
+        if line.startswith("m="):
+            current = [line]
+            media_sections.append(current)
+        elif current is None:
+            session_lines.append(line)
+        else:
+            current.append(line)
+
+    output = list(session_lines)
+    for section in media_sections:
+        setup_lines = [line for line in section if line.startswith("a=setup:")]
+        reordered = [line for line in section if not line.startswith("a=setup:")]
+        if setup_lines:
+            insert_at = -1
+            for index, line in enumerate(reordered):
+                if line.startswith("a=fingerprint:"):
+                    insert_at = index
+            if insert_at >= 0:
+                reordered[insert_at + 1:insert_at + 1] = setup_lines
+            else:
+                reordered.extend(setup_lines)
+        output.extend(reordered)
+    return "\r\n".join(output) + "\r\n"
+
+
 class BrowserAudioOutputTrack(MediaStreamTrack):
     kind = "audio"
 
@@ -586,6 +623,7 @@ class BrowserWebrtcBridge:
         await pc.setRemoteDescription(RTCSessionDescription(sdp=payload["sdp"], type="offer"))
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
+        answer_sdp = normalize_browser_answer_sdp(pc.localDescription.sdp)
         self.sessions[session_id] = {
             **self.sessions.get(session_id, {}),
             "pc": pc,
@@ -611,7 +649,7 @@ class BrowserWebrtcBridge:
             {
                 "ok": True,
                 "type": pc.localDescription.type,
-                "sdp": pc.localDescription.sdp,
+                "sdp": answer_sdp,
                 "sessionId": session_id,
                 "callId": call_id,
                 "iceServers": [],
