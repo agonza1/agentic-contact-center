@@ -260,7 +260,7 @@ test("FreeSWITCH bridge plays Pipecat TTS fixture on answered call remote RTP ta
       "bridge.rtpPlaybackSocket = { send(packet, port, host, callback) { sentRtp.push({ sequenceNumber: packet.readUInt16BE(2), timestamp: packet.readUInt32BE(4), port, host }); callback(); } };",
       "const headers = new Map([[\"Caller-Destination-Number\", \"8600\"], [\"variable_remote_media_ip\", \"127.0.0.1\"], [\"variable_remote_media_port\", \"40002\"]]);",
       "try { await bridge.onAnswer(\"fs-answer-playback\", headers); await bridge.playPipecatOutputFixture(); } finally { http.default.request = originalRequest; }",
-      "console.log(JSON.stringify({ sentRtp, playbackSummary: bridge.rtpPlaybackSink.summary(), played: bridge.pipecatOutputFixturePlayed, playbackEventPosted: bridge.pipecatPlaybackEventPosted, events: bridge.events }));"
+      "const call = bridge.callMap.get(\"fs-answer-playback\"); console.log(JSON.stringify({ sentRtp, playbackSummary: call.rtpPlaybackSink.summary(), played: call.pipecatOutputFixturePlayed, playbackEventPosted: call.pipecatPlaybackEventPosted, globalPlayed: bridge.pipecatOutputFixturePlayed, globalPlaybackEventPosted: bridge.pipecatPlaybackEventPosted, events: bridge.events }));"
     ].join("\n");
     const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
       cwd: repoRoot,
@@ -272,6 +272,8 @@ test("FreeSWITCH bridge plays Pipecat TTS fixture on answered call remote RTP ta
       played: boolean;
       events: Array<{ pipecatOutboundRtpPlayback?: { sentPacketCount: number } }>;
       playbackEventPosted: boolean;
+      globalPlayed: boolean;
+      globalPlaybackEventPosted: boolean;
     };
 
     assert.deepEqual(parsed.sentRtp, [
@@ -280,6 +282,8 @@ test("FreeSWITCH bridge plays Pipecat TTS fixture on answered call remote RTP ta
     ]);
     assert.equal(parsed.played, true);
     assert.equal(parsed.playbackEventPosted, true);
+    assert.equal(parsed.globalPlayed, false);
+    assert.equal(parsed.globalPlaybackEventPosted, false);
     assert.equal(parsed.playbackSummary.packetCount, 2);
     assert.equal(parsed.playbackSummary.sentPacketCount, 2);
     assert.equal(parsed.playbackSummary.rtpSocketSendReady, true);
