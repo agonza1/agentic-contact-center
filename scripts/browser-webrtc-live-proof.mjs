@@ -84,14 +84,38 @@ function nestedRecord(record, key) {
   return isRecord(value) ? value : {};
 }
 
+function nestedRecords(record, key) {
+  const value = record[key];
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function hasInboundAudioRtpStats(stats) {
+  return stats.some((stat) => {
+    const type = typeof stat.type === "string" ? stat.type.toLowerCase() : "";
+    const kind = typeof stat.kind === "string" ? stat.kind.toLowerCase() : "";
+    const mediaType = typeof stat.mediaType === "string" ? stat.mediaType.toLowerCase() : "";
+    const trackKind = typeof stat.trackKind === "string" ? stat.trackKind.toLowerCase() : "";
+    return (
+      type === "inbound-rtp" &&
+      [kind, mediaType, trackKind].includes("audio") &&
+      (hasPositiveNumber(stat.packetsReceived) || hasPositiveNumber(stat.bytesReceived))
+    );
+  });
+}
+
 function hasBrowserRemoteAudioStats(record) {
   const inboundRtpAudio = nestedRecord(record, "inboundRtpAudio");
   const audioElement = nestedRecord(record, "audioElement");
+  const rtcStats = [
+    ...nestedRecords(record, "rtcStats"),
+    ...nestedRecords(record, "peerConnectionStats"),
+    ...nestedRecords(record, "getStats"),
+  ];
   return (
     textIncludes(record, "browser") &&
     textIncludes(record, "remote") &&
     textIncludes(record, "audio") &&
-    (hasPositiveNumber(inboundRtpAudio.packetsReceived) || hasPositiveNumber(inboundRtpAudio.bytesReceived)) &&
+    (hasPositiveNumber(inboundRtpAudio.packetsReceived) || hasPositiveNumber(inboundRtpAudio.bytesReceived) || hasInboundAudioRtpStats(rtcStats)) &&
     (hasPositiveNumber(audioElement.currentTime) || audioElement.paused === false || audioElement.readyState === "have_enough_data")
   );
 }
@@ -178,6 +202,14 @@ async function writeEvidenceTemplate(filePath) {
           packetsReceived: 0,
           bytesReceived: 0,
         },
+        rtcStats: [
+          {
+            type: "inbound-rtp",
+            kind: "audio",
+            packetsReceived: 0,
+            bytesReceived: 0,
+          },
+        ],
         audioElement: {
           currentTime: 0,
           paused: true,
