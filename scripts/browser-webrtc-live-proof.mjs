@@ -269,7 +269,7 @@ function validateEvidence(payload, expectedGitHead) {
       );
     }),
     browserRemoteAudio: records.some((record) => {
-      return textIncludes(record, "browser") && textIncludes(record, "remote") && textIncludes(record, "audio") && (hasPositiveNumber(record.playedMs) || record.played === true || record.heard === true || hasBrowserRemoteAudioStats(record));
+      return textIncludes(record, "browser") && textIncludes(record, "remote") && textIncludes(record, "audio") && hasBrowserRemoteAudioStats(record);
     }),
   };
 

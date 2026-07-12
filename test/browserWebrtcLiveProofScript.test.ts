@@ -655,6 +655,63 @@ test("browser WebRTC live proof gate rejects the unfilled template as evidence",
   }
 });
 
+test("browser WebRTC live proof gate rejects playback evidence without objective remote audio stats", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-browser-webrtc-subjective-playback-"));
+  const evidencePath = path.join(tempDir, "browser-webrtc-evidence.json");
+
+  try {
+    const gitHead = await currentGitHead(repoRoot);
+    await writeFile(
+      evidencePath,
+      JSON.stringify({
+        gitHead,
+        events: [
+          { type: "browser.microphone.uplink", target: "browser", track: "local microphone audio", outboundRtpAudio: { packetsSent: 10, bytesSent: 2048 }, audioTrack: { enabled: true } },
+          { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-subjective" },
+          { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "I need help with my claim.", final: true },
+          { type: "kokoro.tts.audio", engine: "kokoro", audioBytes: 2048 },
+          {
+            type: "browser.remote.audio.played",
+            target: "browser",
+            track: "remote audio",
+            played: true,
+            heard: true,
+            playedMs: 1200,
+          },
+        ],
+      }, null, 2),
+      "utf8",
+    );
+
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        ["scripts/browser-webrtc-live-proof.mjs", "--require-review-ready", "--evidence", evidencePath, "--out-dir", tempDir],
+        { cwd: repoRoot, timeout: 10_000, encoding: "utf8" },
+      ),
+      (error: any) => {
+        assert.equal(error.code, 2);
+        const summary = JSON.parse(error.stdout.slice(error.stdout.indexOf("{")).trim()) as { reviewReady: boolean; blockers: string[] };
+        assert.equal(summary.reviewReady, false);
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("browserRemoteAudio")));
+        return true;
+      },
+    );
+
+    const manifest = JSON.parse(await readFile(path.join(tempDir, "browser-webrtc-live-proof-manifest.json"), "utf8")) as {
+      reviewReady: boolean;
+      checks: Record<string, boolean>;
+      reviewGate: { missingProof: string[] };
+    };
+    assert.equal(manifest.reviewReady, false);
+    assert.equal(manifest.checks.browserRemoteAudio, false);
+    assert.deepEqual(manifest.reviewGate.missingProof, ["browserRemoteAudio"]);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("browser WebRTC live proof gate rejects evidence from a different git head", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-browser-webrtc-stale-head-"));
