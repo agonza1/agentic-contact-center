@@ -120,6 +120,26 @@ function evidenceHeadSha(record) {
   return null;
 }
 
+function firstString(...values) {
+  return values.find((value) => typeof value === "string" && value.trim().length > 0) ?? "";
+}
+
+function pipecatSessionId(record) {
+  return firstString(
+    record.sessionId,
+    record.session_id,
+    nestedRecord(record, "answer").sessionId,
+    nestedRecord(record, "answer").session_id,
+    nestedRecord(record, "response").sessionId,
+    nestedRecord(record, "response").session_id,
+    nestedRecord(record, "bridgeResponse").sessionId,
+    nestedRecord(record, "bridgeResponse").session_id,
+    nestedRecord(record, "session").id,
+    nestedRecord(record, "session").sessionId,
+    nestedRecord(record, "session").session_id,
+  );
+}
+
 function nestedRecord(record, key) {
   const value = record[key];
   return isRecord(value) ? value : {};
@@ -216,7 +236,7 @@ function validateEvidence(payload, expectedGitHead) {
     repoHeadEvidence: expectedHead ? records.some((record) => evidenceHeadSha(record) === expectedHead) : true,
     browserMicrophoneUplink: records.some((record) => hasBrowserMicrophoneUplink(record)),
     pipecatWebrtcBridge: records.some((record) => {
-      const sessionId = typeof record.sessionId === "string" ? record.sessionId : "";
+      const sessionId = pipecatSessionId(record);
       return textIncludes(record, "pipecat") && textIncludes(record, "webrtc") && sessionId.trim().length > 0 && !hasPlaceholderText(sessionId);
     }),
     rtcAsrFinalTranscript: records.some((record) => {
@@ -341,6 +361,10 @@ async function writeEvidenceTemplate(filePath) {
         bridge: "pipecat",
         bridgeUrl: process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766",
         sessionId: "replace-with-browser-webrtc-session-id",
+        bridgeResponse: {
+          session_id: "replace-with-browser-webrtc-session-id",
+          type: "answer",
+        },
       },
       {
         type: "rtc-asr.transcript.final",
