@@ -113,6 +113,7 @@ test("FreeSWITCH bridge packetizes Pipecat output audio into outbound RTP proof 
         rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
         rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
         telephonyMode: "local_sip",
+        remoteRtp: { address: "127.0.0.1", port: 40002 },
         pipecatOutboundRtpEvidence: sink.summary()
       });
       console.log(JSON.stringify({ packets: packets.map((packet) => ({ sequenceNumber: packet.readUInt16BE(2), timestamp: packet.readUInt32BE(4), ssrc: packet.readUInt32BE(8), payloadBytes: packet.length - 12 })), manifest }));
@@ -130,7 +131,7 @@ test("FreeSWITCH bridge packetizes Pipecat output audio into outbound RTP proof 
           outboundPlaybackAdapter: string;
           bidirectionalPlaybackReady: boolean;
           blocker: string;
-          outboundRtpPlayback: { outboundRtpReady: boolean; rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; totalDurationMs: number; nextSequenceNumber: number; nextTimestamp: number; remotePort: number };
+          outboundRtpPlayback: { outboundRtpReady: boolean; rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; totalDurationMs: number; nextSequenceNumber: number; nextTimestamp: number; remotePort: number; targetMatchedCallerRtp: boolean };
         };
       };
     };
@@ -152,6 +153,7 @@ test("FreeSWITCH bridge packetizes Pipecat output audio into outbound RTP proof 
     assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.nextSequenceNumber, 0);
     assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.nextTimestamp, 164);
     assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.remotePort, 40002);
+    assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.targetMatchedCallerRtp, true);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

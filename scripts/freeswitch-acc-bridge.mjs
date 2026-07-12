@@ -753,6 +753,11 @@ export function remoteRtpFromHeaders(headers) {
   return { address, port };
 }
 
+function playbackTargetMatchesCallerRtp(remoteRtp, playbackEvidence) {
+  if (!remoteRtp || !playbackEvidence) return false;
+  return playbackEvidence.remoteHost === remoteRtp.address && playbackEvidence.remotePort === remoteRtp.port;
+}
+
 export async function buildFreeswitchLiveProofManifest(options) {
   const audioStats = await stat(options.wavPath).catch(() => null);
   const logStats = await stat(options.logPath).catch(() => null);
@@ -763,6 +768,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
   const rtpPacketCountEstimate = audioBytes > 44 ? Math.floor((audioBytes - 44) / 320) : 0;
   const pipecatRtpEvidence = options.pipecatRtpEvidence ?? null;
   const pipecatOutboundRtpEvidence = options.pipecatOutboundRtpEvidence ?? null;
+  const outboundPlaybackTargetMatchedCallerRtp = playbackTargetMatchesCallerRtp(options.remoteRtp, pipecatOutboundRtpEvidence);
   const rtcAsrStreamEvidence = options.rtcAsrStreamEvidence ?? null;
   const runtimeModeLabels = {
     telephony: options.telephonyMode,
@@ -865,7 +871,9 @@ export async function buildFreeswitchLiveProofManifest(options) {
           : "Kokoro/Pipecat TTSAudioRawFrame output is not yet connected to the FreeSWITCH RTP playback socket for SIP caller playback.",
       rtpFrameBatch: pipecatRtpEvidence,
       rtcAsrLiveStream: rtcAsrStreamEvidence,
-      outboundRtpPlayback: pipecatOutboundRtpEvidence,
+      outboundRtpPlayback: pipecatOutboundRtpEvidence
+        ? { ...pipecatOutboundRtpEvidence, targetMatchedCallerRtp: outboundPlaybackTargetMatchedCallerRtp }
+        : null,
     },
     artifacts: { audioWav: options.wavPath, sipLog: options.logPath, rtcAsrEvidence: options.rtcAsrEvidencePath ?? null },
     artifactIntegrity,
