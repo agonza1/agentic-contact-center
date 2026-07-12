@@ -867,6 +867,23 @@ export class EslBridge {
         this.events.push({ at: nowIso(), rtcAsrPipecatStream: rtcAsrStreamEvidence });
       }
     }
+    const playbackSummary = this.rtpPlaybackSink.summary();
+    if (playbackSummary.outboundRtpReady) {
+      await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
+        eventType: "media.playback",
+        timestamp: nowIso(),
+        sipCallId: uuid,
+        fsUuid: uuid,
+        outboundRtpReady: playbackSummary.outboundRtpReady,
+        rtpSocketSendReady: playbackSummary.rtpSocketSendReady,
+        packetCount: playbackSummary.packetCount,
+        sentPacketCount: playbackSummary.sentPacketCount,
+        remoteHost: playbackSummary.remoteHost,
+        remotePort: playbackSummary.remotePort,
+        evidencePath: this.options.manifestPath,
+      });
+    }
+
     if (!this.options.rtcAsrUrl) {
       await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
         eventType: "rtc_asr.blocked",

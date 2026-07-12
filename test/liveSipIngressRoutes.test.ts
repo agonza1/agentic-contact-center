@@ -67,6 +67,21 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
     assert.equal(capture.statusCode, 200);
     assert.equal(capture.payload.call.events.some((event: any) => event.type === "media_capture_attached" && event.detail.rtpPacketCount === 42), true);
 
+    const playback = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.playback",
+      timestamp: "2026-06-30T10:00:02.250Z",
+      sipCallId: "sip-proof-1",
+      outboundRtpReady: true,
+      rtpSocketSendReady: true,
+      packetCount: 3,
+      sentPacketCount: 3,
+      remoteHost: "127.0.0.1",
+      remotePort: 40002,
+      evidencePath: "artifacts/freeswitch-live/freeswitch-live-proof-manifest.json",
+    });
+    assert.equal(playback.statusCode, 200);
+    assert.equal(playback.payload.call.events.some((event: any) => event.type === "pipecat_rtp_playback_attached" && event.detail.sentPacketCount === 3), true);
+
     const invalidCapture = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.capture",
       timestamp: "2026-06-30T10:00:02.500Z",
@@ -125,6 +140,9 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
     assert.equal(liveProof.audioCapture.status, "live_capture_attached");
     assert.equal(liveProof.audioCapture.audioWavPath, "artifacts/freeswitch-live/media/sip-proof-1.wav");
     assert.equal(liveProof.audioCapture.sipLogPath, "artifacts/freeswitch-live/freeswitch-esl-events.json");
+    assert.equal(liveProof.playback.status, "rtp_sent_to_socket");
+    assert.equal(liveProof.playback.sentPacketCount, 3);
+    assert.equal(liveProof.playback.remotePort, 40002);
     assert.equal(liveProof.asr.status, "transcript_received");
     assert.equal(liveProof.asr.latestTranscriptText, "I need help with a billing question.");
     assert.equal(liveProof.asr.evidencePath, "artifacts/freeswitch-live/rtc-asr-evidence.json");
