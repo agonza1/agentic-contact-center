@@ -1660,14 +1660,20 @@ function buildOperatorConsoleHtml(): string {
     async function startVoiceSegment() {
       await connectPipecatVoice();
     }
+    function isReusableVoicePeer(pc) {
+      return Boolean(pc && (pc.connectionState === "new" || pc.connectionState === "connecting" || pc.connectionState === "connected"));
+    }
     async function connectPipecatVoice() {
-      if (state.voicePeer && state.voicePeer.connectionState !== "closed") {
+      if (isReusableVoicePeer(state.voicePeer)) {
         state.voiceMuted = false;
         state.voiceStream && state.voiceStream.getAudioTracks().forEach(function(track) { track.enabled = true; });
         state.voiceStatus = "Browser WebRTC voice connected";
         setStatus(state.voiceStatus);
         render();
         return;
+      }
+      if (state.voicePeer) {
+        stopVoiceStream();
       }
       const call = selectedCall();
       if (!call) { await startDemoCall(); }
@@ -1689,6 +1695,10 @@ function buildOperatorConsoleHtml(): string {
         pc.onconnectionstatechange = function() {
           if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
             updateVoiceBridgeStatus("degraded", "WebRTC connection " + pc.connectionState);
+            if (state.voicePeer === pc) {
+              try { pc.close(); } catch (error) {}
+              state.voicePeer = null;
+            }
           }
         };
         stream.getAudioTracks().forEach(function(track) { pc.addTrack(track, stream); });

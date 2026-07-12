@@ -606,6 +606,7 @@ async def consume_browser_audio(track: MediaStreamTrack, pipeline: PipecatBrowse
             if rms > silence_rms:
                 if not in_speech:
                     pipeline.cancel_output("barge-in")
+                    turn_started_at = now
                 in_speech = True
                 last_voice_at = now
             if in_speech:
