@@ -17,7 +17,7 @@ const conferenceTheme = String.raw`
     .topbar { border-bottom-color:var(--line); background:rgba(5,8,22,.84); box-shadow:0 14px 42px rgba(0,0,0,.18); } .brand strong{color:#f8fafc}.kicker{color:#67e8f9;letter-spacing:.1em}.subhead{color:#c5d5e7}
     .hero,.slide,.section-band{position:relative;isolation:isolate;border-bottom-color:var(--line)} .hero{overflow:hidden;background:radial-gradient(circle at 74% 34%,rgba(59,130,246,.28),transparent 26rem),radial-gradient(circle at 88% 44%,rgba(168,85,247,.26),transparent 22rem),linear-gradient(135deg,rgba(5,8,22,.96),rgba(8,20,38,.92))}
     .hero::before{content:"";position:absolute;z-index:-1;width:min(58vw,760px);aspect-ratio:1;right:-7vw;top:50%;transform:translateY(-50%);border-radius:50%;background:repeating-radial-gradient(circle,rgba(103,232,249,.16) 0 2px,transparent 2px 18px),conic-gradient(from 190deg,transparent,rgba(34,211,238,.25),transparent 42%,rgba(168,85,247,.24),transparent 74%);opacity:.8}
-    .hero::after{content:"";position:absolute;z-index:-1;width:58vw;height:2px;right:-2vw;top:56%;background:linear-gradient(90deg,transparent,#67e8f9 20%,#60a5fa 48%,#c084fc 74%,transparent);box-shadow:0 -34px 0 rgba(103,232,249,.2),0 31px 0 rgba(192,132,252,.18);transform:rotate(-7deg)}
+    .hero::after{content:"";position:absolute;z-index:-1;width:44vw;height:2px;right:-2vw;top:56%;background:linear-gradient(90deg,transparent,#67e8f9 20%,#60a5fa 48%,#c084fc 74%,transparent);box-shadow:0 -34px 0 rgba(103,232,249,.2),0 31px 0 rgba(192,132,252,.18);transform:rotate(-7deg)}
     .hero h1{max-width:900px;text-wrap:balance;text-shadow:0 12px 36px rgba(0,0,0,.42)} .section-band{background:rgba(7,16,30,.62)} .section-band:nth-of-type(even){background:rgba(9,20,39,.76)}
     .card,.plain,.event{border-color:var(--line);background:linear-gradient(180deg,rgba(14,26,48,.92),rgba(8,17,33,.92));box-shadow:var(--shadow)} .muted{color:var(--muted)} .ready{color:#6ee7b7;background:rgba(6,78,59,.35);border-color:rgba(52,211,153,.48)} .fixture{color:#fde68a;background:rgba(120,53,15,.32);border-color:rgba(251,191,36,.48)} .blocked{color:#fecdd3;background:rgba(136,19,55,.3);border-color:rgba(251,113,133,.48)}
     .arch{border-color:var(--line);background:linear-gradient(180deg,rgba(11,22,42,.98),rgba(6,13,27,.98));box-shadow:var(--shadow)} .node{fill:#0c172b;stroke:#45617e}.nodeAccent{fill:#0d2d32;stroke:#2dd4bf}.nodeWarn{fill:#2d1f10;stroke:#fbbf24}.label{fill:#f8fafc}.small{fill:#9db0c5}.line{stroke:#38bdf8}
@@ -26,7 +26,7 @@ const conferenceTheme = String.raw`
     .talk-meta,.repo-strip{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.talk-chip,.repo-chip,.section-index{display:inline-flex;align-items:center;min-height:28px;padding:4px 10px;border:1px solid rgba(125,211,252,.28);border-radius:999px;background:rgba(8,31,53,.62);color:#c9f3ff;font-size:12px;font-weight:760}.repo-chip{color:#bfdbfe;background:rgba(30,41,59,.62)}.section-index{position:absolute;top:24px;right:clamp(18px,5vw,72px);color:#94a3b8}
     .talk-progress{width:min(210px,22vw);min-width:110px;display:grid;gap:5px}.talk-progress small{color:#94a3b8;text-align:right}.talk-progress-track{height:3px;border-radius:99px;overflow:hidden;background:rgba(148,163,184,.2)}.talk-progress-fill{display:block;height:100%;width:16.66%;background:linear-gradient(90deg,#22d3ee,#60a5fa,#c084fc);transition:width .18s ease}
     .static-status{position:fixed;z-index:30;right:18px;bottom:18px;max-width:min(420px,calc(100vw - 36px));padding:11px 14px;border:1px solid rgba(103,232,249,.32);border-radius:10px;background:rgba(3,10,24,.94);color:#dff8ff;box-shadow:0 18px 48px rgba(0,0,0,.4);font-size:13px;opacity:0;transform:translateY(8px);pointer-events:none;transition:.16s}.static-status.visible{opacity:1;transform:none}
-    @media(max-width:920px){.talk-progress{width:100%}.talk-progress small{text-align:left}.section-index{top:12px;right:14px}.hero::before{width:115vw;right:-58vw;opacity:.52}.hero::after{width:96vw;right:-44vw;opacity:.58}}
+    @media(max-width:920px){.talk-progress{width:100%}.talk-progress small{text-align:left}.section-index{top:12px;right:14px}.hero::before{width:115vw;right:-58vw;opacity:.52}.hero::after{width:74vw;right:-48vw;opacity:.58}}
 `;
 
 const staticFixtureRuntime = String.raw`
@@ -53,6 +53,7 @@ function pagesHtml(mode) {
   const narrativeHref = mode === "present" ? "../" : "./";
   const presentHref = mode === "present" ? "./" : "./present/";
   return html
+    .replaceAll('join("\n")', 'join("\\n")')
     .replace("</style>", `${conferenceTheme}\n  </style>`)
     .replace("<main>", '<div class="pages-notice">Static GitHub Pages snapshot · loading public talk preview.</div><main>')
     .replace("</body>", `${staticFixtureRuntime}\n</body>`)
