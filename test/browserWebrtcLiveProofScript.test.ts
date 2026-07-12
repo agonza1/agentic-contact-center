@@ -342,6 +342,51 @@ test("browser WebRTC live proof gate rejects placeholder Kokoro audio references
   }
 });
 
+test("browser WebRTC live proof gate records optional sidecar connectivity probes", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-browser-webrtc-sidecar-probes-"));
+
+  try {
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        ["scripts/browser-webrtc-live-proof.mjs", "--require-review-ready", "--probe-sidecars", "--out-dir", tempDir],
+        {
+          cwd: repoRoot,
+          timeout: 10_000,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            BROWSER_WEBRTC_BRIDGE_URL: "not-a-url",
+            RTC_ASR_BASE_URL: "http://127.0.0.1:9",
+            RTC_ASR_WS_URL: "ws://127.0.0.1:9/v1/stt/stream",
+            KOKORO_BASE_URL: "http://127.0.0.1:9",
+          },
+        },
+      ),
+      (error: any) => {
+        assert.equal(error.code, 2);
+        return true;
+      },
+    );
+
+    const manifest = JSON.parse(await readFile(path.join(tempDir, "browser-webrtc-live-proof-manifest.json"), "utf8")) as {
+      setup: { sidecarProbeCommand: string };
+      sidecarConnectivity: Array<{ label: string; reachable: boolean; reason?: string }>;
+    };
+    assert.match(manifest.setup.sidecarProbeCommand, /--probe-sidecars/);
+    assert.equal(manifest.sidecarConnectivity.length, 4);
+    assert.deepEqual(
+      manifest.sidecarConnectivity.map((probe) => probe.label),
+      ["pipecatWebrtcBridge", "rtcAsrHttp", "rtcAsrWebsocket", "kokoro"],
+    );
+    assert.ok(manifest.sidecarConnectivity.every((probe) => probe.reachable === false));
+    assert.equal(manifest.sidecarConnectivity[0].reason, "invalid sidecar URL");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("browser WebRTC live proof gate writes a fill-in evidence template", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-browser-webrtc-template-"));

@@ -3,6 +3,7 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import net from "node:net";
 import path from "node:path";
 
 const args = process.argv.slice(2);
@@ -17,6 +18,7 @@ const outDir = getArg("--out-dir", "artifacts/browser-webrtc-live-proof");
 const evidencePath = getArg("--evidence");
 const templatePath = getArg("--write-template");
 const requireReviewReady = args.includes("--require-review-ready");
+const probeSidecars = args.includes("--probe-sidecars");
 
 const setupCommands = [
   "export RTC_ASR_BASE_URL=${RTC_ASR_BASE_URL:-http://127.0.0.1:8080}",
@@ -212,6 +214,49 @@ async function artifactIntegrity(filePath) {
   }
 }
 
+function sidecarUrl(label, value) {
+  try {
+    const url = new URL(value);
+    const port = Number(url.port || (url.protocol === "https:" || url.protocol === "wss:" ? 443 : 80));
+    return { label, url: value, host: url.hostname, port };
+  } catch {
+    return { label, url: value, host: null, port: null, invalid: true };
+  }
+}
+
+function probeTcp({ label, url, host, port, invalid }, timeoutMs = 250) {
+  return new Promise((resolve) => {
+    if (invalid || !host || !port) {
+      resolve({ label, url, reachable: false, reason: "invalid sidecar URL" });
+      return;
+    }
+
+    const socket = net.createConnection({ host, port });
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(result);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => finish({ label, url, host, port, reachable: true }));
+    socket.once("timeout", () => finish({ label, url, host, port, reachable: false, reason: "connection timed out" }));
+    socket.once("error", (error) => finish({ label, url, host, port, reachable: false, reason: error.code ?? error.message }));
+  });
+}
+
+async function sidecarConnectivity() {
+  if (!probeSidecars) return null;
+  const targets = [
+    sidecarUrl("pipecatWebrtcBridge", process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766"),
+    sidecarUrl("rtcAsrHttp", process.env.RTC_ASR_BASE_URL ?? "http://127.0.0.1:8080"),
+    sidecarUrl("rtcAsrWebsocket", process.env.RTC_ASR_WS_URL ?? "ws://127.0.0.1:8080/v1/stt/stream"),
+    sidecarUrl("kokoro", process.env.KOKORO_BASE_URL ?? "http://127.0.0.1:8880"),
+  ];
+  return Promise.all(targets.map((target) => probeTcp(target)));
+}
+
 async function writeEvidenceTemplate(filePath) {
   if (!filePath) return null;
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -320,8 +365,10 @@ const manifest = {
     kokoroBaseUrl: process.env.KOKORO_BASE_URL ?? "http://127.0.0.1:8880",
     commands: setupCommands,
     evidenceTemplateCommand: "npm run browser-webrtc:live-proof -- --write-template artifacts/browser-webrtc-live-proof/proof.template.json",
+    sidecarProbeCommand: "npm run browser-webrtc:live-proof -- --probe-sidecars --out-dir artifacts/browser-webrtc-live-proof/sidecar-preflight",
   },
   checks: validation.checks,
+  sidecarConnectivity: await sidecarConnectivity(),
   artifactIntegrity: await artifactIntegrity(evidencePath),
   reviewGate: {
     requiredLabels: ["pipecat_webrtc_live", "rtc_asr_live", "kokoro_live", "remote_audio_live"],
