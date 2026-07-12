@@ -42,6 +42,21 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.equal(payload.issue, "agonza1/agentic-contact-center#214");
     assert.equal(payload.status, "shared_contract_ready_sip_rtp_blocked");
     assert.equal(payload.reviewReady, false);
+    assert.equal(payload.pipecat14Alignment.issue, "agonza1/agentic-contact-center#222");
+    assert.equal(payload.pipecat14Alignment.packageRequirement, "pipecat-ai[webrtc]==1.4.0");
+    assert.equal(payload.pipecat14Alignment.primaryTransportTarget, "SmallWebRTCTransport");
+    assert.deepEqual(payload.pipecat14Alignment.targetPipeline, [
+      "transport.input",
+      "rtc-asr STT",
+      "ACC caller-turn adapter",
+      "Kokoro TTS",
+      "transport.output",
+    ]);
+    assert.equal(payload.pipecat14Alignment.browserPrimaryBridge.current, "scripts/pipecat-browser-webrtc-bridge.py");
+    assert.equal(payload.pipecat14Alignment.browserPrimaryBridge.legacyFallbackAllowed, false);
+    assert.equal(payload.pipecat14Alignment.sipTransportStrategy.sharesPipelineProcessors, true);
+    assert.equal(payload.pipecat14Alignment.flowsDecision.owner, "ACC TypeScript flow for current cancellation-rescue MVP");
+    assert.equal(payload.pipecat14Alignment.flowsDecision.flowManagerRequiredNow, false);
     assert.deepEqual(payload.validationCommands, [
       "npm test",
       "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
@@ -58,6 +73,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       ["browser_webrtc", "sip_freeswitch_rtp", "signalwire_sip_trunk"],
     );
     assert.equal(adapters.find((adapter: any) => adapter.id === "browser_webrtc").implementedNow, true);
+    assert.equal(adapters.find((adapter: any) => adapter.id === "browser_webrtc").currentEntryPoint, "scripts/pipecat-browser-webrtc-bridge.py");
     assert.equal(adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp").implementedNow, false);
     assert.match(adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp").blocker, /softphone caller playback/);
     assert.match(adapters.find((adapter: any) => adapter.id === "signalwire_sip_trunk").blocker, /past-call import remains out of scope/);
@@ -83,6 +99,10 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     );
     assert.equal(
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "pipecat_tts_frames_packetize_to_freeswitch_rtp").passed,
+      true,
+    );
+    assert.equal(
+      payload.acceptanceCriteria.find((criterion: any) => criterion.name === "pipecat_14_small_webrtc_migration_recorded").passed,
       true,
     );
     assert.equal(payload.remainingWork.some((item: string) => item.includes("softphone evidence")), true);

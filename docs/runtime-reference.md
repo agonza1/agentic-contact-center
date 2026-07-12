@@ -36,6 +36,18 @@ npm run pipecat:check
 
 This verifies the local `pipecat-ai` package boundary only. It does not open microphones, start live telephony, or use provider credentials.
 
+## Pipecat 1.4 media-pipeline alignment
+
+Issue #222 is the migration lane from the current custom browser WebRTC bridge toward the Pipecat 1.4 media shape:
+
+```text
+transport.input -> rtc-asr STT -> ACC caller-turn adapter -> Kokoro TTS -> transport.output
+```
+
+`requirements-pipecat-voice.txt` requests `pipecat-ai[webrtc]==1.4.0` so local installs include the WebRTC extras needed for `SmallWebRTCTransport`. The current bridge remains `scripts/pipecat-browser-webrtc-bridge.py`; the target is a Pipecat `SmallWebRTCTransport` offer route backed by a real `Pipeline`, while preserving the existing ACC `POST /api/browser-webrtc/session` contract. SIP should not use SmallWebRTCTransport; it should enter through the FreeSWITCH/SIP RTP adapter and share the same rtc-asr, ACC adapter, and Kokoro processors behind that transport.
+
+Flows decision for the current MVP: keep cancellation-rescue conversation policy in ACC TypeScript for now. Policy hold, operator steer, proof artifacts, and queue state already live in ACC, so `FlowManager` is not required before the shared media Pipeline is live. Revisit Pipecat Flows after the browser and SIP transports share Pipeline processors. The older `scripts/pipecat-local-voice-bridge.py` path is legacy proof-only and should not be used as the normal browser voice path.
+
 ## Browser WebRTC voice readiness
 
 Issue #213 moves the intended non-SIP browser voice path to realtime WebRTC into Pipecat:
