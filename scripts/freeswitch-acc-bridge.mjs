@@ -144,6 +144,128 @@ async function sha256File(filePath) {
   return createHash("sha256").update(await readFile(filePath)).digest("hex");
 }
 
+
+function latestAgentText(callPayload) {
+  const transcript = Array.isArray(callPayload?.call?.transcript)
+    ? callPayload.call.transcript
+    : Array.isArray(callPayload?.transcript)
+      ? callPayload.transcript
+      : [];
+  for (let index = transcript.length - 1; index >= 0; index -= 1) {
+    const turn = transcript[index];
+    if (turn?.speaker === "agent" && typeof turn.text === "string" && turn.text.trim()) return turn.text.trim();
+  }
+  return "";
+}
+
+async function postRawJson(url, body) {
+  const rawBody = Buffer.from(JSON.stringify(body));
+  return await new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const req = http.request(
+      {
+        hostname: target.hostname,
+        port: target.port || 80,
+        path: `${target.pathname}${target.search}`,
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": rawBody.length },
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        res.on("end", () => resolve({ statusCode: res.statusCode ?? 0, contentType: res.headers["content-type"] ?? "application/octet-stream", body: Buffer.concat(chunks) }));
+      },
+    );
+    req.on("error", reject);
+    req.write(rawBody);
+    req.end();
+  });
+}
+
+function pcm16MonoFromWav(wav) {
+  if (!Buffer.isBuffer(wav) || wav.length < 44 || wav.toString("ascii", 0, 4) !== "RIFF" || wav.toString("ascii", 8, 12) !== "WAVE") {
+    throw new Error("kokoro_wav_invalid");
+  }
+  let offset = 12;
+  let format = null;
+  let data = null;
+  while (offset + 8 <= wav.length) {
+    const id = wav.toString("ascii", offset, offset + 4);
+    const size = wav.readUInt32LE(offset + 4);
+    const start = offset + 8;
+    if (id === "fmt ") {
+      format = {
+        audioFormat: wav.readUInt16LE(start),
+        channels: wav.readUInt16LE(start + 2),
+        sampleRate: wav.readUInt32LE(start + 4),
+        bitsPerSample: wav.readUInt16LE(start + 14),
+      };
+    } else if (id === "data") {
+      data = wav.subarray(start, start + size);
+    }
+    offset = start + size + (size % 2);
+  }
+  if (!format || !data) throw new Error("kokoro_wav_missing_chunks");
+  if (format.audioFormat !== 1 || format.channels !== 1 || format.bitsPerSample !== 16) throw new Error("kokoro_wav_not_pcm16_mono");
+  return { pcm16: data, sampleRateHz: format.sampleRate };
+}
+
+function downsamplePcm16MonoTo8k(pcm16, sampleRateHz) {
+  if (sampleRateHz === 8000) return pcm16;
+  if (!Number.isInteger(sampleRateHz) || sampleRateHz < 8000 || sampleRateHz % 8000 !== 0) throw new Error("kokoro_sample_rate_not_8khz_compatible");
+  const ratio = sampleRateHz / 8000;
+  const sourceSamples = pcm16.length / 2;
+  const targetSamples = Math.floor(sourceSamples / ratio);
+  const target = Buffer.alloc(targetSamples * 2);
+  for (let index = 0; index < targetSamples; index += 1) {
+    target.writeInt16LE(pcm16.readInt16LE(Math.floor(index * ratio) * 2), index * 2);
+  }
+  return target;
+}
+
+function decodeKokoroAudioResponse(response) {
+  const contentType = String(response.contentType ?? "").toLowerCase();
+  if (contentType.includes("json")) {
+    const payload = JSON.parse(response.body.toString("utf8"));
+    let encoded = payload.audio_base64 ?? payload.audioContent ?? payload.audio ?? payload.data;
+    if (encoded && typeof encoded === "object") encoded = encoded.base64 ?? encoded.audio_base64;
+    if (typeof encoded !== "string" || !encoded) throw new Error("kokoro_json_audio_missing");
+    const audio = Buffer.from(encoded, "base64");
+    const responseFormat = String(payload.format ?? payload.response_format ?? "wav").toLowerCase();
+    const sampleRateHz = Number(payload.sample_rate ?? payload.sampleRate ?? 8000);
+    if (responseFormat === "wav" || audio.toString("ascii", 0, 4) === "RIFF") return pcm16MonoFromWav(audio);
+    return { pcm16: audio, sampleRateHz };
+  }
+  if (response.body.toString("ascii", 0, 4) === "RIFF") return pcm16MonoFromWav(response.body);
+  return { pcm16: response.body, sampleRateHz: 8000 };
+}
+
+export async function synthesizeKokoroTtsFrame(text, options = {}) {
+  if (!text || !String(text).trim()) throw new Error("kokoro_tts_text_missing");
+  const baseUrl = options.baseUrl ?? "http://127.0.0.1:8880";
+  const speechPath = options.speechPath ?? "/v1/audio/speech";
+  const url = new URL(speechPath, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
+  const response = await postRawJson(url, {
+    model: options.model ?? "kokoro",
+    voice: options.voice ?? "af_heart",
+    input: String(text),
+    response_format: "wav",
+    sample_rate: 8000,
+  });
+  if (response.statusCode < 200 || response.statusCode >= 300) throw new Error(`kokoro_tts_http_${response.statusCode}`);
+  const decoded = decodeKokoroAudioResponse(response);
+  const pcm16 = downsamplePcm16MonoTo8k(decoded.pcm16, decoded.sampleRateHz);
+  return {
+    frameType: "TTSAudioRawFrame",
+    audioFormat: "pcm_s16le",
+    sampleRateHz: 8000,
+    channels: 1,
+    pcm16Base64: pcm16.toString("base64"),
+    sourceText: String(text),
+    tts: { engine: "kokoro", voice: options.voice ?? "af_heart", model: options.model ?? "kokoro", sourceSampleRateHz: decoded.sampleRateHz, outputSampleRateHz: 8000, audioBytes: pcm16.length },
+  };
+}
+
 function decodePcmuSample(sample) {
   const inverted = (~sample) & 0xff;
   const sign = inverted & 0x80;
@@ -736,7 +858,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
       outboundPlaybackAdapter: pipecatOutboundRtpEvidence?.outboundRtpReady ? "packetized_output_audio_frames_to_pcmu_rtp" : "not_connected",
       bidirectionalPlaybackReady: false,
       blocker: pipecatOutboundRtpEvidence?.rtpSocketSendReady
-        ? "Pipecat TTSAudioRawFrame fixtures are sent to the FreeSWITCH RTP playback socket; live Kokoro/Pipecat TTS frame production still needs to replace fixture playback before full issue #214 acceptance."
+        ? "Pipecat/Kokoro TTSAudioRawFrame output can be sent to the FreeSWITCH RTP playback socket; live softphone caller-audible playback still needs end-to-end acceptance evidence before full issue #214 completion."
         : pipecatOutboundRtpEvidence?.outboundRtpReady
           ? "Kokoro/Pipecat output and TTSAudioRawFrame fixtures can be packetized as RTP, but they have not been sent to a FreeSWITCH caller RTP target yet."
           : "Kokoro/Pipecat TTSAudioRawFrame output is not yet connected to the FreeSWITCH RTP playback socket for SIP caller playback.",
@@ -831,7 +953,29 @@ export class EslBridge {
     for (const frame of frames) await this.rtpPlaybackSink.sendFrame(this.rtpPlaybackSocket, frame);
     if (frames.length > 0) {
       this.pipecatOutputFixturePlayed = true;
-      this.events.push({ at: nowIso(), pipecatOutboundRtpPlayback: this.rtpPlaybackSink.summary() });
+      this.events.push({ at: nowIso(), pipecatOutboundRtpPlayback: this.rtpPlaybackSink.summary(), source: "fixture" });
+    }
+  }
+
+  async playLiveKokoroTts(agentText, uuid) {
+    if (!this.options.kokoroBaseUrl || !this.rtpPlaybackSocket || !agentText) return null;
+    try {
+      const frame = await synthesizeKokoroTtsFrame(agentText, {
+        baseUrl: this.options.kokoroBaseUrl,
+        speechPath: this.options.kokoroSpeechPath,
+        voice: this.options.kokoroVoice,
+        model: this.options.kokoroModel,
+      });
+      await this.rtpPlaybackSink.sendFrame(this.rtpPlaybackSocket, frame);
+      const summary = this.rtpPlaybackSink.summary();
+      this.events.push({ at: nowIso(), pipecatLiveKokoroTtsPlayback: { ...summary, sourceText: agentText, tts: frame.tts } });
+      await this.postPipecatPlaybackEvent(uuid);
+      return summary;
+    } catch (error) {
+      const failure = { at: nowIso(), error: error instanceof Error ? error.message : String(error) };
+      this.rtpPlaybackSink.errors.push(failure);
+      this.events.push({ at: failure.at, pipecatLiveKokoroTtsPlaybackBlocked: failure });
+      return null;
     }
   }
 
@@ -948,7 +1092,7 @@ export class EslBridge {
     } else if (this.options.rtcAsrEvidencePath) {
       const evidence = await inspectRtcAsrEvidence(this.options.rtcAsrEvidencePath, await stat(this.options.rtcAsrEvidencePath).catch(() => null));
       if (evidence.ready && evidence.transcript) {
-        await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
+        const transcriptResponse = await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
           eventType: "media.transcript",
           timestamp: nowIso(),
           sipCallId: uuid,
@@ -956,6 +1100,7 @@ export class EslBridge {
           text: evidence.transcript,
           rtcAsrEvidencePath: this.options.rtcAsrEvidencePath,
         });
+        await this.playLiveKokoroTts(latestAgentText(transcriptResponse.body), uuid);
       }
     }
     await this.flushLog();
@@ -1020,6 +1165,10 @@ async function main() {
     rtpPlaybackHost: argValue("--rtp-playback-host", process.env.ACC_FREESWITCH_RTP_PLAYBACK_HOST || "127.0.0.1"),
     rtpPlaybackPort: Number(argValue("--rtp-playback-port", process.env.ACC_FREESWITCH_RTP_PLAYBACK_PORT || "0")) || undefined,
     pipecatOutputFixturePath: argValue("--pipecat-output-fixture", process.env.ACC_PIPECAT_OUTPUT_FIXTURE),
+    kokoroBaseUrl: argValue("--kokoro-base-url", process.env.KOKORO_BASE_URL),
+    kokoroSpeechPath: argValue("--kokoro-speech-path", process.env.KOKORO_SPEECH_PATH || process.env.KOKORO_TTS_PATH || "/v1/audio/speech"),
+    kokoroVoice: argValue("--kokoro-voice", process.env.KOKORO_VOICE || "af_heart"),
+    kokoroModel: argValue("--kokoro-model", process.env.KOKORO_MODEL || "kokoro"),
   });
   await bridge.start();
   console.log(`FreeSWITCH ACC bridge connected target ${bridge.options.eslHost}:${bridge.options.eslPort}; ACC ${bridge.options.accBaseUrl}`);
