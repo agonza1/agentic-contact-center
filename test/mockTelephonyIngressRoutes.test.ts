@@ -1787,6 +1787,7 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Connect Voice/);
     assert.match(response.body, /Unmute Caller/);
     assert.match(response.body, /Mute Caller/);
+    assert.match(response.body, /Copy Proof/);
     assert.doesNotMatch(response.body, /Check Bridge/);
     assert.match(response.body, /WebRTC unknown/);
     assert.match(response.body, /WebRTC ready/);

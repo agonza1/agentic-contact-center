@@ -1275,7 +1275,7 @@ function buildOperatorConsoleHtml(): string {
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceBridgeEvidence: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceBridgeEvidence: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
     const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve", deny_offer: "Deny", takeover: "Barge In", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
@@ -1496,6 +1496,7 @@ function buildOperatorConsoleHtml(): string {
         state.voiceRemoteAudio = null;
       }
       state.voiceBridgeEvidence = null;
+      state.voiceSessionId = null;
       if (state.voiceStream) {
         state.voiceStream.getTracks().forEach(function(track) { track.stop(); });
         state.voiceStream = null;
@@ -1509,30 +1510,82 @@ function buildOperatorConsoleHtml(): string {
       if (!pc || pc.connectionState === "closed") throw new Error("browser WebRTC peer connection is not active");
       const stats = await pc.getStats();
       const rtcStats = [];
+      const outboundAudioStats = [];
+      const inboundAudioStats = [];
       stats.forEach(function(report) {
-        if (report.type === "inbound-rtp" || report.type === "track" || report.type === "media-source") {
-          rtcStats.push(Object.assign({}, report));
-        }
+        const item = Object.assign({}, report);
+        if (report.type === "inbound-rtp" || report.type === "outbound-rtp" || report.type === "track" || report.type === "media-source") rtcStats.push(item);
+        if (report.type === "outbound-rtp" && (report.kind === "audio" || report.mediaType === "audio")) outboundAudioStats.push(item);
+        if (report.type === "inbound-rtp" && (report.kind === "audio" || report.mediaType === "audio")) inboundAudioStats.push(item);
       });
-      const event = {
-        type: "browser.remote.audio.played",
-        target: "browser",
-        track: "remote audio",
+      const call = selectedCall();
+      const bridge = state.voiceBridgeEvidence && state.voiceBridgeEvidence.bridge ? state.voiceBridgeEvidence.bridge : {};
+      const transcriptTurn = call && Array.isArray(call.transcript) ? call.transcript.slice().reverse().find(function(turn) { return turn.speaker === "caller"; }) : null;
+      const events = [
+        {
+          type: "browser.microphone.uplink",
+          target: "browser",
+          track: "local microphone audio",
+          callId: state.voiceCallId,
+          captured: true,
+          rtcStats: outboundAudioStats,
+          audioTrack: state.voiceStream && state.voiceStream.getAudioTracks()[0] ? {
+            enabled: state.voiceStream.getAudioTracks()[0].enabled,
+            muted: state.voiceStream.getAudioTracks()[0].muted,
+            readyState: state.voiceStream.getAudioTracks()[0].readyState,
+          } : null,
+        },
+        {
+          type: "pipecat.webrtc.offer_answer",
+          transport: "webrtc",
+          bridge: "pipecat",
+          callId: state.voiceCallId,
+          sessionId: state.voiceSessionId,
+          bridgeResponse: bridge,
+        },
+        {
+          type: "browser.remote.audio.played",
+          target: "browser",
+          track: "remote audio",
+          callId: state.voiceCallId,
+          connectionState: pc.connectionState,
+          iceConnectionState: pc.iceConnectionState,
+          inboundRtpAudio: inboundAudioStats[0] || null,
+          rtcStats: rtcStats,
+          audioElement: audio ? {
+            currentTime: audio.currentTime,
+            paused: audio.paused,
+            readyState: audio.readyState,
+            muted: audio.muted,
+          } : null,
+        },
+      ];
+      if (transcriptTurn && transcriptTurn.text) events.push({ type: "rtc-asr.transcript.final", engine: "rtc-asr", final: true, transcript: transcriptTurn.text, callId: state.voiceCallId });
+      if (bridge && bridge.tts) events.push(Object.assign({ type: "kokoro.tts.audio", engine: "kokoro", callId: state.voiceCallId }, bridge.tts));
+      const proof = {
+        capturedAt: new Date().toISOString(),
+        captureSource: "operator-console/browser-webrtc",
         callId: state.voiceCallId,
-        connectionState: pc.connectionState,
-        iceConnectionState: pc.iceConnectionState,
-        bridgeEvidence: state.voiceBridgeEvidence,
-        rtcStats: rtcStats,
-        audioElement: audio ? {
-          currentTime: audio.currentTime,
-          paused: audio.paused,
-          readyState: audio.readyState,
-          muted: audio.muted,
-        } : null,
+        sessionId: state.voiceSessionId,
+        evidence: state.voiceBridgeEvidence,
+        events: events,
       };
-      window.__ACC_BROWSER_WEBRTC_LIVE_PROOF__ = event;
-      return event;
+      window.__ACC_BROWSER_WEBRTC_LIVE_PROOF__ = proof;
+      return proof;
     }
+    async function copyBrowserWebrtcLiveProof() {
+      const proof = await collectBrowserWebrtcLiveProof();
+      const text = JSON.stringify(proof, null, 2);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        setStatus("Browser WebRTC proof copied");
+      } else {
+        window.prompt("Browser WebRTC proof JSON", text);
+        setStatus("Browser WebRTC proof ready");
+      }
+      return proof;
+    }
+    window.__ACC_COPY_BROWSER_WEBRTC_LIVE_PROOF__ = copyBrowserWebrtcLiveProof;
     window.__ACC_COLLECT_BROWSER_WEBRTC_LIVE_PROOF__ = collectBrowserWebrtcLiveProof;
     async function ensureVoiceStream() {
       if (!state.voiceStream) {
@@ -1601,6 +1654,7 @@ function buildOperatorConsoleHtml(): string {
         }
         await pc.setRemoteDescription({ type: payload.type, sdp: payload.sdp });
         state.voiceBridgeEvidence = payload.evidence || null;
+        state.voiceSessionId = payload.sessionId;
         state.voiceCallId = payload.callId;
         state.selectedCallId = payload.callId;
         state.voiceConnecting = false;
@@ -1664,13 +1718,15 @@ function buildOperatorConsoleHtml(): string {
     function voiceControlsHtml() {
       const muteLabel = state.voiceMuted ? "Unmute Caller" : "Mute Caller";
       const bridgeDetail = state.voiceBridge.detail + (state.voiceBridge.checkedAt ? " | last check " + state.voiceBridge.checkedAt : "");
-      return '<section class="section"><h3 class="section-title">Pipecat WebRTC Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute">' + muteLabel + '</button></div><div class="actions"><span id="voice-bridge-status" class="' + voiceBridgeStatusClass() + '">' + escapeHtml(voiceBridgeStatusLabel()) + '</span><span class="status">' + escapeHtml(state.voiceStatus) + '</span></div><span class="meta" id="voice-bridge-detail">' + escapeHtml(bridgeDetail) + '</span><span class="meta">Target path: browser mic -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC playback. This path intentionally does not require ffmpeg for normal operation.</span></section><section class="section diagram"><h3 class="section-title">Demo Flow</h3><svg class="demo-flow-svg" viewBox="0 0 980 360" role="img" aria-label="Caller audio flows through Pipecat, rtc-asr, the agent, Kokoro, operator controls, and ASSERT artifacts" preserveAspectRatio="xMidYMid meet"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0969da"/></marker><style>.node{fill:#ffffff;stroke:#d0d7de;stroke-width:2}.primaryNode{fill:#ddf4ff;stroke:#0969da;stroke-width:2}.artifactNode{fill:#dafbe1;stroke:#1a7f37;stroke-width:2}.label{font:700 17px system-ui,sans-serif;fill:#24292f}.small{font:600 13px system-ui,sans-serif;fill:#57606a}.line{stroke:#0969da;stroke-width:3;fill:none;marker-end:url(#arrow)}.softLine{stroke:#57606a;stroke-width:2.5;stroke-dasharray:7 6;fill:none;marker-end:url(#arrow)}</style></defs><rect class="primaryNode" x="30" y="58" width="145" height="82" rx="10"/><text class="label" x="103" y="92" text-anchor="middle">Caller</text><text class="small" x="103" y="116" text-anchor="middle">browser mic</text><rect class="node" x="225" y="58" width="150" height="82" rx="10"/><text class="label" x="300" y="88" text-anchor="middle">Pipecat</text><text class="small" x="300" y="112" text-anchor="middle">WebRTC bridge</text><rect class="node" x="425" y="58" width="150" height="82" rx="10"/><text class="label" x="500" y="88" text-anchor="middle">rtc-asr</text><text class="small" x="500" y="112" text-anchor="middle">Local STT v1</text><rect class="primaryNode" x="625" y="58" width="150" height="82" rx="10"/><text class="label" x="700" y="88" text-anchor="middle">Agent</text><text class="small" x="700" y="112" text-anchor="middle">goal + memory</text><rect class="node" x="825" y="58" width="125" height="82" rx="10"/><text class="label" x="888" y="88" text-anchor="middle">Kokoro</text><text class="small" x="888" y="112" text-anchor="middle">TTS sidecar</text><rect class="artifactNode" x="515" y="225" width="170" height="82" rx="10"/><text class="label" x="600" y="255" text-anchor="middle">Artifacts</text><text class="small" x="600" y="279" text-anchor="middle">proof + transcript</text><rect class="artifactNode" x="742" y="225" width="178" height="82" rx="10"/><text class="label" x="831" y="255" text-anchor="middle">ASSERT</text><text class="small" x="831" y="279" text-anchor="middle">viewer + eval spec</text><rect class="node" x="210" y="225" width="180" height="82" rx="10"/><text class="label" x="300" y="255" text-anchor="middle">Operator</text><text class="small" x="300" y="279" text-anchor="middle">listen / steer</text><path class="line" d="M175 99 H225"/><path class="line" d="M375 99 H425"/><path class="line" d="M575 99 H625"/><path class="line" d="M775 99 H825"/><path class="line" d="M888 140 C888 178 816 178 775 140"/><path class="line" d="M700 140 V225"/><path class="line" d="M685 266 H742"/><path class="softLine" d="M390 266 C470 266 520 185 625 120"/></svg></section>';
+      return '<section class="section"><h3 class="section-title">Pipecat WebRTC Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute">' + muteLabel + '</button><button type="button" id="voice-copy-proof">Copy Proof</button></div><div class="actions"><span id="voice-bridge-status" class="' + voiceBridgeStatusClass() + '">' + escapeHtml(voiceBridgeStatusLabel()) + '</span><span class="status">' + escapeHtml(state.voiceStatus) + '</span></div><span class="meta" id="voice-bridge-detail">' + escapeHtml(bridgeDetail) + '</span><span class="meta">Target path: browser mic -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC playback. This path intentionally does not require ffmpeg for normal operation.</span></section><section class="section diagram"><h3 class="section-title">Demo Flow</h3><svg class="demo-flow-svg" viewBox="0 0 980 360" role="img" aria-label="Caller audio flows through Pipecat, rtc-asr, the agent, Kokoro, operator controls, and ASSERT artifacts" preserveAspectRatio="xMidYMid meet"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0969da"/></marker><style>.node{fill:#ffffff;stroke:#d0d7de;stroke-width:2}.primaryNode{fill:#ddf4ff;stroke:#0969da;stroke-width:2}.artifactNode{fill:#dafbe1;stroke:#1a7f37;stroke-width:2}.label{font:700 17px system-ui,sans-serif;fill:#24292f}.small{font:600 13px system-ui,sans-serif;fill:#57606a}.line{stroke:#0969da;stroke-width:3;fill:none;marker-end:url(#arrow)}.softLine{stroke:#57606a;stroke-width:2.5;stroke-dasharray:7 6;fill:none;marker-end:url(#arrow)}</style></defs><rect class="primaryNode" x="30" y="58" width="145" height="82" rx="10"/><text class="label" x="103" y="92" text-anchor="middle">Caller</text><text class="small" x="103" y="116" text-anchor="middle">browser mic</text><rect class="node" x="225" y="58" width="150" height="82" rx="10"/><text class="label" x="300" y="88" text-anchor="middle">Pipecat</text><text class="small" x="300" y="112" text-anchor="middle">WebRTC bridge</text><rect class="node" x="425" y="58" width="150" height="82" rx="10"/><text class="label" x="500" y="88" text-anchor="middle">rtc-asr</text><text class="small" x="500" y="112" text-anchor="middle">Local STT v1</text><rect class="primaryNode" x="625" y="58" width="150" height="82" rx="10"/><text class="label" x="700" y="88" text-anchor="middle">Agent</text><text class="small" x="700" y="112" text-anchor="middle">goal + memory</text><rect class="node" x="825" y="58" width="125" height="82" rx="10"/><text class="label" x="888" y="88" text-anchor="middle">Kokoro</text><text class="small" x="888" y="112" text-anchor="middle">TTS sidecar</text><rect class="artifactNode" x="515" y="225" width="170" height="82" rx="10"/><text class="label" x="600" y="255" text-anchor="middle">Artifacts</text><text class="small" x="600" y="279" text-anchor="middle">proof + transcript</text><rect class="artifactNode" x="742" y="225" width="178" height="82" rx="10"/><text class="label" x="831" y="255" text-anchor="middle">ASSERT</text><text class="small" x="831" y="279" text-anchor="middle">viewer + eval spec</text><rect class="node" x="210" y="225" width="180" height="82" rx="10"/><text class="label" x="300" y="255" text-anchor="middle">Operator</text><text class="small" x="300" y="279" text-anchor="middle">listen / steer</text><path class="line" d="M175 99 H225"/><path class="line" d="M375 99 H425"/><path class="line" d="M575 99 H625"/><path class="line" d="M775 99 H825"/><path class="line" d="M888 140 C888 178 816 178 775 140"/><path class="line" d="M700 140 V225"/><path class="line" d="M685 266 H742"/><path class="softLine" d="M390 266 C470 266 520 185 625 120"/></svg></section>';
     }
     function attachVoiceControls() {
       const connect = document.getElementById("voice-connect");
       const mute = document.getElementById("voice-mute");
+      const copyProof = document.getElementById("voice-copy-proof");
       if (connect) connect.addEventListener("click", function() { connectPipecatVoice().catch(function(error) { setStatus(error.message); }); });
       if (mute) mute.addEventListener("click", function() { togglePipecatMute().catch(function(error) { setStatus(error.message); }); });
+      if (copyProof) copyProof.addEventListener("click", function() { copyBrowserWebrtcLiveProof().catch(function(error) { setStatus(error.message); }); });
     }
     function renderDetail() {
       const call = selectedCall();

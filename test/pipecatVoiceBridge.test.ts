@@ -89,9 +89,15 @@ test("operator console surfaces fail-closed voice bridge readiness", () => {
   assert.match(source, /payload\.ok/);
   assert.match(source, /new RTCPeerConnection/);
   assert.match(source, /window\.__ACC_COLLECT_BROWSER_WEBRTC_LIVE_PROOF__/);
+  assert.match(source, /window\.__ACC_COPY_BROWSER_WEBRTC_LIVE_PROOF__/);
+  assert.match(source, /id="voice-copy-proof"/);
+  assert.match(source, /copyBrowserWebrtcLiveProof/);
   assert.match(source, /pc\.getStats\(\)/);
-  assert.match(source, /window\.__ACC_BROWSER_WEBRTC_LIVE_PROOF__ = event/);
-  assert.match(source, /bridgeEvidence: state\.voiceBridgeEvidence/);
+  assert.match(source, /browser\.microphone\.uplink/);
+  assert.match(source, /pipecat\.webrtc\.offer_answer/);
+  assert.match(source, /browser\.remote\.audio\.played/);
+  assert.match(source, /window\.__ACC_BROWSER_WEBRTC_LIVE_PROOF__ = proof/);
+  assert.match(source, /evidence: state\.voiceBridgeEvidence/);
   assert.match(source, /fetch\("\/api\/browser-webrtc\/session"/);
   assert.match(source, /getUserMedia/);
   assert.doesNotMatch(source, /new WebSocket/);
