@@ -11,6 +11,8 @@ const outDir = path.resolve(repoRoot, "site", "cluecon-pages");
 
 function pagesHtml(mode) {
   const html = buildClueConHtml(loadPocConfig(), mode, defaultClueConBrainBlocks());
+  const narrativeHref = mode === "present" ? "../" : "./";
+  const presentHref = mode === "present" ? "./" : "./present/";
   return html
     .replace(
       "</style>",
@@ -20,8 +22,8 @@ function pagesHtml(mode) {
       "<main>",
       '<div class="pages-notice">Static GitHub Pages snapshot. Live proof buttons and operator actions are available from the local runtime server.</div><main>',
     )
-    .replaceAll('href="/cluecon/present"', 'href="./present/"')
-    .replaceAll('href="/cluecon"', 'href="./"')
+    .replaceAll('href="/cluecon/present"', 'href="' + presentHref + '"')
+    .replaceAll('href="/cluecon"', 'href="' + narrativeHref + '"')
     .replaceAll(
       'href="/operator/console"',
       'href="https://github.com/agonza1/agentic-contact-center#readme"',

@@ -430,6 +430,11 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /href="\.\/present\/"/);
   assert.doesNotMatch(html, /href="\/cluecon"/);
 
+  const presentHtml = readFileSync(presentPath, "utf8");
+  assert.match(presentHtml, /href="\.\/"/);
+  assert.match(presentHtml, /href="\.\.\/"/);
+  assert.doesNotMatch(presentHtml, /href="\.\/present\/"/);
+
   const fallbackHtml = readFileSync(fallbackPath, "utf8");
   assert.match(fallbackHtml, /Static GitHub Pages snapshot/);
 });
