@@ -160,7 +160,7 @@ test("browser WebRTC live proof gate accepts rtc-asr alternative transcript shap
         events: [
           { type: "browser.microphone.uplink", target: "browser", track: "local microphone audio", outboundRtpAudio: { packetsSent: 10, bytesSent: 2048 }, audioTrack: { enabled: true } },
           { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-alt" },
-          { type: "rtc_asr.transcript.final", engine: "rtc_asr", final: true, result: { alternatives: [{ transcript: "I need help with my bill." }] } },
+          { type: "rtc_asr.transcript", engine: "rtc_asr", is_final: true, result: { alternatives: [{ transcript: "I need help with my bill." }] } },
           { type: "kokoro.tts.audio", engine: "kokoro", audioBytes: 4096 },
           {
             type: "browser.remote.audio.played",

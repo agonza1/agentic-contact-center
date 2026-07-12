@@ -307,7 +307,7 @@ function validateEvidence(payload, expectedGitHead) {
     rtcAsrFinalTranscript: records.some((record) => {
       const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
       const transcript = transcriptText(record);
-      return textIncludes(record, "rtc-asr") && (type.includes("final") || record.final === true || record.isFinal === true) && transcript.trim().length > 0 && !hasPlaceholderText(transcript);
+      return textIncludes(record, "rtc-asr") && (type.includes("final") || record.final === true || record.isFinal === true || record.is_final === true) && transcript.trim().length > 0 && !hasPlaceholderText(transcript);
     }),
     kokoroAudio: records.some((record) => {
       const audioUrl = typeof record.audioUrl === "string" ? record.audioUrl : typeof record.url === "string" ? record.url : "";
