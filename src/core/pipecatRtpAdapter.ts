@@ -33,6 +33,7 @@ export type RtpPcmuPacketizeOptions = {
   sequenceNumber: number;
   timestamp: number;
   ssrc: number;
+  markerFirstPacket?: boolean;
   samplesPerPacket?: number;
 };
 
@@ -96,7 +97,7 @@ export function pipecatOutputFrameToRtpPcmuPackets(
     const payload = pcmu.subarray(payloadOffset, payloadOffset + samplesPerPacket);
     const packet = Buffer.alloc(12 + payload.length);
     packet[0] = 0x80;
-    packet[1] = 0x00;
+    packet[1] = options.markerFirstPacket === true && packets.length === 0 ? 0x80 : 0x00;
     packet.writeUInt16BE((options.sequenceNumber + packets.length) & 0xffff, 2);
     packet.writeUInt32BE((options.timestamp + payloadOffset) >>> 0, 4);
     packet.writeUInt32BE(options.ssrc >>> 0, 8);

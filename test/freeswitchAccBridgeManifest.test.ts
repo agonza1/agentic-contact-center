@@ -185,7 +185,7 @@ test("FreeSWITCH bridge sends fixture Pipecat output frames to RTP playback sink
         "rtpPlaybackSamplesPerPacket:2," +
         "pipecatOutputFixturePath:" + JSON.stringify(fixturePath) +
       "});",
-      "bridge.rtpPlaybackSocket = { send(packet, port, host, callback) { sent.push({ sequenceNumber: packet.readUInt16BE(2), timestamp: packet.readUInt32BE(4), ssrc: packet.readUInt32BE(8), payloadBytes: packet.length - 12, port, host }); callback(); } };",
+      "bridge.rtpPlaybackSocket = { send(packet, port, host, callback) { sent.push({ sequenceNumber: packet.readUInt16BE(2), timestamp: packet.readUInt32BE(4), marker: (packet[1] & 0x80) !== 0, ssrc: packet.readUInt32BE(8), payloadBytes: packet.length - 12, port, host }); callback(); } };",
       "await bridge.playPipecatOutputFixture();",
       "console.log(JSON.stringify({ sent, summary: bridge.rtpPlaybackSink.summary(), events: bridge.events }));"
     ].join("\n");
@@ -194,14 +194,14 @@ test("FreeSWITCH bridge sends fixture Pipecat output frames to RTP playback sink
       encoding: "utf8",
     });
     const parsed = JSON.parse(stdout) as {
-      sent: Array<{ sequenceNumber: number; timestamp: number; ssrc: number; payloadBytes: number; port: number; host: string }>;
+      sent: Array<{ sequenceNumber: number; timestamp: number; marker: boolean; ssrc: number; payloadBytes: number; port: number; host: string }>;
       summary: { outboundRtpReady: boolean; rtpSocketSendReady: boolean; frameType: string; packetCount: number; sentPacketCount: number; nextSequenceNumber: number; nextTimestamp: number; remotePort: number; totalDurationMs: number; ssrc: number; lastSentAt: string | null; errors: Array<{ error: string }> };
       events: Array<{ pipecatOutboundRtpPlayback?: { outboundRtpReady: boolean } }>;
     };
 
     assert.deepEqual(parsed.sent, [
-      { sequenceNumber: 0xfffe, timestamp: 160, ssrc: 0x0badf00d, payloadBytes: 2, port: 40002, host: "127.0.0.1" },
-      { sequenceNumber: 0xffff, timestamp: 162, ssrc: 0x0badf00d, payloadBytes: 2, port: 40002, host: "127.0.0.1" },
+      { sequenceNumber: 0xfffe, timestamp: 160, marker: true, ssrc: 0x0badf00d, payloadBytes: 2, port: 40002, host: "127.0.0.1" },
+      { sequenceNumber: 0xffff, timestamp: 162, marker: false, ssrc: 0x0badf00d, payloadBytes: 2, port: 40002, host: "127.0.0.1" },
     ]);
     assert.equal(parsed.summary.outboundRtpReady, true);
     assert.equal(parsed.summary.frameType, "OutputAudioRawFrame|TTSAudioRawFrame");

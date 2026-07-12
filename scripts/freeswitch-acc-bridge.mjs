@@ -473,7 +473,7 @@ export function pipecatOutputFrameSummaryToRtpPcmuPackets(frame, options = {}) {
     const payload = pcmu.subarray(payloadOffset, payloadOffset + samplesPerPacket);
     const packet = Buffer.alloc(12 + payload.length);
     packet[0] = 0x80;
-    packet[1] = 0x00;
+    packet[1] = options.markerFirstPacket === true && packets.length === 0 ? 0x80 : 0x00;
     packet.writeUInt16BE(((options.sequenceNumber ?? 0) + packets.length) & 0xffff, 2);
     packet.writeUInt32BE(((options.timestamp ?? 0) + payloadOffset) >>> 0, 4);
     packet.writeUInt32BE((options.ssrc ?? 0xacc0ffee) >>> 0, 8);
@@ -508,6 +508,7 @@ export class PipecatRtpPlaybackSink {
         timestamp: this.options.timestamp,
         ssrc: this.options.ssrc,
         samplesPerPacket: this.options.samplesPerPacket,
+        markerFirstPacket: this.packetCount === 0,
       });
       this.options.sequenceNumber = (this.options.sequenceNumber + packets.length) & 0xffff;
       this.options.timestamp = (this.options.timestamp + packets.reduce((total, packet) => total + packet.length - 12, 0)) >>> 0;

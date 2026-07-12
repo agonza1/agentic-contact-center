@@ -99,13 +99,14 @@ test("Pipecat output PCM16 frames packetize into outbound RTP PCMU packets", () 
       channels: 1,
       pcm16,
     },
-    { sequenceNumber: 0xfffe, timestamp: 0x00000320, ssrc: 0x0badf00d, samplesPerPacket: 2 },
+    { sequenceNumber: 0xfffe, timestamp: 0x00000320, ssrc: 0x0badf00d, markerFirstPacket: true, samplesPerPacket: 2 },
   );
 
   assert.equal(packets.length, 3);
   assert.deepEqual(packets.map((packet) => packet.readUInt16BE(2)), [0xfffe, 0xffff, 0x0000]);
   assert.deepEqual(packets.map((packet) => packet.readUInt32BE(4)), [800, 802, 804]);
   assert.deepEqual(packets.map((packet) => packet.readUInt32BE(8)), [0x0badf00d, 0x0badf00d, 0x0badf00d]);
+  assert.deepEqual(packets.map((packet) => (packet[1] & 0x80) !== 0), [true, false, false]);
   assert.deepEqual([...Buffer.concat(packets.map((packet) => packet.subarray(12)))], [...encodePcm16ToPcmu(pcm16)]);
 });
 
