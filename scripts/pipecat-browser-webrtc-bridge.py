@@ -132,7 +132,8 @@ def probe_json(url: str, service_id: str, timeout: float = 1.5) -> ProbeResult:
         payload = json_http("GET", url, timeout=timeout)
         response_ms = round((time.perf_counter() - started) * 1000)
         explicit_ok = bool(payload.get("ok", True)) if isinstance(payload, dict) else True
-        ready = explicit_ok and str(payload.get("status", "ready")).lower() not in {"offline", "error", "failed"}
+        explicit_ready = payload.get("ready") is not False if isinstance(payload, dict) else True
+        ready = explicit_ok and explicit_ready and str(payload.get("status", "ready")).lower() not in {"offline", "error", "failed", "degraded"}
         return ProbeResult(
             id=service_id,
             ok=ready,

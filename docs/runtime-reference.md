@@ -60,6 +60,7 @@ Normal browser WebRTC sidecar setup:
 ```bash
 export RTC_ASR_BASE_URL=http://127.0.0.1:8080
 export RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream
+export ASR_VAD_FILTER=false
 export KOKORO_BASE_URL=http://127.0.0.1:8880
 export BROWSER_WEBRTC_BRIDGE_URL=http://127.0.0.1:8766
 npm run pipecat:webrtc:install
@@ -77,6 +78,7 @@ The old local WebSocket chunk bridge remains as legacy proof plumbing only. It r
 ```bash
 export RTC_ASR_BASE_URL=http://127.0.0.1:8080
 export RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream
+export ASR_VAD_FILTER=false
 export RTC_ASR_MODEL=mlx-community/parakeet-tdt_ctc-110m
 export KOKORO_BASE_URL=http://127.0.0.1:8880
 export KOKORO_VOICE=af_heart
