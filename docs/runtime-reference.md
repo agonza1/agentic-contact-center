@@ -100,6 +100,16 @@ npm run pipecat:voice
 
 The legacy bridge ready payload and each successful `turn.evidence` report `stt.engine=rtc-asr` and `tts.engine=kokoro`, plus sidecar health or elapsed timing. This legacy bridge is not the Issue #213 normal browser voice path.
 
+## Unified Pipecat media-engine readiness
+
+Issue #214 tracks the target shared media engine for browser WebRTC, local SIP/FreeSWITCH, and future SignalWire SIP trunk audio. The current reviewable contract is exposed at:
+
+```bash
+curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness
+```
+
+The payload is intentionally not a fake green light. It marks the browser Pipecat voice bridge as implemented, keeps the local SIP/FreeSWITCH proof bundle behavior intact, and reports the remaining blocker: FreeSWITCH RTP is not yet streamed bidirectionally through Pipecat frames for realtime SIP caller playback. The FreeSWITCH bridge can optionally listen on `ACC_FREESWITCH_RTP_LISTEN_PORT`/`--rtp-listen-port` and collect inbound PCMU RTP packets into Pipecat-compatible `InputAudioRawFrameBatch` evidence, but rtc-asr streaming and Kokoro RTP playback still need the next wiring slice. SignalWire is documented as a future SIP trunk -> FreeSWITCH/Pipecat route; historical/past-call import remains a separate importer task.
+
 ## Demo flow
 
 Seeded caller turns for the cancellation-rescue script:
@@ -201,6 +211,7 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `GET /api/operator/actions`: expose the Slack-ready operator action catalog with command examples, reason/pending-call requirements, HTTP body templates, and outcome hints for console buttons.
 - `GET /api/realtime-shim/proof`: expose deterministic Gateway relay and Local STT v1 evidence for the mocked realtime shim path.
 - `GET /api/realtime-shim/readiness`: summarize adapter shape, browser relay compatibility, reviewer packet, mocked pieces, and limitations from proof evidence.
+- `GET /api/pipecat-media-engine/readiness`: expose the Issue #214 shared browser WebRTC, local SIP/FreeSWITCH, and SignalWire SIP trunk Pipecat media-engine contract, including the current realtime SIP RTP blocker.
 - `GET /api/browser-webrtc/readiness`: expose the Issue #213 browser WebRTC voice contract, dependency readiness, bridge endpoint, and legacy chunk bridge isolation.
 - `POST /api/browser-webrtc/session`: validate browser SDP offers, allocate or preserve an ACC call ID, and proxy offer/answer signaling to the local Pipecat WebRTC bridge.
 - `GET /api/realtime-shim/speech-enhancement-spike`: summarize latency-configurable speech enhancement placement, candidate latency settings, replay metric shape, and feature-flag recommendation for `rtc-asr`.

@@ -24,6 +24,7 @@ import {
 import { compareTimestamps, getAttentionMetadata } from "../core/attention";
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { LocalRealtimeShimPrototype } from "../core/localRealtimeShimPrototype";
+import { buildPipecatMediaEngineReadinessPayload } from "../core/pipecatMediaEngineReadiness";
 import { getPipecatPrototypeHealth, SCRIPTED_CALLER_TURNS } from "../core/pipecatFlowPrototype";
 import { REALTIME_SHIM_RPCS } from "../core/realtimeShimContract";
 import {
@@ -2355,6 +2356,18 @@ function parseOptionalNonNegativeInteger(value: unknown, error: string): number 
   return value;
 }
 
+function parseOptionalNonNegativeNumber(value: unknown, error: string): number | null | { error: string } {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return { error };
+  }
+
+  return value;
+}
+
 function isFlowState(value: string): value is FlowState {
   return flowStates.has(value as FlowState);
 }
@@ -2407,14 +2420,23 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
   const mediaCaptureEvent = getLatestEvent(snapshot, "media_capture_attached");
   const asrTranscriptEvent = getLatestEvent(snapshot, "rtc_asr_transcript");
   const asrBlockedEvent = getLatestEvent(snapshot, "rtc_asr_blocked");
+  const playbackEvent = getLatestEvent(snapshot, "pipecat_rtp_playback_attached");
   const endedEvent = getLatestEvent(snapshot, "sip_call_ended");
   const handoffEvent = getLatestEvent(snapshot, "human_handoff_started");
   const audioWavPath = getOptionalEventString(mediaCaptureEvent?.detail.audioWavPath);
   const sipLogPath = getOptionalEventString(mediaCaptureEvent?.detail.sipLogPath);
   const rtcAsrEvidencePath = getOptionalEventString(asrTranscriptEvent?.detail.evidencePath ?? asrBlockedEvent?.detail.evidencePath);
+  const callerPlaybackEvidencePath = getOptionalEventString(playbackEvent?.detail.callerPlaybackEvidencePath);
   const generatedMedia = mediaCaptureEvent?.detail.generatedMedia === true || labels.media === "generated_media";
   const hasLiveAudioCapture = Boolean(mediaCaptureEvent && labels.media === "live_capture" && !generatedMedia);
   const hasLiveTelephony = labels.telephony === "local_sip" || labels.telephony === "signalwire_live";
+  const hasCallerPlaybackProof = Boolean(
+    playbackEvent?.detail.callerPlaybackConfirmed === true &&
+      playbackEvent.detail.rtpSocketSendReady === true &&
+      typeof playbackEvent.detail.sentPacketCount === "number" &&
+      playbackEvent.detail.sentPacketCount > 0 &&
+      callerPlaybackEvidencePath,
+  );
   const asrStatus = asrTranscriptEvent
     ? "transcript_received"
     : asrBlockedEvent
@@ -2429,7 +2451,7 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
     : labels.media === "live_capture"
       ? "waiting_for_capture"
       : "generated_media";
-  const evalStatus = hasLiveTelephony && hasLiveAudioCapture && asrTranscriptEvent
+  const evalStatus = hasLiveTelephony && hasLiveAudioCapture && asrTranscriptEvent && hasCallerPlaybackProof
     ? "ready_for_conversation_agent_evals"
     : hasLiveTelephony && hasLiveAudioCapture && asrBlockedEvent
       ? "ready_with_rtc_asr_blocker"
@@ -2437,6 +2459,9 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
   const caveats = [
     !hasLiveTelephony ? "Telephony is mocked; run a local SIP or SignalWire live call before review." : null,
     !hasLiveAudioCapture ? "No real caller WAV is attached yet." : null,
+    hasLiveTelephony && hasLiveAudioCapture && asrTranscriptEvent && !hasCallerPlaybackProof
+      ? "No caller-audible playback proof is attached yet."
+      : null,
     generatedMedia ? "Generated media is present and cannot satisfy the live-capture acceptance bar." : null,
     asrBlockedEvent ? getOptionalEventString(asrBlockedEvent.detail.blocker) ?? "rtc-asr is blocked; see evidence path or event trail." : null,
     labels.telephony === "signalwire_live" && labels.credentialsMode !== "signalwire_live" ? "SignalWire credentials/DID routing are not active." : null,
@@ -2481,6 +2506,30 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
         : asrBlockedEvent
           ? snapshot.session.openclawSession.artifactLinks.events + "?type=rtc_asr_blocked&limit=1&order=desc"
           : null,
+    },
+    playback: {
+      status: playbackEvent
+        ? playbackEvent.detail.rtpSocketSendReady === true
+          ? playbackEvent.detail.callerPlaybackConfirmed === true
+            ? "caller_playback_confirmed"
+            : "rtp_sent_to_socket"
+          : playbackEvent.detail.outboundRtpReady === true
+            ? "rtp_packetized"
+            : "blocked"
+        : "not_attempted",
+      outboundRtpReady: playbackEvent?.detail.outboundRtpReady === true,
+      rtpSocketSendReady: playbackEvent?.detail.rtpSocketSendReady === true,
+      packetCount: typeof playbackEvent?.detail.packetCount === "number" ? playbackEvent.detail.packetCount : null,
+      sentPacketCount: typeof playbackEvent?.detail.sentPacketCount === "number" ? playbackEvent.detail.sentPacketCount : null,
+      totalDurationMs: typeof playbackEvent?.detail.totalDurationMs === "number" ? playbackEvent.detail.totalDurationMs : null,
+      ssrc: typeof playbackEvent?.detail.ssrc === "number" ? playbackEvent.detail.ssrc : null,
+      remoteHost: getOptionalEventString(playbackEvent?.detail.remoteHost),
+      remotePort: typeof playbackEvent?.detail.remotePort === "number" ? playbackEvent.detail.remotePort : null,
+      lastSentAt: getOptionalEventString(playbackEvent?.detail.lastSentAt),
+      evidencePath: getOptionalEventString(playbackEvent?.detail.evidencePath),
+      callerPlaybackConfirmed: playbackEvent?.detail.callerPlaybackConfirmed === true,
+      callerPlaybackEvidencePath,
+      eventTrail: playbackEvent ? snapshot.session.openclawSession.artifactLinks.events + "?type=pipecat_rtp_playback_attached&limit=1&order=desc" : null,
     },
     sip: {
       endedAt: endedEvent?.at ?? null,
@@ -4290,6 +4339,11 @@ async function routeRequest(
     return;
   }
 
+  if (request.method === "GET" && pathname === "/api/pipecat-media-engine/readiness") {
+    writeJson(response, 200, buildPipecatMediaEngineReadinessPayload());
+    return;
+  }
+
   if (request.method === "GET" && pathname === "/api/browser-webrtc/readiness") {
     writeJson(response, 200, buildBrowserWebrtcReadinessPayload());
     return;
@@ -4837,7 +4891,7 @@ async function routeRequest(
     }
 
     const eventType = getOptionalTrimmedString(body.eventType);
-    if (!eventType || !["call.started", "media.capture", "media.transcript", "rtc_asr.blocked", "call.ended", "call.error"].includes(eventType)) {
+    if (!eventType || !["call.started", "media.capture", "media.playback", "media.transcript", "rtc_asr.blocked", "call.ended", "call.error"].includes(eventType)) {
       writeBadRequest(response, "live_sip_event_type_invalid");
       return;
     }
@@ -4916,6 +4970,76 @@ async function routeRequest(
             sipLogPath: getOptionalTrimmedString(body.sipLogPath) ?? null,
             rtpPacketCount,
             generatedMedia: body.generatedMedia === true,
+          },
+        });
+        writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+        return;
+      }
+
+      if (eventType === "media.playback") {
+        const packetCount = parseOptionalNonNegativeInteger(body.packetCount, "live_sip_playback_packet_count_invalid");
+        if (packetCount !== null && typeof packetCount === "object") {
+          writeBadRequest(response, packetCount.error);
+          return;
+        }
+        const sentPacketCount = parseOptionalNonNegativeInteger(body.sentPacketCount, "live_sip_playback_sent_packet_count_invalid");
+        if (sentPacketCount !== null && typeof sentPacketCount === "object") {
+          writeBadRequest(response, sentPacketCount.error);
+          return;
+        }
+        const remotePort = parseOptionalNonNegativeInteger(body.remotePort, "live_sip_playback_remote_port_invalid");
+        if (remotePort !== null && typeof remotePort === "object") {
+          writeBadRequest(response, remotePort.error);
+          return;
+        }
+        if (remotePort !== null && (remotePort <= 0 || remotePort > 65535)) {
+          writeBadRequest(response, "live_sip_playback_remote_port_invalid");
+          return;
+        }
+        const totalDurationMs = parseOptionalNonNegativeNumber(body.totalDurationMs, "live_sip_playback_total_duration_ms_invalid");
+        if (totalDurationMs !== null && typeof totalDurationMs === "object") {
+          writeBadRequest(response, totalDurationMs.error);
+          return;
+        }
+        const ssrc = parseOptionalNonNegativeInteger(body.ssrc, "live_sip_playback_ssrc_invalid");
+        if (ssrc !== null && typeof ssrc === "object") {
+          writeBadRequest(response, ssrc.error);
+          return;
+        }
+        if (packetCount !== null && sentPacketCount !== null && sentPacketCount > packetCount) {
+          writeBadRequest(response, "live_sip_playback_sent_packet_count_exceeds_packet_count");
+          return;
+        }
+        const remoteHost = getOptionalTrimmedString(body.remoteHost);
+        if (body.rtpSocketSendReady === true && (!sentPacketCount || remotePort === null || !remoteHost)) {
+          writeBadRequest(response, "live_sip_playback_socket_send_evidence_incomplete");
+          return;
+        }
+        if (body.callerPlaybackConfirmed === true && body.rtpSocketSendReady !== true) {
+          writeBadRequest(response, "live_sip_playback_confirmation_without_socket_send");
+          return;
+        }
+        if (body.callerPlaybackConfirmed === true && !getOptionalTrimmedString(body.callerPlaybackEvidencePath)) {
+          writeBadRequest(response, "live_sip_playback_confirmation_evidence_required");
+          return;
+        }
+
+        const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+          eventType: "pipecat_rtp_playback_attached",
+          timestamp,
+          detail: {
+            outboundRtpReady: body.outboundRtpReady === true,
+            rtpSocketSendReady: body.rtpSocketSendReady === true,
+            packetCount,
+            sentPacketCount,
+            totalDurationMs,
+            ssrc,
+            remoteHost: remoteHost ?? null,
+            remotePort,
+            lastSentAt: getOptionalTrimmedString(body.lastSentAt) ?? null,
+            evidencePath: getOptionalTrimmedString(body.evidencePath) ?? null,
+            callerPlaybackConfirmed: body.callerPlaybackConfirmed === true,
+            callerPlaybackEvidencePath: getOptionalTrimmedString(body.callerPlaybackEvidencePath) ?? null,
           },
         });
         writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });

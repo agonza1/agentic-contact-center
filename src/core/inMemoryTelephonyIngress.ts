@@ -383,7 +383,7 @@ export class InMemoryTelephonyIngress {
   async recordLiveTelephonyEvidence(
     callId: string,
     evidence: {
-      eventType: "media_capture_attached" | "rtc_asr_transcript" | "rtc_asr_blocked" | "sip_call_ended";
+      eventType: "media_capture_attached" | "pipecat_rtp_playback_attached" | "rtc_asr_transcript" | "rtc_asr_blocked" | "sip_call_ended";
       timestamp?: string;
       detail?: Record<string, string | number | boolean | null>;
     },
@@ -395,6 +395,13 @@ export class InMemoryTelephonyIngress {
     }
 
     const recordedAt = evidence.timestamp ?? new Date().toISOString();
+    const previousRtcAsrMode = snapshot.session.runtimeModeLabels.rtcAsr;
+    if (evidence.eventType === "rtc_asr_transcript") {
+      snapshot.session.runtimeModeLabels.rtcAsr = "rtc_asr_live";
+    } else if (evidence.eventType === "rtc_asr_blocked") {
+      snapshot.session.runtimeModeLabels.rtcAsr = "rtc_asr_blocked";
+    }
+
     snapshot.events.push({
       type: evidence.eventType,
       at: recordedAt,
@@ -402,6 +409,7 @@ export class InMemoryTelephonyIngress {
         telephonyMode: snapshot.session.runtimeModeLabels.telephony,
         mediaMode: snapshot.session.runtimeModeLabels.media,
         rtcAsrMode: snapshot.session.runtimeModeLabels.rtcAsr,
+        previousRtcAsrMode,
         ...evidence.detail,
       },
     });

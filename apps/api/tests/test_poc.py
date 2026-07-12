@@ -85,3 +85,35 @@ def test_slack_ask_command_generates_answer() -> None:
 def test_unknown_session_returns_404() -> None:
     response = client.get("/api/poc/sessions/does-not-exist")
     assert response.status_code == 404
+
+
+def test_pipecat_media_engine_readiness_contract():
+    response = client.get("/api/pipecat-media-engine/readiness")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "shared_contract_ready_sip_rtp_blocked"
+    assert body["reviewReady"] is False
+    assert [adapter["id"] for adapter in body["sharedEngineContract"]["requiredAdapters"]] == [
+        "browser_webrtc",
+        "sip_freeswitch_rtp",
+        "signalwire_sip_trunk",
+    ]
+    assert body["sharedEngineContract"]["requiredAdapters"][1]["implementedNow"] is False
+    assert "FreeSWITCH RTP" in body["reviewBlockers"][0]
+
+
+def test_telephony_ingress_updates_runtime_labels():
+    session_id = create_live_session()
+    response = client.post(
+        f"/api/poc/sessions/{session_id}/telephony-ingress",
+        json={"provider": "signalwire", "caller": "+13125550123", "call_id": "sw-label-001"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["poc"]["runtime_labels"] == {
+        "telephony": "signalwire_live",
+        "media": "live_capture",
+        "rtc_asr": "rtc_asr_blocked",
+        "credentials": "signalwire_live",
+    }

@@ -50,6 +50,30 @@ def health() -> dict[str, object]:
     }
 
 
+@app.get("/api/pipecat-media-engine/readiness")
+def pipecat_media_engine_readiness() -> dict[str, object]:
+    blocker = (
+        "FreeSWITCH RTP is not yet streamed bidirectionally through Pipecat frames; "
+        "the current SIP bridge records/captures media and blocks rtc-asr live review until evidence is attached."
+    )
+    return {
+        "ok": True,
+        "route": "/api/pipecat-media-engine/readiness",
+        "status": "shared_contract_ready_sip_rtp_blocked",
+        "reviewReady": False,
+        "sharedEngineContract": {
+            "engine": "pipecat-ai",
+            "callTurnEngine": "rtc-asr -> ACC caller-turn -> Kokoro",
+            "requiredAdapters": [
+                {"id": "browser_webrtc", "implementedNow": True},
+                {"id": "sip_freeswitch_rtp", "implementedNow": False, "blocker": blocker},
+                {"id": "signalwire_sip_trunk", "implementedNow": False, "blocker": "SignalWire live path depends on the missing FreeSWITCH RTP adapter."},
+            ],
+        },
+        "reviewBlockers": [blocker],
+    }
+
+
 @app.get("/")
 def root() -> FileResponse:
     return FileResponse(WEB_DIR / "index.html")

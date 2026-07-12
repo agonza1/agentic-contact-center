@@ -87,6 +87,12 @@ class PresentationSession(BaseModel):
                 "slack_steer": "pending",
                 "demo_fallback": "disarmed",
             },
+            "runtime_labels": {
+                "telephony": "mocked_telephony",
+                "media": "generated_media",
+                "rtc_asr": "rtc_asr_blocked",
+                "credentials": "mocked",
+            },
             "telephony": {
                 "ready": True,
                 "provider": None,

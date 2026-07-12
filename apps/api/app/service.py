@@ -52,6 +52,14 @@ class POCSessionService:
             }
         )
         session.poc["architecture"]["telephony_ingress"] = "connected"
+        session.poc["runtime_labels"].update(
+            {
+                "telephony": "signalwire_live" if request.provider == "signalwire" else "local_sip",
+                "media": "live_capture",
+                "rtc_asr": "rtc_asr_blocked",
+                "credentials": "signalwire_live" if request.provider == "signalwire" else "mocked",
+            }
+        )
         self._append_event(
             session,
             "telephony-ingress",
