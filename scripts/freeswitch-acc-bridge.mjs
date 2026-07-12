@@ -994,6 +994,9 @@ export class EslBridge {
       sentPacketCount: playbackSummary.sentPacketCount,
       remoteHost: playbackSummary.remoteHost,
       remotePort: playbackSummary.remotePort,
+      totalDurationMs: playbackSummary.totalDurationMs,
+      ssrc: playbackSummary.ssrc,
+      lastSentAt: playbackSummary.lastSentAt,
       evidencePath: this.options.manifestPath,
     });
     this.pipecatPlaybackEventPosted = true;

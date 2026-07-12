@@ -2079,6 +2079,18 @@ function parseOptionalNonNegativeInteger(value: unknown, error: string): number 
   return value;
 }
 
+function parseOptionalNonNegativeNumber(value: unknown, error: string): number | null | { error: string } {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return { error };
+  }
+
+  return value;
+}
+
 function isFlowState(value: string): value is FlowState {
   return flowStates.has(value as FlowState);
 }
@@ -2221,8 +2233,11 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
       rtpSocketSendReady: playbackEvent?.detail.rtpSocketSendReady === true,
       packetCount: typeof playbackEvent?.detail.packetCount === "number" ? playbackEvent.detail.packetCount : null,
       sentPacketCount: typeof playbackEvent?.detail.sentPacketCount === "number" ? playbackEvent.detail.sentPacketCount : null,
+      totalDurationMs: typeof playbackEvent?.detail.totalDurationMs === "number" ? playbackEvent.detail.totalDurationMs : null,
+      ssrc: typeof playbackEvent?.detail.ssrc === "number" ? playbackEvent.detail.ssrc : null,
       remoteHost: getOptionalEventString(playbackEvent?.detail.remoteHost),
       remotePort: typeof playbackEvent?.detail.remotePort === "number" ? playbackEvent.detail.remotePort : null,
+      lastSentAt: getOptionalEventString(playbackEvent?.detail.lastSentAt),
       evidencePath: getOptionalEventString(playbackEvent?.detail.evidencePath),
       callerPlaybackConfirmed: playbackEvent?.detail.callerPlaybackConfirmed === true,
       callerPlaybackEvidencePath: getOptionalEventString(playbackEvent?.detail.callerPlaybackEvidencePath),
@@ -4557,6 +4572,16 @@ async function routeRequest(
           writeBadRequest(response, remotePort.error);
           return;
         }
+        const totalDurationMs = parseOptionalNonNegativeNumber(body.totalDurationMs, "live_sip_playback_total_duration_ms_invalid");
+        if (totalDurationMs !== null && typeof totalDurationMs === "object") {
+          writeBadRequest(response, totalDurationMs.error);
+          return;
+        }
+        const ssrc = parseOptionalNonNegativeInteger(body.ssrc, "live_sip_playback_ssrc_invalid");
+        if (ssrc !== null && typeof ssrc === "object") {
+          writeBadRequest(response, ssrc.error);
+          return;
+        }
         if (packetCount !== null && sentPacketCount !== null && sentPacketCount > packetCount) {
           writeBadRequest(response, "live_sip_playback_sent_packet_count_exceeds_packet_count");
           return;
@@ -4578,8 +4603,11 @@ async function routeRequest(
             rtpSocketSendReady: body.rtpSocketSendReady === true,
             packetCount,
             sentPacketCount,
+            totalDurationMs,
+            ssrc,
             remoteHost: getOptionalTrimmedString(body.remoteHost) ?? null,
             remotePort,
+            lastSentAt: getOptionalTrimmedString(body.lastSentAt) ?? null,
             evidencePath: getOptionalTrimmedString(body.evidencePath) ?? null,
             callerPlaybackConfirmed: body.callerPlaybackConfirmed === true,
             callerPlaybackEvidencePath: getOptionalTrimmedString(body.callerPlaybackEvidencePath) ?? null,

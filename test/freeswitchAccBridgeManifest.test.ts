@@ -195,7 +195,7 @@ test("FreeSWITCH bridge sends fixture Pipecat output frames to RTP playback sink
     });
     const parsed = JSON.parse(stdout) as {
       sent: Array<{ sequenceNumber: number; timestamp: number; ssrc: number; payloadBytes: number; port: number; host: string }>;
-      summary: { outboundRtpReady: boolean; rtpSocketSendReady: boolean; frameType: string; packetCount: number; sentPacketCount: number; nextSequenceNumber: number; nextTimestamp: number; remotePort: number; lastSentAt: string | null; errors: Array<{ error: string }> };
+      summary: { outboundRtpReady: boolean; rtpSocketSendReady: boolean; frameType: string; packetCount: number; sentPacketCount: number; nextSequenceNumber: number; nextTimestamp: number; remotePort: number; totalDurationMs: number; ssrc: number; lastSentAt: string | null; errors: Array<{ error: string }> };
       events: Array<{ pipecatOutboundRtpPlayback?: { outboundRtpReady: boolean } }>;
     };
 
@@ -212,6 +212,9 @@ test("FreeSWITCH bridge sends fixture Pipecat output frames to RTP playback sink
     assert.equal(parsed.summary.nextSequenceNumber, 0);
     assert.equal(parsed.summary.nextTimestamp, 164);
     assert.equal(parsed.summary.remotePort, 40002);
+    assert.equal(parsed.summary.totalDurationMs, 0.5);
+    assert.equal(parsed.summary.ssrc, 0x0badf00d);
+    assert.match(parsed.summary.lastSentAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
     assert.deepEqual(parsed.summary.errors, []);
     assert.equal(parsed.events.some((event) => event.pipecatOutboundRtpPlayback?.outboundRtpReady), true);
   } finally {
@@ -388,7 +391,7 @@ test("FreeSWITCH bridge sends live Kokoro TTS frames to RTP playback sink", asyn
     const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], { cwd: repoRoot, encoding: "utf8" });
     const parsed = JSON.parse(stdout) as {
       sentRtp: Array<{ sequenceNumber: number; timestamp: number; port: number; host: string }>;
-      summary: { rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; remotePort: number };
+      summary: { rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; remotePort: number; totalDurationMs: number; ssrc: number; lastSentAt: string | null };
       events: Array<{ pipecatLiveKokoroTtsPlayback?: { sourceText: string; tts: { engine: string; outputSampleRateHz: number } } }>;
     };
 
@@ -401,6 +404,9 @@ test("FreeSWITCH bridge sends live Kokoro TTS frames to RTP playback sink", asyn
     assert.equal(parsed.summary.sentPacketCount, 2);
     assert.equal(parsed.summary.rtpSocketSendReady, true);
     assert.equal(parsed.summary.remotePort, 40002);
+    assert.equal(parsed.summary.totalDurationMs, 0.5);
+    assert.equal(parsed.summary.ssrc, 0x0badf00d);
+    assert.match(parsed.summary.lastSentAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
     const playback = parsed.events.find((event) => event.pipecatLiveKokoroTtsPlayback)?.pipecatLiveKokoroTtsPlayback;
     assert.equal(playback?.sourceText, "Agent response from ACC");
     assert.equal(playback?.tts.engine, "kokoro");

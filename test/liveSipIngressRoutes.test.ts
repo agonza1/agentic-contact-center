@@ -77,6 +77,9 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
       sentPacketCount: 3,
       remoteHost: "127.0.0.1",
       remotePort: 40002,
+      totalDurationMs: 60,
+      ssrc: 0xacc0ffee,
+      lastSentAt: "2026-06-30T10:00:02.220Z",
       evidencePath: "artifacts/freeswitch-live/freeswitch-live-proof-manifest.json",
       callerPlaybackConfirmed: true,
       callerPlaybackEvidencePath: "artifacts/freeswitch-live/caller-playback-proof.json",
@@ -160,6 +163,9 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
     assert.equal(liveProof.playback.status, "caller_playback_confirmed");
     assert.equal(liveProof.playback.sentPacketCount, 3);
     assert.equal(liveProof.playback.remotePort, 40002);
+    assert.equal(liveProof.playback.totalDurationMs, 60);
+    assert.equal(liveProof.playback.ssrc, 0xacc0ffee);
+    assert.equal(liveProof.playback.lastSentAt, "2026-06-30T10:00:02.220Z");
     assert.equal(liveProof.playback.callerPlaybackConfirmed, true);
     assert.equal(liveProof.playback.callerPlaybackEvidencePath, "artifacts/freeswitch-live/caller-playback-proof.json");
     assert.equal(liveProof.asr.status, "transcript_received");
