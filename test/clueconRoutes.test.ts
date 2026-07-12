@@ -150,10 +150,11 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.callFlow.issue, "agonza1/agentic-contact-center#217");
   assert.equal(payload.callFlow.cadenceMs, 1000);
   assert.equal(payload.callFlow.credentialRequirement, "none");
-  assert.deepEqual(payload.callFlow.stages.map((stage) => stage.id), ["audio_in", "stt", "agent", "tts", "audio_out"]);
-  assert.ok(payload.callFlow.stages.some((stage) => stage.label === "Audio bytes in"));
-  assert.ok(payload.callFlow.stages.some((stage) => stage.label === "Text-to-audio / TTS"));
-  assert.ok(payload.callFlow.stages.some((stage) => stage.packet === "RTP/browser audio"));
+  assert.deepEqual(payload.callFlow.stages.map((stage) => stage.id), ["audio_in", "transport", "stt", "agent", "tts"]);
+  assert.ok(payload.callFlow.stages.some((stage) => stage.label === "Caller audio in"));
+  assert.ok(payload.callFlow.stages.some((stage) => stage.label === "Transport + codec normalize"));
+  assert.ok(payload.callFlow.stages.some((stage) => stage.label === "Text → audio out"));
+  assert.ok(payload.callFlow.stages.some((stage) => /PCM16/.test(stage.packet)));
   assert.equal(payload.routes.scrollable, "/cluecon");
   assert.equal(payload.routes.present, "/cluecon/present");
   assert.equal(payload.routes.scriptedDemo, "/api/demo/run-end-to-end");
@@ -406,10 +407,16 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.doesNotMatch(narrative.body, /ClueCon vertical slice/i);
   assert.match(narrative.body, /Alberto Gonzalez CTO @ WebRTC\.ventures/);
   assert.match(narrative.body, /Realtime call flow visualization/);
-  assert.match(narrative.body, /Audio bytes in/);
-  assert.match(narrative.body, /Audio-to-text \/ STT/);
-  assert.match(narrative.body, /Text-to-audio \/ TTS/);
-  assert.match(narrative.body, /flow-packet tertiary/);
+  assert.match(narrative.body, /Caller audio in/);
+  assert.match(narrative.body, /Telephony SIP/);
+  assert.match(narrative.body, /Browser WebRTC/);
+  assert.match(narrative.body, /Transport \+ codec normalize/);
+  assert.match(narrative.body, /Audio → text \/ tokens/);
+  assert.match(narrative.body, /Text → audio out/);
+  assert.match(narrative.body, /voice-pipeline/);
+  assert.match(narrative.body, /xform-carrier/);
+  assert.match(narrative.body, /media-wave/);
+  assert.match(narrative.body, /media-tokens/);
   assert.match(narrative.body, /Run scripted demo/);
   assert.match(narrative.body, /Run scripted proof/);
   assert.match(narrative.body, /Run eval proof/);
@@ -419,6 +426,11 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /renderAsrPanel/);
   assert.match(narrative.body, /runEvalProof/);
   assert.match(narrative.body, /goToSlide/);
+  assert.match(narrative.body, /@media \(max-width: 1100px\) \{ #demo \.two/);
+  assert.match(narrative.body, /\.present #demo \{ height: calc\(100vh - 62px\)/);
+  assert.match(narrative.body, /\.present \.topbar \{ position: static/);
+  assert.match(narrative.body, /#demo \.actions \{ display: grid/);
+  assert.match(narrative.body, /#demo \.event strong, #demo \.event \.muted \{ overflow-wrap: anywhere/);
   assert.match(narrative.body, /join\("\\n"\)/);
   assert.match(narrative.body, /class="scroll"/);
 

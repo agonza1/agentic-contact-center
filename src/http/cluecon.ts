@@ -314,11 +314,36 @@ function buildBasePayload(
       mode: "deterministic_local_fixture",
       credentialRequirement: "none",
       stages: [
-        { id: "audio_in", label: "Audio bytes in", detail: "PCM16 frames from caller", packet: "8 KB/s" },
-        { id: "stt", label: "Audio-to-text / STT", detail: "rtc-asr transcript events", packet: "partial -> final" },
-        { id: "agent", label: "Text + agent reasoning", detail: "policy, tools, operator hold", packet: "intent + action" },
-        { id: "tts", label: "Text-to-audio / TTS", detail: "local TTS or fallback voice", packet: "speech chunks" },
-        { id: "audio_out", label: "Audio bytes out", detail: "caller/operator path", packet: "RTP/browser audio" },
+        {
+          id: "audio_in",
+          label: "Caller audio in",
+          detail: "SIP telephony or browser WebRTC — different codecs, same voice path",
+          packet: "SIP PCMU/PCMA · WebRTC Opus",
+        },
+        {
+          id: "transport",
+          label: "Transport + codec normalize",
+          detail: "Pipecat media bridge converts wire codecs into shared PCM16 frames",
+          packet: "codec → PCM16 16 kHz",
+        },
+        {
+          id: "stt",
+          label: "Audio → text / tokens",
+          detail: "rtc-asr turns waveform into transcript events the agent can reason over",
+          packet: "waveform → tokens",
+        },
+        {
+          id: "agent",
+          label: "Tokens + policy",
+          detail: "Intent, tools, and operator hold stay explicit in the token domain",
+          packet: "intent · action",
+        },
+        {
+          id: "tts",
+          label: "Text → audio out",
+          detail: "TTS synthesizes speech, then codec + transport return SIP RTP or WebRTC",
+          packet: "tokens → waveform → RTP/Opus",
+        },
       ],
     },
     routes: {
@@ -489,6 +514,132 @@ function escapeHtml(value: string): string {
   });
 }
 
+const WAVEFORM_BARS = [8, 18, 12, 24, 10, 20, 14, 22, 9, 16, 11, 19];
+const TOKEN_CHIPS = ["I", "need", "to", "cancel", "…"];
+
+function waveformMarkup(className = ""): string {
+  const bars = WAVEFORM_BARS.map(
+    (height, index) =>
+      `<span class="media-wave__bar" style="--bar-h:${height}px;--bar-i:${index}"></span>`,
+  ).join("");
+  return `<div class="media-wave ${className}" aria-hidden="true">${bars}</div>`;
+}
+
+function tokenStreamMarkup(className = ""): string {
+  const chips = TOKEN_CHIPS.map(
+    (token, index) => `<span class="media-tokens__chip" style="--chip-i:${index}">${escapeHtml(token)}</span>`,
+  ).join("");
+  return `<div class="media-tokens ${className}" aria-hidden="true">${chips}</div>`;
+}
+
+function buildCallFlowMarkup(callFlow: {
+  cadenceMs: number;
+  mode: string;
+  credentialRequirement: string;
+  stages: Array<{ id: string; label: string; detail: string; packet: string }>;
+}): string {
+  const stageById = new Map(callFlow.stages.map((stage) => [stage.id, stage]));
+  const ingress = stageById.get("audio_in");
+  const transport = stageById.get("transport");
+  const stt = stageById.get("stt");
+  const agent = stageById.get("agent");
+  const tts = stageById.get("tts");
+
+  return `<div class="realtime-flow" aria-label="Realtime call flow visualization"><section class="voice-pipeline">
+  <div class="voice-pipeline__chrome">
+    <div class="voice-pipeline__title">
+      <span class="voice-pipeline__eyebrow">Media transformation path</span>
+      <strong>SIP or WebRTC audio → codec normalize → tokens → speech out</strong>
+    </div>
+    <div class="voice-pipeline__meta">
+      <span>${callFlow.cadenceMs / 1000}s cadence</span>
+      <span>${escapeHtml(callFlow.mode.replace(/_/g, " "))}</span>
+      <span>${escapeHtml(callFlow.credentialRequirement)} credentials</span>
+    </div>
+  </div>
+  <div class="voice-pipeline__canvas">
+    <div class="xform-rail" aria-hidden="true">
+      <div class="xform-carrier">
+        <div class="xform-form xform-form--wave">${waveformMarkup("media-wave--carrier")}</div>
+        <div class="xform-form xform-form--pcm"><span>PCM16</span></div>
+        <div class="xform-form xform-form--tokens">${tokenStreamMarkup("media-tokens--carrier")}</div>
+        <div class="xform-form xform-form--out">${waveformMarkup("media-wave--carrier media-wave--out")}</div>
+      </div>
+    </div>
+    <ol class="voice-pipeline__stages">
+      <li class="voice-pipeline__stage voice-pipeline__stage--audio_in" style="--stage-index:0">
+        <div class="voice-pipeline__stage-head"><span class="voice-pipeline__step">01</span><span class="voice-pipeline__layer">INGRESS</span></div>
+        <strong class="voice-pipeline__label">${escapeHtml(ingress?.label ?? "Caller audio in")}</strong>
+        <span class="voice-pipeline__detail">${escapeHtml(ingress?.detail ?? "")}</span>
+        <div class="ingress-fork">
+          <div class="ingress-lane ingress-lane--sip">
+            <span class="ingress-lane__name">Telephony SIP</span>
+            <span class="ingress-lane__codec">RTP · PCMU / PCMA</span>
+            ${waveformMarkup("media-wave--sip")}
+          </div>
+          <div class="ingress-or">or</div>
+          <div class="ingress-lane ingress-lane--webrtc">
+            <span class="ingress-lane__name">Browser WebRTC</span>
+            <span class="ingress-lane__codec">Opus / SRTP</span>
+            ${waveformMarkup("media-wave--webrtc")}
+          </div>
+        </div>
+        <code class="voice-pipeline__metric">${escapeHtml(ingress?.packet ?? "")}</code>
+      </li>
+      <li class="voice-pipeline__stage voice-pipeline__stage--transport" style="--stage-index:1">
+        <div class="voice-pipeline__stage-head"><span class="voice-pipeline__step">02</span><span class="voice-pipeline__layer">TRANSPORT</span></div>
+        <strong class="voice-pipeline__label">${escapeHtml(transport?.label ?? "Transport + codec normalize")}</strong>
+        <span class="voice-pipeline__detail">${escapeHtml(transport?.detail ?? "")}</span>
+        <div class="codec-bridge" aria-hidden="true">
+          <span class="codec-chip">PCMU</span>
+          <span class="codec-chip">Opus</span>
+          <span class="codec-arrow">⟶</span>
+          <span class="codec-chip codec-chip--target">PCM16</span>
+        </div>
+        <div class="transport-tag">Pipecat media bridge</div>
+        <code class="voice-pipeline__metric">${escapeHtml(transport?.packet ?? "")}</code>
+      </li>
+      <li class="voice-pipeline__stage voice-pipeline__stage--stt" style="--stage-index:2">
+        <div class="voice-pipeline__stage-head"><span class="voice-pipeline__step">03</span><span class="voice-pipeline__layer">STT</span></div>
+        <strong class="voice-pipeline__label">${escapeHtml(stt?.label ?? "Audio → text / tokens")}</strong>
+        <span class="voice-pipeline__detail">${escapeHtml(stt?.detail ?? "")}</span>
+        <div class="media-morph media-morph--to-tokens" aria-hidden="true">
+          ${waveformMarkup()}
+          <span class="media-morph__arrow">→</span>
+          ${tokenStreamMarkup()}
+        </div>
+        <code class="voice-pipeline__metric">${escapeHtml(stt?.packet ?? "")}</code>
+      </li>
+      <li class="voice-pipeline__stage voice-pipeline__stage--agent" style="--stage-index:3">
+        <div class="voice-pipeline__stage-head"><span class="voice-pipeline__step">04</span><span class="voice-pipeline__layer">REASON</span></div>
+        <strong class="voice-pipeline__label">${escapeHtml(agent?.label ?? "Tokens + policy")}</strong>
+        <span class="voice-pipeline__detail">${escapeHtml(agent?.detail ?? "")}</span>
+        <div class="token-policy" aria-hidden="true">
+          ${tokenStreamMarkup("media-tokens--policy")}
+          <span class="token-policy__hold">policy hold</span>
+        </div>
+        <code class="voice-pipeline__metric">${escapeHtml(agent?.packet ?? "")}</code>
+      </li>
+      <li class="voice-pipeline__stage voice-pipeline__stage--tts" style="--stage-index:4">
+        <div class="voice-pipeline__stage-head"><span class="voice-pipeline__step">05</span><span class="voice-pipeline__layer">EGRESS</span></div>
+        <strong class="voice-pipeline__label">${escapeHtml(tts?.label ?? "Text → audio out")}</strong>
+        <span class="voice-pipeline__detail">${escapeHtml(tts?.detail ?? "")}</span>
+        <div class="media-morph media-morph--to-audio" aria-hidden="true">
+          ${tokenStreamMarkup()}
+          <span class="media-morph__arrow">→</span>
+          ${waveformMarkup("media-wave--out")}
+        </div>
+        <div class="egress-fork">
+          <span class="egress-chip">SIP RTP</span>
+          <span class="egress-chip">WebRTC Opus</span>
+        </div>
+        <code class="voice-pipeline__metric">${escapeHtml(tts?.packet ?? "")}</code>
+      </li>
+    </ol>
+  </div>
+</section></div>`;
+}
+
 export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", brainBlocks?: ClueConBrainBlock[]): string {
   const payload = buildClueConPayload(config, brainBlocks);
   const data = JSON.stringify(payload);
@@ -542,32 +693,89 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .label { font: 800 15px system-ui,sans-serif; fill: #17202a; }
     .small { font: 650 12px system-ui,sans-serif; fill: #5d6b78; }
     .line { stroke: #2457a6; stroke-width: 2.8; fill: none; marker-end: url(#arrow); }
-    .flow-hero { align-content: start; min-height: calc(100vh - 62px); }
+    .flow-hero { align-content: start; min-height: calc(100vh - 62px); gap: 28px; }
     .flow-header { display: grid; gap: 8px; max-width: 920px; }
     .flow-header h1 { font-size: clamp(32px, 5vw, 58px); line-height: 1; margin-bottom: 0; }
     .flow-header .subhead { font-size: clamp(16px, 1.7vw, 21px); }
     .realtime-flow { display: grid; gap: 14px; width: 100%; }
-    .flow-track { position: relative; display: grid; grid-template-columns: repeat(5, minmax(130px, 1fr)); gap: 10px; align-items: stretch; min-height: 214px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #fff; overflow: hidden; }
-    .flow-track::before { content: ""; position: absolute; left: 8%; right: 8%; top: 50%; border-top: 2px solid #9fb6cc; transform: translateY(-50%); }
-    .flow-stage { position: relative; z-index: 1; display: grid; align-content: start; gap: 8px; min-height: 170px; padding: 14px; border: 1px solid #c4d1dc; border-radius: 8px; background: #fbfdff; box-shadow: 0 8px 20px rgba(20,34,46,0.06); }
-    .flow-stage strong { font-size: 16px; line-height: 1.2; }
-    .flow-stage .packet-label { margin-top: auto; font: 750 12px/1.25 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--blue); overflow-wrap: anywhere; }
-    .flow-stage::after { content: ""; width: 10px; height: 10px; border-radius: 999px; background: var(--teal); box-shadow: 0 0 0 0 rgba(15,118,110,.36); animation: stageBeat 1s ease-out infinite; }
-    .flow-stage:nth-child(2)::after { animation-delay: .2s; }
-    .flow-stage:nth-child(3)::after { animation-delay: .4s; }
-    .flow-stage:nth-child(4)::after { animation-delay: .6s; }
-    .flow-stage:nth-child(5)::after { animation-delay: .8s; }
-    .flow-packet { position: absolute; z-index: 2; top: calc(50% - 7px); left: 18px; width: 14px; height: 14px; border-radius: 999px; background: var(--blue); box-shadow: 0 0 0 6px rgba(36,87,166,.12); animation: packetRun 5s linear infinite; }
-    .flow-packet.secondary { background: var(--teal); animation-delay: 1s; }
-    .flow-packet.tertiary { background: var(--amber); animation-delay: 2s; }
-    .flow-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
-    @keyframes packetRun { from { left: 18px; opacity: .2; } 8% { opacity: 1; } 92% { opacity: 1; } to { left: calc(100% - 32px); opacity: .2; } }
-    @keyframes stageBeat { to { box-shadow: 0 0 0 12px rgba(15,118,110,0); } }
-    .demo-shell { display: grid; gap: 12px; }
-    .screen { min-height: 360px; border: 1px solid var(--line); border-radius: 8px; background: #101820; color: #dbeafe; padding: 14px; overflow: auto; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .voice-pipeline { position: relative; overflow: hidden; border: 1px solid rgba(34, 211, 238, 0.28); border-radius: 18px; background: radial-gradient(circle at 12% 0%, rgba(34, 211, 238, 0.14), transparent 34%), radial-gradient(circle at 88% 100%, rgba(168, 85, 247, 0.16), transparent 32%), linear-gradient(180deg, #07111f 0%, #0a1628 52%, #060d18 100%); box-shadow: 0 28px 70px rgba(8, 20, 40, 0.28), inset 0 1px 0 rgba(148, 163, 184, 0.08); color: #e8f4ff; }
+    .voice-pipeline::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.22; background-image: linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px); background-size: 34px 34px; mask-image: linear-gradient(to bottom, black, transparent 88%); }
+    .voice-pipeline__chrome { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 18px; padding: 18px 20px 12px; border-bottom: 1px solid rgba(125, 211, 252, 0.14); }
+    .voice-pipeline__title { display: grid; gap: 4px; max-width: 820px; }
+    .voice-pipeline__eyebrow { color: #67e8f9; font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+    .voice-pipeline__title strong { font-size: clamp(17px, 2.1vw, 23px); line-height: 1.2; letter-spacing: -0.02em; }
+    .voice-pipeline__meta { display: flex; flex-wrap: wrap; gap: 8px; }
+    .voice-pipeline__meta span { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border: 1px solid rgba(125, 211, 252, 0.22); border-radius: 999px; background: rgba(8, 31, 53, 0.72); color: #bfdbfe; font-size: 12px; font-weight: 760; }
+    .voice-pipeline__canvas { position: relative; z-index: 1; padding: 10px 14px 18px; }
+    .xform-rail { position: absolute; left: 18px; right: 18px; top: 18px; height: 42px; border-radius: 999px; background: linear-gradient(90deg, rgba(34, 211, 238, 0.12), rgba(129, 140, 248, 0.16), rgba(251, 191, 36, 0.14), rgba(52, 211, 153, 0.16)); border: 1px solid rgba(148, 163, 184, 0.14); overflow: hidden; pointer-events: none; }
+    .xform-carrier { position: absolute; top: 5px; left: 10px; width: 118px; height: 30px; display: grid; place-items: center; animation: carrierTravel 7.5s cubic-bezier(.45,.05,.55,.95) infinite; }
+    .xform-form { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; transform: scale(.92); }
+    .xform-form--wave { animation: formWave 7.5s linear infinite; }
+    .xform-form--pcm { animation: formPcm 7.5s linear infinite; color: #67e8f9; font: 800 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .08em; }
+    .xform-form--tokens { animation: formTokens 7.5s linear infinite; }
+    .xform-form--out { animation: formOut 7.5s linear infinite; }
+    .voice-pipeline__stages { position: relative; z-index: 2; display: grid; grid-template-columns: 1.25fr 1fr 1fr 0.95fr 1.15fr; gap: 10px; list-style: none; margin: 0; padding: 58px 4px 0; }
+    .voice-pipeline__stage { position: relative; display: grid; gap: 8px; align-content: start; min-height: 268px; padding: 14px; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 14px; background: linear-gradient(180deg, rgba(15, 27, 50, 0.94), rgba(8, 17, 33, 0.96)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 16px 34px rgba(0, 0, 0, 0.22); overflow: hidden; }
+    .voice-pipeline__stage::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--stage-accent, #22d3ee); }
+    .voice-pipeline__stage--audio_in { --stage-accent: #22d3ee; }
+    .voice-pipeline__stage--transport { --stage-accent: #38bdf8; }
+    .voice-pipeline__stage--stt { --stage-accent: #818cf8; }
+    .voice-pipeline__stage--agent { --stage-accent: #fbbf24; }
+    .voice-pipeline__stage--tts { --stage-accent: #34d399; }
+    .voice-pipeline__stage-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .voice-pipeline__step { color: #94a3b8; font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; }
+    .voice-pipeline__layer { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border-radius: 999px; border: 1px solid rgba(125, 211, 252, 0.18); background: rgba(3, 10, 24, 0.72); color: #cbd5e1; font-size: 10px; font-weight: 800; letter-spacing: 0.12em; }
+    .voice-pipeline__label { font-size: 15px; line-height: 1.2; color: #f8fafc; }
+    .voice-pipeline__detail { color: #94a3b8; font-size: 12px; line-height: 1.4; min-height: 48px; }
+    .voice-pipeline__metric { margin-top: auto; display: inline-flex; align-items: center; width: fit-content; max-width: 100%; padding: 4px 8px; border-radius: 8px; background: rgba(2, 6, 23, 0.82); border: 1px solid rgba(125, 211, 252, 0.16); color: #7dd3fc; font: 700 10px/1.25 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    .ingress-fork { display: grid; gap: 6px; }
+    .ingress-lane { display: grid; gap: 3px; padding: 8px; border-radius: 10px; border: 1px solid rgba(125, 211, 252, 0.16); background: rgba(2, 8, 20, 0.72); }
+    .ingress-lane--sip { border-color: rgba(34, 211, 238, 0.28); }
+    .ingress-lane--webrtc { border-color: rgba(129, 140, 248, 0.3); }
+    .ingress-lane__name { color: #e2e8f0; font-size: 11px; font-weight: 800; }
+    .ingress-lane__codec { color: #94a3b8; font: 650 10px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .ingress-or { color: #64748b; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; text-align: center; }
+    .codec-bridge { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .codec-chip { display: inline-flex; min-height: 24px; align-items: center; padding: 0 8px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.24); background: rgba(15, 23, 42, 0.8); color: #cbd5e1; font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .codec-chip--target { color: #67e8f9; border-color: rgba(34, 211, 238, 0.45); box-shadow: 0 0 16px rgba(34, 211, 238, 0.18); }
+    .codec-arrow { color: #64748b; font-weight: 800; }
+    .transport-tag { display: inline-flex; width: fit-content; min-height: 24px; align-items: center; padding: 0 9px; border-radius: 8px; background: rgba(14, 116, 144, 0.28); border: 1px solid rgba(34, 211, 238, 0.28); color: #a5f3fc; font-size: 11px; font-weight: 760; }
+    .media-wave { display: flex; align-items: end; gap: 2px; height: 28px; }
+    .media-wave__bar { width: 3px; height: var(--bar-h, 12px); border-radius: 99px; background: currentColor; opacity: .85; transform-origin: bottom; animation: waveBeat 1.1s ease-in-out infinite; animation-delay: calc(var(--bar-i, 0) * 0.07s); }
+    .media-wave--sip { color: #22d3ee; }
+    .media-wave--webrtc { color: #818cf8; }
+    .media-wave--out { color: #34d399; }
+    .media-wave--carrier { color: #67e8f9; height: 22px; }
+    .media-tokens { display: flex; flex-wrap: wrap; gap: 4px; }
+    .media-tokens__chip { display: inline-flex; align-items: center; min-height: 20px; padding: 0 6px; border-radius: 6px; background: rgba(129, 140, 248, 0.18); border: 1px solid rgba(165, 180, 252, 0.28); color: #ddd6fe; font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; animation: chipPulse 1.8s ease-in-out infinite; animation-delay: calc(var(--chip-i, 0) * 0.12s); }
+    .media-tokens--policy .media-tokens__chip { background: rgba(251, 191, 36, 0.14); border-color: rgba(251, 191, 36, 0.3); color: #fde68a; }
+    .media-tokens--carrier .media-tokens__chip { min-height: 18px; font-size: 9px; }
+    .media-morph { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: center; padding: 8px; border-radius: 10px; background: rgba(2, 8, 20, 0.66); border: 1px solid rgba(148, 163, 184, 0.14); }
+    .media-morph__arrow { color: #94a3b8; font-weight: 800; }
+    .token-policy { display: grid; gap: 6px; padding: 8px; border-radius: 10px; background: rgba(2, 8, 20, 0.66); border: 1px solid rgba(251, 191, 36, 0.2); }
+    .token-policy__hold { display: inline-flex; width: fit-content; min-height: 22px; align-items: center; padding: 0 8px; border-radius: 999px; background: rgba(251, 191, 36, 0.14); border: 1px solid rgba(251, 191, 36, 0.35); color: #fde68a; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+    .egress-fork { display: flex; flex-wrap: wrap; gap: 6px; }
+    .egress-chip { display: inline-flex; min-height: 22px; align-items: center; padding: 0 8px; border-radius: 999px; border: 1px solid rgba(52, 211, 153, 0.3); background: rgba(6, 78, 59, 0.28); color: #a7f3d0; font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    @keyframes carrierTravel { 0% { left: 2%; } 100% { left: calc(100% - 130px); } }
+    @keyframes formWave { 0%, 18% { opacity: 1; transform: scale(1); } 24%, 100% { opacity: 0; transform: scale(.9); } }
+    @keyframes formPcm { 0%, 20% { opacity: 0; transform: scale(.9); } 26%, 40% { opacity: 1; transform: scale(1); } 46%, 100% { opacity: 0; transform: scale(.9); } }
+    @keyframes formTokens { 0%, 42% { opacity: 0; transform: scale(.9); } 48%, 72% { opacity: 1; transform: scale(1); } 78%, 100% { opacity: 0; transform: scale(.9); } }
+    @keyframes formOut { 0%, 74% { opacity: 0; transform: scale(.9); } 80%, 100% { opacity: 1; transform: scale(1); } }
+    @keyframes waveBeat { 0%, 100% { transform: scaleY(.55); } 50% { transform: scaleY(1); } }
+    @keyframes chipPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+    .demo-shell { display: grid; gap: 12px; min-width: 0; }
+    .screen { min-height: 360px; border: 1px solid var(--line); border-radius: 8px; background: #101820; color: #dbeafe; padding: 14px; overflow: auto; overflow-wrap: anywhere; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; }
     .timeline { display: grid; gap: 8px; }
     .event { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 10px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+    #demo { align-content: start; }
+    #demo .two, #demo .two > *, #demo .timeline, #demo .event, #demo .event > * { min-width: 0; }
+    #demo .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); }
+    #demo .actions button { width: 100%; padding-inline: 10px; }
+    #demo .screen { min-height: clamp(220px, 34vh, 360px); max-height: min(42vh, 440px); }
+    #demo .timeline { align-content: start; max-height: min(42vh, 440px); overflow: auto; overscroll-behavior: contain; padding-right: 3px; }
+    #demo .event { grid-template-columns: minmax(110px, 140px) minmax(0, 1fr); }
+    #demo .event strong, #demo .event .muted { overflow-wrap: anywhere; word-break: break-word; }
     .brain, .asr-events { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
     textarea { width: 100%; min-height: 108px; resize: vertical; border: 1px solid var(--line); border-radius: 6px; padding: 9px; color: var(--ink); }
     .proof-pre { margin: 0; min-height: 260px; max-height: 460px; overflow: auto; border-radius: 8px; padding: 12px; background: #0d1117; color: #e6edf3; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -575,14 +783,17 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .present .topbar { position: fixed; width: 100%; }
     .present main { padding-top: 62px; }
     .present .slide, .present .hero { min-height: calc(100vh - 62px); }
+    .present #demo { height: calc(100vh - 62px); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
     .present .section-band:not(.active), .present .hero:not(.active) { display: none; }
-    @media (max-width: 920px) { .two { grid-template-columns: 1fr; } .topbar { position: static; align-items: stretch; flex-direction: column; } .toolbar { justify-content: flex-start; } .hero, .slide, .section-band { padding: 28px 14px; } h1 { font-size: 38px; } .event { grid-template-columns: 1fr; } .flow-track { grid-template-columns: 1fr; min-height: 0; } .flow-track::before, .flow-packet { display: none; } .flow-stage { min-height: 118px; } }
+    @media (max-width: 1100px) { #demo .two { grid-template-columns: minmax(0, 1fr); } .present #demo .screen, .present #demo .timeline { max-height: 360px; } }
+    @media (max-width: 920px) { .two { grid-template-columns: 1fr; } .present .topbar { position: static; width: auto; } .present main { padding-top: 0; } .present .slide, .present .hero { min-height: calc(100vh - 62px); } .present #demo { height: auto; min-height: calc(100vh - 62px); overflow: visible; } .topbar { align-items: stretch; flex-direction: column; } .toolbar { justify-content: flex-start; } .hero, .slide, .section-band { padding: 28px 14px; } h1 { font-size: 38px; } .event, #demo .event { grid-template-columns: minmax(0, 1fr); } #demo .actions { grid-template-columns: repeat(2, minmax(0, 1fr)); } #demo .screen, #demo .timeline, .present #demo .screen, .present #demo .timeline { max-height: min(48vh, 380px); } .voice-pipeline__chrome { padding: 16px 14px 10px; } .voice-pipeline__canvas { padding: 8px 8px 14px; } .xform-rail { display: none; } .voice-pipeline__stages { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 12px 4px 4px; -webkit-overflow-scrolling: touch; } .voice-pipeline__stage { flex: 0 0 min(82vw, 300px); scroll-snap-align: start; min-height: 260px; } }
+    @media (max-width: 520px) { #demo .actions { grid-template-columns: minmax(0, 1fr); } #demo .screen { min-height: 240px; } }
   </style>
 </head>
 <body class="${bodyClass}">
   <header class="topbar"><div class="brand"><span class="kicker">ClueCon 2026 presentation</span><strong>Agentic Contact Center</strong></div><nav class="toolbar" aria-label="ClueCon sections"><a href="/cluecon">Narrative</a><a href="/cluecon/present">Present</a><a href="/operator/console">Operator</a><a href="/assert">Proof</a><button id="prev" type="button">Prev</button><button id="next" type="button" class="primary">Next</button></nav></header>
   <main>
-    <section class="hero flow-hero active" data-slide="0" id="flow"><div class="flow-header"><span class="kicker">Opening</span><h1>From SIP to tokens.</h1><p class="subhead">A local, inspectable voice path: deterministic telephony state, Pipecat media, rtc-asr speech recognition, operator-safe agent control, and ASSERT-ready proof.</p><p class="talk-attribution">Alberto Gonzalez CTO @ WebRTC.ventures</p></div><div class="realtime-flow" aria-label="Realtime call flow visualization"><div class="flow-track">${payload.callFlow.stages.map((stage) => `<article class="flow-stage"><strong>${escapeHtml(stage.label)}</strong><span class="muted">${escapeHtml(stage.detail)}</span><span class="packet-label">${escapeHtml(stage.packet)}</span></article>`).join("")}<span class="flow-packet" aria-hidden="true"></span><span class="flow-packet secondary" aria-hidden="true"></span><span class="flow-packet tertiary" aria-hidden="true"></span></div><div class="flow-meta"><article class="plain metric"><span class="muted">Cadence</span><strong>${payload.callFlow.cadenceMs / 1000}s packets</strong></article><article class="plain metric"><span class="muted">Mode</span><strong>Local fixture</strong></article><article class="plain metric"><span class="muted">Credentials</span><strong>None</strong></article></div></div><div class="actions"><button class="primary" id="run-demo-top" type="button">Run scripted proof</button><button id="open-demo-slide" type="button">Open cancellation rescue</button></div></section>
+    <section class="hero flow-hero active" data-slide="0" id="flow"><div class="flow-header"><span class="kicker">Opening</span><h1>From SIP to tokens.</h1><p class="subhead">A local, inspectable voice path: deterministic telephony state, Pipecat media, rtc-asr speech recognition, operator-safe agent control, and ASSERT-ready proof.</p><p class="talk-attribution">Alberto Gonzalez CTO @ WebRTC.ventures</p></div>${buildCallFlowMarkup(payload.callFlow)}<div class="actions"><button class="primary" id="run-demo-top" type="button">Run scripted proof</button><button id="open-demo-slide" type="button">Open cancellation rescue</button></div></section>
     <section class="section-band slide" data-slide="1" id="map"><div class="two"><div><span class="kicker">System map</span><h2>Every boundary stays visible.</h2><p class="subhead">Telephony state, media transport, local ASR, agent policy, operator steer, TTS fallback, and evaluation evidence are separate contracts — not one opaque black box.</p><svg class="arch" viewBox="0 0 980 380" role="img" aria-label="On-prem voice agent architecture"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#2457a6"/></marker></defs><rect class="nodeAccent" x="24" y="74" width="130" height="74" rx="8"/><text class="label" x="89" y="105" text-anchor="middle">Caller</text><text class="small" x="89" y="126" text-anchor="middle">SIP / browser</text><rect class="node" x="194" y="74" width="132" height="74" rx="8"/><text class="label" x="260" y="105" text-anchor="middle">Pipecat</text><text class="small" x="260" y="126" text-anchor="middle">transport</text><rect class="nodeWarn" x="366" y="74" width="132" height="74" rx="8"/><text class="label" x="432" y="105" text-anchor="middle">rtc-asr</text><text class="small" x="432" y="126" text-anchor="middle">Local STT v1</text><rect class="nodeAccent" x="538" y="74" width="144" height="74" rx="8"/><text class="label" x="610" y="105" text-anchor="middle">OpenClaw</text><text class="small" x="610" y="126" text-anchor="middle">agent harness</text><rect class="nodeWarn" x="722" y="74" width="112" height="74" rx="8"/><text class="label" x="778" y="105" text-anchor="middle">Kokoro</text><text class="small" x="778" y="126" text-anchor="middle">TTS</text><rect class="node" x="298" y="236" width="160" height="78" rx="8"/><text class="label" x="378" y="267" text-anchor="middle">Operator</text><text class="small" x="378" y="288" text-anchor="middle">approve / handoff</text><rect class="nodeAccent" x="536" y="236" width="158" height="78" rx="8"/><text class="label" x="615" y="267" text-anchor="middle">Proof bundle</text><text class="small" x="615" y="288" text-anchor="middle">events + latency</text><rect class="nodeAccent" x="748" y="236" width="160" height="78" rx="8"/><text class="label" x="828" y="267" text-anchor="middle">ASSERT eval</text><text class="small" x="828" y="288" text-anchor="middle">scorecard</text><path class="line" d="M154 111 H194"/><path class="line" d="M326 111 H366"/><path class="line" d="M498 111 H538"/><path class="line" d="M682 111 H722"/><path class="line" d="M610 148 V236"/><path class="line" d="M694 275 H748"/><path class="line" d="M458 275 H536"/><path class="line" d="M378 236 C412 184 496 154 538 126"/></svg></div><div class="grid" id="readiness"></div></div></section>
     <section class="section-band slide" data-slide="2" id="demo"><span class="kicker">Live demo</span><h2>Cancellation rescue, end to end.</h2><p class="subhead">Run the operator-safe scripted story: policy hold, approved steer, wrap, and reviewable evidence — no production credentials required.</p><div class="two"><div class="demo-shell"><div class="actions"><button class="primary" id="run-demo" type="button">Run scripted demo</button><button id="drill-tool" type="button" class="danger">Tool timeout drill</button><button id="drill-runtime" type="button" class="danger">Runtime failure drill</button><button id="drill-transfer" type="button">Transfer</button><button id="drill-takeover" type="button">Takeover</button><button id="drill-end" type="button">End call</button><button id="drill-asr" type="button">rtc-asr unavailable</button><button id="drill-tts" type="button">TTS unavailable</button></div><div class="screen" id="demo-screen">Ready. Scripted mode needs no external credentials.</div></div><div class="timeline" id="timeline"></div></div></section>
     <section class="section-band slide" data-slide="3" id="asr"><span class="kicker">ASR boundary</span><h2>rtc-asr is measurable and swappable.</h2><div class="two"><div><p class="subhead">Speech recognition is a provider contract, not agent magic: normalized PCM16 enters the sidecar and timestamped transcript events leave it. Fixture evidence keeps the talk moving when the sidecar is offline.</p><div class="asr-events" id="asr-events"></div></div><div class="grid" id="asr-benchmarks"></div></div></section>
