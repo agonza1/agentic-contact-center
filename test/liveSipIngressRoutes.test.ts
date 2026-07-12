@@ -100,6 +100,20 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
     assert.equal(invalidPlayback.statusCode, 400);
     assert.equal(invalidPlayback.payload.error, "live_sip_playback_sent_packet_count_exceeds_packet_count");
 
+    const invalidConfirmedPlayback = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.playback",
+      timestamp: "2026-06-30T10:00:02.450Z",
+      sipCallId: "sip-proof-1",
+      outboundRtpReady: true,
+      rtpSocketSendReady: true,
+      packetCount: 2,
+      sentPacketCount: 2,
+      remotePort: 40002,
+      callerPlaybackConfirmed: true,
+    });
+    assert.equal(invalidConfirmedPlayback.statusCode, 400);
+    assert.equal(invalidConfirmedPlayback.payload.error, "live_sip_playback_confirmation_evidence_required");
+
     const invalidCapture = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.capture",
       timestamp: "2026-06-30T10:00:02.500Z",
@@ -174,6 +188,48 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
     assert.equal(liveProof.eval.status, "ready_for_conversation_agent_evals");
     assert.equal(liveProof.eval.reviewReady, true);
     assert.equal(liveProof.operator.handoffState, "operator_review_required");
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("live SIP proof stays review-blocked until caller playback is confirmed", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-06-30T10:10:00.000Z",
+      sipCallId: "sip-no-playback-proof",
+      telephonyMode: "local_sip",
+    });
+    assert.equal(started.statusCode, 201);
+
+    await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.capture",
+      timestamp: "2026-06-30T10:10:01.000Z",
+      sipCallId: "sip-no-playback-proof",
+      rtpPacketCount: 12,
+      generatedMedia: false,
+    });
+    await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-06-30T10:10:02.000Z",
+      sipCallId: "sip-no-playback-proof",
+      text: "I can hear the agent now.",
+      rtcAsrEvidencePath: "artifacts/freeswitch-live/rtc-asr-evidence.json",
+    });
+
+    const consoleResponse = await requestJson(address.port, "GET", "/api/operator/console?callId=" + started.payload.call.session.callId);
+    assert.equal(consoleResponse.statusCode, 200);
+    const liveProof = consoleResponse.payload.calls.items[0].liveProof;
+    assert.equal(liveProof.eval.status, "not_review_ready");
+    assert.equal(liveProof.eval.reviewReady, false);
+    assert.equal(liveProof.playback.status, "not_attempted");
+    assert.ok(liveProof.caveats.includes("No caller-audible playback proof is attached yet."));
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

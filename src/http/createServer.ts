@@ -2149,9 +2149,17 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
   const audioWavPath = getOptionalEventString(mediaCaptureEvent?.detail.audioWavPath);
   const sipLogPath = getOptionalEventString(mediaCaptureEvent?.detail.sipLogPath);
   const rtcAsrEvidencePath = getOptionalEventString(asrTranscriptEvent?.detail.evidencePath ?? asrBlockedEvent?.detail.evidencePath);
+  const callerPlaybackEvidencePath = getOptionalEventString(playbackEvent?.detail.callerPlaybackEvidencePath);
   const generatedMedia = mediaCaptureEvent?.detail.generatedMedia === true || labels.media === "generated_media";
   const hasLiveAudioCapture = Boolean(mediaCaptureEvent && labels.media === "live_capture" && !generatedMedia);
   const hasLiveTelephony = labels.telephony === "local_sip" || labels.telephony === "signalwire_live";
+  const hasCallerPlaybackProof = Boolean(
+    playbackEvent?.detail.callerPlaybackConfirmed === true &&
+      playbackEvent.detail.rtpSocketSendReady === true &&
+      typeof playbackEvent.detail.sentPacketCount === "number" &&
+      playbackEvent.detail.sentPacketCount > 0 &&
+      callerPlaybackEvidencePath,
+  );
   const asrStatus = asrTranscriptEvent
     ? "transcript_received"
     : asrBlockedEvent
@@ -2166,7 +2174,7 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
     : labels.media === "live_capture"
       ? "waiting_for_capture"
       : "generated_media";
-  const evalStatus = hasLiveTelephony && hasLiveAudioCapture && asrTranscriptEvent
+  const evalStatus = hasLiveTelephony && hasLiveAudioCapture && asrTranscriptEvent && hasCallerPlaybackProof
     ? "ready_for_conversation_agent_evals"
     : hasLiveTelephony && hasLiveAudioCapture && asrBlockedEvent
       ? "ready_with_rtc_asr_blocker"
@@ -2174,6 +2182,9 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
   const caveats = [
     !hasLiveTelephony ? "Telephony is mocked; run a local SIP or SignalWire live call before review." : null,
     !hasLiveAudioCapture ? "No real caller WAV is attached yet." : null,
+    hasLiveTelephony && hasLiveAudioCapture && asrTranscriptEvent && !hasCallerPlaybackProof
+      ? "No caller-audible playback proof is attached yet."
+      : null,
     generatedMedia ? "Generated media is present and cannot satisfy the live-capture acceptance bar." : null,
     asrBlockedEvent ? getOptionalEventString(asrBlockedEvent.detail.blocker) ?? "rtc-asr is blocked; see evidence path or event trail." : null,
     labels.telephony === "signalwire_live" && labels.credentialsMode !== "signalwire_live" ? "SignalWire credentials/DID routing are not active." : null,
@@ -2240,7 +2251,7 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
       lastSentAt: getOptionalEventString(playbackEvent?.detail.lastSentAt),
       evidencePath: getOptionalEventString(playbackEvent?.detail.evidencePath),
       callerPlaybackConfirmed: playbackEvent?.detail.callerPlaybackConfirmed === true,
-      callerPlaybackEvidencePath: getOptionalEventString(playbackEvent?.detail.callerPlaybackEvidencePath),
+      callerPlaybackEvidencePath,
       eventTrail: playbackEvent ? snapshot.session.openclawSession.artifactLinks.events + "?type=pipecat_rtp_playback_attached&limit=1&order=desc" : null,
     },
     sip: {
@@ -4592,6 +4603,10 @@ async function routeRequest(
         }
         if (body.callerPlaybackConfirmed === true && body.rtpSocketSendReady !== true) {
           writeBadRequest(response, "live_sip_playback_confirmation_without_socket_send");
+          return;
+        }
+        if (body.callerPlaybackConfirmed === true && !getOptionalTrimmedString(body.callerPlaybackEvidencePath)) {
+          writeBadRequest(response, "live_sip_playback_confirmation_evidence_required");
           return;
         }
 
