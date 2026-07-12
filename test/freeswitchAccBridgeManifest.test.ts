@@ -143,7 +143,7 @@ test("FreeSWITCH bridge packetizes Pipecat output audio into outbound RTP proof 
     assert.equal(parsed.manifest.pipecatMediaEngine.realtimeDirection, "sip_rtp_inbound_to_pipecat_input_frames_and_output_frames_to_rtp_packets");
     assert.equal(parsed.manifest.pipecatMediaEngine.outboundPlaybackAdapter, "packetized_output_audio_frames_to_pcmu_rtp");
     assert.equal(parsed.manifest.pipecatMediaEngine.bidirectionalPlaybackReady, false);
-    assert.match(parsed.manifest.pipecatMediaEngine.blocker, /live FreeSWITCH caller playback/);
+    assert.match(parsed.manifest.pipecatMediaEngine.blocker, /not been sent to a FreeSWITCH caller RTP target/);
     assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.outboundRtpReady, true);
     assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.packetCount, 2);
     assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.sentPacketCount, 0);
@@ -219,6 +219,69 @@ test("FreeSWITCH bridge sends fixture Pipecat output frames to RTP playback sink
   }
 });
 
+
+test("FreeSWITCH bridge plays Pipecat TTS fixture on answered call remote RTP target", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-answer-playback-"));
+  const fixturePath = path.join(tempDir, "pipecat-output.jsonl");
+
+  try {
+    const pcm16 = Buffer.alloc(8);
+    [0, 1200, -1200, 32000].forEach((sample, index) => pcm16.writeInt16LE(sample, index * 2));
+    await writeFile(fixturePath, JSON.stringify({ frame: { frameType: "TTSAudioRawFrame", audioFormat: "pcm_s16le", sampleRateHz: 8000, channels: 1, pcm16Base64: pcm16.toString("base64") } }) + "\n", "utf8");
+
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = [
+      "const { EslBridge } = await import(" + JSON.stringify(moduleUrl) + ");",
+      "const sentRtp = [];",
+      "const http = await import(\"node:http\");",
+      "const { Writable, Readable } = await import(\"node:stream\");",
+      "const originalRequest = http.default.request;",
+      "http.default.request = (options, callback) => { const req = new Writable({ write(chunk, encoding, done) { done(); } }); req.on = req.addListener.bind(req); req.write = () => true; req.end = () => { const res = new Readable({ read() { this.push(JSON.stringify({ call: { session: { callId: \"acc-answer-playback\" } } })); this.push(null); } }); res.statusCode = 200; res.setEncoding = () => res; callback(res); }; return req; };",
+      "const bridge = new EslBridge({" +
+        "recordingDir:" + JSON.stringify(tempDir) + "," +
+        "freeswitchRecordingDir:" + JSON.stringify(tempDir) + "," +
+        "logPath:" + JSON.stringify(path.join(tempDir, "events.json")) + "," +
+        "manifestPath:" + JSON.stringify(path.join(tempDir, "manifest.json")) + "," +
+        "telephonyMode:\"local_sip\"," +
+        "accBaseUrl:\"http://127.0.0.1:1\"," +
+        "pipecatOutputFixturePath:" + JSON.stringify(fixturePath) + "," +
+        "rtpPlaybackSequenceNumber:0xfffe," +
+        "rtpPlaybackTimestamp:160," +
+        "rtpPlaybackSsrc:0x0badf00d," +
+        "rtpPlaybackSamplesPerPacket:2" +
+      "});",
+      "bridge.send = () => {};",
+      "bridge.rtpPlaybackSocket = { send(packet, port, host, callback) { sentRtp.push({ sequenceNumber: packet.readUInt16BE(2), timestamp: packet.readUInt32BE(4), port, host }); callback(); } };",
+      "const headers = new Map([[\"Caller-Destination-Number\", \"8600\"], [\"variable_remote_media_ip\", \"127.0.0.1\"], [\"variable_remote_media_port\", \"40002\"]]);",
+      "try { await bridge.onAnswer(\"fs-answer-playback\", headers); await bridge.playPipecatOutputFixture(); } finally { http.default.request = originalRequest; }",
+      "console.log(JSON.stringify({ sentRtp, playbackSummary: bridge.rtpPlaybackSink.summary(), played: bridge.pipecatOutputFixturePlayed, events: bridge.events }));"
+    ].join("\n");
+    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const parsed = JSON.parse(stdout) as {
+      sentRtp: Array<{ sequenceNumber: number; timestamp: number; port: number; host: string }>;
+      playbackSummary: { rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; remotePort: number };
+      played: boolean;
+      events: Array<{ pipecatOutboundRtpPlayback?: { sentPacketCount: number } }>;
+    };
+
+    assert.deepEqual(parsed.sentRtp, [
+      { sequenceNumber: 0xfffe, timestamp: 160, port: 40002, host: "127.0.0.1" },
+      { sequenceNumber: 0xffff, timestamp: 162, port: 40002, host: "127.0.0.1" },
+    ]);
+    assert.equal(parsed.played, true);
+    assert.equal(parsed.playbackSummary.packetCount, 2);
+    assert.equal(parsed.playbackSummary.sentPacketCount, 2);
+    assert.equal(parsed.playbackSummary.rtpSocketSendReady, true);
+    assert.equal(parsed.playbackSummary.remotePort, 40002);
+    assert.equal(parsed.events.filter((event) => event.pipecatOutboundRtpPlayback).length, 1);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
 
 test("FreeSWITCH bridge streams captured Pipecat input frames to rtc-asr Local STT v1 evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");

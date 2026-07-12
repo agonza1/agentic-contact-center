@@ -735,9 +735,11 @@ export async function buildFreeswitchLiveProofManifest(options) {
         : "sip_rtp_inbound_to_pipecat_input_frames",
       outboundPlaybackAdapter: pipecatOutboundRtpEvidence?.outboundRtpReady ? "packetized_output_audio_frames_to_pcmu_rtp" : "not_connected",
       bidirectionalPlaybackReady: false,
-      blocker: pipecatOutboundRtpEvidence?.outboundRtpReady
-        ? "Kokoro/Pipecat output and TTSAudioRawFrame fixtures can be packetized as RTP, but live FreeSWITCH caller playback is not complete."
-        : "Kokoro/Pipecat TTSAudioRawFrame output is not yet connected to the FreeSWITCH RTP playback socket for SIP caller playback.",
+      blocker: pipecatOutboundRtpEvidence?.rtpSocketSendReady
+        ? "Pipecat TTSAudioRawFrame fixtures are sent to the FreeSWITCH RTP playback socket; live Kokoro/Pipecat TTS frame production still needs to replace fixture playback before full issue #214 acceptance."
+        : pipecatOutboundRtpEvidence?.outboundRtpReady
+          ? "Kokoro/Pipecat output and TTSAudioRawFrame fixtures can be packetized as RTP, but they have not been sent to a FreeSWITCH caller RTP target yet."
+          : "Kokoro/Pipecat TTSAudioRawFrame output is not yet connected to the FreeSWITCH RTP playback socket for SIP caller playback.",
       rtpFrameBatch: pipecatRtpEvidence,
       rtcAsrLiveStream: rtcAsrStreamEvidence,
       outboundRtpPlayback: pipecatOutboundRtpEvidence,
@@ -769,6 +771,7 @@ export class EslBridge {
       ssrc: options.rtpPlaybackSsrc ?? 0xacc0ffee,
       samplesPerPacket: options.rtpPlaybackSamplesPerPacket ?? 160,
     });
+    this.pipecatOutputFixturePlayed = false;
   }
 
   async start() {
@@ -822,10 +825,13 @@ export class EslBridge {
   }
 
   async playPipecatOutputFixture() {
-    if (!this.options.pipecatOutputFixturePath || !this.rtpPlaybackSocket) return;
+    if (!this.options.pipecatOutputFixturePath || !this.rtpPlaybackSocket || this.pipecatOutputFixturePlayed) return;
     const frames = await loadPipecatOutputFrameSummaries(this.options.pipecatOutputFixturePath);
     for (const frame of frames) await this.rtpPlaybackSink.sendFrame(this.rtpPlaybackSocket, frame);
-    if (frames.length > 0) this.events.push({ at: nowIso(), pipecatOutboundRtpPlayback: this.rtpPlaybackSink.summary() });
+    if (frames.length > 0) {
+      this.pipecatOutputFixturePlayed = true;
+      this.events.push({ at: nowIso(), pipecatOutboundRtpPlayback: this.rtpPlaybackSink.summary() });
+    }
   }
 
   async handleData(chunk) {
@@ -873,6 +879,7 @@ export class EslBridge {
     });
     this.callMap.set(uuid, { wavPath, freeswitchPath, startedAt: Date.now(), destination, remoteRtp, accCallId: response?.body?.call?.session?.callId ?? null });
     this.send(`api uuid_record ${uuid} start ${freeswitchPath}`);
+    await this.playPipecatOutputFixture();
   }
 
   async onRecordStop(uuid) {
