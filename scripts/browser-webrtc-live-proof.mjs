@@ -107,7 +107,9 @@ function nestedRecord(record, key) {
 
 function nestedRecords(record, key) {
   const value = record[key];
-  return Array.isArray(value) ? value.filter(isRecord) : [];
+  if (Array.isArray(value)) return value.filter(isRecord);
+  if (isRecord(value)) return Object.values(value).filter(isRecord);
+  return [];
 }
 
 function hasInboundAudioRtpStats(stats) {
