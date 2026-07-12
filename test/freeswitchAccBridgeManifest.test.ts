@@ -140,7 +140,7 @@ test("FreeSWITCH bridge packetizes Pipecat output audio into outbound RTP proof 
       { sequenceNumber: 0xfffe, timestamp: 160, ssrc: 0x0badf00d, payloadBytes: 2 },
       { sequenceNumber: 0xffff, timestamp: 162, ssrc: 0x0badf00d, payloadBytes: 2 },
     ]);
-    assert.equal(parsed.manifest.reviewReady, true);
+    assert.equal(parsed.manifest.reviewReady, false);
     assert.equal(parsed.manifest.pipecatMediaEngine.realtimeDirection, "sip_rtp_inbound_to_pipecat_input_frames_and_output_frames_to_rtp_packets");
     assert.equal(parsed.manifest.pipecatMediaEngine.outboundPlaybackAdapter, "packetized_output_audio_frames_to_pcmu_rtp");
     assert.equal(parsed.manifest.pipecatMediaEngine.bidirectionalPlaybackReady, false);
@@ -721,7 +721,7 @@ test("FreeSWITCH bridge manifest carries optional live RTP Pipecat batch evidenc
       };
     };
 
-    assert.equal(manifest.reviewReady, true);
+    assert.equal(manifest.reviewReady, false);
     assert.equal(manifest.pipecatMediaEngine.liveRtpAdapter, "captured_pcmu_to_input_audio_frames");
     assert.equal(manifest.pipecatMediaEngine.realtimeDirection, "sip_rtp_inbound_to_pipecat_input_frames");
     assert.equal(manifest.pipecatMediaEngine.bidirectionalPlaybackReady, false);
@@ -796,6 +796,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     assert.ok(manifest.blockers.some((blocker) => blocker.includes("no transcript/evidence path")));
     assert.deepEqual(manifest.reviewGate.nextActions, [
       "Attach rtc-asr transcript evidence with --rtc-asr-evidence before marking the FreeSWITCH proof review-ready.",
+      "Send Kokoro/Pipecat RTP playback to the FreeSWITCH caller target before marking the proof review-ready.",
     ]);
 
     const bundleDir = path.join(tempDir, "bundle");
@@ -822,6 +823,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     assert.match(bundleManifest.reviewGate.failureReasons.sourceManifestReviewReady, /Source live proof manifest is not review-ready/);
     assert.deepEqual(bundleManifest.validationSummary.nextActions, [
       "Attach rtc-asr transcript evidence with --rtc-asr-evidence before marking the FreeSWITCH proof review-ready.",
+      "Send Kokoro/Pipecat RTP playback to the FreeSWITCH caller target before marking the proof review-ready.",
     ]);
 
     const invalidRtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence-empty.json");
@@ -861,7 +863,21 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
         logPath: ${JSON.stringify(logPath)},
         rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
         rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
-        telephonyMode: "local_sip"
+        telephonyMode: "local_sip",
+        remoteRtp: { address: "127.0.0.1", port: 40002 },
+        pipecatOutboundRtpEvidence: {
+          outboundRtpReady: true,
+          rtpSocketSendReady: true,
+          packetCount: 3,
+          sentPacketCount: 3,
+          remoteHost: "127.0.0.1",
+          remotePort: 40002,
+          totalDurationMs: 60,
+          nextSequenceNumber: 3,
+          nextTimestamp: 480,
+          ssrc: 0xacc0ffee,
+          lastSentAt: "2026-06-30T10:00:02.220Z"
+        }
       });
       console.log(JSON.stringify(manifest));
     `;
@@ -968,8 +984,9 @@ test("FreeSWITCH bridge forwards attached rtc-asr evidence to ACC", async () => 
     const transcriptEvent = receivedEvents.find((event) => event.eventType === "media.transcript");
     assert.equal(transcriptEvent?.text, "I need billing help.");
     assert.equal(transcriptEvent?.rtcAsrEvidencePath, rtcAsrEvidencePath);
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { reviewReady: boolean };
-    assert.equal(manifest.reviewReady, true);
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { reviewReady: boolean; blockers: string[] };
+    assert.equal(manifest.reviewReady, false);
+    assert.ok(manifest.blockers.some((blocker) => blocker.includes("caller playback RTP was not sent")));
   } finally {
     server.close();
     await rm(tempDir, { recursive: true, force: true });
@@ -1012,7 +1029,21 @@ test("FreeSWITCH bridge manifest accepts nested OpenAI realtime transcript evide
         logPath: ${JSON.stringify(logPath)},
         rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
         rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
-        telephonyMode: "local_sip"
+        telephonyMode: "local_sip",
+        remoteRtp: { address: "127.0.0.1", port: 40002 },
+        pipecatOutboundRtpEvidence: {
+          outboundRtpReady: true,
+          rtpSocketSendReady: true,
+          packetCount: 3,
+          sentPacketCount: 3,
+          remoteHost: "127.0.0.1",
+          remotePort: 40002,
+          totalDurationMs: 60,
+          nextSequenceNumber: 3,
+          nextTimestamp: 480,
+          ssrc: 0xacc0ffee,
+          lastSentAt: "2026-06-30T10:00:02.220Z"
+        }
       });
       console.log(JSON.stringify(manifest));
     `;
@@ -1062,7 +1093,21 @@ test("FreeSWITCH bridge manifest accepts string-wrapped rtc-asr evidence", async
         logPath: ${JSON.stringify(logPath)},
         rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
         rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
-        telephonyMode: "local_sip"
+        telephonyMode: "local_sip",
+        remoteRtp: { address: "127.0.0.1", port: 40002 },
+        pipecatOutboundRtpEvidence: {
+          outboundRtpReady: true,
+          rtpSocketSendReady: true,
+          packetCount: 3,
+          sentPacketCount: 3,
+          remoteHost: "127.0.0.1",
+          remotePort: 40002,
+          totalDurationMs: 60,
+          nextSequenceNumber: 3,
+          nextTimestamp: 480,
+          ssrc: 0xacc0ffee,
+          lastSentAt: "2026-06-30T10:00:02.220Z"
+        }
       });
       console.log(JSON.stringify(manifest));
     `;
@@ -1108,7 +1153,21 @@ test("FreeSWITCH bridge manifest accepts wrapped channel ASR evidence", async ()
         logPath: ${JSON.stringify(logPath)},
         rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
         rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
-        telephonyMode: "local_sip"
+        telephonyMode: "local_sip",
+        remoteRtp: { address: "127.0.0.1", port: 40002 },
+        pipecatOutboundRtpEvidence: {
+          outboundRtpReady: true,
+          rtpSocketSendReady: true,
+          packetCount: 3,
+          sentPacketCount: 3,
+          remoteHost: "127.0.0.1",
+          remotePort: 40002,
+          totalDurationMs: 60,
+          nextSequenceNumber: 3,
+          nextTimestamp: 480,
+          ssrc: 0xacc0ffee,
+          lastSentAt: "2026-06-30T10:00:02.220Z"
+        }
       });
       console.log(JSON.stringify(manifest));
     `;

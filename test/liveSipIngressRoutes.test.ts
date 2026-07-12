@@ -114,6 +114,32 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
     assert.equal(invalidConfirmedPlayback.statusCode, 400);
     assert.equal(invalidConfirmedPlayback.payload.error, "live_sip_playback_confirmation_evidence_required");
 
+    const invalidPlaybackPortZero = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.playback",
+      timestamp: "2026-06-30T10:00:02.470Z",
+      sipCallId: "sip-proof-1",
+      outboundRtpReady: true,
+      rtpSocketSendReady: true,
+      packetCount: 2,
+      sentPacketCount: 2,
+      remotePort: 0,
+    });
+    assert.equal(invalidPlaybackPortZero.statusCode, 400);
+    assert.equal(invalidPlaybackPortZero.payload.error, "live_sip_playback_remote_port_invalid");
+
+    const invalidPlaybackPortTooHigh = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.playback",
+      timestamp: "2026-06-30T10:00:02.480Z",
+      sipCallId: "sip-proof-1",
+      outboundRtpReady: true,
+      rtpSocketSendReady: true,
+      packetCount: 2,
+      sentPacketCount: 2,
+      remotePort: 65536,
+    });
+    assert.equal(invalidPlaybackPortTooHigh.statusCode, 400);
+    assert.equal(invalidPlaybackPortTooHigh.payload.error, "live_sip_playback_remote_port_invalid");
+
     const invalidCapture = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.capture",
       timestamp: "2026-06-30T10:00:02.500Z",

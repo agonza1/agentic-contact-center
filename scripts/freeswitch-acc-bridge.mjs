@@ -789,6 +789,8 @@ export async function buildFreeswitchLiveProofManifest(options) {
   const pipecatRtpEvidence = options.pipecatRtpEvidence ?? null;
   const pipecatOutboundRtpEvidence = options.pipecatOutboundRtpEvidence ?? null;
   const outboundPlaybackTargetMatchedCallerRtp = playbackTargetMatchesCallerRtp(options.remoteRtp, pipecatOutboundRtpEvidence);
+  const outboundPlaybackReviewReady =
+    pipecatOutboundRtpEvidence?.rtpSocketSendReady === true && outboundPlaybackTargetMatchedCallerRtp;
   const rtcAsrStreamEvidence = options.rtcAsrStreamEvidence ?? null;
   const runtimeModeLabels = {
     telephony: options.telephonyMode,
@@ -809,6 +811,11 @@ export async function buildFreeswitchLiveProofManifest(options) {
   if (options.rtcAsrEvidencePath && !rtcAsrEvidenceStats) blockers.push("rtc-asr transcript/evidence path was configured, but the evidence file is missing.");
   if (rtcAsrEvidenceStats && rtcAsrEvidenceStats.size === 0) blockers.push("rtc-asr transcript/evidence file is empty.");
   if (rtcAsrEvidenceInspection.blocker) blockers.push(rtcAsrEvidenceInspection.blocker);
+  if (!pipecatOutboundRtpEvidence?.rtpSocketSendReady) {
+    blockers.push("FreeSWITCH caller playback RTP was not sent, so SIP bidirectional playback is not proven.");
+  } else if (!outboundPlaybackTargetMatchedCallerRtp) {
+    blockers.push("FreeSWITCH caller playback RTP was sent, but the playback target did not match the caller RTP target.");
+  }
 
   const nextActions = [];
   if (rtpPacketCountEstimate === 0) {
@@ -827,6 +834,11 @@ export async function buildFreeswitchLiveProofManifest(options) {
     nextActions.push("Rerun rtc-asr until transcript evidence is non-empty before marking the proof review-ready.");
   }
   if (rtcAsrEvidenceInspection.nextAction) nextActions.push(rtcAsrEvidenceInspection.nextAction);
+  if (!pipecatOutboundRtpEvidence?.rtpSocketSendReady) {
+    nextActions.push("Send Kokoro/Pipecat RTP playback to the FreeSWITCH caller target before marking the proof review-ready.");
+  } else if (!outboundPlaybackTargetMatchedCallerRtp) {
+    nextActions.push("Discover the caller RTP target from FreeSWITCH media headers and send playback RTP to that target.");
+  }
 
   const artifactIntegrity = [];
   if (audioStats) {
@@ -883,9 +895,11 @@ export async function buildFreeswitchLiveProofManifest(options) {
         ? "sip_rtp_inbound_to_pipecat_input_frames_and_output_frames_to_rtp_packets"
         : "sip_rtp_inbound_to_pipecat_input_frames",
       outboundPlaybackAdapter: pipecatOutboundRtpEvidence?.outboundRtpReady ? "packetized_output_audio_frames_to_pcmu_rtp" : "not_connected",
-      bidirectionalPlaybackReady: false,
-      blocker: pipecatOutboundRtpEvidence?.rtpSocketSendReady
-        ? "Pipecat/Kokoro TTSAudioRawFrame output can be sent to the FreeSWITCH RTP playback socket; live softphone caller-audible playback still needs end-to-end acceptance evidence before full issue #214 completion."
+      bidirectionalPlaybackReady: outboundPlaybackReviewReady,
+      blocker: outboundPlaybackReviewReady
+        ? null
+        : pipecatOutboundRtpEvidence?.rtpSocketSendReady
+          ? "Pipecat/Kokoro TTSAudioRawFrame output was sent, but not to the discovered FreeSWITCH caller RTP target."
         : pipecatOutboundRtpEvidence?.outboundRtpReady
           ? "Kokoro/Pipecat output and TTSAudioRawFrame fixtures can be packetized as RTP, but they have not been sent to a FreeSWITCH caller RTP target yet."
           : "Kokoro/Pipecat TTSAudioRawFrame output is not yet connected to the FreeSWITCH RTP playback socket for SIP caller playback.",
@@ -897,7 +911,12 @@ export async function buildFreeswitchLiveProofManifest(options) {
     },
     artifacts: { audioWav: options.wavPath, sipLog: options.logPath, rtcAsrEvidence: options.rtcAsrEvidencePath ?? null },
     artifactIntegrity,
-    reviewReady: blockers.length === 0 && runtimeModeLabels.telephony === "local_sip" && rtcAsrEvidenceInspection.ready && !generatedMedia,
+    reviewReady:
+      blockers.length === 0 &&
+      runtimeModeLabels.telephony === "local_sip" &&
+      rtcAsrEvidenceInspection.ready &&
+      outboundPlaybackReviewReady &&
+      !generatedMedia,
     reviewGate: {
       requiredLabels: requiredReviewLabels,
       missingLabels: missingReviewLabels,

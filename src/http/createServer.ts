@@ -4583,6 +4583,10 @@ async function routeRequest(
           writeBadRequest(response, remotePort.error);
           return;
         }
+        if (remotePort !== null && (remotePort <= 0 || remotePort > 65535)) {
+          writeBadRequest(response, "live_sip_playback_remote_port_invalid");
+          return;
+        }
         const totalDurationMs = parseOptionalNonNegativeNumber(body.totalDurationMs, "live_sip_playback_total_duration_ms_invalid");
         if (totalDurationMs !== null && typeof totalDurationMs === "object") {
           writeBadRequest(response, totalDurationMs.error);
