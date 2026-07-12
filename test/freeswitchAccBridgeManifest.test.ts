@@ -130,7 +130,7 @@ test("FreeSWITCH bridge packetizes Pipecat output audio into outbound RTP proof 
           outboundPlaybackAdapter: string;
           bidirectionalPlaybackReady: boolean;
           blocker: string;
-          outboundRtpPlayback: { outboundRtpReady: boolean; packetCount: number; totalDurationMs: number; nextSequenceNumber: number; nextTimestamp: number; remotePort: number };
+          outboundRtpPlayback: { outboundRtpReady: boolean; rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; totalDurationMs: number; nextSequenceNumber: number; nextTimestamp: number; remotePort: number };
         };
       };
     };
@@ -146,6 +146,8 @@ test("FreeSWITCH bridge packetizes Pipecat output audio into outbound RTP proof 
     assert.match(parsed.manifest.pipecatMediaEngine.blocker, /live FreeSWITCH caller playback/);
     assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.outboundRtpReady, true);
     assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.packetCount, 2);
+    assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.sentPacketCount, 0);
+    assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.rtpSocketSendReady, false);
     assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.totalDurationMs, 0.5);
     assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.nextSequenceNumber, 0);
     assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.nextTimestamp, 164);
@@ -193,7 +195,7 @@ test("FreeSWITCH bridge sends fixture Pipecat output frames to RTP playback sink
     });
     const parsed = JSON.parse(stdout) as {
       sent: Array<{ sequenceNumber: number; timestamp: number; ssrc: number; payloadBytes: number; port: number; host: string }>;
-      summary: { outboundRtpReady: boolean; frameType: string; packetCount: number; nextSequenceNumber: number; nextTimestamp: number; remotePort: number; errors: Array<{ error: string }> };
+      summary: { outboundRtpReady: boolean; rtpSocketSendReady: boolean; frameType: string; packetCount: number; sentPacketCount: number; nextSequenceNumber: number; nextTimestamp: number; remotePort: number; lastSentAt: string | null; errors: Array<{ error: string }> };
       events: Array<{ pipecatOutboundRtpPlayback?: { outboundRtpReady: boolean } }>;
     };
 
@@ -204,6 +206,9 @@ test("FreeSWITCH bridge sends fixture Pipecat output frames to RTP playback sink
     assert.equal(parsed.summary.outboundRtpReady, true);
     assert.equal(parsed.summary.frameType, "OutputAudioRawFrame|TTSAudioRawFrame");
     assert.equal(parsed.summary.packetCount, 2);
+    assert.equal(parsed.summary.sentPacketCount, 2);
+    assert.equal(parsed.summary.rtpSocketSendReady, true);
+    assert.match(parsed.summary.lastSentAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
     assert.equal(parsed.summary.nextSequenceNumber, 0);
     assert.equal(parsed.summary.nextTimestamp, 164);
     assert.equal(parsed.summary.remotePort, 40002);

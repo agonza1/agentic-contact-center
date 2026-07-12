@@ -372,9 +372,11 @@ export class PipecatRtpPlaybackSink {
       samplesPerPacket: options.samplesPerPacket ?? 160,
     };
     this.packetCount = 0;
+    this.sentPacketCount = 0;
     this.audioDurationMs = 0;
     this.errors = [];
     this.lastPacket = null;
+    this.lastSentAt = null;
   }
 
   packetize(frame) {
@@ -408,6 +410,10 @@ export class PipecatRtpPlaybackSink {
       await new Promise((resolve) => {
         socket.send(packet, this.options.remotePort, this.options.remoteHost, (error) => {
           if (error) this.errors.push({ at: nowIso(), error: error instanceof Error ? error.message : String(error) });
+          else {
+            this.sentPacketCount += 1;
+            this.lastSentAt = nowIso();
+          }
           resolve();
         });
       });
@@ -423,12 +429,15 @@ export class PipecatRtpPlaybackSink {
       sampleRateHz: 8000,
       channels: 1,
       packetCount: this.packetCount,
+      sentPacketCount: this.sentPacketCount,
+      rtpSocketSendReady: this.sentPacketCount > 0,
       totalDurationMs: this.audioDurationMs,
       nextSequenceNumber: this.options.sequenceNumber,
       nextTimestamp: this.options.timestamp,
       ssrc: this.options.ssrc,
       remoteHost: this.options.remoteHost,
       remotePort: this.options.remotePort ?? null,
+      lastSentAt: this.lastSentAt,
       errors: this.errors,
     };
   }
