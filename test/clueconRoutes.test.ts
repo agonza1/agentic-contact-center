@@ -162,7 +162,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.routes.evalRun, "/api/cluecon/eval/run");
   assert.ok(payload.readiness.some((item) => item.id === "pipecat" && item.status === "ready"));
   assert.ok(payload.readiness.some((item) => item.id === "acc" && item.repoUrl === "https://github.com/agonza1/agentic-contact-center"));
-  assert.ok(payload.readiness.some((item) => item.id === "rtc_asr" && item.repoUrl === "https://github.com/agonza1/rtc-asr" && /blocker state/.test(item.caveat)));
+  assert.ok(payload.readiness.some((item) => item.id === "rtc_asr" && item.repoUrl === "https://github.com/agonza1/rtc-asr" && /Optional for this scripted presentation/.test(item.caveat)));
   assert.ok(payload.liveProbes.some((probe) => probe.id === "rtc_asr" && probe.configured === false && probe.status === "fixture"));
   assert.ok(payload.liveProbes.some((probe) => probe.id === "kokoro" && probe.configured === false && probe.status === "fixture"));
   assert.equal(payload.scenario.callerTurns.length, 4);
@@ -402,28 +402,35 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.equal(narrative.statusCode, 200);
   assert.match(narrative.contentType, /text\/html/);
   assert.match(narrative.body, /From SIP to Tokens/);
-  assert.match(narrative.body, /Operator realtime flow/);
+  assert.match(narrative.body, /ClueCon 2026 presentation/);
+  assert.doesNotMatch(narrative.body, /ClueCon vertical slice/i);
+  assert.match(narrative.body, /Alberto Gonzalez CTO @ WebRTC\.ventures/);
   assert.match(narrative.body, /Realtime call flow visualization/);
   assert.match(narrative.body, /Audio bytes in/);
   assert.match(narrative.body, /Audio-to-text \/ STT/);
   assert.match(narrative.body, /Text-to-audio \/ TTS/);
   assert.match(narrative.body, /flow-packet tertiary/);
   assert.match(narrative.body, /Run scripted demo/);
+  assert.match(narrative.body, /Run scripted proof/);
   assert.match(narrative.body, /Run eval proof/);
   assert.match(narrative.body, /window\.__CLUECON__/);
   assert.match(narrative.body, /rtc-asr is measurable and swappable/);
   assert.match(narrative.body, /https:\/\/github\.com\/agonza1\/rtc-asr/);
   assert.match(narrative.body, /renderAsrPanel/);
   assert.match(narrative.body, /runEvalProof/);
+  assert.match(narrative.body, /goToSlide/);
+  assert.match(narrative.body, /join\("\\n"\)/);
   assert.match(narrative.body, /class="scroll"/);
 
   const present = await get("/cluecon/present");
   assert.equal(present.statusCode, 200);
   assert.match(present.body, /class="present"/);
-  assert.match(present.body, /Live traffic, stage by stage/);
+  assert.match(present.body, /From SIP to tokens/);
+  assert.match(present.body, /Alberto Gonzalez CTO @ WebRTC\.ventures/);
   assert.match(present.body, /ArrowRight/);
   assert.match(present.body, /Run eval proof/);
   assert.match(present.body, /eval-scorecard/);
+  assert.match(present.body, /ClueCon 2026 presentation/);
 });
 
 test("ClueCon static export renders GitHub Pages artifact", async () => {
