@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const source = () => readFileSync("scripts/pipecat-local-voice-bridge.py", "utf8");
+const browserWebrtcBridgeSource = () => readFileSync("scripts/pipecat-browser-webrtc-bridge.py", "utf8");
 const consoleSource = () => readFileSync("src/http/createServer.ts", "utf8");
 
 test("Pipecat voice bridge uses rtc-asr and Kokoro instead of old local engines", () => {
@@ -46,6 +47,8 @@ test("Pipecat voice bridge reports fail-closed readiness and engine evidence", (
   assert.match(bridge, /"verificationCommand": "npm run pipecat:voice:check"/);
   assert.match(bridge, /ffmpeg is not available on PATH/);
   assert.match(bridge, /"localAudio"/);
+  assert.match(bridge, /legacy WebSocket\/webm proof plumbing/);
+  assert.match(bridge, /normal browser WebRTC operation should not use this path/);
   assert.match(bridge, /rtc-asr health or \/v1\/models did not expose model\/backend metadata/);
   assert.match(bridge, /"mediaFlow": "pipecat_frames"/);
   assert.match(bridge, /"ready": ready/);
@@ -56,9 +59,47 @@ test("Pipecat voice bridge reports fail-closed readiness and engine evidence", (
   assert.match(bridge, /"tts": result\.tts_meta/);
 });
 
-test("Pipecat voice check script is exposed", () => {
+test("Pipecat voice readiness scripts distinguish WebRTC from the legacy ffmpeg bridge", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  const smoke = readFileSync("scripts/browser-webrtc-readiness-smoke.mjs", "utf8");
+
+  assert.equal(pkg.scripts["browser-webrtc:check"], "node scripts/browser-webrtc-readiness-smoke.mjs");
+  assert.equal(pkg.scripts["pipecat:voice:readiness"], "node scripts/browser-webrtc-readiness-smoke.mjs");
   assert.equal(pkg.scripts["pipecat:voice:check"], "python3 scripts/pipecat-local-voice-bridge.py --check-sidecars");
+  assert.match(smoke, /browserWebRtc\.normalOperation\?\.transport !== "webrtc"/);
+  assert.match(smoke, /mediaRecorderRequired !== false/);
+  assert.match(smoke, /ffmpegRequired !== false/);
+  assert.match(smoke, /pipecatWebrtcBridge\?\.status !== "signaling_ready"/);
+  assert.match(smoke, /Browser WebRTC readiness OK/);
+});
+
+
+test("Pipecat browser WebRTC bridge normalizes answer SDP for Chrome", () => {
+  const bridge = browserWebrtcBridgeSource();
+
+  assert.match(bridge, /def normalize_browser_answer_sdp\(sdp: str\) -> str:/);
+  assert.match(bridge, /aiortc 1\.14 can emit a=setup after ICE candidates/);
+  assert.match(bridge, /if line\.startswith\("a=fingerprint:"\)/);
+  assert.match(bridge, /reordered\[insert_at \+ 1:insert_at \+ 1\] = setup_lines/);
+  assert.match(bridge, /return "\\r\\n"\.join\(output\) \+ "\\r\\n"/);
+  assert.match(bridge, /answer_sdp = normalize_browser_answer_sdp\(pc\.localDescription\.sdp\)/);
+  assert.match(bridge, /"sdp": answer_sdp/);
+});
+
+
+test("Pipecat browser WebRTC bridge cancels remote audio on caller barge-in", () => {
+  const bridge = browserWebrtcBridgeSource();
+
+  assert.match(bridge, /def clear_buffer\(self\) -> dict\[str, Any\]:/);
+  assert.match(bridge, /self\._buffer\.clear\(\)/);
+  assert.match(bridge, /def cancel_output\(self, reason: str = "barge-in"\) -> dict\[str, Any\]:/);
+  assert.match(bridge, /self\.output_generation \+= 1/);
+  assert.match(bridge, /"type": "browser_webrtc_output_cancelled"/);
+  assert.match(bridge, /turn_output_generation = self\.output_generation/);
+  assert.match(bridge, /if turn_output_generation == self\.output_generation:/);
+  assert.match(bridge, /"cancelReason": "barge-in"/);
+  assert.match(bridge, /pipeline\.cancel_output\("barge-in"\)/);
+  assert.match(bridge, /"bargeInEvidence": pipeline\.last_barge_in_evidence/);
 });
 
 
@@ -66,23 +107,34 @@ test("operator console surfaces fail-closed voice bridge readiness", () => {
   const source = consoleSource();
 
   assert.match(source, /state\.voiceBridge\.status === "degraded"/);
-  assert.match(source, /return "Bridge blocked"/);
+  assert.match(source, /return "WebRTC blocked"/);
+  assert.match(source, /function browserWebrtcReadinessUrl\(\)/);
+  assert.match(source, /return "\/api\/browser-webrtc\/readiness"/);
   assert.match(source, /function formatVoiceBridgeReadyDetail\(payload\)/);
-  assert.match(source, /payload\.nextAction/);
+  assert.match(source, /payload\.nextActions/);
   assert.match(source, /blockers\.slice\(0, 3\)/);
   assert.match(source, /function formatVoiceBridgeEngineEvidence\(payload\)/);
   assert.match(source, /formatVoiceBridgeEngineEvidence\(payload\)/);
-  assert.match(source, /formatVoiceBridgeEngineEvidence\(readyPayload \|\| \{\}\)/);
-  assert.match(source, /payload\.type === "ready" && payload\.ok === false/);
-  assert.match(source, /finish\("degraded", formatVoiceBridgeReadyDetail\(payload\)\)/);
-  assert.match(source, /Waiting for ready message from/);
-  assert.doesNotMatch(source, /WebSocket opened at/);
-  assert.match(source, /function startVoiceCall\(readyPayload\)/);
-  assert.match(source, /function blockVoiceStart\(detail\)/);
-  assert.match(source, /payload\.type === "ready"/);
-  assert.match(source, /startVoiceCall\(payload\)/);
-  assert.match(source, /payload\.type === "started"/);
-  assert.match(source, /payload\.ok === false/);
-  assert.match(source, /updateVoiceBridgeStatus\("degraded", ready\.detail \? formatVoiceBridgeReadyDetail\(ready\) : state\.voiceStatus\)/);
+  assert.match(source, /fetch\(browserWebrtcReadinessUrl\(\)\)/);
+  assert.match(source, /payload\.ok/);
+  assert.match(source, /new RTCPeerConnection/);
+  assert.match(source, /window\.__ACC_COLLECT_BROWSER_WEBRTC_LIVE_PROOF__/);
+  assert.match(source, /window\.__ACC_COPY_BROWSER_WEBRTC_LIVE_PROOF__/);
+  assert.match(source, /const repoHeadEvidence = /);
+  assert.match(source, /gitHead: repoHeadEvidence/);
+  assert.match(source, /id="voice-copy-proof"/);
+  assert.match(source, /copyBrowserWebrtcLiveProof/);
+  assert.match(source, /pc\.getStats\(\)/);
+  assert.match(source, /browser\.microphone\.uplink/);
+  assert.match(source, /pipecat\.webrtc\.offer_answer/);
+  assert.match(source, /browser\.remote\.audio\.played/);
+  assert.match(source, /window\.__ACC_BROWSER_WEBRTC_LIVE_PROOF__ = proof/);
+  assert.match(source, /evidence: state\.voiceBridgeEvidence/);
+  assert.match(source, /fetch\("\/api\/browser-webrtc\/session"/);
+  assert.match(source, /typeof bridgeResponse\.payload\.sdp === "string" \? bridgeResponse\.payload\.sdp : ""/);
+  assert.match(source, /!answerSdp\.trim\(\)/);
+  assert.match(source, /getUserMedia/);
+  assert.doesNotMatch(source, /new WebSocket/);
+  assert.doesNotMatch(source, /new MediaRecorder/);
   assert.match(source, /stopVoiceStream\(\)/);
 });

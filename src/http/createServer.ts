@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 import {
@@ -68,6 +70,27 @@ const maxCallListPageLimit = 100;
 const operatorConsoleRefreshIntervalMs = 5000;
 const operatorConsoleWorkboardCard = "82771d3a-de4d-4b6e-869c-328e8264d01e";
 const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
+const defaultBrowserWebrtcBridgeTimeoutMs = 5000;
+function getBrowserWebrtcBridgeBaseUrl(): string {
+  return process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766";
+}
+
+function getBrowserWebrtcBridgeTimeoutMs(): number {
+  const parsed = Number(process.env.BROWSER_WEBRTC_BRIDGE_TIMEOUT_MS ?? "");
+  if (!Number.isFinite(parsed) || parsed <= 0) return defaultBrowserWebrtcBridgeTimeoutMs;
+  return Math.min(Math.max(Math.trunc(parsed), 50), 60000);
+}
+
+function getRepoHeadEvidence(): string | null {
+  const envHead = process.env.ACC_GIT_HEAD;
+  if (envHead && /^[a-f0-9]{40}$/i.test(envHead)) return envHead.toLowerCase();
+  try {
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return /^[a-f0-9]{40}$/i.test(head) ? head.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
 let activeAssertEvaluationSpec = cloneAssertEvaluationSpec(defaultAssertEvaluationSpec);
 let activeClueConBrainBlocks = defaultClueConBrainBlocks();
 let activeClueConBrainRevision = 1;
@@ -632,6 +655,198 @@ function buildRealtimeShimReadinessPayload(): object {
   };
 }
 
+function buildBrowserWebrtcReadinessPayload(): object {
+  const realtimeReadiness = buildRealtimeShimReadinessPayload() as {
+    adapter: { localSttContract: string };
+    acceptanceCriteria: Array<{ name: string; passed: boolean; evidence: string }>;
+    qaEvidenceRoutes: Array<{ route: string; method: string; evidence: string[] }>;
+  };
+  const contractReady = realtimeReadiness.acceptanceCriteria.every((criterion) => criterion.passed);
+  const signalingRoute = "/api/browser-webrtc/session";
+  const browserWebrtcBridgeBaseUrl = getBrowserWebrtcBridgeBaseUrl();
+  const browserWebrtcBridgeTimeoutMs = getBrowserWebrtcBridgeTimeoutMs();
+  const liveMediaVerified = false;
+
+  return {
+    ok: contractReady,
+    route: "/api/browser-webrtc/readiness",
+    issue: "agonza1/agentic-contact-center#213",
+    issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/213",
+    status: contractReady ? "contract_ready_pending_live_media_evidence" : "realtime_contract_degraded",
+    intendedPath: "browser microphone -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC/browser playback",
+    normalOperation: {
+      transport: "webrtc",
+      browserCapture: "getUserMedia MediaStreamTrack",
+      browserPlayback: "WebRTC remote audio track",
+      mediaRecorderRequired: false,
+      ffmpegRequired: false,
+    },
+    readiness: {
+      acc: {
+        status: "ready",
+        evidence: "Existing call APIs, transcript, event trail, latency marks, and proof routes remain owned by ACC.",
+      },
+      pipecatWebrtcBridge: {
+        status: "signaling_ready",
+        bridgeUrl: browserWebrtcBridgeBaseUrl,
+        timeoutMs: browserWebrtcBridgeTimeoutMs,
+        offerRoute: `${signalingRoute} -> ${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/offer`,
+        evidence: "ACC validates browser SDP offers, preserves/allocates call IDs, and proxies signaling to the local Pipecat WebRTC bridge.",
+        failClosedWhenUnavailable: true,
+      },
+      rtcAsr: {
+        status: contractReady ? "contract_ready" : "contract_degraded",
+        engine: "rtc-asr",
+        contract: realtimeReadiness.adapter.localSttContract,
+      },
+      kokoro: {
+        status: "contract_ready",
+        engine: "kokoro",
+      },
+    },
+    legacyChunkBridge: {
+      status: "isolated_legacy",
+      command: "npm run pipecat:voice",
+      transport: "websocket_binary_webm_chunks",
+      mediaRecorderRequired: true,
+      ffmpegRequired: true,
+      intendedForNormalBrowserVoice: false,
+      note: "Retained only as legacy local proof plumbing; normal browser voice uses WebRTC signaling and does not fall back to this path.",
+    },
+    contract: {
+      signalingRoute: `POST ${signalingRoute}`,
+      readinessRoute: "/api/browser-webrtc/readiness",
+      bridgeOfferRoute: `${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/offer`,
+      bridgeTimeoutMs: browserWebrtcBridgeTimeoutMs,
+      expectedOffer: {
+        contentType: "application/json",
+        fields: ["sdp", "type=offer", "callId?"],
+      },
+      expectedAnswer: {
+        fields: ["sdp", "type=answer", "sessionId", "callId", "iceServers", "evidence"],
+      },
+      media: {
+        input: "opus over WebRTC from browser microphone",
+        output: "agent audio over WebRTC remote track",
+        pipecatTransport: "WebRTC transport",
+      },
+      sidecars: {
+        stt: "rtc-asr Local STT v1",
+        tts: "Kokoro",
+      },
+    },
+    liveMedia: {
+      verified: liveMediaVerified,
+      status: liveMediaVerified ? "verified" : "pending_local_bridge_proof",
+      requiredProof: [
+        "Pipecat WebRTC bridge started at BROWSER_WEBRTC_BRIDGE_URL",
+        "rtc-asr Local STT v1 sidecar captured a final browser transcript",
+        "Kokoro produced agent TTS audio",
+        "browser received and played a remote WebRTC audio track",
+      ],
+      setupCommands: [
+        "export RTC_ASR_BASE_URL=http://127.0.0.1:8080",
+        "export RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream",
+        "export ASR_VAD_FILTER=false",
+        "export KOKORO_BASE_URL=http://127.0.0.1:8880",
+        "export BROWSER_WEBRTC_BRIDGE_URL=http://127.0.0.1:8766",
+        "npm run pipecat:webrtc:install",
+        "npm start",
+        "npm run pipecat:webrtc:check",
+        "npm run pipecat:webrtc",
+        "npm run browser-webrtc:check -- --url http://127.0.0.1:8026/health",
+        "open http://127.0.0.1:8026/operator/console",
+      ],
+    },
+    preservation: {
+      callState: true,
+      transcript: true,
+      eventTrail: true,
+      latencyEvidence: true,
+      proofRoutes: true,
+      operatorConsole: true,
+      notes: "The Pipecat WebRTC bridge posts finalized caller text through /api/calls/:callId/caller-turn and attaches STT/TTS evidence to call proof artifacts.",
+    },
+    acceptanceProgress: [
+      {
+        criterion: "readiness_distinguishes_acc_pipecat_webrtc_rtc_asr_kokoro",
+        passed: true,
+        evidence: "/api/browser-webrtc/readiness and /health expose separate readiness objects.",
+      },
+      {
+        criterion: "normal_browser_voice_does_not_require_mediarecorder_or_ffmpeg",
+        passed: true,
+        evidence: "The primary console browser voice action uses RTCPeerConnection/getUserMedia and the intended readiness path declares ffmpegRequired=false.",
+      },
+      {
+        criterion: "browser_offer_answer_signaling",
+        passed: true,
+        evidence: "POST /api/browser-webrtc/session validates browser SDP offers, allocates or preserves an ACC call, and proxies to the Pipecat WebRTC bridge.",
+      },
+      {
+        criterion: "live_webrtc_media_turn",
+        passed: liveMediaVerified,
+        evidence: "Pending local proof that a browser microphone turn reached the Pipecat WebRTC bridge, rtc-asr emitted a final transcript, Kokoro produced TTS, and the browser played the remote WebRTC audio track.",
+      },
+    ],
+    blockers: contractReady ? ["live_webrtc_media_turn_evidence_missing"] : ["realtime_shim_contract_degraded"],
+    nextActions: [
+      `Run the Pipecat WebRTC bridge at ${browserWebrtcBridgeBaseUrl} before connecting browser voice.`,
+      "Open /operator/console, click Connect Voice, allow microphone access, and verify the remote WebRTC audio track plays agent audio.",
+    ],
+    validationCommands: ["npm test", "npm run browser-webrtc:check -- --url http://127.0.0.1:8026/health"],
+    relatedEvidenceRoutes: [
+      ...realtimeReadiness.qaEvidenceRoutes,
+      { route: signalingRoute, method: "POST", evidence: ["callId", "sessionId", "iceServers", "stt", "tts", "latencyEvidence"] },
+    ],
+    contractReady,
+    liveMediaVerified,
+  };
+}
+
+function buildBrowserWebrtcBridgeOfferUrl(): string {
+  const browserWebrtcBridgeBaseUrl = getBrowserWebrtcBridgeBaseUrl();
+  return `${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/offer`;
+}
+
+function buildBrowserWebrtcBridgeSessionProofUrl(sessionId: string): string {
+  const browserWebrtcBridgeBaseUrl = getBrowserWebrtcBridgeBaseUrl();
+  return `${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/sessions/${encodeURIComponent(sessionId)}/proof`;
+}
+
+async function getBrowserWebrtcSessionProofFromBridge(sessionId: string): Promise<{ status: number; payload: unknown }> {
+  const response = await fetch(buildBrowserWebrtcBridgeSessionProofUrl(sessionId), {
+    method: "GET",
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs()),
+  });
+  const contentType = response.headers.get("content-type") ?? "";
+  const responsePayload = contentType.includes("json") ? await response.json() : { detail: await response.text() };
+  return { status: response.status, payload: responsePayload };
+}
+
+async function postBrowserWebrtcOfferToBridge(payload: object): Promise<{ status: number; payload: unknown }> {
+  const response = await fetch(buildBrowserWebrtcBridgeOfferUrl(), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs()),
+  });
+  const contentType = response.headers.get("content-type") ?? "";
+  const responsePayload = contentType.includes("json") ? await response.json() : { detail: await response.text() };
+  return { status: response.status, payload: responsePayload };
+}
+
+function buildBrowserWebrtcBridgeUnavailablePayload(error: unknown): object {
+  return {
+    ok: false,
+    error: "pipecat_webrtc_bridge_unavailable",
+    detail: error instanceof Error ? error.message : String(error),
+    bridgeOfferRoute: buildBrowserWebrtcBridgeOfferUrl(),
+    readiness: buildBrowserWebrtcReadinessPayload(),
+  };
+}
+
 function buildRealtimeShimRpcResponse(shim: LocalRealtimeShimPrototype, body: unknown): object {
   if (!isRecord(body)) {
     return buildRealtimeShimRpcContractError("json_object_required");
@@ -1106,7 +1321,8 @@ function buildOperatorConsoleHtml(): string {
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
+    const repoHeadEvidence = ${JSON.stringify(getRepoHeadEvidence())};
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
     const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve", deny_offer: "Deny", takeover: "Barge In", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
@@ -1229,7 +1445,7 @@ function buildOperatorConsoleHtml(): string {
       const response = await fetch("/api/calls/" + callId + "/caller-turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: text }) });
       if (!response.ok) { const payload = await response.json().catch(function() { return {}; }); const message = payload.error || "Caller turn failed"; setStatus(message); throw new Error(message); }
     }
-    function voiceBridgeUrl() { return "ws://" + window.location.hostname + ":8765"; }
+    function browserWebrtcReadinessUrl() { return "/api/browser-webrtc/readiness"; }
     function voiceBridgeStatusClass() {
       if (state.voiceBridge.status === "running") return "badge ok";
       if (state.voiceBridge.status === "checking") return "badge";
@@ -1238,22 +1454,22 @@ function buildOperatorConsoleHtml(): string {
       return "badge";
     }
     function voiceBridgeStatusLabel() {
-      if (state.voiceBridge.status === "running") return "Bridge running";
-      if (state.voiceBridge.status === "checking") return "Checking bridge";
-      if (state.voiceBridge.status === "degraded") return "Bridge blocked";
-      if (state.voiceBridge.status === "offline") return "Bridge offline";
-      return "Bridge unknown";
+      if (state.voiceBridge.status === "running") return "WebRTC ready";
+      if (state.voiceBridge.status === "checking") return "Checking WebRTC";
+      if (state.voiceBridge.status === "degraded") return "WebRTC blocked";
+      if (state.voiceBridge.status === "offline") return "WebRTC offline";
+      return "WebRTC unknown";
     }
     function formatVoiceBridgeReadyDetail(payload) {
       const blockers = Array.isArray(payload.blockers) ? payload.blockers.filter(Boolean) : [];
-      const detail = payload.detail || "Bridge is running but rtc-asr, Kokoro, ACC, or ffmpeg is not ready.";
-      const nextAction = payload.nextAction ? " Next: " + payload.nextAction + "." : "";
+      const detail = payload.status || "Browser WebRTC readiness is not available.";
+      const nextAction = Array.isArray(payload.nextActions) && payload.nextActions.length ? " Next: " + payload.nextActions[0] : "";
       const blockerDetail = blockers.length ? " Blockers: " + blockers.slice(0, 3).join("; ") + (blockers.length > 3 ? "; +" + (blockers.length - 3) + " more" : "") + "." : "";
       return detail + blockerDetail + nextAction;
     }
     function formatVoiceBridgeEngineEvidence(payload) {
-      const stt = payload && payload.stt ? payload.stt : {};
-      const tts = payload && payload.tts ? payload.tts : {};
+      const stt = payload && payload.stt ? payload.stt : (payload && payload.rtcAsr ? payload.rtcAsr : {});
+      const tts = payload && payload.tts ? payload.tts : (payload && payload.kokoro ? payload.kokoro : {});
       const sttEvidence = stt.engine ? stt.engine + (stt.model && stt.model !== "unknown" ? " " + stt.model : "") : "rtc-asr";
       const ttsEvidence = tts.engine ? tts.engine + (tts.voice ? " " + tts.voice : "") : "Kokoro";
       return "STT " + sttEvidence + "; TTS " + ttsEvidence;
@@ -1278,47 +1494,20 @@ function buildOperatorConsoleHtml(): string {
       if (!(options && options.force) && state.voiceBridge.lastProbeAt && now - state.voiceBridge.lastProbeAt < 10000) return;
       state.voiceBridge.probing = true;
       state.voiceBridge.lastProbeAt = now;
-      updateVoiceBridgeStatus("checking", "Opening " + voiceBridgeUrl());
-      await new Promise(function(resolve) {
-        let done = false;
-        const ws = new WebSocket(voiceBridgeUrl());
-        const timer = window.setTimeout(function() {
-          finish("offline", "No ready message from " + voiceBridgeUrl() + ". Run npm run pipecat:voice.");
-        }, 1600);
-        function finish(status, detail) {
-          if (done) return;
-          done = true;
-          window.clearTimeout(timer);
-          try { ws.close(); } catch (error) {}
-          state.voiceBridge.probing = false;
-          updateVoiceBridgeStatus(status, detail);
-          resolve();
+      updateVoiceBridgeStatus("checking", "Checking " + browserWebrtcReadinessUrl());
+      try {
+        const response = await fetch(browserWebrtcReadinessUrl());
+        const payload = await response.json();
+        state.voiceBridge.probing = false;
+        if (response.ok && payload.ok) {
+          updateVoiceBridgeStatus("running", "Browser WebRTC path is ready (" + formatVoiceBridgeEngineEvidence(payload.readiness || {}) + ")");
+          return;
         }
-        ws.onmessage = function(event) {
-          try {
-            const payload = JSON.parse(event.data);
-            if (payload.type === "ready" && payload.ok) {
-              const version = payload.pipecat && payload.pipecat.pipecatVersion ? "pipecat " + payload.pipecat.pipecatVersion : "ready";
-              finish("running", "Connected to " + voiceBridgeUrl() + " (" + version + "; " + formatVoiceBridgeEngineEvidence(payload) + ")");
-              return;
-            }
-            if (payload.type === "ready" && payload.ok === false) {
-              finish("degraded", formatVoiceBridgeReadyDetail(payload));
-              return;
-            }
-          } catch (error) {}
-          finish("running", "Connected to " + voiceBridgeUrl());
-        };
-        ws.onopen = function() {
-          updateVoiceBridgeStatus("checking", "Waiting for ready message from " + voiceBridgeUrl());
-        };
-        ws.onerror = function() {
-          finish("offline", "Cannot reach " + voiceBridgeUrl() + ". Run npm run pipecat:voice.");
-        };
-        ws.onclose = function() {
-          finish("offline", "Cannot reach " + voiceBridgeUrl() + ". Run npm run pipecat:voice.");
-        };
-      });
+        updateVoiceBridgeStatus("degraded", formatVoiceBridgeReadyDetail(payload));
+      } catch (error) {
+        state.voiceBridge.probing = false;
+        updateVoiceBridgeStatus("offline", "Cannot read " + browserWebrtcReadinessUrl() + ".");
+      }
     }
     function startVoiceBridgeProbing() {
       if (state.voiceBridgeTimer) return;
@@ -1340,12 +1529,22 @@ function buildOperatorConsoleHtml(): string {
       audio.play().catch(function(error) { setStatus("Agent audio blocked: " + error.message); if (onEnded) onEnded(); });
     }
     function stopVoiceSegment() {
-      if (state.voiceRecording && state.voiceRecording.state === "recording") {
-        state.voiceRecording.stop();
-      }
+      state.voiceRecording = null;
     }
     function stopVoiceStream() {
       stopVoiceSegment();
+      if (state.voicePeer) {
+        try { state.voicePeer.close(); } catch (error) {}
+        state.voicePeer = null;
+      }
+      if (state.voiceRemoteAudio) {
+        state.voiceRemoteAudio.pause();
+        state.voiceRemoteAudio.srcObject = null;
+        state.voiceRemoteAudio = null;
+      }
+      state.voiceBridgeEvidence = null;
+      state.voiceBridgeAnswer = null;
+      state.voiceSessionId = null;
       if (state.voiceStream) {
         state.voiceStream.getTracks().forEach(function(track) { track.stop(); });
         state.voiceStream = null;
@@ -1353,6 +1552,105 @@ function buildOperatorConsoleHtml(): string {
       state.voiceRecording = null;
       state.voiceChunks = [];
     }
+    async function collectBrowserWebrtcLiveProof() {
+      const pc = state.voicePeer;
+      const audio = state.voiceRemoteAudio;
+      if (!pc || pc.connectionState === "closed") throw new Error("browser WebRTC peer connection is not active");
+      const stats = await pc.getStats();
+      const rtcStats = [];
+      const outboundAudioStats = [];
+      const inboundAudioStats = [];
+      stats.forEach(function(report) {
+        const item = Object.assign({}, report);
+        if (report.type === "inbound-rtp" || report.type === "outbound-rtp" || report.type === "track" || report.type === "media-source") rtcStats.push(item);
+        if (report.type === "outbound-rtp" && (report.kind === "audio" || report.mediaType === "audio")) outboundAudioStats.push(item);
+        if (report.type === "inbound-rtp" && (report.kind === "audio" || report.mediaType === "audio")) inboundAudioStats.push(item);
+      });
+      if (state.voiceCallId) {
+        await refresh();
+      }
+      let bridgeSessionProof = null;
+      if (state.voiceSessionId) {
+        const proofResponse = await fetch("/api/browser-webrtc/session/" + encodeURIComponent(state.voiceSessionId) + "/proof").catch(function() { return null; });
+        if (proofResponse && proofResponse.ok) {
+          bridgeSessionProof = await proofResponse.json().catch(function() { return null; });
+        }
+      }
+      const call = selectedCall();
+      const bridge = state.voiceBridgeEvidence && state.voiceBridgeEvidence.bridge ? state.voiceBridgeEvidence.bridge : {};
+      const bridgeTurn = bridgeSessionProof && bridgeSessionProof.bridge && bridgeSessionProof.bridge.turnEvidence ? bridgeSessionProof.bridge.turnEvidence : {};
+      const transcriptTurn = call && Array.isArray(call.transcript) ? call.transcript.slice().reverse().find(function(turn) { return turn.speaker === "caller"; }) : null;
+      const events = [
+        {
+          type: "browser.microphone.uplink",
+          target: "browser",
+          track: "local microphone audio",
+          callId: state.voiceCallId,
+          captured: true,
+          rtcStats: outboundAudioStats,
+          audioTrack: state.voiceStream && state.voiceStream.getAudioTracks()[0] ? {
+            enabled: state.voiceStream.getAudioTracks()[0].enabled,
+            muted: state.voiceStream.getAudioTracks()[0].muted,
+            readyState: state.voiceStream.getAudioTracks()[0].readyState,
+          } : null,
+        },
+        {
+          type: "pipecat.webrtc.offer_answer",
+          transport: "webrtc",
+          bridge: "pipecat",
+          callId: state.voiceCallId,
+          sessionId: state.voiceSessionId,
+          answer: state.voiceBridgeAnswer,
+          bridgeResponse: bridge,
+        },
+        {
+          type: "browser.remote.audio.played",
+          target: "browser",
+          track: "remote audio",
+          callId: state.voiceCallId,
+          connectionState: pc.connectionState,
+          iceConnectionState: pc.iceConnectionState,
+          inboundRtpAudio: inboundAudioStats[0] || null,
+          rtcStats: rtcStats,
+          audioElement: audio ? {
+            currentTime: audio.currentTime,
+            paused: audio.paused,
+            readyState: audio.readyState,
+            muted: audio.muted,
+          } : null,
+        },
+      ];
+      if (bridgeTurn.callerTranscript) events.push({ type: "rtc-asr.transcript.final", engine: "rtc-asr", final: true, transcript: bridgeTurn.callerTranscript, callId: state.voiceCallId, stt: bridgeTurn.stt });
+      else if (transcriptTurn && transcriptTurn.text) events.push({ type: "rtc-asr.transcript.final", engine: "rtc-asr", final: true, transcript: transcriptTurn.text, callId: state.voiceCallId });
+      if (bridgeTurn.tts && bridgeTurn.tts.audioBytes) events.push(Object.assign({ type: "kokoro.tts.audio", engine: "kokoro", callId: state.voiceCallId }, bridgeTurn.tts));
+      else if (bridge && bridge.tts) events.push(Object.assign({ type: "kokoro.tts.audio", engine: "kokoro", callId: state.voiceCallId }, bridge.tts));
+      const proof = {
+        capturedAt: new Date().toISOString(),
+        gitHead: repoHeadEvidence,
+        captureSource: "operator-console/browser-webrtc",
+        callId: state.voiceCallId,
+        sessionId: state.voiceSessionId,
+        evidence: state.voiceBridgeEvidence,
+        bridgeSessionProof: bridgeSessionProof,
+        events: events,
+      };
+      window.__ACC_BROWSER_WEBRTC_LIVE_PROOF__ = proof;
+      return proof;
+    }
+    async function copyBrowserWebrtcLiveProof() {
+      const proof = await collectBrowserWebrtcLiveProof();
+      const text = JSON.stringify(proof, null, 2);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        setStatus("Browser WebRTC proof copied");
+      } else {
+        window.prompt("Browser WebRTC proof JSON", text);
+        setStatus("Browser WebRTC proof ready");
+      }
+      return proof;
+    }
+    window.__ACC_COPY_BROWSER_WEBRTC_LIVE_PROOF__ = copyBrowserWebrtcLiveProof;
+    window.__ACC_COLLECT_BROWSER_WEBRTC_LIVE_PROOF__ = collectBrowserWebrtcLiveProof;
     async function ensureVoiceStream() {
       if (!state.voiceStream) {
         state.voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1360,130 +1658,107 @@ function buildOperatorConsoleHtml(): string {
       return state.voiceStream;
     }
     async function startVoiceSegment() {
-      if (state.voiceMuted || state.voiceProcessing || !state.voiceWs || state.voiceWs.readyState !== WebSocket.OPEN) return;
-      if (state.voiceRecording && state.voiceRecording.state === "recording") return;
-      const stream = await ensureVoiceStream();
-      const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : undefined });
-      state.voiceChunks = [];
-      state.voiceRecording = recorder;
-      recorder.ondataavailable = function(event) { if (event.data.size > 0) state.voiceChunks.push(event.data); };
-      recorder.onstop = async function() {
-        if (state.voiceRecording === recorder) state.voiceRecording = null;
-        if (state.voiceMuted || !state.voiceChunks.length || !state.voiceWs || state.voiceWs.readyState !== WebSocket.OPEN) return;
-        const blob = new Blob(state.voiceChunks, { type: recorder.mimeType || "audio/webm" });
-        state.voiceChunks = [];
-        const buffer = await blob.arrayBuffer();
-        state.voiceProcessing = true;
-        state.voiceStatus = "Thinking";
-        setStatus("Sent caller audio to local STT");
-        state.voiceWs.send(buffer);
-        render();
-      };
-      recorder.start();
-      state.voiceStatus = "Listening";
-      setStatus("Listening");
-      render();
-      window.setTimeout(function() {
-        if (state.voiceRecording === recorder && recorder.state === "recording") recorder.stop();
-      }, state.voiceSegmentMs);
+      await connectPipecatVoice();
+    }
+    function isReusableVoicePeer(pc) {
+      return Boolean(pc && (pc.connectionState === "new" || pc.connectionState === "connecting" || pc.connectionState === "connected"));
     }
     async function connectPipecatVoice() {
+      if (isReusableVoicePeer(state.voicePeer)) {
+        state.voiceMuted = false;
+        state.voiceStream && state.voiceStream.getAudioTracks().forEach(function(track) { track.enabled = true; });
+        state.voiceStatus = "Browser WebRTC voice connected";
+        setStatus(state.voiceStatus);
+        render();
+        return;
+      }
+      if (state.voicePeer) {
+        stopVoiceStream();
+      }
       const call = selectedCall();
       if (!call) { await startDemoCall(); }
       const activeCall = selectedCall();
       state.voiceConnecting = true;
-      state.voiceStatus = "Connecting to Pipecat voice bridge";
-      await ensureVoiceStream();
-      const ws = new WebSocket(voiceBridgeUrl());
-      state.voiceWs = ws;
-      let ready = false;
-      function startVoiceCall(readyPayload) {
-        if (ready) return;
-        ready = true;
-        updateVoiceBridgeStatus("running", "Connected to " + voiceBridgeUrl() + " (" + formatVoiceBridgeEngineEvidence(readyPayload || {}) + ")");
-        ws.send(JSON.stringify({ type: "start", accUrl: window.location.origin, callId: activeCall ? activeCall.session.callId : null }));
-      }
-      function blockVoiceStart(detail) {
+      state.voiceStatus = "Connecting browser WebRTC voice";
+      updateVoiceBridgeStatus("checking", "Creating browser WebRTC offer");
+      try {
+        const stream = await ensureVoiceStream();
+        const pc = new RTCPeerConnection();
+        state.voicePeer = pc;
+        state.voiceRemoteAudio = new Audio();
+        state.voiceRemoteAudio.autoplay = true;
+        pc.ontrack = function(event) {
+          const remoteStream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
+          state.voiceRemoteAudio.srcObject = remoteStream;
+          state.voiceRemoteAudio.play().catch(function(error) { setStatus("Agent audio blocked: " + error.message); });
+        };
+        pc.onconnectionstatechange = function() {
+          if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
+            updateVoiceBridgeStatus("degraded", "WebRTC connection " + pc.connectionState);
+            if (state.voicePeer === pc) {
+              try { pc.close(); } catch (error) {}
+              state.voicePeer = null;
+            }
+          }
+        };
+        stream.getAudioTracks().forEach(function(track) { pc.addTrack(track, stream); });
+        pc.addTransceiver("audio", { direction: "recvonly" });
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await new Promise(function(resolve) {
+          if (pc.iceGatheringState === "complete") { resolve(); return; }
+          const timer = window.setTimeout(resolve, 1200);
+          pc.addEventListener("icegatheringstatechange", function onStateChange() {
+            if (pc.iceGatheringState === "complete") {
+              window.clearTimeout(timer);
+              pc.removeEventListener("icegatheringstatechange", onStateChange);
+              resolve();
+            }
+          });
+        });
+        const response = await fetch("/api/browser-webrtc/session", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ type: "offer", sdp: pc.localDescription.sdp, callId: activeCall ? activeCall.session.callId : null })
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+          stopVoiceStream();
+          throw new Error(payload.error || "browser_webrtc_session_failed");
+        }
+        await pc.setRemoteDescription({ type: payload.type, sdp: payload.sdp });
+        state.voiceBridgeEvidence = payload.evidence || null;
+        state.voiceBridgeAnswer = { type: payload.type, sdp: payload.sdp, sessionId: payload.sessionId, callId: payload.callId };
+        state.voiceSessionId = payload.sessionId;
+        state.voiceCallId = payload.callId;
+        state.selectedCallId = payload.callId;
+        state.voiceConnecting = false;
+        state.voiceMuted = false;
+        state.voiceProcessing = false;
+        state.voiceStatus = "Browser WebRTC voice connected";
+        updateVoiceBridgeStatus("running", "Connected through Pipecat WebRTC bridge (" + formatVoiceBridgeEngineEvidence(payload.evidence || {}) + ")");
+        await refresh();
+        setStatus(state.voiceStatus);
+      } catch (error) {
         state.voiceConnecting = false;
         state.voiceProcessing = false;
         state.voiceMuted = true;
-        state.voiceStatus = detail || "Pipecat voice bridge blocked";
+        stopVoiceStream();
+        state.voiceStatus = error && error.message ? error.message : "Browser WebRTC voice blocked";
         updateVoiceBridgeStatus("degraded", state.voiceStatus);
         setStatus(state.voiceStatus);
-        stopVoiceStream();
-        try { ws.close(); } catch (error) {}
       }
-      ws.onopen = function() {
-        updateVoiceBridgeStatus("checking", "Waiting for ready message from " + voiceBridgeUrl());
-      };
-      ws.onmessage = async function(event) {
-        const payload = JSON.parse(event.data);
-        if (payload.type === "ready") {
-          if (payload.ok === false) {
-            blockVoiceStart(formatVoiceBridgeReadyDetail(payload));
-            return;
-          }
-          startVoiceCall(payload);
-          return;
-        }
-        if (payload.type === "started") {
-          if (payload.ok === false) {
-            state.voiceConnecting = false;
-            state.voiceProcessing = false;
-            state.voiceMuted = true;
-            state.voiceStatus = payload.error || "Pipecat voice bridge blocked";
-            const ready = payload.ready || {};
-            updateVoiceBridgeStatus("degraded", ready.detail ? formatVoiceBridgeReadyDetail(ready) : state.voiceStatus);
-            setStatus(state.voiceStatus);
-            stopVoiceStream();
-            return;
-          }
-          state.voiceCallId = payload.callId;
-          state.selectedCallId = payload.callId;
-          state.voiceConnecting = false;
-          state.voiceMuted = false;
-          state.voiceStatus = "Voice call " + payload.callId + " connected. Listening";
-          await refresh();
-          await startVoiceSegment();
-          return;
-        }
-        if (payload.type === "turn" && payload.ok) {
-          state.selectedCallId = payload.callId;
-          state.voiceProcessing = false;
-          state.voiceStatus = "Agent responding";
-          setStatus("Caller: " + payload.callerTranscript);
-          playAgentAudio(payload.agentAudio, function() {
-            if (!state.voiceMuted) startVoiceSegment().catch(function(error) { setStatus(error.message); });
-          });
-          await refresh();
-          return;
-        }
-        if (payload.type === "error" || payload.ok === false) {
-          state.voiceProcessing = false;
-          state.voiceStatus = payload.error || "Pipecat voice turn failed";
-          setStatus(payload.error || "Pipecat voice turn failed");
-          if (!state.voiceMuted) startVoiceSegment().catch(function(error) { setStatus(error.message); });
-        }
-      };
-      ws.onclose = function() { state.voiceConnecting = false; state.voiceProcessing = false; state.voiceMuted = true; stopVoiceStream(); if (state.voiceWs === ws) state.voiceWs = null; state.voiceStatus = "Pipecat voice bridge disconnected"; updateVoiceBridgeStatus("offline", "Pipecat voice bridge disconnected"); setStatus("Pipecat voice bridge disconnected"); };
-      ws.onerror = function() { state.voiceConnecting = false; state.voiceStatus = "Pipecat voice bridge unavailable. Run npm run pipecat:voice"; updateVoiceBridgeStatus("offline", "Cannot reach " + voiceBridgeUrl() + ". Run npm run pipecat:voice."); setStatus(state.voiceStatus); };
     }
     async function togglePipecatMute() {
-      if (!state.voiceWs || state.voiceWs.readyState !== WebSocket.OPEN) {
-        await connectPipecatVoice();
-        return;
-      }
-      state.voiceMuted = !state.voiceMuted;
-      if (state.voiceMuted) {
-        stopVoiceSegment();
-        state.voiceStatus = "Muted";
-        setStatus("Caller muted");
+      if (state.voicePeer && !state.voiceMuted) {
+        state.voiceMuted = true;
+        state.voiceStream && state.voiceStream.getAudioTracks().forEach(function(track) { track.enabled = false; });
+        state.voiceStatus = "Voice muted";
+        setStatus(state.voiceStatus);
         render();
         return;
       }
-      state.voiceStatus = "Listening";
-      setStatus("Caller unmuted");
-      await startVoiceSegment();
+      await connectPipecatVoice();
     }
     async function postScriptedTurn(expectedTurnIndex) {
       const call = selectedCall();
@@ -1518,13 +1793,15 @@ function buildOperatorConsoleHtml(): string {
     function voiceControlsHtml() {
       const muteLabel = state.voiceMuted ? "Unmute Caller" : "Mute Caller";
       const bridgeDetail = state.voiceBridge.detail + (state.voiceBridge.checkedAt ? " | last check " + state.voiceBridge.checkedAt : "");
-      return '<section class="section"><h3 class="section-title">Pipecat Voice Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute">' + muteLabel + '</button></div><div class="actions"><span id="voice-bridge-status" class="' + voiceBridgeStatusClass() + '">' + escapeHtml(voiceBridgeStatusLabel()) + '</span><span class="status">' + escapeHtml(state.voiceStatus) + '</span></div><span class="meta" id="voice-bridge-detail">' + escapeHtml(bridgeDetail) + '</span><span class="meta">Requires rtc-asr, Kokoro, and local bridge: npm run pipecat:voice. Audio path is browser mic -> Pipecat Python bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> browser playback.</span></section><section class="section diagram"><h3 class="section-title">Demo Flow</h3><svg class="demo-flow-svg" viewBox="0 0 980 360" role="img" aria-label="Caller audio flows through Pipecat, rtc-asr, the agent, Kokoro, operator controls, and ASSERT artifacts" preserveAspectRatio="xMidYMid meet"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0969da"/></marker><style>.node{fill:#ffffff;stroke:#d0d7de;stroke-width:2}.primaryNode{fill:#ddf4ff;stroke:#0969da;stroke-width:2}.artifactNode{fill:#dafbe1;stroke:#1a7f37;stroke-width:2}.label{font:700 17px system-ui,sans-serif;fill:#24292f}.small{font:600 13px system-ui,sans-serif;fill:#57606a}.line{stroke:#0969da;stroke-width:3;fill:none;marker-end:url(#arrow)}.softLine{stroke:#57606a;stroke-width:2.5;stroke-dasharray:7 6;fill:none;marker-end:url(#arrow)}</style></defs><rect class="primaryNode" x="30" y="58" width="145" height="82" rx="10"/><text class="label" x="103" y="92" text-anchor="middle">Caller</text><text class="small" x="103" y="116" text-anchor="middle">browser mic</text><rect class="node" x="225" y="58" width="150" height="82" rx="10"/><text class="label" x="300" y="88" text-anchor="middle">Pipecat</text><text class="small" x="300" y="112" text-anchor="middle">voice bridge</text><rect class="node" x="425" y="58" width="150" height="82" rx="10"/><text class="label" x="500" y="88" text-anchor="middle">rtc-asr</text><text class="small" x="500" y="112" text-anchor="middle">Local STT v1</text><rect class="primaryNode" x="625" y="58" width="150" height="82" rx="10"/><text class="label" x="700" y="88" text-anchor="middle">Agent</text><text class="small" x="700" y="112" text-anchor="middle">goal + memory</text><rect class="node" x="825" y="58" width="125" height="82" rx="10"/><text class="label" x="888" y="88" text-anchor="middle">Kokoro</text><text class="small" x="888" y="112" text-anchor="middle">TTS sidecar</text><rect class="artifactNode" x="515" y="225" width="170" height="82" rx="10"/><text class="label" x="600" y="255" text-anchor="middle">Artifacts</text><text class="small" x="600" y="279" text-anchor="middle">proof + transcript</text><rect class="artifactNode" x="742" y="225" width="178" height="82" rx="10"/><text class="label" x="831" y="255" text-anchor="middle">ASSERT</text><text class="small" x="831" y="279" text-anchor="middle">viewer + eval spec</text><rect class="node" x="210" y="225" width="180" height="82" rx="10"/><text class="label" x="300" y="255" text-anchor="middle">Operator</text><text class="small" x="300" y="279" text-anchor="middle">listen / steer</text><path class="line" d="M175 99 H225"/><path class="line" d="M375 99 H425"/><path class="line" d="M575 99 H625"/><path class="line" d="M775 99 H825"/><path class="line" d="M888 140 C888 178 816 178 775 140"/><path class="line" d="M700 140 V225"/><path class="line" d="M685 266 H742"/><path class="softLine" d="M390 266 C470 266 520 185 625 120"/></svg></section>';
+      return '<section class="section"><h3 class="section-title">Pipecat WebRTC Caller</h3><div class="actions"><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute">' + muteLabel + '</button><button type="button" id="voice-copy-proof">Copy Proof</button></div><div class="actions"><span id="voice-bridge-status" class="' + voiceBridgeStatusClass() + '">' + escapeHtml(voiceBridgeStatusLabel()) + '</span><span class="status">' + escapeHtml(state.voiceStatus) + '</span></div><span class="meta" id="voice-bridge-detail">' + escapeHtml(bridgeDetail) + '</span><span class="meta">Target path: browser mic -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC playback. This path intentionally does not require ffmpeg for normal operation.</span></section><section class="section diagram"><h3 class="section-title">Demo Flow</h3><svg class="demo-flow-svg" viewBox="0 0 980 360" role="img" aria-label="Caller audio flows through Pipecat, rtc-asr, the agent, Kokoro, operator controls, and ASSERT artifacts" preserveAspectRatio="xMidYMid meet"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0969da"/></marker><style>.node{fill:#ffffff;stroke:#d0d7de;stroke-width:2}.primaryNode{fill:#ddf4ff;stroke:#0969da;stroke-width:2}.artifactNode{fill:#dafbe1;stroke:#1a7f37;stroke-width:2}.label{font:700 17px system-ui,sans-serif;fill:#24292f}.small{font:600 13px system-ui,sans-serif;fill:#57606a}.line{stroke:#0969da;stroke-width:3;fill:none;marker-end:url(#arrow)}.softLine{stroke:#57606a;stroke-width:2.5;stroke-dasharray:7 6;fill:none;marker-end:url(#arrow)}</style></defs><rect class="primaryNode" x="30" y="58" width="145" height="82" rx="10"/><text class="label" x="103" y="92" text-anchor="middle">Caller</text><text class="small" x="103" y="116" text-anchor="middle">browser mic</text><rect class="node" x="225" y="58" width="150" height="82" rx="10"/><text class="label" x="300" y="88" text-anchor="middle">Pipecat</text><text class="small" x="300" y="112" text-anchor="middle">WebRTC bridge</text><rect class="node" x="425" y="58" width="150" height="82" rx="10"/><text class="label" x="500" y="88" text-anchor="middle">rtc-asr</text><text class="small" x="500" y="112" text-anchor="middle">Local STT v1</text><rect class="primaryNode" x="625" y="58" width="150" height="82" rx="10"/><text class="label" x="700" y="88" text-anchor="middle">Agent</text><text class="small" x="700" y="112" text-anchor="middle">goal + memory</text><rect class="node" x="825" y="58" width="125" height="82" rx="10"/><text class="label" x="888" y="88" text-anchor="middle">Kokoro</text><text class="small" x="888" y="112" text-anchor="middle">TTS sidecar</text><rect class="artifactNode" x="515" y="225" width="170" height="82" rx="10"/><text class="label" x="600" y="255" text-anchor="middle">Artifacts</text><text class="small" x="600" y="279" text-anchor="middle">proof + transcript</text><rect class="artifactNode" x="742" y="225" width="178" height="82" rx="10"/><text class="label" x="831" y="255" text-anchor="middle">ASSERT</text><text class="small" x="831" y="279" text-anchor="middle">viewer + eval spec</text><rect class="node" x="210" y="225" width="180" height="82" rx="10"/><text class="label" x="300" y="255" text-anchor="middle">Operator</text><text class="small" x="300" y="279" text-anchor="middle">listen / steer</text><path class="line" d="M175 99 H225"/><path class="line" d="M375 99 H425"/><path class="line" d="M575 99 H625"/><path class="line" d="M775 99 H825"/><path class="line" d="M888 140 C888 178 816 178 775 140"/><path class="line" d="M700 140 V225"/><path class="line" d="M685 266 H742"/><path class="softLine" d="M390 266 C470 266 520 185 625 120"/></svg></section>';
     }
     function attachVoiceControls() {
       const connect = document.getElementById("voice-connect");
       const mute = document.getElementById("voice-mute");
+      const copyProof = document.getElementById("voice-copy-proof");
       if (connect) connect.addEventListener("click", function() { connectPipecatVoice().catch(function(error) { setStatus(error.message); }); });
       if (mute) mute.addEventListener("click", function() { togglePipecatMute().catch(function(error) { setStatus(error.message); }); });
+      if (copyProof) copyProof.addEventListener("click", function() { copyBrowserWebrtcLiveProof().catch(function(error) { setStatus(error.message); }); });
     }
     function renderDetail() {
       const call = selectedCall();
@@ -3983,6 +4260,7 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/health") {
     const pipecatFlow = getPipecatPrototypeHealth();
+    const browserWebRtc = buildBrowserWebrtcReadinessPayload();
     writeJson(response, 200, {
       ok: true,
       demoName: config.demoName,
@@ -3995,6 +4273,7 @@ async function routeRequest(
       latencyBudgetsMs: config.latencyBudgetsMs,
       runtimeSeams,
       pipecatFlow,
+      browserWebRtc,
       productionReadiness: buildProductionReadiness(config, pipecatFlow),
       speechEnhancement: buildSpeechEnhancementHealthSummary(),
     });
@@ -4008,6 +4287,136 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/api/realtime-shim/readiness") {
     writeJson(response, 200, buildRealtimeShimReadinessPayload());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/browser-webrtc/readiness") {
+    writeJson(response, 200, buildBrowserWebrtcReadinessPayload());
+    return;
+  }
+
+  if (request.method === "GET" && pathname.startsWith("/api/browser-webrtc/session/") && pathname.endsWith("/proof")) {
+    const encodedSessionId = pathname.slice("/api/browser-webrtc/session/".length, -"/proof".length);
+    const sessionId = decodeURIComponent(encodedSessionId);
+    if (!sessionId.trim()) {
+      writeBadRequest(response, "browser_webrtc_session_id_required");
+      return;
+    }
+    try {
+      const bridgeResponse = await getBrowserWebrtcSessionProofFromBridge(sessionId);
+      writeJson(response, bridgeResponse.status, {
+        ok: bridgeResponse.status.toString().startsWith("2"),
+        route: "/api/browser-webrtc/session/:sessionId/proof",
+        sessionId,
+        bridgeProofRoute: buildBrowserWebrtcBridgeSessionProofUrl(sessionId),
+        bridge: bridgeResponse.payload,
+      });
+    } catch (error) {
+      writeJson(response, 503, {
+        ...buildBrowserWebrtcBridgeUnavailablePayload(error),
+        route: "/api/browser-webrtc/session/:sessionId/proof",
+        sessionId,
+        bridgeProofRoute: buildBrowserWebrtcBridgeSessionProofUrl(sessionId),
+      });
+    }
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/browser-webrtc/session") {
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const type = getOptionalTrimmedString(body.type);
+    const sdp = getOptionalTrimmedString(body.sdp);
+    if (type !== "offer") {
+      writeBadRequest(response, "browser_webrtc_offer_type_required");
+      return;
+    }
+    if (!sdp || !sdp.includes("v=0")) {
+      writeBadRequest(response, "browser_webrtc_offer_sdp_invalid");
+      return;
+    }
+
+    const requestedCallId = getOptionalTrimmedString(body.callId);
+    const existingSnapshot = requestedCallId ? await ingress.getSnapshot(requestedCallId) : null;
+    if (requestedCallId && !existingSnapshot) {
+      writeBadRequest(response, "browser_webrtc_call_not_found");
+      return;
+    }
+    const snapshot = existingSnapshot ?? await ingress.startCall(config, {
+      openclawSessionId: `browser-webrtc-${randomUUID()}`,
+      openclawSessionLabel: "browser-webrtc/pipecat",
+    } satisfies StartCallOptions);
+    const callId = snapshot.session.callId;
+    const sessionId = getOptionalTrimmedString(body.sessionId) ?? `browser-webrtc-${randomUUID()}`;
+    const host = request.headers.host ?? "127.0.0.1:8026";
+    const protocol = host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "http";
+
+    try {
+      const bridgeResponse = await postBrowserWebrtcOfferToBridge({
+        type,
+        sdp,
+        sessionId,
+        callId,
+        accUrl: `${protocol}://${host}`,
+        stt: { engine: "rtc-asr", contract: "local-stt.v1" },
+        tts: { engine: "kokoro" },
+        evidence: {
+          source: "acc_browser_webrtc_session",
+          mediaRecorderRequired: false,
+          ffmpegRequired: false,
+          preservation: ["callState", "transcript", "eventTrail", "latencyEvidence", "proofRoutes"],
+        },
+      });
+
+      if (!isRecord(bridgeResponse.payload)) {
+        writeJson(response, 502, {
+          ok: false,
+          error: "pipecat_webrtc_bridge_invalid_response",
+          bridgeOfferRoute: buildBrowserWebrtcBridgeOfferUrl(),
+        });
+        return;
+      }
+
+      const answerType = getOptionalTrimmedString(bridgeResponse.payload.type);
+      const answerSdp = typeof bridgeResponse.payload.sdp === "string" ? bridgeResponse.payload.sdp : "";
+      if (!bridgeResponse.status.toString().startsWith("2") || answerType !== "answer" || !answerSdp.trim()) {
+        writeJson(response, 502, {
+          ok: false,
+          error: "pipecat_webrtc_bridge_offer_failed",
+          bridgeStatus: bridgeResponse.status,
+          bridgeOfferRoute: buildBrowserWebrtcBridgeOfferUrl(),
+          bridge: bridgeResponse.payload,
+        });
+        return;
+      }
+
+      writeJson(response, 201, {
+        ok: true,
+        route: "/api/browser-webrtc/session",
+        sessionId,
+        callId,
+        type: "answer",
+        sdp: answerSdp,
+        iceServers: Array.isArray(bridgeResponse.payload.iceServers) ? bridgeResponse.payload.iceServers : [],
+        evidence: {
+          source: "acc_browser_webrtc_session",
+          bridgeOfferRoute: buildBrowserWebrtcBridgeOfferUrl(),
+          mediaRecorderRequired: false,
+          ffmpegRequired: false,
+          stt: { engine: "rtc-asr", contract: "local-stt.v1" },
+          tts: { engine: "kokoro" },
+          call: buildCallPayload(snapshot),
+          bridge: isRecord(bridgeResponse.payload.evidence) ? bridgeResponse.payload.evidence : {},
+        },
+      });
+    } catch (error) {
+      writeJson(response, 503, buildBrowserWebrtcBridgeUnavailablePayload(error));
+    }
     return;
   }
 

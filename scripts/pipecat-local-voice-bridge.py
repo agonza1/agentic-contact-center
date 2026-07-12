@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Local Pipecat voice bridge for the browser caller demo.
+"""Legacy local Pipecat voice bridge for the browser caller demo.
 
-Browser audio stays on the existing WebSocket contract, while each media turn is
-normalized into Pipecat frames and processed by Pipecat service adapters:
+This bridge is retained as legacy WebSocket/webm proof plumbing while the
+browser voice path moves to realtime WebRTC. It still requires ffmpeg for local
+audio conversion; normal browser WebRTC operation should not use this path.
 
 browser mic -> Pipecat InputAudioRawFrame -> rtc-asr STT -> ACC caller-turn -> Kokoro TTS -> browser playback
 """
