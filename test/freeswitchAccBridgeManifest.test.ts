@@ -213,6 +213,75 @@ test("FreeSWITCH bridge sends fixture Pipecat output frames to RTP playback sink
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+
+test("FreeSWITCH bridge streams captured Pipecat input frames to rtc-asr Local STT v1 evidence", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-rtc-asr-stream-"));
+  const evidencePath = path.join(tempDir, "rtc-asr-evidence.jsonl");
+
+  try {
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = `
+      const { RtcAsrPipecatStreamSink, PipecatRtpFrameCollector } = await import(${JSON.stringify(moduleUrl)});
+      const sent = [];
+      class FakeWebSocket {
+        constructor(url) { this.url = url; this.readyState = 1; this.listeners = new Map(); }
+        addEventListener(name, handler) { this.listeners.set(name, handler); }
+        send(payload) {
+          sent.push(Buffer.isBuffer(payload) ? { kind: "binary", bytes: payload.length, samples: [payload.readInt16LE(0), payload.readInt16LE(2)] } : { kind: "json", payload: JSON.parse(payload) });
+          if (!Buffer.isBuffer(payload) && JSON.parse(payload).type === "finalize") {
+            queueMicrotask(() => this.listeners.get("message")?.({ data: JSON.stringify({ type: "transcript", text: "hello from sip", is_final: true, speech_final: true }) }));
+          }
+        }
+        close(code, reason) { this.closeCode = code; this.closeReason = reason; }
+      }
+      const collector = new PipecatRtpFrameCollector({ maxFrames: 10 });
+      collector.acceptPacket(Buffer.from(${JSON.stringify(rtpPacket([0xfe, 0x7e], 100, 160))}), "2026-07-12T02:30:00.000Z");
+      const sink = new RtcAsrPipecatStreamSink({ url: "ws://127.0.0.1:8080/v1/stt/stream", evidencePath: ${JSON.stringify(evidencePath)}, WebSocketImpl: FakeWebSocket, clientStreamId: "fs-call-rtc-asr" });
+      const summary = await sink.transcribeFrameBatch(collector.summary(), { sipCallId: "fs-call-rtc-asr" });
+      console.log(JSON.stringify({ sent, summary }));
+    `;
+    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const parsed = JSON.parse(stdout) as {
+      sent: Array<{ kind: string; bytes?: number; samples?: number[]; payload?: any }>;
+      summary: { readiness: string; protocol: string; audioChunks: number; audioBytes: number; finalTranscriptReady: boolean; evidencePath: string };
+    };
+    const evidence = await readFile(evidencePath, "utf8");
+
+    assert.equal(parsed.sent[0].kind, "json");
+    assert.equal(parsed.sent[0].payload.type, "start");
+    assert.equal(parsed.sent[0].payload.version, "local-stt.v1");
+    assert.equal(parsed.sent[0].payload.audio.sample_rate, 16000);
+    assert.equal(parsed.sent[1].kind, "binary");
+    assert.equal(parsed.sent[1].bytes, 8);
+    assert.deepEqual(parsed.sent[1].samples, [decodePcmuSampleForTest(0xfe), decodePcmuSampleForTest(0xfe)]);
+    assert.equal(parsed.sent[2].payload.type, "finalize");
+    assert.equal(parsed.summary.readiness, "ready");
+    assert.equal(parsed.summary.protocol, "local-stt.v1");
+    assert.equal(parsed.summary.audioChunks, 1);
+    assert.equal(parsed.summary.audioBytes, 8);
+    assert.equal(parsed.summary.finalTranscriptReady, true);
+    assert.equal(parsed.summary.evidencePath, evidencePath);
+    assert.match(evidence, /hello from sip/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+function decodePcmuSampleForTest(sample: number): number {
+  const inverted = (~sample) & 0xff;
+  const sign = inverted & 0x80;
+  const exponent = (inverted >> 4) & 0x07;
+  const mantissa = inverted & 0x0f;
+  let magnitude = ((mantissa << 3) + 0x84) << exponent;
+  magnitude -= 0x84;
+  return sign ? -magnitude : magnitude;
+}
+
 test("FreeSWITCH ESL frames keep content-length event bodies attached", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;

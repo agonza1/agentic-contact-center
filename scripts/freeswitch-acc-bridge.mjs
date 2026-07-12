@@ -160,6 +160,157 @@ function decodePcmuToPcm16Base64(payload) {
   return pcm16.toString("base64");
 }
 
+function upsamplePcm16Mono8kTo16k(pcm16) {
+  if (!Buffer.isBuffer(pcm16) || pcm16.length === 0 || pcm16.length % 2 !== 0) {
+    throw new Error("pcm16_payload_invalid");
+  }
+  const upsampled = Buffer.alloc(pcm16.length * 2);
+  for (let sourceOffset = 0; sourceOffset < pcm16.length; sourceOffset += 2) {
+    const sample = pcm16.readInt16LE(sourceOffset);
+    const targetOffset = sourceOffset * 2;
+    upsampled.writeInt16LE(sample, targetOffset);
+    upsampled.writeInt16LE(sample, targetOffset + 2);
+  }
+  return upsampled;
+}
+
+function pipecatInputFrameSummaryToLocalSttPcm16(frame) {
+  if (frame?.frameType !== "InputAudioRawFrame") throw new Error("pipecat_frame_type_not_input_audio");
+  if (frame.audioFormat !== "pcm_s16le" || frame.sampleRateHz !== 8000 || frame.channels !== 1) {
+    throw new Error("pipecat_input_audio_format_not_pcm16_8khz_mono");
+  }
+  return upsamplePcm16Mono8kTo16k(Buffer.from(frame.pcm16Base64 ?? "", "base64"));
+}
+
+export class RtcAsrPipecatStreamSink {
+  constructor(options = {}) {
+    this.options = {
+      url: options.url,
+      WebSocketImpl: options.WebSocketImpl ?? globalThis.WebSocket,
+      evidencePath: options.evidencePath,
+      clientStreamId: options.clientStreamId ?? `freeswitch-${Date.now()}`,
+      partialIntervalMs: options.partialIntervalMs ?? 100,
+      partialWindowSeconds: options.partialWindowSeconds ?? 1.5,
+      maxBufferSeconds: options.maxBufferSeconds ?? 10,
+    };
+    this.events = [];
+    this.errors = [];
+    this.audioChunks = 0;
+    this.audioBytes = 0;
+  }
+
+  async transcribeFrameBatch(batch, metadata = {}) {
+    if (!this.options.url) return this.summary("blocked", "rtc_asr_url_missing");
+    if (!this.options.WebSocketImpl) return this.summary("blocked", "websocket_client_unavailable");
+    const frames = Array.isArray(batch?.frames) ? batch.frames : [];
+    if (frames.length === 0) return this.summary("blocked", "pipecat_input_frame_batch_empty");
+
+    const ws = new this.options.WebSocketImpl(this.options.url);
+    await this.waitForOpen(ws);
+    ws.send(JSON.stringify({
+      type: "start",
+      version: "local-stt.v1",
+      audio: { sample_rate: 16000, channels: 1, format: "pcm_s16le", frame_ms: 20, bytes_per_frame: 640 },
+      language: "en",
+      interim_results: true,
+      partial_interval_ms: this.options.partialIntervalMs,
+      partial_window_seconds: this.options.partialWindowSeconds,
+      max_buffer_seconds: this.options.maxBufferSeconds,
+      client_stream_id: this.options.clientStreamId,
+      metadata: { source: "freeswitch_rtp_pipecat", ...metadata },
+    }));
+
+    for (const frame of frames) {
+      const audio = pipecatInputFrameSummaryToLocalSttPcm16(frame);
+      ws.send(audio);
+      this.audioChunks += 1;
+      this.audioBytes += audio.length;
+    }
+    ws.send(JSON.stringify({ type: "finalize" }));
+    await this.collectUntilFinal(ws);
+    if (typeof ws.close === "function") ws.close(1000, "freeswitch_rtc_asr_complete");
+    await this.writeEvidence();
+    return this.summary(this.hasFinalTranscript() ? "ready" : "blocked", this.hasFinalTranscript() ? null : "rtc_asr_final_transcript_missing");
+  }
+
+  waitForOpen(ws) {
+    if (ws.readyState === 1 || ws.readyState === "open") return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("rtc_asr_websocket_open_timeout")), 5000);
+      this.addWsListener(ws, "open", () => { clearTimeout(timeout); resolve(); });
+      this.addWsListener(ws, "error", (error) => { clearTimeout(timeout); reject(error instanceof Error ? error : new Error(String(error))); });
+    });
+  }
+
+  collectUntilFinal(ws) {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => resolve(), 10000);
+      this.addWsListener(ws, "message", (message) => {
+        const event = parseRtcAsrMessage(message);
+        if (!event) return;
+        this.events.push(event);
+        if (isFinalTranscriptEvidence(event)) {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+      this.addWsListener(ws, "error", (error) => {
+        clearTimeout(timeout);
+        this.errors.push({ at: nowIso(), error: error instanceof Error ? error.message : String(error) });
+        reject(error instanceof Error ? error : new Error(String(error)));
+      });
+      this.addWsListener(ws, "close", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+  }
+
+  addWsListener(ws, eventName, handler) {
+    if (typeof ws.addEventListener === "function") ws.addEventListener(eventName, (event) => handler(event?.data ?? event));
+    else if (typeof ws.on === "function") ws.on(eventName, handler);
+    else ws[`on${eventName}`] = handler;
+  }
+
+  hasFinalTranscript() {
+    return this.events.some(isFinalTranscriptEvidence) && this.events.flatMap(transcriptFragments).join(" ").trim().length > 0;
+  }
+
+  async writeEvidence() {
+    if (!this.options.evidencePath) return;
+    await mkdir(path.dirname(this.options.evidencePath), { recursive: true });
+    const lines = this.events.map((event) => JSON.stringify(event)).join("\n");
+    await writeFile(this.options.evidencePath, lines ? `${lines}\n` : "", "utf8");
+  }
+
+  summary(readiness = this.hasFinalTranscript() ? "ready" : "blocked", reason = null) {
+    return {
+      readiness,
+      url: this.options.url ?? null,
+      evidencePath: this.options.evidencePath ?? null,
+      protocol: "local-stt.v1",
+      inputAudioFormat: "pcm_s16le_8khz_mono_pipecat_frames",
+      streamedAudioFormat: "pcm_s16le_16khz_mono_binary_ws",
+      audioChunks: this.audioChunks,
+      audioBytes: this.audioBytes,
+      eventCount: this.events.length,
+      finalTranscriptReady: this.hasFinalTranscript(),
+      reason,
+      errors: this.errors,
+    };
+  }
+}
+
+function parseRtcAsrMessage(message) {
+  const raw = Buffer.isBuffer(message) ? message.toString("utf8") : typeof message === "string" ? message : message?.data;
+  if (typeof raw !== "string") return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 function encodePcm16SampleToPcmu(sample) {
   const clipped = Math.max(-32635, Math.min(32635, sample));
   const sign = clipped < 0 ? 0x80 : 0x00;
@@ -454,6 +605,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
   const rtpPacketCountEstimate = audioBytes > 44 ? Math.floor((audioBytes - 44) / 320) : 0;
   const pipecatRtpEvidence = options.pipecatRtpEvidence ?? null;
   const pipecatOutboundRtpEvidence = options.pipecatOutboundRtpEvidence ?? null;
+  const rtcAsrStreamEvidence = options.rtcAsrStreamEvidence ?? null;
   const runtimeModeLabels = {
     telephony: options.telephonyMode,
     media: "live_capture",
@@ -549,9 +701,10 @@ export async function buildFreeswitchLiveProofManifest(options) {
       outboundPlaybackAdapter: pipecatOutboundRtpEvidence?.outboundRtpReady ? "packetized_output_audio_frames_to_pcmu_rtp" : "not_connected",
       bidirectionalPlaybackReady: false,
       blocker: pipecatOutboundRtpEvidence?.outboundRtpReady
-        ? "Kokoro/Pipecat output and TTSAudioRawFrame fixtures can be packetized as RTP, but live FreeSWITCH caller playback and rtc-asr live-stream wiring are not complete."
+        ? "Kokoro/Pipecat output and TTSAudioRawFrame fixtures can be packetized as RTP, but live FreeSWITCH caller playback is not complete."
         : "Kokoro/Pipecat TTSAudioRawFrame output is not yet connected to the FreeSWITCH RTP playback socket for SIP caller playback.",
       rtpFrameBatch: pipecatRtpEvidence,
+      rtcAsrLiveStream: rtcAsrStreamEvidence,
       outboundRtpPlayback: pipecatOutboundRtpEvidence,
     },
     artifacts: { audioWav: options.wavPath, sipLog: options.logPath, rtcAsrEvidence: options.rtcAsrEvidencePath ?? null },
@@ -679,6 +832,7 @@ export class EslBridge {
     const call = this.callMap.get(uuid);
     if (!call) return;
     await this.playPipecatOutputFixture();
+    const pipecatRtpFrameBatch = this.rtpCollector.summary();
     await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
       eventType: "media.capture",
       timestamp: nowIso(),
@@ -687,8 +841,23 @@ export class EslBridge {
       audioWavPath: call.wavPath,
       sipLogPath: this.options.logPath,
       generatedMedia: false,
-      pipecatRtpFrameBatch: this.rtpCollector.summary(),
+      pipecatRtpFrameBatch,
     });
+    let rtcAsrStreamEvidence = null;
+    if (this.options.rtcAsrUrl) {
+      const sink = new RtcAsrPipecatStreamSink({
+        url: this.options.rtcAsrUrl,
+        evidencePath: this.options.rtcAsrEvidencePath,
+        clientStreamId: `${uuid}-local-sip`,
+      });
+      try {
+        rtcAsrStreamEvidence = await sink.transcribeFrameBatch(pipecatRtpFrameBatch, { sipCallId: uuid, fsUuid: uuid, accCallId: call.accCallId });
+        this.events.push({ at: nowIso(), rtcAsrPipecatStream: rtcAsrStreamEvidence });
+      } catch (error) {
+        rtcAsrStreamEvidence = sink.summary("blocked", error instanceof Error ? error.message : String(error));
+        this.events.push({ at: nowIso(), rtcAsrPipecatStream: rtcAsrStreamEvidence });
+      }
+    }
     if (!this.options.rtcAsrUrl) {
       await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
         eventType: "rtc_asr.blocked",
@@ -722,7 +891,8 @@ export class EslBridge {
       rtcAsrUrl: this.options.rtcAsrUrl,
       rtcAsrEvidencePath: this.options.rtcAsrEvidencePath,
       telephonyMode: this.options.telephonyMode,
-      pipecatRtpEvidence: this.rtpCollector.summary(),
+      pipecatRtpEvidence: pipecatRtpFrameBatch,
+      rtcAsrStreamEvidence,
       pipecatOutboundRtpEvidence: this.rtpPlaybackSink.summary(),
     });
     await mkdir(path.dirname(this.options.manifestPath), { recursive: true });
@@ -749,6 +919,11 @@ export class EslBridge {
 }
 
 async function main() {
+  const rtcAsrUrl = argValue("--rtc-asr-url", process.env.RTC_ASR_WS_URL);
+  const rtcAsrEvidencePath = argValue(
+    "--rtc-asr-evidence",
+    process.env.RTC_ASR_EVIDENCE_PATH || (rtcAsrUrl ? "artifacts/freeswitch-live/rtc-asr-evidence.jsonl" : undefined),
+  );
   const bridge = new EslBridge({
     eslHost: argValue("--esl-host", process.env.FREESWITCH_ESL_HOST || "127.0.0.1"),
     eslPort: Number(argValue("--esl-port", process.env.FREESWITCH_ESL_PORT || "8021")),
@@ -758,8 +933,8 @@ async function main() {
     freeswitchRecordingDir: argValue("--freeswitch-recording-dir", process.env.FREESWITCH_RECORDING_DIR),
     logPath: path.resolve(process.cwd(), argValue("--log", "artifacts/freeswitch-live/freeswitch-esl-events.json")),
     manifestPath: path.resolve(process.cwd(), argValue("--manifest", "artifacts/freeswitch-live/freeswitch-live-proof-manifest.json")),
-    rtcAsrUrl: argValue("--rtc-asr-url", process.env.RTC_ASR_WS_URL),
-    rtcAsrEvidencePath: argValue("--rtc-asr-evidence", process.env.RTC_ASR_EVIDENCE_PATH),
+    rtcAsrUrl,
+    rtcAsrEvidencePath,
     telephonyMode: argValue("--telephony-mode", process.env.ACC_TELEPHONY_MODE || "local_sip"),
     rtpListenHost: argValue("--rtp-listen-host", process.env.ACC_FREESWITCH_RTP_LISTEN_HOST || "127.0.0.1"),
     rtpListenPort: Number(argValue("--rtp-listen-port", process.env.ACC_FREESWITCH_RTP_LISTEN_PORT || "0")) || undefined,
