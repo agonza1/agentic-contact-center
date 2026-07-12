@@ -618,6 +618,24 @@ class BrowserWebrtcBridge:
             }
         )
 
+    async def session_proof(self, request: web.Request) -> web.Response:
+        session_id = request.match_info.get("session_id", "")
+        session = self.sessions.get(session_id)
+        if not session:
+            return web.json_response({"ok": False, "error": "webrtc_session_not_found", "sessionId": session_id}, status=404)
+        pipeline = session.get("pipeline")
+        evidence = pipeline.last_evidence if isinstance(pipeline, PipecatBrowserWebrtcPipeline) else {}
+        return web.json_response(
+            {
+                "ok": True,
+                "sessionId": session_id,
+                "callId": session.get("callId"),
+                "startedAt": session.get("startedAt"),
+                "turnEvidence": evidence,
+                "reviewReady": bool(evidence.get("callerTranscript") and evidence.get("tts", {}).get("audioBytes", 0) > 0),
+            }
+        )
+
     async def close_peer(self, pc: RTCPeerConnection, session_id: str) -> None:
         self.peer_connections.discard(pc)
         session = self.sessions.get(session_id, {})
@@ -635,6 +653,7 @@ class BrowserWebrtcBridge:
         app.router.add_get("/health", self.readiness)
         app.router.add_get("/api/webrtc/readiness", self.readiness)
         app.router.add_post("/api/webrtc/offer", self.offer)
+        app.router.add_get("/api/webrtc/sessions/{session_id}/proof", self.session_proof)
         app.on_shutdown.append(lambda _app: self.close_all())
         return app
 

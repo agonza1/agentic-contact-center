@@ -808,6 +808,22 @@ function buildBrowserWebrtcBridgeOfferUrl(): string {
   return `${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/offer`;
 }
 
+function buildBrowserWebrtcBridgeSessionProofUrl(sessionId: string): string {
+  const browserWebrtcBridgeBaseUrl = getBrowserWebrtcBridgeBaseUrl();
+  return `${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/sessions/${encodeURIComponent(sessionId)}/proof`;
+}
+
+async function getBrowserWebrtcSessionProofFromBridge(sessionId: string): Promise<{ status: number; payload: unknown }> {
+  const response = await fetch(buildBrowserWebrtcBridgeSessionProofUrl(sessionId), {
+    method: "GET",
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs()),
+  });
+  const contentType = response.headers.get("content-type") ?? "";
+  const responsePayload = contentType.includes("json") ? await response.json() : { detail: await response.text() };
+  return { status: response.status, payload: responsePayload };
+}
+
 async function postBrowserWebrtcOfferToBridge(payload: object): Promise<{ status: number; payload: unknown }> {
   const response = await fetch(buildBrowserWebrtcBridgeOfferUrl(), {
     method: "POST",
@@ -1548,8 +1564,19 @@ function buildOperatorConsoleHtml(): string {
         if (report.type === "outbound-rtp" && (report.kind === "audio" || report.mediaType === "audio")) outboundAudioStats.push(item);
         if (report.type === "inbound-rtp" && (report.kind === "audio" || report.mediaType === "audio")) inboundAudioStats.push(item);
       });
+      if (state.voiceCallId) {
+        await refresh();
+      }
+      let bridgeSessionProof = null;
+      if (state.voiceSessionId) {
+        const proofResponse = await fetch("/api/browser-webrtc/session/" + encodeURIComponent(state.voiceSessionId) + "/proof").catch(function() { return null; });
+        if (proofResponse && proofResponse.ok) {
+          bridgeSessionProof = await proofResponse.json().catch(function() { return null; });
+        }
+      }
       const call = selectedCall();
       const bridge = state.voiceBridgeEvidence && state.voiceBridgeEvidence.bridge ? state.voiceBridgeEvidence.bridge : {};
+      const bridgeTurn = bridgeSessionProof && bridgeSessionProof.bridge && bridgeSessionProof.bridge.turnEvidence ? bridgeSessionProof.bridge.turnEvidence : {};
       const transcriptTurn = call && Array.isArray(call.transcript) ? call.transcript.slice().reverse().find(function(turn) { return turn.speaker === "caller"; }) : null;
       const events = [
         {
@@ -1590,8 +1617,10 @@ function buildOperatorConsoleHtml(): string {
           } : null,
         },
       ];
-      if (transcriptTurn && transcriptTurn.text) events.push({ type: "rtc-asr.transcript.final", engine: "rtc-asr", final: true, transcript: transcriptTurn.text, callId: state.voiceCallId });
-      if (bridge && bridge.tts) events.push(Object.assign({ type: "kokoro.tts.audio", engine: "kokoro", callId: state.voiceCallId }, bridge.tts));
+      if (bridgeTurn.callerTranscript) events.push({ type: "rtc-asr.transcript.final", engine: "rtc-asr", final: true, transcript: bridgeTurn.callerTranscript, callId: state.voiceCallId, stt: bridgeTurn.stt });
+      else if (transcriptTurn && transcriptTurn.text) events.push({ type: "rtc-asr.transcript.final", engine: "rtc-asr", final: true, transcript: transcriptTurn.text, callId: state.voiceCallId });
+      if (bridgeTurn.tts && bridgeTurn.tts.audioBytes) events.push(Object.assign({ type: "kokoro.tts.audio", engine: "kokoro", callId: state.voiceCallId }, bridgeTurn.tts));
+      else if (bridge && bridge.tts) events.push(Object.assign({ type: "kokoro.tts.audio", engine: "kokoro", callId: state.voiceCallId }, bridge.tts));
       const proof = {
         capturedAt: new Date().toISOString(),
         gitHead: repoHeadEvidence,
@@ -1599,6 +1628,7 @@ function buildOperatorConsoleHtml(): string {
         callId: state.voiceCallId,
         sessionId: state.voiceSessionId,
         evidence: state.voiceBridgeEvidence,
+        bridgeSessionProof: bridgeSessionProof,
         events: events,
       };
       window.__ACC_BROWSER_WEBRTC_LIVE_PROOF__ = proof;
@@ -4248,6 +4278,33 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/api/browser-webrtc/readiness") {
     writeJson(response, 200, buildBrowserWebrtcReadinessPayload());
+    return;
+  }
+
+  if (request.method === "GET" && pathname.startsWith("/api/browser-webrtc/session/") && pathname.endsWith("/proof")) {
+    const encodedSessionId = pathname.slice("/api/browser-webrtc/session/".length, -"/proof".length);
+    const sessionId = decodeURIComponent(encodedSessionId);
+    if (!sessionId.trim()) {
+      writeBadRequest(response, "browser_webrtc_session_id_required");
+      return;
+    }
+    try {
+      const bridgeResponse = await getBrowserWebrtcSessionProofFromBridge(sessionId);
+      writeJson(response, bridgeResponse.status, {
+        ok: bridgeResponse.status.toString().startsWith("2"),
+        route: "/api/browser-webrtc/session/:sessionId/proof",
+        sessionId,
+        bridgeProofRoute: buildBrowserWebrtcBridgeSessionProofUrl(sessionId),
+        bridge: bridgeResponse.payload,
+      });
+    } catch (error) {
+      writeJson(response, 503, {
+        ...buildBrowserWebrtcBridgeUnavailablePayload(error),
+        route: "/api/browser-webrtc/session/:sessionId/proof",
+        sessionId,
+        bridgeProofRoute: buildBrowserWebrtcBridgeSessionProofUrl(sessionId),
+      });
+    }
     return;
   }
 
