@@ -169,7 +169,16 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     demoGoal: { issue: string; statement: string; chain: string[]; successSignal: string };
     callFlow: { issue: string; cadenceMs: number; credentialRequirement: string; stages: Array<{ id: string; label: string; packet: string }> };
     scenario: { callerTurns: string[]; failureDrills: string[] };
-    asrPanel: { contract: string; modelsRoute: string; transcribeRoute: string; benchmarkUrl: string; streamStates: string[]; fixtureEvents: Array<{ state: string }>; benchmarks: Array<{ label: string }> };
+    asrPanel: {
+      contract: string;
+      modelsRoute: string;
+      transcribeRoute: string;
+      benchmarkUrl: string;
+      streamStates: string[];
+      fixtureEvents: Array<{ state: string }>;
+      benchmarks: Array<{ label: string }>;
+      benchmarkProfiles: Record<string, { firstPartial: string; finalization: string; rtf: string; detailUrl: string }>;
+    };
     brainBlocks: Array<{ file: string; affects: string[] }>;
     brainPanel: { previewRoute: string; applyRoute: string; resetRoute: string; safeMutation: string; activeFiles: string[] };
     operatorCockpit: { workboardCard: string; drillRoute: string; modes: string[]; drillKinds: string[]; actions: string[] };
@@ -208,10 +217,13 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.asrPanel.contract, "PCM16 16 kHz mono in; transcript events out");
   assert.equal(payload.asrPanel.modelsRoute, "/api/cluecon/asr/models");
   assert.equal(payload.asrPanel.transcribeRoute, "/api/cluecon/asr/transcribe");
-  assert.equal(payload.asrPanel.benchmarkUrl, "https://agonza1.github.io/rtc-asr/");
+  assert.equal(payload.asrPanel.benchmarkUrl, "https://agonza1.github.io/rtc-asr/docs/");
   assert.ok(payload.asrPanel.streamStates.includes("partial"));
   assert.ok(payload.asrPanel.fixtureEvents.some((event) => event.state === "error"));
   assert.ok(payload.asrPanel.benchmarks.some((benchmark) => benchmark.label === "first partial"));
+  assert.equal(payload.asrPanel.benchmarkProfiles["parakeet-mlx|mlx-community/parakeet-tdt_ctc-110m"].firstPartial, "250.7 ms");
+  assert.equal(payload.asrPanel.benchmarkProfiles["parakeet-mlx|mlx-community/parakeet-tdt_ctc-110m"].finalization, "251.8 ms");
+  assert.equal(payload.asrPanel.benchmarkProfiles["faster-whisper|base.en"].rtf, "0.066x");
   assert.ok(payload.brainBlocks.some((block) => block.file === "policy.md" && block.affects.includes("policy hold")));
   assert.equal(payload.brainPanel.previewRoute, "/api/cluecon/brain/preview");
   assert.equal(payload.brainPanel.applyRoute, "/api/cluecon/brain/apply");
@@ -416,7 +428,7 @@ test("ClueCon ASR routes discover warmed models and proxy live transcription", a
       };
       assert.equal(models.ok, true);
       assert.equal(models.activeTargetId, "primary");
-      assert.equal(models.benchmarkUrl, "https://agonza1.github.io/rtc-asr/");
+      assert.equal(models.benchmarkUrl, "https://agonza1.github.io/rtc-asr/docs/");
       assert.equal(models.models[0].targetId, "primary");
       assert.equal(models.models[0].targetLabel, "Active local model");
       assert.equal(models.models[0].websocketUrl, `${rtcAsr.baseUrl.replace("http:", "ws:")}/v1/stt/stream`);
@@ -545,7 +557,12 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Pipecat demo source/);
   assert.match(narrative.body, /rtc-asr\/tree\/main\/examples\/browser_pipecat_demo/);
   assert.match(narrative.body, /Open benchmark site/);
-  assert.match(narrative.body, /https:\/\/agonza1\.github\.io\/rtc-asr\//);
+  assert.match(narrative.body, /https:\/\/agonza1\.github\.io\/rtc-asr\/docs\//);
+  assert.match(narrative.body, /renderAsrBenchmarks\(model\)/);
+  assert.match(narrative.body, /250\.7 ms/);
+  assert.match(narrative.body, /676\.5 ms/);
+  assert.match(narrative.body, /0\.021x/);
+  assert.match(narrative.body, /0\.066x/);
   assert.match(narrative.body, /https:\/\/github\.com\/agonza1\/rtc-asr/);
   assert.match(narrative.body, /renderAsrPanel/);
   assert.match(narrative.body, /runEvalProof/);
@@ -568,6 +585,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(present.body, /Run eval proof/);
   assert.match(present.body, /eval-scorecard/);
   assert.match(present.body, /ClueCon 2026 presentation/);
+  assert.match(present.body, /RTF \(Real-Time Factor\) = processing time ÷ audio duration/);
 });
 
 test("ClueCon static export renders GitHub Pages artifact", async () => {

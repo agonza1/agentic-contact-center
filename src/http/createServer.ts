@@ -4678,7 +4678,7 @@ async function routeRequest(
       activeTargetId: models.find((model) => model.ready)?.targetId ?? models[0]?.targetId ?? null,
       models,
       switchContract: "Each model target is a separately warmed rtc-asr endpoint configured by RTC_ASR_MODEL_ENDPOINTS.",
-      benchmarkUrl: "https://agonza1.github.io/rtc-asr/",
+      benchmarkUrl: "https://agonza1.github.io/rtc-asr/docs/",
     });
     return;
   }
