@@ -72,6 +72,61 @@ const operatorConsoleRefreshIntervalMs = 5000;
 const operatorConsoleWorkboardCard = "82771d3a-de4d-4b6e-869c-328e8264d01e";
 const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
 const defaultBrowserWebrtcBridgeTimeoutMs = 5000;
+
+interface RtcAsrModelTarget {
+  id: string;
+  label: string;
+  baseUrl: string;
+}
+
+function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
+  const configured: RtcAsrModelTarget[] = [];
+  const rawTargets = process.env.RTC_ASR_MODEL_ENDPOINTS;
+  if (rawTargets) {
+    try {
+      const parsed = JSON.parse(rawTargets) as unknown;
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+          const record = item as Record<string, unknown>;
+          const id = typeof record.id === "string" ? record.id.trim() : "";
+          const label = typeof record.label === "string" ? record.label.trim() : id;
+          const baseUrl = typeof record.baseUrl === "string" ? record.baseUrl.trim().replace(/\/+$/, "") : "";
+          if (/^[a-z0-9_-]+$/i.test(id) && /^https?:\/\//i.test(baseUrl)) {
+            configured.push({ id, label: label || id, baseUrl });
+          }
+        }
+      }
+    } catch {
+      // Keep the presentation usable with the primary sidecar when optional registry JSON is malformed.
+    }
+  }
+
+  const primaryBaseUrl = process.env.RTC_ASR_BASE_URL?.trim().replace(/\/+$/, "");
+  if (primaryBaseUrl && /^https?:\/\//i.test(primaryBaseUrl) && !configured.some((target) => target.baseUrl === primaryBaseUrl)) {
+    configured.unshift({ id: "primary", label: "Active local model", baseUrl: primaryBaseUrl });
+  }
+
+  return configured;
+}
+
+async function fetchRtcAsrJson(target: RtcAsrModelTarget, path: string, init?: RequestInit): Promise<{
+  response: Response;
+  payload: unknown;
+  elapsedMs: number;
+}> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(`${target.baseUrl}${path}`, { ...init, signal: controller.signal });
+    const payload = await response.json().catch(() => ({ detail: `rtc-asr returned HTTP ${response.status}` }));
+    return { response, payload, elapsedMs: Date.now() - startedAt };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function getBrowserWebrtcBridgeBaseUrl(): string {
   return process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766";
 }
@@ -4619,6 +4674,132 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/api/cluecon") {
     writeJson(response, 200, await buildClueConPayloadWithLiveProbes(config, {}, activeClueConBrainBlocks));
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/cluecon/asr/models") {
+    const targets = getRtcAsrModelTargets();
+    if (!targets.length) {
+      writeJson(response, 503, {
+        ok: false,
+        error: "rtc_asr_not_configured",
+        models: [],
+        nextStep: "Set RTC_ASR_BASE_URL or RTC_ASR_MODEL_ENDPOINTS, then restart the presentation server.",
+      });
+      return;
+    }
+
+    const models = await Promise.all(
+      targets.map(async (target) => {
+        try {
+          const result = await fetchRtcAsrJson(target, "/api/models");
+          const payload = result.payload && typeof result.payload === "object" && !Array.isArray(result.payload)
+            ? result.payload as Record<string, unknown>
+            : {};
+          return {
+            targetId: target.id,
+            targetLabel: target.label,
+            websocketUrl: `${target.baseUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/v1/stt/stream`,
+            backend: typeof payload.backend === "string" ? payload.backend : "unknown",
+            model: typeof payload.model === "string" ? payload.model : target.label,
+            status: typeof payload.status === "string" ? payload.status : result.response.ok ? "ready" : "unavailable",
+            ready: result.response.ok && payload.ready !== false,
+            loaded: Array.isArray(payload.models)
+              ? payload.models.some((model) => model && typeof model === "object" && !Array.isArray(model) && (model as { loaded?: unknown }).loaded === true)
+              : null,
+            responseMs: result.elapsedMs,
+            error: result.response.ok ? null : `rtc-asr returned HTTP ${result.response.status}`,
+          };
+        } catch (error) {
+          return {
+            targetId: target.id,
+            targetLabel: target.label,
+            websocketUrl: `${target.baseUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/v1/stt/stream`,
+            backend: "unknown",
+            model: target.label,
+            status: "unavailable",
+            ready: false,
+            loaded: null,
+            responseMs: null,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }),
+    );
+
+    writeJson(response, 200, {
+      ok: models.some((model) => model.ready),
+      activeTargetId: models.find((model) => model.ready)?.targetId ?? models[0]?.targetId ?? null,
+      models,
+      switchContract: "Each model target is a separately warmed rtc-asr endpoint configured by RTC_ASR_MODEL_ENDPOINTS.",
+      benchmarkUrl: "https://agonza1.github.io/rtc-asr/docs/",
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/cluecon/asr/transcribe") {
+    const body = await readJsonBody<unknown>(request);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+    const record = body as Record<string, unknown>;
+    const audioData = typeof record.audioData === "string" ? record.audioData.trim() : "";
+    if (!audioData || audioData.length > 5_600_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(audioData)) {
+      writeBadRequest(response, "rtc_asr_audio_data_invalid");
+      return;
+    }
+    const sampleRate = typeof record.sampleRate === "number" && Number.isFinite(record.sampleRate)
+      ? Math.trunc(record.sampleRate)
+      : 16_000;
+    if (sampleRate < 8_000 || sampleRate > 96_000) {
+      writeBadRequest(response, "rtc_asr_sample_rate_invalid");
+      return;
+    }
+
+    const targets = getRtcAsrModelTargets();
+    const requestedTargetId = typeof record.targetId === "string" ? record.targetId.trim() : "";
+    const target = targets.find((candidate) => candidate.id === requestedTargetId) ?? (!requestedTargetId ? targets[0] : undefined);
+    if (!target) {
+      writeJson(response, 503, {
+        ok: false,
+        error: targets.length ? "rtc_asr_model_target_unknown" : "rtc_asr_not_configured",
+        availableTargetIds: targets.map((candidate) => candidate.id),
+      });
+      return;
+    }
+
+    try {
+      const result = await fetchRtcAsrJson(target, "/api/transcribe", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          audio_data: audioData,
+          language: typeof record.language === "string" && record.language.trim() ? record.language.trim() : "en",
+          sample_rate: sampleRate,
+          stream: false,
+        }),
+      });
+      const upstream = result.payload && typeof result.payload === "object" && !Array.isArray(result.payload)
+        ? result.payload as Record<string, unknown>
+        : { detail: result.payload };
+      writeJson(response, result.response.ok ? 200 : 502, {
+        ok: result.response.ok,
+        targetId: target.id,
+        targetLabel: target.label,
+        responseMs: result.elapsedMs,
+        transcription: upstream,
+        error: result.response.ok ? null : `rtc-asr returned HTTP ${result.response.status}`,
+      });
+    } catch (error) {
+      writeJson(response, 502, {
+        ok: false,
+        targetId: target.id,
+        targetLabel: target.label,
+        error: error instanceof Error ? error.message : String(error),
+        nextStep: "Confirm the selected rtc-asr model endpoint is running and ready.",
+      });
+    }
     return;
   }
 
