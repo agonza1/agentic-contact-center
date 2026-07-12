@@ -435,6 +435,8 @@ class PipecatBrowserWebrtcPipeline:
         self.output_generation = 0
         self.last_barge_in_evidence: dict[str, Any] = {}
         self.last_evidence: dict[str, Any] = {}
+        self.turn_queue: asyncio.Queue[bytes] = asyncio.Queue()
+        self.turn_worker = asyncio.create_task(self.consume_turn_queue())
 
     def cancel_output(self, reason: str = "barge-in") -> dict[str, Any]:
         self.output_generation += 1
@@ -447,6 +449,24 @@ class PipecatBrowserWebrtcPipeline:
         }
         print(json.dumps({"type": "browser_webrtc_output_cancelled", **self.last_barge_in_evidence}), flush=True)
         return self.last_barge_in_evidence
+
+    def enqueue_turn(self, pcm16_16k: bytes) -> None:
+        self.turn_queue.put_nowait(pcm16_16k)
+
+    async def consume_turn_queue(self) -> None:
+        while True:
+            pcm16_16k = await self.turn_queue.get()
+            try:
+                await self.run_turn(pcm16_16k)
+            except Exception as exc:  # pragma: no cover - runtime evidence path
+                print(json.dumps({"type": "browser_webrtc_turn_error", "error": str(exc)}), flush=True)
+            finally:
+                self.turn_queue.task_done()
+
+    async def close(self) -> None:
+        self.turn_worker.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await self.turn_worker
 
     async def run_turn(self, pcm16_16k: bytes) -> dict[str, Any]:
         started = time.perf_counter()
@@ -621,7 +641,7 @@ async def consume_browser_audio(track: MediaStreamTrack, pipeline: PipecatBrowse
                 in_speech = False
                 turn_started_at = now
                 last_voice_at = now
-                asyncio.create_task(pipeline.run_turn(pcm_turn))
+                pipeline.enqueue_turn(pcm_turn)
 
 
 class BrowserWebrtcBridge:
@@ -726,6 +746,9 @@ class BrowserWebrtcBridge:
         task = session.get("audioTask")
         if isinstance(task, asyncio.Task):
             task.cancel()
+        pipeline = session.get("pipeline")
+        if isinstance(pipeline, PipecatBrowserWebrtcPipeline):
+            await pipeline.close()
         await pc.close()
 
     async def close_all(self) -> None:
