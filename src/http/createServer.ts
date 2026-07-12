@@ -4645,6 +4645,7 @@ async function routeRequest(
           return {
             targetId: target.id,
             targetLabel: target.label,
+            websocketUrl: `${target.baseUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/v1/stt/stream`,
             backend: typeof payload.backend === "string" ? payload.backend : "unknown",
             model: typeof payload.model === "string" ? payload.model : target.label,
             status: typeof payload.status === "string" ? payload.status : result.response.ok ? "ready" : "unavailable",
@@ -4659,6 +4660,7 @@ async function routeRequest(
           return {
             targetId: target.id,
             targetLabel: target.label,
+            websocketUrl: `${target.baseUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/v1/stt/stream`,
             backend: "unknown",
             model: target.label,
             status: "unavailable",
