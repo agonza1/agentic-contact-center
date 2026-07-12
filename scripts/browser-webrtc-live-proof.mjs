@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 const args = process.argv.slice(2);
@@ -127,10 +128,17 @@ function validateEvidence(payload) {
 async function artifactIntegrity(filePath) {
   if (!filePath) return [];
   try {
+    const bytes = await readFile(filePath);
     const info = await stat(filePath);
-    return [{ artifactId: "browser-webrtc-live-evidence", path: filePath, readiness: "ready", sizeBytes: info.size }];
+    return [{
+      artifactId: "browser-webrtc-live-evidence",
+      path: filePath,
+      readiness: "ready",
+      sizeBytes: info.size,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    }];
   } catch {
-    return [{ artifactId: "browser-webrtc-live-evidence", path: filePath, readiness: "blocked", sizeBytes: 0 }];
+    return [{ artifactId: "browser-webrtc-live-evidence", path: filePath, readiness: "blocked", sizeBytes: 0, sha256: null }];
   }
 }
 

@@ -106,7 +106,7 @@ test("browser WebRTC live proof gate accepts captured media-turn evidence", asyn
     const manifest = JSON.parse(await readFile(path.join(tempDir, "browser-webrtc-live-proof-manifest.json"), "utf8")) as {
       reviewReady: boolean;
       runtimeModeLabels: { pipecat: string; rtcAsr: string; tts: string; browserPlayback: string };
-      artifactIntegrity: Array<{ artifactId: string; readiness: string; sizeBytes: number }>;
+      artifactIntegrity: Array<{ artifactId: string; readiness: string; sizeBytes: number; sha256: string | null }>;
       setup: { commands: string[] };
       reviewGate: { missingProof: string[] };
     };
@@ -117,7 +117,13 @@ test("browser WebRTC live proof gate accepts captured media-turn evidence", asyn
     assert.equal(manifest.runtimeModeLabels.browserPlayback, "remote_audio_live");
     assert.deepEqual(manifest.reviewGate.missingProof, []);
     assert.ok(manifest.setup.commands.some((command) => command.includes("pipecat:voice:check")));
-    assert.ok(manifest.artifactIntegrity.some((artifact) => artifact.artifactId === "browser-webrtc-live-evidence" && artifact.readiness === "ready" && artifact.sizeBytes > 0));
+    const evidenceArtifact = manifest.artifactIntegrity.find((artifact) => artifact.artifactId === "browser-webrtc-live-evidence");
+    assert.ok(evidenceArtifact);
+    assert.equal(evidenceArtifact.readiness, "ready");
+    assert.ok(evidenceArtifact.sizeBytes > 0);
+    assert.ok(typeof evidenceArtifact.sha256 === "string");
+    const evidenceSha256 = evidenceArtifact.sha256;
+    assert.match(evidenceSha256, /^[a-f0-9]{64}$/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
