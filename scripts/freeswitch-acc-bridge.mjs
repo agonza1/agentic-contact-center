@@ -246,6 +246,24 @@ export class PipecatRtpPlaybackSink {
     }
   }
 
+  async sendFrame(socket, frame) {
+    const packets = this.packetize(frame);
+    if (packets.length === 0) return packets;
+    if (!this.options.remotePort) {
+      this.errors.push({ at: nowIso(), error: "rtp_playback_remote_port_missing" });
+      return [];
+    }
+    for (const packet of packets) {
+      await new Promise((resolve) => {
+        socket.send(packet, this.options.remotePort, this.options.remoteHost, (error) => {
+          if (error) this.errors.push({ at: nowIso(), error: error instanceof Error ? error.message : String(error) });
+          resolve();
+        });
+      });
+    }
+    return packets;
+  }
+
   summary() {
     return {
       outboundRtpReady: this.packetCount > 0,
@@ -263,6 +281,17 @@ export class PipecatRtpPlaybackSink {
       errors: this.errors,
     };
   }
+
+}
+
+export async function loadPipecatOutputFrameSummaries(filePath) {
+  if (!filePath) return [];
+  const entries = parseJsonOrJsonLines(await readFile(filePath, "utf8"));
+  return entries.flatMap((entry) => {
+    const frame = entry?.frame ?? entry?.payload ?? entry;
+    if (frame?.frameType !== "OutputAudioRawFrame") return [];
+    return [frame];
+  });
 }
 
 export function rtpPcmuPacketToPipecatFrameSummary(packet, receivedAt = nowIso()) {
@@ -544,6 +573,14 @@ export class EslBridge {
     this.events = [];
     this.callMap = new Map();
     this.rtpCollector = new PipecatRtpFrameCollector({ maxFrames: options.rtpMaxFrames ?? 200 });
+    this.rtpPlaybackSink = new PipecatRtpPlaybackSink({
+      remoteHost: options.rtpPlaybackHost ?? "127.0.0.1",
+      remotePort: options.rtpPlaybackPort,
+      sequenceNumber: options.rtpPlaybackSequenceNumber ?? 0,
+      timestamp: options.rtpPlaybackTimestamp ?? 0,
+      ssrc: options.rtpPlaybackSsrc ?? 0xacc0ffee,
+      samplesPerPacket: options.rtpPlaybackSamplesPerPacket ?? 160,
+    });
   }
 
   async start() {
@@ -557,6 +594,7 @@ export class EslBridge {
     });
     this.socket.on("close", () => void this.flushLog());
     this.startRtpReceiver();
+    this.startRtpPlaybackSocket();
   }
 
   send(command) {
@@ -574,6 +612,21 @@ export class EslBridge {
       this.rtpCollector.errors.push({ at: nowIso(), error: error.message });
     });
     this.rtpSocket.bind(this.options.rtpListenPort, this.options.rtpListenHost ?? "127.0.0.1");
+  }
+
+  startRtpPlaybackSocket() {
+    if (!this.options.rtpPlaybackPort) return;
+    this.rtpPlaybackSocket = dgram.createSocket("udp4");
+    this.rtpPlaybackSocket.on("error", (error) => {
+      this.rtpPlaybackSink.errors.push({ at: nowIso(), error: error.message });
+    });
+  }
+
+  async playPipecatOutputFixture() {
+    if (!this.options.pipecatOutputFixturePath || !this.rtpPlaybackSocket) return;
+    const frames = await loadPipecatOutputFrameSummaries(this.options.pipecatOutputFixturePath);
+    for (const frame of frames) await this.rtpPlaybackSink.sendFrame(this.rtpPlaybackSocket, frame);
+    if (frames.length > 0) this.events.push({ at: nowIso(), pipecatOutboundRtpPlayback: this.rtpPlaybackSink.summary() });
   }
 
   async handleData(chunk) {
@@ -625,6 +678,7 @@ export class EslBridge {
   async onRecordStop(uuid) {
     const call = this.callMap.get(uuid);
     if (!call) return;
+    await this.playPipecatOutputFixture();
     await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
       eventType: "media.capture",
       timestamp: nowIso(),
@@ -669,6 +723,7 @@ export class EslBridge {
       rtcAsrEvidencePath: this.options.rtcAsrEvidencePath,
       telephonyMode: this.options.telephonyMode,
       pipecatRtpEvidence: this.rtpCollector.summary(),
+      pipecatOutboundRtpEvidence: this.rtpPlaybackSink.summary(),
     });
     await mkdir(path.dirname(this.options.manifestPath), { recursive: true });
     await writeFile(this.options.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
@@ -708,6 +763,9 @@ async function main() {
     telephonyMode: argValue("--telephony-mode", process.env.ACC_TELEPHONY_MODE || "local_sip"),
     rtpListenHost: argValue("--rtp-listen-host", process.env.ACC_FREESWITCH_RTP_LISTEN_HOST || "127.0.0.1"),
     rtpListenPort: Number(argValue("--rtp-listen-port", process.env.ACC_FREESWITCH_RTP_LISTEN_PORT || "0")) || undefined,
+    rtpPlaybackHost: argValue("--rtp-playback-host", process.env.ACC_FREESWITCH_RTP_PLAYBACK_HOST || "127.0.0.1"),
+    rtpPlaybackPort: Number(argValue("--rtp-playback-port", process.env.ACC_FREESWITCH_RTP_PLAYBACK_PORT || "0")) || undefined,
+    pipecatOutputFixturePath: argValue("--pipecat-output-fixture", process.env.ACC_PIPECAT_OUTPUT_FIXTURE),
   });
   await bridge.start();
   console.log(`FreeSWITCH ACC bridge connected target ${bridge.options.eslHost}:${bridge.options.eslPort}; ACC ${bridge.options.accBaseUrl}`);
