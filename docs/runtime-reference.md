@@ -58,9 +58,21 @@ The payload reports `status=contract_ready_pending_live_media_evidence` when the
 Normal browser WebRTC sidecar setup:
 
 ```bash
+cd ../rtc-asr
+make mlx-venv
+env PYTHONPATH=. \
+  ASR_BACKEND=parakeet-mlx \
+  ASR_DEVICE=apple-silicon \
+  ASR_PRELOAD_MODEL=true \
+  ASR_PARAKEET_MODEL=mlx-community/parakeet-tdt_ctc-110m \
+  ASR_PARAKEET_DTYPE=auto \
+  ASR_VAD_FILTER=false \
+  .venv-mlx/bin/python -m uvicorn src.main:app --host 127.0.0.1 --port 8080
+
+cd ../agentic-contact-center
 export RTC_ASR_BASE_URL=http://127.0.0.1:8080
 export RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream
-export ASR_VAD_FILTER=false
+export RTC_ASR_MODEL=mlx-community/parakeet-tdt_ctc-110m
 export KOKORO_BASE_URL=http://127.0.0.1:8880
 export BROWSER_WEBRTC_BRIDGE_URL=http://127.0.0.1:8766
 npm run pipecat:webrtc:install
