@@ -84,6 +84,23 @@ function hasSha256(value) {
   return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 }
 
+function transcriptText(record) {
+  if (typeof record.transcript === "string") return record.transcript;
+  if (typeof record.text === "string") return record.text;
+  if (typeof record.finalTranscript === "string") return record.finalTranscript;
+  const result = nestedRecord(record, "result");
+  if (typeof result.transcript === "string") return result.transcript;
+  if (typeof result.text === "string") return result.text;
+  const alternatives = [
+    ...nestedRecords(record, "alternatives"),
+    ...nestedRecords(result, "alternatives"),
+    ...nestedRecords(nestedRecord(record, "channel"), "alternatives"),
+  ];
+  const alternative = alternatives.find((entry) => typeof entry.transcript === "string" || typeof entry.text === "string");
+  if (!alternative) return "";
+  return typeof alternative.transcript === "string" ? alternative.transcript : alternative.text;
+}
+
 function currentGitHead() {
   try {
     return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
@@ -154,7 +171,7 @@ function validateEvidence(payload, expectedGitHead) {
     }),
     rtcAsrFinalTranscript: records.some((record) => {
       const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
-      const transcript = typeof record.transcript === "string" ? record.transcript : typeof record.text === "string" ? record.text : "";
+      const transcript = transcriptText(record);
       return textIncludes(record, "rtc-asr") && (type.includes("final") || record.final === true || record.isFinal === true) && transcript.trim().length > 0 && !hasPlaceholderText(transcript);
     }),
     kokoroAudio: records.some((record) => {

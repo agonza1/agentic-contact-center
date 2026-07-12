@@ -140,6 +140,53 @@ test("browser WebRTC live proof gate accepts captured media-turn evidence", asyn
   }
 });
 
+test("browser WebRTC live proof gate accepts rtc-asr alternative transcript shapes", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-browser-webrtc-rtc-asr-alt-"));
+  const evidencePath = path.join(tempDir, "browser-webrtc-evidence.json");
+
+  try {
+    const gitHead = await currentGitHead(repoRoot);
+    await writeFile(
+      evidencePath,
+      JSON.stringify({
+        gitHead,
+        events: [
+          { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-alt" },
+          { type: "rtc-asr.transcript.final", engine: "rtc-asr", final: true, result: { alternatives: [{ transcript: "I need help with my bill." }] } },
+          { type: "kokoro.tts.audio", engine: "kokoro", audioBytes: 4096 },
+          {
+            type: "browser.remote.audio.played",
+            target: "browser",
+            track: "remote audio",
+            inboundRtpAudio: { packetsReceived: 12, bytesReceived: 4096 },
+            audioElement: { currentTime: 1.2, paused: false },
+          },
+        ],
+      }, null, 2),
+      "utf8",
+    );
+
+    const result = await execFileAsync(
+      process.execPath,
+      ["scripts/browser-webrtc-live-proof.mjs", "--require-review-ready", "--evidence", evidencePath, "--out-dir", tempDir],
+      { cwd: repoRoot, timeout: 10_000, encoding: "utf8" },
+    );
+    const summary = JSON.parse(result.stdout.slice(result.stdout.indexOf("{")).trim()) as { reviewReady: boolean; blockers: string[] };
+    assert.equal(summary.reviewReady, true);
+    assert.deepEqual(summary.blockers, []);
+
+    const manifest = JSON.parse(await readFile(path.join(tempDir, "browser-webrtc-live-proof-manifest.json"), "utf8")) as {
+      reviewReady: boolean;
+      checks: Record<string, boolean>;
+    };
+    assert.equal(manifest.reviewReady, true);
+    assert.equal(manifest.checks.rtcAsrFinalTranscript, true);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("browser WebRTC live proof gate accepts browser getStats inbound audio evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-browser-webrtc-getstats-"));
