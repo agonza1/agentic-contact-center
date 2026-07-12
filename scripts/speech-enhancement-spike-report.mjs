@@ -13,6 +13,7 @@ const {
   buildSpeechEnhancementReviewGate,
   buildSpeechEnhancementReviewHandoff,
   buildSpeechEnhancementRuntimeReadiness,
+  buildSpeechEnhancementSourceManifestTemplate,
   buildSpeechEnhancementSpikeReport,
   buildSpeechEnhancementStrictArtifactVerification,
   resolveSpeechEnhancementCloseGateStatus,
@@ -27,6 +28,7 @@ const valueFlags = new Set([
   "--latest-out",
   "--markdown-out",
   "--capture-replay-template-out",
+  "--source-manifest-template-out",
 ]);
 const booleanFlags = new Set(["--strict-capture-artifacts", "--require-close-ready"]);
 
@@ -285,8 +287,16 @@ function resolveCaptureReplayTemplateOutputPath() {
   return resolveArgPath("--capture-replay-template-out");
 }
 
+function resolveSourceManifestTemplateOutputPath() {
+  return resolveArgPath("--source-manifest-template-out");
+}
+
 function buildCaptureReplayTemplate() {
   return buildSpeechEnhancementCaptureReplayTemplate();
+}
+
+function buildSourceManifestTemplate() {
+  return buildSpeechEnhancementSourceManifestTemplate();
 }
 
 async function writeJson(filePath, payload) {
@@ -442,6 +452,7 @@ async function main() {
   const latestOutputPath = resolveLatestOutputPath();
   const markdownOutputPath = resolveMarkdownOutputPath(outputPath);
   const captureReplayTemplateOutputPath = resolveCaptureReplayTemplateOutputPath();
+  const sourceManifestTemplateOutputPath = resolveSourceManifestTemplateOutputPath();
   const requireCloseReady = hasArg("--require-close-ready");
   const strictCaptureArtifacts = hasArg("--strict-capture-artifacts");
   const captureReplayInputs = await loadCaptureReplayMetrics();
@@ -490,6 +501,9 @@ async function main() {
   if (captureReplayTemplateOutputPath) {
     await writeJson(captureReplayTemplateOutputPath, buildCaptureReplayTemplate());
   }
+  if (sourceManifestTemplateOutputPath) {
+    await writeJson(sourceManifestTemplateOutputPath, buildSourceManifestTemplate());
+  }
 
   const summary = {
     ok: !requireCloseReady || artifact.reviewGate.issueCloseReady,
@@ -498,6 +512,7 @@ async function main() {
     latestOutputPath: latestOutputPath ?? null,
     markdownOutputPath: markdownOutputPath ?? null,
     captureReplayTemplateOutputPath: captureReplayTemplateOutputPath ?? null,
+    sourceManifestTemplateOutputPath: sourceManifestTemplateOutputPath ?? null,
     issueCloseReady: artifact.reviewGate.issueCloseReady,
     runtimeLiveDemoEligible: artifact.runtimeReadiness.liveDemoEligible,
     runtimeBypassReasons: artifact.runtimeReadiness.bypassReasons,

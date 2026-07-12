@@ -66,6 +66,29 @@ test("GET /health returns config-backed demo metadata", async () => {
       activeTool: string | null;
       toolCoverage: string[];
     };
+    browserWebRtc: {
+      ok: boolean;
+      route: string;
+      issue: string;
+      status: string;
+      normalOperation: { transport: string; mediaRecorderRequired: boolean; ffmpegRequired: boolean };
+      readiness: {
+        acc: { status: string };
+        pipecatWebrtcBridge: { status: string };
+        rtcAsr: { status: string; engine: string; contract: string };
+        kokoro: { status: string; engine: string };
+      };
+      legacyChunkBridge: {
+        status: string;
+        mediaRecorderRequired: boolean;
+        ffmpegRequired: boolean;
+        intendedForNormalBrowserVoice: boolean;
+      };
+      liveMedia: { verified: boolean; status: string };
+      blockers: string[];
+      contractReady: boolean;
+      liveMediaVerified: boolean;
+    };
     speechEnhancement: {
       issue: string;
       issueUrl: string;
@@ -75,6 +98,7 @@ test("GET /health returns config-backed demo metadata", async () => {
       captureReplayCloseGateRoute: string;
       captureReplayValidationRoute: string;
       captureTemplateCommand: string;
+      sourceManifestTemplateCommand: string;
       recommendedLatencyMs: number;
       runtimeEnv: { featureFlag: string; latencyMs: string };
       runtimeStatus: string;
@@ -146,6 +170,31 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.match(payload.pipecatFlow.runtimeCheck.installCommand, /requirements-pipecat\.txt/);
   assert.equal(payload.pipecatFlow.activeTool, "get_current_slide");
   assert.equal(payload.pipecatFlow.toolCoverage.includes("goto_slide"), true);
+  assert.equal(payload.browserWebRtc.ok, true);
+  assert.equal(payload.browserWebRtc.route, "/api/browser-webrtc/readiness");
+  assert.equal(payload.browserWebRtc.issue, "agonza1/agentic-contact-center#213");
+  assert.equal(payload.browserWebRtc.status, "contract_ready_pending_live_media_evidence");
+  assert.deepEqual(payload.browserWebRtc.normalOperation, {
+    transport: "webrtc",
+    browserCapture: "getUserMedia MediaStreamTrack",
+    browserPlayback: "WebRTC remote audio track",
+    mediaRecorderRequired: false,
+    ffmpegRequired: false,
+  });
+  assert.equal(payload.browserWebRtc.readiness.acc.status, "ready");
+  assert.equal(payload.browserWebRtc.readiness.pipecatWebrtcBridge.status, "signaling_ready");
+  assert.equal(payload.browserWebRtc.readiness.rtcAsr.engine, "rtc-asr");
+  assert.equal(payload.browserWebRtc.readiness.rtcAsr.contract, "local-stt.v1");
+  assert.equal(payload.browserWebRtc.readiness.kokoro.engine, "kokoro");
+  assert.equal(payload.browserWebRtc.legacyChunkBridge.status, "isolated_legacy");
+  assert.equal(payload.browserWebRtc.legacyChunkBridge.mediaRecorderRequired, true);
+  assert.equal(payload.browserWebRtc.legacyChunkBridge.ffmpegRequired, true);
+  assert.equal(payload.browserWebRtc.legacyChunkBridge.intendedForNormalBrowserVoice, false);
+  assert.equal(payload.browserWebRtc.liveMedia.verified, false);
+  assert.equal(payload.browserWebRtc.liveMedia.status, "pending_local_bridge_proof");
+  assert.deepEqual(payload.browserWebRtc.blockers, ["live_webrtc_media_turn_evidence_missing"]);
+  assert.equal(payload.browserWebRtc.contractReady, true);
+  assert.equal(payload.browserWebRtc.liveMediaVerified, false);
   assert.equal(payload.speechEnhancement.issue, "agonza1/agentic-contact-center#97");
   assert.equal(payload.speechEnhancement.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/97");
   assert.equal(payload.speechEnhancement.reviewRoute, "/api/realtime-shim/speech-enhancement-spike");
@@ -168,6 +217,10 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(
     payload.speechEnhancement.captureTemplateCommand,
     "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
+  );
+  assert.equal(
+    payload.speechEnhancement.sourceManifestTemplateCommand,
+    "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json --source-manifest-template-out artifacts/local-sip/proof-manifest-001.json",
   );
   assert.equal(payload.speechEnhancement.recommendedLatencyMs, 12.5);
   assert.deepEqual(payload.speechEnhancement.runtimeEnv, {

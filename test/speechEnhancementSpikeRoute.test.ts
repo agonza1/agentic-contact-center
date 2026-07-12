@@ -152,6 +152,7 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
         captureReplayCloseGateRoute: string;
         captureReplayValidationRoute: string;
         captureTemplateCommand: string;
+        sourceManifestTemplateCommand: string;
         validationCommand: string;
         strictValidationCommand: string;
         nextEvidenceOwner: string;
@@ -346,6 +347,10 @@ test("GET /api/realtime-shim/speech-enhancement-spike returns issue 97 recommend
     assert.equal(
       payload.reviewHandoff.captureTemplateCommand,
       "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
+    );
+    assert.equal(
+      payload.reviewHandoff.sourceManifestTemplateCommand,
+      "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json --source-manifest-template-out artifacts/local-sip/proof-manifest-001.json",
     );
     assert.equal(payload.reviewHandoff.validationCommand, "npm run proof:speech-enhancement -- --require-close-ready");
     assert.equal(
