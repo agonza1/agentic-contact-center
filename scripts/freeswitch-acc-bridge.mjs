@@ -950,17 +950,38 @@ export class EslBridge {
     this.buffer = "";
     this.events = [];
     this.callMap = new Map();
+    this.currentRtpCallUuid = null;
     this.rtpCollector = new PipecatRtpFrameCollector({ maxFrames: options.rtpMaxFrames ?? 200 });
-    this.rtpPlaybackSink = new PipecatRtpPlaybackSink({
-      remoteHost: options.rtpPlaybackHost ?? "127.0.0.1",
-      remotePort: options.rtpPlaybackPort,
-      sequenceNumber: options.rtpPlaybackSequenceNumber ?? 0,
-      timestamp: options.rtpPlaybackTimestamp ?? 0,
-      ssrc: options.rtpPlaybackSsrc ?? 0xacc0ffee,
-      samplesPerPacket: options.rtpPlaybackSamplesPerPacket ?? 160,
-    });
+    this.rtpPlaybackSink = this.createRtpPlaybackSink();
     this.pipecatOutputFixturePlayed = false;
     this.pipecatPlaybackEventPosted = false;
+  }
+
+  createRtpPlaybackSink() {
+    return new PipecatRtpPlaybackSink({
+      remoteHost: this.options.rtpPlaybackHost ?? "127.0.0.1",
+      remotePort: this.options.rtpPlaybackPort,
+      sequenceNumber: this.options.rtpPlaybackSequenceNumber ?? 0,
+      timestamp: this.options.rtpPlaybackTimestamp ?? 0,
+      ssrc: this.options.rtpPlaybackSsrc ?? 0xacc0ffee,
+      samplesPerPacket: this.options.rtpPlaybackSamplesPerPacket ?? 160,
+    });
+  }
+
+  activeRtpCollector() {
+    if (!this.currentRtpCallUuid) return this.rtpCollector;
+    return this.callMap.get(this.currentRtpCallUuid)?.rtpCollector ?? this.rtpCollector;
+  }
+
+  callPlaybackState(uuid) {
+    const resolvedUuid = uuid ?? this.currentRtpCallUuid;
+    const call = resolvedUuid ? this.callMap.get(resolvedUuid) : null;
+    return {
+      call,
+      sink: call?.rtpPlaybackSink ?? this.rtpPlaybackSink,
+      played: call ? call.pipecatOutputFixturePlayed === true : this.pipecatOutputFixturePlayed,
+      posted: call ? call.pipecatPlaybackEventPosted === true : this.pipecatPlaybackEventPosted,
+    };
   }
 
   async start() {
@@ -985,11 +1006,12 @@ export class EslBridge {
     if (!this.options.rtpListenPort) return;
     this.rtpSocket = dgram.createSocket("udp4");
     this.rtpSocket.on("message", (message) => {
-      const frame = this.rtpCollector.acceptPacket(message);
+      const collector = this.activeRtpCollector();
+      const frame = collector.acceptPacket(message);
       if (frame) this.events.push({ at: frame.receivedAt, rtpFrame: { sequenceNumber: frame.sequenceNumber, timestamp: frame.timestamp, durationMs: frame.durationMs } });
     });
     this.rtpSocket.on("error", (error) => {
-      this.rtpCollector.errors.push({ at: nowIso(), error: error.message });
+      this.activeRtpCollector().errors.push({ at: nowIso(), error: error.message });
     });
     this.rtpSocket.bind(this.options.rtpListenPort, this.options.rtpListenHost ?? "127.0.0.1");
   }
@@ -1002,28 +1024,31 @@ export class EslBridge {
     });
   }
 
-  configureRtpPlaybackFromHeaders(headers) {
+  configureRtpPlaybackFromHeaders(headers, sink = this.rtpPlaybackSink) {
     if (this.options.rtpPlaybackPort) return null;
     const remoteRtp = remoteRtpFromHeaders(headers);
     if (!remoteRtp) return null;
-    this.rtpPlaybackSink.options.remoteHost = remoteRtp.address;
-    this.rtpPlaybackSink.options.remotePort = remoteRtp.port;
+    sink.options.remoteHost = remoteRtp.address;
+    sink.options.remotePort = remoteRtp.port;
     this.startRtpPlaybackSocket();
     this.events.push({ at: nowIso(), remoteRtpPlaybackTarget: remoteRtp });
     return remoteRtp;
   }
 
-  async playPipecatOutputFixture() {
-    if (!this.options.pipecatOutputFixturePath || !this.rtpPlaybackSocket || this.pipecatOutputFixturePlayed) return;
+  async playPipecatOutputFixture(uuid = null) {
+    const state = this.callPlaybackState(uuid);
+    if (!this.options.pipecatOutputFixturePath || !this.rtpPlaybackSocket || state.played) return;
     const frames = await loadPipecatOutputFrameSummaries(this.options.pipecatOutputFixturePath);
-    for (const frame of frames) await this.rtpPlaybackSink.sendFrame(this.rtpPlaybackSocket, frame);
+    for (const frame of frames) await state.sink.sendFrame(this.rtpPlaybackSocket, frame);
     if (frames.length > 0) {
+      if (state.call) state.call.pipecatOutputFixturePlayed = true;
       this.pipecatOutputFixturePlayed = true;
-      this.events.push({ at: nowIso(), pipecatOutboundRtpPlayback: this.rtpPlaybackSink.summary(), source: "fixture" });
+      this.events.push({ at: nowIso(), pipecatOutboundRtpPlayback: state.sink.summary(), source: "fixture", sipCallId: uuid ?? undefined });
     }
   }
 
   async playLiveKokoroTts(agentText, uuid) {
+    const state = this.callPlaybackState(uuid);
     if (!this.options.kokoroBaseUrl || !this.rtpPlaybackSocket || !agentText) return null;
     try {
       const frame = await synthesizeKokoroTtsFrame(agentText, {
@@ -1032,22 +1057,23 @@ export class EslBridge {
         voice: this.options.kokoroVoice,
         model: this.options.kokoroModel,
       });
-      await this.rtpPlaybackSink.sendFrame(this.rtpPlaybackSocket, frame);
-      const summary = this.rtpPlaybackSink.summary();
+      await state.sink.sendFrame(this.rtpPlaybackSocket, frame);
+      const summary = state.sink.summary();
       this.events.push({ at: nowIso(), pipecatLiveKokoroTtsPlayback: { ...summary, sourceText: agentText, tts: frame.tts } });
       await this.postPipecatPlaybackEvent(uuid);
       return summary;
     } catch (error) {
       const failure = { at: nowIso(), error: error instanceof Error ? error.message : String(error) };
-      this.rtpPlaybackSink.errors.push(failure);
+      state.sink.errors.push(failure);
       this.events.push({ at: failure.at, pipecatLiveKokoroTtsPlaybackBlocked: failure });
       return null;
     }
   }
 
   async postPipecatPlaybackEvent(uuid) {
-    if (this.pipecatPlaybackEventPosted) return;
-    const playbackSummary = this.rtpPlaybackSink.summary();
+    const state = this.callPlaybackState(uuid);
+    if (state.posted) return;
+    const playbackSummary = state.sink.summary();
     if (!playbackSummary.outboundRtpReady) return;
     await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
       eventType: "media.playback",
@@ -1065,6 +1091,7 @@ export class EslBridge {
       lastSentAt: playbackSummary.lastSentAt,
       evidencePath: this.options.manifestPath,
     });
+    if (state.call) state.call.pipecatPlaybackEventPosted = true;
     this.pipecatPlaybackEventPosted = true;
   }
 
@@ -1099,7 +1126,10 @@ export class EslBridge {
   async onAnswer(uuid, headers) {
     if (this.callMap.has(uuid)) return;
     const destination = headers.get("Caller-Destination-Number") ?? "8600";
-    const remoteRtp = this.configureRtpPlaybackFromHeaders(headers);
+    const rtpCollector = new PipecatRtpFrameCollector({ maxFrames: this.options.rtpMaxFrames ?? 200 });
+    const rtpPlaybackSink = this.createRtpPlaybackSink();
+    this.rtpPlaybackSink = rtpPlaybackSink;
+    const remoteRtp = this.configureRtpPlaybackFromHeaders(headers, rtpPlaybackSink);
     const { hostPath: wavPath, freeswitchPath } = visibleRecordingPath(this.options.recordingDir, this.options.freeswitchRecordingDir, uuid);
     const response = await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
       eventType: "call.started",
@@ -1111,17 +1141,29 @@ export class EslBridge {
       rtcAsrMode: this.options.rtcAsrUrl ? "rtc_asr_live" : "rtc_asr_blocked",
       destination,
     });
-    this.callMap.set(uuid, { wavPath, freeswitchPath, startedAt: Date.now(), destination, remoteRtp, accCallId: response?.body?.call?.session?.callId ?? null });
+    this.callMap.set(uuid, {
+      wavPath,
+      freeswitchPath,
+      startedAt: Date.now(),
+      destination,
+      remoteRtp,
+      accCallId: response?.body?.call?.session?.callId ?? null,
+      rtpCollector,
+      rtpPlaybackSink,
+      pipecatOutputFixturePlayed: false,
+      pipecatPlaybackEventPosted: false,
+    });
+    this.currentRtpCallUuid = uuid;
     this.send(`api uuid_record ${uuid} start ${freeswitchPath}`);
-    await this.playPipecatOutputFixture();
+    await this.playPipecatOutputFixture(uuid);
     await this.postPipecatPlaybackEvent(uuid);
   }
 
   async onRecordStop(uuid) {
     const call = this.callMap.get(uuid);
     if (!call) return;
-    await this.playPipecatOutputFixture();
-    const pipecatRtpFrameBatch = this.rtpCollector.summary();
+    await this.playPipecatOutputFixture(uuid);
+    const pipecatRtpFrameBatch = (call.rtpCollector ?? this.rtpCollector).summary();
     await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
       eventType: "media.capture",
       timestamp: nowIso(),
@@ -1186,7 +1228,7 @@ export class EslBridge {
       telephonyMode: this.options.telephonyMode,
       pipecatRtpEvidence: pipecatRtpFrameBatch,
       rtcAsrStreamEvidence,
-      pipecatOutboundRtpEvidence: this.rtpPlaybackSink.summary(),
+      pipecatOutboundRtpEvidence: (call.rtpPlaybackSink ?? this.rtpPlaybackSink).summary(),
     });
     await mkdir(path.dirname(this.options.manifestPath), { recursive: true });
     await writeFile(this.options.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
@@ -1203,6 +1245,7 @@ export class EslBridge {
       durationSeconds: call ? Math.round((Date.now() - call.startedAt) / 1000) : null,
     });
     this.callMap.delete(uuid);
+    if (this.currentRtpCallUuid === uuid) this.currentRtpCallUuid = null;
   }
 
   async flushLog() {

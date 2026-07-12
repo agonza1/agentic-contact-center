@@ -290,6 +290,94 @@ test("FreeSWITCH bridge plays Pipecat TTS fixture on answered call remote RTP ta
   }
 });
 
+
+test("FreeSWITCH bridge scopes RTP capture and playback state per SIP call", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-per-call-state-"));
+  const fixturePath = path.join(tempDir, "pipecat-output.jsonl");
+
+  try {
+    const pcm16 = Buffer.alloc(8);
+    [0, 1200, -1200, 32000].forEach((sample, index) => pcm16.writeInt16LE(sample, index * 2));
+    await writeFile(fixturePath, JSON.stringify({ frame: { frameType: "TTSAudioRawFrame", audioFormat: "pcm_s16le", sampleRateHz: 8000, channels: 1, pcm16Base64: pcm16.toString("base64") } }) + "\n", "utf8");
+
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = `
+      const { EslBridge } = await import(${JSON.stringify(moduleUrl)});
+      const http = await import("node:http");
+      const { Writable, Readable } = await import("node:stream");
+      const originalRequest = http.default.request;
+      let started = 0;
+      http.default.request = (options, callback) => {
+        const req = new Writable({ write(chunk, encoding, done) { done(); } });
+        req.on = req.addListener.bind(req);
+        req.write = () => true;
+        req.end = () => {
+          const res = new Readable({ read() { this.push(JSON.stringify({ call: { session: { callId: "acc-call-" + (++started) } } })); this.push(null); } });
+          res.statusCode = 200;
+          res.setEncoding = () => res;
+          callback(res);
+        };
+        return req;
+      };
+      const sentRtp = [];
+      const bridge = new EslBridge({
+        recordingDir: ${JSON.stringify(tempDir)},
+        freeswitchRecordingDir: ${JSON.stringify(tempDir)},
+        logPath: ${JSON.stringify(path.join(tempDir, "events.json"))},
+        manifestPath: ${JSON.stringify(path.join(tempDir, "manifest.json"))},
+        telephonyMode: "local_sip",
+        accBaseUrl: "http://127.0.0.1:1",
+        pipecatOutputFixturePath: ${JSON.stringify(fixturePath)},
+        rtpPlaybackSamplesPerPacket: 2
+      });
+      bridge.send = () => {};
+      bridge.rtpPlaybackSocket = { send(packet, port, host, callback) { sentRtp.push({ sequenceNumber: packet.readUInt16BE(2), port, host }); callback(); } };
+      const headers1 = new Map([["Caller-Destination-Number", "8600"], ["variable_remote_media_ip", "127.0.0.1"], ["variable_remote_media_port", "40002"]]);
+      const headers2 = new Map([["Caller-Destination-Number", "8600"], ["variable_remote_media_ip", "127.0.0.1"], ["variable_remote_media_port", "40004"]]);
+      try {
+        await bridge.onAnswer("fs-call-one", headers1);
+        bridge.activeRtpCollector().acceptPacket(Buffer.from(${JSON.stringify(rtpPacket([0xfe], 0x1000, 160))}), "2026-07-12T18:00:00.000Z");
+        const firstSummary = bridge.callMap.get("fs-call-one").rtpCollector.summary();
+        const firstPlayback = bridge.callMap.get("fs-call-one").rtpPlaybackSink.summary();
+        await bridge.onHangup("fs-call-one", new Map([["Hangup-Cause", "NORMAL_CLEARING"]]));
+        await bridge.onAnswer("fs-call-two", headers2);
+        bridge.activeRtpCollector().acceptPacket(Buffer.from(${JSON.stringify(rtpPacket([0x7e], 0x2000, 320))}), "2026-07-12T18:00:01.000Z");
+        const secondSummary = bridge.callMap.get("fs-call-two").rtpCollector.summary();
+        const secondPlayback = bridge.callMap.get("fs-call-two").rtpPlaybackSink.summary();
+        console.log(JSON.stringify({ sentRtp, firstSummary, firstPlayback, secondSummary, secondPlayback, events: bridge.events }));
+      } finally {
+        http.default.request = originalRequest;
+      }
+    `;
+    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const parsed = JSON.parse(stdout) as {
+      sentRtp: Array<{ sequenceNumber: number; port: number; host: string }>;
+      firstSummary: { packetCount: number; frames: Array<{ sequenceNumber: number }> };
+      firstPlayback: { sentPacketCount: number; remotePort: number };
+      secondSummary: { packetCount: number; frames: Array<{ sequenceNumber: number }> };
+      secondPlayback: { sentPacketCount: number; remotePort: number };
+      events: Array<{ pipecatOutboundRtpPlayback?: { sentPacketCount: number; remotePort: number } }>;
+    };
+
+    assert.equal(parsed.firstSummary.packetCount, 1);
+    assert.equal(parsed.firstSummary.frames[0].sequenceNumber, 0x1000);
+    assert.equal(parsed.secondSummary.packetCount, 1);
+    assert.equal(parsed.secondSummary.frames[0].sequenceNumber, 0x2000);
+    assert.equal(parsed.firstPlayback.sentPacketCount, 2);
+    assert.equal(parsed.firstPlayback.remotePort, 40002);
+    assert.equal(parsed.secondPlayback.sentPacketCount, 2);
+    assert.equal(parsed.secondPlayback.remotePort, 40004);
+    assert.deepEqual(parsed.sentRtp.map((packet) => packet.port), [40002, 40002, 40004, 40004]);
+    assert.deepEqual(parsed.events.filter((event) => event.pipecatOutboundRtpPlayback).map((event) => event.pipecatOutboundRtpPlayback?.remotePort), [40002, 40004]);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("FreeSWITCH bridge streams captured Pipecat input frames to rtc-asr Local STT v1 evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-rtc-asr-stream-"));
