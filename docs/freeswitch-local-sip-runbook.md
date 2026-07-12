@@ -66,6 +66,8 @@ artifacts/freeswitch-live/freeswitch-live-proof-manifest.json
 
 Override it with `--manifest <path>` if needed. If rtc-asr is running and you have a transcript/evidence JSON path, pass `--rtc-asr-evidence <path>` so the manifest can distinguish a configured websocket from attached ASR proof.
 
+To collect live inbound PCMU RTP packets into Pipecat-compatible `InputAudioRawFrameBatch` manifest evidence while experimenting with FreeSWITCH media routing, add `--rtp-listen-port <udp-port>` and point the FreeSWITCH RTP stream at that host/port. This proves the SIP RTP -> Pipecat input-frame boundary only; SIP caller playback remains blocked until Kokoro/Pipecat TTS frames are encoded back to FreeSWITCH RTP.
+
 4. Register a local SIP softphone:
 
 ```text

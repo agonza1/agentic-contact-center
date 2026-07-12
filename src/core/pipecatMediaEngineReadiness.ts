@@ -61,12 +61,12 @@ export function buildPipecatMediaEngineReadinessPayload() {
     },
     implementedNow: [
       "Browser voice turns are normalized into Pipecat frames by scripts/pipecat-local-voice-bridge.py and use rtc-asr, ACC caller-turn, and Kokoro.",
-      "Local SIP and FreeSWITCH proof paths preserve live_capture/generated_media labels, attach WAV/SIP artifacts, and fail closed when rtc-asr evidence is absent.",
+      "Local SIP and FreeSWITCH proof paths preserve live_capture/generated_media labels, attach WAV/SIP artifacts, optionally collect live PCMU RTP into Pipecat InputAudioRawFrameBatch evidence, and fail closed when rtc-asr evidence is absent.",
       "SignalWire readiness is explicit through local webhook labels and the future SIP trunk-to-FreeSWITCH route.",
       "Operator console payloads label local_sip, signalwire_live, live_capture, generated_media, rtc_asr_live, and rtc_asr_blocked modes.",
     ],
     remainingWork: [
-      "Wire the deterministic RTP PCMU decoder into the FreeSWITCH bridge receive loop and emit realtime Pipecat InputAudioRawFrame objects.",
+      "Configure FreeSWITCH media routing to feed the bridge UDP RTP collector during extension 8600 calls and stream collected InputAudioRawFrameBatch objects to rtc-asr during the call.",
       "Stream Kokoro/Pipecat TTSAudioRawFrame output back to FreeSWITCH RTP for SIP caller playback.",
       "Feed rtc-asr final transcripts from the SIP media adapter directly into the shared ACC call-turn loop during the call.",
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
@@ -102,7 +102,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       {
         name: "rtp_pcmu_fixture_decodes_to_pipecat_input_frame",
         passed: true,
-        evidence: "test/pipecatRtpAdapter.test.ts covers deterministic PCMU RTP -> PCM16 InputAudioRawFrame fixtures plus batch sequence-gap metadata.",
+        evidence: "test/pipecatRtpAdapter.test.ts covers deterministic PCMU RTP -> PCM16 InputAudioRawFrame fixtures plus batch sequence-gap metadata; scripts/freeswitch-acc-bridge.mjs can collect live RTP packets into matching manifest evidence.",
       },
     ],
     validationCommands: ["npm test", "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness"],

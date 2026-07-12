@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import net from "node:net";
+import dgram from "node:dgram";
 import http from "node:http";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -143,6 +144,102 @@ async function sha256File(filePath) {
   return createHash("sha256").update(await readFile(filePath)).digest("hex");
 }
 
+function decodePcmuSample(sample) {
+  const inverted = (~sample) & 0xff;
+  const sign = inverted & 0x80;
+  const exponent = (inverted >> 4) & 0x07;
+  const mantissa = inverted & 0x0f;
+  let magnitude = ((mantissa << 3) + 0x84) << exponent;
+  magnitude -= 0x84;
+  return sign ? -magnitude : magnitude;
+}
+
+function decodePcmuToPcm16Base64(payload) {
+  const pcm16 = Buffer.alloc(payload.length * 2);
+  payload.forEach((sample, index) => pcm16.writeInt16LE(decodePcmuSample(sample), index * 2));
+  return pcm16.toString("base64");
+}
+
+export function rtpPcmuPacketToPipecatFrameSummary(packet, receivedAt = nowIso()) {
+  if (packet.length < 12) throw new Error("rtp_packet_too_short");
+  const version = packet[0] >> 6;
+  const hasPadding = (packet[0] & 0x20) !== 0;
+  const hasExtension = (packet[0] & 0x10) !== 0;
+  const csrcCount = packet[0] & 0x0f;
+  const payloadType = packet[1] & 0x7f;
+  let headerBytes = 12 + csrcCount * 4;
+  if (version !== 2) throw new Error("rtp_version_unsupported");
+  if (payloadType !== 0) throw new Error("rtp_payload_type_not_pcmu");
+  if (packet.length < headerBytes) throw new Error("rtp_header_truncated");
+  if (hasExtension) {
+    if (packet.length < headerBytes + 4) throw new Error("rtp_extension_header_truncated");
+    const extensionLengthBytes = packet.readUInt16BE(headerBytes + 2) * 4;
+    if (packet.length < headerBytes + 4 + extensionLengthBytes) throw new Error("rtp_extension_body_truncated");
+    headerBytes += 4 + extensionLengthBytes;
+  }
+  let payloadEnd = packet.length;
+  if (hasPadding) {
+    const paddingBytes = packet[packet.length - 1];
+    if (paddingBytes === 0 || paddingBytes > packet.length - headerBytes) throw new Error("rtp_padding_invalid");
+    payloadEnd -= paddingBytes;
+  }
+  if (payloadEnd <= headerBytes) throw new Error("rtp_payload_missing");
+  const payload = packet.subarray(headerBytes, payloadEnd);
+  return {
+    frameType: "InputAudioRawFrame",
+    audioFormat: "pcm_s16le",
+    sampleRateHz: 8000,
+    channels: 1,
+    sequenceNumber: packet.readUInt16BE(2),
+    timestamp: packet.readUInt32BE(4),
+    ssrc: packet.readUInt32BE(8),
+    durationMs: (payload.length / 8000) * 1000,
+    receivedAt,
+    pcm16Base64: decodePcmuToPcm16Base64(payload),
+  };
+}
+
+export class PipecatRtpFrameCollector {
+  constructor(options = {}) {
+    this.maxFrames = options.maxFrames ?? 200;
+    this.frames = [];
+    this.errors = [];
+  }
+
+  acceptPacket(packet, receivedAt = nowIso()) {
+    try {
+      const frame = rtpPcmuPacketToPipecatFrameSummary(packet, receivedAt);
+      if (this.frames.length < this.maxFrames) this.frames.push(frame);
+      return frame;
+    } catch (error) {
+      this.errors.push({ at: receivedAt, error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
+  }
+
+  summary() {
+    const sequenceGaps = [];
+    this.frames.forEach((frame, index) => {
+      if (index === 0) return;
+      const previous = this.frames[index - 1];
+      const expected = (previous.sequenceNumber + 1) & 0xffff;
+      if (frame.sequenceNumber !== expected) sequenceGaps.push({ after: previous.sequenceNumber, before: frame.sequenceNumber });
+    });
+    return {
+      liveRtpCaptured: this.frames.length > 0,
+      frameType: "InputAudioRawFrameBatch",
+      audioFormat: "pcm_s16le",
+      sampleRateHz: 8000,
+      channels: 1,
+      packetCount: this.frames.length,
+      totalDurationMs: this.frames.reduce((total, frame) => total + frame.durationMs, 0),
+      sequenceGaps,
+      errors: this.errors,
+      frames: this.frames,
+    };
+  }
+}
+
 async function postJson(baseUrl, route, body) {
   const url = new URL(route, baseUrl);
   const rawBody = Buffer.from(JSON.stringify(body));
@@ -221,6 +318,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
   const audioBytes = audioStats?.size ?? 0;
   const generatedMedia = false;
   const rtpPacketCountEstimate = audioBytes > 44 ? Math.floor((audioBytes - 44) / 320) : 0;
+  const pipecatRtpEvidence = options.pipecatRtpEvidence ?? null;
   const runtimeModeLabels = {
     telephony: options.telephonyMode,
     media: "live_capture",
@@ -308,6 +406,13 @@ export async function buildFreeswitchLiveProofManifest(options) {
       hostRecordingPath: options.wavPath,
       freeswitchRecordingPath: options.freeswitchRecordingPath ?? options.wavPath,
     },
+    pipecatMediaEngine: {
+      liveRtpAdapter: pipecatRtpEvidence?.liveRtpCaptured ? "captured_pcmu_to_input_audio_frames" : "not_connected",
+      realtimeDirection: "sip_rtp_inbound_to_pipecat_input_frames",
+      bidirectionalPlaybackReady: false,
+      blocker: "Kokoro/Pipecat TTSAudioRawFrame output is not yet encoded back to FreeSWITCH RTP for SIP caller playback.",
+      rtpFrameBatch: pipecatRtpEvidence,
+    },
     artifacts: { audioWav: options.wavPath, sipLog: options.logPath, rtcAsrEvidence: options.rtcAsrEvidencePath ?? null },
     artifactIntegrity,
     reviewReady: blockers.length === 0 && runtimeModeLabels.telephony === "local_sip" && rtcAsrEvidenceInspection.ready && !generatedMedia,
@@ -326,6 +431,7 @@ export class EslBridge {
     this.buffer = "";
     this.events = [];
     this.callMap = new Map();
+    this.rtpCollector = new PipecatRtpFrameCollector({ maxFrames: options.rtpMaxFrames ?? 200 });
   }
 
   async start() {
@@ -338,10 +444,24 @@ export class EslBridge {
       process.exitCode = 1;
     });
     this.socket.on("close", () => void this.flushLog());
+    this.startRtpReceiver();
   }
 
   send(command) {
     this.socket.write(`${command}\n\n`);
+  }
+
+  startRtpReceiver() {
+    if (!this.options.rtpListenPort) return;
+    this.rtpSocket = dgram.createSocket("udp4");
+    this.rtpSocket.on("message", (message) => {
+      const frame = this.rtpCollector.acceptPacket(message);
+      if (frame) this.events.push({ at: frame.receivedAt, rtpFrame: { sequenceNumber: frame.sequenceNumber, timestamp: frame.timestamp, durationMs: frame.durationMs } });
+    });
+    this.rtpSocket.on("error", (error) => {
+      this.rtpCollector.errors.push({ at: nowIso(), error: error.message });
+    });
+    this.rtpSocket.bind(this.options.rtpListenPort, this.options.rtpListenHost ?? "127.0.0.1");
   }
 
   async handleData(chunk) {
@@ -401,6 +521,7 @@ export class EslBridge {
       audioWavPath: call.wavPath,
       sipLogPath: this.options.logPath,
       generatedMedia: false,
+      pipecatRtpFrameBatch: this.rtpCollector.summary(),
     });
     if (!this.options.rtcAsrUrl) {
       await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
@@ -435,6 +556,7 @@ export class EslBridge {
       rtcAsrUrl: this.options.rtcAsrUrl,
       rtcAsrEvidencePath: this.options.rtcAsrEvidencePath,
       telephonyMode: this.options.telephonyMode,
+      pipecatRtpEvidence: this.rtpCollector.summary(),
     });
     await mkdir(path.dirname(this.options.manifestPath), { recursive: true });
     await writeFile(this.options.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
@@ -472,6 +594,8 @@ async function main() {
     rtcAsrUrl: argValue("--rtc-asr-url", process.env.RTC_ASR_WS_URL),
     rtcAsrEvidencePath: argValue("--rtc-asr-evidence", process.env.RTC_ASR_EVIDENCE_PATH),
     telephonyMode: argValue("--telephony-mode", process.env.ACC_TELEPHONY_MODE || "local_sip"),
+    rtpListenHost: argValue("--rtp-listen-host", process.env.ACC_FREESWITCH_RTP_LISTEN_HOST || "127.0.0.1"),
+    rtpListenPort: Number(argValue("--rtp-listen-port", process.env.ACC_FREESWITCH_RTP_LISTEN_PORT || "0")) || undefined,
   });
   await bridge.start();
   console.log(`FreeSWITCH ACC bridge connected target ${bridge.options.eslHost}:${bridge.options.eslPort}; ACC ${bridge.options.accBaseUrl}`);

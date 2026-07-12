@@ -81,7 +81,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "rtp_pcmu_fixture_decodes_to_pipecat_input_frame").passed,
       true,
     );
-    assert.equal(payload.remainingWork.some((item: string) => item.includes("deterministic RTP PCMU decoder")), true);
+    assert.equal(payload.remainingWork.some((item: string) => item.includes("bridge UDP RTP collector")), true);
     assert.deepEqual(payload.nextUnblockedSlice, {
       id: "sip_rtp_to_pipecat_input_frames",
       title: "Decode FreeSWITCH RTP into Pipecat input frames",

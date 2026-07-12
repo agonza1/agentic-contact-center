@@ -60,7 +60,7 @@ Issue #214 tracks the target shared media engine for browser WebRTC, local SIP/F
 curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness
 ```
 
-The payload is intentionally not a fake green light. It marks the browser Pipecat voice bridge as implemented, keeps the local SIP/FreeSWITCH proof bundle behavior intact, and reports the remaining blocker: FreeSWITCH RTP is not yet streamed bidirectionally through Pipecat frames for realtime SIP caller playback. SignalWire is documented as a future SIP trunk -> FreeSWITCH/Pipecat route; historical/past-call import remains a separate importer task.
+The payload is intentionally not a fake green light. It marks the browser Pipecat voice bridge as implemented, keeps the local SIP/FreeSWITCH proof bundle behavior intact, and reports the remaining blocker: FreeSWITCH RTP is not yet streamed bidirectionally through Pipecat frames for realtime SIP caller playback. The FreeSWITCH bridge can optionally listen on `ACC_FREESWITCH_RTP_LISTEN_PORT`/`--rtp-listen-port` and collect inbound PCMU RTP packets into Pipecat-compatible `InputAudioRawFrameBatch` evidence, but rtc-asr streaming and Kokoro RTP playback still need the next wiring slice. SignalWire is documented as a future SIP trunk -> FreeSWITCH/Pipecat route; historical/past-call import remains a separate importer task.
 
 ## Demo flow
 

@@ -9,6 +9,25 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
+
+function rtpPacket(payload: number[], sequenceNumber = 0x1234, timestamp = 0x00000320): number[] {
+  return [
+    0x80,
+    0x00,
+    (sequenceNumber >> 8) & 0xff,
+    sequenceNumber & 0xff,
+    (timestamp >> 24) & 0xff,
+    (timestamp >> 16) & 0xff,
+    (timestamp >> 8) & 0xff,
+    timestamp & 0xff,
+    0xca,
+    0xfe,
+    0xba,
+    0xbe,
+    ...payload,
+  ];
+}
+
 function validWavFixture(packetCount = 4) {
   const payloadBytes = packetCount * 320;
   const buffer = Buffer.alloc(44 + payloadBytes, 1);
@@ -27,6 +46,44 @@ function validWavFixture(packetCount = 4) {
   return buffer;
 }
 
+
+
+test("FreeSWITCH bridge collects live RTP into Pipecat frame-batch evidence", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+  const script = `
+    const { PipecatRtpFrameCollector } = await import(${JSON.stringify(moduleUrl)});
+    const collector = new PipecatRtpFrameCollector({ maxFrames: 10 });
+    collector.acceptPacket(Buffer.from(${JSON.stringify(rtpPacket([0xfe, 0x7e], 0xfffe, 160))}), "2026-07-11T19:00:00.000Z");
+    collector.acceptPacket(Buffer.from(${JSON.stringify(rtpPacket([0xfe], 0xffff, 162))}), "2026-07-11T19:00:00.020Z");
+    collector.acceptPacket(Buffer.from(${JSON.stringify(rtpPacket([0x7e], 0x0001, 163))}), "2026-07-11T19:00:00.040Z");
+    collector.acceptPacket(Buffer.from([0x80, 0x08, 0x00, 0x01, 0, 0, 0, 1, 0xca, 0xfe, 0xba, 0xbe, 0xff]), "2026-07-11T19:00:00.060Z");
+    console.log(JSON.stringify(collector.summary()));
+  `;
+  const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  const summary = JSON.parse(stdout) as {
+    liveRtpCaptured: boolean;
+    frameType: string;
+    packetCount: number;
+    totalDurationMs: number;
+    sequenceGaps: Array<{ after: number; before: number }>;
+    errors: Array<{ error: string }>;
+    frames: Array<{ frameType: string; audioFormat: string; pcm16Base64: string }>;
+  };
+
+  assert.equal(summary.liveRtpCaptured, true);
+  assert.equal(summary.frameType, "InputAudioRawFrameBatch");
+  assert.equal(summary.packetCount, 3);
+  assert.equal(summary.totalDurationMs, 0.5);
+  assert.deepEqual(summary.sequenceGaps, [{ after: 0xffff, before: 0x0001 }]);
+  assert.deepEqual(summary.errors.map((error) => error.error), ["rtp_payload_type_not_pcmu"]);
+  assert.equal(summary.frames[0].frameType, "InputAudioRawFrame");
+  assert.equal(summary.frames[0].audioFormat, "pcm_s16le");
+  assert.match(summary.frames[0].pcm16Base64, /^[A-Za-z0-9+/]+=*$/);
+});
 
 test("FreeSWITCH ESL frames keep content-length event bodies attached", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
@@ -188,6 +245,64 @@ test("FreeSWITCH recording path maps host artifacts to a container-visible mount
   const paths = JSON.parse(stdout) as { hostPath: string; freeswitchPath: string };
   assert.equal(paths.hostPath, "/workspace/repo/artifacts/freeswitch-live/media/fs-call-123.wav");
   assert.equal(paths.freeswitchPath, "/var/log/freeswitch/acc/fs-call-123.wav");
+});
+
+
+test("FreeSWITCH bridge manifest carries optional live RTP Pipecat batch evidence", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-bridge-rtp-"));
+  const audioPath = path.join(tempDir, "fs-call.wav");
+  const logPath = path.join(tempDir, "freeswitch-esl-events.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+
+  try {
+    await writeFile(audioPath, validWavFixture());
+    await writeFile(logPath, `${JSON.stringify({ events: [{ headers: { "Event-Name": "CHANNEL_ANSWER" } }] })}\n`, "utf8");
+    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: { text: "hello from local sip", final: true } })}\n`, "utf8");
+
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = `
+      const { PipecatRtpFrameCollector, buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
+      const collector = new PipecatRtpFrameCollector();
+      collector.acceptPacket(Buffer.from(${JSON.stringify(rtpPacket([0xfe, 0x7e], 0x1000, 160))}), "2026-07-11T19:00:00.000Z");
+      const manifest = await buildFreeswitchLiveProofManifest({
+        uuid: "fs-proof-rtp",
+        accCallId: "demo-call-rtp",
+        destination: "8600",
+        wavPath: ${JSON.stringify(audioPath)},
+        logPath: ${JSON.stringify(logPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
+        telephonyMode: "local_sip",
+        pipecatRtpEvidence: collector.summary()
+      });
+      console.log(JSON.stringify(manifest));
+    `;
+    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const manifest = JSON.parse(stdout) as {
+      reviewReady: boolean;
+      pipecatMediaEngine: {
+        liveRtpAdapter: string;
+        realtimeDirection: string;
+        bidirectionalPlaybackReady: boolean;
+        blocker: string;
+        rtpFrameBatch: { liveRtpCaptured: boolean; packetCount: number };
+      };
+    };
+
+    assert.equal(manifest.reviewReady, true);
+    assert.equal(manifest.pipecatMediaEngine.liveRtpAdapter, "captured_pcmu_to_input_audio_frames");
+    assert.equal(manifest.pipecatMediaEngine.realtimeDirection, "sip_rtp_inbound_to_pipecat_input_frames");
+    assert.equal(manifest.pipecatMediaEngine.bidirectionalPlaybackReady, false);
+    assert.match(manifest.pipecatMediaEngine.blocker, /not yet encoded back to FreeSWITCH RTP/);
+    assert.equal(manifest.pipecatMediaEngine.rtpFrameBatch.liveRtpCaptured, true);
+    assert.equal(manifest.pipecatMediaEngine.rtpFrameBatch.packetCount, 1);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr evidence", async () => {
