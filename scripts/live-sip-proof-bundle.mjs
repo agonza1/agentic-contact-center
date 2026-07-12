@@ -1,10 +1,28 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
 const repoRoot = process.cwd();
+
+function gitRevision() {
+  const git = (args) => {
+    try {
+      return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    } catch {
+      return null;
+    }
+  };
+  return {
+    repo: "agonza1/agentic-contact-center",
+    commit: git(["rev-parse", "HEAD"]),
+    shortCommit: git(["rev-parse", "--short=12", "HEAD"]),
+    branch: git(["branch", "--show-current"]),
+    dirty: Boolean(git(["status", "--porcelain"])),
+  };
+}
 
 function argValue(flag, fallback = undefined) {
   const index = process.argv.indexOf(flag);
@@ -564,6 +582,8 @@ function reviewGateReportJson(bundleManifest) {
     },
     blockers: bundleManifest.validationSummary.blockers,
     nextActions: bundleManifest.validationSummary.nextActions,
+    sourceRevision: bundleManifest.sourceRevision,
+    bundleRevision: bundleManifest.bundleRevision,
     sourceManifestReviewGate: bundleManifest.sourceManifestReviewGate,
     artifacts: bundleManifest.artifacts,
     artifactIntegrity: bundleManifest.artifactIntegrity.map((artifact) => ({
@@ -594,9 +614,12 @@ async function main() {
     liveManifest.runtimeModeLabels.rtcAsr,
     liveManifest.runtimeModeLabels.credentialsMode === "signalwire_live" ? "signalwire_live" : "mocked_telephony",
   ];
+  const sourceRevision = liveManifest.sourceRevision ?? gitRevision();
+  const bundleRevision = gitRevision();
   const runtimeTrace = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
+    sourceRevision,
     callId: liveManifest.callId,
     sipCallId: liveManifest.sipCallId,
     localSip: liveManifest.localSip,
@@ -625,6 +648,8 @@ async function main() {
       ],
       provenance: {
         source_repo: "agonza1/agentic-contact-center",
+        source_revision: sourceRevision,
+        bundle_revision: bundleRevision,
         workboard_card: "872af947-ef57-47bd-a4f3-3750f54e1948",
         live_manifest: rel(liveManifestPath),
       },
@@ -673,6 +698,8 @@ async function main() {
   const bundleManifest = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
+    sourceRevision,
+    bundleRevision,
     workboardCard: "872af947-ef57-47bd-a4f3-3750f54e1948",
     reviewReady: liveManifest.reviewReady === true,
     runtimeModeLabels: liveManifest.runtimeModeLabels,

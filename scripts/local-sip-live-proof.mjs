@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import dgram from "node:dgram";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import http from "node:http";
@@ -17,6 +18,23 @@ function hasFlag(flag) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function gitRevision() {
+  const git = (args) => {
+    try {
+      return execFileSync("git", args, { cwd: process.cwd(), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    } catch {
+      return null;
+    }
+  };
+  return {
+    repo: "agonza1/agentic-contact-center",
+    commit: git(["rev-parse", "HEAD"]),
+    shortCommit: git(["rev-parse", "--short=12", "HEAD"]),
+    branch: git(["branch", "--show-current"]),
+    dirty: Boolean(git(["status", "--porcelain"])),
+  };
 }
 
 function parseSipMessage(raw) {
@@ -413,6 +431,7 @@ class LocalSipProofServer {
     const manifest = {
       schemaVersion: 1,
       generatedAt: nowIso(),
+      sourceRevision: gitRevision(),
       workboardCard: "872af947-ef57-47bd-a4f3-3750f54e1948",
       callId: this.accCallId,
       sipCallId: this.callId,
