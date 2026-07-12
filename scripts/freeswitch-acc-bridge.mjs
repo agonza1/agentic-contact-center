@@ -160,6 +160,111 @@ function decodePcmuToPcm16Base64(payload) {
   return pcm16.toString("base64");
 }
 
+function encodePcm16SampleToPcmu(sample) {
+  const clipped = Math.max(-32635, Math.min(32635, sample));
+  const sign = clipped < 0 ? 0x80 : 0x00;
+  const magnitude = Math.abs(clipped) + 0x84;
+  let exponent = 7;
+  for (let mask = 0x4000; exponent > 0 && (magnitude & mask) === 0; mask >>= 1) {
+    exponent -= 1;
+  }
+  const mantissa = (magnitude >> (exponent + 3)) & 0x0f;
+  return (~(sign | (exponent << 4) | mantissa)) & 0xff;
+}
+
+function encodePcm16ToPcmu(pcm16) {
+  if (!Buffer.isBuffer(pcm16) || pcm16.length === 0 || pcm16.length % 2 !== 0) {
+    throw new Error("pcm16_payload_invalid");
+  }
+  const pcmu = Buffer.alloc(pcm16.length / 2);
+  for (let offset = 0; offset < pcm16.length; offset += 2) {
+    pcmu[offset / 2] = encodePcm16SampleToPcmu(pcm16.readInt16LE(offset));
+  }
+  return pcmu;
+}
+
+export function pipecatOutputFrameSummaryToRtpPcmuPackets(frame, options = {}) {
+  if (frame?.frameType !== "OutputAudioRawFrame") throw new Error("pipecat_frame_type_not_output_audio");
+  if (frame.audioFormat !== "pcm_s16le" || frame.sampleRateHz !== 8000 || frame.channels !== 1) {
+    throw new Error("pipecat_audio_format_not_pcm16_8khz_mono");
+  }
+  const pcm16 = Buffer.isBuffer(frame.pcm16)
+    ? frame.pcm16
+    : Buffer.from(frame.pcm16Base64 ?? "", "base64");
+  const samplesPerPacket = options.samplesPerPacket ?? 160;
+  if (!Number.isInteger(samplesPerPacket) || samplesPerPacket <= 0) throw new Error("rtp_samples_per_packet_invalid");
+
+  const pcmu = encodePcm16ToPcmu(pcm16);
+  const packets = [];
+  for (let payloadOffset = 0; payloadOffset < pcmu.length; payloadOffset += samplesPerPacket) {
+    const payload = pcmu.subarray(payloadOffset, payloadOffset + samplesPerPacket);
+    const packet = Buffer.alloc(12 + payload.length);
+    packet[0] = 0x80;
+    packet[1] = 0x00;
+    packet.writeUInt16BE(((options.sequenceNumber ?? 0) + packets.length) & 0xffff, 2);
+    packet.writeUInt32BE(((options.timestamp ?? 0) + payloadOffset) >>> 0, 4);
+    packet.writeUInt32BE((options.ssrc ?? 0xacc0ffee) >>> 0, 8);
+    payload.copy(packet, 12);
+    packets.push(packet);
+  }
+  return packets;
+}
+
+export class PipecatRtpPlaybackSink {
+  constructor(options = {}) {
+    this.options = {
+      remoteHost: options.remoteHost ?? "127.0.0.1",
+      remotePort: options.remotePort,
+      sequenceNumber: options.sequenceNumber ?? 0,
+      timestamp: options.timestamp ?? 0,
+      ssrc: options.ssrc ?? 0xacc0ffee,
+      samplesPerPacket: options.samplesPerPacket ?? 160,
+    };
+    this.packetCount = 0;
+    this.audioDurationMs = 0;
+    this.errors = [];
+    this.lastPacket = null;
+  }
+
+  packetize(frame) {
+    try {
+      const packets = pipecatOutputFrameSummaryToRtpPcmuPackets(frame, {
+        sequenceNumber: this.options.sequenceNumber,
+        timestamp: this.options.timestamp,
+        ssrc: this.options.ssrc,
+        samplesPerPacket: this.options.samplesPerPacket,
+      });
+      this.options.sequenceNumber = (this.options.sequenceNumber + packets.length) & 0xffff;
+      this.options.timestamp = (this.options.timestamp + packets.reduce((total, packet) => total + packet.length - 12, 0)) >>> 0;
+      this.packetCount += packets.length;
+      this.audioDurationMs += packets.reduce((total, packet) => total + ((packet.length - 12) / 8000) * 1000, 0);
+      this.lastPacket = packets.at(-1) ?? this.lastPacket;
+      return packets;
+    } catch (error) {
+      this.errors.push({ at: nowIso(), error: error instanceof Error ? error.message : String(error) });
+      return [];
+    }
+  }
+
+  summary() {
+    return {
+      outboundRtpReady: this.packetCount > 0,
+      frameType: "OutputAudioRawFrame",
+      audioFormat: "pcm_s16le",
+      sampleRateHz: 8000,
+      channels: 1,
+      packetCount: this.packetCount,
+      totalDurationMs: this.audioDurationMs,
+      nextSequenceNumber: this.options.sequenceNumber,
+      nextTimestamp: this.options.timestamp,
+      ssrc: this.options.ssrc,
+      remoteHost: this.options.remoteHost,
+      remotePort: this.options.remotePort ?? null,
+      errors: this.errors,
+    };
+  }
+}
+
 export function rtpPcmuPacketToPipecatFrameSummary(packet, receivedAt = nowIso()) {
   if (packet.length < 12) throw new Error("rtp_packet_too_short");
   const version = packet[0] >> 6;
@@ -319,6 +424,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
   const generatedMedia = false;
   const rtpPacketCountEstimate = audioBytes > 44 ? Math.floor((audioBytes - 44) / 320) : 0;
   const pipecatRtpEvidence = options.pipecatRtpEvidence ?? null;
+  const pipecatOutboundRtpEvidence = options.pipecatOutboundRtpEvidence ?? null;
   const runtimeModeLabels = {
     telephony: options.telephonyMode,
     media: "live_capture",
@@ -408,10 +514,16 @@ export async function buildFreeswitchLiveProofManifest(options) {
     },
     pipecatMediaEngine: {
       liveRtpAdapter: pipecatRtpEvidence?.liveRtpCaptured ? "captured_pcmu_to_input_audio_frames" : "not_connected",
-      realtimeDirection: "sip_rtp_inbound_to_pipecat_input_frames",
+      realtimeDirection: pipecatOutboundRtpEvidence?.outboundRtpReady
+        ? "sip_rtp_inbound_to_pipecat_input_frames_and_output_frames_to_rtp_packets"
+        : "sip_rtp_inbound_to_pipecat_input_frames",
+      outboundPlaybackAdapter: pipecatOutboundRtpEvidence?.outboundRtpReady ? "packetized_output_audio_frames_to_pcmu_rtp" : "not_connected",
       bidirectionalPlaybackReady: false,
-      blocker: "Kokoro/Pipecat TTSAudioRawFrame output is not yet encoded back to FreeSWITCH RTP for SIP caller playback.",
+      blocker: pipecatOutboundRtpEvidence?.outboundRtpReady
+        ? "Kokoro/Pipecat output can be packetized as RTP, but live FreeSWITCH caller playback and rtc-asr live-stream wiring are not complete."
+        : "Kokoro/Pipecat TTSAudioRawFrame output is not yet encoded back to FreeSWITCH RTP for SIP caller playback.",
       rtpFrameBatch: pipecatRtpEvidence,
+      outboundRtpPlayback: pipecatOutboundRtpEvidence,
     },
     artifacts: { audioWav: options.wavPath, sipLog: options.logPath, rtcAsrEvidence: options.rtcAsrEvidencePath ?? null },
     artifactIntegrity,

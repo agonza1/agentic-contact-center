@@ -85,6 +85,76 @@ test("FreeSWITCH bridge collects live RTP into Pipecat frame-batch evidence", as
   assert.match(summary.frames[0].pcm16Base64, /^[A-Za-z0-9+/]+=*$/);
 });
 
+test("FreeSWITCH bridge packetizes Pipecat output audio into outbound RTP proof evidence", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-outbound-rtp-"));
+  const audioPath = path.join(tempDir, "fs-call.wav");
+  const logPath = path.join(tempDir, "freeswitch-esl-events.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+
+  try {
+    await writeFile(audioPath, validWavFixture());
+    await writeFile(logPath, `${JSON.stringify({ events: [{ headers: { "Event-Name": "CHANNEL_ANSWER" } }] })}\n`, "utf8");
+    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: { text: "hello from local sip", final: true } })}\n`, "utf8");
+
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = `
+      const { PipecatRtpPlaybackSink, buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
+      const pcm16 = Buffer.alloc(8);
+      [0, 1200, -1200, 32000].forEach((sample, index) => pcm16.writeInt16LE(sample, index * 2));
+      const sink = new PipecatRtpPlaybackSink({ remoteHost: "127.0.0.1", remotePort: 40002, sequenceNumber: 0xfffe, timestamp: 160, ssrc: 0x0badf00d, samplesPerPacket: 2 });
+      const packets = sink.packetize({ frameType: "OutputAudioRawFrame", audioFormat: "pcm_s16le", sampleRateHz: 8000, channels: 1, pcm16 });
+      const manifest = await buildFreeswitchLiveProofManifest({
+        uuid: "fs-proof-outbound-rtp",
+        accCallId: "demo-call-outbound-rtp",
+        destination: "8600",
+        wavPath: ${JSON.stringify(audioPath)},
+        logPath: ${JSON.stringify(logPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
+        telephonyMode: "local_sip",
+        pipecatOutboundRtpEvidence: sink.summary()
+      });
+      console.log(JSON.stringify({ packets: packets.map((packet) => ({ sequenceNumber: packet.readUInt16BE(2), timestamp: packet.readUInt32BE(4), ssrc: packet.readUInt32BE(8), payloadBytes: packet.length - 12 })), manifest }));
+    `;
+    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const parsed = JSON.parse(stdout) as {
+      packets: Array<{ sequenceNumber: number; timestamp: number; ssrc: number; payloadBytes: number }>;
+      manifest: {
+        reviewReady: boolean;
+        pipecatMediaEngine: {
+          realtimeDirection: string;
+          outboundPlaybackAdapter: string;
+          bidirectionalPlaybackReady: boolean;
+          blocker: string;
+          outboundRtpPlayback: { outboundRtpReady: boolean; packetCount: number; totalDurationMs: number; nextSequenceNumber: number; nextTimestamp: number; remotePort: number };
+        };
+      };
+    };
+
+    assert.deepEqual(parsed.packets, [
+      { sequenceNumber: 0xfffe, timestamp: 160, ssrc: 0x0badf00d, payloadBytes: 2 },
+      { sequenceNumber: 0xffff, timestamp: 162, ssrc: 0x0badf00d, payloadBytes: 2 },
+    ]);
+    assert.equal(parsed.manifest.reviewReady, true);
+    assert.equal(parsed.manifest.pipecatMediaEngine.realtimeDirection, "sip_rtp_inbound_to_pipecat_input_frames_and_output_frames_to_rtp_packets");
+    assert.equal(parsed.manifest.pipecatMediaEngine.outboundPlaybackAdapter, "packetized_output_audio_frames_to_pcmu_rtp");
+    assert.equal(parsed.manifest.pipecatMediaEngine.bidirectionalPlaybackReady, false);
+    assert.match(parsed.manifest.pipecatMediaEngine.blocker, /live FreeSWITCH caller playback/);
+    assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.outboundRtpReady, true);
+    assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.packetCount, 2);
+    assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.totalDurationMs, 0.5);
+    assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.nextSequenceNumber, 0);
+    assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.nextTimestamp, 164);
+    assert.equal(parsed.manifest.pipecatMediaEngine.outboundRtpPlayback.remotePort, 40002);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("FreeSWITCH ESL frames keep content-length event bodies attached", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
