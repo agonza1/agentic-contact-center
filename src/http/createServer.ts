@@ -70,8 +70,15 @@ const maxCallListPageLimit = 100;
 const operatorConsoleRefreshIntervalMs = 5000;
 const operatorConsoleWorkboardCard = "82771d3a-de4d-4b6e-869c-328e8264d01e";
 const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
+const defaultBrowserWebrtcBridgeTimeoutMs = 5000;
 function getBrowserWebrtcBridgeBaseUrl(): string {
   return process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766";
+}
+
+function getBrowserWebrtcBridgeTimeoutMs(): number {
+  const parsed = Number(process.env.BROWSER_WEBRTC_BRIDGE_TIMEOUT_MS ?? "");
+  if (!Number.isFinite(parsed) || parsed <= 0) return defaultBrowserWebrtcBridgeTimeoutMs;
+  return Math.min(Math.max(Math.trunc(parsed), 50), 60000);
 }
 
 function getRepoHeadEvidence(): string | null {
@@ -657,6 +664,7 @@ function buildBrowserWebrtcReadinessPayload(): object {
   const contractReady = realtimeReadiness.acceptanceCriteria.every((criterion) => criterion.passed);
   const signalingRoute = "/api/browser-webrtc/session";
   const browserWebrtcBridgeBaseUrl = getBrowserWebrtcBridgeBaseUrl();
+  const browserWebrtcBridgeTimeoutMs = getBrowserWebrtcBridgeTimeoutMs();
   const liveMediaVerified = false;
 
   return {
@@ -681,6 +689,7 @@ function buildBrowserWebrtcReadinessPayload(): object {
       pipecatWebrtcBridge: {
         status: "signaling_ready",
         bridgeUrl: browserWebrtcBridgeBaseUrl,
+        timeoutMs: browserWebrtcBridgeTimeoutMs,
         offerRoute: `${signalingRoute} -> ${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/offer`,
         evidence: "ACC validates browser SDP offers, preserves/allocates call IDs, and proxies signaling to the local Pipecat WebRTC bridge.",
         failClosedWhenUnavailable: true,
@@ -708,6 +717,7 @@ function buildBrowserWebrtcReadinessPayload(): object {
       signalingRoute: `POST ${signalingRoute}`,
       readinessRoute: "/api/browser-webrtc/readiness",
       bridgeOfferRoute: `${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/offer`,
+      bridgeTimeoutMs: browserWebrtcBridgeTimeoutMs,
       expectedOffer: {
         contentType: "application/json",
         fields: ["sdp", "type=offer", "callId?"],
@@ -803,6 +813,7 @@ async function postBrowserWebrtcOfferToBridge(payload: object): Promise<{ status
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs()),
   });
   const contentType = response.headers.get("content-type") ?? "";
   const responsePayload = contentType.includes("json") ? await response.json() : { detail: await response.text() };
