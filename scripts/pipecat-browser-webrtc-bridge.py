@@ -386,12 +386,25 @@ class BrowserAudioOutputTrack(MediaStreamTrack):
         self._started = time.monotonic()
         self.total_audio_bytes = 0
         self.enqueued_chunks = 0
+        self.cleared_chunks = 0
+        self.cleared_audio_bytes = 0
 
     def enqueue_pcm16(self, pcm: bytes, sample_rate: int) -> None:
         pcm48 = resample_pcm16_mono(pcm, sample_rate, WEBRTC_SAMPLE_RATE)
         self._buffer.extend(pcm48)
         self.total_audio_bytes += len(pcm48)
         self.enqueued_chunks += 1
+
+    def clear_buffer(self) -> dict[str, Any]:
+        cleared_bytes = len(self._buffer)
+        self._buffer.clear()
+        self.cleared_chunks += 1
+        self.cleared_audio_bytes += cleared_bytes
+        return {
+            "clearedBytes": cleared_bytes,
+            "clearedChunks": self.cleared_chunks,
+            "totalClearedAudioBytes": self.cleared_audio_bytes,
+        }
 
     async def recv(self) -> av.AudioFrame:
         await asyncio.sleep(WEBRTC_FRAME_MS / 1000)
@@ -419,10 +432,25 @@ class PipecatBrowserWebrtcPipeline:
         self.readiness = readiness
         self.output_track = output_track
         self.turn_count = 0
+        self.output_generation = 0
+        self.last_barge_in_evidence: dict[str, Any] = {}
         self.last_evidence: dict[str, Any] = {}
+
+    def cancel_output(self, reason: str = "barge-in") -> dict[str, Any]:
+        self.output_generation += 1
+        clear_evidence = self.output_track.clear_buffer()
+        self.last_barge_in_evidence = {
+            "reason": reason,
+            "outputGeneration": self.output_generation,
+            "clearedRemoteAudio": clear_evidence,
+            "timestamp": datetime.now(UTC).isoformat(timespec="milliseconds"),
+        }
+        print(json.dumps({"type": "browser_webrtc_output_cancelled", **self.last_barge_in_evidence}), flush=True)
+        return self.last_barge_in_evidence
 
     async def run_turn(self, pcm16_16k: bytes) -> dict[str, Any]:
         started = time.perf_counter()
+        turn_output_generation = self.output_generation
         input_frame = InputAudioRawFrame(audio=pcm16_16k, sample_rate=INPUT_SAMPLE_RATE, num_channels=1)
         transcript, stt_meta, transcription_frame = await self.transcribe(input_frame)
         if not transcript.strip():
@@ -435,9 +463,19 @@ class PipecatBrowserWebrtcPipeline:
         )
         agent_text = latest_agent_text(call)
         tts_meta: dict[str, Any] = {"engine": "kokoro", "skipped": True, "audioBytes": 0}
+        output_cancelled = False
         if agent_text:
             pcm, sample_rate, tts_meta = await self.synthesize(TextFrame(agent_text))
-            self.output_track.enqueue_pcm16(pcm, sample_rate)
+            if turn_output_generation == self.output_generation:
+                self.output_track.enqueue_pcm16(pcm, sample_rate)
+            else:
+                output_cancelled = True
+                tts_meta = {
+                    **tts_meta,
+                    "cancelled": True,
+                    "cancelReason": "barge-in",
+                    "audioBytesEnqueued": 0,
+                }
         self.turn_count += 1
         elapsed_ms = round((time.perf_counter() - started) * 1000)
         self.last_evidence = {
@@ -447,6 +485,8 @@ class PipecatBrowserWebrtcPipeline:
             "agentText": agent_text,
             "stt": stt_meta,
             "tts": tts_meta,
+            "bargeIn": self.last_barge_in_evidence,
+            "outputCancelled": output_cancelled,
             "pipecatFrames": {
                 "input": "InputAudioRawFrame",
                 "transcription": "TranscriptionFrame",
@@ -564,6 +604,8 @@ async def consume_browser_audio(track: MediaStreamTrack, pipeline: PipecatBrowse
             rms = audioop.rms(pcm, SAMPLE_WIDTH_BYTES)
             now = time.monotonic()
             if rms > silence_rms:
+                if not in_speech:
+                    pipeline.cancel_output("barge-in")
                 in_speech = True
                 last_voice_at = now
             if in_speech:
@@ -672,6 +714,7 @@ class BrowserWebrtcBridge:
                 "callId": session.get("callId"),
                 "startedAt": session.get("startedAt"),
                 "turnEvidence": evidence,
+                "bargeInEvidence": pipeline.last_barge_in_evidence if isinstance(pipeline, PipecatBrowserWebrtcPipeline) else {},
                 "reviewReady": bool(evidence.get("callerTranscript") and evidence.get("tts", {}).get("audioBytes", 0) > 0),
             }
         )

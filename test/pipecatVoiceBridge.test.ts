@@ -87,6 +87,22 @@ test("Pipecat browser WebRTC bridge normalizes answer SDP for Chrome", () => {
 });
 
 
+test("Pipecat browser WebRTC bridge cancels remote audio on caller barge-in", () => {
+  const bridge = browserWebrtcBridgeSource();
+
+  assert.match(bridge, /def clear_buffer\(self\) -> dict\[str, Any\]:/);
+  assert.match(bridge, /self\._buffer\.clear\(\)/);
+  assert.match(bridge, /def cancel_output\(self, reason: str = "barge-in"\) -> dict\[str, Any\]:/);
+  assert.match(bridge, /self\.output_generation \+= 1/);
+  assert.match(bridge, /"type": "browser_webrtc_output_cancelled"/);
+  assert.match(bridge, /turn_output_generation = self\.output_generation/);
+  assert.match(bridge, /if turn_output_generation == self\.output_generation:/);
+  assert.match(bridge, /"cancelReason": "barge-in"/);
+  assert.match(bridge, /pipeline\.cancel_output\("barge-in"\)/);
+  assert.match(bridge, /"bargeInEvidence": pipeline\.last_barge_in_evidence/);
+});
+
+
 test("operator console surfaces fail-closed voice bridge readiness", () => {
   const source = consoleSource();
 
