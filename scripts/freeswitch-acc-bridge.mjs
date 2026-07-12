@@ -184,7 +184,7 @@ function encodePcm16ToPcmu(pcm16) {
 }
 
 export function pipecatOutputFrameSummaryToRtpPcmuPackets(frame, options = {}) {
-  if (frame?.frameType !== "OutputAudioRawFrame") throw new Error("pipecat_frame_type_not_output_audio");
+  if (frame?.frameType !== "OutputAudioRawFrame" && frame?.frameType !== "TTSAudioRawFrame") throw new Error("pipecat_frame_type_not_output_audio");
   if (frame.audioFormat !== "pcm_s16le" || frame.sampleRateHz !== 8000 || frame.channels !== 1) {
     throw new Error("pipecat_audio_format_not_pcm16_8khz_mono");
   }
@@ -267,7 +267,7 @@ export class PipecatRtpPlaybackSink {
   summary() {
     return {
       outboundRtpReady: this.packetCount > 0,
-      frameType: "OutputAudioRawFrame",
+      frameType: "OutputAudioRawFrame|TTSAudioRawFrame",
       audioFormat: "pcm_s16le",
       sampleRateHz: 8000,
       channels: 1,
@@ -289,7 +289,7 @@ export async function loadPipecatOutputFrameSummaries(filePath) {
   const entries = parseJsonOrJsonLines(await readFile(filePath, "utf8"));
   return entries.flatMap((entry) => {
     const frame = entry?.frame ?? entry?.payload ?? entry;
-    if (frame?.frameType !== "OutputAudioRawFrame") return [];
+    if (frame?.frameType !== "OutputAudioRawFrame" && frame?.frameType !== "TTSAudioRawFrame") return [];
     return [frame];
   });
 }
@@ -549,8 +549,8 @@ export async function buildFreeswitchLiveProofManifest(options) {
       outboundPlaybackAdapter: pipecatOutboundRtpEvidence?.outboundRtpReady ? "packetized_output_audio_frames_to_pcmu_rtp" : "not_connected",
       bidirectionalPlaybackReady: false,
       blocker: pipecatOutboundRtpEvidence?.outboundRtpReady
-        ? "Kokoro/Pipecat output can be packetized as RTP, but live FreeSWITCH caller playback and rtc-asr live-stream wiring are not complete."
-        : "Kokoro/Pipecat TTSAudioRawFrame output is not yet encoded back to FreeSWITCH RTP for SIP caller playback.",
+        ? "Kokoro/Pipecat output and TTSAudioRawFrame fixtures can be packetized as RTP, but live FreeSWITCH caller playback and rtc-asr live-stream wiring are not complete."
+        : "Kokoro/Pipecat TTSAudioRawFrame output is not yet connected to the FreeSWITCH RTP playback socket for SIP caller playback.",
       rtpFrameBatch: pipecatRtpEvidence,
       outboundRtpPlayback: pipecatOutboundRtpEvidence,
     },

@@ -163,7 +163,7 @@ test("FreeSWITCH bridge sends fixture Pipecat output frames to RTP playback sink
   try {
     const pcm16 = Buffer.alloc(8);
     [0, 1200, -1200, 32000].forEach((sample, index) => pcm16.writeInt16LE(sample, index * 2));
-    await writeFile(fixturePath, JSON.stringify({ frame: { frameType: "OutputAudioRawFrame", audioFormat: "pcm_s16le", sampleRateHz: 8000, channels: 1, pcm16Base64: pcm16.toString("base64") } }) + "\n", "utf8");
+    await writeFile(fixturePath, JSON.stringify({ frame: { frameType: "TTSAudioRawFrame", audioFormat: "pcm_s16le", sampleRateHz: 8000, channels: 1, pcm16Base64: pcm16.toString("base64") } }) + "\n", "utf8");
 
     const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
     const script = [
@@ -193,7 +193,7 @@ test("FreeSWITCH bridge sends fixture Pipecat output frames to RTP playback sink
     });
     const parsed = JSON.parse(stdout) as {
       sent: Array<{ sequenceNumber: number; timestamp: number; ssrc: number; payloadBytes: number; port: number; host: string }>;
-      summary: { outboundRtpReady: boolean; packetCount: number; nextSequenceNumber: number; nextTimestamp: number; remotePort: number; errors: Array<{ error: string }> };
+      summary: { outboundRtpReady: boolean; frameType: string; packetCount: number; nextSequenceNumber: number; nextTimestamp: number; remotePort: number; errors: Array<{ error: string }> };
       events: Array<{ pipecatOutboundRtpPlayback?: { outboundRtpReady: boolean } }>;
     };
 
@@ -202,6 +202,7 @@ test("FreeSWITCH bridge sends fixture Pipecat output frames to RTP playback sink
       { sequenceNumber: 0xffff, timestamp: 162, ssrc: 0x0badf00d, payloadBytes: 2, port: 40002, host: "127.0.0.1" },
     ]);
     assert.equal(parsed.summary.outboundRtpReady, true);
+    assert.equal(parsed.summary.frameType, "OutputAudioRawFrame|TTSAudioRawFrame");
     assert.equal(parsed.summary.packetCount, 2);
     assert.equal(parsed.summary.nextSequenceNumber, 0);
     assert.equal(parsed.summary.nextTimestamp, 164);
@@ -424,7 +425,7 @@ test("FreeSWITCH bridge manifest carries optional live RTP Pipecat batch evidenc
     assert.equal(manifest.pipecatMediaEngine.liveRtpAdapter, "captured_pcmu_to_input_audio_frames");
     assert.equal(manifest.pipecatMediaEngine.realtimeDirection, "sip_rtp_inbound_to_pipecat_input_frames");
     assert.equal(manifest.pipecatMediaEngine.bidirectionalPlaybackReady, false);
-    assert.match(manifest.pipecatMediaEngine.blocker, /not yet encoded back to FreeSWITCH RTP/);
+    assert.match(manifest.pipecatMediaEngine.blocker, /not yet connected to the FreeSWITCH RTP playback socket/);
     assert.equal(manifest.pipecatMediaEngine.rtpFrameBatch.liveRtpCaptured, true);
     assert.equal(manifest.pipecatMediaEngine.rtpFrameBatch.packetCount, 1);
   } finally {

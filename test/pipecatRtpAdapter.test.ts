@@ -109,6 +109,27 @@ test("Pipecat output PCM16 frames packetize into outbound RTP PCMU packets", () 
   assert.deepEqual([...Buffer.concat(packets.map((packet) => packet.subarray(12)))], [...encodePcm16ToPcmu(pcm16)]);
 });
 
+test("Pipecat TTS audio frames packetize into outbound RTP PCMU packets", () => {
+  const pcm16 = Buffer.alloc(4);
+  [0, -1200].forEach((sample, index) => pcm16.writeInt16LE(sample, index * 2));
+
+  const packets = pipecatOutputFrameToRtpPcmuPackets(
+    {
+      frameType: "TTSAudioRawFrame",
+      audioFormat: "pcm_s16le",
+      sampleRateHz: 8000,
+      channels: 1,
+      pcm16,
+    },
+    { sequenceNumber: 10, timestamp: 160, ssrc: 0x0badf00d, samplesPerPacket: 2 },
+  );
+
+  assert.equal(packets.length, 1);
+  assert.equal(packets[0].readUInt16BE(2), 10);
+  assert.equal(packets[0].readUInt32BE(4), 160);
+  assert.deepEqual([...packets[0].subarray(12)], [...encodePcm16ToPcmu(pcm16)]);
+});
+
 test("Pipecat output RTP packetizer rejects incompatible output audio", () => {
   const pcm16 = Buffer.from([0x00, 0x00]);
   assert.throws(

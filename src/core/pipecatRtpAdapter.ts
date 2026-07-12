@@ -22,7 +22,7 @@ export type PipecatRtpFrameBatch = {
 };
 
 export type PipecatOutputAudioFrameFixture = {
-  frameType: "OutputAudioRawFrame";
+  frameType: "OutputAudioRawFrame" | "TTSAudioRawFrame";
   audioFormat: "pcm_s16le";
   sampleRateHz: 8000;
   channels: 1;
@@ -79,7 +79,7 @@ export function pipecatOutputFrameToRtpPcmuPackets(
   frame: PipecatOutputAudioFrameFixture,
   options: RtpPcmuPacketizeOptions,
 ): Buffer[] {
-  if (frame.frameType !== "OutputAudioRawFrame") {
+  if (frame.frameType !== "OutputAudioRawFrame" && frame.frameType !== "TTSAudioRawFrame") {
     throw new Error("pipecat_frame_type_not_output_audio");
   }
   if (frame.audioFormat !== "pcm_s16le" || frame.sampleRateHz !== 8000 || frame.channels !== 1) {
