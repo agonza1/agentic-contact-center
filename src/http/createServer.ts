@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 import {
@@ -71,6 +72,17 @@ const operatorConsoleWorkboardCard = "82771d3a-de4d-4b6e-869c-328e8264d01e";
 const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
 function getBrowserWebrtcBridgeBaseUrl(): string {
   return process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766";
+}
+
+function getRepoHeadEvidence(): string | null {
+  const envHead = process.env.ACC_GIT_HEAD;
+  if (envHead && /^[a-f0-9]{40}$/i.test(envHead)) return envHead.toLowerCase();
+  try {
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return /^[a-f0-9]{40}$/i.test(head) ? head.toLowerCase() : null;
+  } catch {
+    return null;
+  }
 }
 let activeAssertEvaluationSpec = cloneAssertEvaluationSpec(defaultAssertEvaluationSpec);
 let activeClueConBrainBlocks = defaultClueConBrainBlocks();
@@ -1276,6 +1288,7 @@ function buildOperatorConsoleHtml(): string {
   </main>
   <script>
     const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceBridgeEvidence: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
+    const repoHeadEvidence = ${JSON.stringify(getRepoHeadEvidence())};
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
     const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve", deny_offer: "Deny", takeover: "Barge In", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
@@ -1564,6 +1577,7 @@ function buildOperatorConsoleHtml(): string {
       if (bridge && bridge.tts) events.push(Object.assign({ type: "kokoro.tts.audio", engine: "kokoro", callId: state.voiceCallId }, bridge.tts));
       const proof = {
         capturedAt: new Date().toISOString(),
+        gitHead: repoHeadEvidence,
         captureSource: "operator-console/browser-webrtc",
         callId: state.voiceCallId,
         sessionId: state.voiceSessionId,

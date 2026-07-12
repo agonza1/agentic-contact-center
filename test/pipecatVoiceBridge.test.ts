@@ -90,6 +90,8 @@ test("operator console surfaces fail-closed voice bridge readiness", () => {
   assert.match(source, /new RTCPeerConnection/);
   assert.match(source, /window\.__ACC_COLLECT_BROWSER_WEBRTC_LIVE_PROOF__/);
   assert.match(source, /window\.__ACC_COPY_BROWSER_WEBRTC_LIVE_PROOF__/);
+  assert.match(source, /const repoHeadEvidence = /);
+  assert.match(source, /gitHead: repoHeadEvidence/);
   assert.match(source, /id="voice-copy-proof"/);
   assert.match(source, /copyBrowserWebrtcLiveProof/);
   assert.match(source, /pc\.getStats\(\)/);
