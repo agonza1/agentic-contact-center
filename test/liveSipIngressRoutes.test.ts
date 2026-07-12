@@ -115,7 +115,9 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
       rtcAsrEvidencePath: "artifacts/freeswitch-live/rtc-asr-evidence.json",
     });
     assert.equal(transcript.statusCode, 200);
+    assert.equal(transcript.payload.call.session.runtimeModeLabels.rtcAsr, "rtc_asr_live");
     assert.equal(transcript.payload.call.events.some((event: any) => event.type === "rtc_asr_transcript" && event.detail.transcriptText === "I need help with a billing question."), true);
+    assert.equal(transcript.payload.call.events.some((event: any) => event.type === "rtc_asr_transcript" && event.detail.previousRtcAsrMode === "rtc_asr_blocked" && event.detail.rtcAsrMode === "rtc_asr_live"), true);
     assert.equal(transcript.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "I need help with a billing question."), true);
 
     const invalidEnded = await requestJson(address.port, "POST", "/api/live-sip/events", {
@@ -134,7 +136,7 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
     assert.deepEqual(liveProof.labels, {
       telephony: "local_sip",
       media: "live_capture",
-      rtcAsr: "rtc_asr_blocked",
+      rtcAsr: "rtc_asr_live",
       credentialsMode: "mocked",
     });
     assert.equal(liveProof.audioCapture.status, "live_capture_attached");
