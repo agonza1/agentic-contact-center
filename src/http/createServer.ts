@@ -2210,7 +2210,9 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
     playback: {
       status: playbackEvent
         ? playbackEvent.detail.rtpSocketSendReady === true
-          ? "rtp_sent_to_socket"
+          ? playbackEvent.detail.callerPlaybackConfirmed === true
+            ? "caller_playback_confirmed"
+            : "rtp_sent_to_socket"
           : playbackEvent.detail.outboundRtpReady === true
             ? "rtp_packetized"
             : "blocked"
@@ -2222,6 +2224,8 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
       remoteHost: getOptionalEventString(playbackEvent?.detail.remoteHost),
       remotePort: typeof playbackEvent?.detail.remotePort === "number" ? playbackEvent.detail.remotePort : null,
       evidencePath: getOptionalEventString(playbackEvent?.detail.evidencePath),
+      callerPlaybackConfirmed: playbackEvent?.detail.callerPlaybackConfirmed === true,
+      callerPlaybackEvidencePath: getOptionalEventString(playbackEvent?.detail.callerPlaybackEvidencePath),
       eventTrail: playbackEvent ? snapshot.session.openclawSession.artifactLinks.events + "?type=pipecat_rtp_playback_attached&limit=1&order=desc" : null,
     },
     sip: {
@@ -4553,6 +4557,18 @@ async function routeRequest(
           writeBadRequest(response, remotePort.error);
           return;
         }
+        if (packetCount !== null && sentPacketCount !== null && sentPacketCount > packetCount) {
+          writeBadRequest(response, "live_sip_playback_sent_packet_count_exceeds_packet_count");
+          return;
+        }
+        if (body.rtpSocketSendReady === true && (!sentPacketCount || remotePort === null)) {
+          writeBadRequest(response, "live_sip_playback_socket_send_evidence_incomplete");
+          return;
+        }
+        if (body.callerPlaybackConfirmed === true && body.rtpSocketSendReady !== true) {
+          writeBadRequest(response, "live_sip_playback_confirmation_without_socket_send");
+          return;
+        }
 
         const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
           eventType: "pipecat_rtp_playback_attached",
@@ -4565,6 +4581,8 @@ async function routeRequest(
             remoteHost: getOptionalTrimmedString(body.remoteHost) ?? null,
             remotePort,
             evidencePath: getOptionalTrimmedString(body.evidencePath) ?? null,
+            callerPlaybackConfirmed: body.callerPlaybackConfirmed === true,
+            callerPlaybackEvidencePath: getOptionalTrimmedString(body.callerPlaybackEvidencePath) ?? null,
           },
         });
         writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });

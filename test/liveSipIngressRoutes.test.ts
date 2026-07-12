@@ -78,9 +78,24 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
       remoteHost: "127.0.0.1",
       remotePort: 40002,
       evidencePath: "artifacts/freeswitch-live/freeswitch-live-proof-manifest.json",
+      callerPlaybackConfirmed: true,
+      callerPlaybackEvidencePath: "artifacts/freeswitch-live/caller-playback-proof.json",
     });
     assert.equal(playback.statusCode, 200);
     assert.equal(playback.payload.call.events.some((event: any) => event.type === "pipecat_rtp_playback_attached" && event.detail.sentPacketCount === 3), true);
+
+    const invalidPlayback = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.playback",
+      timestamp: "2026-06-30T10:00:02.400Z",
+      sipCallId: "sip-proof-1",
+      outboundRtpReady: true,
+      rtpSocketSendReady: true,
+      packetCount: 2,
+      sentPacketCount: 3,
+      remotePort: 40002,
+    });
+    assert.equal(invalidPlayback.statusCode, 400);
+    assert.equal(invalidPlayback.payload.error, "live_sip_playback_sent_packet_count_exceeds_packet_count");
 
     const invalidCapture = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.capture",
@@ -142,9 +157,11 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
     assert.equal(liveProof.audioCapture.status, "live_capture_attached");
     assert.equal(liveProof.audioCapture.audioWavPath, "artifacts/freeswitch-live/media/sip-proof-1.wav");
     assert.equal(liveProof.audioCapture.sipLogPath, "artifacts/freeswitch-live/freeswitch-esl-events.json");
-    assert.equal(liveProof.playback.status, "rtp_sent_to_socket");
+    assert.equal(liveProof.playback.status, "caller_playback_confirmed");
     assert.equal(liveProof.playback.sentPacketCount, 3);
     assert.equal(liveProof.playback.remotePort, 40002);
+    assert.equal(liveProof.playback.callerPlaybackConfirmed, true);
+    assert.equal(liveProof.playback.callerPlaybackEvidencePath, "artifacts/freeswitch-live/caller-playback-proof.json");
     assert.equal(liveProof.asr.status, "transcript_received");
     assert.equal(liveProof.asr.latestTranscriptText, "I need help with a billing question.");
     assert.equal(liveProof.asr.evidencePath, "artifacts/freeswitch-live/rtc-asr-evidence.json");
