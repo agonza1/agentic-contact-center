@@ -575,6 +575,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /class="transcript-turn transcript-turn--/);
   assert.match(narrative.body, /renderDemoTranscript\(payload\.call\.transcript\)/);
   assert.match(narrative.body, /class="scroll"/);
+  assert.match(narrative.body, /RTF \(Real-Time Factor\) = processing time ÷ audio duration/);
 
   const present = await get("/cluecon/present");
   assert.equal(present.statusCode, 200);
