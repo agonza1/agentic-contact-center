@@ -130,6 +130,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     readiness: Array<{ id: string; status: string; caveat: string; repoUrl?: string }>;
     liveProbes: Array<{ id: string; configured: boolean; status: string; ok: boolean; metadata: Record<string, unknown> }>;
     demoGoal: { issue: string; statement: string; chain: string[]; successSignal: string };
+    callFlow: { issue: string; cadenceMs: number; credentialRequirement: string; stages: Array<{ id: string; label: string; packet: string }> };
     scenario: { callerTurns: string[]; failureDrills: string[] };
     asrPanel: { contract: string; streamStates: string[]; fixtureEvents: Array<{ state: string }>; benchmarks: Array<{ label: string }> };
     brainBlocks: Array<{ file: string; affects: string[] }>;
@@ -146,6 +147,13 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.demoGoal.issue, "agonza1/agentic-contact-center#177");
   assert.deepEqual(payload.demoGoal.chain, ["sip", "pipecat", "rtc_asr", "openclaw_agent", "kokoro_tts", "conversation_agent_evals"]);
   assert.match(payload.demoGoal.successSignal, /scorecard passes/);
+  assert.equal(payload.callFlow.issue, "agonza1/agentic-contact-center#217");
+  assert.equal(payload.callFlow.cadenceMs, 1000);
+  assert.equal(payload.callFlow.credentialRequirement, "none");
+  assert.deepEqual(payload.callFlow.stages.map((stage) => stage.id), ["audio_in", "stt", "agent", "tts", "audio_out"]);
+  assert.ok(payload.callFlow.stages.some((stage) => stage.label === "Audio bytes in"));
+  assert.ok(payload.callFlow.stages.some((stage) => stage.label === "Text-to-audio / TTS"));
+  assert.ok(payload.callFlow.stages.some((stage) => stage.packet === "RTP/browser audio"));
   assert.equal(payload.routes.scrollable, "/cluecon");
   assert.equal(payload.routes.present, "/cluecon/present");
   assert.equal(payload.routes.scriptedDemo, "/api/demo/run-end-to-end");
@@ -394,6 +402,12 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.equal(narrative.statusCode, 200);
   assert.match(narrative.contentType, /text\/html/);
   assert.match(narrative.body, /From SIP to Tokens/);
+  assert.match(narrative.body, /Operator realtime flow/);
+  assert.match(narrative.body, /Realtime call flow visualization/);
+  assert.match(narrative.body, /Audio bytes in/);
+  assert.match(narrative.body, /Audio-to-text \/ STT/);
+  assert.match(narrative.body, /Text-to-audio \/ TTS/);
+  assert.match(narrative.body, /flow-packet tertiary/);
   assert.match(narrative.body, /Run scripted demo/);
   assert.match(narrative.body, /Run eval proof/);
   assert.match(narrative.body, /window\.__CLUECON__/);
@@ -406,6 +420,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   const present = await get("/cluecon/present");
   assert.equal(present.statusCode, 200);
   assert.match(present.body, /class="present"/);
+  assert.match(present.body, /Live traffic, stage by stage/);
   assert.match(present.body, /ArrowRight/);
   assert.match(present.body, /Run eval proof/);
   assert.match(present.body, /eval-scorecard/);

@@ -307,6 +307,20 @@ function buildBasePayload(
       chain: ["sip", "pipecat", "rtc_asr", "openclaw_agent", "kokoro_tts", "conversation_agent_evals"],
       successSignal: "The scorecard passes with transcript, operator action, latency, fallback caveat, and proof-bundle evidence attached.",
     },
+    callFlow: {
+      workboardCard: "c9455e37-8b08-4351-8079-9e8f82899ab6",
+      issue: "agonza1/agentic-contact-center#217",
+      cadenceMs: 1000,
+      mode: "deterministic_local_fixture",
+      credentialRequirement: "none",
+      stages: [
+        { id: "audio_in", label: "Audio bytes in", detail: "PCM16 frames from caller", packet: "8 KB/s" },
+        { id: "stt", label: "Audio-to-text / STT", detail: "rtc-asr transcript events", packet: "partial -> final" },
+        { id: "agent", label: "Text + agent reasoning", detail: "policy, tools, operator hold", packet: "intent + action" },
+        { id: "tts", label: "Text-to-audio / TTS", detail: "local TTS or fallback voice", packet: "speech chunks" },
+        { id: "audio_out", label: "Audio bytes out", detail: "caller/operator path", packet: "RTP/browser audio" },
+      ],
+    },
     routes: {
       scrollable: "/cluecon",
       present: "/cluecon/present",
@@ -528,6 +542,27 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .label { font: 800 15px system-ui,sans-serif; fill: #17202a; }
     .small { font: 650 12px system-ui,sans-serif; fill: #5d6b78; }
     .line { stroke: #2457a6; stroke-width: 2.8; fill: none; marker-end: url(#arrow); }
+    .flow-hero { align-content: start; min-height: calc(100vh - 62px); }
+    .flow-header { display: grid; gap: 8px; max-width: 920px; }
+    .flow-header h1 { font-size: clamp(32px, 5vw, 58px); line-height: 1; margin-bottom: 0; }
+    .flow-header .subhead { font-size: clamp(16px, 1.7vw, 21px); }
+    .realtime-flow { display: grid; gap: 14px; width: 100%; }
+    .flow-track { position: relative; display: grid; grid-template-columns: repeat(5, minmax(130px, 1fr)); gap: 10px; align-items: stretch; min-height: 214px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #fff; overflow: hidden; }
+    .flow-track::before { content: ""; position: absolute; left: 8%; right: 8%; top: 50%; border-top: 2px solid #9fb6cc; transform: translateY(-50%); }
+    .flow-stage { position: relative; z-index: 1; display: grid; align-content: start; gap: 8px; min-height: 170px; padding: 14px; border: 1px solid #c4d1dc; border-radius: 8px; background: #fbfdff; box-shadow: 0 8px 20px rgba(20,34,46,0.06); }
+    .flow-stage strong { font-size: 16px; line-height: 1.2; }
+    .flow-stage .packet-label { margin-top: auto; font: 750 12px/1.25 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--blue); overflow-wrap: anywhere; }
+    .flow-stage::after { content: ""; width: 10px; height: 10px; border-radius: 999px; background: var(--teal); box-shadow: 0 0 0 0 rgba(15,118,110,.36); animation: stageBeat 1s ease-out infinite; }
+    .flow-stage:nth-child(2)::after { animation-delay: .2s; }
+    .flow-stage:nth-child(3)::after { animation-delay: .4s; }
+    .flow-stage:nth-child(4)::after { animation-delay: .6s; }
+    .flow-stage:nth-child(5)::after { animation-delay: .8s; }
+    .flow-packet { position: absolute; z-index: 2; top: calc(50% - 7px); left: 18px; width: 14px; height: 14px; border-radius: 999px; background: var(--blue); box-shadow: 0 0 0 6px rgba(36,87,166,.12); animation: packetRun 5s linear infinite; }
+    .flow-packet.secondary { background: var(--teal); animation-delay: 1s; }
+    .flow-packet.tertiary { background: var(--amber); animation-delay: 2s; }
+    .flow-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+    @keyframes packetRun { from { left: 18px; opacity: .2; } 8% { opacity: 1; } 92% { opacity: 1; } to { left: calc(100% - 32px); opacity: .2; } }
+    @keyframes stageBeat { to { box-shadow: 0 0 0 12px rgba(15,118,110,0); } }
     .demo-shell { display: grid; gap: 12px; }
     .screen { min-height: 360px; border: 1px solid var(--line); border-radius: 8px; background: #101820; color: #dbeafe; padding: 14px; overflow: auto; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -540,13 +575,13 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .present main { padding-top: 62px; }
     .present .slide, .present .hero { min-height: calc(100vh - 62px); }
     .present .section-band:not(.active), .present .hero:not(.active) { display: none; }
-    @media (max-width: 920px) { .two { grid-template-columns: 1fr; } .topbar { position: static; align-items: stretch; flex-direction: column; } .toolbar { justify-content: flex-start; } .hero, .slide, .section-band { padding: 28px 14px; } h1 { font-size: 38px; } .event { grid-template-columns: 1fr; } }
+    @media (max-width: 920px) { .two { grid-template-columns: 1fr; } .topbar { position: static; align-items: stretch; flex-direction: column; } .toolbar { justify-content: flex-start; } .hero, .slide, .section-band { padding: 28px 14px; } h1 { font-size: 38px; } .event { grid-template-columns: 1fr; } .flow-track { grid-template-columns: 1fr; min-height: 0; } .flow-track::before, .flow-packet { display: none; } .flow-stage { min-height: 118px; } }
   </style>
 </head>
 <body class="${bodyClass}">
   <header class="topbar"><div class="brand"><span class="kicker">ClueCon vertical slice</span><strong>Agentic Contact Center</strong></div><nav class="toolbar" aria-label="ClueCon sections"><a href="/cluecon">Narrative</a><a href="/cluecon/present">Present</a><a href="/operator/console">Operator</a><a href="/assert">Proof</a><button id="prev" type="button">Prev</button><button id="next" type="button" class="primary">Next</button></nav></header>
   <main>
-    <section class="hero active" data-slide="0"><span class="kicker">From SIP to Tokens</span><h1>${escapeHtml(payload.title)}</h1><p class="subhead">${escapeHtml(payload.thesis)}</p><div class="actions"><button class="primary" id="run-demo-top" type="button">Run scripted proof</button><a class="mode-link" href="#demo">Open cockpit slice</a></div></section>
+    <section class="hero flow-hero active" data-slide="0" id="flow"><div class="flow-header"><span class="kicker">Operator realtime flow</span><h1>Live traffic, stage by stage.</h1><p class="subhead">Audio bytes in, STT, agent reasoning, TTS, and audio bytes out move on a deterministic local cadence.</p></div><div class="realtime-flow" aria-label="Realtime call flow visualization"><div class="flow-track">${payload.callFlow.stages.map((stage) => `<article class="flow-stage"><strong>${escapeHtml(stage.label)}</strong><span class="muted">${escapeHtml(stage.detail)}</span><span class="packet-label">${escapeHtml(stage.packet)}</span></article>`).join("")}<span class="flow-packet" aria-hidden="true"></span><span class="flow-packet secondary" aria-hidden="true"></span><span class="flow-packet tertiary" aria-hidden="true"></span></div><div class="flow-meta"><article class="plain metric"><span class="muted">Cadence</span><strong>${payload.callFlow.cadenceMs / 1000}s packets</strong></article><article class="plain metric"><span class="muted">Mode</span><strong>Local fixture</strong></article><article class="plain metric"><span class="muted">Credentials</span><strong>None</strong></article></div></div><div class="actions"><button class="primary" id="run-demo-top" type="button">Run scripted proof</button><a class="mode-link" href="#demo">Open cockpit slice</a></div></section>
     <section class="section-band slide" data-slide="1" id="map"><div class="two"><div><span class="kicker">System map</span><h2>Every boundary is visible.</h2><p class="subhead">Deterministic telephony state, Pipecat media transport, local ASR, agent policy/tool control, operator steer, TTS fallback, and evaluation evidence are separate contracts.</p><svg class="arch" viewBox="0 0 980 380" role="img" aria-label="On-prem voice agent architecture"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#2457a6"/></marker></defs><rect class="nodeAccent" x="24" y="74" width="130" height="74" rx="8"/><text class="label" x="89" y="105" text-anchor="middle">Caller</text><text class="small" x="89" y="126" text-anchor="middle">SIP / browser</text><rect class="node" x="194" y="74" width="132" height="74" rx="8"/><text class="label" x="260" y="105" text-anchor="middle">Pipecat</text><text class="small" x="260" y="126" text-anchor="middle">transport</text><rect class="nodeWarn" x="366" y="74" width="132" height="74" rx="8"/><text class="label" x="432" y="105" text-anchor="middle">rtc-asr</text><text class="small" x="432" y="126" text-anchor="middle">Local STT v1</text><rect class="nodeAccent" x="538" y="74" width="144" height="74" rx="8"/><text class="label" x="610" y="105" text-anchor="middle">OpenClaw</text><text class="small" x="610" y="126" text-anchor="middle">agent harness</text><rect class="nodeWarn" x="722" y="74" width="112" height="74" rx="8"/><text class="label" x="778" y="105" text-anchor="middle">Kokoro</text><text class="small" x="778" y="126" text-anchor="middle">TTS</text><rect class="node" x="298" y="236" width="160" height="78" rx="8"/><text class="label" x="378" y="267" text-anchor="middle">Operator</text><text class="small" x="378" y="288" text-anchor="middle">approve / handoff</text><rect class="nodeAccent" x="536" y="236" width="158" height="78" rx="8"/><text class="label" x="615" y="267" text-anchor="middle">Proof bundle</text><text class="small" x="615" y="288" text-anchor="middle">events + latency</text><rect class="nodeAccent" x="748" y="236" width="160" height="78" rx="8"/><text class="label" x="828" y="267" text-anchor="middle">ASSERT eval</text><text class="small" x="828" y="288" text-anchor="middle">scorecard</text><path class="line" d="M154 111 H194"/><path class="line" d="M326 111 H366"/><path class="line" d="M498 111 H538"/><path class="line" d="M682 111 H722"/><path class="line" d="M610 148 V236"/><path class="line" d="M694 275 H748"/><path class="line" d="M458 275 H536"/><path class="line" d="M378 236 C412 184 496 154 538 126"/></svg></div><div class="grid" id="readiness"></div></div></section>
     <section class="section-band slide" data-slide="2" id="demo"><span class="kicker">Scripted cancellation rescue</span><h2>Run the operator-safe story end to end.</h2><div class="two"><div class="demo-shell"><div class="actions"><button class="primary" id="run-demo" type="button">Run scripted demo</button><button id="drill-tool" type="button" class="danger">Tool timeout drill</button><button id="drill-runtime" type="button" class="danger">Runtime failure drill</button><button id="drill-transfer" type="button">Transfer</button><button id="drill-takeover" type="button">Takeover</button><button id="drill-end" type="button">End call</button><button id="drill-asr" type="button">rtc-asr unavailable</button><button id="drill-tts" type="button">TTS unavailable</button></div><div class="screen" id="demo-screen">Ready. Scripted mode needs no external credentials.</div></div><div class="timeline" id="timeline"></div></div></section>
     <section class="section-band slide" data-slide="3" id="asr"><span class="kicker">ASR boundary</span><h2>rtc-asr is measurable and swappable.</h2><div class="two"><div><p class="subhead">The ClueCon path treats speech recognition as a provider contract, not agent magic: normalized PCM16 enters the sidecar and timestamped transcript events leave it.</p><div class="asr-events" id="asr-events"></div></div><div class="grid" id="asr-benchmarks"></div></div></section>
