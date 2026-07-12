@@ -749,6 +749,26 @@ export function remoteRtpFromHeaders(headers) {
     "RTP-Remote-Audio-Port",
   ]);
   const port = Number(rawPort);
+  if (!address || !Number.isInteger(port) || port <= 0 || port > 65535) {
+    const sdp = firstHeader(headers, [
+      "variable_switch_r_sdp",
+      "variable_rtp_remote_sdp",
+      "variable_remote_sdp",
+      "Remote-SDP",
+    ]);
+    return remoteRtpFromSdp(sdp);
+  }
+  return { address, port };
+}
+
+export function remoteRtpFromSdp(sdp) {
+  if (!sdp || typeof sdp !== "string") return null;
+  const rawSdp = sdp.includes("%0A") || sdp.includes("%0D") ? decodeHeaderValue(sdp) : sdp;
+  const lines = rawSdp.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const audio = lines.find((line) => line.startsWith("m=audio "));
+  const connection = lines.find((line) => line.startsWith("c=IN IP4 ") || line.startsWith("c=IN IP6 "));
+  const port = Number(audio?.split(/\s+/)[1]);
+  const address = connection?.split(/\s+/)[2];
   if (!address || !Number.isInteger(port) || port <= 0 || port > 65535) return null;
   return { address, port };
 }

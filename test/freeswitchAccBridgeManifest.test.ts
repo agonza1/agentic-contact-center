@@ -479,6 +479,37 @@ test("FreeSWITCH ESL frame parser waits for a complete CRLF content-length body"
   assert.equal(parsed.complete.rest, "");
 });
 
+test("FreeSWITCH bridge discovers caller RTP target from encoded SDP headers", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+  const script = `    const { remoteRtpFromHeaders, remoteRtpFromSdp } = await import(${JSON.stringify(moduleUrl)});
+    const sdp = [
+      "v=0",
+      "o=FreeSWITCH 1718124800 1718124801 IN IP4 192.0.2.40",
+      "s=FreeSWITCH",
+      "c=IN IP4 192.0.2.40",
+      "t=0 0",
+      "m=audio 40002 RTP/AVP 0 101",
+      "a=rtpmap:0 PCMU/8000"
+    ].join("\\r\\n");
+    const direct = remoteRtpFromSdp(sdp);
+    const encoded = new Map([["variable_switch_r_sdp", encodeURIComponent(sdp)]]);
+    const fallback = remoteRtpFromHeaders(encoded);
+    console.log(JSON.stringify({ direct, fallback }));
+`;
+  const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  const parsed = JSON.parse(stdout) as {
+    direct: { address: string; port: number };
+    fallback: { address: string; port: number };
+  };
+
+  assert.deepEqual(parsed.direct, { address: "192.0.2.40", port: 40002 });
+  assert.deepEqual(parsed.fallback, { address: "192.0.2.40", port: 40002 });
+});
+
 test("FreeSWITCH bridge dispatches streamed content-length events after the body arrives", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
