@@ -104,6 +104,43 @@ async function startHealthServer(payload: object): Promise<{ server: Server; bas
   return { server, baseUrl: `http://127.0.0.1:${address.port}` };
 }
 
+async function startRtcAsrServer(): Promise<{ server: Server; baseUrl: string }> {
+  const server = createServer(async (request, response) => {
+    if (request.method === "GET" && request.url === "/health") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ status: "ready", backend: "parakeet-mlx", model: "mlx-community/parakeet-tdt_ctc-110m", ready: true }));
+      return;
+    }
+    if (request.method === "GET" && request.url === "/api/models") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        status: "ready",
+        ready: true,
+        backend: "parakeet-mlx",
+        model: "mlx-community/parakeet-tdt_ctc-110m",
+        models: [{ id: "mlx-community/parakeet-tdt_ctc-110m", loaded: true }],
+      }));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/api/transcribe") {
+      let rawBody = "";
+      for await (const chunk of request) rawBody += chunk.toString();
+      const body = JSON.parse(rawBody) as { audio_data?: string; sample_rate?: number };
+      response.writeHead(body.audio_data ? 200 : 400, { "content-type": "application/json" });
+      response.end(JSON.stringify(body.audio_data
+        ? { text: "rtc-asr live transcription", backend: "parakeet-mlx", model: "mlx-community/parakeet-tdt_ctc-110m", sample_rate: body.sample_rate }
+        : { detail: "audio_data required" }));
+      return;
+    }
+    response.writeHead(404, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: false }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Expected fake rtc-asr server to listen on TCP");
+  return { server, baseUrl: `http://127.0.0.1:${address.port}` };
+}
+
 async function closeServer(server: Server): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {
@@ -132,7 +169,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     demoGoal: { issue: string; statement: string; chain: string[]; successSignal: string };
     callFlow: { issue: string; cadenceMs: number; credentialRequirement: string; stages: Array<{ id: string; label: string; packet: string }> };
     scenario: { callerTurns: string[]; failureDrills: string[] };
-    asrPanel: { contract: string; streamStates: string[]; fixtureEvents: Array<{ state: string }>; benchmarks: Array<{ label: string }> };
+    asrPanel: { contract: string; modelsRoute: string; transcribeRoute: string; benchmarkUrl: string; streamStates: string[]; fixtureEvents: Array<{ state: string }>; benchmarks: Array<{ label: string }> };
     brainBlocks: Array<{ file: string; affects: string[] }>;
     brainPanel: { previewRoute: string; applyRoute: string; resetRoute: string; safeMutation: string; activeFiles: string[] };
     operatorCockpit: { workboardCard: string; drillRoute: string; modes: string[]; drillKinds: string[]; actions: string[] };
@@ -169,6 +206,9 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.scenario.callerTurns.length, 4);
   assert.ok(payload.scenario.failureDrills.includes("tts_unavailable"));
   assert.equal(payload.asrPanel.contract, "PCM16 16 kHz mono in; transcript events out");
+  assert.equal(payload.asrPanel.modelsRoute, "/api/cluecon/asr/models");
+  assert.equal(payload.asrPanel.transcribeRoute, "/api/cluecon/asr/transcribe");
+  assert.equal(payload.asrPanel.benchmarkUrl, "https://agonza1.github.io/rtc-asr/");
   assert.ok(payload.asrPanel.streamStates.includes("partial"));
   assert.ok(payload.asrPanel.fixtureEvents.some((event) => event.state === "error"));
   assert.ok(payload.asrPanel.benchmarks.some((benchmark) => benchmark.label === "first partial"));
@@ -189,6 +229,14 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.proofPreview.runRoute, "/api/cluecon/eval/run");
   assert.ok(payload.proofPreview.includes.includes("ASR/TTS caveats"));
   assert.ok(payload.proofPreview.scorecardChecks.includes("operator_approval"));
+});
+
+test("GET /cluecon preserves separate transcript turn lines", async () => {
+  const response = await get("/cluecon");
+  assert.equal(response.statusCode, 200);
+  assert.match(response.contentType, /text\/html/);
+  assert.match(response.body, /#demo \.screen \{[^}]*white-space: pre-wrap;/);
+  assert.match(response.body, /turn\.speaker \+ ": " \+ turn\.text\)\.join\("\\n"\)/);
 });
 
 test("POST /api/cluecon/brain preview, apply, and reset keep edits session-scoped", async () => {
@@ -353,6 +401,69 @@ test("GET /api/cluecon upgrades readiness when live sidecar health probes pass",
   }
 });
 
+test("ClueCon ASR routes discover warmed models and proxy live transcription", async () => {
+  const rtcAsr = await startRtcAsrServer();
+  try {
+    await withEnv({ RTC_ASR_BASE_URL: rtcAsr.baseUrl }, async () => {
+      const modelsResponse = await get("/api/cluecon/asr/models");
+      assert.equal(modelsResponse.statusCode, 200);
+      const models = JSON.parse(modelsResponse.body) as {
+        ok: boolean;
+        activeTargetId: string;
+        benchmarkUrl: string;
+        models: Array<{ targetId: string; targetLabel: string; backend: string; model: string; status: string; ready: boolean; loaded: boolean; responseMs: number; error: string | null }>;
+      };
+      assert.equal(models.ok, true);
+      assert.equal(models.activeTargetId, "primary");
+      assert.equal(models.benchmarkUrl, "https://agonza1.github.io/rtc-asr/");
+      assert.equal(models.models[0].targetId, "primary");
+      assert.equal(models.models[0].targetLabel, "Active local model");
+      assert.equal(models.models[0].backend, "parakeet-mlx");
+      assert.equal(models.models[0].model, "mlx-community/parakeet-tdt_ctc-110m");
+      assert.equal(models.models[0].status, "ready");
+      assert.equal(models.models[0].ready, true);
+      assert.equal(models.models[0].loaded, true);
+      assert.equal(typeof models.models[0].responseMs, "number");
+      assert.equal(models.models[0].error, null);
+
+      const transcriptionResponse = await post("/api/cluecon/asr/transcribe", {
+        targetId: "primary",
+        audioData: "UklGRg==",
+        sampleRate: 16000,
+        language: "en",
+      });
+      assert.equal(transcriptionResponse.statusCode, 200);
+      const transcription = JSON.parse(transcriptionResponse.body) as {
+        ok: boolean;
+        targetId: string;
+        transcription: { text: string; backend: string; sample_rate: number };
+      };
+      assert.equal(transcription.ok, true);
+      assert.equal(transcription.targetId, "primary");
+      assert.equal(transcription.transcription.text, "rtc-asr live transcription");
+      assert.equal(transcription.transcription.backend, "parakeet-mlx");
+      assert.equal(transcription.transcription.sample_rate, 16000);
+    });
+  } finally {
+    await closeServer(rtcAsr.server);
+  }
+});
+
+test("ClueCon ASR routes fail clearly when rtc-asr is not configured", async () => {
+  await withEnv({ RTC_ASR_BASE_URL: undefined, RTC_ASR_MODEL_ENDPOINTS: undefined }, async () => {
+    const models = await get("/api/cluecon/asr/models");
+    assert.equal(models.statusCode, 503);
+    assert.match(models.body, /rtc_asr_not_configured/);
+
+    const transcription = await post("/api/cluecon/asr/transcribe", {
+      audioData: "UklGRg==",
+      sampleRate: 16000,
+    });
+    assert.equal(transcription.statusCode, 503);
+    assert.match(transcription.body, /rtc_asr_not_configured/);
+  });
+});
+
 
 test("GET/POST /api/cluecon/eval expose ASSERT handoff preview and scorecard", async () => {
   const previewResponse = await get("/api/cluecon/eval/preview");
@@ -422,6 +533,11 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Run eval proof/);
   assert.match(narrative.body, /window\.__CLUECON__/);
   assert.match(narrative.body, /rtc-asr is measurable and swappable/);
+  assert.match(narrative.body, /Microphone → rtc-asr → transcript/);
+  assert.match(narrative.body, /id="asr-model-select"/);
+  assert.match(narrative.body, /id="asr-record"/);
+  assert.match(narrative.body, /Open benchmark site/);
+  assert.match(narrative.body, /https:\/\/agonza1\.github\.io\/rtc-asr\//);
   assert.match(narrative.body, /https:\/\/github\.com\/agonza1\/rtc-asr/);
   assert.match(narrative.body, /renderAsrPanel/);
   assert.match(narrative.body, /runEvalProof/);
