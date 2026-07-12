@@ -36,7 +36,8 @@
     "pipecat:webrtc:install": "python3 -m pip install --upgrade --target .pipecat-runtime -r requirements-pipecat-voice.txt",
     "pipecat:webrtc:check": "python3 scripts/pipecat-browser-webrtc-bridge.py --check-sidecars",
     "pipecat:webrtc": "python3 scripts/pipecat-browser-webrtc-bridge.py",
-    "pipecat:webrtc:readiness": "node scripts/browser-webrtc-readiness-smoke.mjs"
+    "pipecat:webrtc:readiness": "node scripts/browser-webrtc-readiness-smoke.mjs",
+    "pages:cluecon": "npm run build && node scripts/cluecon-pages-export.mjs"
   },
   "engines": {
     "node": ">=20"
