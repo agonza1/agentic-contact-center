@@ -160,6 +160,18 @@ function hasOutboundAudioRtpStats(stats) {
   });
 }
 
+function hasPlayableAudioElement(audioElement) {
+  const readyState = audioElement.readyState;
+  return (
+    hasPositiveNumber(audioElement.currentTime) ||
+    audioElement.paused === false ||
+    readyState === "have_enough_data" ||
+    readyState === "can_play" ||
+    readyState === "can_play_through" ||
+    (typeof readyState === "number" && readyState >= 3)
+  );
+}
+
 function hasBrowserMicrophoneUplink(record) {
   const outboundRtpAudio = nestedRecord(record, "outboundRtpAudio");
   const audioTrack = nestedRecord(record, "audioTrack");
@@ -193,7 +205,7 @@ function hasBrowserRemoteAudioStats(record) {
     textIncludes(record, "remote") &&
     textIncludes(record, "audio") &&
     (hasPositiveNumber(inboundRtpAudio.packetsReceived) || hasPositiveNumber(inboundRtpAudio.bytesReceived) || hasInboundAudioRtpStats(rtcStats)) &&
-    (hasPositiveNumber(audioElement.currentTime) || audioElement.paused === false || audioElement.readyState === "have_enough_data")
+    hasPlayableAudioElement(audioElement)
   );
 }
 
@@ -363,6 +375,7 @@ async function writeEvidenceTemplate(filePath) {
         audioElement: {
           currentTime: 0,
           paused: true,
+          readyState: 0,
         },
       },
     ],
