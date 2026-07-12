@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import audioop
 import base64
 import contextlib
 import json
@@ -39,6 +38,8 @@ if LOCAL_RUNTIME_PATH.exists():
 
 try:
     import importlib.metadata
+
+    import audioop
 
     import av
     import websockets
