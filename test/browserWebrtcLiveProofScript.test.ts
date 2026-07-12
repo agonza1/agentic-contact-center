@@ -52,6 +52,7 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
       browserPlayback: "remote_audio_unproven",
     });
     assert.deepEqual(manifest.checks, {
+      evidenceCorrelation: true,
       repoHeadEvidence: false,
       browserMicrophoneUplink: false,
       pipecatWebrtcBridge: false,
@@ -636,6 +637,7 @@ test("browser WebRTC live proof gate rejects the unfilled template as evidence",
     };
     assert.equal(manifest.reviewReady, false);
     assert.deepEqual(manifest.checks, {
+      evidenceCorrelation: true,
       repoHeadEvidence: true,
       browserMicrophoneUplink: false,
       pipecatWebrtcBridge: false,
@@ -815,6 +817,65 @@ test("browser WebRTC live proof gate rejects evidence from a different git head"
     assert.equal(manifest.reviewReady, false);
     assert.equal(manifest.checks.repoHeadEvidence, false);
     assert.deepEqual(manifest.reviewGate.missingProof, ["repoHeadEvidence"]);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("browser WebRTC live proof gate rejects mixed call or session evidence", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-browser-webrtc-mixed-correlation-"));
+  const evidencePath = path.join(tempDir, "browser-webrtc-evidence.json");
+
+  try {
+    const gitHead = await currentGitHead(repoRoot);
+    await writeFile(
+      evidencePath,
+      JSON.stringify({
+        gitHead,
+        callId: "call-a",
+        sessionId: "session-a",
+        events: [
+          { type: "browser.microphone.uplink", target: "browser", track: "local microphone audio", callId: "call-a", outboundRtpAudio: { packetsSent: 10, bytesSent: 2048 }, audioTrack: { enabled: true } },
+          { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", callId: "call-b", sessionId: "session-b" },
+          { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "This proof mixes sessions.", final: true, callId: "call-a" },
+          { type: "kokoro.tts.audio", engine: "kokoro", audioBytes: 2048, callId: "call-a" },
+          {
+            type: "browser.remote.audio.played",
+            target: "browser",
+            track: "remote audio",
+            callId: "call-a",
+            inboundRtpAudio: { packetsReceived: 5, bytesReceived: 1024 },
+            audioElement: { currentTime: 0.5, paused: false },
+          },
+        ],
+      }, null, 2),
+      "utf8",
+    );
+
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        ["scripts/browser-webrtc-live-proof.mjs", "--require-review-ready", "--evidence", evidencePath, "--out-dir", tempDir],
+        { cwd: repoRoot, timeout: 10_000, encoding: "utf8" },
+      ),
+      (error: any) => {
+        assert.equal(error.code, 2);
+        const summary = JSON.parse(error.stdout.slice(error.stdout.indexOf("{")).trim()) as { reviewReady: boolean; blockers: string[] };
+        assert.equal(summary.reviewReady, false);
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("evidenceCorrelation")));
+        return true;
+      },
+    );
+
+    const manifest = JSON.parse(await readFile(path.join(tempDir, "browser-webrtc-live-proof-manifest.json"), "utf8")) as {
+      reviewReady: boolean;
+      checks: Record<string, boolean>;
+      reviewGate: { missingProof: string[] };
+    };
+    assert.equal(manifest.reviewReady, false);
+    assert.equal(manifest.checks.evidenceCorrelation, false);
+    assert.deepEqual(manifest.reviewGate.missingProof, ["evidenceCorrelation"]);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

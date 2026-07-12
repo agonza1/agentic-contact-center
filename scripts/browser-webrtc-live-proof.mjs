@@ -140,6 +140,27 @@ function pipecatSessionId(record) {
   );
 }
 
+function proofId(value) {
+  return typeof value === "string" && value.trim().length > 0 && !hasPlaceholderText(value) ? value.trim() : "";
+}
+
+function uniqueProofIds(values) {
+  return [...new Set(values.map(proofId).filter(Boolean))];
+}
+
+function hasConsistentProofCorrelation(payload, records) {
+  const envelope = isRecord(payload) ? payload : {};
+  const topCallIds = uniqueProofIds([envelope.callId, envelope.call_id]);
+  const topSessionIds = uniqueProofIds([envelope.sessionId, envelope.session_id]);
+  const recordCallIds = uniqueProofIds(records.flatMap((record) => [record.callId, record.call_id]));
+  const recordSessionIds = uniqueProofIds(records.flatMap((record) => [record.sessionId, record.session_id, pipecatSessionId(record)]));
+
+  const callIds = uniqueProofIds([...topCallIds, ...recordCallIds]);
+  const sessionIds = uniqueProofIds([...topSessionIds, ...recordSessionIds]);
+
+  return callIds.length <= 1 && sessionIds.length <= 1;
+}
+
 function nestedRecord(record, key) {
   const value = record[key];
   return isRecord(value) ? value : {};
@@ -276,6 +297,7 @@ function validateEvidence(payload, expectedGitHead) {
   const records = flattenRecords(payload);
   const expectedHead = typeof expectedGitHead === "string" ? expectedGitHead.toLowerCase() : null;
   const checks = {
+    evidenceCorrelation: hasConsistentProofCorrelation(payload, records),
     repoHeadEvidence: expectedHead ? records.some((record) => evidenceHeadSha(record) === expectedHead) : true,
     browserMicrophoneUplink: records.some((record) => hasBrowserMicrophoneUplink(record)),
     pipecatWebrtcBridge: records.some((record) => {
@@ -458,6 +480,7 @@ const expectedGitHead = currentGitHead();
 const evidence = await readEvidence(evidencePath);
 const validation = evidence.payload ? validateEvidence(evidence.payload, expectedGitHead) : {
   checks: {
+    evidenceCorrelation: true,
     repoHeadEvidence: expectedGitHead ? false : true,
     browserMicrophoneUplink: false,
     pipecatWebrtcBridge: false,
