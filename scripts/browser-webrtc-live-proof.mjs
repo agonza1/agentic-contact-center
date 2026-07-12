@@ -71,7 +71,8 @@ function flattenRecords(payload) {
 }
 
 function textIncludes(record, pattern) {
-  return JSON.stringify(record).toLowerCase().includes(pattern);
+  const normalize = (value) => value.toLowerCase().replace(/[\s_]+/g, "-");
+  return normalize(JSON.stringify(record)).includes(normalize(pattern));
 }
 
 function hasPlaceholderText(value) {

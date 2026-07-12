@@ -153,7 +153,7 @@ test("browser WebRTC live proof gate accepts rtc-asr alternative transcript shap
         gitHead,
         events: [
           { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-alt" },
-          { type: "rtc-asr.transcript.final", engine: "rtc-asr", final: true, result: { alternatives: [{ transcript: "I need help with my bill." }] } },
+          { type: "rtc_asr.transcript.final", engine: "rtc_asr", final: true, result: { alternatives: [{ transcript: "I need help with my bill." }] } },
           { type: "kokoro.tts.audio", engine: "kokoro", audioBytes: 4096 },
           {
             type: "browser.remote.audio.played",
