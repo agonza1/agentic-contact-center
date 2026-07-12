@@ -1275,7 +1275,7 @@ function buildOperatorConsoleHtml(): string {
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceBridgeEvidence: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
     const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve", deny_offer: "Deny", takeover: "Barge In", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
@@ -1495,6 +1495,7 @@ function buildOperatorConsoleHtml(): string {
         state.voiceRemoteAudio.srcObject = null;
         state.voiceRemoteAudio = null;
       }
+      state.voiceBridgeEvidence = null;
       if (state.voiceStream) {
         state.voiceStream.getTracks().forEach(function(track) { track.stop(); });
         state.voiceStream = null;
@@ -1502,6 +1503,37 @@ function buildOperatorConsoleHtml(): string {
       state.voiceRecording = null;
       state.voiceChunks = [];
     }
+    async function collectBrowserWebrtcLiveProof() {
+      const pc = state.voicePeer;
+      const audio = state.voiceRemoteAudio;
+      if (!pc || pc.connectionState === "closed") throw new Error("browser WebRTC peer connection is not active");
+      const stats = await pc.getStats();
+      const rtcStats = [];
+      stats.forEach(function(report) {
+        if (report.type === "inbound-rtp" || report.type === "track" || report.type === "media-source") {
+          rtcStats.push(Object.assign({}, report));
+        }
+      });
+      const event = {
+        type: "browser.remote.audio.played",
+        target: "browser",
+        track: "remote audio",
+        callId: state.voiceCallId,
+        connectionState: pc.connectionState,
+        iceConnectionState: pc.iceConnectionState,
+        bridgeEvidence: state.voiceBridgeEvidence,
+        rtcStats: rtcStats,
+        audioElement: audio ? {
+          currentTime: audio.currentTime,
+          paused: audio.paused,
+          readyState: audio.readyState,
+          muted: audio.muted,
+        } : null,
+      };
+      window.__ACC_BROWSER_WEBRTC_LIVE_PROOF__ = event;
+      return event;
+    }
+    window.__ACC_COLLECT_BROWSER_WEBRTC_LIVE_PROOF__ = collectBrowserWebrtcLiveProof;
     async function ensureVoiceStream() {
       if (!state.voiceStream) {
         state.voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1568,6 +1600,7 @@ function buildOperatorConsoleHtml(): string {
           throw new Error(payload.error || "browser_webrtc_session_failed");
         }
         await pc.setRemoteDescription({ type: payload.type, sdp: payload.sdp });
+        state.voiceBridgeEvidence = payload.evidence || null;
         state.voiceCallId = payload.callId;
         state.selectedCallId = payload.callId;
         state.voiceConnecting = false;

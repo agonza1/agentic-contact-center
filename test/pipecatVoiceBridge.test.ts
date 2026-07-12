@@ -88,6 +88,10 @@ test("operator console surfaces fail-closed voice bridge readiness", () => {
   assert.match(source, /fetch\(browserWebrtcReadinessUrl\(\)\)/);
   assert.match(source, /payload\.ok/);
   assert.match(source, /new RTCPeerConnection/);
+  assert.match(source, /window\.__ACC_COLLECT_BROWSER_WEBRTC_LIVE_PROOF__/);
+  assert.match(source, /pc\.getStats\(\)/);
+  assert.match(source, /window\.__ACC_BROWSER_WEBRTC_LIVE_PROOF__ = event/);
+  assert.match(source, /bridgeEvidence: state\.voiceBridgeEvidence/);
   assert.match(source, /fetch\("\/api\/browser-webrtc\/session"/);
   assert.match(source, /getUserMedia/);
   assert.doesNotMatch(source, /new WebSocket/);
