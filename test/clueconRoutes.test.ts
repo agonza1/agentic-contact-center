@@ -231,12 +231,13 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.ok(payload.proofPreview.scorecardChecks.includes("operator_approval"));
 });
 
-test("GET /cluecon preserves separate transcript turn lines", async () => {
+test("GET /cluecon renders each transcript turn as a separate block", async () => {
   const response = await get("/cluecon");
   assert.equal(response.statusCode, 200);
   assert.match(response.contentType, /text\/html/);
-  assert.match(response.body, /#demo \.screen \{[^}]*white-space: pre-wrap;/);
-  assert.match(response.body, /turn\.speaker \+ ": " \+ turn\.text\)\.join\("\\n"\)/);
+  assert.match(response.body, /#demo \.screen\.has-transcript \{[^}]*display: grid;/);
+  assert.match(response.body, /class="transcript-turn transcript-turn--/);
+  assert.match(response.body, /renderDemoTranscript\(payload\.call\.transcript\)/);
 });
 
 test("POST /api/cluecon/brain preview, apply, and reset keep edits session-scoped", async () => {
@@ -547,7 +548,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /\.present \.topbar \{ position: static/);
   assert.match(narrative.body, /#demo \.actions \{ display: grid/);
   assert.match(narrative.body, /#demo \.event strong, #demo \.event \.muted \{ overflow-wrap: anywhere/);
-  assert.match(narrative.body, /join\("\\n"\)/);
+  assert.match(narrative.body, /class="transcript-turn transcript-turn--/);
+  assert.match(narrative.body, /renderDemoTranscript\(payload\.call\.transcript\)/);
   assert.match(narrative.body, /class="scroll"/);
 
   const present = await get("/cluecon/present");
