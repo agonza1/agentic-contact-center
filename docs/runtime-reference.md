@@ -55,6 +55,21 @@ npm run browser-webrtc:live-proof -- --evidence artifacts/browser-webrtc-live-pr
 
 The payload reports `status=contract_ready_pending_live_media_evidence` when the ACC signaling contract is ready but a local browser media proof has not been attached. Browser SDP offers are accepted at `POST /api/browser-webrtc/session` and proxied to `BROWSER_WEBRTC_BRIDGE_URL` (default `http://127.0.0.1:8766`); failures are reported as Pipecat WebRTC bridge blockers instead of falling back to webm chunks. It also reports `normalOperation.ffmpegRequired=false`, `normalOperation.mediaRecorderRequired=false`, and `liveMedia.verified=false` so reviewers can separate contract readiness from the remaining local proof that browser mic audio reaches rtc-asr and Kokoro audio plays back through WebRTC. Use `--write-template` to generate the proof JSON event skeleton before capturing the real browser turn; the template includes the current git head and the review gate requires matching evidence so QA proof is tied to the PR commit under review.
 
+Normal browser WebRTC sidecar setup:
+
+```bash
+export RTC_ASR_BASE_URL=http://127.0.0.1:8080
+export RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream
+export KOKORO_BASE_URL=http://127.0.0.1:8880
+export BROWSER_WEBRTC_BRIDGE_URL=http://127.0.0.1:8766
+npm run pipecat:webrtc:install
+npm start
+npm run pipecat:webrtc:check
+npm run pipecat:webrtc
+```
+
+`npm run pipecat:webrtc` starts `scripts/pipecat-browser-webrtc-bridge.py` on `http://127.0.0.1:8766`. Its offer endpoint is `POST /api/webrtc/offer`; ACC proxies browser SDP offers to it from `POST /api/browser-webrtc/session`. The bridge terminates browser WebRTC with `aiortc`, converts audio to PCM with PyAV/audioop, wraps the turn in Pipecat frame types, streams PCM to rtc-asr Local STT v1, posts the final transcript to `/api/calls/:callId/caller-turn`, requests Kokoro WAV audio, and streams PCM back as a WebRTC remote audio track. This normal path has no `ffmpeg` dependency.
+
 ## Legacy local voice bridge sidecars
 
 The old local WebSocket chunk bridge remains as legacy proof plumbing only. It requires rtc-asr, Kokoro, and `ffmpeg` before live voice turns because browser audio arrives as webm chunks. rtc-asr owns ASR model loading and Kokoro owns speech synthesis. The default rtc-asr evidence label is `mlx-community/parakeet-tdt_ctc-110m`, chosen from the checked-in rtc-asr MLX service benchmark lane as the fast small English contact-center option (`docs/benchmark-results/parakeet-mlx-110m-service-2026-06-21.json`). Override only when rtc-asr is configured with a different model:
@@ -199,11 +214,11 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `npm run proof:realtime-shim`: build and write the realtime shim proof artifact.
 - `npm run proof:speech-enhancement`: build and write the speech enhancement spike artifact.
 - `npm run pipecat:check`: verify the local `pipecat-ai` runtime package boundary without live telephony.
-- `npm run pipecat:voice:install`: install Pipecat voice bridge dependencies into `.pipecat-runtime`.
+- `npm run pipecat:webrtc:install`: install Pipecat voice bridge dependencies into `.pipecat-runtime`.
 - `npm run browser-webrtc:check`: verify `/health` exposes the normal browser WebRTC path with ACC, Pipecat bridge, rtc-asr, and Kokoro readiness and no normal-path `ffmpeg` requirement.
-- `npm run pipecat:voice:readiness`: alias for the browser WebRTC readiness smoke check.
-- `npm run pipecat:voice:check`: verify rtc-asr, Kokoro, ACC, and `ffmpeg` health for the legacy WebSocket chunk bridge.
-- `npm run pipecat:voice`: run the legacy local browser chunk bridge on `ws://127.0.0.1:8765`.
+- `npm run pipecat:webrtc:readiness`: alias for the browser WebRTC readiness smoke check.
+- `npm run pipecat:webrtc:check`: verify rtc-asr, Kokoro, ACC, and the browser WebRTC bridge dependencies for the normal non-ffmpeg path.
+- `npm run pipecat:webrtc`: run the normal browser WebRTC Pipecat bridge on `http://127.0.0.1:8766`.
 - `npm run assert:export`: generate official ASSERT local-viewer artifacts under `artifacts/results/agentic-contact-center-voice-demo/...`.
 - `npm run assert:viewer:install`: clone and install the upstream ASSERT viewer into `.assert-viewer/`.
 - `npm run assert:viewer`: run the upstream ASSERT viewer against this repo's `artifacts/results` at `http://127.0.0.1:5174`.

@@ -25,8 +25,8 @@ const setupCommands = [
   "export RTC_ASR_WS_URL=${RTC_ASR_WS_URL:-ws://127.0.0.1:8080/v1/stt/stream}",
   "export KOKORO_BASE_URL=${KOKORO_BASE_URL:-http://127.0.0.1:8880}",
   "export BROWSER_WEBRTC_BRIDGE_URL=${BROWSER_WEBRTC_BRIDGE_URL:-http://127.0.0.1:8766}",
-  "npm run pipecat:voice:check",
   "npm start",
+  "npm run pipecat:webrtc:check",
   "npm run browser-webrtc:check -- --url http://127.0.0.1:${PORT:-8026}/health",
   "npm run browser-webrtc:live-proof -- --evidence artifacts/browser-webrtc-live-proof/proof.json --require-review-ready",
 ];

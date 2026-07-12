@@ -132,7 +132,7 @@ test("browser WebRTC live proof gate accepts captured media-turn evidence", asyn
     assert.equal(manifest.runtimeModeLabels.tts, "kokoro_live");
     assert.equal(manifest.runtimeModeLabels.browserPlayback, "remote_audio_live");
     assert.deepEqual(manifest.reviewGate.missingProof, []);
-    assert.ok(manifest.setup.commands.some((command) => command.includes("pipecat:voice:check")));
+    assert.ok(manifest.setup.commands.some((command) => command.includes("pipecat:webrtc:check")));
     const evidenceArtifact = manifest.artifactIntegrity.find((artifact) => artifact.artifactId === "browser-webrtc-live-evidence");
     assert.ok(evidenceArtifact);
     assert.equal(evidenceArtifact.readiness, "ready");
