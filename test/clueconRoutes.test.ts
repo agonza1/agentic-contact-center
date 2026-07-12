@@ -1,4 +1,5 @@
 import test from "node:test";
+import { existsSync, readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { createServer, request, type Server } from "node:http";
 
@@ -408,4 +409,22 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(present.body, /ArrowRight/);
   assert.match(present.body, /Run eval proof/);
   assert.match(present.body, /eval-scorecard/);
+});
+
+test("ClueCon static export renders GitHub Pages artifact", async () => {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  await promisify(execFile)("node", ["scripts/cluecon-pages-export.mjs"]);
+
+  const indexPath = "site/cluecon-pages/index.html";
+  const presentPath = "site/cluecon-pages/present/index.html";
+  assert.equal(existsSync(indexPath), true);
+  assert.equal(existsSync(presentPath), true);
+
+  const html = readFileSync(indexPath, "utf8");
+  assert.match(html, /Agentic Contact Center/);
+  assert.match(html, /Static GitHub Pages snapshot/);
+  assert.match(html, /window\.__CLUECON__/);
+  assert.match(html, /href="\.\/present\/"/);
+  assert.doesNotMatch(html, /href="\/cluecon"/);
 });

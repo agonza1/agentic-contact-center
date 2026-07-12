@@ -13,3 +13,6 @@ artifacts
 # Local SIP/FreeSWITCH runtime logs
 /*_logs.log
 /*_errors.log
+
+# GitHub Pages export artifact
+site/
