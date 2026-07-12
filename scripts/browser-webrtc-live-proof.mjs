@@ -271,8 +271,6 @@ function hasBrowserMicrophoneUplink(record) {
       const rtcStats = rtcStatsFrom(record, candidate);
       return (
         hasPositiveNumber(candidate.sentMs) ||
-        candidate.captured === true ||
-        audioTrack.enabled === true ||
         hasPositiveNumber(outboundRtpAudio.packetsSent) ||
         hasPositiveNumber(outboundRtpAudio.bytesSent) ||
         hasOutboundAudioRtpStats(rtcStats) ||
