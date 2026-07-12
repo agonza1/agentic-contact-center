@@ -152,6 +152,18 @@ function nestedRecords(record, key) {
   return [];
 }
 
+function nestedCandidateRecords(record, keys) {
+  return keys.map((key) => nestedRecord(record, key)).filter((value) => Object.keys(value).length > 0);
+}
+
+function rtcStatsFrom(...records) {
+  return records.flatMap((record) => [
+    ...nestedRecords(record, "rtcStats"),
+    ...nestedRecords(record, "peerConnectionStats"),
+    ...nestedRecords(record, "getStats"),
+  ]);
+}
+
 function hasInboundAudioRtpStats(stats) {
   return stats.some((stat) => {
     const type = typeof stat.type === "string" ? stat.type.toLowerCase() : "";
@@ -207,40 +219,56 @@ function hasPlayableAudioElement(audioElement) {
 }
 
 function hasBrowserMicrophoneUplink(record) {
-  const outboundRtpAudio = nestedRecord(record, "outboundRtpAudio");
-  const audioTrack = nestedRecord(record, "audioTrack");
-  const rtcStats = [
-    ...nestedRecords(record, "rtcStats"),
-    ...nestedRecords(record, "peerConnectionStats"),
-    ...nestedRecords(record, "getStats"),
+  const microphoneRecords = [
+    record,
+    ...nestedCandidateRecords(record, ["browserMicrophoneUplink", "microphone", "localMicrophone", "localAudio"]),
   ];
-  return (
+  const hasMicrophoneContext = (
     textIncludes(record, "browser") &&
-    (textIncludes(record, "microphone") || textIncludes(record, "mic") || textIncludes(record, "local audio")) &&
-    (hasPositiveNumber(record.sentMs) ||
-      record.captured === true ||
-      audioTrack.enabled === true ||
-      hasPositiveNumber(outboundRtpAudio.packetsSent) ||
-      hasPositiveNumber(outboundRtpAudio.bytesSent) ||
-      hasOutboundAudioRtpStats(rtcStats) ||
-      (audioTrack.enabled === true && hasAudioEnergyStats(rtcStats)))
+    (textIncludes(record, "microphone") || textIncludes(record, "mic") || textIncludes(record, "local audio"))
+  ) || microphoneRecords.length > 1;
+
+  return (
+    hasMicrophoneContext &&
+    microphoneRecords.some((candidate) => {
+      const outboundRtpAudio = nestedRecord(candidate, "outboundRtpAudio");
+      const audioTrack = nestedRecord(candidate, "audioTrack");
+      const rtcStats = rtcStatsFrom(record, candidate);
+      return (
+        hasPositiveNumber(candidate.sentMs) ||
+        candidate.captured === true ||
+        audioTrack.enabled === true ||
+        hasPositiveNumber(outboundRtpAudio.packetsSent) ||
+        hasPositiveNumber(outboundRtpAudio.bytesSent) ||
+        hasOutboundAudioRtpStats(rtcStats) ||
+        (audioTrack.enabled === true && hasAudioEnergyStats(rtcStats))
+      );
+    })
   );
 }
 
 function hasBrowserRemoteAudioStats(record) {
-  const inboundRtpAudio = nestedRecord(record, "inboundRtpAudio");
-  const audioElement = nestedRecord(record, "audioElement");
-  const rtcStats = [
-    ...nestedRecords(record, "rtcStats"),
-    ...nestedRecords(record, "peerConnectionStats"),
-    ...nestedRecords(record, "getStats"),
+  const remoteAudioRecords = [
+    record,
+    ...nestedCandidateRecords(record, ["browserRemoteAudio", "browserPlayback", "remoteAudio", "remoteAudioPlayback"]),
   ];
-  return (
+  const hasRemoteAudioContext = (
     textIncludes(record, "browser") &&
     textIncludes(record, "remote") &&
-    textIncludes(record, "audio") &&
-    (hasPositiveNumber(inboundRtpAudio.packetsReceived) || hasPositiveNumber(inboundRtpAudio.bytesReceived) || hasInboundAudioRtpStats(rtcStats) || hasAudioEnergyStats(rtcStats)) &&
-    hasPlayableAudioElement(audioElement)
+    textIncludes(record, "audio")
+  ) || remoteAudioRecords.length > 1;
+
+  return (
+    hasRemoteAudioContext &&
+    remoteAudioRecords.some((candidate) => {
+      const inboundRtpAudio = nestedRecord(candidate, "inboundRtpAudio");
+      const audioElement = nestedRecord(candidate, "audioElement");
+      const rtcStats = rtcStatsFrom(record, candidate);
+      return (
+        (hasPositiveNumber(inboundRtpAudio.packetsReceived) || hasPositiveNumber(inboundRtpAudio.bytesReceived) || hasInboundAudioRtpStats(rtcStats) || hasAudioEnergyStats(rtcStats)) &&
+        hasPlayableAudioElement(audioElement)
+      );
+    })
   );
 }
 
