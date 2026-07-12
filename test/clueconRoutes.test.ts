@@ -418,8 +418,10 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
 
   const indexPath = "site/cluecon-pages/index.html";
   const presentPath = "site/cluecon-pages/present/index.html";
+  const fallbackPath = "site/cluecon-pages/404.html";
   assert.equal(existsSync(indexPath), true);
   assert.equal(existsSync(presentPath), true);
+  assert.equal(existsSync(fallbackPath), true);
 
   const html = readFileSync(indexPath, "utf8");
   assert.match(html, /Agentic Contact Center/);
@@ -427,4 +429,7 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /window\.__CLUECON__/);
   assert.match(html, /href="\.\/present\/"/);
   assert.doesNotMatch(html, /href="\/cluecon"/);
+
+  const fallbackHtml = readFileSync(fallbackPath, "utf8");
+  assert.match(fallbackHtml, /Static GitHub Pages snapshot/);
 });

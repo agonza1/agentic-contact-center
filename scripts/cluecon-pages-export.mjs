@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -36,6 +36,7 @@ await rm(outDir, { recursive: true, force: true });
 await mkdir(path.join(outDir, "present"), { recursive: true });
 await writeFile(path.join(outDir, "index.html"), pagesHtml("scroll"));
 await writeFile(path.join(outDir, "present", "index.html"), pagesHtml("present"));
+await copyFile(path.join(outDir, "index.html"), path.join(outDir, "404.html"));
 await writeFile(path.join(outDir, ".nojekyll"), "");
 
 console.log(`Exported ClueCon GitHub Pages site to ${path.relative(repoRoot, outDir)}`);

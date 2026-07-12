@@ -16,3 +16,6 @@ artifacts
 
 # GitHub Pages export artifact
 site/
+
+# Local heartbeat worktrees
+active-worktrees/
