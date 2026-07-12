@@ -180,6 +180,20 @@ function hasOutboundAudioRtpStats(stats) {
   });
 }
 
+function hasAudioEnergyStats(stats) {
+  return stats.some((stat) => {
+    const type = typeof stat.type === "string" ? stat.type.toLowerCase() : "";
+    const kind = typeof stat.kind === "string" ? stat.kind.toLowerCase() : "";
+    const mediaType = typeof stat.mediaType === "string" ? stat.mediaType.toLowerCase() : "";
+    const trackKind = typeof stat.trackKind === "string" ? stat.trackKind.toLowerCase() : "";
+    return (
+      [kind, mediaType, trackKind].includes("audio") &&
+      (type === "media-source" || type === "track" || type === "receiver" || type === "sender") &&
+      (hasPositiveNumber(stat.audioLevel) || hasPositiveNumber(stat.totalAudioEnergy) || hasPositiveNumber(stat.totalSamplesReceived) || hasPositiveNumber(stat.totalSamplesDuration))
+    );
+  });
+}
+
 function hasPlayableAudioElement(audioElement) {
   const readyState = audioElement.readyState;
   return (
@@ -208,7 +222,8 @@ function hasBrowserMicrophoneUplink(record) {
       audioTrack.enabled === true ||
       hasPositiveNumber(outboundRtpAudio.packetsSent) ||
       hasPositiveNumber(outboundRtpAudio.bytesSent) ||
-      hasOutboundAudioRtpStats(rtcStats))
+      hasOutboundAudioRtpStats(rtcStats) ||
+      (audioTrack.enabled === true && hasAudioEnergyStats(rtcStats)))
   );
 }
 
@@ -224,7 +239,7 @@ function hasBrowserRemoteAudioStats(record) {
     textIncludes(record, "browser") &&
     textIncludes(record, "remote") &&
     textIncludes(record, "audio") &&
-    (hasPositiveNumber(inboundRtpAudio.packetsReceived) || hasPositiveNumber(inboundRtpAudio.bytesReceived) || hasInboundAudioRtpStats(rtcStats)) &&
+    (hasPositiveNumber(inboundRtpAudio.packetsReceived) || hasPositiveNumber(inboundRtpAudio.bytesReceived) || hasInboundAudioRtpStats(rtcStats) || hasAudioEnergyStats(rtcStats)) &&
     hasPlayableAudioElement(audioElement)
   );
 }
