@@ -3,14 +3,14 @@ const issue214Url = "https://github.com/agonza1/agentic-contact-center/issues/21
 
 export function buildPipecatMediaEngineReadinessPayload() {
   const realtimeRtpBlocker =
-    "FreeSWITCH RTP is not yet streamed bidirectionally through Pipecat frames; the current SIP bridge records/captures media, posts ACC events, and can attach rtc-asr evidence after capture.";
+    "Live softphone caller playback has not yet been accepted end-to-end; the current SIP bridge can collect FreeSWITCH RTP into Pipecat input frames, stream those frames to rtc-asr, packetize Pipecat/Kokoro TTS frames back to PCMU RTP, and report socket-send playback evidence.";
   const nextUnblockedSlice = {
-    id: "sip_rtp_to_pipecat_input_frames",
-    title: "Decode FreeSWITCH RTP into Pipecat input frames",
+    id: "live_softphone_playback_acceptance",
+    title: "Capture end-to-end softphone playback proof",
     adapter: "sip_freeswitch_rtp",
     entryPoint: "scripts/freeswitch-acc-bridge.mjs",
-    targetContract: "PCMU/8000 RTP -> PCM16 -> Pipecat InputAudioRawFrame -> rtc-asr final transcript",
-    verification: "test/pipecatRtpAdapter.test.ts proves deterministic PCMU RTP packets can become Pipecat-compatible PCM16 input frames and batch sequence-gap metadata before wiring live playback.",
+    targetContract: "softphone SIP call -> FreeSWITCH RTP -> Pipecat input frames -> rtc-asr transcript -> ACC turn -> Kokoro/Pipecat TTS -> PCMU RTP playback heard by caller",
+    verification: "scripts/live-sip-proof-bundle.mjs must carry live_capture, rtc_asr_live, Pipecat RTP playback send evidence, and caller-audible playback proof before issue #214 can be accepted.",
   };
 
   return {
@@ -61,14 +61,13 @@ export function buildPipecatMediaEngineReadinessPayload() {
     },
     implementedNow: [
       "Browser voice turns are normalized into Pipecat frames by scripts/pipecat-local-voice-bridge.py and use rtc-asr, ACC caller-turn, and Kokoro.",
-      "Local SIP and FreeSWITCH proof paths preserve live_capture/generated_media labels, attach WAV/SIP artifacts, optionally collect live PCMU RTP into Pipecat InputAudioRawFrameBatch evidence, and fail closed when rtc-asr evidence is absent.",
+      "Local SIP and FreeSWITCH proof paths preserve live_capture/generated_media labels, attach WAV/SIP artifacts, collect live PCMU RTP into Pipecat InputAudioRawFrameBatch evidence, stream captured frames to rtc-asr when RTC_ASR_WS_URL is set, packetize Pipecat/Kokoro TTS frames as PCMU RTP, and report RTP socket-send playback evidence.",
       "SignalWire readiness is explicit through local webhook labels and the future SIP trunk-to-FreeSWITCH route.",
       "Operator console payloads label local_sip, signalwire_live, live_capture, generated_media, rtc_asr_live, and rtc_asr_blocked modes.",
     ],
     remainingWork: [
-      "Configure FreeSWITCH media routing to feed the bridge UDP RTP collector during extension 8600 calls and stream collected InputAudioRawFrameBatch objects to rtc-asr during the call.",
-      "Stream Kokoro/Pipecat TTSAudioRawFrame output back to FreeSWITCH RTP for SIP caller playback.",
       "Feed rtc-asr final transcripts from the SIP media adapter directly into the shared ACC call-turn loop during the call.",
+      "Capture live softphone evidence that the caller hears packetized Kokoro/Pipecat TTS RTP playback through FreeSWITCH.",
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
     ],
     nextUnblockedSlice,
@@ -103,6 +102,11 @@ export function buildPipecatMediaEngineReadinessPayload() {
         name: "rtp_pcmu_fixture_decodes_to_pipecat_input_frame",
         passed: true,
         evidence: "test/pipecatRtpAdapter.test.ts covers deterministic PCMU RTP -> PCM16 InputAudioRawFrame fixtures plus batch sequence-gap metadata; scripts/freeswitch-acc-bridge.mjs can collect live RTP packets into matching manifest evidence.",
+      },
+      {
+        name: "pipecat_tts_frames_packetize_to_freeswitch_rtp",
+        passed: true,
+        evidence: "scripts/freeswitch-acc-bridge.mjs accepts Pipecat OutputAudioRawFrame/TTSAudioRawFrame fixtures, packetizes them as PCMU RTP, sends them to the discovered FreeSWITCH playback target, and records playback send evidence in the live proof manifest.",
       },
     ],
     validationCommands: ["npm test", "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness"],

@@ -59,11 +59,11 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     );
     assert.equal(adapters.find((adapter: any) => adapter.id === "browser_webrtc").implementedNow, true);
     assert.equal(adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp").implementedNow, false);
-    assert.match(adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp").blocker, /not yet streamed bidirectionally/);
+    assert.match(adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp").blocker, /softphone caller playback/);
     assert.match(adapters.find((adapter: any) => adapter.id === "signalwire_sip_trunk").blocker, /past-call import remains out of scope/);
 
     assert.deepEqual(payload.reviewBlockers, [
-      "FreeSWITCH RTP is not yet streamed bidirectionally through Pipecat frames; the current SIP bridge records/captures media, posts ACC events, and can attach rtc-asr evidence after capture.",
+      "Live softphone caller playback has not yet been accepted end-to-end; the current SIP bridge can collect FreeSWITCH RTP into Pipecat input frames, stream those frames to rtc-asr, packetize Pipecat/Kokoro TTS frames back to PCMU RTP, and report socket-send playback evidence.",
     ]);
     assert.equal(
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "browser_webrtc_uses_pipecat_rtc_asr_kokoro").passed,
@@ -81,14 +81,18 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "rtp_pcmu_fixture_decodes_to_pipecat_input_frame").passed,
       true,
     );
-    assert.equal(payload.remainingWork.some((item: string) => item.includes("bridge UDP RTP collector")), true);
+    assert.equal(
+      payload.acceptanceCriteria.find((criterion: any) => criterion.name === "pipecat_tts_frames_packetize_to_freeswitch_rtp").passed,
+      true,
+    );
+    assert.equal(payload.remainingWork.some((item: string) => item.includes("softphone evidence")), true);
     assert.deepEqual(payload.nextUnblockedSlice, {
-      id: "sip_rtp_to_pipecat_input_frames",
-      title: "Decode FreeSWITCH RTP into Pipecat input frames",
+      id: "live_softphone_playback_acceptance",
+      title: "Capture end-to-end softphone playback proof",
       adapter: "sip_freeswitch_rtp",
       entryPoint: "scripts/freeswitch-acc-bridge.mjs",
-      targetContract: "PCMU/8000 RTP -> PCM16 -> Pipecat InputAudioRawFrame -> rtc-asr final transcript",
-      verification: "test/pipecatRtpAdapter.test.ts proves deterministic PCMU RTP packets can become Pipecat-compatible PCM16 input frames and batch sequence-gap metadata before wiring live playback.",
+      targetContract: "softphone SIP call -> FreeSWITCH RTP -> Pipecat input frames -> rtc-asr transcript -> ACC turn -> Kokoro/Pipecat TTS -> PCMU RTP playback heard by caller",
+      verification: "scripts/live-sip-proof-bundle.mjs must carry live_capture, rtc_asr_live, Pipecat RTP playback send evidence, and caller-audible playback proof before issue #214 can be accepted.",
     });
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

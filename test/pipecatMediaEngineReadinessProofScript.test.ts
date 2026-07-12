@@ -29,8 +29,8 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.match(stdout, /Saved Pipecat media engine readiness artifact/);
     assert.match(stdout, /Updated latest Pipecat media engine readiness artifact/);
     assert.match(stdout, /Review ready: no/);
-    assert.match(stdout, /Acceptance criteria: 5\/6/);
-    assert.match(stdout, /Next slice: sip_rtp_to_pipecat_input_frames/);
+    assert.match(stdout, /Acceptance criteria: 6\/7/);
+    assert.match(stdout, /Next slice: live_softphone_playback_acceptance/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       ok: boolean;
@@ -63,15 +63,15 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
       readinessStatus: "shared_contract_ready_sip_rtp_blocked",
       reviewReady: false,
       reviewBlockers: [
-        "FreeSWITCH RTP is not yet streamed bidirectionally through Pipecat frames; the current SIP bridge records/captures media, posts ACC events, and can attach rtc-asr evidence after capture.",
+        "Live softphone caller playback has not yet been accepted end-to-end; the current SIP bridge can collect FreeSWITCH RTP into Pipecat input frames, stream those frames to rtc-asr, packetize Pipecat/Kokoro TTS frames back to PCMU RTP, and report socket-send playback evidence.",
       ],
-      acceptanceCriteriaPassed: 5,
-      acceptanceCriteriaTotal: 6,
+      acceptanceCriteriaPassed: 6,
+      acceptanceCriteriaTotal: 7,
       implementedAdapters: ["browser_webrtc"],
       blockedAdapters: ["sip_freeswitch_rtp", "signalwire_sip_trunk"],
       nextUnblockedSlice: {
-        id: "sip_rtp_to_pipecat_input_frames",
-        title: "Decode FreeSWITCH RTP into Pipecat input frames",
+        id: "live_softphone_playback_acceptance",
+        title: "Capture end-to-end softphone playback proof",
         adapter: "sip_freeswitch_rtp",
         entryPoint: "scripts/freeswitch-acc-bridge.mjs",
       },
@@ -83,7 +83,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.equal(artifact.readiness.ok, true);
     assert.equal(artifact.readiness.route, "/api/pipecat-media-engine/readiness");
     assert.equal(artifact.readiness.status, "shared_contract_ready_sip_rtp_blocked");
-    assert.equal(artifact.readiness.acceptanceCriteria.filter((criterion) => criterion.passed).length, 5);
+    assert.equal(artifact.readiness.acceptanceCriteria.filter((criterion) => criterion.passed).length, 6);
     assert.deepEqual(latestArtifact, artifact);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
