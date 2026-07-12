@@ -255,7 +255,7 @@ test("FreeSWITCH bridge plays Pipecat TTS fixture on answered call remote RTP ta
       "bridge.rtpPlaybackSocket = { send(packet, port, host, callback) { sentRtp.push({ sequenceNumber: packet.readUInt16BE(2), timestamp: packet.readUInt32BE(4), port, host }); callback(); } };",
       "const headers = new Map([[\"Caller-Destination-Number\", \"8600\"], [\"variable_remote_media_ip\", \"127.0.0.1\"], [\"variable_remote_media_port\", \"40002\"]]);",
       "try { await bridge.onAnswer(\"fs-answer-playback\", headers); await bridge.playPipecatOutputFixture(); } finally { http.default.request = originalRequest; }",
-      "console.log(JSON.stringify({ sentRtp, playbackSummary: bridge.rtpPlaybackSink.summary(), played: bridge.pipecatOutputFixturePlayed, events: bridge.events }));"
+      "console.log(JSON.stringify({ sentRtp, playbackSummary: bridge.rtpPlaybackSink.summary(), played: bridge.pipecatOutputFixturePlayed, playbackEventPosted: bridge.pipecatPlaybackEventPosted, events: bridge.events }));"
     ].join("\n");
     const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
       cwd: repoRoot,
@@ -266,6 +266,7 @@ test("FreeSWITCH bridge plays Pipecat TTS fixture on answered call remote RTP ta
       playbackSummary: { rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; remotePort: number };
       played: boolean;
       events: Array<{ pipecatOutboundRtpPlayback?: { sentPacketCount: number } }>;
+      playbackEventPosted: boolean;
     };
 
     assert.deepEqual(parsed.sentRtp, [
@@ -273,6 +274,7 @@ test("FreeSWITCH bridge plays Pipecat TTS fixture on answered call remote RTP ta
       { sequenceNumber: 0xffff, timestamp: 162, port: 40002, host: "127.0.0.1" },
     ]);
     assert.equal(parsed.played, true);
+    assert.equal(parsed.playbackEventPosted, true);
     assert.equal(parsed.playbackSummary.packetCount, 2);
     assert.equal(parsed.playbackSummary.sentPacketCount, 2);
     assert.equal(parsed.playbackSummary.rtpSocketSendReady, true);

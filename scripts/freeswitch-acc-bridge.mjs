@@ -772,6 +772,7 @@ export class EslBridge {
       samplesPerPacket: options.rtpPlaybackSamplesPerPacket ?? 160,
     });
     this.pipecatOutputFixturePlayed = false;
+    this.pipecatPlaybackEventPosted = false;
   }
 
   async start() {
@@ -834,6 +835,26 @@ export class EslBridge {
     }
   }
 
+  async postPipecatPlaybackEvent(uuid) {
+    if (this.pipecatPlaybackEventPosted) return;
+    const playbackSummary = this.rtpPlaybackSink.summary();
+    if (!playbackSummary.outboundRtpReady) return;
+    await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
+      eventType: "media.playback",
+      timestamp: nowIso(),
+      sipCallId: uuid,
+      fsUuid: uuid,
+      outboundRtpReady: playbackSummary.outboundRtpReady,
+      rtpSocketSendReady: playbackSummary.rtpSocketSendReady,
+      packetCount: playbackSummary.packetCount,
+      sentPacketCount: playbackSummary.sentPacketCount,
+      remoteHost: playbackSummary.remoteHost,
+      remotePort: playbackSummary.remotePort,
+      evidencePath: this.options.manifestPath,
+    });
+    this.pipecatPlaybackEventPosted = true;
+  }
+
   async handleData(chunk) {
     this.buffer += chunk;
     while (true) {
@@ -880,6 +901,7 @@ export class EslBridge {
     this.callMap.set(uuid, { wavPath, freeswitchPath, startedAt: Date.now(), destination, remoteRtp, accCallId: response?.body?.call?.session?.callId ?? null });
     this.send(`api uuid_record ${uuid} start ${freeswitchPath}`);
     await this.playPipecatOutputFixture();
+    await this.postPipecatPlaybackEvent(uuid);
   }
 
   async onRecordStop(uuid) {
@@ -912,22 +934,7 @@ export class EslBridge {
         this.events.push({ at: nowIso(), rtcAsrPipecatStream: rtcAsrStreamEvidence });
       }
     }
-    const playbackSummary = this.rtpPlaybackSink.summary();
-    if (playbackSummary.outboundRtpReady) {
-      await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
-        eventType: "media.playback",
-        timestamp: nowIso(),
-        sipCallId: uuid,
-        fsUuid: uuid,
-        outboundRtpReady: playbackSummary.outboundRtpReady,
-        rtpSocketSendReady: playbackSummary.rtpSocketSendReady,
-        packetCount: playbackSummary.packetCount,
-        sentPacketCount: playbackSummary.sentPacketCount,
-        remoteHost: playbackSummary.remoteHost,
-        remotePort: playbackSummary.remotePort,
-        evidencePath: this.options.manifestPath,
-      });
-    }
+    await this.postPipecatPlaybackEvent(uuid);
 
     if (!this.options.rtcAsrUrl) {
       await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
