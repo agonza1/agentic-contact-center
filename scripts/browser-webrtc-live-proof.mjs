@@ -79,6 +79,10 @@ function hasPositiveNumber(value) {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
+function hasSha256(value) {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
 function nestedRecord(record, key) {
   const value = record[key];
   return isRecord(value) ? value : {};
@@ -135,7 +139,11 @@ function validateEvidence(payload) {
     kokoroAudio: records.some((record) => {
       const audioUrl = typeof record.audioUrl === "string" ? record.audioUrl : typeof record.url === "string" ? record.url : "";
       const audioSha256 = typeof record.audioSha256 === "string" ? record.audioSha256 : typeof record.sha256 === "string" ? record.sha256 : "";
-      return textIncludes(record, "kokoro") && (textIncludes(record, "audio") || textIncludes(record, "tts")) && (hasPositiveNumber(record.audioBytes) || audioUrl.trim().length > 0 || audioSha256.trim().length > 0);
+      return (
+        textIncludes(record, "kokoro") &&
+        (textIncludes(record, "audio") || textIncludes(record, "tts")) &&
+        (hasPositiveNumber(record.audioBytes) || (audioUrl.trim().length > 0 && !hasPlaceholderText(audioUrl)) || hasSha256(audioSha256))
+      );
     }),
     browserRemoteAudio: records.some((record) => {
       return textIncludes(record, "browser") && textIncludes(record, "remote") && textIncludes(record, "audio") && (hasPositiveNumber(record.playedMs) || record.played === true || record.heard === true || hasBrowserRemoteAudioStats(record));
