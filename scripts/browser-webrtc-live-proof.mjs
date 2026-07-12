@@ -146,6 +146,40 @@ function hasInboundAudioRtpStats(stats) {
   });
 }
 
+function hasOutboundAudioRtpStats(stats) {
+  return stats.some((stat) => {
+    const type = typeof stat.type === "string" ? stat.type.toLowerCase() : "";
+    const kind = typeof stat.kind === "string" ? stat.kind.toLowerCase() : "";
+    const mediaType = typeof stat.mediaType === "string" ? stat.mediaType.toLowerCase() : "";
+    const trackKind = typeof stat.trackKind === "string" ? stat.trackKind.toLowerCase() : "";
+    return (
+      type === "outbound-rtp" &&
+      [kind, mediaType, trackKind].includes("audio") &&
+      (hasPositiveNumber(stat.packetsSent) || hasPositiveNumber(stat.bytesSent))
+    );
+  });
+}
+
+function hasBrowserMicrophoneUplink(record) {
+  const outboundRtpAudio = nestedRecord(record, "outboundRtpAudio");
+  const audioTrack = nestedRecord(record, "audioTrack");
+  const rtcStats = [
+    ...nestedRecords(record, "rtcStats"),
+    ...nestedRecords(record, "peerConnectionStats"),
+    ...nestedRecords(record, "getStats"),
+  ];
+  return (
+    textIncludes(record, "browser") &&
+    (textIncludes(record, "microphone") || textIncludes(record, "mic") || textIncludes(record, "local audio")) &&
+    (hasPositiveNumber(record.sentMs) ||
+      record.captured === true ||
+      audioTrack.enabled === true ||
+      hasPositiveNumber(outboundRtpAudio.packetsSent) ||
+      hasPositiveNumber(outboundRtpAudio.bytesSent) ||
+      hasOutboundAudioRtpStats(rtcStats))
+  );
+}
+
 function hasBrowserRemoteAudioStats(record) {
   const inboundRtpAudio = nestedRecord(record, "inboundRtpAudio");
   const audioElement = nestedRecord(record, "audioElement");
@@ -168,6 +202,7 @@ function validateEvidence(payload, expectedGitHead) {
   const expectedHead = typeof expectedGitHead === "string" ? expectedGitHead.toLowerCase() : null;
   const checks = {
     repoHeadEvidence: expectedHead ? records.some((record) => evidenceHeadSha(record) === expectedHead) : true,
+    browserMicrophoneUplink: records.some((record) => hasBrowserMicrophoneUplink(record)),
     pipecatWebrtcBridge: records.some((record) => {
       const sessionId = typeof record.sessionId === "string" ? record.sessionId : "";
       return textIncludes(record, "pipecat") && textIncludes(record, "webrtc") && sessionId.trim().length > 0 && !hasPlaceholderText(sessionId);
@@ -267,6 +302,28 @@ async function writeEvidenceTemplate(filePath) {
     captureNotes: "Replace placeholder values with one real local browser media turn.",
     events: [
       {
+        type: "browser.microphone.uplink",
+        target: "browser",
+        track: "local microphone audio",
+        sentMs: 0,
+        outboundRtpAudio: {
+          packetsSent: 0,
+          bytesSent: 0,
+        },
+        rtcStats: [
+          {
+            type: "outbound-rtp",
+            kind: "audio",
+            packetsSent: 0,
+            bytesSent: 0,
+          },
+        ],
+        audioTrack: {
+          enabled: false,
+          muted: true,
+        },
+      },
+      {
         type: "pipecat.webrtc.offer_answer",
         transport: "webrtc",
         bridge: "pipecat",
@@ -322,6 +379,7 @@ const evidence = await readEvidence(evidencePath);
 const validation = evidence.payload ? validateEvidence(evidence.payload, expectedGitHead) : {
   checks: {
     repoHeadEvidence: expectedGitHead ? false : true,
+    browserMicrophoneUplink: false,
     pipecatWebrtcBridge: false,
     rtcAsrFinalTranscript: false,
     kokoroAudio: false,
@@ -330,6 +388,7 @@ const validation = evidence.payload ? validateEvidence(evidence.payload, expecte
   reviewReady: false,
   missingProof: [
     ...(expectedGitHead ? ["repoHeadEvidence"] : []),
+    "browserMicrophoneUplink",
     "pipecatWebrtcBridge",
     "rtcAsrFinalTranscript",
     "kokoroAudio",
@@ -347,6 +406,7 @@ const manifest = {
   reviewReady: validation.reviewReady,
   runtimeModeLabels: {
     browserTransport: "webrtc",
+    browserCapture: validation.checks.browserMicrophoneUplink ? "browser_microphone_live" : "browser_microphone_unproven",
     pipecat: validation.checks.pipecatWebrtcBridge ? "pipecat_webrtc_live" : "pipecat_webrtc_unproven",
     rtcAsr: validation.checks.rtcAsrFinalTranscript ? "rtc_asr_live" : "rtc_asr_unproven",
     tts: validation.checks.kokoroAudio ? "kokoro_live" : "kokoro_unproven",
@@ -372,7 +432,7 @@ const manifest = {
   sidecarConnectivity: await sidecarConnectivity(),
   artifactIntegrity: await artifactIntegrity(evidencePath),
   reviewGate: {
-    requiredLabels: ["pipecat_webrtc_live", "rtc_asr_live", "kokoro_live", "remote_audio_live"],
+    requiredLabels: ["browser_microphone_live", "pipecat_webrtc_live", "rtc_asr_live", "kokoro_live", "remote_audio_live"],
     missingProof: validation.missingProof,
     nextActions: validation.reviewReady ? [] : [
       "Start the Pipecat WebRTC bridge, rtc-asr, and Kokoro sidecars using manifest.setup.commands.",

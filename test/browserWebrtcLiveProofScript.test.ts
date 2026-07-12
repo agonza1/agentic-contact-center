@@ -37,7 +37,7 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
 
     const manifest = JSON.parse(await readFile(path.join(tempDir, "browser-webrtc-live-proof-manifest.json"), "utf8")) as {
       reviewReady: boolean;
-      runtimeModeLabels: { browserTransport: string; pipecat: string; rtcAsr: string; tts: string; browserPlayback: string };
+      runtimeModeLabels: { browserTransport: string; browserCapture: string; pipecat: string; rtcAsr: string; tts: string; browserPlayback: string };
       checks: Record<string, boolean>;
       setup: { commands: string[]; evidenceTemplateCommand: string; gitHead: string; pipecatWebrtcBridgeUrl: string; rtcAsrWsUrl: string; kokoroBaseUrl: string };
       reviewGate: { missingProof: string[]; nextActions: string[] };
@@ -45,6 +45,7 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
     assert.equal(manifest.reviewReady, false);
     assert.deepEqual(manifest.runtimeModeLabels, {
       browserTransport: "webrtc",
+      browserCapture: "browser_microphone_unproven",
       pipecat: "pipecat_webrtc_unproven",
       rtcAsr: "rtc_asr_unproven",
       tts: "kokoro_unproven",
@@ -52,6 +53,7 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
     });
     assert.deepEqual(manifest.checks, {
       repoHeadEvidence: false,
+      browserMicrophoneUplink: false,
       pipecatWebrtcBridge: false,
       rtcAsrFinalTranscript: false,
       kokoroAudio: false,
@@ -59,6 +61,7 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
     });
     assert.deepEqual(manifest.reviewGate.missingProof, [
       "repoHeadEvidence",
+      "browserMicrophoneUplink",
       "pipecatWebrtcBridge",
       "rtcAsrFinalTranscript",
       "kokoroAudio",
@@ -89,6 +92,7 @@ test("browser WebRTC live proof gate accepts captured media-turn evidence", asyn
       JSON.stringify({
         gitHead,
         events: [
+          { type: "browser.microphone.uplink", target: "browser", track: "local microphone audio", outboundRtpAudio: { packetsSent: 10, bytesSent: 2048 }, audioTrack: { enabled: true } },
           { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-123" },
           { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "I need billing help.", final: true },
           { type: "kokoro.tts.audio", engine: "kokoro", audioBytes: 4096 },
@@ -116,12 +120,13 @@ test("browser WebRTC live proof gate accepts captured media-turn evidence", asyn
 
     const manifest = JSON.parse(await readFile(path.join(tempDir, "browser-webrtc-live-proof-manifest.json"), "utf8")) as {
       reviewReady: boolean;
-      runtimeModeLabels: { pipecat: string; rtcAsr: string; tts: string; browserPlayback: string };
+      runtimeModeLabels: { browserCapture: string; pipecat: string; rtcAsr: string; tts: string; browserPlayback: string };
       artifactIntegrity: Array<{ artifactId: string; readiness: string; sizeBytes: number; sha256: string | null }>;
       setup: { commands: string[] };
       reviewGate: { missingProof: string[] };
     };
     assert.equal(manifest.reviewReady, true);
+    assert.equal(manifest.runtimeModeLabels.browserCapture, "browser_microphone_live");
     assert.equal(manifest.runtimeModeLabels.pipecat, "pipecat_webrtc_live");
     assert.equal(manifest.runtimeModeLabels.rtcAsr, "rtc_asr_live");
     assert.equal(manifest.runtimeModeLabels.tts, "kokoro_live");
@@ -152,6 +157,7 @@ test("browser WebRTC live proof gate accepts rtc-asr alternative transcript shap
       JSON.stringify({
         gitHead,
         events: [
+          { type: "browser.microphone.uplink", target: "browser", track: "local microphone audio", outboundRtpAudio: { packetsSent: 10, bytesSent: 2048 }, audioTrack: { enabled: true } },
           { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-alt" },
           { type: "rtc_asr.transcript.final", engine: "rtc_asr", final: true, result: { alternatives: [{ transcript: "I need help with my bill." }] } },
           { type: "kokoro.tts.audio", engine: "kokoro", audioBytes: 4096 },
@@ -199,6 +205,7 @@ test("browser WebRTC live proof gate accepts browser getStats inbound audio evid
       JSON.stringify({
         gitHead,
         events: [
+          { type: "browser.microphone.uplink", target: "browser", track: "local microphone audio", outboundRtpAudio: { packetsSent: 10, bytesSent: 2048 }, audioTrack: { enabled: true } },
           { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-456" },
           { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "Can I update my plan?", final: true },
           { type: "kokoro.tts.audio", engine: "kokoro", audioSha256: "a".repeat(64) },
@@ -250,6 +257,7 @@ test("browser WebRTC live proof gate accepts object-shaped getStats reports", as
       JSON.stringify({
         gitHead,
         events: [
+          { type: "browser.microphone.uplink", target: "browser", track: "local microphone audio", outboundRtpAudio: { packetsSent: 10, bytesSent: 2048 }, audioTrack: { enabled: true } },
           { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-654" },
           { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "Please check my account.", final: true },
           { type: "kokoro.tts.audio", engine: "kokoro", audioSha256: "b".repeat(64) },
@@ -299,6 +307,7 @@ test("browser WebRTC live proof gate rejects placeholder Kokoro audio references
       JSON.stringify({
         gitHead,
         events: [
+          { type: "browser.microphone.uplink", target: "browser", track: "local microphone audio", outboundRtpAudio: { packetsSent: 10, bytesSent: 2048 }, audioTrack: { enabled: true } },
           { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-789" },
           { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "I can hear the agent now.", final: true },
           { type: "kokoro.tts.audio", engine: "kokoro", audioUrl: "replace-with-kokoro-audio-url", audioSha256: "replace-with-kokoro-audio-sha256" },
@@ -407,7 +416,8 @@ test("browser WebRTC live proof gate writes a fill-in evidence template", async 
 
     const template = JSON.parse(await readFile(templatePath, "utf8")) as { gitHead: string; events: Array<Record<string, unknown>> };
     assert.match(template.gitHead, /^[a-f0-9]{40}$/);
-    assert.equal(template.events.length, 4);
+    assert.equal(template.events.length, 5);
+    assert.ok(template.events.some((event) => event.type === "browser.microphone.uplink"));
     assert.ok(template.events.some((event) => event.type === "pipecat.webrtc.offer_answer"));
     assert.ok(template.events.some((event) => event.type === "rtc-asr.transcript.final" && event.final === true));
     assert.ok(template.events.some((event) => event.type === "kokoro.tts.audio"));
@@ -455,6 +465,7 @@ test("browser WebRTC live proof gate rejects the unfilled template as evidence",
         assert.equal(error.code, 2);
         const summary = JSON.parse(error.stdout.slice(error.stdout.indexOf("{")).trim()) as { reviewReady: boolean; blockers: string[] };
         assert.equal(summary.reviewReady, false);
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("browserMicrophoneUplink")));
         assert.ok(summary.blockers.some((blocker) => blocker.includes("pipecatWebrtcBridge")));
         assert.ok(summary.blockers.some((blocker) => blocker.includes("rtcAsrFinalTranscript")));
         assert.ok(summary.blockers.some((blocker) => blocker.includes("kokoroAudio")));
@@ -471,12 +482,14 @@ test("browser WebRTC live proof gate rejects the unfilled template as evidence",
     assert.equal(manifest.reviewReady, false);
     assert.deepEqual(manifest.checks, {
       repoHeadEvidence: true,
+      browserMicrophoneUplink: false,
       pipecatWebrtcBridge: false,
       rtcAsrFinalTranscript: false,
       kokoroAudio: false,
       browserRemoteAudio: false,
     });
     assert.deepEqual(manifest.reviewGate.missingProof, [
+      "browserMicrophoneUplink",
       "pipecatWebrtcBridge",
       "rtcAsrFinalTranscript",
       "kokoroAudio",
@@ -498,6 +511,7 @@ test("browser WebRTC live proof gate rejects evidence from a different git head"
       JSON.stringify({
         gitHead: "0".repeat(40),
         events: [
+          { type: "browser.microphone.uplink", target: "browser", track: "local microphone audio", outboundRtpAudio: { packetsSent: 10, bytesSent: 2048 }, audioTrack: { enabled: true } },
           { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-999" },
           { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "This proof is stale.", final: true },
           { type: "kokoro.tts.audio", engine: "kokoro", audioBytes: 2048 },
