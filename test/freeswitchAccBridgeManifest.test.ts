@@ -344,7 +344,14 @@ test("FreeSWITCH bridge dispatches streamed content-length events after the body
   const script = `
     const { EslBridge } = await import(${JSON.stringify(moduleUrl)});
     const sent = [];
-    const body = ["Event-Name: CHANNEL_ANSWER", "Unique-ID: fs-call-streamed", "Caller-Destination-Number: 8600", ""].join("\\r\\n");
+    const body = [
+      "Event-Name: CHANNEL_ANSWER",
+      "Unique-ID: fs-call-streamed",
+      "Caller-Destination-Number: 8600",
+      "variable_remote_media_ip: 127.0.0.1",
+      "variable_remote_media_port: 40002",
+      ""
+    ].join("\\r\\n");
     const raw = ["Content-Type: text/event-plain", "Content-Length: " + Buffer.byteLength(body), "", ""].join("\\r\\n") + body;
     const bridge = new EslBridge({
       recordingDir: "/host/acc/media",
@@ -375,7 +382,9 @@ test("FreeSWITCH bridge dispatches streamed content-length events after the body
     } finally {
       http.default.request = originalRequest;
     }
-    console.log(JSON.stringify({ sent, call: bridge.callMap.get("fs-call-streamed") }));
+    const playbackSummary = bridge.rtpPlaybackSink.summary();
+    bridge.rtpPlaybackSocket?.close();
+    console.log(JSON.stringify({ sent, call: bridge.callMap.get("fs-call-streamed"), playbackSummary, events: bridge.events }));
   `;
   const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
     cwd: repoRoot,
@@ -383,13 +392,19 @@ test("FreeSWITCH bridge dispatches streamed content-length events after the body
   });
   const parsed = JSON.parse(stdout) as {
     sent: string[];
-    call: { destination: string; wavPath: string; freeswitchPath: string; accCallId: string };
+    call: { destination: string; wavPath: string; freeswitchPath: string; accCallId: string; remoteRtp: { address: string; port: number } };
+    playbackSummary: { remoteHost: string; remotePort: number };
+    events: Array<{ remoteRtpPlaybackTarget?: { address: string; port: number } }>;
   };
   assert.deepEqual(parsed.sent, ["api uuid_record fs-call-streamed start /var/log/freeswitch/acc/media/fs-call-streamed.wav"]);
   assert.equal(parsed.call.destination, "8600");
   assert.equal(parsed.call.wavPath, "/host/acc/media/fs-call-streamed.wav");
   assert.equal(parsed.call.freeswitchPath, "/var/log/freeswitch/acc/media/fs-call-streamed.wav");
   assert.equal(parsed.call.accCallId, "acc-call-streamed");
+  assert.deepEqual(parsed.call.remoteRtp, { address: "127.0.0.1", port: 40002 });
+  assert.equal(parsed.playbackSummary.remoteHost, "127.0.0.1");
+  assert.equal(parsed.playbackSummary.remotePort, 40002);
+  assert.equal(parsed.events.some((event) => event.remoteRtpPlaybackTarget?.port === 40002), true);
 });
 
 test("FreeSWITCH bridge subscribes to required ESL events with one event command", async () => {
@@ -449,6 +464,45 @@ test("FreeSWITCH recording path maps host artifacts to a container-visible mount
   assert.equal(paths.freeswitchPath, "/var/log/freeswitch/acc/fs-call-123.wav");
 });
 
+
+test("FreeSWITCH bridge manifest carries discovered remote RTP target evidence", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-remote-rtp-"));
+  const audioPath = path.join(tempDir, "fs-call.wav");
+  const logPath = path.join(tempDir, "freeswitch-esl-events.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+
+  try {
+    await writeFile(audioPath, validWavFixture());
+    await writeFile(logPath, `${JSON.stringify({ events: [{ headers: { "Event-Name": "CHANNEL_ANSWER" } }] })}\n`, "utf8");
+    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: { text: "hello from local sip", final: true } })}\n`, "utf8");
+
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = `
+      const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
+      const manifest = await buildFreeswitchLiveProofManifest({
+        uuid: "fs-proof-remote-rtp",
+        accCallId: "demo-call-remote-rtp",
+        destination: "8600",
+        wavPath: ${JSON.stringify(audioPath)},
+        logPath: ${JSON.stringify(logPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
+        telephonyMode: "local_sip",
+        remoteRtp: { address: "127.0.0.1", port: 40002 }
+      });
+      console.log(JSON.stringify(manifest.localSip.remoteRtp));
+    `;
+    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+
+    assert.deepEqual(JSON.parse(stdout), { address: "127.0.0.1", port: 40002 });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
 
 test("FreeSWITCH bridge manifest carries optional live RTP Pipecat batch evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");

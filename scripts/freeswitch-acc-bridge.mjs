@@ -604,6 +604,32 @@ export function visibleRecordingPath(recordingDir, freeswitchRecordingDir, uuid)
   return { hostPath, freeswitchPath };
 }
 
+function firstHeader(headers, names) {
+  for (const name of names) {
+    const value = headers.get(name);
+    if (value !== undefined && value !== "") return value;
+  }
+  return null;
+}
+
+export function remoteRtpFromHeaders(headers) {
+  const address = firstHeader(headers, [
+    "variable_remote_media_ip",
+    "variable_rtp_remote_audio_ip",
+    "Remote-Media-IP",
+    "RTP-Remote-Audio-IP",
+  ]);
+  const rawPort = firstHeader(headers, [
+    "variable_remote_media_port",
+    "variable_rtp_remote_audio_port",
+    "Remote-Media-Port",
+    "RTP-Remote-Audio-Port",
+  ]);
+  const port = Number(rawPort);
+  if (!address || !Number.isInteger(port) || port <= 0 || port > 65535) return null;
+  return { address, port };
+}
+
 export async function buildFreeswitchLiveProofManifest(options) {
   const audioStats = await stat(options.wavPath).catch(() => null);
   const logStats = await stat(options.logPath).catch(() => null);
@@ -698,7 +724,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
       destination: options.destination ?? "8600",
       acceptedInvite: true,
       rtpPacketCount: rtpPacketCountEstimate,
-      remoteRtp: null,
+      remoteRtp: options.remoteRtp ?? null,
       hostRecordingPath: options.wavPath,
       freeswitchRecordingPath: options.freeswitchRecordingPath ?? options.wavPath,
     },
@@ -777,11 +803,22 @@ export class EslBridge {
   }
 
   startRtpPlaybackSocket() {
-    if (!this.options.rtpPlaybackPort) return;
+    if (!this.rtpPlaybackSink.options.remotePort || this.rtpPlaybackSocket) return;
     this.rtpPlaybackSocket = dgram.createSocket("udp4");
     this.rtpPlaybackSocket.on("error", (error) => {
       this.rtpPlaybackSink.errors.push({ at: nowIso(), error: error.message });
     });
+  }
+
+  configureRtpPlaybackFromHeaders(headers) {
+    if (this.options.rtpPlaybackPort) return null;
+    const remoteRtp = remoteRtpFromHeaders(headers);
+    if (!remoteRtp) return null;
+    this.rtpPlaybackSink.options.remoteHost = remoteRtp.address;
+    this.rtpPlaybackSink.options.remotePort = remoteRtp.port;
+    this.startRtpPlaybackSocket();
+    this.events.push({ at: nowIso(), remoteRtpPlaybackTarget: remoteRtp });
+    return remoteRtp;
   }
 
   async playPipecatOutputFixture() {
@@ -822,6 +859,7 @@ export class EslBridge {
   async onAnswer(uuid, headers) {
     if (this.callMap.has(uuid)) return;
     const destination = headers.get("Caller-Destination-Number") ?? "8600";
+    const remoteRtp = this.configureRtpPlaybackFromHeaders(headers);
     const { hostPath: wavPath, freeswitchPath } = visibleRecordingPath(this.options.recordingDir, this.options.freeswitchRecordingDir, uuid);
     const response = await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
       eventType: "call.started",
@@ -833,7 +871,7 @@ export class EslBridge {
       rtcAsrMode: this.options.rtcAsrUrl ? "rtc_asr_live" : "rtc_asr_blocked",
       destination,
     });
-    this.callMap.set(uuid, { wavPath, freeswitchPath, startedAt: Date.now(), destination, accCallId: response?.body?.call?.session?.callId ?? null });
+    this.callMap.set(uuid, { wavPath, freeswitchPath, startedAt: Date.now(), destination, remoteRtp, accCallId: response?.body?.call?.session?.callId ?? null });
     this.send(`api uuid_record ${uuid} start ${freeswitchPath}`);
   }
 
@@ -913,6 +951,7 @@ export class EslBridge {
       destination: call.destination,
       wavPath: call.wavPath,
       freeswitchRecordingPath: call.freeswitchPath,
+      remoteRtp: call.remoteRtp,
       logPath: this.options.logPath,
       rtcAsrUrl: this.options.rtcAsrUrl,
       rtcAsrEvidencePath: this.options.rtcAsrEvidencePath,
