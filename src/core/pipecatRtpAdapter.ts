@@ -21,6 +21,21 @@ export type PipecatRtpFrameBatch = {
   sequenceGaps: Array<{ after: number; before: number }>;
 };
 
+export type PipecatOutputAudioFrameFixture = {
+  frameType: "OutputAudioRawFrame";
+  audioFormat: "pcm_s16le";
+  sampleRateHz: 8000;
+  channels: 1;
+  pcm16: Buffer;
+};
+
+export type RtpPcmuPacketizeOptions = {
+  sequenceNumber: number;
+  timestamp: number;
+  ssrc: number;
+  samplesPerPacket?: number;
+};
+
 export function decodePcmuSample(sample: number): number {
   const inverted = (~sample) & 0xff;
   const sign = inverted & 0x80;
@@ -35,6 +50,60 @@ export function decodePcmuToPcm16(payload: Buffer): Buffer {
   const pcm16 = Buffer.alloc(payload.length * 2);
   payload.forEach((sample, index) => pcm16.writeInt16LE(decodePcmuSample(sample), index * 2));
   return pcm16;
+}
+
+export function encodePcm16SampleToPcmu(sample: number): number {
+  const clipped = Math.max(-32635, Math.min(32635, sample));
+  const sign = clipped < 0 ? 0x80 : 0x00;
+  const magnitude = Math.abs(clipped) + 0x84;
+  let exponent = 7;
+  for (let mask = 0x4000; exponent > 0 && (magnitude & mask) === 0; mask >>= 1) {
+    exponent -= 1;
+  }
+  const mantissa = (magnitude >> (exponent + 3)) & 0x0f;
+  return (~(sign | (exponent << 4) | mantissa)) & 0xff;
+}
+
+export function encodePcm16ToPcmu(pcm16: Buffer): Buffer {
+  if (pcm16.length === 0 || pcm16.length % 2 !== 0) {
+    throw new Error("pcm16_payload_invalid");
+  }
+  const pcmu = Buffer.alloc(pcm16.length / 2);
+  for (let offset = 0; offset < pcm16.length; offset += 2) {
+    pcmu[offset / 2] = encodePcm16SampleToPcmu(pcm16.readInt16LE(offset));
+  }
+  return pcmu;
+}
+
+export function pipecatOutputFrameToRtpPcmuPackets(
+  frame: PipecatOutputAudioFrameFixture,
+  options: RtpPcmuPacketizeOptions,
+): Buffer[] {
+  if (frame.frameType !== "OutputAudioRawFrame") {
+    throw new Error("pipecat_frame_type_not_output_audio");
+  }
+  if (frame.audioFormat !== "pcm_s16le" || frame.sampleRateHz !== 8000 || frame.channels !== 1) {
+    throw new Error("pipecat_audio_format_not_pcm16_8khz_mono");
+  }
+  const samplesPerPacket = options.samplesPerPacket ?? 160;
+  if (!Number.isInteger(samplesPerPacket) || samplesPerPacket <= 0) {
+    throw new Error("rtp_samples_per_packet_invalid");
+  }
+
+  const pcmu = encodePcm16ToPcmu(frame.pcm16);
+  const packets: Buffer[] = [];
+  for (let payloadOffset = 0; payloadOffset < pcmu.length; payloadOffset += samplesPerPacket) {
+    const payload = pcmu.subarray(payloadOffset, payloadOffset + samplesPerPacket);
+    const packet = Buffer.alloc(12 + payload.length);
+    packet[0] = 0x80;
+    packet[1] = 0x00;
+    packet.writeUInt16BE((options.sequenceNumber + packets.length) & 0xffff, 2);
+    packet.writeUInt32BE((options.timestamp + payloadOffset) >>> 0, 4);
+    packet.writeUInt32BE(options.ssrc >>> 0, 8);
+    payload.copy(packet, 12);
+    packets.push(packet);
+  }
+  return packets;
 }
 
 export function rtpPcmuPacketToPipecatInputFrame(packet: Buffer): PipecatInputAudioFrameFixture {

@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { decodePcmuSample, rtpPcmuPacketToPipecatInputFrame, rtpPcmuPacketsToPipecatInputFrameBatch } from "../src/core/pipecatRtpAdapter";
+import {
+  decodePcmuSample,
+  encodePcm16ToPcmu,
+  pipecatOutputFrameToRtpPcmuPackets,
+  rtpPcmuPacketToPipecatInputFrame,
+  rtpPcmuPacketsToPipecatInputFrameBatch,
+} from "../src/core/pipecatRtpAdapter";
 
 function rtpPacket(payload: number[], sequenceNumber = 0x1234, timestamp = 0x00000320): Buffer {
   return Buffer.from([
@@ -78,4 +84,39 @@ test("RTP PCMU adapter rejects truncated extension bodies", () => {
   packet[0] = 0x90;
 
   assert.throws(() => rtpPcmuPacketToPipecatInputFrame(packet), /rtp_extension_body_truncated/);
+});
+
+
+test("Pipecat output PCM16 frames packetize into outbound RTP PCMU packets", () => {
+  const pcm16 = Buffer.alloc(10);
+  [0, 1200, -1200, 32000, -32000].forEach((sample, index) => pcm16.writeInt16LE(sample, index * 2));
+
+  const packets = pipecatOutputFrameToRtpPcmuPackets(
+    {
+      frameType: "OutputAudioRawFrame",
+      audioFormat: "pcm_s16le",
+      sampleRateHz: 8000,
+      channels: 1,
+      pcm16,
+    },
+    { sequenceNumber: 0xfffe, timestamp: 0x00000320, ssrc: 0x0badf00d, samplesPerPacket: 2 },
+  );
+
+  assert.equal(packets.length, 3);
+  assert.deepEqual(packets.map((packet) => packet.readUInt16BE(2)), [0xfffe, 0xffff, 0x0000]);
+  assert.deepEqual(packets.map((packet) => packet.readUInt32BE(4)), [800, 802, 804]);
+  assert.deepEqual(packets.map((packet) => packet.readUInt32BE(8)), [0x0badf00d, 0x0badf00d, 0x0badf00d]);
+  assert.deepEqual([...Buffer.concat(packets.map((packet) => packet.subarray(12)))], [...encodePcm16ToPcmu(pcm16)]);
+});
+
+test("Pipecat output RTP packetizer rejects incompatible output audio", () => {
+  const pcm16 = Buffer.from([0x00, 0x00]);
+  assert.throws(
+    () => pipecatOutputFrameToRtpPcmuPackets(
+      { frameType: "OutputAudioRawFrame", audioFormat: "pcm_s16le", sampleRateHz: 16000 as 8000, channels: 1, pcm16 },
+      { sequenceNumber: 1, timestamp: 1, ssrc: 1 },
+    ),
+    /pipecat_audio_format_not_pcm16_8khz_mono/,
+  );
+  assert.throws(() => encodePcm16ToPcmu(Buffer.from([0x00])), /pcm16_payload_invalid/);
 });
