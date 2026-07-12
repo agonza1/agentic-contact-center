@@ -8,6 +8,11 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
+async function currentGitHead(repoRoot: string): Promise<string> {
+  const result = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" });
+  return result.stdout.trim();
+}
+
 test("browser WebRTC live proof gate writes an honest blocked manifest without evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-browser-webrtc-blocked-"));
@@ -24,6 +29,7 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
         const summary = JSON.parse(error.stdout.slice(error.stdout.indexOf("{")).trim()) as { reviewReady: boolean; blockers: string[] };
         assert.equal(summary.reviewReady, false);
         assert.ok(summary.blockers.some((blocker) => blocker.includes("evidence file is not attached")));
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("repoHeadEvidence")));
         assert.ok(summary.blockers.some((blocker) => blocker.includes("rtcAsrFinalTranscript")));
         return true;
       },
@@ -33,7 +39,7 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
       reviewReady: boolean;
       runtimeModeLabels: { browserTransport: string; pipecat: string; rtcAsr: string; tts: string; browserPlayback: string };
       checks: Record<string, boolean>;
-      setup: { commands: string[]; evidenceTemplateCommand: string; pipecatWebrtcBridgeUrl: string; rtcAsrWsUrl: string; kokoroBaseUrl: string };
+      setup: { commands: string[]; evidenceTemplateCommand: string; gitHead: string; pipecatWebrtcBridgeUrl: string; rtcAsrWsUrl: string; kokoroBaseUrl: string };
       reviewGate: { missingProof: string[]; nextActions: string[] };
     };
     assert.equal(manifest.reviewReady, false);
@@ -45,17 +51,20 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
       browserPlayback: "remote_audio_unproven",
     });
     assert.deepEqual(manifest.checks, {
+      repoHeadEvidence: false,
       pipecatWebrtcBridge: false,
       rtcAsrFinalTranscript: false,
       kokoroAudio: false,
       browserRemoteAudio: false,
     });
     assert.deepEqual(manifest.reviewGate.missingProof, [
+      "repoHeadEvidence",
       "pipecatWebrtcBridge",
       "rtcAsrFinalTranscript",
       "kokoroAudio",
       "browserRemoteAudio",
     ]);
+    assert.match(manifest.setup.gitHead, /^[a-f0-9]{40}$/);
     assert.equal(manifest.setup.pipecatWebrtcBridgeUrl, "http://127.0.0.1:8766");
     assert.equal(manifest.setup.rtcAsrWsUrl, "ws://127.0.0.1:8080/v1/stt/stream");
     assert.ok(manifest.setup.commands.some((command) => command.includes("browser-webrtc:check")));
@@ -74,9 +83,11 @@ test("browser WebRTC live proof gate accepts captured media-turn evidence", asyn
   const evidencePath = path.join(tempDir, "browser-webrtc-evidence.json");
 
   try {
+    const gitHead = await currentGitHead(repoRoot);
     await writeFile(
       evidencePath,
       JSON.stringify({
+        gitHead,
         events: [
           { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-123" },
           { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "I need billing help.", final: true },
@@ -135,9 +146,11 @@ test("browser WebRTC live proof gate accepts browser getStats inbound audio evid
   const evidencePath = path.join(tempDir, "browser-webrtc-evidence.json");
 
   try {
+    const gitHead = await currentGitHead(repoRoot);
     await writeFile(
       evidencePath,
       JSON.stringify({
+        gitHead,
         events: [
           { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-456" },
           { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "Can I update my plan?", final: true },
@@ -184,9 +197,11 @@ test("browser WebRTC live proof gate rejects placeholder Kokoro audio references
   const evidencePath = path.join(tempDir, "browser-webrtc-evidence.json");
 
   try {
+    const gitHead = await currentGitHead(repoRoot);
     await writeFile(
       evidencePath,
       JSON.stringify({
+        gitHead,
         events: [
           { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-789" },
           { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "I can hear the agent now.", final: true },
@@ -249,7 +264,8 @@ test("browser WebRTC live proof gate writes a fill-in evidence template", async 
       },
     );
 
-    const template = JSON.parse(await readFile(templatePath, "utf8")) as { events: Array<Record<string, unknown>> };
+    const template = JSON.parse(await readFile(templatePath, "utf8")) as { gitHead: string; events: Array<Record<string, unknown>> };
+    assert.match(template.gitHead, /^[a-f0-9]{40}$/);
     assert.equal(template.events.length, 4);
     assert.ok(template.events.some((event) => event.type === "pipecat.webrtc.offer_answer"));
     assert.ok(template.events.some((event) => event.type === "rtc-asr.transcript.final" && event.final === true));
@@ -313,6 +329,7 @@ test("browser WebRTC live proof gate rejects the unfilled template as evidence",
     };
     assert.equal(manifest.reviewReady, false);
     assert.deepEqual(manifest.checks, {
+      repoHeadEvidence: true,
       pipecatWebrtcBridge: false,
       rtcAsrFinalTranscript: false,
       kokoroAudio: false,
@@ -324,6 +341,60 @@ test("browser WebRTC live proof gate rejects the unfilled template as evidence",
       "kokoroAudio",
       "browserRemoteAudio",
     ]);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("browser WebRTC live proof gate rejects evidence from a different git head", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-browser-webrtc-stale-head-"));
+  const evidencePath = path.join(tempDir, "browser-webrtc-evidence.json");
+
+  try {
+    await writeFile(
+      evidencePath,
+      JSON.stringify({
+        gitHead: "0".repeat(40),
+        events: [
+          { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-session-999" },
+          { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "This proof is stale.", final: true },
+          { type: "kokoro.tts.audio", engine: "kokoro", audioBytes: 2048 },
+          {
+            type: "browser.remote.audio.played",
+            target: "browser",
+            track: "remote audio",
+            inboundRtpAudio: { packetsReceived: 5, bytesReceived: 1024 },
+            audioElement: { currentTime: 0.5, paused: false },
+          },
+        ],
+      }, null, 2),
+      "utf8",
+    );
+
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        ["scripts/browser-webrtc-live-proof.mjs", "--require-review-ready", "--evidence", evidencePath, "--out-dir", tempDir],
+        { cwd: repoRoot, timeout: 10_000, encoding: "utf8" },
+      ),
+      (error: any) => {
+        assert.equal(error.code, 2);
+        const summary = JSON.parse(error.stdout.slice(error.stdout.indexOf("{")).trim()) as { reviewReady: boolean; blockers: string[] };
+        assert.equal(summary.reviewReady, false);
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("repoHeadEvidence")));
+        return true;
+      },
+    );
+
+    const manifest = JSON.parse(await readFile(path.join(tempDir, "browser-webrtc-live-proof-manifest.json"), "utf8")) as {
+      reviewReady: boolean;
+      checks: Record<string, boolean>;
+      reviewGate: { missingProof: string[] };
+    };
+    assert.equal(manifest.reviewReady, false);
+    assert.equal(manifest.checks.repoHeadEvidence, false);
+    assert.deepEqual(manifest.reviewGate.missingProof, ["repoHeadEvidence"]);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

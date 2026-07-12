@@ -2,6 +2,7 @@
 
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 
 const args = process.argv.slice(2);
@@ -83,6 +84,22 @@ function hasSha256(value) {
   return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 }
 
+function currentGitHead() {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function evidenceHeadSha(record) {
+  for (const key of ["gitHead", "headSha", "repoHead", "commit", "commitSha"]) {
+    const value = record[key];
+    if (typeof value === "string" && /^[a-f0-9]{40}$/i.test(value)) return value.toLowerCase();
+  }
+  return null;
+}
+
 function nestedRecord(record, key) {
   const value = record[key];
   return isRecord(value) ? value : {};
@@ -124,9 +141,11 @@ function hasBrowserRemoteAudioStats(record) {
   );
 }
 
-function validateEvidence(payload) {
+function validateEvidence(payload, expectedGitHead) {
   const records = flattenRecords(payload);
+  const expectedHead = typeof expectedGitHead === "string" ? expectedGitHead.toLowerCase() : null;
   const checks = {
+    repoHeadEvidence: expectedHead ? records.some((record) => evidenceHeadSha(record) === expectedHead) : true,
     pipecatWebrtcBridge: records.some((record) => {
       const sessionId = typeof record.sessionId === "string" ? record.sessionId : "";
       return textIncludes(record, "pipecat") && textIncludes(record, "webrtc") && sessionId.trim().length > 0 && !hasPlaceholderText(sessionId);
@@ -179,6 +198,7 @@ async function writeEvidenceTemplate(filePath) {
   await mkdir(path.dirname(filePath), { recursive: true });
   const template = {
     capturedAt: new Date().toISOString(),
+    gitHead: currentGitHead(),
     captureNotes: "Replace placeholder values with one real local browser media turn.",
     events: [
       {
@@ -232,16 +252,24 @@ async function writeEvidenceTemplate(filePath) {
 await mkdir(outDir, { recursive: true });
 const evidenceTemplatePath = await writeEvidenceTemplate(templatePath);
 
+const expectedGitHead = currentGitHead();
 const evidence = await readEvidence(evidencePath);
-const validation = evidence.payload ? validateEvidence(evidence.payload) : {
+const validation = evidence.payload ? validateEvidence(evidence.payload, expectedGitHead) : {
   checks: {
+    repoHeadEvidence: expectedGitHead ? false : true,
     pipecatWebrtcBridge: false,
     rtcAsrFinalTranscript: false,
     kokoroAudio: false,
     browserRemoteAudio: false,
   },
   reviewReady: false,
-  missingProof: ["pipecatWebrtcBridge", "rtcAsrFinalTranscript", "kokoroAudio", "browserRemoteAudio"],
+  missingProof: [
+    ...(expectedGitHead ? ["repoHeadEvidence"] : []),
+    "pipecatWebrtcBridge",
+    "rtcAsrFinalTranscript",
+    "kokoroAudio",
+    "browserRemoteAudio",
+  ],
 };
 
 const blockers = [];
@@ -266,6 +294,7 @@ const manifest = {
     reason: evidence.reason,
   },
   setup: {
+    gitHead: expectedGitHead,
     pipecatWebrtcBridgeUrl: process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766",
     rtcAsrBaseUrl: process.env.RTC_ASR_BASE_URL ?? "http://127.0.0.1:8080",
     rtcAsrWsUrl: process.env.RTC_ASR_WS_URL ?? "ws://127.0.0.1:8080/v1/stt/stream",
@@ -281,7 +310,7 @@ const manifest = {
     nextActions: validation.reviewReady ? [] : [
       "Start the Pipecat WebRTC bridge, rtc-asr, and Kokoro sidecars using manifest.setup.commands.",
       "Optionally write a fill-in evidence template with manifest.setup.evidenceTemplateCommand.",
-      "Open /operator/console, connect browser voice, speak one caller turn, and capture bridge/browser proof JSON.",
+      "Open /operator/console, connect browser voice, speak one caller turn, and capture bridge/browser proof JSON from this exact git head.",
       "Rerun npm run browser-webrtc:live-proof -- --evidence <proof.json> --require-review-ready.",
     ],
   },
