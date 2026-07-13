@@ -8,6 +8,11 @@ services:
       - "8026:8026"
     environment:
       PORT: "8026"
+      RTC_ASR_BASE_URL: http://rtc-asr:8080
+      RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
+      RTC_ASR_MODEL: ${RTC_ASR_MODEL:-mlx-community/parakeet-tdt_ctc-110m}
+      KOKORO_BASE_URL: http://kokoro:8880
+      BROWSER_WEBRTC_BRIDGE_URL: http://browser-webrtc-bridge:8766
     healthcheck:
       test:
         - CMD
@@ -67,7 +72,7 @@ services:
   freeswitch:
     image: safarov/freeswitch:latest
     platform: linux/amd64
-    profiles: ["freeswitch"]
+    profiles: ["freeswitch", "sip", "full"]
     depends_on:
       - app
     ports:
@@ -82,3 +87,124 @@ services:
       - ./artifacts/freeswitch-live:/var/log/freeswitch/acc
     environment:
       ACC_BASE_URL: http://app:8026
+
+  rtc-asr:
+    image: ${RTC_ASR_IMAGE:-rtc-asr:local}
+    profiles: ["voice", "browser-webrtc", "sip", "full"]
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      ASR_BACKEND: ${ASR_BACKEND:-faster-whisper}
+      ASR_MODEL: ${ASR_MODEL:-base.en}
+      ASR_DEVICE: ${ASR_DEVICE:-cpu}
+      ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-int8}
+      ASR_PRELOAD_MODEL: ${ASR_PRELOAD_MODEL:-true}
+      ASR_VAD_FILTER: ${ASR_VAD_FILTER:-false}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c 'import json, urllib.request; payload = json.load(urllib.request.urlopen("http://127.0.0.1:8080/health", timeout=2)); raise SystemExit(0 if payload.get("ok", True) and payload.get("status", "ready") not in {"offline", "error", "failed", "degraded"} else 1)'
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  kokoro:
+    image: ${KOKORO_IMAGE:-ghcr.io/remsky/kokoro-fastapi-cpu:latest}
+    profiles: ["voice", "browser-webrtc", "sip", "full"]
+    ports:
+      - "127.0.0.1:8880:8880"
+    environment:
+      KOKORO_MODEL: ${KOKORO_MODEL:-kokoro}
+      KOKORO_VOICE: ${KOKORO_VOICE:-af_heart}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8880/health", timeout=2).read()'
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  browser-webrtc-bridge:
+    build:
+      context: .
+      target: voice-runtime
+    image: agentic-contact-center:voice-local
+    profiles: ["browser-webrtc", "full"]
+    depends_on:
+      - app
+      - rtc-asr
+      - kokoro
+    command:
+      - python3
+      - scripts/pipecat-browser-webrtc-bridge.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8766"
+      - --acc-url
+      - http://app:8026
+    ports:
+      - "127.0.0.1:8766:8766"
+    environment:
+      ACC_URL: http://app:8026
+      RTC_ASR_BASE_URL: http://rtc-asr:8080
+      RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
+      RTC_ASR_MODEL: ${RTC_ASR_MODEL:-mlx-community/parakeet-tdt_ctc-110m}
+      KOKORO_BASE_URL: http://kokoro:8880
+      KOKORO_VOICE: ${KOKORO_VOICE:-af_heart}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c 'import json, urllib.request; payload = json.load(urllib.request.urlopen("http://127.0.0.1:8766/health", timeout=2)); raise SystemExit(0 if payload.get("ok") else 1)'
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  freeswitch-bridge:
+    build:
+      context: .
+      target: runtime
+    image: agentic-contact-center:local
+    profiles: ["sip", "full"]
+    depends_on:
+      - app
+      - freeswitch
+      - rtc-asr
+      - kokoro
+    command:
+      - node
+      - scripts/freeswitch-acc-bridge.mjs
+      - --recording-dir
+      - artifacts/freeswitch-live/media
+      - --freeswitch-recording-dir
+      - /var/log/freeswitch/acc/media
+      - --log
+      - artifacts/freeswitch-live/freeswitch-esl-events.json
+    volumes:
+      - ./artifacts:/app/artifacts
+    environment:
+      ACC_BASE_URL: http://app:8026
+      RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
+      KOKORO_BASE_URL: http://kokoro:8880
+      KOKORO_VOICE: ${KOKORO_VOICE:-af_heart}
+
+  assert-viewer:
+    build:
+      context: .
+      target: assert-runtime
+    image: agentic-contact-center:assert-local
+    profiles: ["eval", "full"]
+    command:
+      - sh
+      - -lc
+      - node scripts/assert-export.mjs && node scripts/assert-viewer.mjs
+    ports:
+      - "127.0.0.1:5174:5174"
+    volumes:
+      - ./artifacts:/app/artifacts
+      - ./.assert-viewer:/app/.assert-viewer
+    environment:
+      ARTIFACTS_ROOT: /app/artifacts/results
