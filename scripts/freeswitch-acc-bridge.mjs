@@ -48,6 +48,12 @@ async function inspectRtcAsrEvidence(filePath, stats) {
   return { ready: true, eventCount: evidence.length, transcript };
 }
 
+async function resetRtcAsrEvidence(filePath) {
+  if (!filePath) return;
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, "", "utf8");
+}
+
 function parseJsonOrJsonLines(raw) {
   try {
     const parsed = JSON.parse(raw);
@@ -1312,13 +1318,12 @@ export class EslBridge {
       pipecatRtpFrameBatch,
     });
     let rtcAsrStreamEvidence = null;
-    const attachedRtcAsrEvidence = this.options.rtcAsrEvidencePath
-      ? await inspectRtcAsrEvidence(this.options.rtcAsrEvidencePath, await stat(this.options.rtcAsrEvidencePath).catch(() => null))
-      : null;
-    if (this.options.rtcAsrUrl && !attachedRtcAsrEvidence?.ready) {
+    if (this.options.rtcAsrUrl) {
+      await resetRtcAsrEvidence(this.options.rtcAsrEvidencePath);
       const sink = new RtcAsrPipecatStreamSink({
         url: this.options.rtcAsrUrl,
         evidencePath: this.options.rtcAsrEvidencePath,
+        WebSocketImpl: this.options.rtcAsrWebSocketImpl,
         clientStreamId: `${uuid}-local-sip`,
       });
       try {
@@ -1331,13 +1336,16 @@ export class EslBridge {
     }
     await this.postPipecatPlaybackEvent(uuid);
 
-    if (this.options.rtcAsrEvidencePath && attachedRtcAsrEvidence?.ready && attachedRtcAsrEvidence.transcript) {
+    const currentRtcAsrEvidence = this.options.rtcAsrEvidencePath
+      ? await inspectRtcAsrEvidence(this.options.rtcAsrEvidencePath, await stat(this.options.rtcAsrEvidencePath).catch(() => null))
+      : null;
+    if (this.options.rtcAsrEvidencePath && currentRtcAsrEvidence?.ready && currentRtcAsrEvidence.transcript) {
       const transcriptResponse = await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
         eventType: "media.transcript",
         timestamp: nowIso(),
         sipCallId: uuid,
         fsUuid: uuid,
-        text: attachedRtcAsrEvidence.transcript,
+        text: currentRtcAsrEvidence.transcript,
         rtcAsrEvidencePath: this.options.rtcAsrEvidencePath,
       });
       await this.playLiveKokoroTts(latestAgentText(transcriptResponse.body), uuid);

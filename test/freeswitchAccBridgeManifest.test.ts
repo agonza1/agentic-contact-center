@@ -1253,7 +1253,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
 });
 
 
-test("FreeSWITCH bridge forwards attached rtc-asr evidence to ACC", async () => {
+test("FreeSWITCH bridge forwards attached rtc-asr evidence to ACC when live rtc-asr is not configured", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-forward-rtc-asr-"));
   const audioPath = path.join(tempDir, "fs-call.wav");
@@ -1288,7 +1288,6 @@ test("FreeSWITCH bridge forwards attached rtc-asr evidence to ACC", async () => 
         accBaseUrl: ${JSON.stringify(`http://127.0.0.1:${(server.address() as any).port}`)},
         logPath: ${JSON.stringify(logPath)},
         manifestPath: ${JSON.stringify(manifestPath)},
-        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
         rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
         telephonyMode: "local_sip"
       });
@@ -1314,6 +1313,83 @@ test("FreeSWITCH bridge forwards attached rtc-asr evidence to ACC", async () => 
     const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { reviewReady: boolean; blockers: string[] };
     assert.equal(manifest.reviewReady, false);
     assert.ok(manifest.blockers.some((blocker) => blocker.includes("caller playback RTP was not sent")));
+  } finally {
+    server.close();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+
+test("FreeSWITCH bridge re-transcribes current SIP audio instead of trusting stale rtc-asr evidence", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-current-rtc-asr-"));
+  const audioPath = path.join(tempDir, "fs-call.wav");
+  const logPath = path.join(tempDir, "freeswitch-esl-events.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.jsonl");
+  const manifestPath = path.join(tempDir, "freeswitch-live-proof-manifest.json");
+  const receivedEvents: any[] = [];
+
+  const server = await new Promise<import("node:http").Server>((resolve) => {
+    const http = require("node:http") as typeof import("node:http");
+    const instance = http.createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk) => chunks.push(chunk));
+      request.on("end", () => {
+        const body = chunks.length > 0 ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
+        receivedEvents.push(body);
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ ok: true, call: { session: { callId: "acc-call-current" } } }));
+      });
+    });
+    instance.listen(0, "127.0.0.1", () => resolve(instance));
+  });
+
+  try {
+    await writeFile(audioPath, validWavFixture());
+    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: "stale previous caller", final: true })}\n`, "utf8");
+
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = `
+      const { EslBridge } = await import(${JSON.stringify(moduleUrl)});
+      class FakeWebSocket {
+        constructor(url) { this.url = url; this.readyState = 1; this.listeners = new Map(); }
+        addEventListener(name, handler) { this.listeners.set(name, handler); }
+        send(payload) {
+          if (!Buffer.isBuffer(payload) && JSON.parse(payload).type === "finalize") {
+            queueMicrotask(() => this.listeners.get("message")?.({ data: JSON.stringify({ type: "transcript", text: "current caller needs help", is_final: true, speech_final: true }) }));
+          }
+        }
+        close(code, reason) { this.closeCode = code; this.closeReason = reason; }
+      }
+      const bridge = new EslBridge({
+        accBaseUrl: ${JSON.stringify(`http://127.0.0.1:${(server.address() as any).port}`)},
+        logPath: ${JSON.stringify(logPath)},
+        manifestPath: ${JSON.stringify(manifestPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
+        rtcAsrWebSocketImpl: FakeWebSocket,
+        telephonyMode: "local_sip"
+      });
+      bridge.events = [{ at: "2026-06-30T10:00:00.000Z", headers: { "Event-Name": "CHANNEL_ANSWER" } }];
+      bridge.callMap.set("fs-call-current", {
+        wavPath: ${JSON.stringify(audioPath)},
+        freeswitchPath: ${JSON.stringify(audioPath)},
+        startedAt: Date.now(),
+        destination: "8600",
+        accCallId: "acc-call-current"
+      });
+      await bridge.onRecordStop("fs-call-current");
+    `;
+    await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+
+    const transcriptEvent = receivedEvents.find((event) => event.eventType === "media.transcript");
+    assert.equal(transcriptEvent?.text ?? transcriptEvent?.transcript, "current caller needs help");
+    const evidence = await readFile(rtcAsrEvidencePath, "utf8");
+    assert.match(evidence, /current caller needs help/);
+    assert.doesNotMatch(evidence, /stale previous caller/);
   } finally {
     server.close();
     await rm(tempDir, { recursive: true, force: true });
