@@ -628,6 +628,9 @@ test("FreeSWITCH bridge broadcasts live Kokoro TTS even without caller RTP socke
     assert.equal(playbackEvents[0].rtpSocketSendReady, false);
     assert.equal(playbackEvents[0].packetCount, 1);
     assert.equal(playbackEvents[0].sentPacketCount, 0);
+    assert.equal(playbackEvents[0].freeswitchBroadcastMode, "freeswitch_uuid_broadcast");
+    assert.equal(playbackEvents[0].freeswitchBroadcastPath.startsWith("/var/log/freeswitch/acc/media/fs-live-kokoro-no-rtp-kokoro-tts-"), true);
+    assert.equal(playbackEvents[0].freeswitchBroadcastAudioBytes, 8);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     await rm(tempDir, { recursive: true, force: true });

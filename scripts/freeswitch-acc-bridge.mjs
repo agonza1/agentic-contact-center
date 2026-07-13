@@ -845,7 +845,10 @@ function playbackTargetMatchesCallerRtp(remoteRtp, playbackEvidence) {
 }
 
 function playbackHasCallerAudibleProof(playbackEvidence) {
-  return playbackEvidence?.callerPlaybackConfirmed === true && typeof playbackEvidence.callerPlaybackEvidencePath === "string" && playbackEvidence.callerPlaybackEvidencePath.trim().length > 0;
+  const hasEvidencePath = typeof playbackEvidence?.callerPlaybackEvidencePath === "string" && playbackEvidence.callerPlaybackEvidencePath.trim().length > 0;
+  const hasSocketSend = playbackEvidence?.rtpSocketSendReady === true;
+  const hasBroadcast = playbackEvidence?.freeswitchBroadcast?.mode === "freeswitch_uuid_broadcast";
+  return playbackEvidence?.callerPlaybackConfirmed === true && hasEvidencePath && (hasSocketSend || hasBroadcast);
 }
 
 function sleep(ms) {
@@ -1019,6 +1022,7 @@ export class EslBridge {
     this.rtpPlaybackSink = this.createRtpPlaybackSink();
     this.pipecatOutputFixturePlayed = false;
     this.pipecatPlaybackEventPosted = false;
+    this.freeswitchBroadcast = null;
   }
 
   createRtpPlaybackSink() {
@@ -1049,6 +1053,7 @@ export class EslBridge {
       sink: call?.rtpPlaybackSink ?? this.rtpPlaybackSink,
       played: call ? call.pipecatOutputFixturePlayed === true : this.pipecatOutputFixturePlayed,
       posted: call ? call.pipecatPlaybackEventPosted === true : this.pipecatPlaybackEventPosted,
+      freeswitchBroadcast: call?.freeswitchBroadcast ?? this.freeswitchBroadcast,
     };
   }
 
@@ -1129,9 +1134,12 @@ export class EslBridge {
       else state.sink.packetize(frame);
       const broadcast = await this.broadcastKokoroFrame(uuid, frame);
       const summary = state.sink.summary();
-      this.events.push({ at: nowIso(), pipecatLiveKokoroTtsPlayback: { ...summary, sourceText: agentText, tts: frame.tts, freeswitchBroadcast: broadcast } });
+      if (state.call) state.call.freeswitchBroadcast = broadcast;
+      else this.freeswitchBroadcast = broadcast;
+      const playbackEvidence = { ...summary, freeswitchBroadcast: broadcast };
+      this.events.push({ at: nowIso(), pipecatLiveKokoroTtsPlayback: { ...playbackEvidence, sourceText: agentText, tts: frame.tts } });
       await this.postPipecatPlaybackEvent(uuid);
-      return { ...summary, freeswitchBroadcast: broadcast };
+      return playbackEvidence;
     } catch (error) {
       const failure = { at: nowIso(), error: error instanceof Error ? error.message : String(error) };
       state.sink.errors.push(failure);
@@ -1170,6 +1178,11 @@ export class EslBridge {
       ssrc: playbackSummary.ssrc,
       lastSentAt: playbackSummary.lastSentAt,
       evidencePath: this.options.manifestPath,
+      freeswitchBroadcastMode: (state.call?.freeswitchBroadcast ?? this.freeswitchBroadcast)?.mode ?? null,
+      freeswitchBroadcastHostPath: (state.call?.freeswitchBroadcast ?? this.freeswitchBroadcast)?.hostPath ?? null,
+      freeswitchBroadcastPath: (state.call?.freeswitchBroadcast ?? this.freeswitchBroadcast)?.freeswitchPath ?? null,
+      freeswitchBroadcastSampleRateHz: (state.call?.freeswitchBroadcast ?? this.freeswitchBroadcast)?.sampleRateHz ?? null,
+      freeswitchBroadcastAudioBytes: (state.call?.freeswitchBroadcast ?? this.freeswitchBroadcast)?.audioBytes ?? null,
     });
     if (state.call) state.call.pipecatPlaybackEventPosted = true;
     else this.pipecatPlaybackEventPosted = true;
@@ -1233,6 +1246,7 @@ export class EslBridge {
       rtpPlaybackSink,
       pipecatOutputFixturePlayed: false,
       pipecatPlaybackEventPosted: false,
+      freeswitchBroadcast: null,
     });
     this.currentRtpCallUuid = uuid;
     this.send(`api uuid_record ${uuid} start ${freeswitchPath}`);
@@ -1318,7 +1332,7 @@ export class EslBridge {
       telephonyMode: this.options.telephonyMode,
       pipecatRtpEvidence: pipecatRtpFrameBatch,
       rtcAsrStreamEvidence,
-      pipecatOutboundRtpEvidence: (call.rtpPlaybackSink ?? this.rtpPlaybackSink).summary(),
+      pipecatOutboundRtpEvidence: { ...(call.rtpPlaybackSink ?? this.rtpPlaybackSink).summary(), freeswitchBroadcast: call.freeswitchBroadcast ?? null },
     });
     await mkdir(path.dirname(this.options.manifestPath), { recursive: true });
     await writeFile(this.options.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");

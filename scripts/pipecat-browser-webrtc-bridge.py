@@ -73,6 +73,10 @@ class BrowserWebrtcBridge:
         self.request_handler = SmallWebRTCRequestHandler(host=host)
         self.sessions: dict[str, dict[str, Any]] = {}
 
+    def remember_session_alias(self, alias: str | None, session: dict[str, Any]) -> None:
+        if isinstance(alias, str) and alias.strip():
+            self.sessions[alias.strip()] = session
+
     async def readiness(self, request: web.Request) -> web.Response:
         acc_url = request.query.get("accUrl", DEFAULT_ACC_URL)
         skip_acc = request.query.get("skipAcc", "").lower() in {"1", "true", "yes"}
@@ -107,7 +111,7 @@ class BrowserWebrtcBridge:
         )
         runner = PipelineRunner()
         runner_task = asyncio.create_task(runner.run(task, auto_end=False))
-        self.sessions[session_id] = {
+        session_record = {
             "connection": connection,
             "transport": transport,
             "runner": runner,
@@ -117,6 +121,7 @@ class BrowserWebrtcBridge:
             "callId": call_id,
             "startedAt": datetime.now(UTC).isoformat(timespec="seconds"),
         }
+        self.remember_session_alias(session_id, session_record)
         return session
 
     async def offer(self, request: web.Request) -> web.Response:
@@ -145,12 +150,20 @@ class BrowserWebrtcBridge:
         if not answer:
             return web.json_response({"ok": False, "error": "webrtc_answer_unavailable"}, status=502)
 
+        pc_id = str(answer.get("pc_id") or payload.get("pcId") or payload.get("pc_id") or session_id)
+        session_record = self.sessions.get(session_id) or self.sessions.get(pc_id)
+        if session_record:
+            session_record["sessionId"] = session_id
+            session_record["pcId"] = pc_id
+            self.remember_session_alias(session_id, session_record)
+            self.remember_session_alias(pc_id, session_record)
+
         evidence = {
             "source": "pipecat_small_webrtc_pipeline",
             "runtimeMode": "pipecat_small_webrtc_pipeline",
             "transport": "SmallWebRTCTransport",
             "sessionId": session_id,
-            "pcId": answer.get("pc_id"),
+            "pcId": pc_id,
             "callId": call_id,
             "mediaRecorderRequired": False,
             "ffmpegRequired": False,
@@ -172,7 +185,7 @@ class BrowserWebrtcBridge:
                 "sdp": normalize_browser_answer_sdp(str(answer.get("sdp", ""))),
                 "sessionId": session_id,
                 "callId": call_id,
-                "pcId": answer.get("pc_id"),
+                "pcId": pc_id,
                 "iceServers": [],
                 "evidence": evidence,
             }
@@ -218,7 +231,8 @@ class BrowserWebrtcBridge:
         return web.json_response(
             {
                 "ok": True,
-                "sessionId": session_id,
+                "sessionId": session.get("sessionId") or session_id,
+                "pcId": session.get("pcId") or session_id,
                 "callId": session.get("callId"),
                 "startedAt": session.get("startedAt"),
                 "transport": "SmallWebRTCTransport",
