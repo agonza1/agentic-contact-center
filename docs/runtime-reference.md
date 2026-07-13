@@ -95,23 +95,6 @@ npm run pipecat:webrtc
 
 `npm run pipecat:webrtc` starts `scripts/pipecat-browser-webrtc-bridge.py` on `http://127.0.0.1:8766`. Its offer endpoint is `POST /api/webrtc/offer`; ACC proxies browser SDP offers to it from `POST /api/browser-webrtc/session`. The bridge terminates browser WebRTC with `aiortc`, converts audio to PCM with PyAV/audioop, wraps the turn in Pipecat frame types, streams PCM to rtc-asr Local STT v1, posts the final transcript to `/api/calls/:callId/caller-turn`, requests Kokoro WAV audio, and streams PCM back as a WebRTC remote audio track. This normal path has no `ffmpeg` dependency.
 
-## Legacy local voice bridge sidecars
-
-The old local WebSocket chunk bridge remains as legacy proof plumbing only. It requires rtc-asr, Kokoro, and `ffmpeg` before live voice turns because browser audio arrives as webm chunks. rtc-asr owns ASR model loading and Kokoro owns speech synthesis. The default rtc-asr evidence label is `mlx-community/parakeet-tdt_ctc-110m`, chosen from the checked-in rtc-asr MLX service benchmark lane as the fast small English contact-center option (`docs/benchmark-results/parakeet-mlx-110m-service-2026-06-21.json`). Override only when rtc-asr is configured with a different model:
-
-```bash
-export RTC_ASR_BASE_URL=http://127.0.0.1:8080
-export RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream
-export ASR_VAD_FILTER=false
-export RTC_ASR_MODEL=mlx-community/parakeet-tdt_ctc-110m
-export KOKORO_BASE_URL=http://127.0.0.1:8880
-export KOKORO_VOICE=af_heart
-npm run pipecat:voice:check
-npm run pipecat:voice
-```
-
-The legacy bridge ready payload and each successful `turn.evidence` report `stt.engine=rtc-asr` and `tts.engine=kokoro`, plus sidecar health or elapsed timing. This legacy bridge is not the Issue #213 normal browser voice path.
-
 ## Unified Pipecat media-engine readiness
 
 Issue #214 tracks the target shared media engine for browser WebRTC, local SIP/FreeSWITCH, and future SignalWire SIP trunk audio. The current reviewable contract is exposed at:
@@ -138,7 +121,7 @@ The flow enters `policy_hold` before unsafe retention offers, requests operator 
 ```bash
 curl -s -X POST http://localhost:8026/api/demo/start \
   -H 'content-type: application/json' \
-  -d '{"openclawSessionLabel":"manual-demo"}'
+  -d '{}'
 ```
 
 Use the returned `session.callId` in follow-up calls:
@@ -179,18 +162,6 @@ Gate the proof on the local Pipecat package boundary:
 npm run proof:pipecat -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json
 ```
 
-Generate realtime shim issue proof evidence:
-
-```bash
-npm run proof:realtime-shim -- --out artifacts/realtime-shim-proof.json
-```
-
-Generate speech enhancement spike proof evidence:
-
-```bash
-npm run proof:speech-enhancement
-```
-
 Generate a ConversationAgentEvals-ready proof bundle with media artifacts:
 
 ```bash
@@ -204,7 +175,7 @@ See `docs/demo-proof-runbook.md` for inspection checklists.
 
 ## Common filters and pagination
 
-Common list/queue filters include `callId`, `providerCallId`, `flowState`, `pipecatActiveTool`, `pendingOperatorSteer`, `fallbackArmed`, `attentionRequired`, `attentionSource`, `attentionReason`, `openclawSessionId`, `openclawSessionLabel`, `openclawSessionRef`, `transcriptText`, `scriptCompleted`, `minScriptProgressPct`, `maxScriptProgressPct`, `minAttentionAgeMs`, `maxAttentionAgeMs`, `latencyStage`, `latencyOverBudget`, `fallbackMode`, `fallbackReason`, and `fallbackSource`.
+Common list/queue filters include `callId`, `providerCallId`, `flowState`, `pipecatActiveTool`, `pendingOperatorSteer`, `fallbackArmed`, `attentionRequired`, `attentionSource`, `attentionReason`, `transcriptText`, `scriptCompleted`, `minScriptProgressPct`, `maxScriptProgressPct`, `minAttentionAgeMs`, `maxAttentionAgeMs`, `latencyStage`, `latencyOverBudget`, `fallbackMode`, `fallbackReason`, and `fallbackSource`.
 
 Call, transcript, event, and latency routes support pagination with `offset`, `limit`, and `order=asc|desc`. Event trails also support `detailKey` and `detailText` filters for scoped QA proof lookups. Their max page size is `100`.
 
@@ -221,13 +192,9 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `GET /api/calls`: list active calls with optional queue/operator filters.
 - `GET /api/queue`: return queue summary metadata without full call payloads.
 - `GET /api/operator/actions`: expose the Slack-ready operator action catalog with command examples, reason/pending-call requirements, HTTP body templates, and outcome hints for console buttons.
-- `GET /api/realtime-shim/proof`: expose deterministic Gateway relay and Local STT v1 evidence for the mocked realtime shim path.
-- `GET /api/realtime-shim/readiness`: summarize adapter shape, browser relay compatibility, reviewer packet, mocked pieces, and limitations from proof evidence.
 - `GET /api/pipecat-media-engine/readiness`: expose the Issue #214 shared browser WebRTC, local SIP/FreeSWITCH, and SignalWire SIP trunk Pipecat media-engine contract, including the current realtime SIP RTP blocker.
-- `GET /api/browser-webrtc/readiness`: expose the Issue #213 browser WebRTC voice contract, dependency readiness, bridge endpoint, and legacy chunk bridge isolation.
+- `GET /api/browser-webrtc/readiness`: expose the Issue #213 browser WebRTC voice contract, dependency readiness, and bridge endpoint.
 - `POST /api/browser-webrtc/session`: validate browser SDP offers, allocate or preserve an ACC call ID, and proxy offer/answer signaling to the local Pipecat WebRTC bridge.
-- `GET /api/realtime-shim/speech-enhancement-spike`: summarize latency-configurable speech enhancement placement, candidate latency settings, replay metric shape, and feature-flag recommendation for `rtc-asr`.
-- `POST /api/realtime-shim/rpc`: exercise the `talk.session.*` Gateway relay RPC boundary with persistent local shim session state.
 - `GET /assert/full`: serve the local navigation wrapper around the upstream ASSERT viewer on `http://127.0.0.1:5174`.
 - `GET /assert`: serve the ACC local artifact viewer.
 - `GET /assert/spec`: serve the editable local ASSERT evaluation spec UI.
@@ -248,8 +215,6 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `npm test`: build and run Node tests from `dist/test/*.test.js`.
 - `npm start`: run the compiled server from `dist/src/index.js`.
 - `npm run proof`: build and run `scripts/demo-proof.mjs`.
-- `npm run proof:realtime-shim`: build and write the realtime shim proof artifact.
-- `npm run proof:speech-enhancement`: build and write the speech enhancement spike artifact.
 - `npm run pipecat:check`: verify the local `pipecat-ai` runtime package boundary without live telephony.
 - `npm run pipecat:webrtc:install`: install Pipecat voice bridge dependencies into `.pipecat-runtime`.
 - `npm run browser-webrtc:check`: verify `/health` exposes the normal browser WebRTC path with ACC, Pipecat bridge, rtc-asr, and Kokoro readiness and no normal-path `ffmpeg` requirement.

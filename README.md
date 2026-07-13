@@ -2,7 +2,7 @@
 
 Agentic Contact Center is a runnable ClueCon 2026 proof of concept for a safer, operator-steerable voice contact-center flow. It demonstrates a cancellation-rescue call where the realtime loop is owned by the application: the agent can pause at risky policy boundaries, accept operator steer, fail closed to a human handoff, and export reviewable evidence.
 
-The active app is the TypeScript service under `src/`. The older FastAPI/static-web prototype under `apps/` is reference material only.
+The active app is the TypeScript service under `src/`.
 
 ## Core Value
 
@@ -27,17 +27,16 @@ flowchart LR
     evidence --> evals[ASSERT and ConversationAgentEvals handoff]
 ```
 
-The TypeScript service in `src/` owns the HTTP routes, in-memory call state, local Pipecat flow contract, operator steer, fallback, and evidence. `docs/realtime-shim-contract.md` maps the OpenAI Realtime-style web voice lifecycle to the local [`rtc-asr`](https://github.com/agonza1/rtc-asr) / Local STT v1 sidecar contract. The runtime is intentionally local and in-memory; restarting the server clears calls.
+The TypeScript service in `src/` owns the HTTP routes, in-memory call state, local Pipecat flow contract, operator steer, fallback, and evidence. The runtime is intentionally local and in-memory; restarting the server clears calls.
 
 ## Prerequisites
 
 - Node.js 20 or newer and npm.
 - Python 3.11+ for optional Pipecat checks or the local voice bridge.
 - Running rtc-asr and Kokoro sidecars for the live browser voice path.
-- Optional: `ffmpeg` on `PATH` only for the legacy local WebSocket chunk bridge. The intended browser WebRTC path does not require `ffmpeg` for normal operation.
 - Docker and Docker Compose only for containerized commands.
 
-No production credentials are required for the mocked POC. SignalWire, CRM, billing, auth, account access, live telephony, Slack posting, and OpenClaw actions are mocked or represented as deterministic contracts.
+No production credentials are required for the mocked POC. SignalWire, CRM, billing, auth, account access, live telephony, and Slack posting are mocked or represented as deterministic contracts.
 
 ## Quick Start
 
@@ -74,7 +73,7 @@ npm run browser-webrtc:live-proof -- --write-template artifacts/browser-webrtc-l
 npm run browser-webrtc:live-proof -- --evidence artifacts/browser-webrtc-live-proof/proof.json --require-review-ready
 ```
 
-The readiness payload distinguishes ACC contract readiness from live media verification. It reports the Pipecat WebRTC bridge endpoint, rtc-asr, Kokoro, the legacy chunk bridge, and the fact that normal WebRTC browser voice must not require `MediaRecorder` webm chunks or `ffmpeg`. The ACC server proxies browser SDP offers from `POST /api/browser-webrtc/session` to `BROWSER_WEBRTC_BRIDGE_URL` (default `http://127.0.0.1:8766`). Until a local browser proof is attached, `liveMedia.verified=false` and the blocker is `live_webrtc_media_turn_evidence_missing`. The optional `--write-template` command creates the exact JSON event shape reviewers can fill from a real local browser turn before running the review gate, including the current git head so proof is tied to the PR commit under review.
+The readiness payload distinguishes ACC contract readiness from live media verification and reports the Pipecat WebRTC bridge, rtc-asr, and Kokoro separately. The ACC server proxies browser SDP offers from `POST /api/browser-webrtc/session` to `BROWSER_WEBRTC_BRIDGE_URL` (default `http://127.0.0.1:8766`). Until a local browser proof is attached, `liveMedia.verified=false` and the blocker is `live_webrtc_media_turn_evidence_missing`. The optional `--write-template` command creates the exact JSON event shape reviewers can fill from a real local browser turn before running the review gate, including the current git head so proof is tied to the PR commit under review.
 
 Run the normal browser WebRTC bridge and sidecars in separate terminals:
 
@@ -107,26 +106,6 @@ Then open `http://127.0.0.1:8026/operator/console`, click **Connect Voice**, all
 ```bash
 npm run browser-webrtc:live-proof -- --evidence artifacts/browser-webrtc-live-proof/proof.json --require-review-ready
 ```
-
-## Legacy Local Voice Bridge
-
-The older local voice bridge remains available only as legacy proof plumbing. It records browser webm chunks over a local WebSocket and uses `ffmpeg` for conversion, so it is not the normal browser voice path for Issue #213.
-
-With rtc-asr, Kokoro, and `ffmpeg` already running locally, install and run the legacy bridge in another terminal:
-
-```bash
-npm run pipecat:voice:install
-npm run pipecat:voice:check
-npm run pipecat:voice
-```
-
-The legacy audio path is:
-
-```text
-browser mic -> MediaRecorder webm chunks -> local Pipecat WebSocket bridge -> ffmpeg -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> browser playback
-```
-
-rtc-asr owns model loading and selection; the legacy bridge reports `stt.engine=rtc-asr` and `tts.engine=kokoro` in ready and turn evidence. Typed caller turns still exercise the same call-flow API when the bridge is not running. See `docs/runtime-reference.md` for sidecar URLs, model notes, and deeper runtime commands.
 
 ## ConversationAgentEvals Integration
 
@@ -175,12 +154,11 @@ Docker exposes the app on port `8026` and includes `/health` checks in both `Doc
 
 ## Project Layout
 
-Active code lives in `src/`, tests in `test/`, proof/runtime scripts in `scripts/`, and deeper context in `docs/`. The legacy prototype remains under `apps/api` and `apps/web`.
+Active code lives in `src/`, tests in `test/`, proof/runtime scripts in `scripts/`, and deeper context in `docs/`.
 
 ## Caveats
 
 - State is in-memory and process-local.
 - The local voice bridge uses real local STT/TTS plumbing, but production telephony/provider integrations are mocked.
 - `/api/assert/spec` saves the eval spec in memory for the running process; restart resets it to the default.
-- `apps/api` and `apps/web` are not covered by the root npm scripts or Docker runtime.
 - Local SIP live capture is supported for review workflows; see `docs/freeswitch-local-sip-runbook.md` and `docs/runtime-reference.md` for the current harness and caveats.

@@ -78,69 +78,10 @@ test("GET /health returns config-backed demo metadata", async () => {
         rtcAsr: { status: string; engine: string; contract: string };
         kokoro: { status: string; engine: string };
       };
-      legacyChunkBridge: {
-        status: string;
-        mediaRecorderRequired: boolean;
-        ffmpegRequired: boolean;
-        intendedForNormalBrowserVoice: boolean;
-      };
       liveMedia: { verified: boolean; status: string };
       blockers: string[];
       contractReady: boolean;
       liveMediaVerified: boolean;
-    };
-    speechEnhancement: {
-      issue: string;
-      issueUrl: string;
-      reviewRoute: string;
-      captureTemplateRoute: string;
-      captureReplayChecklistRoute: string;
-      captureReplayCloseGateRoute: string;
-      captureReplayValidationRoute: string;
-      captureTemplateCommand: string;
-      sourceManifestTemplateCommand: string;
-      recommendedLatencyMs: number;
-      runtimeEnv: { featureFlag: string; latencyMs: string };
-      runtimeStatus: string;
-      runtimeEnabled: boolean;
-      runtimeLatencyMs: number;
-      runtimeBypassReason?: string;
-      runtimeBypassReasons: string[];
-      runtimeLookaheadFrames: number | null;
-      runtimeMaxBufferedAudioMs: number | null;
-      runtimeProfileExpectedUse: string | null;
-      runtimeProfileRecommendation: string | null;
-      runtimeProfileId: string | null;
-      runtimeProfileEnvValue: string | null;
-      runtimeProfileEnableCommand: string | null;
-      runtimeProfileBypassWhen: string[];
-      runtimeLiveDemoEligible: boolean;
-      closeGateStatus: string;
-      closeGateRequiredLatencyMs: number;
-      closeGateMaxAddedTurnLatencyMsP95: number;
-      closeGateMaxCpuPercentP95: number;
-      captureReplayCoverage: {
-        syntheticNoisyReplayCount: number;
-        realNoisyCaptureReplayCount: number;
-        baselineEnhancedPairs: number;
-        liveDemoGate: string;
-        missingEvidence: string[];
-      };
-      liveDemoGate: string;
-      issueCloseReady: boolean;
-      reviewChecks: { realNoisyCaptureReplay: boolean; cpuRuntimeCost: boolean };
-      failureReasons: Record<string, string>;
-      missingEvidence: string[];
-      blockers: string[];
-      nextEvidence: string[];
-      nextAction: { owner: string; action: string; command: string; reason: string };
-      nextChecklistStep: { step: string; owner: string; evidence: string; command: string; status: string; reason: string };
-      passingRealCaptureReplayIds: string[];
-      blockedRealCaptureReplayIds: string[];
-      strictArtifactVerification: { requiredForClose: boolean; verified: boolean; reason: string };
-      captureReplayFixturePath: string;
-      validationCommand: string;
-      strictValidationCommand: string;
     };
   };
 
@@ -186,133 +127,9 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.browserWebRtc.readiness.rtcAsr.engine, "rtc-asr");
   assert.equal(payload.browserWebRtc.readiness.rtcAsr.contract, "local-stt.v1");
   assert.equal(payload.browserWebRtc.readiness.kokoro.engine, "kokoro");
-  assert.equal(payload.browserWebRtc.legacyChunkBridge.status, "isolated_legacy");
-  assert.equal(payload.browserWebRtc.legacyChunkBridge.mediaRecorderRequired, true);
-  assert.equal(payload.browserWebRtc.legacyChunkBridge.ffmpegRequired, true);
-  assert.equal(payload.browserWebRtc.legacyChunkBridge.intendedForNormalBrowserVoice, false);
   assert.equal(payload.browserWebRtc.liveMedia.verified, false);
   assert.equal(payload.browserWebRtc.liveMedia.status, "pending_local_bridge_proof");
   assert.deepEqual(payload.browserWebRtc.blockers, ["live_webrtc_media_turn_evidence_missing"]);
   assert.equal(payload.browserWebRtc.contractReady, true);
   assert.equal(payload.browserWebRtc.liveMediaVerified, false);
-  assert.equal(payload.speechEnhancement.issue, "agonza1/agentic-contact-center#97");
-  assert.equal(payload.speechEnhancement.issueUrl, "https://github.com/agonza1/agentic-contact-center/issues/97");
-  assert.equal(payload.speechEnhancement.reviewRoute, "/api/realtime-shim/speech-enhancement-spike");
-  assert.equal(
-    payload.speechEnhancement.captureTemplateRoute,
-    "/api/realtime-shim/speech-enhancement-spike/capture-template?includeContract=1",
-  );
-  assert.equal(
-    payload.speechEnhancement.captureReplayChecklistRoute,
-    "/api/realtime-shim/speech-enhancement-spike/capture-replay/checklist",
-  );
-  assert.equal(
-    payload.speechEnhancement.captureReplayCloseGateRoute,
-    "/api/realtime-shim/speech-enhancement-spike/capture-replay/close-gate",
-  );
-  assert.equal(
-    payload.speechEnhancement.captureReplayValidationRoute,
-    "/api/realtime-shim/speech-enhancement-spike/capture-replay/validate",
-  );
-  assert.equal(
-    payload.speechEnhancement.captureTemplateCommand,
-    "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
-  );
-  assert.equal(
-    payload.speechEnhancement.sourceManifestTemplateCommand,
-    "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json --source-manifest-template-out artifacts/local-sip/proof-manifest-001.json",
-  );
-  assert.equal(payload.speechEnhancement.recommendedLatencyMs, 12.5);
-  assert.deepEqual(payload.speechEnhancement.runtimeEnv, {
-    featureFlag: "RTC_ASR_SPEECH_ENHANCEMENT",
-    latencyMs: "RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS",
-  });
-  assert.equal(payload.speechEnhancement.runtimeStatus, "disabled");
-  assert.equal(payload.speechEnhancement.runtimeEnabled, false);
-  assert.equal(payload.speechEnhancement.runtimeLatencyMs, 12.5);
-  assert.equal(payload.speechEnhancement.runtimeBypassReason, "feature_flag_disabled");
-  assert.deepEqual(payload.speechEnhancement.runtimeBypassReasons, [
-    "feature_flag_disabled",
-    "blocked_until_real_capture",
-  ]);
-  assert.equal(payload.speechEnhancement.runtimeLookaheadFrames, 1);
-  assert.equal(payload.speechEnhancement.runtimeMaxBufferedAudioMs, 32.5);
-  assert.equal(payload.speechEnhancement.runtimeProfileExpectedUse, "default");
-  assert.equal(payload.speechEnhancement.runtimeProfileRecommendation, "recommended");
-  assert.equal(payload.speechEnhancement.runtimeProfileId, "latency_12_5_ms");
-  assert.equal(payload.speechEnhancement.runtimeProfileEnvValue, "12.5");
-  assert.equal(
-    payload.speechEnhancement.runtimeProfileEnableCommand,
-    "RTC_ASR_SPEECH_ENHANCEMENT=enabled RTC_ASR_SPEECH_ENHANCEMENT_LATENCY_MS=12.5 npm run proof:realtime-shim",
-  );
-  assert.deepEqual(payload.speechEnhancement.runtimeProfileBypassWhen, [
-    "added_turn_latency_p95_exceeds_candidate_budget",
-    "enhanced_cpu_percent_p95_exceeds_80",
-    "barge_in_or_endpointing_regresses",
-  ]);
-  assert.equal(payload.speechEnhancement.runtimeLiveDemoEligible, false);
-  assert.equal(payload.speechEnhancement.closeGateStatus, "blocked_before_real_capture");
-  assert.equal(payload.speechEnhancement.closeGateRequiredLatencyMs, 12.5);
-  assert.equal(payload.speechEnhancement.closeGateMaxAddedTurnLatencyMsP95, 25);
-  assert.equal(payload.speechEnhancement.closeGateMaxCpuPercentP95, 80);
-  assert.deepEqual(payload.speechEnhancement.captureReplayCoverage, {
-    syntheticNoisyReplayCount: 1,
-    realNoisyCaptureReplayCount: 0,
-    baselineEnhancedPairs: 1,
-    liveDemoGate: "blocked_until_real_capture",
-    missingEvidence: [
-      "real_noisy_local_sip_capture_baseline_vs_enhanced_replay",
-      "measured_cpu_cost_on_selected_rtc_asr_host_under_80_percent_p95",
-    ],
-  });
-  assert.equal(payload.speechEnhancement.liveDemoGate, "blocked_until_real_capture");
-  assert.equal(payload.speechEnhancement.issueCloseReady, false);
-  assert.equal(payload.speechEnhancement.reviewChecks.realNoisyCaptureReplay, false);
-  assert.equal(payload.speechEnhancement.reviewChecks.cpuRuntimeCost, false);
-  assert.match(payload.speechEnhancement.failureReasons.realNoisyCaptureReplay, /real noisy local SIP capture/);
-  assert.ok(
-    payload.speechEnhancement.missingEvidence.includes(
-      "real_noisy_local_sip_capture_baseline_vs_enhanced_replay",
-    ),
-  );
-  assert.ok(payload.speechEnhancement.blockers.some((item) => item.includes("real noisy local SIP capture")));
-  assert.deepEqual(payload.speechEnhancement.nextEvidence, payload.speechEnhancement.missingEvidence);
-  assert.deepEqual(payload.speechEnhancement.nextAction, {
-    owner: "agentic_contact_center",
-    action: "attach_real_capture_replay",
-    command:
-      "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
-    reason: "Attach one real noisy local SIP capture replay before closing Issue #97.",
-  });
-  assert.deepEqual(payload.speechEnhancement.nextChecklistStep, {
-    step: "record_real_noisy_local_sip",
-    owner: "agentic_contact_center",
-    evidence: "Real noisy local SIP audio plus source manifest with matching capture_id and audio_source_uri.",
-    command:
-      "npm run proof:speech-enhancement -- --capture-replay-template-out artifacts/speech-enhancement-real-capture-replay.json",
-    status: "blocked",
-    reason: payload.speechEnhancement.nextAction.reason,
-  });
-  assert.deepEqual(payload.speechEnhancement.passingRealCaptureReplayIds, []);
-  assert.deepEqual(payload.speechEnhancement.blockedRealCaptureReplayIds, []);
-  assert.deepEqual(payload.speechEnhancement.strictArtifactVerification, {
-    requiredForClose: true,
-    verified: false,
-    sourceCount: 0,
-    verifiedSourceCount: 0,
-    unverifiedSourceCount: 0,
-    reason: "attach_real_capture_replay_before_strict_artifact_verification",
-  });
-  assert.equal(
-    payload.speechEnhancement.captureReplayFixturePath,
-    "artifacts/speech-enhancement-real-capture-replay.json",
-  );
-  assert.equal(
-    payload.speechEnhancement.validationCommand,
-    "npm run proof:speech-enhancement -- --require-close-ready",
-  );
-  assert.equal(
-    payload.speechEnhancement.strictValidationCommand,
-    "npm run proof:speech-enhancement -- --require-close-ready --strict-capture-artifacts --capture-replay artifacts/speech-enhancement-real-capture-replay.json",
-  );
 });

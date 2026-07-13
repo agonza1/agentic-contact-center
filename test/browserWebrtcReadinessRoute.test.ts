@@ -55,12 +55,6 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
         rtcAsr: { status: string; engine: string; contract: string };
         kokoro: { status: string; engine: string };
       };
-      legacyChunkBridge: {
-        status: string;
-        mediaRecorderRequired: boolean;
-        ffmpegRequired: boolean;
-        intendedForNormalBrowserVoice: boolean;
-      };
       contract: {
         signalingRoute: string;
         readinessRoute: string;
@@ -107,15 +101,6 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
     assert.deepEqual(payload.readiness.kokoro, {
       status: "contract_ready",
       engine: "kokoro",
-    });
-    assert.deepEqual(payload.legacyChunkBridge, {
-      status: "isolated_legacy",
-      command: "npm run pipecat:voice",
-      transport: "websocket_binary_webm_chunks",
-      mediaRecorderRequired: true,
-      ffmpegRequired: true,
-      intendedForNormalBrowserVoice: false,
-      note: "Retained only as legacy local proof plumbing; normal browser voice uses WebRTC signaling and does not fall back to this path.",
     });
     assert.equal(payload.contract.signalingRoute, "POST /api/browser-webrtc/session");
     assert.equal(payload.contract.readinessRoute, "/api/browser-webrtc/readiness");

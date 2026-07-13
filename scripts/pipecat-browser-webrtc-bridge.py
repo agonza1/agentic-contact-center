@@ -6,9 +6,7 @@ Normal media path:
 browser microphone -> WebRTC/Opus -> this Pipecat bridge -> rtc-asr Local STT v1
 -> ACC caller-turn API -> Kokoro TTS -> WebRTC remote audio track in browser
 
-This sidecar intentionally does not use MediaRecorder webm chunks or ffmpeg. The
-legacy WebSocket bridge remains in ``pipecat-local-voice-bridge.py`` for older
-proof plumbing only.
+This sidecar intentionally does not use MediaRecorder webm chunks or ffmpeg.
 """
 
 from __future__ import annotations

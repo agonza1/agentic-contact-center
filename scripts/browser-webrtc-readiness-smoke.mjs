@@ -33,7 +33,6 @@ if (!browserWebRtc.contract?.bridgeOfferRoute?.endsWith("/api/webrtc/offer")) fa
 if (browserWebRtc.contract?.media?.input !== "opus over WebRTC from browser microphone") failures.push("contract.media.input must describe browser WebRTC audio");
 if (browserWebRtc.liveMedia?.verified !== false) failures.push("liveMedia.verified must remain false until local browser media proof is attached");
 if (!browserWebRtc.blockers?.includes("live_webrtc_media_turn_evidence_missing")) failures.push("live media evidence blocker must be reported");
-if (browserWebRtc.legacyChunkBridge?.intendedForNormalBrowserVoice !== false) failures.push("legacyChunkBridge must be isolated from normal browser voice");
 
 if (failures.length) {
   console.error("Browser WebRTC readiness check failed:");

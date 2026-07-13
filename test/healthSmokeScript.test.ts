@@ -214,34 +214,6 @@ test("health smoke script can assert expected health metadata and multiple runti
           toolCoverage: ["goto_slide", "approve_offer"],
           script: { completed: true },
         },
-        speechEnhancement: {
-          runtimeEnabled: false,
-          runtimeStatus: "disabled",
-          issueCloseReady: false,
-          liveDemoGate: "blocked_until_real_capture",
-          recommendedLatencyMs: 12.5,
-          runtimeLatencyMs: 12.5,
-          runtimeBypassReason: "feature_flag_disabled",
-          runtimeProfileExpectedUse: "default",
-          runtimeProfileRecommendation: "recommended",
-          runtimeProfileBypassWhen: ["added_turn_latency_p95_exceeds_candidate_budget"],
-          runtimeBypassReasons: ["feature_flag_disabled", "blocked_until_real_capture"],
-          runtimeLiveDemoEligible: false,
-          closeGateRequiredLatencyMs: 12.5,
-          closeGateMaxAddedTurnLatencyMsP95: 25,
-          closeGateMaxCpuPercentP95: 80,
-          runtimeLookaheadFrames: 1,
-          runtimeMaxBufferedAudioMs: 32.5,
-          missingEvidence: ["real_noisy_local_sip_capture_baseline_vs_enhanced_replay"],
-          blockers: ["Replay a real noisy local SIP capture through baseline and enhancement paths before closing Issue #97."],
-          passingRealCaptureReplayIds: ["real-noisy-local-sip-010"],
-          blockedRealCaptureReplayIds: ["real-noisy-local-sip-011"],
-          strictArtifactVerification: {
-            requiredForClose: true,
-            verified: false,
-            reason: "attach_real_capture_replay_before_strict_artifact_verification",
-          },
-        },
       }),
     );
   }, async (port) => {
@@ -298,54 +270,6 @@ test("health smoke script can assert expected health metadata and multiple runti
       "approve_offer",
       "--expect-pipecat-script-completed",
       "true",
-      "--expect-speech-enhancement-runtime-enabled",
-      "false",
-      "--expect-speech-enhancement-runtime-status",
-      "disabled",
-      "--expect-speech-enhancement-issue-close-ready",
-      "false",
-      "--expect-speech-enhancement-live-demo-gate",
-      "blocked_until_real_capture",
-      "--expect-speech-enhancement-recommended-latency-ms",
-      "12.5",
-      "--expect-speech-enhancement-runtime-latency-ms",
-      "12.5",
-      "--expect-speech-enhancement-runtime-bypass-reason",
-      "feature_flag_disabled",
-      "--expect-speech-enhancement-runtime-profile-expected-use",
-      "default",
-      "--expect-speech-enhancement-runtime-profile-recommendation",
-      "recommended",
-      "--expect-speech-enhancement-runtime-profile-bypass-when",
-      "added_turn_latency_p95_exceeds_candidate_budget",
-      "--expect-speech-enhancement-runtime-bypass-reason-item",
-      "blocked_until_real_capture",
-      "--expect-speech-enhancement-runtime-live-demo-eligible",
-      "false",
-      "--expect-speech-enhancement-runtime-lookahead-frames",
-      "1",
-      "--expect-speech-enhancement-runtime-max-buffered-audio-ms",
-      "32.5",
-      "--expect-speech-enhancement-close-gate-required-latency-ms",
-      "12.5",
-      "--expect-speech-enhancement-close-gate-max-added-turn-latency-ms-p95",
-      "25",
-      "--expect-speech-enhancement-close-gate-max-cpu-percent-p95",
-      "80",
-      "--expect-speech-enhancement-missing-evidence",
-      "real_noisy_local_sip_capture_baseline_vs_enhanced_replay",
-      "--expect-speech-enhancement-blocker",
-      "Replay a real noisy local SIP capture through baseline and enhancement paths before closing Issue #97.",
-      "--expect-speech-enhancement-passing-replay-id",
-      "real-noisy-local-sip-010",
-      "--expect-speech-enhancement-blocked-replay-id",
-      "real-noisy-local-sip-011",
-      "--expect-speech-enhancement-strict-artifact-required-for-close",
-      "true",
-      "--expect-speech-enhancement-strict-artifact-verified",
-      "false",
-      "--expect-speech-enhancement-strict-artifact-reason",
-      "attach_real_capture_replay_before_strict_artifact_verification",
       "--timeout-ms",
       "200",
       "--interval-ms",
@@ -632,84 +556,6 @@ test("health smoke script rejects malformed Pipecat readiness expectations befor
   assert.equal(result.code, 1);
   assert.match(result.stderr, /invalid_pipecat_ready_value\("yes"\)/);
   assert.doesNotMatch(result.stderr, /Timed out waiting for a healthy response/);
-});
-
-test("health smoke script reports speech enhancement readiness mismatches in the timeout summary", async () => {
-  await withServer((request, response) => {
-    if (request.url !== "/health") {
-      response.writeHead(404).end();
-      return;
-    }
-
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ok: true, speechEnhancement: { runtimeEnabled: false, liveDemoGate: "blocked_until_real_capture", blockers: [] } }));
-  }, async (port) => {
-    const result = await runProbe([
-      "--url",
-      `http://127.0.0.1:${port}/health`,
-      "--expect-speech-enhancement-close-gate-status",
-      "ready_to_close",
-      "--timeout-ms",
-      "200",
-      "--interval-ms",
-      "25",
-    ]);
-
-    assert.equal(result.code, 1);
-    assert.match(result.stderr, /Last failure: json_speechEnhancement_closeGateStatus_mismatch\(expected="ready_to_close",actual=undefined\)/);
-  });
-});
-
-test("health smoke script reports missing speech enhancement runtime profile bypass guidance", async () => {
-  await withServer((request, response) => {
-    if (request.url !== "/health") {
-      response.writeHead(404).end();
-      return;
-    }
-
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ok: true, speechEnhancement: { runtimeProfileBypassWhen: [] } }));
-  }, async (port) => {
-    const result = await runProbe([
-      "--url",
-      `http://127.0.0.1:${port}/health`,
-      "--expect-speech-enhancement-runtime-profile-bypass-when",
-      "barge_in_or_endpointing_regresses",
-      "--timeout-ms",
-      "200",
-      "--interval-ms",
-      "25",
-    ]);
-
-    assert.equal(result.code, 1);
-    assert.match(result.stderr, /Last failure: json_speechEnhancement_runtimeProfileBypassWhen_missing/);
-  });
-});
-
-test("health smoke script reports missing speech enhancement blockers in the timeout summary", async () => {
-  await withServer((request, response) => {
-    if (request.url !== "/health") {
-      response.writeHead(404).end();
-      return;
-    }
-
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ok: true, speechEnhancement: { blockers: [] } }));
-  }, async (port) => {
-    const result = await runProbe([
-      "--url",
-      `http://127.0.0.1:${port}/health`,
-      "--expect-speech-enhancement-blocker",
-      "Replay a real noisy local SIP capture through baseline and enhancement paths before closing Issue #97.",
-      "--timeout-ms",
-      "200",
-      "--interval-ms",
-      "25",
-    ]);
-
-    assert.equal(result.code, 1);
-    assert.match(result.stderr, /Last failure: json_speechEnhancement_blockers_missing/);
-  });
 });
 
 test("health smoke script reports Pipecat runtime metadata mismatches in the timeout summary", async () => {

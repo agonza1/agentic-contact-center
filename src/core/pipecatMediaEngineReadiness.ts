@@ -47,7 +47,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       deprecatedBridges: [
         {
           entryPoint: "scripts/pipecat-local-voice-bridge.py",
-          status: "legacy_proof_only",
+          status: "removed",
           replacement: "SmallWebRTCTransport + Pipeline browser path",
         },
       ],
@@ -152,7 +152,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       { route: "/api/pipecat-media-engine/readiness", method: "GET", purpose: "Shared browser/SIP/SignalWire Pipecat media engine contract and blocker status." },
       { route: "/api/live-sip/events", method: "POST", purpose: "Local SIP/FreeSWITCH event and proof adapter." },
       { route: "/api/signalwire/events", method: "POST", purpose: "Local SignalWire event adapter and future trunk label surface." },
-      { route: "/api/realtime-shim/readiness", method: "GET", purpose: "Existing realtime shim readiness and sidecar promotion evidence." },
+      { route: "/api/browser-webrtc/readiness", method: "GET", purpose: "Browser WebRTC signaling and sidecar readiness evidence." },
     ],
   };
 }

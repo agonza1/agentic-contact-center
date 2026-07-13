@@ -74,7 +74,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
         "transcript_quality_recovery",
         "memory_reuse_after_context",
         "caller_correction_after_summary",
-        "speech_enhancement_runtime_profile",
+        "noisy_audio_recovery",
         "auth_boundary_handoff",
         "tool_timeout_fallback_recovery",
         "turn_timeout_reprompt",
@@ -92,7 +92,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
     assert.ok(testSet.some((row) => row.seed.title === "Low-information caller recovery"));
     assert.ok(testSet.some((row) => row.seed.title === "Returning caller context reuse"));
     assert.ok(testSet.some((row) => row.seed.title === "Caller corrects the summarized next step"));
-    assert.ok(testSet.some((row) => row.seed.title === "Noisy caller uses recommended speech enhancement"));
+    assert.ok(testSet.some((row) => row.seed.title === "Noisy caller triggers safe recovery"));
     assert.ok(testSet.some((row) => row.seed.title === "Caller offers partial authentication details"));
     assert.ok(testSet.some((row) => row.seed.title === "Tool timeout falls back with review evidence"));
     assert.ok(testSet.some((row) => row.seed.title === "Silent caller gets a bounded reprompt"));
@@ -115,7 +115,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
           row.score_keys.includes("transcript_quality") &&
           row.score_keys.includes("memory_reuse") &&
           row.score_keys.includes("correction_handling") &&
-          row.score_keys.includes("speech_enhancement_profile") &&
+          row.score_keys.includes("noisy_audio_recovery") &&
           row.score_keys.includes("auth_boundary") &&
           row.score_keys.includes("fallback_recovery") &&
           row.score_keys.includes("turn_timeout_reprompt") &&
@@ -136,7 +136,7 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
     assert.match(configYaml, /transcript_quality:/);
     assert.match(configYaml, /memory_reuse:/);
     assert.match(configYaml, /correction_handling:/);
-    assert.match(configYaml, /speech_enhancement_profile:/);
+    assert.match(configYaml, /noisy_audio_recovery:/);
     assert.match(configYaml, /auth_boundary:/);
     assert.match(configYaml, /fallback_recovery:/);
     assert.match(configYaml, /turn_timeout_reprompt:/);
