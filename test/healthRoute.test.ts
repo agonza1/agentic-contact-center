@@ -1,11 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { request } from "node:http";
+import { createServer, request } from "node:http";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildHttpServer } from "../src/http/createServer";
 
 test("GET /health returns config-backed demo metadata", async () => {
+  const bridge = createServer((_request, response) => {
+    response.statusCode = 200;
+    response.setHeader("content-type", "application/json; charset=utf-8");
+    response.end(JSON.stringify({ ok: true, status: "ready", detail: "test bridge ready" }));
+  });
+  await new Promise<void>((resolve) => bridge.listen(0, "127.0.0.1", resolve));
+  const bridgeAddress = bridge.address();
+  if (!bridgeAddress || typeof bridgeAddress === "string") {
+    throw new Error("Expected an ephemeral bridge TCP port");
+  }
+  const previousBridgeUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL;
+  process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
+
   const config = loadPocConfig();
   const server = buildHttpServer(config);
 
@@ -38,7 +51,13 @@ test("GET /health returns config-backed demo metadata", async () => {
     req.end();
   });
 
-  server.close();
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => bridge.close((error) => error ? reject(error) : resolve()));
+  if (previousBridgeUrl === undefined) {
+    delete process.env.BROWSER_WEBRTC_BRIDGE_URL;
+  } else {
+    process.env.BROWSER_WEBRTC_BRIDGE_URL = previousBridgeUrl;
+  }
 
   const payload = JSON.parse(responseBody) as {
     ok: boolean;

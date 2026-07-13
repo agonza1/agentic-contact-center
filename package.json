@@ -34,7 +34,7 @@
     "browser-webrtc:check": "node scripts/browser-webrtc-readiness-smoke.mjs",
     "pipecat:voice:readiness": "node scripts/browser-webrtc-readiness-smoke.mjs",
     "browser-webrtc:live-proof": "node scripts/browser-webrtc-live-proof.mjs",
-    "pipecat:webrtc:install": "rm -rf .pipecat-runtime && python3 -m pip install --target .pipecat-runtime -r requirements-pipecat-voice.txt",
+    "pipecat:webrtc:install": "rm -rf .pipecat-runtime && python3 -m pip install --target .pipecat-runtime -r requirements-pipecat-voice.txt && python3 -m pip install --target .pipecat-runtime --upgrade --force-reinstall opencv-python-headless==4.13.0.92",
     "pipecat:webrtc:check": "python3 scripts/pipecat-browser-webrtc-bridge.py --check-sidecars",
     "pipecat:webrtc": "python3 scripts/pipecat-browser-webrtc-bridge.py",
     "pipecat:webrtc:readiness": "node scripts/browser-webrtc-readiness-smoke.mjs",

@@ -33,6 +33,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_RUNTIME_PATH = REPO_ROOT / ".pipecat-runtime"
 if LOCAL_RUNTIME_PATH.exists():
     sys.path.insert(0, str(LOCAL_RUNTIME_PATH))
+    nltk_data_path = LOCAL_RUNTIME_PATH / "nltk_data"
+    nltk_data_path.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("NLTK_DATA", str(nltk_data_path))
 
 try:
     import importlib.metadata
