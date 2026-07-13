@@ -45,6 +45,12 @@ export const clueConAgentBrainCard = "71d60b43-0de0-4a67-bb60-d6539780c3a4";
 export const clueConOperatorCockpitCard = "3ea982b1-627a-4698-8b02-0c270b688237";
 export const clueConProofEvalCard = "6017890d-8f17-4ce0-aab9-d4cf3015d82c";
 const defaultProbeTimeoutMs = 600;
+const clueConVadTiming = {
+  speechStartHoldMs: 80,
+  acousticStopHoldMs: 350,
+  endOfTurnSilenceMs: 4000,
+  outputStartAfterEndOfTurnMs: 450,
+};
 const defaultBrainBlockRows: Array<[string, string, string]> = [
   ["mission.md", "Rescue an at-risk cancellation only inside approved retention boundaries.", "agent response, final state"],
   ["policy.md", "Pause before risky offers, require operator approval, and fail closed on runtime uncertainty.", "policy hold, fallback"],
@@ -317,6 +323,10 @@ function buildBasePayload(
       statement: "Show the cancellation-rescue proof as a contract slice on the path to one shared realtime Pipeline, not as another standalone demo path.",
       chain: ["adapter", "pipecat_pipeline_target", "rtc_asr", "acc_policy_tools", "kokoro_tts", "evidence"],
       successSignal: "The scorecard passes and the runtime copy names the remaining #222 gaps instead of implying browser/SIP parity is complete.",
+    },
+    turnTiming: {
+      ...clueConVadTiming,
+      rule: "VAD acoustic stop is only an end-of-turn candidate; agent audio stays blocked until the post-speech silence gate elapses.",
     },
     callFlow: {
       workboardCard: "c9455e37-8b08-4351-8079-9e8f82899ab6",
@@ -973,7 +983,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
   <script>
     let data = window.__CLUECON__;
     const state = { slide: 0, slideCount: 9, isPresent: document.body.classList.contains("present"), proof: null, brain: JSON.parse(JSON.stringify(data.brainBlocks)), brainSession: null, asrCapture: null, asrStopping: false, asrModels: [], asrLive: null, vad: null, vadStarting: false, vadStartToken: 0, vadPendingStream: null, vadBotSpeaking: false, vadBotTimer: null, vadTurnTimer: null, vadOutputTimer: null };
-    const VAD_END_OF_TURN_MS = 4000;
+    const VAD_END_OF_TURN_MS = Number(data.turnTiming?.endOfTurnSilenceMs) || 4000;
     function esc(value) { return String(value).replace(/[&<>\"]/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;"); }
     function vadLog(type, detail) { const events = document.getElementById("vad-events"); const row = document.createElement("div"); row.className = "vad-event"; const now = new Date(); const stamp = now.toLocaleTimeString([], { minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 }); row.innerHTML = '<code>' + esc(stamp) + '</code><span><strong>' + esc(type) + '</strong><br>' + esc(detail) + '</span>'; events.prepend(row); while (events.children.length > 8) events.lastElementChild.remove(); }
     function vadStatus(label, tone) { const badge = document.getElementById("vad-state"); badge.textContent = label; badge.className = "badge " + (tone || "fixture"); }

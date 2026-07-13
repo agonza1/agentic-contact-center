@@ -168,6 +168,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     liveProbes: Array<{ id: string; configured: boolean; status: string; ok: boolean; metadata: Record<string, unknown> }>;
     architectureCenter: { issue: string; target: string; adapterRule: string; currentGaps: string[] };
     demoGoal: { issue: string; statement: string; chain: string[]; successSignal: string };
+    turnTiming: { speechStartHoldMs: number; acousticStopHoldMs: number; endOfTurnSilenceMs: number; outputStartAfterEndOfTurnMs: number; rule: string };
     callFlow: { issue: string; cadenceMs: number; credentialRequirement: string; stages: Array<{ id: string; label: string; detail: string; packet: string }> };
     scenario: { callerTurns: string[]; failureDrills: string[] };
     asrPanel: {
@@ -198,6 +199,11 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.demoGoal.issue, "agonza1/agentic-contact-center#222");
   assert.deepEqual(payload.demoGoal.chain, ["adapter", "pipecat_pipeline_target", "rtc_asr", "acc_policy_tools", "kokoro_tts", "evidence"]);
   assert.match(payload.demoGoal.successSignal, /#222 gaps/);
+  assert.equal(payload.turnTiming.speechStartHoldMs, 80);
+  assert.equal(payload.turnTiming.acousticStopHoldMs, 350);
+  assert.equal(payload.turnTiming.endOfTurnSilenceMs, 4000);
+  assert.equal(payload.turnTiming.outputStartAfterEndOfTurnMs, 450);
+  assert.match(payload.turnTiming.rule, /acoustic stop is only an end-of-turn candidate/);
   assert.equal(payload.callFlow.issue, "agonza1/agentic-contact-center#217");
   assert.equal(payload.callFlow.cadenceMs, 1000);
   assert.equal(payload.callFlow.credentialRequirement, "none");
@@ -257,6 +263,7 @@ test("GET /cluecon renders each transcript turn as a separate block", async () =
   assert.match(response.body, /#demo \.screen\.has-transcript \{[^}]*display: grid;/);
   assert.match(response.body, /class="transcript-turn transcript-turn--/);
   assert.match(response.body, /renderDemoTranscript\(payload\.call\.transcript\)/);
+  assert.match(response.body, /const VAD_END_OF_TURN_MS = Number\(data\.turnTiming\?\.endOfTurnSilenceMs\) \|\| 4000;/);
 });
 
 test("POST /api/cluecon/brain preview, apply, and reset keep edits session-scoped", async () => {
@@ -561,7 +568,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /id="vad-threshold"/);
   assert.match(narrative.body, /VADUserStartedSpeakingFrame/);
   assert.match(narrative.body, /UserStoppedSpeakingFrame/);
-  assert.match(narrative.body, /VAD_END_OF_TURN_MS = 4000/);
+  assert.match(narrative.body, /VAD_END_OF_TURN_MS = Number\(data\.turnTiming\?\.endOfTurnSilenceMs\) \|\| 4000/);
   assert.match(narrative.body, /turn wait: 4\.0 s/);
   assert.match(narrative.body, /Holding audio output until 4\.0 s/);
   assert.match(narrative.body, /Audio output starts after the 4 s end-of-turn gate/);
