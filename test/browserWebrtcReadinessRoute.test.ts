@@ -24,9 +24,16 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(sharedPipeline, /stt\.empty_transcript/);
   assert.match(sharedPipeline, /mark_output_active/);
   assert.match(sharedPipeline, /no_active_output_audio/);
+  assert.match(sharedPipeline, /InterruptionFrame/);
+  assert.match(sharedPipeline, /broadcast_frame\(InterruptionFrame\)/);
+  assert.match(sharedPipeline, /pipecatInterruptionFrame/);
   assert.match(sharedPipeline, /outputWindow/);
   assert.match(sharedPipeline, /stage_events/);
   assert.match(bridge, /skipAcc/);
+  assert.match(bridge, /event_handler\("closed"\)/);
+  assert.match(bridge, /session_record=session_record/);
+  assert.match(bridge, /reason="small_webrtc_peer_closed"/);
+  assert.match(bridge, /forget_session_record/);
   assert.match(sharedPipeline, /silence_finalize_task/);
   assert.match(sharedPipeline, /finalize_after_silence/);
   assert.match(sharedPipeline, /finalize_turn\("silence_timer"\)/);

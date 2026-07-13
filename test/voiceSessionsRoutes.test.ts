@@ -311,6 +311,57 @@ test("voice sessions complete output streams without barge-in cancellation", asy
 });
 
 
+test("voice sessions flush active output streams for evaluator handoff", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const created = await requestJson(address.port, "POST", "/api/voice/sessions", { sessionId: "cae-session-output-flush" });
+    assert.equal(created.statusCode, 201);
+
+    const output = await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-output-flush/media/output", Buffer.from([1, 2, 3, 4]), {
+      "content-type": "audio/l16",
+      "x-output-stream-id": "tts-turn-flush",
+    });
+    assert.equal(output.statusCode, 202);
+    assert.equal(output.payload.session.output.status, "streaming");
+
+    const flushed = await requestJson(address.port, "POST", "/api/voice/sessions/cae-session-output-flush/control", {
+      action: "flush",
+      reason: "tts drain complete",
+    });
+    assert.equal(flushed.statusCode, 200);
+    assert.equal(flushed.payload.session.output.status, "completed");
+    assert.equal(flushed.payload.session.output.completedAt !== null, true);
+    assert.equal(flushed.payload.session.output.chunks, 1);
+    assert.equal(flushed.payload.session.output.bytes, 4);
+
+    const lateOutput = await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-output-flush/media/output", Buffer.from([5, 6]), {
+      "content-type": "audio/l16",
+      "x-output-stream-id": "tts-turn-flush",
+    });
+    assert.equal(lateOutput.statusCode, 202);
+    assert.equal(lateOutput.payload.session.output.status, "completed");
+    assert.equal(lateOutput.payload.session.output.chunks, 1);
+
+    const events = await requestJson(address.port, "GET", "/api/voice/sessions/cae-session-output-flush/events");
+    assert.deepEqual(events.payload.events.map((event: any) => event.type), [
+      "session.created",
+      "output.stream.started",
+      "output.audio.chunk",
+      "control.received",
+      "output.stream.completed",
+      "output.audio.chunk.ignored",
+    ]);
+    assert.equal(events.payload.events[4].detail.reason, "tts drain complete");
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+
 test("voice sessions reject duplicate IDs, invalid sample rates, and post-close writes", async () => {
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
