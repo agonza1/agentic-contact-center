@@ -46,6 +46,7 @@ export interface RealtimeVoiceSession {
     completedAt: string | null;
     cancelledAt: string | null;
     cancellationReason: string | null;
+    bargeInCancellationObserved: boolean;
   };
   controls: {
     lastAction: string | null;
@@ -120,6 +121,7 @@ export class RealtimeVoiceSessionStore {
         completedAt: null,
         cancelledAt: null,
         cancellationReason: null,
+        bargeInCancellationObserved: false,
       },
       controls: { lastAction: null, lastReason: null },
       events: [],
@@ -226,6 +228,7 @@ export class RealtimeVoiceSessionStore {
       session.output.status = "cancelled";
       session.output.cancelledAt = at;
       session.output.cancellationReason = input.reason ?? "barge_in";
+      session.output.bargeInCancellationObserved = true;
       this.record(session, "output.stream.cancelled", at, {
         streamId: session.output.streamId,
         reason: session.output.cancellationReason,
@@ -266,8 +269,8 @@ export class RealtimeVoiceSessionStore {
     const hasOutputAudio = snapshot.output.chunks > 0 && snapshot.output.bytes > 0;
     const hasRtcAsrFinalTranscript = call?.events.some((event) => event.type === "rtc_asr_transcript") === true;
     const transcriptTurns = call?.transcript.length ?? 0;
-    const outputCancelledByBargeIn = snapshot.output.status === "cancelled"
-      && snapshot.events.some((event) => event.type === "control.received" && event.detail.action === "barge_in");
+    const outputCancelledByBargeIn = snapshot.output.bargeInCancellationObserved
+      || snapshot.events.some((event) => event.type === "output.stream.cancelled" && event.detail.reason === "barge_in");
     return {
       ok: true,
       schemaVersion: 1,

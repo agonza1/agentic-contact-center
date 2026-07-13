@@ -133,6 +133,14 @@ test("voice sessions expose persistent CAE realtime-audio lifecycle and proof", 
     assert.equal(laterControl.statusCode, 200);
     assert.equal(laterControl.payload.session.controls.lastAction, "mark");
 
+    const followUpOutput = await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-1/media/output", Buffer.from([21, 22]), {
+      "content-type": "audio/wav",
+      "x-output-stream-id": "tts-turn-2",
+      "x-output-final": "true",
+    });
+    assert.equal(followUpOutput.statusCode, 202);
+    assert.equal(followUpOutput.payload.session.output.status, "completed");
+
     const proof = await requestJson(address.port, "GET", "/api/voice/sessions/cae-session-1/proof");
     assert.equal(proof.statusCode, 200);
     assert.equal(proof.payload.mediaPipeline.persistent, true);
@@ -140,7 +148,7 @@ test("voice sessions expose persistent CAE realtime-audio lifecycle and proof", 
     assert.equal(proof.payload.mediaPipeline.transcriptShortcutAllowed, false);
     assert.equal(proof.payload.evidence.hasAudioInput, true);
     assert.equal(proof.payload.evidence.hasOutputAudio, true);
-    assert.equal(proof.payload.evidence.outputStatus, "cancelled");
+    assert.equal(proof.payload.evidence.outputStatus, "completed");
     assert.equal(proof.payload.evidence.outputCancelledByBargeIn, true);
     assert.equal(proof.payload.evidence.hasRtcAsrFinalTranscript, false);
     assert.deepEqual(proof.payload.review.blockers, ["rtc_asr_final_transcript_missing"]);
