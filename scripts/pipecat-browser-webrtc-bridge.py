@@ -396,6 +396,7 @@ class BrowserTurnSession:
         self.readiness = readiness
         self.turn_count = 0
         self.output_generation = 0
+        self.output_active_until = 0.0
         self.last_barge_in_evidence: dict[str, Any] = {}
         self.last_evidence: dict[str, Any] = {}
         self.last_audio_evidence: dict[str, Any] = {}
@@ -428,10 +429,32 @@ class BrowserTurnSession:
         print(json.dumps({"type": "browser_webrtc_stage", **event}), flush=True)
         return event
 
+    def mark_output_active(self, *, audio_bytes: int, sample_rate: int, channels: int = 1) -> dict[str, Any]:
+        duration_s = audio_bytes / max(sample_rate * SAMPLE_WIDTH_BYTES * channels, 1)
+        self.output_active_until = max(self.output_active_until, time.monotonic() + duration_s + 0.5)
+        return {
+            "audioBytes": audio_bytes,
+            "sampleRate": sample_rate,
+            "channels": channels,
+            "estimatedDurationMs": round(duration_s * 1000),
+            "activeUntilMonotonicMs": round(self.output_active_until * 1000),
+        }
+
     def cancel_output(self, reason: str = "barge-in") -> dict[str, Any]:
+        if time.monotonic() > self.output_active_until:
+            self.last_barge_in_evidence = {
+                "reason": reason,
+                "skipped": True,
+                "skipReason": "no_active_output_audio",
+                "outputGeneration": self.output_generation,
+                "timestamp": datetime.now(UTC).isoformat(timespec="milliseconds"),
+            }
+            print(json.dumps({"type": "browser_webrtc_output_cancel_skipped", **self.last_barge_in_evidence}), flush=True)
+            return self.last_barge_in_evidence
         self.output_generation += 1
         self.last_barge_in_evidence = {
             "reason": reason,
+            "skipped": False,
             "outputGeneration": self.output_generation,
             "timestamp": datetime.now(UTC).isoformat(timespec="milliseconds"),
         }
@@ -535,56 +558,55 @@ class RtcAsrTurnProcessor(FrameProcessor):
         self.min_turn_ms = int(os.environ.get("ACC_WEBRTC_MIN_TURN_MS", "600"))
         self.max_turn_ms = int(os.environ.get("ACC_WEBRTC_MAX_TURN_MS", "9000"))
         self.last_audio_report_at = 0.0
+        self.silence_finalize_task: asyncio.Task[None] | None = None
+        self.finalize_lock = asyncio.Lock()
 
-    async def process_frame(self, frame: Any, direction: FrameDirection) -> None:
-        await super().process_frame(frame, direction)
-        if direction != FrameDirection.DOWNSTREAM or not isinstance(frame, InputAudioRawFrame):
-            await self.push_frame(frame, direction)
+    def collected_speech_ms(self) -> int:
+        return round(sum(len(chunk) for chunk in self.speech_chunks) / (INPUT_SAMPLE_RATE * SAMPLE_WIDTH_BYTES) * 1000)
+
+    def cancel_silence_finalize_task(self) -> None:
+        current_task = asyncio.current_task()
+        if self.silence_finalize_task and self.silence_finalize_task is not current_task:
+            self.silence_finalize_task.cancel()
+        if self.silence_finalize_task is not current_task:
+            self.silence_finalize_task = None
+
+    def arm_silence_finalize_task(self) -> None:
+        self.cancel_silence_finalize_task()
+        self.silence_finalize_task = asyncio.create_task(self.finalize_after_silence())
+
+    async def finalize_after_silence(self) -> None:
+        try:
+            await asyncio.sleep(max(self.silence_ms, 1) / 1000)
+            await self.finalize_turn("silence_timer")
+        except asyncio.CancelledError:
             return
-        pcm = frame.audio
-        if not pcm:
-            return
-        rms = audioop.rms(pcm, SAMPLE_WIDTH_BYTES)
-        now = time.monotonic()
-        frame_ms = round(len(pcm) / (INPUT_SAMPLE_RATE * SAMPLE_WIDTH_BYTES) * 1000)
-        if now - self.last_audio_report_at >= 1.0:
-            self.last_audio_report_at = now
-            self.session.record_stage(
-                "audio.frame",
-                rms=rms,
-                frameBytes=len(pcm),
-                frameMs=frame_ms,
-                sampleRate=getattr(frame, "sample_rate", INPUT_SAMPLE_RATE),
-                silenceThresholdRms=self.silence_rms,
-                inSpeech=self.in_speech,
-                collectedMs=round(sum(len(chunk) for chunk in self.speech_chunks) / (INPUT_SAMPLE_RATE * SAMPLE_WIDTH_BYTES) * 1000),
-            )
-        if rms > self.silence_rms:
-            if not self.in_speech:
-                self.session.cancel_output("barge-in")
-                self.turn_started_at = now
-                self.session.record_stage("audio.speech_started", rms=rms, silenceThresholdRms=self.silence_rms)
-            self.in_speech = True
+
+    async def finalize_turn(self, reason: str) -> None:
+        async with self.finalize_lock:
+            if not self.in_speech or not self.speech_chunks:
+                return
+            now = time.monotonic()
+            collected_ms = self.collected_speech_ms()
+            silence_elapsed_ms = round((now - self.last_voice_at) * 1000)
+            max_elapsed_ms = round((now - self.turn_started_at) * 1000)
+            if reason == "silence_timer" and (collected_ms < self.min_turn_ms or silence_elapsed_ms < self.silence_ms):
+                if self.in_speech:
+                    self.arm_silence_finalize_task()
+                return
+            pcm_turn = b"".join(self.speech_chunks)
+            self.speech_chunks = []
+            self.in_speech = False
+            self.turn_started_at = now
             self.last_voice_at = now
-        if self.in_speech:
-            self.speech_chunks.append(pcm)
-        collected_ms = round(sum(len(chunk) for chunk in self.speech_chunks) / (INPUT_SAMPLE_RATE * SAMPLE_WIDTH_BYTES) * 1000)
-        silence_elapsed_ms = round((now - self.last_voice_at) * 1000)
-        max_elapsed_ms = round((now - self.turn_started_at) * 1000)
-        should_finalize = self.in_speech and collected_ms >= self.min_turn_ms and (silence_elapsed_ms >= self.silence_ms or max_elapsed_ms >= self.max_turn_ms)
-        if not should_finalize:
-            return
-        pcm_turn = b"".join(self.speech_chunks)
-        self.speech_chunks = []
-        self.in_speech = False
-        self.turn_started_at = now
-        self.last_voice_at = now
+            self.cancel_silence_finalize_task()
         self.session.record_stage(
             "stt.finalize_started",
             audioBytes=len(pcm_turn),
             collectedMs=collected_ms,
             silenceElapsedMs=silence_elapsed_ms,
             maxElapsedMs=max_elapsed_ms,
+            reason=reason,
         )
         try:
             transcript, stt_meta, transcription_frame = await self.session.transcribe(InputAudioRawFrame(audio=pcm_turn, sample_rate=INPUT_SAMPLE_RATE, num_channels=1))
@@ -611,6 +633,47 @@ class RtcAsrTurnProcessor(FrameProcessor):
         self.session.record_stage("stt.transcript_final", transcript=transcript, stt=stt_meta)
         transcription_frame.result = {**(transcription_frame.result or {}), "stt": stt_meta}
         await self.push_frame(transcription_frame, FrameDirection.DOWNSTREAM)
+
+    async def process_frame(self, frame: Any, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+        if direction != FrameDirection.DOWNSTREAM or not isinstance(frame, InputAudioRawFrame):
+            await self.push_frame(frame, direction)
+            return
+        pcm = frame.audio
+        if not pcm:
+            return
+        rms = audioop.rms(pcm, SAMPLE_WIDTH_BYTES)
+        now = time.monotonic()
+        frame_ms = round(len(pcm) / (INPUT_SAMPLE_RATE * SAMPLE_WIDTH_BYTES) * 1000)
+        if now - self.last_audio_report_at >= 1.0:
+            self.last_audio_report_at = now
+            self.session.record_stage(
+                "audio.frame",
+                rms=rms,
+                frameBytes=len(pcm),
+                frameMs=frame_ms,
+                sampleRate=getattr(frame, "sample_rate", INPUT_SAMPLE_RATE),
+                silenceThresholdRms=self.silence_rms,
+                inSpeech=self.in_speech,
+                collectedMs=self.collected_speech_ms(),
+            )
+        if rms > self.silence_rms:
+            if not self.in_speech:
+                self.session.cancel_output("barge-in")
+                self.turn_started_at = now
+                self.session.record_stage("audio.speech_started", rms=rms, silenceThresholdRms=self.silence_rms)
+            self.in_speech = True
+            self.last_voice_at = now
+        if self.in_speech:
+            self.speech_chunks.append(pcm)
+            self.arm_silence_finalize_task()
+        collected_ms = self.collected_speech_ms()
+        silence_elapsed_ms = round((now - self.last_voice_at) * 1000)
+        max_elapsed_ms = round((now - self.turn_started_at) * 1000)
+        should_finalize = self.in_speech and collected_ms >= self.min_turn_ms and (silence_elapsed_ms >= self.silence_ms or max_elapsed_ms >= self.max_turn_ms)
+        if not should_finalize:
+            return
+        await self.finalize_turn("audio_frame")
 
 
 class AccCallerTurnProcessor(FrameProcessor):
@@ -702,6 +765,8 @@ class KokoroTtsProcessor(FrameProcessor):
             tts_meta = {**tts_meta, "cancelled": True, "cancelReason": "barge-in", "audioBytesEnqueued": 0}
             self.session.record_stage("tts.cancelled", ok=False, error="output_cancelled", tts=tts_meta)
         else:
+            output_window = self.session.mark_output_active(audio_bytes=len(pcm), sample_rate=sample_rate)
+            tts_meta = {**tts_meta, "outputWindow": output_window}
             self.session.record_stage("tts.audio_ready", tts=tts_meta)
         self.session.last_evidence = {
             **self.session.last_evidence,
