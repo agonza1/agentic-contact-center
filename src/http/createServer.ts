@@ -4845,8 +4845,14 @@ async function routeRequest(
           return;
         }
         const hasFreeswitchBroadcast = freeswitchBroadcastMode === "freeswitch_uuid_broadcast";
+        const freeswitchBroadcastHostPath = getOptionalTrimmedString(body.freeswitchBroadcastHostPath) ?? getOptionalTrimmedString(freeswitchBroadcastBody?.hostPath);
+        const freeswitchBroadcastPath = getOptionalTrimmedString(body.freeswitchBroadcastPath) ?? getOptionalTrimmedString(freeswitchBroadcastBody?.freeswitchPath);
         if (body.callerPlaybackConfirmed === true && body.rtpSocketSendReady !== true && !hasFreeswitchBroadcast) {
           writeBadRequest(response, "live_sip_playback_confirmation_without_socket_send");
+          return;
+        }
+        if (body.callerPlaybackConfirmed === true && hasFreeswitchBroadcast && (!freeswitchBroadcastHostPath || !freeswitchBroadcastPath || !freeswitchBroadcastAudioBytes)) {
+          writeBadRequest(response, "live_sip_playback_broadcast_evidence_incomplete");
           return;
         }
         if (body.callerPlaybackConfirmed === true && !getOptionalTrimmedString(body.callerPlaybackEvidencePath)) {
@@ -4871,8 +4877,8 @@ async function routeRequest(
             callerPlaybackConfirmed: body.callerPlaybackConfirmed === true,
             callerPlaybackEvidencePath: getOptionalTrimmedString(body.callerPlaybackEvidencePath) ?? null,
             freeswitchBroadcastMode: hasFreeswitchBroadcast ? "freeswitch_uuid_broadcast" : null,
-            freeswitchBroadcastHostPath: getOptionalTrimmedString(body.freeswitchBroadcastHostPath) ?? getOptionalTrimmedString(freeswitchBroadcastBody?.hostPath) ?? null,
-            freeswitchBroadcastPath: getOptionalTrimmedString(body.freeswitchBroadcastPath) ?? getOptionalTrimmedString(freeswitchBroadcastBody?.freeswitchPath) ?? null,
+            freeswitchBroadcastHostPath: freeswitchBroadcastHostPath ?? null,
+            freeswitchBroadcastPath: freeswitchBroadcastPath ?? null,
             freeswitchBroadcastSampleRateHz,
             freeswitchBroadcastAudioBytes,
           },
