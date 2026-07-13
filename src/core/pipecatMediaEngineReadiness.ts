@@ -41,6 +41,11 @@ export function buildPipecatMediaEngineReadinessPayload() {
         processorContractAligned: true,
         liveMediaProofComplete: false,
         note: "SIP is a FreeSWITCH/RTP transport aligned to the rtc-asr, ACC adapter, and Kokoro processor contract. It must not be called complete until it is wired through the shared Pipeline processors and live caller-audible proof exists.",
+        pipelineUnificationDelta: [
+          "Move SIP RTP PCM frames into build_acc_voice_pipeline() instead of the Node mirror of rtc-asr/ACC/Kokoro stages.",
+          "Reuse the same RtcAsrTurnProcessor, AccCallerTurnProcessor, and KokoroTtsProcessor stage-event contract as the browser SmallWebRTC path.",
+          "Keep FreeSWITCH packetization and uuid_broadcast at the telephony boundary after transport.output() emits caller audio.",
+        ],
       },
       flowsDecision: {
         owner: "ACC TypeScript flow for current cancellation-rescue MVP",
@@ -84,6 +89,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
           liveMediaProofComplete: false,
           currentEntryPoint: "scripts/freeswitch-acc-bridge.mjs",
           path: "SIP/FreeSWITCH RTP -> Pipecat-compatible PCM frames -> rtc-asr -> ACC caller-turn -> Kokoro -> FreeSWITCH uuid_broadcast caller playback",
+          pipelineUnificationDelta: "Replace mirrored Node processor orchestration with build_acc_voice_pipeline() while preserving FreeSWITCH RTP ingress/egress and proof manifests.",
           blocker: `${liveSoftphoneProofBlocker} The adapter is not yet the same Python Pipeline object used by the browser SmallWebRTC path.`,
         },
         {

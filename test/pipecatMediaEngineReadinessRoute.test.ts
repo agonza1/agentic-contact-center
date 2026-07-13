@@ -57,6 +57,11 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.sharesPipelineProcessors, false);
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.processorContractAligned, true);
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.liveMediaProofComplete, false);
+    assert.deepEqual(payload.pipecat14Alignment.sipTransportStrategy.pipelineUnificationDelta, [
+      "Move SIP RTP PCM frames into build_acc_voice_pipeline() instead of the Node mirror of rtc-asr/ACC/Kokoro stages.",
+      "Reuse the same RtcAsrTurnProcessor, AccCallerTurnProcessor, and KokoroTtsProcessor stage-event contract as the browser SmallWebRTC path.",
+      "Keep FreeSWITCH packetization and uuid_broadcast at the telephony boundary after transport.output() emits caller audio.",
+    ]);
     assert.equal(payload.pipecat14Alignment.flowsDecision.owner, "ACC TypeScript flow for current cancellation-rescue MVP");
     assert.equal(payload.pipecat14Alignment.flowsDecision.flowManagerRequiredNow, false);
     assert.deepEqual(payload.validationCommands, [
@@ -80,6 +85,8 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.equal(sipAdapter.implementedNow, true);
     assert.equal(sipAdapter.processorContractAligned, true);
     assert.equal(sipAdapter.liveMediaProofComplete, false);
+    assert.match(sipAdapter.pipelineUnificationDelta, /build_acc_voice_pipeline\(\)/);
+    assert.match(sipAdapter.pipelineUnificationDelta, /FreeSWITCH RTP ingress\/egress/);
     assert.match(sipAdapter.blocker, /live softphone capture/);
     assert.match(sipAdapter.blocker, /not yet the same Python Pipeline object/);
     assert.match(adapters.find((adapter: any) => adapter.id === "signalwire_sip_trunk").blocker, /past-call import remains out of scope/);
