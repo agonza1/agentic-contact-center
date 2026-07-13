@@ -279,7 +279,7 @@ test("GET /api/browser-webrtc/readiness reports bridge offline before live media
 
 
 test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bridge", async () => {
-  const bridgeRequests: Array<{ callId?: string; sdp?: string; type?: string; accUrl?: string }> = [];
+  const bridgeRequests: Array<{ callId?: string; sdp?: string; type?: string; accUrl?: string; sessionId?: string }> = [];
   const bridge = createServer(async (request, response) => {
     if (request.method !== "POST" || request.url !== "/api/webrtc/offer") {
       response.statusCode = 404;
@@ -297,6 +297,8 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
       ok: true,
       type: "answer",
       sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=ACC Pipecat WebRTC\r\nt=0 0\r\n",
+      sessionId: "smallwebrtc-generated-pc-id",
+      pcId: "smallwebrtc-generated-pc-id",
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
       evidence: { pipecatTransport: "webrtc", stt: { engine: "rtc-asr" }, tts: { engine: "kokoro" } },
     }));
@@ -341,6 +343,7 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
       ok: boolean;
       route: string;
       sessionId: string;
+      requestedSessionId: string;
       callId: string;
       type: string;
       sdp: string;
@@ -350,6 +353,8 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
 
     assert.equal(payload.ok, true);
     assert.equal(payload.route, "/api/browser-webrtc/session");
+    assert.equal(payload.sessionId, "smallwebrtc-generated-pc-id");
+    assert.equal(payload.requestedSessionId, bridgeRequests[0]?.sessionId);
     assert.equal(payload.type, "answer");
     assert.equal(payload.sdp, "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=ACC Pipecat WebRTC\r\nt=0 0\r\n");
     assert.equal(payload.iceServers[0].urls, "stun:stun.l.google.com:19302");

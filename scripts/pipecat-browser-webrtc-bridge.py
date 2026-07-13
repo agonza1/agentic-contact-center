@@ -150,10 +150,11 @@ class BrowserWebrtcBridge:
         if not answer:
             return web.json_response({"ok": False, "error": "webrtc_answer_unavailable"}, status=502)
 
-        pc_id = str(answer.get("pc_id") or payload.get("pcId") or payload.get("pc_id") or session_id)
+        pc_id = str(answer.get("pc_id") or answer.get("sessionId") or payload.get("pcId") or payload.get("pc_id") or session_id)
         session_record = self.sessions.get(session_id) or self.sessions.get(pc_id)
         if session_record:
-            session_record["sessionId"] = session_id
+            session_record["sessionId"] = pc_id
+            session_record["requestedSessionId"] = session_id
             session_record["pcId"] = pc_id
             self.remember_session_alias(session_id, session_record)
             self.remember_session_alias(pc_id, session_record)
@@ -162,7 +163,8 @@ class BrowserWebrtcBridge:
             "source": "pipecat_small_webrtc_pipeline",
             "runtimeMode": "pipecat_small_webrtc_pipeline",
             "transport": "SmallWebRTCTransport",
-            "sessionId": session_id,
+            "sessionId": pc_id,
+            "requestedSessionId": session_id,
             "pcId": pc_id,
             "callId": call_id,
             "mediaRecorderRequired": False,
@@ -183,7 +185,8 @@ class BrowserWebrtcBridge:
                 "ok": True,
                 "type": answer.get("type"),
                 "sdp": normalize_browser_answer_sdp(str(answer.get("sdp", ""))),
-                "sessionId": session_id,
+                "sessionId": pc_id,
+                "requestedSessionId": session_id,
                 "callId": call_id,
                 "pcId": pc_id,
                 "iceServers": [],

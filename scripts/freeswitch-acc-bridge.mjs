@@ -1163,6 +1163,7 @@ export class EslBridge {
     if (state.posted) return;
     const playbackSummary = state.sink.summary();
     if (!playbackSummary.outboundRtpReady) return;
+    const freeswitchBroadcast = state.call?.freeswitchBroadcast ?? this.freeswitchBroadcast;
     await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
       eventType: "media.playback",
       timestamp: nowIso(),
@@ -1178,11 +1179,12 @@ export class EslBridge {
       ssrc: playbackSummary.ssrc,
       lastSentAt: playbackSummary.lastSentAt,
       evidencePath: this.options.manifestPath,
-      freeswitchBroadcastMode: (state.call?.freeswitchBroadcast ?? this.freeswitchBroadcast)?.mode ?? null,
-      freeswitchBroadcastHostPath: (state.call?.freeswitchBroadcast ?? this.freeswitchBroadcast)?.hostPath ?? null,
-      freeswitchBroadcastPath: (state.call?.freeswitchBroadcast ?? this.freeswitchBroadcast)?.freeswitchPath ?? null,
-      freeswitchBroadcastSampleRateHz: (state.call?.freeswitchBroadcast ?? this.freeswitchBroadcast)?.sampleRateHz ?? null,
-      freeswitchBroadcastAudioBytes: (state.call?.freeswitchBroadcast ?? this.freeswitchBroadcast)?.audioBytes ?? null,
+      freeswitchBroadcast: freeswitchBroadcast ?? null,
+      freeswitchBroadcastMode: freeswitchBroadcast?.mode ?? null,
+      freeswitchBroadcastHostPath: freeswitchBroadcast?.hostPath ?? null,
+      freeswitchBroadcastPath: freeswitchBroadcast?.freeswitchPath ?? null,
+      freeswitchBroadcastSampleRateHz: freeswitchBroadcast?.sampleRateHz ?? null,
+      freeswitchBroadcastAudioBytes: freeswitchBroadcast?.audioBytes ?? null,
     });
     if (state.call) state.call.pipecatPlaybackEventPosted = true;
     else this.pipecatPlaybackEventPosted = true;
@@ -1279,7 +1281,10 @@ export class EslBridge {
       pipecatRtpFrameBatch,
     });
     let rtcAsrStreamEvidence = null;
-    if (this.options.rtcAsrUrl) {
+    const attachedRtcAsrEvidence = this.options.rtcAsrEvidencePath
+      ? await inspectRtcAsrEvidence(this.options.rtcAsrEvidencePath, await stat(this.options.rtcAsrEvidencePath).catch(() => null))
+      : null;
+    if (this.options.rtcAsrUrl && !attachedRtcAsrEvidence?.ready) {
       const sink = new RtcAsrPipecatStreamSink({
         url: this.options.rtcAsrUrl,
         evidencePath: this.options.rtcAsrEvidencePath,
@@ -1295,7 +1300,17 @@ export class EslBridge {
     }
     await this.postPipecatPlaybackEvent(uuid);
 
-    if (!this.options.rtcAsrUrl) {
+    if (this.options.rtcAsrEvidencePath && attachedRtcAsrEvidence?.ready && attachedRtcAsrEvidence.transcript) {
+      const transcriptResponse = await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
+        eventType: "media.transcript",
+        timestamp: nowIso(),
+        sipCallId: uuid,
+        fsUuid: uuid,
+        text: attachedRtcAsrEvidence.transcript,
+        rtcAsrEvidencePath: this.options.rtcAsrEvidencePath,
+      });
+      await this.playLiveKokoroTts(latestAgentText(transcriptResponse.body), uuid);
+    } else if (!this.options.rtcAsrUrl) {
       await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
         eventType: "rtc_asr.blocked",
         timestamp: nowIso(),

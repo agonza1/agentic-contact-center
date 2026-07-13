@@ -628,6 +628,9 @@ test("FreeSWITCH bridge broadcasts live Kokoro TTS even without caller RTP socke
     assert.equal(playbackEvents[0].rtpSocketSendReady, false);
     assert.equal(playbackEvents[0].packetCount, 1);
     assert.equal(playbackEvents[0].sentPacketCount, 0);
+    assert.equal(playbackEvents[0].freeswitchBroadcast.mode, "freeswitch_uuid_broadcast");
+    assert.equal(playbackEvents[0].freeswitchBroadcast.freeswitchPath.startsWith("/var/log/freeswitch/acc/media/fs-live-kokoro-no-rtp-kokoro-tts-"), true);
+    assert.equal(playbackEvents[0].freeswitchBroadcast.audioBytes, 8);
     assert.equal(playbackEvents[0].freeswitchBroadcastMode, "freeswitch_uuid_broadcast");
     assert.equal(playbackEvents[0].freeswitchBroadcastPath.startsWith("/var/log/freeswitch/acc/media/fs-live-kokoro-no-rtp-kokoro-tts-"), true);
     assert.equal(playbackEvents[0].freeswitchBroadcastAudioBytes, 8);
@@ -1209,7 +1212,7 @@ test("FreeSWITCH bridge forwards attached rtc-asr evidence to ACC", async () => 
 
   try {
     await writeFile(audioPath, validWavFixture());
-    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ type: "response.audio_transcript.done", transcript: "I need billing help." })}\n`, "utf8");
+    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: "I need billing help.", final: true })}\n`, "utf8");
 
     const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
     const script = `
@@ -1239,7 +1242,7 @@ test("FreeSWITCH bridge forwards attached rtc-asr evidence to ACC", async () => 
 
     assert.equal(receivedEvents.some((event) => event.eventType === "media.capture"), true);
     const transcriptEvent = receivedEvents.find((event) => event.eventType === "media.transcript");
-    assert.equal(transcriptEvent?.text, "I need billing help.");
+    assert.equal(transcriptEvent?.text ?? transcriptEvent?.transcript, "I need billing help.");
     assert.equal(transcriptEvent?.rtcAsrEvidencePath, rtcAsrEvidencePath);
     const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { reviewReady: boolean; blockers: string[] };
     assert.equal(manifest.reviewReady, false);

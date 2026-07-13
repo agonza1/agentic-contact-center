@@ -4060,10 +4060,12 @@ async function routeRequest(
         return;
       }
 
+      const bridgeSessionId = getOptionalTrimmedString(bridgeResponse.payload.sessionId) ?? sessionId;
       writeJson(response, 201, {
         ok: true,
         route: "/api/browser-webrtc/session",
-        sessionId,
+        sessionId: bridgeSessionId,
+        requestedSessionId: sessionId,
         callId,
         type: "answer",
         sdp: answerSdp,
@@ -4077,6 +4079,9 @@ async function routeRequest(
           tts: { engine: "kokoro" },
           call: buildCallPayload(snapshot),
           bridge: isRecord(bridgeResponse.payload.evidence) ? bridgeResponse.payload.evidence : {},
+          sessionId: bridgeSessionId,
+          requestedSessionId: sessionId,
+          callId,
         },
       });
     } catch (error) {
@@ -4821,13 +4826,20 @@ async function routeRequest(
           writeBadRequest(response, "live_sip_playback_socket_send_evidence_incomplete");
           return;
         }
-        const freeswitchBroadcastMode = getOptionalTrimmedString(body.freeswitchBroadcastMode);
-        const freeswitchBroadcastSampleRateHz = parseOptionalNonNegativeInteger(body.freeswitchBroadcastSampleRateHz, "live_sip_playback_broadcast_sample_rate_invalid");
+        const freeswitchBroadcastBody = isRecord(body.freeswitchBroadcast) ? body.freeswitchBroadcast : null;
+        const freeswitchBroadcastMode = getOptionalTrimmedString(body.freeswitchBroadcastMode) ?? getOptionalTrimmedString(freeswitchBroadcastBody?.mode);
+        const freeswitchBroadcastSampleRateHz = parseOptionalNonNegativeInteger(
+          body.freeswitchBroadcastSampleRateHz ?? freeswitchBroadcastBody?.sampleRateHz,
+          "live_sip_playback_broadcast_sample_rate_invalid",
+        );
         if (freeswitchBroadcastSampleRateHz !== null && typeof freeswitchBroadcastSampleRateHz === "object") {
           writeBadRequest(response, freeswitchBroadcastSampleRateHz.error);
           return;
         }
-        const freeswitchBroadcastAudioBytes = parseOptionalNonNegativeInteger(body.freeswitchBroadcastAudioBytes, "live_sip_playback_broadcast_audio_bytes_invalid");
+        const freeswitchBroadcastAudioBytes = parseOptionalNonNegativeInteger(
+          body.freeswitchBroadcastAudioBytes ?? freeswitchBroadcastBody?.audioBytes,
+          "live_sip_playback_broadcast_audio_bytes_invalid",
+        );
         if (freeswitchBroadcastAudioBytes !== null && typeof freeswitchBroadcastAudioBytes === "object") {
           writeBadRequest(response, freeswitchBroadcastAudioBytes.error);
           return;
@@ -4859,8 +4871,8 @@ async function routeRequest(
             callerPlaybackConfirmed: body.callerPlaybackConfirmed === true,
             callerPlaybackEvidencePath: getOptionalTrimmedString(body.callerPlaybackEvidencePath) ?? null,
             freeswitchBroadcastMode: hasFreeswitchBroadcast ? "freeswitch_uuid_broadcast" : null,
-            freeswitchBroadcastHostPath: getOptionalTrimmedString(body.freeswitchBroadcastHostPath) ?? null,
-            freeswitchBroadcastPath: getOptionalTrimmedString(body.freeswitchBroadcastPath) ?? null,
+            freeswitchBroadcastHostPath: getOptionalTrimmedString(body.freeswitchBroadcastHostPath) ?? getOptionalTrimmedString(freeswitchBroadcastBody?.hostPath) ?? null,
+            freeswitchBroadcastPath: getOptionalTrimmedString(body.freeswitchBroadcastPath) ?? getOptionalTrimmedString(freeswitchBroadcastBody?.freeswitchPath) ?? null,
             freeswitchBroadcastSampleRateHz,
             freeswitchBroadcastAudioBytes,
           },
