@@ -146,7 +146,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
       failureReasons: Record<string, string>;
       artifacts: { conversationAgentEvalsRequest: string };
       artifactIntegrity: Array<{ artifactId: string; readiness: string }>;
-      evidence: { callerAudio: { ready: boolean }; sipLog: { hasInvite: boolean; hasAcceptedInviteResponse: boolean }; rtcAsr: { required: boolean; ready: boolean }; sourceArtifactIntegrity: { ready: boolean } };
+      evidence: { callerAudio: { ready: boolean }; sipLog: { hasInvite: boolean; hasAcceptedInviteResponse: boolean }; rtcAsr: { required: boolean; ready: boolean }; callerPlayback: { required: boolean; ready: boolean; path: string | null; reason: string | null }; sourceArtifactIntegrity: { ready: boolean } };
       sourceManifestReviewGate: { missingLabels: string[]; nextActions: string[] };
     };
     assert.equal(reviewGateReportJson.status, "blocked_before_review");
@@ -159,6 +159,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     assert.deepEqual(reviewGateReportJson.evidence.callerAudio.ready, true);
     assert.deepEqual(reviewGateReportJson.evidence.sipLog, { entryCount: 2, hasInvite: true, hasAcceptedInviteResponse: true });
     assert.deepEqual(reviewGateReportJson.evidence.rtcAsr, { required: false, ready: false, reason: "rtc-asr transcript evidence is not attached." });
+    assert.deepEqual(reviewGateReportJson.evidence.callerPlayback, { required: false, ready: false, path: null, reason: "caller-audible playback proof is not attached." });
     assert.deepEqual(reviewGateReportJson.evidence.sourceArtifactIntegrity, { checked: 0, blocked: [], changed: [], ready: true });
     assert.deepEqual(reviewGateReportJson.sourceManifestReviewGate.missingLabels, ["live_capture", "rtc_asr_live"]);
     assert.deepEqual(reviewGateReportJson.sourceManifestReviewGate.nextActions, [

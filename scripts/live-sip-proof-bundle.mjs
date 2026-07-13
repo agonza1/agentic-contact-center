@@ -578,6 +578,7 @@ function reviewGateReportJson(bundleManifest) {
       callerAudio: bundleManifest.validationSummary.callerAudioEvidence,
       sipLog: bundleManifest.validationSummary.sipLogEvidence,
       rtcAsr: bundleManifest.validationSummary.rtcAsrEvidence,
+      callerPlayback: bundleManifest.validationSummary.callerPlaybackEvidence,
       sourceArtifactIntegrity: bundleManifest.validationSummary.sourceArtifactIntegrityEvidence,
     },
     blockers: bundleManifest.validationSummary.blockers,
@@ -608,6 +609,16 @@ async function main() {
   const callerPlaybackEvidencePath = liveManifest.artifacts.callerPlaybackEvidence ? path.resolve(repoRoot, liveManifest.artifacts.callerPlaybackEvidence) : null;
   const rtcAsrEvidencePathExists = await fileExists(rtcAsrEvidencePath);
   const callerPlaybackEvidencePathExists = await fileExists(callerPlaybackEvidencePath);
+  const callerPlaybackEvidenceResult = {
+    required: liveManifest.pipecatMediaEngine?.bidirectionalPlaybackReady === true || Boolean(liveManifest.artifacts.callerPlaybackEvidence),
+    ready: callerPlaybackEvidencePathExists,
+    path: callerPlaybackEvidencePath ? rel(callerPlaybackEvidencePath) : null,
+    reason: callerPlaybackEvidencePath
+      ? callerPlaybackEvidencePathExists
+        ? null
+        : "caller-audible playback proof artifact is attached but missing."
+      : "caller-audible playback proof is not attached.",
+  };
   const runtimeTracePath = path.join(outDir, "runtime-event-trace.json");
   const blockerPath = path.join(outDir, "rtc-asr-blocker.json");
   const labels = [
@@ -626,6 +637,8 @@ async function main() {
     sipCallId: liveManifest.sipCallId,
     localSip: liveManifest.localSip,
     runtimeModeLabels: liveManifest.runtimeModeLabels,
+    callerPlaybackEvidence: callerPlaybackEvidenceResult,
+    outboundPlayback: liveManifest.pipecatMediaEngine?.outboundRtpPlayback ?? null,
     reviewReady: liveManifest.reviewReady,
     blockers: liveManifest.blockers,
   };
@@ -697,6 +710,7 @@ async function main() {
     callerAudioEvidence: wavEvidenceResult,
     sipLogEvidence: sipEvidence,
     rtcAsrEvidence: rtcAsrEvidenceResult,
+    callerPlaybackEvidence: callerPlaybackEvidenceResult,
     sourceArtifactIntegrityEvidence: sourceArtifactIntegrityResult,
   };
   const bundleManifest = {
