@@ -1259,8 +1259,6 @@ export class EslBridge {
         voice: this.options.kokoroVoice,
         model: this.options.kokoroModel,
       });
-      if (this.rtpPlaybackSocket) await state.sink.sendFrame(this.rtpPlaybackSocket, frame);
-      else state.sink.packetize(frame);
       let broadcast = null;
       try {
         broadcast = await this.broadcastKokoroFrame(uuid, frame);
@@ -1271,6 +1269,8 @@ export class EslBridge {
         };
         state.sink.errors.push({ at: nowIso(), error: broadcast.error, source: "freeswitch_uuid_broadcast" });
       }
+      if (this.rtpPlaybackSocket) await state.sink.sendFrame(this.rtpPlaybackSocket, frame);
+      else state.sink.packetize(frame);
       const summary = state.sink.summary();
       if (state.call) state.call.freeswitchBroadcast = broadcast;
       else this.freeswitchBroadcast = broadcast;
