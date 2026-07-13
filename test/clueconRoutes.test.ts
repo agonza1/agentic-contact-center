@@ -568,20 +568,20 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /MIC_START_CANCELLED/);
   assert.match(narrative.body, /slideCount: 9/);
   assert.match(narrative.body, /Run scripted demo/);
-  assert.match(narrative.body, /Run scripted proof/);
-  assert.match(narrative.body, /Run eval proof/);
+  assert.match(narrative.body, /Run proof/);
+  assert.match(narrative.body, /Run eval/);
   assert.match(narrative.body, /window\.__CLUECON__/);
   assert.match(narrative.body, /rtc-asr is measurable and swappable/);
-  assert.match(narrative.body, /Microphone → Local STT v1 → live transcript/);
+  assert.match(narrative.body, /Mic → Local STT → transcript/);
   assert.match(narrative.body, /id="asr-model-select"/);
   assert.match(narrative.body, /id="asr-realtime"/);
   assert.match(narrative.body, /Start realtime/);
   assert.match(narrative.body, /local-stt\.v1/);
   assert.match(narrative.body, /handleAsrRealtimeMessage/);
   assert.match(narrative.body, /id="asr-record"/);
-  assert.match(narrative.body, /Pipecat demo source/);
+  assert.match(narrative.body, /Source ↗/);
   assert.match(narrative.body, /rtc-asr\/tree\/main\/examples\/browser_pipecat_demo/);
-  assert.match(narrative.body, /Open benchmark site/);
+  assert.match(narrative.body, /Benchmarks ↗/);
   assert.match(narrative.body, /https:\/\/agonza1\.github\.io\/rtc-asr\/docs\//);
   assert.match(narrative.body, /renderAsrBenchmarks\(model\)/);
   assert.match(narrative.body, /250\.7 ms/);
@@ -592,6 +592,9 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /renderAsrPanel/);
   assert.match(narrative.body, /runEvalProof/);
   assert.match(narrative.body, /goToSlide/);
+  assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 9'));
+  assert.match(narrative.body, /aria-label="Previous slide"/);
+  assert.ok(narrative.body.includes('status.textContent = String(state.slide + 1) + " / " + String(state.slideCount)'));
   assert.match(narrative.body, /@media \(max-width: 1100px\) \{ #demo \.two/);
   assert.match(narrative.body, /\.present #demo \{ height: calc\(100vh - 62px\)/);
   assert.match(narrative.body, /\.present \.topbar \{ position: static/);
@@ -600,7 +603,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /class="transcript-turn transcript-turn--/);
   assert.match(narrative.body, /renderDemoTranscript\(payload\.call\.transcript\)/);
   assert.match(narrative.body, /class="scroll"/);
-  assert.match(narrative.body, /RTF \(Real-Time Factor\) = processing time ÷ audio duration/);
+  assert.match(narrative.body, /RTF = processing time ÷ audio duration/);
+  assert.match(narrative.body, /\.voice-pipeline__detail \{ display: none; \}/);
+  assert.match(narrative.body, /class="readiness-more"/);
+  assert.match(narrative.body, /class="card proof-field"/);
 
   const present = await get("/cluecon/present");
   assert.equal(present.statusCode, 200);
@@ -608,10 +614,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(present.body, /One realtime pipeline/);
   assert.match(present.body, /Alberto Gonzalez CTO @ WebRTC\.ventures/);
   assert.match(present.body, /ArrowRight/);
-  assert.match(present.body, /Run eval proof/);
+  assert.match(present.body, /Run eval/);
   assert.match(present.body, /eval-scorecard/);
   assert.match(present.body, /ClueCon 2026 presentation/);
-  assert.match(present.body, /RTF \(Real-Time Factor\) = processing time ÷ audio duration/);
+  assert.match(present.body, /RTF = processing time ÷ audio duration/);
 });
 
 test("ClueCon static export renders GitHub Pages artifact", async () => {
