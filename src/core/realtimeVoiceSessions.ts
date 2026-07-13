@@ -170,6 +170,14 @@ export class RealtimeVoiceSessionStore {
     if (!session || session.status === "closed") return null;
     const at = input.timestamp ?? new Date().toISOString();
     const streamId = input.streamId?.trim() || session.output.streamId || `output-${session.playback.requestedTurns || 1}`;
+    if (session.output.status === "cancelled" && session.output.streamId === streamId) {
+      this.record(session, "output.audio.chunk.ignored", at, {
+        streamId,
+        bytes: input.bytes,
+        reason: session.output.cancellationReason ?? "cancelled_stream",
+      });
+      return cloneSession(session);
+    }
     const starting = session.output.status !== "streaming" || session.output.streamId !== streamId;
     if (starting) {
       session.output.streamId = streamId;

@@ -108,6 +108,15 @@ test("voice sessions expose persistent CAE realtime-audio lifecycle and proof", 
     assert.equal(control.payload.session.output.status, "cancelled");
     assert.equal(control.payload.session.output.cancellationReason, "tester interruption");
 
+    const lateOutput = await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-1/media/output", Buffer.from([16, 17, 18]), {
+      "content-type": "audio/wav",
+      "x-output-stream-id": "tts-turn-1",
+    });
+    assert.equal(lateOutput.statusCode, 202);
+    assert.equal(lateOutput.payload.session.output.status, "cancelled");
+    assert.equal(lateOutput.payload.session.output.chunks, 1);
+    assert.equal(lateOutput.payload.session.output.bytes, 6);
+
     const events = await requestJson(address.port, "GET", "/api/voice/sessions/cae-session-1/events?afterSequence=1");
     assert.equal(events.statusCode, 200);
     assert.deepEqual(events.payload.events.map((event: any) => event.type), [
@@ -117,6 +126,7 @@ test("voice sessions expose persistent CAE realtime-audio lifecycle and proof", 
       "output.audio.chunk",
       "control.received",
       "output.stream.cancelled",
+      "output.audio.chunk.ignored",
     ]);
 
     const proof = await requestJson(address.port, "GET", "/api/voice/sessions/cae-session-1/proof");
