@@ -642,7 +642,7 @@ function buildOperatorConsoleHtml(): string {
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceRemoteTrackReceived: false, voiceRemoteAudioStarted: false, voiceAudioWatchdog: null, voiceSessionProofTimer: null, voiceLastProofTurnCount: 0, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceRemoteTrackReceived: false, voiceRemoteAudioStarted: false, voiceLiveAudioVerified: false, voiceLiveTurnVerified: false, voiceAudioWatchdog: null, voiceSessionProofTimer: null, voiceLastProofTurnCount: 0, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
     const repoHeadEvidence = ${JSON.stringify(getRepoHeadEvidence())};
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
@@ -816,7 +816,12 @@ function buildOperatorConsoleHtml(): string {
       const audio = state.voiceRemoteAudio;
       const peerActive = Boolean(pc && !["closed", "failed"].includes(pc.connectionState));
       const playbackProgressed = Boolean(audio && audio.currentTime > 0 && !audio.paused);
-      return peerActive && state.voiceRemoteTrackReceived && (state.voiceRemoteAudioStarted || playbackProgressed);
+      return peerActive && state.voiceRemoteTrackReceived && (state.voiceLiveAudioVerified || state.voiceRemoteAudioStarted || playbackProgressed);
+    }
+    function hasVerifiedLiveVoiceSession() {
+      const pc = state.voicePeer;
+      const peerActive = Boolean(pc && !["closed", "failed"].includes(pc.connectionState));
+      return peerActive && (hasVerifiedLiveVoicePlayback() || state.voiceLiveTurnVerified);
     }
     async function probeVoiceBridge(options) {
       if (state.voiceBridge.probing) return;
@@ -831,7 +836,7 @@ function buildOperatorConsoleHtml(): string {
         const response = await fetch(browserWebrtcReadinessUrl());
         const payload = await response.json();
         state.voiceBridge.probing = false;
-        if (hasVerifiedLiveVoicePlayback()) {
+        if (hasVerifiedLiveVoiceSession()) {
           updateVoiceBridgeStatus("running", "Live browser WebRTC audio is playing; readiness polling preserved the active session state. " + formatVoiceBridgeEngineEvidence(payload.readiness || {}));
           return;
         }
@@ -846,7 +851,7 @@ function buildOperatorConsoleHtml(): string {
         updateVoiceBridgeStatus("degraded", formatVoiceBridgeReadyDetail(payload));
       } catch (error) {
         state.voiceBridge.probing = false;
-        if (hasVerifiedLiveVoicePlayback()) {
+        if (hasVerifiedLiveVoiceSession()) {
           updateVoiceBridgeStatus("running", "Live browser WebRTC audio is playing; readiness polling failed but the active session is still playing.");
           return;
         }
@@ -900,6 +905,8 @@ function buildOperatorConsoleHtml(): string {
       state.voiceLastProofTurnCount = 0;
       state.voiceRemoteTrackReceived = false;
       state.voiceRemoteAudioStarted = false;
+      state.voiceLiveAudioVerified = false;
+      state.voiceLiveTurnVerified = false;
       if (state.voiceStream) {
         state.voiceStream.getTracks().forEach(function(track) { track.stop(); });
         state.voiceStream = null;
@@ -1038,6 +1045,7 @@ function buildOperatorConsoleHtml(): string {
         await refresh();
       }
       if (bridge.reviewReady || (turn.callerTranscript && turn.tts && turn.tts.audioBytes)) {
+        state.voiceLiveTurnVerified = true;
         updateVoiceBridgeStatus("running", detail);
       } else if ((bridge.lastError && bridge.lastError.error) || turn.error || (turn.callerTranscript && !turn.agentText)) {
         updateVoiceBridgeStatus("degraded", detail);
@@ -1139,6 +1147,7 @@ function buildOperatorConsoleHtml(): string {
         state.voiceRemoteAudio.autoplay = true;
         state.voiceRemoteAudio.onplaying = function() {
           state.voiceRemoteAudioStarted = true;
+          state.voiceLiveAudioVerified = true;
           state.voiceStatus = "Agent audio playing through browser WebRTC";
           updateVoiceBridgeStatus("running", "Remote audio is playing through the browser WebRTC track.");
           setStatus(state.voiceStatus);

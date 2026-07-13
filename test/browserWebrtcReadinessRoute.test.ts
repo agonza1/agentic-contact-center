@@ -19,8 +19,14 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(bridge, /transport\.output\(\)/);
   assert.match(bridge, /record_stage/);
   assert.match(bridge, /stt\.empty_transcript/);
+  assert.match(bridge, /mark_output_active/);
+  assert.match(bridge, /no_active_output_audio/);
+  assert.match(bridge, /outputWindow/);
   assert.match(bridge, /stageEvents/);
   assert.match(bridge, /skipAcc/);
+  assert.match(bridge, /silence_finalize_task/);
+  assert.match(bridge, /finalize_after_silence/);
+  assert.match(bridge, /finalize_turn\("silence_timer"\)/);
   assert.doesNotMatch(bridge, /RTCPeerConnection/);
   assert.doesNotMatch(bridge, /RTCSessionDescription/);
 });
@@ -32,6 +38,9 @@ test("operator console polls browser WebRTC session proof for turn diagnostics",
   assert.match(serverSource, /armVoiceSessionProofPolling/);
   assert.match(serverSource, /Audio reached the Pipecat bridge, but rtc-asr returned an empty transcript/);
   assert.match(serverSource, /rtc-asr transcript arrived/);
+  assert.match(serverSource, /voiceLiveAudioVerified/);
+  assert.match(serverSource, /voiceLiveTurnVerified/);
+  assert.match(serverSource, /hasVerifiedLiveVoiceSession/);
   assert.match(serverSource, /voiceLastProofTurnCount/);
   assert.match(serverSource, /await refresh\(\);/);
   assert.match(serverSource, /armVoiceSessionProofPolling\(\);/);
