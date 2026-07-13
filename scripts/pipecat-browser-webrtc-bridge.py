@@ -42,9 +42,15 @@ try:
     import av
     import websockets
     from aiohttp import web
-    from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
     from av.audio.resampler import AudioResampler
-    from pipecat.frames.frames import InputAudioRawFrame, TextFrame, TranscriptionFrame, TTSAudioRawFrame
+    from pipecat.frames.frames import InputAudioRawFrame, OutputAudioRawFrame, TextFrame, TranscriptionFrame, TTSAudioRawFrame
+    from pipecat.pipeline.pipeline import Pipeline
+    from pipecat.pipeline.runner import PipelineRunner
+    from pipecat.pipeline.task import PipelineParams, PipelineTask
+    from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+    from pipecat.transports.base_transport import TransportParams
+    from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCRequest, SmallWebRTCRequestHandler
+    from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 except Exception as exc:  # pragma: no cover - local setup guard
     print(
         json.dumps(
@@ -374,147 +380,25 @@ def normalize_browser_answer_sdp(sdp: str) -> str:
     return "\r\n".join(output) + "\r\n"
 
 
-class BrowserAudioOutputTrack(MediaStreamTrack):
-    kind = "audio"
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._buffer = bytearray()
-        self._pts = 0
-        self._started = time.monotonic()
-        self.total_audio_bytes = 0
-        self.enqueued_chunks = 0
-        self.cleared_chunks = 0
-        self.cleared_audio_bytes = 0
-
-    def enqueue_pcm16(self, pcm: bytes, sample_rate: int) -> None:
-        pcm48 = resample_pcm16_mono(pcm, sample_rate, WEBRTC_SAMPLE_RATE)
-        self._buffer.extend(pcm48)
-        self.total_audio_bytes += len(pcm48)
-        self.enqueued_chunks += 1
-
-    def clear_buffer(self) -> dict[str, Any]:
-        cleared_bytes = len(self._buffer)
-        self._buffer.clear()
-        self.cleared_chunks += 1
-        self.cleared_audio_bytes += cleared_bytes
-        return {
-            "clearedBytes": cleared_bytes,
-            "clearedChunks": self.cleared_chunks,
-            "totalClearedAudioBytes": self.cleared_audio_bytes,
-        }
-
-    async def recv(self) -> av.AudioFrame:
-        await asyncio.sleep(WEBRTC_FRAME_MS / 1000)
-        bytes_per_frame = WEBRTC_SAMPLES_PER_FRAME * SAMPLE_WIDTH_BYTES
-        if len(self._buffer) >= bytes_per_frame:
-            chunk = bytes(self._buffer[:bytes_per_frame])
-            del self._buffer[:bytes_per_frame]
-        else:
-            chunk = bytes(self._buffer)
-            self._buffer.clear()
-            chunk = chunk + b"\x00" * (bytes_per_frame - len(chunk))
-        frame = av.AudioFrame(format="s16", layout="mono", samples=WEBRTC_SAMPLES_PER_FRAME)
-        frame.planes[0].update(chunk)
-        frame.sample_rate = WEBRTC_SAMPLE_RATE
-        frame.pts = self._pts
-        frame.time_base = Fraction(1, WEBRTC_SAMPLE_RATE)
-        self._pts += WEBRTC_SAMPLES_PER_FRAME
-        return frame
-
-
-class PipecatBrowserWebrtcPipeline:
-    def __init__(self, *, acc_url: str, call_id: str, readiness: BridgeReadiness, output_track: BrowserAudioOutputTrack):
+class BrowserTurnSession:
+    def __init__(self, *, acc_url: str, call_id: str, readiness: BridgeReadiness):
         self.acc_url = acc_url.rstrip("/")
         self.call_id = call_id
         self.readiness = readiness
-        self.output_track = output_track
         self.turn_count = 0
         self.output_generation = 0
         self.last_barge_in_evidence: dict[str, Any] = {}
         self.last_evidence: dict[str, Any] = {}
-        self.turn_queue: asyncio.Queue[bytes] = asyncio.Queue()
-        self.turn_worker = asyncio.create_task(self.consume_turn_queue())
 
     def cancel_output(self, reason: str = "barge-in") -> dict[str, Any]:
         self.output_generation += 1
-        clear_evidence = self.output_track.clear_buffer()
         self.last_barge_in_evidence = {
             "reason": reason,
             "outputGeneration": self.output_generation,
-            "clearedRemoteAudio": clear_evidence,
             "timestamp": datetime.now(UTC).isoformat(timespec="milliseconds"),
         }
         print(json.dumps({"type": "browser_webrtc_output_cancelled", **self.last_barge_in_evidence}), flush=True)
         return self.last_barge_in_evidence
-
-    def enqueue_turn(self, pcm16_16k: bytes) -> None:
-        self.turn_queue.put_nowait(pcm16_16k)
-
-    async def consume_turn_queue(self) -> None:
-        while True:
-            pcm16_16k = await self.turn_queue.get()
-            try:
-                await self.run_turn(pcm16_16k)
-            except Exception as exc:  # pragma: no cover - runtime evidence path
-                print(json.dumps({"type": "browser_webrtc_turn_error", "error": str(exc)}), flush=True)
-            finally:
-                self.turn_queue.task_done()
-
-    async def close(self) -> None:
-        self.turn_worker.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self.turn_worker
-
-    async def run_turn(self, pcm16_16k: bytes) -> dict[str, Any]:
-        started = time.perf_counter()
-        turn_output_generation = self.output_generation
-        input_frame = InputAudioRawFrame(audio=pcm16_16k, sample_rate=INPUT_SAMPLE_RATE, num_channels=1)
-        transcript, stt_meta, transcription_frame = await self.transcribe(input_frame)
-        if not transcript.strip():
-            return {"ok": False, "error": "empty_transcript", "stt": stt_meta}
-        call = await asyncio.to_thread(
-            json_http,
-            "POST",
-            f"{self.acc_url}/api/calls/{self.call_id}/caller-turn",
-            {"text": transcript, "conversationMode": "free_caller"},
-        )
-        agent_text = latest_agent_text(call)
-        tts_meta: dict[str, Any] = {"engine": "kokoro", "skipped": True, "audioBytes": 0}
-        output_cancelled = False
-        if agent_text:
-            pcm, sample_rate, tts_meta = await self.synthesize(TextFrame(agent_text))
-            if turn_output_generation == self.output_generation:
-                self.output_track.enqueue_pcm16(pcm, sample_rate)
-            else:
-                output_cancelled = True
-                tts_meta = {
-                    **tts_meta,
-                    "cancelled": True,
-                    "cancelReason": "barge-in",
-                    "audioBytesEnqueued": 0,
-                }
-        self.turn_count += 1
-        elapsed_ms = round((time.perf_counter() - started) * 1000)
-        self.last_evidence = {
-            "turn": self.turn_count,
-            "elapsedMs": elapsed_ms,
-            "callerTranscript": transcript,
-            "agentText": agent_text,
-            "stt": stt_meta,
-            "tts": tts_meta,
-            "bargeIn": self.last_barge_in_evidence,
-            "outputCancelled": output_cancelled,
-            "pipecatFrames": {
-                "input": "InputAudioRawFrame",
-                "transcription": "TranscriptionFrame",
-                "agentText": "TextFrame",
-                "output": "TTSAudioRawFrame" if agent_text else None,
-            },
-            "callId": self.call_id,
-        }
-        print(json.dumps({"type": "browser_webrtc_turn", **self.last_evidence}), flush=True)
-        return {"ok": True, "call": call, "evidence": self.last_evidence, "transcriptionFrame": transcription_frame.text}
 
     async def transcribe(self, frame: InputAudioRawFrame) -> tuple[str, dict[str, Any], TranscriptionFrame]:
         started = time.perf_counter()
@@ -600,59 +484,172 @@ class PipecatBrowserWebrtcPipeline:
         return output_frame.audio, output_frame.sample_rate, meta
 
 
-async def consume_browser_audio(track: MediaStreamTrack, pipeline: PipecatBrowserWebrtcPipeline) -> None:
-    resampler = AudioResampler(format="s16", layout="mono", rate=INPUT_SAMPLE_RATE)
-    speech_chunks: list[bytes] = []
-    in_speech = False
-    last_voice_at = time.monotonic()
-    turn_started_at = time.monotonic()
-    silence_rms = int(os.environ.get("ACC_WEBRTC_SILENCE_RMS", "260"))
-    silence_ms = int(os.environ.get("ACC_WEBRTC_SILENCE_MS", "1200"))
-    min_turn_ms = int(os.environ.get("ACC_WEBRTC_MIN_TURN_MS", "600"))
-    max_turn_ms = int(os.environ.get("ACC_WEBRTC_MAX_TURN_MS", "9000"))
+class RtcAsrTurnProcessor(FrameProcessor):
+    def __init__(self, session: BrowserTurnSession):
+        super().__init__(name="rtc-asr-turn-processor")
+        self.session = session
+        self.speech_chunks: list[bytes] = []
+        self.in_speech = False
+        self.last_voice_at = time.monotonic()
+        self.turn_started_at = time.monotonic()
+        self.silence_rms = int(os.environ.get("ACC_WEBRTC_SILENCE_RMS", "260"))
+        self.silence_ms = int(os.environ.get("ACC_WEBRTC_SILENCE_MS", "1200"))
+        self.min_turn_ms = int(os.environ.get("ACC_WEBRTC_MIN_TURN_MS", "600"))
+        self.max_turn_ms = int(os.environ.get("ACC_WEBRTC_MAX_TURN_MS", "9000"))
 
-    while True:
-        frame = await track.recv()
-        resampled = resampler.resample(frame)
-        frames = resampled if isinstance(resampled, list) else [resampled]
-        for audio_frame in frames:
-            pcm = bytes(audio_frame.planes[0])
-            if not pcm:
-                continue
-            rms = audioop.rms(pcm, SAMPLE_WIDTH_BYTES)
-            now = time.monotonic()
-            if rms > silence_rms:
-                if not in_speech:
-                    pipeline.cancel_output("barge-in")
-                    turn_started_at = now
-                in_speech = True
-                last_voice_at = now
-            if in_speech:
-                speech_chunks.append(pcm)
-            collected_ms = round(sum(len(chunk) for chunk in speech_chunks) / (INPUT_SAMPLE_RATE * SAMPLE_WIDTH_BYTES) * 1000)
-            silence_elapsed_ms = round((now - last_voice_at) * 1000)
-            max_elapsed_ms = round((now - turn_started_at) * 1000)
-            should_finalize = in_speech and collected_ms >= min_turn_ms and (silence_elapsed_ms >= silence_ms or max_elapsed_ms >= max_turn_ms)
-            if should_finalize:
-                pcm_turn = b"".join(speech_chunks)
-                speech_chunks = []
-                in_speech = False
-                turn_started_at = now
-                last_voice_at = now
-                pipeline.enqueue_turn(pcm_turn)
+    async def process_frame(self, frame: Any, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+        if direction != FrameDirection.DOWNSTREAM or not isinstance(frame, InputAudioRawFrame):
+            await self.push_frame(frame, direction)
+            return
+        pcm = frame.audio
+        if not pcm:
+            return
+        rms = audioop.rms(pcm, SAMPLE_WIDTH_BYTES)
+        now = time.monotonic()
+        if rms > self.silence_rms:
+            if not self.in_speech:
+                self.session.cancel_output("barge-in")
+                self.turn_started_at = now
+            self.in_speech = True
+            self.last_voice_at = now
+        if self.in_speech:
+            self.speech_chunks.append(pcm)
+        collected_ms = round(sum(len(chunk) for chunk in self.speech_chunks) / (INPUT_SAMPLE_RATE * SAMPLE_WIDTH_BYTES) * 1000)
+        silence_elapsed_ms = round((now - self.last_voice_at) * 1000)
+        max_elapsed_ms = round((now - self.turn_started_at) * 1000)
+        should_finalize = self.in_speech and collected_ms >= self.min_turn_ms and (silence_elapsed_ms >= self.silence_ms or max_elapsed_ms >= self.max_turn_ms)
+        if not should_finalize:
+            return
+        pcm_turn = b"".join(self.speech_chunks)
+        self.speech_chunks = []
+        self.in_speech = False
+        self.turn_started_at = now
+        self.last_voice_at = now
+        transcript, stt_meta, transcription_frame = await self.session.transcribe(InputAudioRawFrame(audio=pcm_turn, sample_rate=INPUT_SAMPLE_RATE, num_channels=1))
+        if not transcript.strip():
+            self.session.last_evidence = {"ok": False, "error": "empty_transcript", "stt": stt_meta, "callId": self.session.call_id}
+            return
+        transcription_frame.result = {**(transcription_frame.result or {}), "stt": stt_meta}
+        await self.push_frame(transcription_frame, FrameDirection.DOWNSTREAM)
+
+
+class AccCallerTurnProcessor(FrameProcessor):
+    def __init__(self, session: BrowserTurnSession):
+        super().__init__(name="acc-caller-turn-processor")
+        self.session = session
+
+    async def process_frame(self, frame: Any, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+        if direction != FrameDirection.DOWNSTREAM or not isinstance(frame, TranscriptionFrame):
+            await self.push_frame(frame, direction)
+            return
+        call = await asyncio.to_thread(
+            json_http,
+            "POST",
+            f"{self.session.acc_url}/api/calls/{self.session.call_id}/caller-turn",
+            {"text": frame.text, "conversationMode": "free_caller"},
+        )
+        agent_text = latest_agent_text(call)
+        self.session.turn_count += 1
+        self.session.last_evidence = {
+            "turn": self.session.turn_count,
+            "callerTranscript": frame.text,
+            "agentText": agent_text,
+            "stt": (frame.result or {}).get("stt", {}),
+            "tts": {"engine": "kokoro", "skipped": not bool(agent_text), "audioBytes": 0},
+            "bargeIn": self.session.last_barge_in_evidence,
+            "outputCancelled": False,
+            "pipecatFrames": {
+                "input": "InputAudioRawFrame",
+                "transcription": "TranscriptionFrame",
+                "agentText": "TextFrame" if agent_text else None,
+                "output": "TTSAudioRawFrame" if agent_text else None,
+            },
+            "callId": self.session.call_id,
+        }
+        if agent_text:
+            await self.push_frame(TextFrame(agent_text), FrameDirection.DOWNSTREAM)
+
+
+class KokoroTtsProcessor(FrameProcessor):
+    def __init__(self, session: BrowserTurnSession):
+        super().__init__(name="kokoro-tts-processor")
+        self.session = session
+
+    async def process_frame(self, frame: Any, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+        if direction != FrameDirection.DOWNSTREAM or not isinstance(frame, TextFrame):
+            await self.push_frame(frame, direction)
+            return
+        turn_output_generation = self.session.output_generation
+        pcm, sample_rate, tts_meta = await self.session.synthesize(frame)
+        output_cancelled = turn_output_generation != self.session.output_generation
+        if output_cancelled:
+            tts_meta = {**tts_meta, "cancelled": True, "cancelReason": "barge-in", "audioBytesEnqueued": 0}
+        self.session.last_evidence = {
+            **self.session.last_evidence,
+            "tts": tts_meta,
+            "outputCancelled": output_cancelled,
+        }
+        print(json.dumps({"type": "browser_webrtc_turn", **self.session.last_evidence}), flush=True)
+        if not output_cancelled:
+            await self.push_frame(OutputAudioRawFrame(audio=pcm, sample_rate=sample_rate, num_channels=1), FrameDirection.DOWNSTREAM)
 
 
 class BrowserWebrtcBridge:
     def __init__(self, host: str, port: int) -> None:
         self.host = host
         self.port = port
-        self.peer_connections: set[RTCPeerConnection] = set()
+        self.request_handler = SmallWebRTCRequestHandler(host=host)
         self.sessions: dict[str, dict[str, Any]] = {}
 
     async def readiness(self, request: web.Request) -> web.Response:
         acc_url = request.query.get("accUrl", DEFAULT_ACC_URL)
         readiness = await asyncio.to_thread(check_readiness, acc_url)
         return web.json_response(ready_payload(readiness, self.host, self.port), status=200 if readiness.ok else 503)
+
+    async def start_pipeline(self, *, connection: Any, session_id: str, acc_url: str, call_id: str, readiness: BridgeReadiness) -> BrowserTurnSession:
+        session = BrowserTurnSession(acc_url=acc_url, call_id=call_id, readiness=readiness)
+        transport = SmallWebRTCTransport(
+            webrtc_connection=connection,
+            params=TransportParams(
+                audio_in_enabled=True,
+                audio_in_sample_rate=INPUT_SAMPLE_RATE,
+                audio_in_channels=1,
+                audio_in_passthrough=True,
+                audio_out_enabled=True,
+                audio_out_sample_rate=24000,
+                audio_out_channels=1,
+                audio_out_auto_silence=True,
+            ),
+        )
+        pipeline = Pipeline([
+            transport.input(),
+            RtcAsrTurnProcessor(session),
+            AccCallerTurnProcessor(session),
+            KokoroTtsProcessor(session),
+            transport.output(),
+        ])
+        task = PipelineTask(
+            pipeline,
+            params=PipelineParams(audio_in_sample_rate=INPUT_SAMPLE_RATE, audio_out_sample_rate=24000),
+            enable_rtvi=False,
+            idle_timeout_secs=None,
+        )
+        runner = PipelineRunner()
+        runner_task = asyncio.create_task(runner.run(task, auto_end=False))
+        self.sessions[session_id] = {
+            "connection": connection,
+            "transport": transport,
+            "runner": runner,
+            "runnerTask": runner_task,
+            "pipelineTask": task,
+            "turnSession": session,
+            "callId": call_id,
+            "startedAt": datetime.now(UTC).isoformat(timespec="seconds"),
+        }
+        return session
 
     async def offer(self, request: web.Request) -> web.Response:
         payload = await request.json()
@@ -665,99 +662,124 @@ class BrowserWebrtcBridge:
         if not readiness.ok:
             return web.json_response({"ok": False, "error": "sidecar_unavailable", "ready": ready_payload(readiness, self.host, self.port)}, status=503)
 
-        pc = RTCPeerConnection()
-        self.peer_connections.add(pc)
-        output_track = BrowserAudioOutputTrack()
-        pipeline = PipecatBrowserWebrtcPipeline(acc_url=acc_url, call_id=call_id, readiness=readiness, output_track=output_track)
-        pc.addTrack(output_track)
+        small_request = SmallWebRTCRequest.from_dict({
+            "sdp": payload["sdp"],
+            "type": payload["type"],
+            "pc_id": payload.get("pcId") or payload.get("pc_id"),
+            "restart_pc": payload.get("restartPc") or payload.get("restart_pc"),
+            "request_data": {"sessionId": session_id, "callId": call_id},
+        })
 
-        @pc.on("track")
-        def on_track(track: MediaStreamTrack) -> None:
-            if track.kind == "audio":
-                task = asyncio.create_task(consume_browser_audio(track, pipeline))
-                self.sessions.setdefault(session_id, {})["audioTask"] = task
+        async def on_connection(connection: Any) -> None:
+            await self.start_pipeline(connection=connection, session_id=session_id, acc_url=acc_url, call_id=call_id, readiness=readiness)
 
-        @pc.on("connectionstatechange")
-        async def on_connectionstatechange() -> None:
-            if pc.connectionState in {"failed", "closed", "disconnected"}:
-                await self.close_peer(pc, session_id)
+        answer = await self.request_handler.handle_web_request(small_request, on_connection)
+        if not answer:
+            return web.json_response({"ok": False, "error": "webrtc_answer_unavailable"}, status=502)
 
-        await pc.setRemoteDescription(RTCSessionDescription(sdp=payload["sdp"], type="offer"))
-        answer = await pc.createAnswer()
-        await pc.setLocalDescription(answer)
-        answer_sdp = normalize_browser_answer_sdp(pc.localDescription.sdp)
-        self.sessions[session_id] = {
-            **self.sessions.get(session_id, {}),
-            "pc": pc,
-            "pipeline": pipeline,
-            "callId": call_id,
-            "startedAt": datetime.now(UTC).isoformat(timespec="seconds"),
-        }
         evidence = {
-            "source": "pipecat_browser_webrtc_bridge",
-            "runtimeMode": "pipecat_browser_webrtc_bridge",
-            "transport": "webrtc",
+            "source": "pipecat_small_webrtc_pipeline",
+            "runtimeMode": "pipecat_small_webrtc_pipeline",
+            "transport": "SmallWebRTCTransport",
             "sessionId": session_id,
+            "pcId": answer.get("pc_id"),
             "callId": call_id,
             "mediaRecorderRequired": False,
             "ffmpegRequired": False,
             "bridgeUrl": f"http://{self.host}:{self.port}",
             "stt": {"engine": "rtc-asr", "contract": "local-stt.v1", "model": readiness.stt_model, "backend": readiness.stt_backend},
             "tts": {"engine": "kokoro", "voice": DEFAULT_KOKORO_VOICE, "model": DEFAULT_KOKORO_MODEL},
-            "pipecat": {"runtimeEngine": "pipecat-ai", "version": readiness.pipecat_version},
+            "pipecat": {
+                "runtimeEngine": "pipecat-ai",
+                "version": readiness.pipecat_version,
+                "transport": "SmallWebRTCTransport",
+                "pipeline": ["transport.input", "RtcAsrTurnProcessor", "AccCallerTurnProcessor", "KokoroTtsProcessor", "transport.output"],
+            },
         }
-        print(json.dumps({"type": "pipecat.webrtc.offer_answer", **evidence}), flush=True)
+        print(json.dumps({"type": "pipecat.small_webrtc.offer_answer", **evidence}), flush=True)
         return web.json_response(
             {
                 "ok": True,
-                "type": pc.localDescription.type,
-                "sdp": answer_sdp,
+                "type": answer.get("type"),
+                "sdp": normalize_browser_answer_sdp(str(answer.get("sdp", ""))),
                 "sessionId": session_id,
                 "callId": call_id,
+                "pcId": answer.get("pc_id"),
                 "iceServers": [],
                 "evidence": evidence,
             }
         )
+
+    async def patch_offer(self, request: web.Request) -> web.Response:
+        payload = await request.json()
+        try:
+            candidates = payload.get("candidates") or []
+            patch_request = type(
+                "SmallWebRTCAiohttpPatchRequest",
+                (),
+                {
+                    "pc_id": payload.get("pcId") or payload.get("pc_id"),
+                    "candidates": [
+                        type(
+                            "SmallWebRTCAiohttpIceCandidate",
+                            (),
+                            {
+                                "candidate": item.get("candidate"),
+                                "sdp_mid": item.get("sdpMid") or item.get("sdp_mid"),
+                                "sdp_mline_index": item.get("sdpMLineIndex") if "sdpMLineIndex" in item else item.get("sdp_mline_index"),
+                            },
+                        )
+                        for item in candidates
+                    ],
+                },
+            )()
+            await self.request_handler.handle_patch_request(patch_request)
+            return web.json_response({"ok": True})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": "webrtc_patch_failed", "detail": str(exc)}, status=400)
 
     async def session_proof(self, request: web.Request) -> web.Response:
         session_id = request.match_info.get("session_id", "")
         session = self.sessions.get(session_id)
         if not session:
             return web.json_response({"ok": False, "error": "webrtc_session_not_found", "sessionId": session_id}, status=404)
-        pipeline = session.get("pipeline")
-        evidence = pipeline.last_evidence if isinstance(pipeline, PipecatBrowserWebrtcPipeline) else {}
+        turn_session = session.get("turnSession")
+        evidence = turn_session.last_evidence if isinstance(turn_session, BrowserTurnSession) else {}
         return web.json_response(
             {
                 "ok": True,
                 "sessionId": session_id,
                 "callId": session.get("callId"),
                 "startedAt": session.get("startedAt"),
+                "transport": "SmallWebRTCTransport",
+                "pipeline": ["transport.input", "rtc-asr STT", "ACC caller-turn adapter", "Kokoro TTS", "transport.output"],
                 "turnEvidence": evidence,
-                "bargeInEvidence": pipeline.last_barge_in_evidence if isinstance(pipeline, PipecatBrowserWebrtcPipeline) else {},
+                "bargeInEvidence": turn_session.last_barge_in_evidence if isinstance(turn_session, BrowserTurnSession) else {},
                 "reviewReady": bool(evidence.get("callerTranscript") and evidence.get("tts", {}).get("audioBytes", 0) > 0),
             }
         )
 
-    async def close_peer(self, pc: RTCPeerConnection, session_id: str) -> None:
-        self.peer_connections.discard(pc)
-        session = self.sessions.get(session_id, {})
-        task = session.get("audioTask")
+    async def close_session(self, session_id: str) -> None:
+        session = self.sessions.pop(session_id, {})
+        runner = session.get("runner")
+        if isinstance(runner, PipelineRunner):
+            await runner.cancel("browser WebRTC session closed")
+        task = session.get("runnerTask")
         if isinstance(task, asyncio.Task):
             task.cancel()
-        pipeline = session.get("pipeline")
-        if isinstance(pipeline, PipecatBrowserWebrtcPipeline):
-            await pipeline.close()
-        await pc.close()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
     async def close_all(self) -> None:
-        await asyncio.gather(*(pc.close() for pc in list(self.peer_connections)), return_exceptions=True)
-        self.peer_connections.clear()
+        await asyncio.gather(*(self.close_session(session_id) for session_id in list(self.sessions)), return_exceptions=True)
+        await self.request_handler.close()
 
     def app(self) -> web.Application:
         app = web.Application()
         app.router.add_get("/health", self.readiness)
         app.router.add_get("/api/webrtc/readiness", self.readiness)
         app.router.add_post("/api/webrtc/offer", self.offer)
+        app.router.add_patch("/api/webrtc/offer", self.patch_offer)
         app.router.add_get("/api/webrtc/sessions/{session_id}/proof", self.session_proof)
         app.on_shutdown.append(lambda _app: self.close_all())
         return app
