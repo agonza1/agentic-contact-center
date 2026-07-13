@@ -586,7 +586,7 @@ function buildOperatorConsoleHtml(): string {
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceRemoteTrackReceived: false, voiceRemoteAudioStarted: false, voiceAudioWatchdog: null, voiceSessionProofTimer: null, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceRemoteTrackReceived: false, voiceRemoteAudioStarted: false, voiceAudioWatchdog: null, voiceSessionProofTimer: null, voiceLastProofTurnCount: 0, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
     const repoHeadEvidence = ${JSON.stringify(getRepoHeadEvidence())};
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
@@ -824,6 +824,7 @@ function buildOperatorConsoleHtml(): string {
       state.voiceBridgeEvidence = null;
       state.voiceBridgeAnswer = null;
       state.voiceSessionId = null;
+      state.voiceLastProofTurnCount = 0;
       state.voiceRemoteTrackReceived = false;
       state.voiceRemoteAudioStarted = false;
       if (state.voiceStream) {
@@ -958,6 +959,11 @@ function buildOperatorConsoleHtml(): string {
       const bridge = proof.bridge;
       const turn = bridge.turnEvidence || {};
       const detail = describeVoiceSessionProof(proof);
+      const turnCount = Number(bridge.turnCount || turn.turn || 0);
+      if (turnCount > state.voiceLastProofTurnCount || turn.callerTranscript) {
+        state.voiceLastProofTurnCount = Math.max(state.voiceLastProofTurnCount, turnCount);
+        await refresh();
+      }
       if (bridge.reviewReady || (turn.callerTranscript && turn.tts && turn.tts.audioBytes)) {
         updateVoiceBridgeStatus("running", detail);
       } else if ((bridge.lastError && bridge.lastError.error) || turn.error || (turn.callerTranscript && !turn.agentText)) {
