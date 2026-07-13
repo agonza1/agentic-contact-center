@@ -561,6 +561,11 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /function vadLoop\(\)/);
   assert.match(narrative.body, /navigator\.mediaDevices\.getUserMedia/);
   assert.match(narrative.body, /window\.speechSynthesis\.cancel/);
+  assert.match(narrative.body, /vadStarting: false/);
+  assert.match(narrative.body, /vadStartToken/);
+  assert.match(narrative.body, /vadPendingStream/);
+  assert.match(narrative.body, /Starting microphone…/);
+  assert.match(narrative.body, /MIC_START_CANCELLED/);
   assert.match(narrative.body, /slideCount: 9/);
   assert.match(narrative.body, /Run scripted demo/);
   assert.match(narrative.body, /Run scripted proof/);
