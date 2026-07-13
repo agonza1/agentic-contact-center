@@ -1792,7 +1792,11 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /gitHead: repoHeadEvidence/);
     assert.doesNotMatch(response.body, /Check Bridge/);
     assert.match(response.body, /WebRTC unknown/);
-    assert.match(response.body, /WebRTC ready/);
+    assert.match(response.body, /Live audio verified/);
+    assert.match(response.body, /Signaling connected/);
+    assert.match(response.body, /Browser voice blocked:/);
+    assert.match(response.body, /No remote WebRTC audio track arrived from the Pipecat bridge/);
+    assert.match(response.body, /waiting for remote agent audio/);
     assert.match(response.body, /WebRTC offline/);
     assert.match(response.body, /voice-bridge-status/);
     assert.match(response.body, /voice-bridge-detail/);
