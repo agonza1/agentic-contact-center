@@ -88,6 +88,10 @@ export function buildRealtimeVoiceSessionEndpoints(sessionId: string) {
 export class RealtimeVoiceSessionStore {
   private readonly sessions = new Map<string, RealtimeVoiceSession>();
 
+  has(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
+  }
+
   create(input: { requestedId?: string; callId: string; target?: string; metadata?: Record<string, string>; createdAt?: string }): RealtimeVoiceSession {
     const createdAt = input.createdAt ?? new Date().toISOString();
     const id = input.requestedId?.trim() || `voice-session-${randomUUID()}`;
@@ -132,7 +136,7 @@ export class RealtimeVoiceSessionStore {
 
   recordPlaybackRequest(sessionId: string, input: { label?: string; audioBytes?: number; audioUrl?: string; timestamp?: string }): RealtimeVoiceSession | null {
     const session = this.sessions.get(sessionId);
-    if (!session || session.status === "closed") return null;
+    if (!session || session.status !== "open") return null;
     const at = input.timestamp ?? new Date().toISOString();
     session.playback.requestedTurns += 1;
     session.playback.lastRequestedAt = at;
@@ -147,7 +151,7 @@ export class RealtimeVoiceSessionStore {
 
   recordMediaInput(sessionId: string, input: { bytes: number; mimeType?: string; sampleRateHz?: number; timestamp?: string }): RealtimeVoiceSession | null {
     const session = this.sessions.get(sessionId);
-    if (!session || session.status === "closed") return null;
+    if (!session || session.status !== "open") return null;
     const at = input.timestamp ?? new Date().toISOString();
     session.media.inputChunks += 1;
     session.media.inputBytes += input.bytes;
@@ -167,7 +171,7 @@ export class RealtimeVoiceSessionStore {
 
   recordOutputChunk(sessionId: string, input: { bytes: number; mimeType?: string; sampleRateHz?: number; streamId?: string; final?: boolean; timestamp?: string }): RealtimeVoiceSession | null {
     const session = this.sessions.get(sessionId);
-    if (!session || session.status === "closed") return null;
+    if (!session || session.status !== "open") return null;
     const at = input.timestamp ?? new Date().toISOString();
     const streamId = input.streamId?.trim() || session.output.streamId || `output-${session.playback.requestedTurns || 1}`;
     if ((session.output.status === "cancelled" || session.output.status === "completed") && session.output.streamId === streamId) {
@@ -213,11 +217,10 @@ export class RealtimeVoiceSessionStore {
 
   recordControl(sessionId: string, input: { action: string; reason?: string; timestamp?: string }): RealtimeVoiceSession | null {
     const session = this.sessions.get(sessionId);
-    if (!session || session.status === "closed") return null;
+    if (!session || session.status !== "open") return null;
     const at = input.timestamp ?? new Date().toISOString();
     session.controls.lastAction = input.action;
     session.controls.lastReason = input.reason ?? null;
-    if (input.action === "close") session.status = "closing";
     this.record(session, "control.received", at, { action: input.action, reason: input.reason ?? null });
     if (input.action === "barge_in" && session.output.status === "streaming") {
       session.output.status = "cancelled";
@@ -229,6 +232,11 @@ export class RealtimeVoiceSessionStore {
         chunks: session.output.chunks,
         bytes: session.output.bytes,
       });
+    }
+    if (input.action === "close") {
+      session.status = "closed";
+      session.closedAt = at;
+      this.record(session, "session.closed", at, { inputChunks: session.media.inputChunks, inputBytes: session.media.inputBytes });
     }
     return cloneSession(session);
   }

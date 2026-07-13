@@ -226,3 +226,42 @@ test("voice sessions complete output streams without barge-in cancellation", asy
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+
+test("voice sessions reject duplicate IDs, invalid sample rates, and post-close writes", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const created = await requestJson(address.port, "POST", "/api/voice/sessions", { sessionId: "cae-session-guards" });
+    assert.equal(created.statusCode, 201);
+
+    const duplicate = await requestJson(address.port, "POST", "/api/voice/sessions", { sessionId: "cae-session-guards" });
+    assert.equal(duplicate.statusCode, 409);
+    assert.equal(duplicate.payload.error, "voice_session_already_exists");
+
+    const invalidSampleRate = await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-guards/media/input", Buffer.from([1]), {
+      "x-sample-rate-hz": "abc",
+    });
+    assert.equal(invalidSampleRate.statusCode, 400);
+    assert.equal(invalidSampleRate.payload.error, "voice_session_sample_rate_invalid");
+
+    const closedByControl = await requestJson(address.port, "POST", "/api/voice/sessions/cae-session-guards/control", { action: "close" });
+    assert.equal(closedByControl.statusCode, 200);
+    assert.equal(closedByControl.payload.session.status, "closed");
+
+    const postClosePlay = await requestJson(address.port, "POST", "/api/voice/sessions/cae-session-guards/play", {
+      audioData: Buffer.from([1]).toString("base64"),
+    });
+    assert.equal(postClosePlay.statusCode, 409);
+    assert.equal(postClosePlay.payload.error, "voice_session_closed");
+
+    const postCloseMedia = await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-guards/media/output", Buffer.from([2]));
+    assert.equal(postCloseMedia.statusCode, 409);
+    assert.equal(postCloseMedia.payload.error, "voice_session_closed");
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
