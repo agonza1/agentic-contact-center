@@ -52,6 +52,18 @@ Adapter rule for #222:
 - Fixture/tester: synthetic caller audio frames and tester-agent turns injected at the Pipeline input, not a parallel proof-only route.
 - SIP/FreeSWITCH: separate telephony transport, same rtc-asr, ACC caller-turn, and Kokoro processors behind it. Do not force SmallWebRTCTransport onto SIP.
 
+Persistent evaluator session surface for ConversationAgentEvals and bounded tester agents:
+
+- `POST /api/voice/sessions`: create a persistent realtime-audio session and matching ACC call/proof context.
+- `POST /api/voice/sessions/:id/play`: request an audio caller act without accepting expected transcript shortcuts.
+- `POST /api/voice/sessions/:id/media/input`: attach realtime input audio bytes for the session; the same path is reserved as the future WebSocket media input route.
+- `GET /api/voice/sessions/:id/events`: poll ordered session events with `afterSequence`.
+- `POST /api/voice/sessions/:id/control`: send tester/runtime controls such as `barge_in`, `pause`, `resume`, `flush`, `mark`, or `close`.
+- `POST /api/voice/sessions/:id/close`: close the session.
+- `GET /api/voice/sessions/:id/proof`: inspect ownership, pipeline contract, media counters, rtc-asr evidence status, and evaluator blockers.
+
+Realtime-audio mode rejects `transcript` and `expectedTranscript` fields on session creation and play requests; CAE must provide audio and let ACC/rtc-asr produce the transcript evidence.
+
 Current gaps to keep visible:
 
 - Fixture/tester audio injection and the tester agent are not implemented.
@@ -208,6 +220,13 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `GET /api/pipecat-media-engine/readiness`: expose the Issue #214 shared browser WebRTC, local SIP/FreeSWITCH, and SignalWire SIP trunk Pipecat media-engine contract, including the current realtime SIP RTP blocker.
 - `GET /api/browser-webrtc/readiness`: expose the Issue #213 browser WebRTC voice contract, dependency readiness, and bridge endpoint.
 - `POST /api/browser-webrtc/session`: validate browser SDP offers, allocate or preserve an ACC call ID, and proxy offer/answer signaling to the local Pipecat WebRTC bridge.
+- `POST /api/voice/sessions`: create a persistent ConversationAgentEvals realtime-audio target session.
+- `POST /api/voice/sessions/:id/play`: queue a caller audio act without transcript injection.
+- `POST /api/voice/sessions/:id/media/input`: attach realtime audio bytes for the persistent session.
+- `GET /api/voice/sessions/:id/events`: poll persistent session event evidence.
+- `POST /api/voice/sessions/:id/control`: send bounded runtime/tester controls.
+- `POST /api/voice/sessions/:id/close`: close the persistent session.
+- `GET /api/voice/sessions/:id/proof`: return session proof, media counters, rtc-asr status, and evaluator blockers.
 - `GET /assert/full`: serve the local navigation wrapper around the upstream ASSERT viewer on `http://127.0.0.1:5174`.
 - `GET /assert`: serve the ACC local artifact viewer.
 - `GET /assert/spec`: serve the editable local ASSERT evaluation spec UI.

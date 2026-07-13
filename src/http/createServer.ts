@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
@@ -24,6 +24,7 @@ import {
 import { compareTimestamps, getAttentionMetadata } from "../core/attention";
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { buildPipecatMediaEngineReadinessPayload } from "../core/pipecatMediaEngineReadiness";
+import { RealtimeVoiceSessionStore, buildRealtimeVoiceSessionEndpoints } from "../core/realtimeVoiceSessions";
 import { getPipecatPrototypeHealth, SCRIPTED_CALLER_TURNS } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
 import type {
@@ -3736,6 +3737,100 @@ async function readJsonBody<T>(request: IncomingMessage): Promise<T> {
   }
 }
 
+async function readRawBody(request: IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+function parseStringMetadata(value: unknown): Record<string, string> | { error: string } {
+  if (value === undefined || value === null) return {};
+  if (!isRecord(value)) return { error: "voice_session_metadata_invalid" };
+  const metadata: Record<string, string> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (typeof item !== "string") return { error: "voice_session_metadata_invalid" };
+    metadata[key] = item;
+  }
+  return metadata;
+}
+
+function parseOptionalPositiveInteger(value: unknown, error: string): number | undefined | { error: string } {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) return { error };
+  return value;
+}
+
+function isVoiceSessionControlAction(value: string): boolean {
+  return ["barge_in", "pause", "resume", "close", "flush", "mark"].includes(value);
+}
+
+function buildWebSocketAcceptKey(key: string): string {
+  return createHash("sha1")
+    .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+    .digest("base64");
+}
+
+function encodeWebSocketTextFrame(payload: object): Buffer {
+  const data = Buffer.from(JSON.stringify(payload), "utf8");
+  if (data.byteLength < 126) {
+    return Buffer.concat([Buffer.from([0x81, data.byteLength]), data]);
+  }
+  if (data.byteLength <= 0xffff) {
+    const header = Buffer.allocUnsafe(4);
+    header[0] = 0x81;
+    header[1] = 126;
+    header.writeUInt16BE(data.byteLength, 2);
+    return Buffer.concat([header, data]);
+  }
+  const header = Buffer.allocUnsafe(10);
+  header[0] = 0x81;
+  header[1] = 127;
+  header.writeBigUInt64BE(BigInt(data.byteLength), 2);
+  return Buffer.concat([header, data]);
+}
+
+function decodeWebSocketFrames(buffer: Buffer): Array<{ opcode: number; payload: Buffer }> {
+  const frames: Array<{ opcode: number; payload: Buffer }> = [];
+  let offset = 0;
+  while (offset + 2 <= buffer.byteLength) {
+    const first = buffer[offset];
+    const second = buffer[offset + 1];
+    const opcode = first & 0x0f;
+    const masked = (second & 0x80) !== 0;
+    let length = second & 0x7f;
+    offset += 2;
+    if (length === 126) {
+      if (offset + 2 > buffer.byteLength) break;
+      length = buffer.readUInt16BE(offset);
+      offset += 2;
+    } else if (length === 127) {
+      if (offset + 8 > buffer.byteLength) break;
+      const longLength = buffer.readBigUInt64BE(offset);
+      if (longLength > BigInt(Number.MAX_SAFE_INTEGER)) break;
+      length = Number(longLength);
+      offset += 8;
+    }
+    let mask: Buffer | null = null;
+    if (masked) {
+      if (offset + 4 > buffer.byteLength) break;
+      mask = buffer.subarray(offset, offset + 4);
+      offset += 4;
+    }
+    if (offset + length > buffer.byteLength) break;
+    const payload = Buffer.from(buffer.subarray(offset, offset + length));
+    offset += length;
+    if (mask) {
+      for (let index = 0; index < payload.byteLength; index += 1) {
+        payload[index] = payload[index] ^ mask[index % 4];
+      }
+    }
+    frames.push({ opcode, payload });
+  }
+  return frames;
+}
+
 function buildProductionReadiness(
   config: PocConfig,
   pipecatFlow: ReturnType<typeof getPipecatPrototypeHealth>,
@@ -3788,6 +3883,7 @@ async function routeRequest(
   ingress: InMemoryTelephonyIngress,
   signalWireCallMap: Map<string, string>,
   liveSipCallMap: Map<string, string>,
+  voiceSessions: RealtimeVoiceSessionStore,
 ): Promise<void> {
   const url = request.url ?? "/";
   const requestUrl = new URL(url, "http://localhost");
@@ -3947,6 +4043,168 @@ async function routeRequest(
       writeJson(response, 503, buildBrowserWebrtcBridgeUnavailablePayload(error));
     }
     return;
+  }
+
+
+  if (request.method === "POST" && pathname === "/api/voice/sessions") {
+    const body = await readJsonBody<unknown>(request);
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    if (body.mode !== undefined && body.mode !== "realtime_audio") {
+      writeBadRequest(response, "voice_session_mode_invalid");
+      return;
+    }
+
+    if (getOptionalTrimmedString(body.expectedTranscript) || getOptionalTrimmedString(body.transcript)) {
+      writeBadRequest(response, "voice_session_transcript_shortcut_rejected");
+      return;
+    }
+
+    const requestedCallId = getOptionalTrimmedString(body.callId);
+    const existingSnapshot = requestedCallId ? await ingress.getSnapshot(requestedCallId) : null;
+    if (requestedCallId && !existingSnapshot) {
+      writeBadRequest(response, "voice_session_call_not_found");
+      return;
+    }
+
+    const metadata = parseStringMetadata(body.metadata);
+    if ("error" in metadata) {
+      writeBadRequest(response, metadata.error);
+      return;
+    }
+
+    const snapshot = existingSnapshot ?? await ingress.startCall(config, {
+      providerName: "acc-realtime-voice",
+      providerCallId: getOptionalTrimmedString(body.providerCallId) ?? `acc-realtime-${randomUUID()}`,
+      openclawSessionId: getOptionalTrimmedString(body.openclawSessionId) ?? `acc-realtime-${randomUUID()}`,
+      openclawSessionLabel: getOptionalTrimmedString(body.openclawSessionLabel) ?? "conversation-agent-evals/realtime-audio",
+      source: "mock_http_route",
+      runtimeModeLabels: {
+        telephony: "mocked_telephony",
+        media: "live_capture",
+        rtcAsr: "rtc_asr_live",
+        credentialsMode: "mocked",
+      },
+    } satisfies StartCallOptions);
+    const session = voiceSessions.create({
+      requestedId: getOptionalTrimmedString(body.sessionId),
+      callId: snapshot.session.callId,
+      target: getOptionalTrimmedString(body.target),
+      metadata,
+    });
+    writeJson(response, 201, {
+      ok: true,
+      route: "/api/voice/sessions",
+      session: voiceSessions.snapshot(session.id, snapshot),
+      endpoints: buildRealtimeVoiceSessionEndpoints(session.id),
+      contract: {
+        realtimeAudioOnly: true,
+        transcriptShortcutAllowed: false,
+        persistentFullDuplex: true,
+        ownerBoundary: "CAE drives fixtures; ACC owns audio intake, rtc-asr, agent turns, TTS, events, and proof.",
+      },
+    });
+    return;
+  }
+
+  const voiceSessionMatch = pathname.match(/^\/api\/voice\/sessions\/([^/]+)\/(play|media\/input|events|control|close|proof)$/);
+  if (voiceSessionMatch) {
+    const sessionId = decodeURIComponent(voiceSessionMatch[1]);
+    const action = voiceSessionMatch[2];
+    const session = voiceSessions.get(sessionId);
+    if (!session) {
+      writeJson(response, 404, { ok: false, error: "voice_session_not_found" });
+      return;
+    }
+    const call = await ingress.getSnapshot(session.callId);
+
+    if (request.method === "GET" && action === "events") {
+      const after = parseOptionalNonNegativeIntegerFilter(requestUrl.searchParams.get("afterSequence"), "voice_session_after_sequence_invalid");
+      if (after !== undefined && typeof after !== "number") {
+        writeBadRequest(response, after.error);
+        return;
+      }
+      const events = voiceSessions.events(sessionId, after ?? 0) ?? [];
+      writeJson(response, 200, {
+        ok: true,
+        route: "/api/voice/sessions/:id/events",
+        sessionId,
+        events,
+        summary: { returnedEvents: events.length, latestSequence: events.at(-1)?.sequence ?? after ?? 0 },
+      });
+      return;
+    }
+
+    if (request.method === "GET" && action === "proof") {
+      writeJson(response, 200, voiceSessions.proof(sessionId, call) ?? { ok: false, error: "voice_session_not_found" });
+      return;
+    }
+
+    if (request.method === "POST" && action === "play") {
+      const body = await readJsonBody<unknown>(request);
+      if (!isRecord(body)) {
+        writeBadRequest(response, "json_object_required");
+        return;
+      }
+      if (getOptionalTrimmedString(body.expectedTranscript) || getOptionalTrimmedString(body.transcript)) {
+        writeBadRequest(response, "voice_session_transcript_shortcut_rejected");
+        return;
+      }
+      const audioData = getOptionalTrimmedString(body.audioData);
+      const audioBytes = audioData ? Buffer.byteLength(audioData, "base64") : undefined;
+      const updated = voiceSessions.recordPlaybackRequest(sessionId, {
+        label: getOptionalTrimmedString(body.label) ?? getOptionalTrimmedString(body.callerActId),
+        audioBytes,
+        audioUrl: getOptionalTrimmedString(body.audioUrl),
+      });
+      writeJson(response, 202, { ok: true, route: "/api/voice/sessions/:id/play", session: updated, accepted: true });
+      return;
+    }
+
+    if (request.method === "POST" && action === "media/input") {
+      const sampleRateHz = parseOptionalPositiveInteger(Number(request.headers["x-sample-rate-hz"] ?? "") || undefined, "voice_session_sample_rate_invalid");
+      if (sampleRateHz !== undefined && typeof sampleRateHz !== "number") {
+        writeBadRequest(response, sampleRateHz.error);
+        return;
+      }
+      const body = await readRawBody(request);
+      if (body.byteLength === 0) {
+        writeBadRequest(response, "voice_session_media_input_empty");
+        return;
+      }
+      const updated = voiceSessions.recordMediaInput(sessionId, {
+        bytes: body.byteLength,
+        mimeType: request.headers["content-type"]?.toString(),
+        sampleRateHz,
+      });
+      writeJson(response, 202, { ok: true, route: "/api/voice/sessions/:id/media/input", session: updated, accepted: true });
+      return;
+    }
+
+    if (request.method === "POST" && action === "control") {
+      const body = await readJsonBody<unknown>(request);
+      if (!isRecord(body)) {
+        writeBadRequest(response, "json_object_required");
+        return;
+      }
+      const controlAction = getOptionalTrimmedString(body.action);
+      if (!controlAction || !isVoiceSessionControlAction(controlAction)) {
+        writeBadRequest(response, "voice_session_control_action_invalid");
+        return;
+      }
+      const updated = voiceSessions.recordControl(sessionId, { action: controlAction, reason: getOptionalTrimmedString(body.reason) });
+      writeJson(response, 200, { ok: true, route: "/api/voice/sessions/:id/control", session: updated });
+      return;
+    }
+
+    if (request.method === "POST" && action === "close") {
+      const updated = voiceSessions.close(sessionId);
+      writeJson(response, 200, { ok: true, route: "/api/voice/sessions/:id/close", session: updated });
+      return;
+    }
   }
 
   if (request.method === "GET" && pathname === "/api/cluecon") {
@@ -5485,9 +5743,10 @@ export function buildHttpServer(config: PocConfig) {
   const ingress = new InMemoryTelephonyIngress();
   const signalWireCallMap = new Map<string, string>();
   const liveSipCallMap = new Map<string, string>();
+  const voiceSessions = new RealtimeVoiceSessionStore();
 
-  return createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap).catch((error: unknown) => {
+  const server = createServer((request, response) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, voiceSessions).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;
@@ -5497,4 +5756,59 @@ export function buildHttpServer(config: PocConfig) {
       writeJson(response, 500, { ok: false, error: "internal_error" });
     });
   });
+
+  server.on("upgrade", (request, socket) => {
+    const requestUrl = new URL(request.url ?? "/", "http://localhost");
+    const match = requestUrl.pathname.match(/^\/api\/voice\/sessions\/([^/]+)\/media\/input$/);
+    if (!match) {
+      socket.destroy();
+      return;
+    }
+    const sessionId = decodeURIComponent(match[1]);
+    const session = voiceSessions.get(sessionId);
+    const websocketKey = request.headers["sec-websocket-key"];
+    if (!session || session.status === "closed") {
+      socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+    if (typeof websocketKey !== "string" || !websocketKey.trim()) {
+      socket.write("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+
+    socket.write(
+      "HTTP/1.1 101 Switching Protocols\r\n" +
+        "Upgrade: websocket\r\n" +
+        "Connection: Upgrade\r\n" +
+        `Sec-WebSocket-Accept: ${buildWebSocketAcceptKey(websocketKey)}\r\n` +
+        "\r\n",
+    );
+    socket.write(encodeWebSocketTextFrame({ ok: true, type: "voice_session.media_input.ready", sessionId }));
+    socket.on("data", (chunk) => {
+      for (const frame of decodeWebSocketFrames(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))) {
+        if (frame.opcode === 0x8) {
+          socket.end(Buffer.from([0x88, 0x00]));
+          return;
+        }
+        if (frame.opcode !== 0x1 && frame.opcode !== 0x2) continue;
+        const updated = voiceSessions.recordMediaInput(sessionId, {
+          bytes: frame.payload.byteLength,
+          mimeType: frame.opcode === 0x1 ? "application/json" : "application/octet-stream",
+          sampleRateHz: undefined,
+        });
+        socket.write(encodeWebSocketTextFrame({
+          ok: true,
+          type: "voice_session.media_input.received",
+          sessionId,
+          bytes: frame.payload.byteLength,
+          inputChunks: updated?.media.inputChunks ?? null,
+          inputBytes: updated?.media.inputBytes ?? null,
+        }));
+      }
+    });
+  });
+
+  return server;
 }
