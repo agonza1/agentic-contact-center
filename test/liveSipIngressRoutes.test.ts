@@ -262,6 +262,72 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
   }
 });
 
+test("live SIP proof reports FreeSWITCH broadcast playback as confirmed", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-06-30T10:10:00.000Z",
+      sipCallId: "sip-broadcast-proof",
+      source: "freeswitch_esl",
+      telephonyMode: "local_sip",
+    });
+    assert.equal(started.statusCode, 201);
+
+    const capture = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.capture",
+      timestamp: "2026-06-30T10:10:01.000Z",
+      sipCallId: "sip-broadcast-proof",
+      audioWavPath: "artifacts/freeswitch-live/media/sip-broadcast-proof.wav",
+      sipLogPath: "artifacts/freeswitch-live/freeswitch-esl-events.json",
+      rtpPacketCount: 24,
+      generatedMedia: false,
+    });
+    assert.equal(capture.statusCode, 200);
+
+    const playback = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.playback",
+      timestamp: "2026-06-30T10:10:02.000Z",
+      sipCallId: "sip-broadcast-proof",
+      outboundRtpReady: true,
+      freeswitchBroadcast: {
+        mode: "freeswitch_uuid_broadcast",
+        hostPath: "artifacts/freeswitch-live/media/response.wav",
+        freeswitchPath: "/var/log/freeswitch/acc/media/response.wav",
+        sampleRateHz: 8000,
+        audioBytes: 3200,
+      },
+      callerPlaybackConfirmed: true,
+      callerPlaybackEvidencePath: "artifacts/freeswitch-live/caller-playback-proof.json",
+    });
+    assert.equal(playback.statusCode, 200);
+
+    const transcript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-06-30T10:10:03.000Z",
+      sipCallId: "sip-broadcast-proof",
+      text: "I need a live agent.",
+      rtcAsrEvidencePath: "artifacts/freeswitch-live/rtc-asr-evidence.json",
+    });
+    assert.equal(transcript.statusCode, 200);
+
+    const consoleResponse = await requestJson(address.port, "GET", "/api/operator/console?callId=" + started.payload.call.session.callId);
+    assert.equal(consoleResponse.statusCode, 200);
+    const liveProof = consoleResponse.payload.calls.items[0].liveProof;
+    assert.equal(liveProof.playback.status, "caller_playback_confirmed");
+    assert.equal(liveProof.playback.rtpSocketSendReady, false);
+    assert.equal(liveProof.playback.freeswitchBroadcast.mode, "freeswitch_uuid_broadcast");
+    assert.equal(liveProof.playback.freeswitchBroadcast.audioBytes, 3200);
+    assert.equal(liveProof.eval.reviewReady, true);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("live SIP proof stays review-blocked until caller playback is confirmed", async () => {
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));

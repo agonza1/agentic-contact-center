@@ -2019,7 +2019,9 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
     },
     playback: {
       status: playbackEvent
-        ? playbackEvent.detail.rtpSocketSendReady === true
+        ? hasCallerPlaybackProof
+          ? "caller_playback_confirmed"
+          : playbackEvent.detail.rtpSocketSendReady === true
           ? playbackEvent.detail.callerPlaybackConfirmed === true
             ? "caller_playback_confirmed"
             : "rtp_sent_to_socket"
