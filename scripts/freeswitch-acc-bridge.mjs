@@ -685,6 +685,44 @@ export class PipecatRtpFrameCollector {
   }
 }
 
+export async function pipecatInputFrameBatchFromWav(filePath, options = {}) {
+  const { pcm16, sampleRateHz } = pcm16MonoFromWav(await readFile(filePath));
+  const pcm16At8k = downsamplePcm16MonoTo8k(pcm16, sampleRateHz);
+  const samplesPerFrame = options.samplesPerFrame ?? 160;
+  const bytesPerFrame = samplesPerFrame * 2;
+  const maxFrames = options.maxFrames ?? 200;
+  const frames = [];
+  for (let offset = 0; offset + bytesPerFrame <= pcm16At8k.length && frames.length < maxFrames; offset += bytesPerFrame) {
+    const index = frames.length;
+    frames.push({
+      frameType: "InputAudioRawFrame",
+      audioFormat: "pcm_s16le",
+      sampleRateHz: 8000,
+      channels: 1,
+      sequenceNumber: index,
+      timestamp: index * samplesPerFrame,
+      durationMs: (samplesPerFrame / 8000) * 1000,
+      receivedAt: options.receivedAt ?? nowIso(),
+      pcm16Base64: pcm16At8k.subarray(offset, offset + bytesPerFrame).toString("base64"),
+      source: "freeswitch_recording_wav",
+    });
+  }
+  return {
+    liveRtpCaptured: frames.length > 0,
+    frameType: "InputAudioRawFrameBatch",
+    audioFormat: "pcm_s16le",
+    sampleRateHz: 8000,
+    channels: 1,
+    packetCount: frames.length,
+    totalDurationMs: frames.reduce((total, frame) => total + frame.durationMs, 0),
+    sequenceGaps: [],
+    errors: [],
+    captureSource: "freeswitch_recording_wav",
+    sourceSampleRateHz: sampleRateHz,
+    frames,
+  };
+}
+
 async function postJson(baseUrl, route, body) {
   const url = new URL(route, baseUrl);
   const rawBody = Buffer.from(JSON.stringify(body));
@@ -1207,7 +1245,15 @@ export class EslBridge {
     const call = this.callMap.get(uuid);
     if (!call) return;
     await this.playPipecatOutputFixture(uuid);
-    const pipecatRtpFrameBatch = (call.rtpCollector ?? this.rtpCollector).summary();
+    let pipecatRtpFrameBatch = (call.rtpCollector ?? this.rtpCollector).summary();
+    if (pipecatRtpFrameBatch.frames.length === 0) {
+      try {
+        pipecatRtpFrameBatch = await pipecatInputFrameBatchFromWav(call.wavPath, { maxFrames: this.options.rtpMaxFrames ?? 200 });
+        this.events.push({ at: nowIso(), pipecatRecordingFrameBatch: { packetCount: pipecatRtpFrameBatch.packetCount, captureSource: pipecatRtpFrameBatch.captureSource } });
+      } catch (error) {
+        pipecatRtpFrameBatch.errors.push({ at: nowIso(), error: error instanceof Error ? error.message : String(error), source: "freeswitch_recording_wav" });
+      }
+    }
     await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
       eventType: "media.capture",
       timestamp: nowIso(),

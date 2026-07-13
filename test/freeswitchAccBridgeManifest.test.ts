@@ -85,6 +85,45 @@ test("FreeSWITCH bridge collects live RTP into Pipecat frame-batch evidence", as
   assert.match(summary.frames[0].pcm16Base64, /^[A-Za-z0-9+/]+=*$/);
 });
 
+
+test("FreeSWITCH bridge derives Pipecat input frames from recorded caller WAV fallback", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-wav-input-"));
+  const audioPath = path.join(tempDir, "fs-call.wav");
+
+  try {
+    await writeFile(audioPath, validWavFixture(3));
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = `
+      const { pipecatInputFrameBatchFromWav } = await import(${JSON.stringify(moduleUrl)});
+      const batch = await pipecatInputFrameBatchFromWav(${JSON.stringify(audioPath)}, { maxFrames: 2, receivedAt: "2026-07-13T02:20:00.000Z" });
+      console.log(JSON.stringify(batch));
+    `;
+    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const batch = JSON.parse(stdout) as {
+      liveRtpCaptured: boolean;
+      captureSource: string;
+      packetCount: number;
+      totalDurationMs: number;
+      frames: Array<{ frameType: string; source: string; timestamp: number; durationMs: number; pcm16Base64: string }>;
+    };
+
+    assert.equal(batch.liveRtpCaptured, true);
+    assert.equal(batch.captureSource, "freeswitch_recording_wav");
+    assert.equal(batch.packetCount, 2);
+    assert.equal(batch.totalDurationMs, 40);
+    assert.deepEqual(batch.frames.map((frame) => frame.timestamp), [0, 160]);
+    assert.equal(batch.frames[0].frameType, "InputAudioRawFrame");
+    assert.equal(batch.frames[0].source, "freeswitch_recording_wav");
+    assert.match(batch.frames[0].pcm16Base64, /^[A-Za-z0-9+/]+=*$/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("FreeSWITCH bridge packetizes Pipecat output audio into outbound RTP proof evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-outbound-rtp-"));
