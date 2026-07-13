@@ -8,7 +8,7 @@ The active app is the TypeScript service under `src/`.
 
 - Voice-agent demo that keeps control of call state, policy holds, operator decisions, fallback, and evidence.
 - Local Pipecat voice work centered on Issue #222: one shared realtime Pipeline, with browser, fixture/tester, and SIP entering as adapters.
-- Current browser WebRTC and SIP paths are transitional proof harnesses until they share the same rtc-asr -> ACC -> Kokoro Pipeline processors.
+- Browser WebRTC now enters through Pipecat `SmallWebRTCTransport` and the shared rtc-asr -> ACC -> Kokoro Pipeline; SIP is contract-aligned behind FreeSWITCH/RTP and remains proof-blocked until caller-audible media is captured.
 - Operator console for pause/resume, safe-offer approval, takeover, transfer, end-call, fallback drills, notes, queue filters, and proof links.
 - QA evidence through transcripts, event trails, latency marks, call snapshots, proof bundles, ASSERT exports, and ConversationAgentEvals-ready handoff artifacts.
 
@@ -64,7 +64,7 @@ Issue #222 is the architectural center for realtime voice work. The target is on
 transport.input -> rtc-asr STT -> ACC caller-turn adapter -> Kokoro TTS -> transport.output
 ```
 
-Browser WebRTC, fixture/tester injection, and SIP/FreeSWITCH should be adapters into that same Pipeline. Do not add new standalone demo media paths. The current browser bridge is still turn-buffered and uses Pipecat frame names without yet running a real shared `Pipeline`; the SIP bridge still has separate RTP logic and needs final caller-audible proof. Those are blockers to resolve under #222, not separate product directions.
+Browser WebRTC, fixture/tester injection, and SIP/FreeSWITCH should be adapters into that same Pipeline. Do not add new standalone demo media paths. The browser bridge now uses Pipecat `SmallWebRTCTransport` and `build_acc_voice_pipeline()` to run the shared `Pipeline([transport.input(), RtcAsrTurnProcessor, AccCallerTurnProcessor, KokoroTtsProcessor, transport.output()])`. SIP/FreeSWITCH remains a separate telephony transport that is aligned to the same rtc-asr/ACC/Kokoro processor contract, but it still needs final caller-audible proof before anyone should call SIP audio complete.
 
 ## Browser WebRTC Voice Readiness
 
@@ -74,7 +74,7 @@ The current non-SIP browser adapter path is:
 browser mic -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC/browser playback
 ```
 
-Issue #213 exposes ACC readiness plus a WebRTC offer/answer proxy into the local Pipecat bridge, but #222 owns the migration from this adapter into the shared Pipeline. Check readiness with:
+Issue #213 exposes ACC readiness plus a WebRTC offer/answer proxy into the local Pipecat `SmallWebRTCTransport` bridge; #222 owns keeping this adapter and the SIP/fixture adapters on the same shared processor contract. Check readiness with:
 
 ```bash
 curl -fsS http://127.0.0.1:8026/api/browser-webrtc/readiness
@@ -83,7 +83,7 @@ npm run browser-webrtc:live-proof -- --write-template artifacts/browser-webrtc-l
 npm run browser-webrtc:live-proof -- --evidence artifacts/browser-webrtc-live-proof/proof.json --require-review-ready
 ```
 
-The readiness payload distinguishes ACC contract readiness from live media verification and reports the Pipecat WebRTC bridge, rtc-asr, and Kokoro separately. The ACC server proxies browser SDP offers from `POST /api/browser-webrtc/session` to `BROWSER_WEBRTC_BRIDGE_URL` (default `http://127.0.0.1:8766`). Until a local browser proof is attached, `liveMedia.verified=false` and the blocker is `live_webrtc_media_turn_evidence_missing`. Passing this route does not mean #222 is complete: browser input/output still need to move into a real shared Pipeline with fixture/tester and SIP adapters. The optional `--write-template` command creates the exact JSON event shape reviewers can fill from a real local browser turn before running the review gate, including the current git head so proof is tied to the PR commit under review.
+The readiness payload distinguishes ACC contract readiness from live media verification and reports the Pipecat WebRTC bridge, rtc-asr, and Kokoro separately. The ACC server proxies browser SDP offers from `POST /api/browser-webrtc/session` to `BROWSER_WEBRTC_BRIDGE_URL` (default `http://127.0.0.1:8766`). Until a local browser proof is attached, `liveMedia.verified=false` and the blocker is `live_webrtc_media_turn_evidence_missing`. Passing this route means the executable browser contract is present, not that #222 is complete: fixture/tester injection and caller-audible SIP proof remain separate gates. The optional `--write-template` command creates the exact JSON event shape reviewers can fill from a real local browser turn before running the review gate, including the current git head so proof is tied to the PR commit under review.
 
 Run the normal browser WebRTC bridge and sidecars in separate terminals:
 
@@ -182,6 +182,6 @@ Active code lives in `src/`, tests in `test/`, proof/runtime scripts in `scripts
 ## Caveats
 
 - State is in-memory and process-local.
-- The current browser voice bridge uses real local STT/TTS plumbing, but it is not yet the final #222 shared Pipecat Pipeline.
+- The browser voice bridge uses Pipecat `SmallWebRTCTransport` plus the shared `Pipeline`, but live browser proof still requires local rtc-asr, Kokoro, and browser playback evidence.
 - `/api/assert/spec` saves the eval spec in memory for the running process; restart resets it to the default.
-- Local SIP live capture is supported for review workflows, but it remains a separate adapter path until #222 shares Pipeline processors and caller-audible SIP proof is captured.
+- Local SIP live capture is supported for review workflows and follows the same rtc-asr/ACC/Kokoro processor contract behind a FreeSWITCH/RTP transport. It is not accepted as complete SIP audio until caller-audible playback proof is captured.

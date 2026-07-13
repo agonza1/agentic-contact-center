@@ -5,7 +5,9 @@
       <action application="set" data="acc_route=local_sip"/>
       <action application="set" data="acc_signalwire_ready=true"/>
       <action application="set" data="hangup_after_bridge=false"/>
-      <action application="playback" data="silence_stream://1000"/>
+      <action application="set" data="acc_return_audio=kokoro_uuid_broadcast"/>
+      <action application="set" data="acc_media_bridge=pipecat_rtp_and_freeswitch_broadcast"/>
+      <action application="playback" data="silence_stream://300000"/>
       <action application="park"/>
     </condition>
   </extension>

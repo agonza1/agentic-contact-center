@@ -346,6 +346,43 @@ function isFinalTranscriptEvidence(entry) {
     || entry?.type === "conversation.item.input_audio_transcription.completed";
 }
 
+async function callerPlaybackEvidence(filePath, required) {
+  if (!filePath) return { required, ready: false, path: null, reason: "caller-audible playback proof is not attached." };
+  const relativePath = rel(filePath);
+  let raw;
+  try {
+    raw = await readFile(filePath, "utf8");
+  } catch {
+    return { required, ready: false, path: relativePath, reason: "caller-audible playback proof artifact is attached but missing." };
+  }
+  const evidence = parseJsonOrJsonLines(raw).flatMap(expandEvidenceEntries);
+  if (evidence.length === 0) return { required, ready: false, path: relativePath, reason: "caller-audible playback proof is not valid JSON." };
+  const confirmed = evidence.some(hasCallerPlaybackConfirmation);
+  if (!confirmed) {
+    return {
+      required,
+      ready: false,
+      path: relativePath,
+      reason: "caller-audible playback proof does not confirm the caller heard return audio.",
+    };
+  }
+  return { required, ready: true, path: relativePath, confirmed: true, eventCount: evidence.length, reason: null };
+}
+
+function hasCallerPlaybackConfirmation(entry) {
+  return nestedEvidenceObjects(entry).some((candidate) =>
+    candidate?.callerPlaybackConfirmed === true ||
+    candidate?.caller_playback_confirmed === true ||
+    candidate?.status === "caller_playback_confirmed"
+  );
+}
+
+function nestedEvidenceObjects(value, depth = 0) {
+  if (depth > 6 || value === null || typeof value !== "object") return [];
+  const children = Array.isArray(value) ? value : Object.values(value);
+  return [value, ...children.flatMap((child) => nestedEvidenceObjects(child, depth + 1))];
+}
+
 async function wavEvidence(filePath) {
   const buffer = await readFile(filePath);
   const riffHeader = buffer.subarray(0, 4).toString("ascii");
@@ -454,7 +491,7 @@ function reviewNextActions(liveManifest) {
   return actions;
 }
 
-function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult) {
+function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, callerPlaybackEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult) {
   const checks = {
     localSipMode: liveManifest.runtimeModeLabels?.telephony === "local_sip",
     acceptedInvite: liveManifest.localSip?.acceptedInvite === true,
@@ -465,6 +502,7 @@ function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidence
     liveCapture: liveManifest.runtimeModeLabels?.media === "live_capture",
     rtcAsrLive: liveManifest.runtimeModeLabels?.rtcAsr === "rtc_asr_live",
     rtcAsrEvidenceValid: liveManifest.runtimeModeLabels?.rtcAsr !== "rtc_asr_live" || rtcAsrEvidenceResult.ready === true,
+    callerPlaybackEvidenceValid: callerPlaybackEvidenceResult.required !== true || callerPlaybackEvidenceResult.ready === true,
     artifactsPresent: artifactIntegrity.every((artifact) => artifact.readiness === "ready"),
     sourceArtifactIntegrityReady: sourceArtifactIntegrityResult.ready === true,
     sourceManifestReviewReady: liveManifest.reviewReady === true,
@@ -480,7 +518,7 @@ function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidence
     requiredLabels,
     missingLabels: requiredLabels.filter((label) => !labels.includes(label)),
     checks,
-    failureReasons: reviewGateFailureReasons(checks, { rtcAsrEvidence: rtcAsrEvidenceResult }),
+    failureReasons: reviewGateFailureReasons(checks, { rtcAsrEvidence: rtcAsrEvidenceResult, callerPlaybackEvidence: callerPlaybackEvidenceResult }),
   };
 }
 
@@ -497,6 +535,9 @@ function reviewGateFailureReasons(checks, details = {}) {
     rtcAsrEvidenceValid: details.rtcAsrEvidence?.reason
       ? `rtc-asr live transcript evidence failed validation: ${details.rtcAsrEvidence.reason}`
       : "rtc-asr live transcript evidence is missing, invalid, empty, or not final.",
+    callerPlaybackEvidenceValid: details.callerPlaybackEvidence?.reason
+      ? `caller-audible playback proof failed validation: ${details.callerPlaybackEvidence.reason}`
+      : "caller-audible playback proof is missing or invalid.",
     artifactsPresent: "One or more required proof artifacts are missing or empty.",
     sourceArtifactIntegrityReady: "Source live proof manifest reports blocked, missing, or changed artifacts.",
     sourceManifestReviewReady: "Source live proof manifest is not review-ready; inspect its blockers before submitting the bundle.",
@@ -578,6 +619,7 @@ function reviewGateReportJson(bundleManifest) {
       callerAudio: bundleManifest.validationSummary.callerAudioEvidence,
       sipLog: bundleManifest.validationSummary.sipLogEvidence,
       rtcAsr: bundleManifest.validationSummary.rtcAsrEvidence,
+      callerPlayback: bundleManifest.validationSummary.callerPlaybackEvidence,
       sourceArtifactIntegrity: bundleManifest.validationSummary.sourceArtifactIntegrityEvidence,
     },
     blockers: bundleManifest.validationSummary.blockers,
@@ -605,7 +647,13 @@ async function main() {
   const audioPath = path.resolve(repoRoot, liveManifest.artifacts.audioWav);
   const sipLogPath = path.resolve(repoRoot, liveManifest.artifacts.sipLog);
   const rtcAsrEvidencePath = liveManifest.artifacts.rtcAsrEvidence ? path.resolve(repoRoot, liveManifest.artifacts.rtcAsrEvidence) : null;
+  const callerPlaybackEvidencePath = liveManifest.artifacts.callerPlaybackEvidence ? path.resolve(repoRoot, liveManifest.artifacts.callerPlaybackEvidence) : null;
   const rtcAsrEvidencePathExists = await fileExists(rtcAsrEvidencePath);
+  const callerPlaybackEvidencePathExists = await fileExists(callerPlaybackEvidencePath);
+  const callerPlaybackEvidenceResult = await callerPlaybackEvidence(
+    callerPlaybackEvidencePath,
+    liveManifest.pipecatMediaEngine?.bidirectionalPlaybackReady === true || Boolean(liveManifest.artifacts.callerPlaybackEvidence),
+  );
   const runtimeTracePath = path.join(outDir, "runtime-event-trace.json");
   const blockerPath = path.join(outDir, "rtc-asr-blocker.json");
   const labels = [
@@ -624,6 +672,8 @@ async function main() {
     sipCallId: liveManifest.sipCallId,
     localSip: liveManifest.localSip,
     runtimeModeLabels: liveManifest.runtimeModeLabels,
+    callerPlaybackEvidence: callerPlaybackEvidenceResult,
+    outboundPlayback: liveManifest.pipecatMediaEngine?.outboundRtpPlayback ?? null,
     reviewReady: liveManifest.reviewReady,
     blockers: liveManifest.blockers,
   };
@@ -645,6 +695,7 @@ async function main() {
         await artifact(runtimeTracePath, "agentic-contact-center-runtime-event-trace", "action_trace", "application/json"),
         await artifact(blockerPath, "rtc-asr-live-status", "manifest", "application/json"),
         ...(rtcAsrEvidencePathExists ? [await artifact(rtcAsrEvidencePath, "rtc-asr-transcript-evidence", "transcript_evidence", "application/json")] : []),
+        ...(callerPlaybackEvidencePathExists ? [await artifact(callerPlaybackEvidencePath, "caller-audible-playback-proof", "playback_evidence", "application/json")] : []),
       ],
       provenance: {
         source_repo: "agonza1/agentic-contact-center",
@@ -679,12 +730,13 @@ async function main() {
     await integrity(blockerPath, "rtc-asr-live-status", "manifest"),
     await integrity(assertRequestPath, "conversation-agent-evals-assert-request", "assert_request"),
     ...(rtcAsrEvidencePathExists ? [await integrity(rtcAsrEvidencePath, "rtc-asr-transcript-evidence", "transcript_evidence")] : []),
+    ...(callerPlaybackEvidencePathExists ? [await integrity(callerPlaybackEvidencePath, "caller-audible-playback-proof", "playback_evidence")] : []),
   ];
   const sipEvidence = await sipLogEvidence(sipLogPath);
   const rtcAsrEvidenceResult = await rtcAsrEvidence(rtcAsrEvidencePath);
   const wavEvidenceResult = await wavEvidence(audioPath);
   const sourceArtifactIntegrityResult = await sourceArtifactIntegrityEvidence(liveManifest);
-  const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult);
+  const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, callerPlaybackEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult);
   const validationSummary = {
     status: gate.passed ? "ready_for_review" : "blocked_before_review",
     checks: gate.checks,
@@ -693,6 +745,7 @@ async function main() {
     callerAudioEvidence: wavEvidenceResult,
     sipLogEvidence: sipEvidence,
     rtcAsrEvidence: rtcAsrEvidenceResult,
+    callerPlaybackEvidence: callerPlaybackEvidenceResult,
     sourceArtifactIntegrityEvidence: sourceArtifactIntegrityResult,
   };
   const bundleManifest = {
@@ -712,6 +765,7 @@ async function main() {
       rtcAsrStatus: rel(blockerPath),
       conversationAgentEvalsRequest: rel(assertRequestPath),
       rtcAsrEvidence: rtcAsrEvidencePath ? rel(rtcAsrEvidencePath) : null,
+      callerPlaybackEvidence: callerPlaybackEvidencePath ? rel(callerPlaybackEvidencePath) : null,
     },
     artifactIntegrity,
     reviewGate: gate,

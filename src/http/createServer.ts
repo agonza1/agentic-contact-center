@@ -1927,12 +1927,30 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
   const generatedMedia = mediaCaptureEvent?.detail.generatedMedia === true || labels.media === "generated_media";
   const hasLiveAudioCapture = Boolean(mediaCaptureEvent && labels.media === "live_capture" && !generatedMedia);
   const hasLiveTelephony = labels.telephony === "local_sip" || labels.telephony === "signalwire_live";
+  const hasFreeswitchBroadcast = playbackEvent?.detail.freeswitchBroadcastMode === "freeswitch_uuid_broadcast";
+  const hasCompleteFreeswitchBroadcastEvidence = Boolean(
+    hasFreeswitchBroadcast &&
+      getOptionalEventString(playbackEvent?.detail.freeswitchBroadcastHostPath) &&
+      getOptionalEventString(playbackEvent?.detail.freeswitchBroadcastPath) &&
+      typeof playbackEvent?.detail.freeswitchBroadcastAudioBytes === "number" &&
+      playbackEvent.detail.freeswitchBroadcastAudioBytes > 0,
+  );
+  const hasPacketizedPlaybackEvidence = Boolean(
+    playbackEvent?.detail.outboundRtpReady === true &&
+      typeof playbackEvent.detail.packetCount === "number" &&
+      playbackEvent.detail.packetCount > 0,
+  );
   const hasCallerPlaybackProof = Boolean(
     playbackEvent?.detail.callerPlaybackConfirmed === true &&
-      playbackEvent.detail.rtpSocketSendReady === true &&
-      typeof playbackEvent.detail.sentPacketCount === "number" &&
-      playbackEvent.detail.sentPacketCount > 0 &&
-      callerPlaybackEvidencePath,
+      callerPlaybackEvidencePath &&
+      (
+        (
+          playbackEvent.detail.rtpSocketSendReady === true &&
+          typeof playbackEvent.detail.sentPacketCount === "number" &&
+          playbackEvent.detail.sentPacketCount > 0
+        ) ||
+        (hasCompleteFreeswitchBroadcastEvidence && hasPacketizedPlaybackEvidence)
+      ),
   );
   const asrStatus = asrTranscriptEvent
     ? "transcript_received"
@@ -2006,10 +2024,10 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
     },
     playback: {
       status: playbackEvent
-        ? playbackEvent.detail.rtpSocketSendReady === true
-          ? playbackEvent.detail.callerPlaybackConfirmed === true
-            ? "caller_playback_confirmed"
-            : "rtp_sent_to_socket"
+        ? hasCallerPlaybackProof
+          ? "caller_playback_confirmed"
+          : playbackEvent.detail.rtpSocketSendReady === true
+          ? "rtp_sent_to_socket"
           : playbackEvent.detail.outboundRtpReady === true
             ? "rtp_packetized"
             : "blocked"
@@ -2026,6 +2044,15 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
       evidencePath: getOptionalEventString(playbackEvent?.detail.evidencePath),
       callerPlaybackConfirmed: playbackEvent?.detail.callerPlaybackConfirmed === true,
       callerPlaybackEvidencePath,
+      freeswitchBroadcast: hasFreeswitchBroadcast
+        ? {
+            mode: "freeswitch_uuid_broadcast",
+            hostPath: getOptionalEventString(playbackEvent?.detail.freeswitchBroadcastHostPath),
+            freeswitchPath: getOptionalEventString(playbackEvent?.detail.freeswitchBroadcastPath),
+            sampleRateHz: typeof playbackEvent?.detail.freeswitchBroadcastSampleRateHz === "number" ? playbackEvent.detail.freeswitchBroadcastSampleRateHz : null,
+            audioBytes: typeof playbackEvent?.detail.freeswitchBroadcastAudioBytes === "number" ? playbackEvent.detail.freeswitchBroadcastAudioBytes : null,
+          }
+        : null,
       eventTrail: playbackEvent ? snapshot.session.openclawSession.artifactLinks.events + "?type=pipecat_rtp_playback_attached&limit=1&order=desc" : null,
     },
     sip: {
@@ -4045,10 +4072,12 @@ async function routeRequest(
         return;
       }
 
+      const bridgeSessionId = getOptionalTrimmedString(bridgeResponse.payload.sessionId) ?? sessionId;
       writeJson(response, 201, {
         ok: true,
         route: "/api/browser-webrtc/session",
-        sessionId,
+        sessionId: bridgeSessionId,
+        requestedSessionId: sessionId,
         callId,
         type: "answer",
         sdp: answerSdp,
@@ -4062,6 +4091,9 @@ async function routeRequest(
           tts: { engine: "kokoro" },
           call: buildCallPayload(snapshot),
           bridge: isRecord(bridgeResponse.payload.evidence) ? bridgeResponse.payload.evidence : {},
+          sessionId: bridgeSessionId,
+          requestedSessionId: sessionId,
+          callId,
         },
       });
     } catch (error) {
@@ -4806,8 +4838,37 @@ async function routeRequest(
           writeBadRequest(response, "live_sip_playback_socket_send_evidence_incomplete");
           return;
         }
-        if (body.callerPlaybackConfirmed === true && body.rtpSocketSendReady !== true) {
+        const freeswitchBroadcastBody = isRecord(body.freeswitchBroadcast) ? body.freeswitchBroadcast : null;
+        const freeswitchBroadcastMode = getOptionalTrimmedString(body.freeswitchBroadcastMode) ?? getOptionalTrimmedString(freeswitchBroadcastBody?.mode);
+        const freeswitchBroadcastSampleRateHz = parseOptionalNonNegativeInteger(
+          body.freeswitchBroadcastSampleRateHz ?? freeswitchBroadcastBody?.sampleRateHz,
+          "live_sip_playback_broadcast_sample_rate_invalid",
+        );
+        if (freeswitchBroadcastSampleRateHz !== null && typeof freeswitchBroadcastSampleRateHz === "object") {
+          writeBadRequest(response, freeswitchBroadcastSampleRateHz.error);
+          return;
+        }
+        const freeswitchBroadcastAudioBytes = parseOptionalNonNegativeInteger(
+          body.freeswitchBroadcastAudioBytes ?? freeswitchBroadcastBody?.audioBytes,
+          "live_sip_playback_broadcast_audio_bytes_invalid",
+        );
+        if (freeswitchBroadcastAudioBytes !== null && typeof freeswitchBroadcastAudioBytes === "object") {
+          writeBadRequest(response, freeswitchBroadcastAudioBytes.error);
+          return;
+        }
+        const hasFreeswitchBroadcast = freeswitchBroadcastMode === "freeswitch_uuid_broadcast";
+        const freeswitchBroadcastHostPath = getOptionalTrimmedString(body.freeswitchBroadcastHostPath) ?? getOptionalTrimmedString(freeswitchBroadcastBody?.hostPath);
+        const freeswitchBroadcastPath = getOptionalTrimmedString(body.freeswitchBroadcastPath) ?? getOptionalTrimmedString(freeswitchBroadcastBody?.freeswitchPath);
+        if (body.callerPlaybackConfirmed === true && body.rtpSocketSendReady !== true && !hasFreeswitchBroadcast) {
           writeBadRequest(response, "live_sip_playback_confirmation_without_socket_send");
+          return;
+        }
+        if (hasFreeswitchBroadcast && (!freeswitchBroadcastHostPath || !freeswitchBroadcastPath || !freeswitchBroadcastAudioBytes)) {
+          writeBadRequest(response, "live_sip_playback_broadcast_evidence_incomplete");
+          return;
+        }
+        if (body.callerPlaybackConfirmed === true && hasFreeswitchBroadcast && (body.outboundRtpReady !== true || !packetCount)) {
+          writeBadRequest(response, "live_sip_playback_broadcast_packetization_evidence_incomplete");
           return;
         }
         if (body.callerPlaybackConfirmed === true && !getOptionalTrimmedString(body.callerPlaybackEvidencePath)) {
@@ -4831,6 +4892,11 @@ async function routeRequest(
             evidencePath: getOptionalTrimmedString(body.evidencePath) ?? null,
             callerPlaybackConfirmed: body.callerPlaybackConfirmed === true,
             callerPlaybackEvidencePath: getOptionalTrimmedString(body.callerPlaybackEvidencePath) ?? null,
+            freeswitchBroadcastMode: hasFreeswitchBroadcast ? "freeswitch_uuid_broadcast" : null,
+            freeswitchBroadcastHostPath: freeswitchBroadcastHostPath ?? null,
+            freeswitchBroadcastPath: freeswitchBroadcastPath ?? null,
+            freeswitchBroadcastSampleRateHz,
+            freeswitchBroadcastAudioBytes,
           },
         });
         writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });

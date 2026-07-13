@@ -160,6 +160,45 @@ async function inspectRtcAsrEvidence(filePath) {
   return { ready: true, eventCount: evidence.length };
 }
 
+async function inspectCallerPlaybackEvidence(filePath) {
+  if (!filePath) {
+    return {
+      ready: false,
+      blocker: "Caller-audible playback proof is not attached to this local SIP proof.",
+      nextAction: "Attach caller-audible playback proof with --caller-playback-evidence before marking the local SIP proof review-ready.",
+    };
+  }
+  const raw = await readFile(filePath, "utf8").catch(() => null);
+  const parsed = raw ? parseJsonOrJsonLines(raw) : [];
+  const evidence = parsed.flatMap(expandEvidenceEntries);
+  if (evidence.length === 0) {
+    return {
+      ready: false,
+      blocker: "Caller-audible playback proof file is missing or is not valid JSON.",
+      nextAction: "Attach valid caller-audible playback proof with --caller-playback-evidence before marking the proof review-ready.",
+    };
+  }
+  const confirmed = nestedEvidenceObjects(evidence).some((candidate) =>
+    candidate?.callerPlaybackConfirmed === true ||
+    candidate?.caller_playback_confirmed === true ||
+    candidate?.status === "caller_playback_confirmed"
+  );
+  if (!confirmed) {
+    return {
+      ready: false,
+      blocker: "Caller-audible playback proof does not contain playback-specific confirmation.",
+      nextAction: "Attach proof with callerPlaybackConfirmed=true or status=caller_playback_confirmed before marking the proof review-ready.",
+    };
+  }
+  return { ready: true, eventCount: evidence.length };
+}
+
+function nestedEvidenceObjects(value, depth = 0) {
+  if (depth > 6 || value === null || typeof value !== "object") return [];
+  const children = Array.isArray(value) ? value : Object.values(value);
+  return [value, ...children.flatMap((child) => nestedEvidenceObjects(child, depth + 1))];
+}
+
 function parseJsonOrJsonLines(raw) {
   try {
     const parsed = JSON.parse(raw);
@@ -375,11 +414,14 @@ class LocalSipProofServer {
 
     const blockers = [];
     const rtcAsrEvidenceInspection = await inspectRtcAsrEvidence(this.options.rtcAsrEvidencePath);
+    const callerPlaybackEvidenceInspection = await inspectCallerPlaybackEvidence(this.options.callerPlaybackEvidencePath);
+    const callerPlaybackEvidenceRequired = !this.options.generatedMedia && this.rtpPacketCount > 0 && this.options.rtcAsrUrl && rtcAsrEvidenceInspection.ready;
     if (this.options.generatedMedia) blockers.push("Self-test generated RTP audio; rerun with a real local SIP softphone call before review.");
     if (this.rtpPacketCount === 0) blockers.push("No RTP packets were captured.");
     if (!this.options.rtcAsrUrl) blockers.push("RTC_ASR_WS_URL was not set, so rtc-asr live transcription was not attempted.");
     if (this.options.rtcAsrUrl && !this.options.rtcAsrEvidencePath) blockers.push("rtc-asr URL was configured, but no transcript/evidence path was attached to this local SIP proof.");
     if (rtcAsrEvidenceInspection.blocker) blockers.push(rtcAsrEvidenceInspection.blocker);
+    if ((callerPlaybackEvidenceRequired || this.options.callerPlaybackEvidencePath) && callerPlaybackEvidenceInspection.blocker) blockers.push(callerPlaybackEvidenceInspection.blocker);
     const runtimeModeLabels = {
       telephony: "local_sip",
       media: this.options.generatedMedia ? "generated_media" : "live_capture",
@@ -400,6 +442,7 @@ class LocalSipProofServer {
       nextActions.push("Attach rtc-asr transcript evidence with --rtc-asr-evidence before marking the local SIP proof review-ready.");
     }
     if (rtcAsrEvidenceInspection.nextAction) nextActions.push(rtcAsrEvidenceInspection.nextAction);
+    if ((callerPlaybackEvidenceRequired || this.options.callerPlaybackEvidencePath) && callerPlaybackEvidenceInspection.nextAction) nextActions.push(callerPlaybackEvidenceInspection.nextAction);
 
     await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
       eventType: "media.capture",
@@ -443,7 +486,12 @@ class LocalSipProofServer {
         rtpPacketCount: this.rtpPacketCount,
         remoteRtp: this.remoteRtp,
       },
-      artifacts: { audioWav: wavPath, sipLog: sipLogPath, rtcAsrEvidence: this.options.rtcAsrEvidencePath ?? null },
+      artifacts: {
+        audioWav: wavPath,
+        sipLog: sipLogPath,
+        rtcAsrEvidence: this.options.rtcAsrEvidencePath ?? null,
+        callerPlaybackEvidence: this.options.callerPlaybackEvidencePath ?? null,
+      },
       artifactIntegrity: [
         { artifactId: "local-sip-caller-capture-wav", kind: "call_media", path: wavPath, sha256: await sha256File(wavPath), sizeBytes: audioStats.size, readiness: this.rtpPacketCount > 0 ? "ready" : "blocked" },
         { artifactId: "local-sip-sip-log", kind: "sip_log", path: sipLogPath, sha256: await sha256File(sipLogPath), sizeBytes: (await stat(sipLogPath)).size, readiness: "ready" },
@@ -455,8 +503,16 @@ class LocalSipProofServer {
           sizeBytes: (await stat(this.options.rtcAsrEvidencePath).catch(() => ({ size: 0 }))).size,
           readiness: rtcAsrEvidenceInspection.ready ? "ready" : "blocked",
         }] : []),
+        ...(this.options.callerPlaybackEvidencePath ? [{
+          artifactId: "caller-audible-playback-proof",
+          kind: "playback_evidence",
+          path: this.options.callerPlaybackEvidencePath,
+          sha256: await sha256File(this.options.callerPlaybackEvidencePath).catch(() => null),
+          sizeBytes: (await stat(this.options.callerPlaybackEvidencePath).catch(() => ({ size: 0 }))).size,
+          readiness: callerPlaybackEvidenceInspection.ready ? "ready" : "blocked",
+        }] : []),
       ],
-      reviewReady: blockers.length === 0 && !this.options.generatedMedia && rtcAsrEvidenceInspection.ready,
+      reviewReady: blockers.length === 0 && !this.options.generatedMedia && rtcAsrEvidenceInspection.ready && callerPlaybackEvidenceInspection.ready,
       reviewGate: {
         requiredLabels: requiredReviewLabels,
         missingLabels: missingReviewLabels,
@@ -559,6 +615,7 @@ async function main() {
     accBaseUrl: argValue("--acc-url", process.env.ACC_BASE_URL),
     rtcAsrUrl: argValue("--rtc-asr-url", process.env.RTC_ASR_WS_URL),
     rtcAsrEvidencePath: argValue("--rtc-asr-evidence", process.env.RTC_ASR_EVIDENCE_PATH),
+    callerPlaybackEvidencePath: argValue("--caller-playback-evidence", process.env.CALLER_PLAYBACK_EVIDENCE_PATH),
     generatedMedia: hasFlag("--self-test"),
   });
   await server.start();

@@ -40,7 +40,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.equal(payload.ok, true);
     assert.equal(payload.route, "/api/pipecat-media-engine/readiness");
     assert.equal(payload.issue, "agonza1/agentic-contact-center#214");
-    assert.equal(payload.status, "shared_contract_ready_sip_rtp_blocked");
+    assert.equal(payload.status, "shared_contract_ready_local_sip_playback_proof_pending");
     assert.equal(payload.reviewReady, false);
     assert.equal(payload.pipecat14Alignment.issue, "agonza1/agentic-contact-center#222");
     assert.equal(payload.pipecat14Alignment.packageRequirement, "pipecat-ai[webrtc]==1.4.0");
@@ -54,7 +54,9 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     ]);
     assert.equal(payload.pipecat14Alignment.browserPrimaryBridge.current, "scripts/pipecat-browser-webrtc-bridge.py");
     assert.equal(payload.pipecat14Alignment.browserPrimaryBridge.legacyFallbackAllowed, false);
-    assert.equal(payload.pipecat14Alignment.sipTransportStrategy.sharesPipelineProcessors, true);
+    assert.equal(payload.pipecat14Alignment.sipTransportStrategy.sharesPipelineProcessors, false);
+    assert.equal(payload.pipecat14Alignment.sipTransportStrategy.processorContractAligned, true);
+    assert.equal(payload.pipecat14Alignment.sipTransportStrategy.liveMediaProofComplete, false);
     assert.equal(payload.pipecat14Alignment.flowsDecision.owner, "ACC TypeScript flow for current cancellation-rescue MVP");
     assert.equal(payload.pipecat14Alignment.flowsDecision.flowManagerRequiredNow, false);
     assert.deepEqual(payload.validationCommands, [
@@ -74,19 +76,27 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     );
     assert.equal(adapters.find((adapter: any) => adapter.id === "browser_webrtc").implementedNow, true);
     assert.equal(adapters.find((adapter: any) => adapter.id === "browser_webrtc").currentEntryPoint, "scripts/pipecat-browser-webrtc-bridge.py");
-    assert.equal(adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp").implementedNow, false);
-    assert.match(adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp").blocker, /softphone caller playback/);
+    const sipAdapter = adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp");
+    assert.equal(sipAdapter.implementedNow, true);
+    assert.equal(sipAdapter.processorContractAligned, true);
+    assert.equal(sipAdapter.liveMediaProofComplete, false);
+    assert.match(sipAdapter.blocker, /live softphone capture/);
+    assert.match(sipAdapter.blocker, /not yet the same Python Pipeline object/);
     assert.match(adapters.find((adapter: any) => adapter.id === "signalwire_sip_trunk").blocker, /past-call import remains out of scope/);
 
     assert.deepEqual(payload.reviewBlockers, [
-      "Live softphone caller playback has not yet been accepted end-to-end; the current SIP bridge can collect FreeSWITCH RTP into Pipecat input frames, stream those frames to rtc-asr, packetize Pipecat/Kokoro TTS frames back to PCMU RTP, and report socket-send playback evidence.",
+      "Local 8600 return audio is wired through Kokoro/Pipecat TTS, PCMU RTP packetization evidence, and FreeSWITCH uuid_broadcast WAV playback; live softphone capture still needs to prove the caller heard that playback end-to-end.",
     ]);
     assert.equal(
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "browser_webrtc_uses_pipecat_rtc_asr_kokoro").passed,
       true,
     );
     assert.equal(
-      payload.acceptanceCriteria.find((criterion: any) => criterion.name === "sip_freeswitch_uses_same_realtime_pipecat_engine").passed,
+      payload.acceptanceCriteria.find((criterion: any) => criterion.name === "sip_freeswitch_processor_contract_aligned").passed,
+      true,
+    );
+    assert.equal(
+      payload.acceptanceCriteria.find((criterion: any) => criterion.name === "sip_caller_audible_playback_live_proof").passed,
       false,
     );
     assert.equal(

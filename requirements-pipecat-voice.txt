@@ -3,3 +3,4 @@ websockets==15.0.1
 aiortc==1.14.0
 fastapi==0.124.4
 opencv-python-headless==4.13.0.92
+wait-for2>=0.4.1,<1

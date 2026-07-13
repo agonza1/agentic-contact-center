@@ -50,7 +50,7 @@ Adapter rule for #222:
 
 - Browser: `SmallWebRTCTransport` through the ACC-compatible offer/answer adapter into the Pipeline.
 - Fixture/tester: synthetic caller audio frames and tester-agent turns injected at the Pipeline input, not a parallel proof-only route.
-- SIP/FreeSWITCH: separate telephony transport, same rtc-asr, ACC caller-turn, and Kokoro processors behind it. Do not force SmallWebRTCTransport onto SIP.
+- SIP/FreeSWITCH: separate telephony transport aligned to the same rtc-asr, ACC caller-turn, and Kokoro processor contract. It still needs a transport adapter that instantiates the same shared Pipeline processors, and it must not be called caller-audible complete until live proof exists. Do not force SmallWebRTCTransport onto SIP.
 
 Persistent evaluator session surface for ConversationAgentEvals and bounded tester agents:
 
@@ -68,7 +68,7 @@ Realtime-audio mode rejects `transcript` and `expectedTranscript` fields on sess
 Current gaps to keep visible:
 
 - Fixture/tester audio injection and the tester agent are not implemented.
-- Browser and SIP do not yet share the same transport adapter boundary.
+- SIP is aligned to the same processor contract but does not yet instantiate the same Python Pipeline object as the browser SmallWebRTC path.
 - SIP has substantial RTP capture/playback code but lacks final caller-audible end-to-end proof.
 - The presentation should describe #222 as the center, not OpenClaw/demo paths as the architecture.
 
@@ -76,7 +76,7 @@ Flows decision for the current MVP: keep cancellation-rescue conversation policy
 
 ## Browser WebRTC voice readiness
 
-Issue #213 exposes the current non-SIP browser adapter path for realtime WebRTC into Pipecat. Issue #222 owns the migration from this adapter into the shared Pipeline:
+Issue #213 exposes the current non-SIP browser adapter path for realtime WebRTC into Pipecat. Issue #222 owns keeping this adapter on the shared Pipeline and moving fixture/tester plus SIP transports behind the same processor boundary:
 
 ```text
 browser mic -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC/browser playback
@@ -123,13 +123,13 @@ npm run pipecat:webrtc
 
 ## Unified Pipecat media-engine readiness
 
-Issue #214 exposes the current readiness contract for browser WebRTC, local SIP/FreeSWITCH, and future SignalWire SIP trunk audio. Issue #222 is the actual target architecture for sharing Pipeline processors across those adapters. The current reviewable contract is exposed at:
+Issue #214 exposes the current readiness contract for browser WebRTC, local SIP/FreeSWITCH, and future SignalWire SIP trunk audio. Issue #222 is the target architecture for sharing Pipeline processors across those adapters; the browser path now does this with `SmallWebRTCTransport`, while SIP remains contract-aligned and proof-blocked. The current reviewable contract is exposed at:
 
 ```bash
 curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness
 ```
 
-The payload is intentionally not a fake green light. It marks the browser Pipecat voice bridge as implemented, keeps the local SIP/FreeSWITCH proof bundle behavior intact, and reports the remaining blocker: FreeSWITCH RTP is not yet streamed bidirectionally through Pipecat frames for realtime SIP caller playback. The FreeSWITCH bridge can optionally listen on `ACC_FREESWITCH_RTP_LISTEN_PORT`/`--rtp-listen-port` and collect inbound PCMU RTP packets into Pipecat-compatible `InputAudioRawFrameBatch` evidence, but rtc-asr streaming and Kokoro RTP playback still need the #222 Pipeline wiring slice. SignalWire is documented as a future SIP trunk -> FreeSWITCH/Pipecat route; historical/past-call import remains a separate importer task.
+The payload is intentionally not a fake green light. It marks the browser Pipecat voice bridge as implemented, keeps the local SIP/FreeSWITCH proof bundle behavior intact, and reports the current proof gate: local 8600 return audio is wired through Kokoro/Pipecat-shaped TTS evidence, outbound PCMU RTP evidence, and FreeSWITCH `uuid_broadcast` WAV playback, but a live softphone capture still needs to prove caller-audible playback. It also reports that SIP is not yet the same Python Pipeline object used by the browser SmallWebRTC path. The FreeSWITCH bridge can optionally listen on `ACC_FREESWITCH_RTP_LISTEN_PORT`/`--rtp-listen-port` and collect inbound PCMU RTP packets into Pipecat-compatible frame evidence. SignalWire is documented as a future SIP trunk -> FreeSWITCH/Pipecat route; historical/past-call import remains a separate importer task.
 
 ## Demo flow
 
@@ -218,7 +218,7 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `GET /api/calls`: list active calls with optional queue/operator filters.
 - `GET /api/queue`: return queue summary metadata without full call payloads.
 - `GET /api/operator/actions`: expose the Slack-ready operator action catalog with command examples, reason/pending-call requirements, HTTP body templates, and outcome hints for console buttons.
-- `GET /api/pipecat-media-engine/readiness`: expose the Issue #214 shared browser WebRTC, local SIP/FreeSWITCH, and SignalWire SIP trunk Pipecat media-engine contract, including the current realtime SIP RTP blocker.
+- `GET /api/pipecat-media-engine/readiness`: expose the Issue #214 shared browser WebRTC, local SIP/FreeSWITCH, and SignalWire SIP trunk Pipecat media-engine contract, including the current local SIP caller-audible proof gate.
 - `GET /api/browser-webrtc/readiness`: expose the Issue #213 browser WebRTC voice contract, dependency readiness, and bridge endpoint.
 - `POST /api/browser-webrtc/session`: validate browser SDP offers, allocate or preserve an ACC call ID, and proxy offer/answer signaling to the local Pipecat WebRTC bridge.
 - `POST /api/voice/sessions`: create a persistent ConversationAgentEvals realtime-audio target session.
