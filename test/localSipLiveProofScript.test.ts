@@ -197,6 +197,66 @@ test("local SIP review gate accepts OpenAI realtime transcript evidence shapes",
   }
 });
 
+test("local SIP manifest carries caller playback proof evidence when attached", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-local-sip-playback-evidence-"));
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+  const callerPlaybackEvidencePath = path.join(tempDir, "caller-playback-proof.json");
+  const portBase = 50500 + Math.floor(Math.random() * 1000) * 4;
+
+  try {
+    await writeFile(rtcAsrEvidencePath, JSON.stringify({ transcript: "I need billing help.", final: true }) + "\n", "utf8");
+    await writeFile(callerPlaybackEvidencePath, JSON.stringify({ liveProof: { playback: { status: "caller_playback_confirmed" } } }) + "\n", "utf8");
+
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        [
+          "scripts/local-sip-live-proof.mjs",
+          "--self-test",
+          "--require-live-caller",
+          "--listen-seconds",
+          "0",
+          "--duration-ms",
+          "120",
+          "--sip-port",
+          String(portBase),
+          "--rtp-port",
+          String(portBase + 1),
+          "--rtc-asr-url",
+          "ws://127.0.0.1:8080/v1/stt/stream",
+          "--rtc-asr-evidence",
+          rtcAsrEvidencePath,
+          "--caller-playback-evidence",
+          callerPlaybackEvidencePath,
+          "--out-dir",
+          tempDir,
+        ],
+        { cwd: repoRoot, timeout: 10_000, encoding: "utf8" },
+      ),
+      (error: any) => {
+        assert.equal(error.code, 2);
+        const summary = JSON.parse(error.stdout.slice(error.stdout.indexOf("{")).trim()) as { blockers: string[] };
+        assert.ok(!summary.blockers.some((blocker) => blocker.includes("Caller-audible playback proof")));
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("Self-test generated RTP audio")));
+        return true;
+      },
+    );
+
+    const manifest = JSON.parse(await readFile(path.join(tempDir, "local-sip-live-proof-manifest.json"), "utf8")) as {
+      artifacts: { callerPlaybackEvidence: string | null };
+      artifactIntegrity: Array<{ artifactId: string; readiness: string; sizeBytes: number }>;
+      reviewGate: { missingLabels: string[]; nextActions: string[] };
+    };
+    assert.equal(manifest.artifacts.callerPlaybackEvidence, callerPlaybackEvidencePath);
+    assert.ok(manifest.artifactIntegrity.some((artifact) => artifact.artifactId === "caller-audible-playback-proof" && artifact.readiness === "ready" && artifact.sizeBytes > 0));
+    assert.deepEqual(manifest.reviewGate.missingLabels, ["live_capture"]);
+    assert.ok(!manifest.reviewGate.nextActions.some((action) => action.includes("caller-audible playback proof")));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("local SIP live-caller gate exits nonzero when no caller arrives", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-local-sip-timeout-"));
