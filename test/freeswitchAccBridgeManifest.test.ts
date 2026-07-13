@@ -602,13 +602,15 @@ test("FreeSWITCH bridge broadcasts live Kokoro TTS even without caller RTP socke
         "freeswitchRecordingDir:\"/var/log/freeswitch/acc/media\"" +
       "});",
       "bridge.send = (command) => sentCommands.push(command);",
-      "const summary = await bridge.playLiveKokoroTts(\"Agent response from ACC\", \"fs-live-kokoro-no-rtp\");",
-      "console.log(JSON.stringify({ sentCommands, summary, events: bridge.events }));"
+      "const summary = await bridge.playLiveKokoroTts(\"Initial greeting from ACC\", \"fs-live-kokoro-no-rtp\");",
+      "const responseSummary = await bridge.playLiveKokoroTts(\"Agent response from ACC\", \"fs-live-kokoro-no-rtp\");",
+      "console.log(JSON.stringify({ sentCommands, summary, responseSummary, events: bridge.events }));"
     ].join("\n");
     const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], { cwd: repoRoot, encoding: "utf8" });
     const parsed = JSON.parse(stdout) as {
       sentCommands: string[];
       summary: { outboundRtpReady: boolean; rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; totalDurationMs: number; freeswitchBroadcast: { mode: string; audioBytes: number } };
+      responseSummary: { outboundRtpReady: boolean; rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; totalDurationMs: number; freeswitchBroadcast: { mode: string; audioBytes: number } };
       events: Array<{ pipecatLiveKokoroTtsPlayback?: { freeswitchBroadcast: { mode: string } } }>;
     };
 
@@ -619,10 +621,16 @@ test("FreeSWITCH bridge broadcasts live Kokoro TTS even without caller RTP socke
     assert.equal(parsed.summary.totalDurationMs, 0.5);
     assert.equal(parsed.summary.freeswitchBroadcast.mode, "freeswitch_uuid_broadcast");
     assert.equal(parsed.summary.freeswitchBroadcast.audioBytes, 8);
-    assert.equal(parsed.sentCommands.length, 1);
+    assert.equal(parsed.responseSummary.outboundRtpReady, true);
+    assert.equal(parsed.responseSummary.rtpSocketSendReady, false);
+    assert.equal(parsed.responseSummary.packetCount, 2);
+    assert.equal(parsed.responseSummary.sentPacketCount, 0);
+    assert.equal(parsed.responseSummary.freeswitchBroadcast.mode, "freeswitch_uuid_broadcast");
+    assert.equal(parsed.sentCommands.length, 2);
     assert.equal(parsed.sentCommands[0].startsWith("api uuid_broadcast fs-live-kokoro-no-rtp /var/log/freeswitch/acc/media/fs-live-kokoro-no-rtp-kokoro-tts-"), true);
+    assert.equal(parsed.sentCommands[1].startsWith("api uuid_broadcast fs-live-kokoro-no-rtp /var/log/freeswitch/acc/media/fs-live-kokoro-no-rtp-kokoro-tts-"), true);
     assert.equal(parsed.events.some((event) => event.pipecatLiveKokoroTtsPlayback?.freeswitchBroadcast.mode === "freeswitch_uuid_broadcast"), true);
-    assert.equal(playbackEvents.length, 1);
+    assert.equal(playbackEvents.length, 2);
     assert.equal(playbackEvents[0].eventType, "media.playback");
     assert.equal(playbackEvents[0].outboundRtpReady, true);
     assert.equal(playbackEvents[0].rtpSocketSendReady, false);
@@ -634,6 +642,14 @@ test("FreeSWITCH bridge broadcasts live Kokoro TTS even without caller RTP socke
     assert.equal(playbackEvents[0].freeswitchBroadcastMode, "freeswitch_uuid_broadcast");
     assert.equal(playbackEvents[0].freeswitchBroadcastPath.startsWith("/var/log/freeswitch/acc/media/fs-live-kokoro-no-rtp-kokoro-tts-"), true);
     assert.equal(playbackEvents[0].freeswitchBroadcastAudioBytes, 8);
+    assert.equal(playbackEvents[1].eventType, "media.playback");
+    assert.equal(playbackEvents[1].outboundRtpReady, true);
+    assert.equal(playbackEvents[1].rtpSocketSendReady, false);
+    assert.equal(playbackEvents[1].packetCount, 2);
+    assert.equal(playbackEvents[1].sentPacketCount, 0);
+    assert.equal(playbackEvents[1].freeswitchBroadcast.mode, "freeswitch_uuid_broadcast");
+    assert.equal(playbackEvents[1].freeswitchBroadcastPath.startsWith("/var/log/freeswitch/acc/media/fs-live-kokoro-no-rtp-kokoro-tts-"), true);
+    assert.equal(playbackEvents[1].freeswitchBroadcastAudioBytes, 8);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     await rm(tempDir, { recursive: true, force: true });
@@ -1149,6 +1165,57 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     assert.equal(socketOnlyManifest.reviewReady, false);
     assert.ok(socketOnlyManifest.blockers.some((blocker) => blocker.includes("caller-audible playback proof")));
     assert.ok(readyManifest.artifactIntegrity.some((artifact) => artifact.artifactId === "rtc-asr-transcript-evidence" && artifact.readiness === "ready"));
+
+    const broadcastOnlyScript = `
+      const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
+      const manifest = await buildFreeswitchLiveProofManifest({
+        uuid: "fs-proof-broadcast-only",
+        accCallId: "demo-call-broadcast-only",
+        destination: "8600",
+        wavPath: ${JSON.stringify(audioPath)},
+        logPath: ${JSON.stringify(logPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
+        telephonyMode: "local_sip",
+        pipecatOutboundRtpEvidence: {
+          outboundRtpReady: true,
+          rtpSocketSendReady: false,
+          packetCount: 1,
+          sentPacketCount: 0,
+          remoteHost: "127.0.0.1",
+          remotePort: null,
+          totalDurationMs: 20,
+          nextSequenceNumber: 1,
+          nextTimestamp: 160,
+          ssrc: 0xacc0ffee,
+          lastSentAt: null,
+          freeswitchBroadcast: {
+            mode: "freeswitch_uuid_broadcast",
+            hostPath: ${JSON.stringify(path.join(tempDir, "fs-proof-broadcast-only.wav"))},
+            freeswitchPath: "/var/log/freeswitch/acc/media/fs-proof-broadcast-only.wav",
+            sampleRateHz: 8000,
+            audioBytes: 320
+          },
+          callerPlaybackConfirmed: true,
+          callerPlaybackEvidencePath: "artifacts/freeswitch-live/caller-playback-proof.json"
+        }
+      });
+      console.log(JSON.stringify(manifest));
+    `;
+    const broadcastOnlyResult = await execFileAsync(process.execPath, ["--input-type=module", "--eval", broadcastOnlyScript], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const broadcastOnlyManifest = JSON.parse(broadcastOnlyResult.stdout) as {
+      reviewReady: boolean;
+      pipecatMediaEngine: {
+        bidirectionalPlaybackReady: boolean;
+        outboundRtpPlayback: { freeswitchBroadcast: { mode: string } };
+      };
+    };
+    assert.equal(broadcastOnlyManifest.reviewReady, true);
+    assert.equal(broadcastOnlyManifest.pipecatMediaEngine.bidirectionalPlaybackReady, true);
+    assert.equal(broadcastOnlyManifest.pipecatMediaEngine.outboundRtpPlayback.freeswitchBroadcast.mode, "freeswitch_uuid_broadcast");
 
     const readyBundleDir = path.join(tempDir, "ready-bundle");
     const readyManifestPath = path.join(tempDir, "freeswitch-ready-live-proof-manifest.json");

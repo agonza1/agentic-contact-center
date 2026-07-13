@@ -866,10 +866,15 @@ export async function buildFreeswitchLiveProofManifest(options) {
   const pipecatRtpEvidence = options.pipecatRtpEvidence ?? null;
   const pipecatOutboundRtpEvidence = options.pipecatOutboundRtpEvidence ?? null;
   const outboundPlaybackTargetMatchedCallerRtp = playbackTargetMatchesCallerRtp(options.remoteRtp, pipecatOutboundRtpEvidence);
-  const outboundPlaybackReviewReady =
+  const outboundBroadcastPlaybackAttempted = pipecatOutboundRtpEvidence?.freeswitchBroadcast?.mode === "freeswitch_uuid_broadcast";
+  const outboundSocketPlaybackReviewReady =
     pipecatOutboundRtpEvidence?.rtpSocketSendReady === true &&
     outboundPlaybackTargetMatchedCallerRtp &&
     playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence);
+  const outboundBroadcastReviewReady =
+    outboundBroadcastPlaybackAttempted &&
+    playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence);
+  const outboundPlaybackReviewReady = outboundSocketPlaybackReviewReady || outboundBroadcastReviewReady;
   const rtcAsrStreamEvidence = options.rtcAsrStreamEvidence ?? null;
   const runtimeModeLabels = {
     telephony: options.telephonyMode,
@@ -890,12 +895,16 @@ export async function buildFreeswitchLiveProofManifest(options) {
   if (options.rtcAsrEvidencePath && !rtcAsrEvidenceStats) blockers.push("rtc-asr transcript/evidence path was configured, but the evidence file is missing.");
   if (rtcAsrEvidenceStats && rtcAsrEvidenceStats.size === 0) blockers.push("rtc-asr transcript/evidence file is empty.");
   if (rtcAsrEvidenceInspection.blocker) blockers.push(rtcAsrEvidenceInspection.blocker);
-  if (!pipecatOutboundRtpEvidence?.rtpSocketSendReady) {
+  if (!pipecatOutboundRtpEvidence?.rtpSocketSendReady && !outboundBroadcastPlaybackAttempted) {
     blockers.push("FreeSWITCH caller playback RTP was not sent, so SIP bidirectional playback is not proven.");
-  } else if (!outboundPlaybackTargetMatchedCallerRtp) {
+  } else if (pipecatOutboundRtpEvidence?.rtpSocketSendReady === true && !outboundPlaybackTargetMatchedCallerRtp) {
     blockers.push("FreeSWITCH caller playback RTP was sent, but the playback target did not match the caller RTP target.");
   } else if (!playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence)) {
-    blockers.push("FreeSWITCH caller playback RTP was sent to the caller target, but no caller-audible playback proof is attached.");
+    blockers.push(
+      outboundBroadcastPlaybackAttempted
+        ? "FreeSWITCH uuid_broadcast playback was issued, but no caller-audible playback proof is attached."
+        : "FreeSWITCH caller playback RTP was sent to the caller target, but no caller-audible playback proof is attached.",
+    );
   }
 
   const nextActions = [];
@@ -915,12 +924,16 @@ export async function buildFreeswitchLiveProofManifest(options) {
     nextActions.push("Rerun rtc-asr until transcript evidence is non-empty before marking the proof review-ready.");
   }
   if (rtcAsrEvidenceInspection.nextAction) nextActions.push(rtcAsrEvidenceInspection.nextAction);
-  if (!pipecatOutboundRtpEvidence?.rtpSocketSendReady) {
+  if (!pipecatOutboundRtpEvidence?.rtpSocketSendReady && !outboundBroadcastPlaybackAttempted) {
     nextActions.push("Send Kokoro/Pipecat RTP playback to the FreeSWITCH caller target before marking the proof review-ready.");
-  } else if (!outboundPlaybackTargetMatchedCallerRtp) {
+  } else if (pipecatOutboundRtpEvidence?.rtpSocketSendReady === true && !outboundPlaybackTargetMatchedCallerRtp) {
     nextActions.push("Discover the caller RTP target from FreeSWITCH media headers and send playback RTP to that target.");
   } else if (!playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence)) {
-    nextActions.push("Attach caller-audible playback proof, such as a softphone capture/check artifact, before marking the proof review-ready.");
+    nextActions.push(
+      outboundBroadcastPlaybackAttempted
+        ? "Attach caller-audible playback proof for the FreeSWITCH uuid_broadcast path before marking the proof review-ready."
+        : "Attach caller-audible playback proof, such as a softphone capture/check artifact, before marking the proof review-ready.",
+    );
   }
 
   const artifactIntegrity = [];
@@ -981,7 +994,9 @@ export async function buildFreeswitchLiveProofManifest(options) {
       bidirectionalPlaybackReady: outboundPlaybackReviewReady,
       blocker: outboundPlaybackReviewReady
         ? null
-        : pipecatOutboundRtpEvidence?.rtpSocketSendReady
+        : outboundBroadcastPlaybackAttempted
+          ? "FreeSWITCH uuid_broadcast playback was issued, but no caller-audible playback proof is attached."
+          : pipecatOutboundRtpEvidence?.rtpSocketSendReady
           ? outboundPlaybackTargetMatchedCallerRtp
             ? "Pipecat/Kokoro TTSAudioRawFrame output was sent to the caller RTP target, but no caller-audible playback proof is attached."
             : "Pipecat/Kokoro TTSAudioRawFrame output was sent, but not to the discovered FreeSWITCH caller RTP target."
@@ -1022,6 +1037,7 @@ export class EslBridge {
     this.rtpPlaybackSink = this.createRtpPlaybackSink();
     this.pipecatOutputFixturePlayed = false;
     this.pipecatPlaybackEventPosted = false;
+    this.pipecatPlaybackEventSignature = null;
     this.freeswitchBroadcast = null;
   }
 
@@ -1053,6 +1069,7 @@ export class EslBridge {
       sink: call?.rtpPlaybackSink ?? this.rtpPlaybackSink,
       played: call ? call.pipecatOutputFixturePlayed === true : this.pipecatOutputFixturePlayed,
       posted: call ? call.pipecatPlaybackEventPosted === true : this.pipecatPlaybackEventPosted,
+      postedSignature: call ? call.pipecatPlaybackEventSignature ?? null : this.pipecatPlaybackEventSignature,
       freeswitchBroadcast: call?.freeswitchBroadcast ?? this.freeswitchBroadcast,
     };
   }
@@ -1160,10 +1177,18 @@ export class EslBridge {
 
   async postPipecatPlaybackEvent(uuid) {
     const state = this.callPlaybackState(uuid);
-    if (state.posted) return;
     const playbackSummary = state.sink.summary();
     if (!playbackSummary.outboundRtpReady) return;
     const freeswitchBroadcast = state.call?.freeswitchBroadcast ?? this.freeswitchBroadcast;
+    if (!this.options.accBaseUrl) return;
+    const eventSignature = JSON.stringify({
+      packetCount: playbackSummary.packetCount,
+      sentPacketCount: playbackSummary.sentPacketCount,
+      rtpSocketSendReady: playbackSummary.rtpSocketSendReady,
+      freeswitchBroadcastPath: freeswitchBroadcast?.freeswitchPath ?? null,
+      freeswitchBroadcastAudioBytes: freeswitchBroadcast?.audioBytes ?? null,
+    });
+    if (state.postedSignature === eventSignature) return;
     await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
       eventType: "media.playback",
       timestamp: nowIso(),
@@ -1186,8 +1211,13 @@ export class EslBridge {
       freeswitchBroadcastSampleRateHz: freeswitchBroadcast?.sampleRateHz ?? null,
       freeswitchBroadcastAudioBytes: freeswitchBroadcast?.audioBytes ?? null,
     });
-    if (state.call) state.call.pipecatPlaybackEventPosted = true;
-    else this.pipecatPlaybackEventPosted = true;
+    if (state.call) {
+      state.call.pipecatPlaybackEventPosted = true;
+      state.call.pipecatPlaybackEventSignature = eventSignature;
+    } else {
+      this.pipecatPlaybackEventPosted = true;
+      this.pipecatPlaybackEventSignature = eventSignature;
+    }
   }
 
   async handleData(chunk) {
@@ -1248,6 +1278,7 @@ export class EslBridge {
       rtpPlaybackSink,
       pipecatOutputFixturePlayed: false,
       pipecatPlaybackEventPosted: false,
+      pipecatPlaybackEventSignature: null,
       freeswitchBroadcast: null,
     });
     this.currentRtpCallUuid = uuid;
@@ -1369,6 +1400,7 @@ export class EslBridge {
       this.rtpCollector = this.createRtpCollector();
       this.pipecatOutputFixturePlayed = false;
       this.pipecatPlaybackEventPosted = false;
+      this.pipecatPlaybackEventSignature = null;
     }
   }
 
