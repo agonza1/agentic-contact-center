@@ -811,6 +811,13 @@ function buildOperatorConsoleHtml(): string {
         detailNode.textContent = state.voiceBridge.detail + " | last check " + state.voiceBridge.checkedAt;
       }
     }
+    function hasVerifiedLiveVoicePlayback() {
+      const pc = state.voicePeer;
+      const audio = state.voiceRemoteAudio;
+      const peerActive = Boolean(pc && !["closed", "failed", "disconnected"].includes(pc.connectionState));
+      const playbackProgressed = Boolean(audio && audio.currentTime > 0 && !audio.paused);
+      return peerActive && state.voiceRemoteTrackReceived && (state.voiceRemoteAudioStarted || playbackProgressed);
+    }
     async function probeVoiceBridge(options) {
       if (state.voiceBridge.probing) return;
       const now = Date.now();
@@ -822,6 +829,10 @@ function buildOperatorConsoleHtml(): string {
         const response = await fetch(browserWebrtcReadinessUrl());
         const payload = await response.json();
         state.voiceBridge.probing = false;
+        if (hasVerifiedLiveVoicePlayback()) {
+          updateVoiceBridgeStatus("running", "Live browser WebRTC audio is playing; readiness polling preserved the active session state. " + formatVoiceBridgeEngineEvidence(payload.readiness || {}));
+          return;
+        }
         if (response.ok && payload.ok && payload.liveMediaVerified === true) {
           updateVoiceBridgeStatus("running", "Browser WebRTC live media is verified (" + formatVoiceBridgeEngineEvidence(payload.readiness || {}) + ")");
           return;
@@ -833,6 +844,10 @@ function buildOperatorConsoleHtml(): string {
         updateVoiceBridgeStatus("degraded", formatVoiceBridgeReadyDetail(payload));
       } catch (error) {
         state.voiceBridge.probing = false;
+        if (hasVerifiedLiveVoicePlayback()) {
+          updateVoiceBridgeStatus("running", "Live browser WebRTC audio is playing; readiness polling failed but the active session is still playing.");
+          return;
+        }
         updateVoiceBridgeStatus("offline", "Cannot read " + browserWebrtcReadinessUrl() + ".");
       }
     }
