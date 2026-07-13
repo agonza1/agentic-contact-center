@@ -537,6 +537,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Shared Realtime Pipeline/);
   assert.match(narrative.body, /ClueCon 2026 presentation/);
   assert.doesNotMatch(narrative.body, /ClueCon vertical slice/i);
+  assert.doesNotMatch(narrative.body, /class="talk-time"/);
+  assert.doesNotMatch(narrative.body, />2 minutes</);
+  assert.doesNotMatch(narrative.body, />3 minutes</);
+  assert.doesNotMatch(narrative.body, />Live browser demo</);
   assert.match(narrative.body, /Alberto Gonzalez CTO @ WebRTC\.ventures/);
   assert.match(narrative.body, /Realtime call flow visualization/);
   assert.match(narrative.body, /Caller audio in/);
@@ -618,6 +622,9 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(present.body, /eval-scorecard/);
   assert.match(present.body, /ClueCon 2026 presentation/);
   assert.match(present.body, /RTF = processing time ÷ audio duration/);
+  assert.doesNotMatch(present.body, /class="talk-time"/);
+  assert.doesNotMatch(present.body, />2 minutes</);
+  assert.doesNotMatch(present.body, />3 minutes</);
 });
 
 test("ClueCon static export renders GitHub Pages artifact", async () => {
@@ -638,6 +645,10 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /window\.__CLUECON__/);
   assert.match(html, /Browser microphone VAD/);
   assert.match(html, /Simulate barge-in/);
+  assert.doesNotMatch(html, /30-minute session/);
+  assert.doesNotMatch(html, /15 min system story/);
+  assert.doesNotMatch(html, /10 min live demo/);
+  assert.doesNotMatch(html, /5 min proof \+ close/);
   assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 9);
   assert.match(html, /href="\.\/present\/"/);
   assert.doesNotMatch(html, /href="\/cluecon"/);
