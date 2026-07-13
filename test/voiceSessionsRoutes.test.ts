@@ -145,6 +145,7 @@ test("voice sessions expose persistent CAE realtime-audio lifecycle and proof", 
     assert.equal(snapshot.statusCode, 200);
     assert.equal(snapshot.payload.route, "/api/voice/sessions/:id");
     assert.equal(snapshot.payload.session.id, "cae-session-1");
+    assert.equal(snapshot.payload.session.endpoints.snapshot, "/api/voice/sessions/cae-session-1");
     assert.equal(snapshot.payload.session.endpoints.proof, "/api/voice/sessions/cae-session-1/proof");
 
 

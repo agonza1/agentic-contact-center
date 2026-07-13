@@ -75,6 +75,7 @@ export function buildRealtimeVoiceSessionEndpoints(sessionId: string) {
   const encoded = encodeURIComponent(sessionId);
   return {
     create: "/api/voice/sessions",
+    snapshot: `/api/voice/sessions/${encoded}`,
     play: `/api/voice/sessions/${encoded}/play`,
     mediaInput: `/api/voice/sessions/${encoded}/media/input`,
     mediaOutput: `/api/voice/sessions/${encoded}/media/output`,
