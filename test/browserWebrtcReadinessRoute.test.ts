@@ -44,6 +44,9 @@ test("operator console polls browser WebRTC session proof for turn diagnostics",
   assert.match(serverSource, /voiceLiveAudioVerified/);
   assert.match(serverSource, /voiceLiveTurnVerified/);
   assert.match(serverSource, /hasVerifiedLiveVoiceSession/);
+  assert.match(serverSource, /proofBlocked/);
+  assert.match(serverSource, /Live browser WebRTC audio remains verified; latest incomplete rtc-asr proof is available from Copy Proof/);
+  assert.match(serverSource, /if \(!state\.voiceMuted\) setStatus\("Live browser WebRTC audio remains verified"\)/);
   assert.match(serverSource, /voiceLastProofTurnCount/);
   assert.match(serverSource, /await refresh\(\);/);
   assert.match(serverSource, /armVoiceSessionProofPolling\(\);/);
