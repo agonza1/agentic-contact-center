@@ -120,6 +120,7 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
       timestamp: "2026-06-30T10:00:02.455Z",
       sipCallId: "sip-proof-1",
       outboundRtpReady: true,
+      packetCount: 4,
       freeswitchBroadcast: {
         mode: "freeswitch_uuid_broadcast",
         audioBytes: 8,
@@ -135,6 +136,7 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
       timestamp: "2026-06-30T10:00:02.457Z",
       sipCallId: "sip-proof-1",
       outboundRtpReady: true,
+      packetCount: 4,
       freeswitchBroadcast: {
         mode: "freeswitch_uuid_broadcast",
         freeswitchPath: "/var/log/freeswitch/acc/media/response.wav",
@@ -143,6 +145,27 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
     });
     assert.equal(invalidBroadcastEvidence.statusCode, 400);
     assert.equal(invalidBroadcastEvidence.payload.error, "live_sip_playback_broadcast_evidence_incomplete");
+
+    const invalidConfirmedBroadcastPacketization = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.playback",
+      timestamp: "2026-06-30T10:00:02.458Z",
+      sipCallId: "sip-proof-1",
+      outboundRtpReady: true,
+      packetCount: 0,
+      freeswitchBroadcast: {
+        mode: "freeswitch_uuid_broadcast",
+        hostPath: "artifacts/freeswitch-live/media/response.wav",
+        freeswitchPath: "/var/log/freeswitch/acc/media/response.wav",
+        audioBytes: 3200,
+      },
+      callerPlaybackConfirmed: true,
+      callerPlaybackEvidencePath: "artifacts/freeswitch-live/caller-playback-proof.json",
+    });
+    assert.equal(invalidConfirmedBroadcastPacketization.statusCode, 400);
+    assert.equal(
+      invalidConfirmedBroadcastPacketization.payload.error,
+      "live_sip_playback_broadcast_packetization_evidence_incomplete",
+    );
 
     const invalidPlaybackMissingHost = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.playback",
@@ -294,6 +317,7 @@ test("live SIP proof reports FreeSWITCH broadcast playback as confirmed", async 
       timestamp: "2026-06-30T10:10:02.000Z",
       sipCallId: "sip-broadcast-proof",
       outboundRtpReady: true,
+      packetCount: 4,
       freeswitchBroadcast: {
         mode: "freeswitch_uuid_broadcast",
         hostPath: "artifacts/freeswitch-live/media/response.wav",

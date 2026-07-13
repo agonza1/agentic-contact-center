@@ -1935,6 +1935,11 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
       typeof playbackEvent?.detail.freeswitchBroadcastAudioBytes === "number" &&
       playbackEvent.detail.freeswitchBroadcastAudioBytes > 0,
   );
+  const hasPacketizedPlaybackEvidence = Boolean(
+    playbackEvent?.detail.outboundRtpReady === true &&
+      typeof playbackEvent.detail.packetCount === "number" &&
+      playbackEvent.detail.packetCount > 0,
+  );
   const hasCallerPlaybackProof = Boolean(
     playbackEvent?.detail.callerPlaybackConfirmed === true &&
       callerPlaybackEvidencePath &&
@@ -1944,7 +1949,7 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
           typeof playbackEvent.detail.sentPacketCount === "number" &&
           playbackEvent.detail.sentPacketCount > 0
         ) ||
-        hasCompleteFreeswitchBroadcastEvidence
+        (hasCompleteFreeswitchBroadcastEvidence && hasPacketizedPlaybackEvidence)
       ),
   );
   const asrStatus = asrTranscriptEvent
@@ -4862,6 +4867,10 @@ async function routeRequest(
         }
         if (hasFreeswitchBroadcast && (!freeswitchBroadcastHostPath || !freeswitchBroadcastPath || !freeswitchBroadcastAudioBytes)) {
           writeBadRequest(response, "live_sip_playback_broadcast_evidence_incomplete");
+          return;
+        }
+        if (body.callerPlaybackConfirmed === true && hasFreeswitchBroadcast && (body.outboundRtpReady !== true || !packetCount)) {
+          writeBadRequest(response, "live_sip_playback_broadcast_packetization_evidence_incomplete");
           return;
         }
         if (body.callerPlaybackConfirmed === true && !getOptionalTrimmedString(body.callerPlaybackEvidencePath)) {
