@@ -346,6 +346,34 @@ function isFinalTranscriptEvidence(entry) {
     || entry?.type === "conversation.item.input_audio_transcription.completed";
 }
 
+async function callerPlaybackEvidence(filePath, required) {
+  if (!filePath) return { required, ready: false, path: null, reason: "caller-audible playback proof is not attached." };
+  const relativePath = rel(filePath);
+  let raw;
+  try {
+    raw = await readFile(filePath, "utf8");
+  } catch {
+    return { required, ready: false, path: relativePath, reason: "caller-audible playback proof artifact is attached but missing." };
+  }
+  const evidence = parseJsonOrJsonLines(raw).flatMap(expandEvidenceEntries);
+  if (evidence.length === 0) return { required, ready: false, path: relativePath, reason: "caller-audible playback proof is not valid JSON." };
+  const confirmed = evidence.some((entry) =>
+    entry?.confirmed === true ||
+    entry?.callerPlaybackConfirmed === true ||
+    entry?.caller_playback_confirmed === true ||
+    entry?.status === "caller_playback_confirmed"
+  );
+  if (!confirmed) {
+    return {
+      required,
+      ready: false,
+      path: relativePath,
+      reason: "caller-audible playback proof does not confirm the caller heard return audio.",
+    };
+  }
+  return { required, ready: true, path: relativePath, confirmed: true, eventCount: evidence.length, reason: null };
+}
+
 async function wavEvidence(filePath) {
   const buffer = await readFile(filePath);
   const riffHeader = buffer.subarray(0, 4).toString("ascii");
@@ -613,16 +641,10 @@ async function main() {
   const callerPlaybackEvidencePath = liveManifest.artifacts.callerPlaybackEvidence ? path.resolve(repoRoot, liveManifest.artifacts.callerPlaybackEvidence) : null;
   const rtcAsrEvidencePathExists = await fileExists(rtcAsrEvidencePath);
   const callerPlaybackEvidencePathExists = await fileExists(callerPlaybackEvidencePath);
-  const callerPlaybackEvidenceResult = {
-    required: liveManifest.pipecatMediaEngine?.bidirectionalPlaybackReady === true || Boolean(liveManifest.artifacts.callerPlaybackEvidence),
-    ready: callerPlaybackEvidencePathExists,
-    path: callerPlaybackEvidencePath ? rel(callerPlaybackEvidencePath) : null,
-    reason: callerPlaybackEvidencePath
-      ? callerPlaybackEvidencePathExists
-        ? null
-        : "caller-audible playback proof artifact is attached but missing."
-      : "caller-audible playback proof is not attached.",
-  };
+  const callerPlaybackEvidenceResult = await callerPlaybackEvidence(
+    callerPlaybackEvidencePath,
+    liveManifest.pipecatMediaEngine?.bidirectionalPlaybackReady === true || Boolean(liveManifest.artifacts.callerPlaybackEvidence),
+  );
   const runtimeTracePath = path.join(outDir, "runtime-event-trace.json");
   const blockerPath = path.join(outDir, "rtc-asr-blocker.json");
   const labels = [
