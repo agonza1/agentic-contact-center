@@ -29,7 +29,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.match(stdout, /Saved Pipecat media engine readiness artifact/);
     assert.match(stdout, /Updated latest Pipecat media engine readiness artifact/);
     assert.match(stdout, /Review ready: no/);
-    assert.match(stdout, /Acceptance criteria: 7\/8/);
+    assert.match(stdout, /Acceptance criteria: 8\/8/);
     assert.match(stdout, /Next slice: live_softphone_playback_acceptance/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
@@ -60,15 +60,15 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.equal(artifact.issue, "agonza1/agentic-contact-center#214");
     assert.doesNotThrow(() => new Date(artifact.generatedAt).toISOString());
     assert.deepEqual(artifact.artifactSummary, {
-      readinessStatus: "shared_contract_ready_sip_rtp_blocked",
+      readinessStatus: "shared_contract_ready_local_sip_playback_proof_pending",
       reviewReady: false,
       reviewBlockers: [
-        "Live softphone caller playback has not yet been accepted end-to-end; the current SIP bridge can collect FreeSWITCH RTP into Pipecat input frames, stream those frames to rtc-asr, packetize Pipecat/Kokoro TTS frames back to PCMU RTP, and report socket-send playback evidence.",
+        "Local 8600 return audio is wired through Kokoro/Pipecat TTS, PCMU RTP packetization evidence, and FreeSWITCH uuid_broadcast WAV playback; live softphone capture still needs to prove the caller heard that playback end-to-end.",
       ],
-      acceptanceCriteriaPassed: 7,
+      acceptanceCriteriaPassed: 8,
       acceptanceCriteriaTotal: 8,
-      implementedAdapters: ["browser_webrtc"],
-      blockedAdapters: ["sip_freeswitch_rtp", "signalwire_sip_trunk"],
+      implementedAdapters: ["browser_webrtc", "sip_freeswitch_rtp"],
+      blockedAdapters: ["signalwire_sip_trunk"],
       nextUnblockedSlice: {
         id: "live_softphone_playback_acceptance",
         title: "Capture end-to-end softphone playback proof",
@@ -82,8 +82,8 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     });
     assert.equal(artifact.readiness.ok, true);
     assert.equal(artifact.readiness.route, "/api/pipecat-media-engine/readiness");
-    assert.equal(artifact.readiness.status, "shared_contract_ready_sip_rtp_blocked");
-    assert.equal(artifact.readiness.acceptanceCriteria.filter((criterion) => criterion.passed).length, 7);
+    assert.equal(artifact.readiness.status, "shared_contract_ready_local_sip_playback_proof_pending");
+    assert.equal(artifact.readiness.acceptanceCriteria.filter((criterion) => criterion.passed).length, 8);
     assert.equal(artifact.readiness.acceptanceCriteria.find((criterion) => criterion.name === "pipecat_14_small_webrtc_migration_recorded")?.passed, true);
     assert.deepEqual(latestArtifact, artifact);
   } finally {

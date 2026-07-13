@@ -129,7 +129,7 @@ Issue #214 exposes the current readiness contract for browser WebRTC, local SIP/
 curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness
 ```
 
-The payload is intentionally not a fake green light. It marks the browser Pipecat voice bridge as implemented, keeps the local SIP/FreeSWITCH proof bundle behavior intact, and reports the remaining blocker: FreeSWITCH RTP is not yet streamed bidirectionally through Pipecat frames for realtime SIP caller playback. The FreeSWITCH bridge can optionally listen on `ACC_FREESWITCH_RTP_LISTEN_PORT`/`--rtp-listen-port` and collect inbound PCMU RTP packets into Pipecat-compatible `InputAudioRawFrameBatch` evidence, but rtc-asr streaming and Kokoro RTP playback still need the #222 Pipeline wiring slice. SignalWire is documented as a future SIP trunk -> FreeSWITCH/Pipecat route; historical/past-call import remains a separate importer task.
+The payload is intentionally not a fake green light. It marks the browser Pipecat voice bridge as implemented, keeps the local SIP/FreeSWITCH proof bundle behavior intact, and reports the current proof gate: local 8600 return audio is wired through Kokoro/Pipecat TTS, outbound PCMU RTP evidence, and FreeSWITCH `uuid_broadcast` WAV playback, but a live softphone capture still needs to prove caller-audible playback. The FreeSWITCH bridge can optionally listen on `ACC_FREESWITCH_RTP_LISTEN_PORT`/`--rtp-listen-port` and collect inbound PCMU RTP packets into Pipecat-compatible `InputAudioRawFrameBatch` evidence. SignalWire is documented as a future SIP trunk -> FreeSWITCH/Pipecat route; historical/past-call import remains a separate importer task.
 
 ## Demo flow
 
@@ -218,7 +218,7 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `GET /api/calls`: list active calls with optional queue/operator filters.
 - `GET /api/queue`: return queue summary metadata without full call payloads.
 - `GET /api/operator/actions`: expose the Slack-ready operator action catalog with command examples, reason/pending-call requirements, HTTP body templates, and outcome hints for console buttons.
-- `GET /api/pipecat-media-engine/readiness`: expose the Issue #214 shared browser WebRTC, local SIP/FreeSWITCH, and SignalWire SIP trunk Pipecat media-engine contract, including the current realtime SIP RTP blocker.
+- `GET /api/pipecat-media-engine/readiness`: expose the Issue #214 shared browser WebRTC, local SIP/FreeSWITCH, and SignalWire SIP trunk Pipecat media-engine contract, including the current local SIP caller-audible proof gate.
 - `GET /api/browser-webrtc/readiness`: expose the Issue #213 browser WebRTC voice contract, dependency readiness, and bridge endpoint.
 - `POST /api/browser-webrtc/session`: validate browser SDP offers, allocate or preserve an ACC call ID, and proxy offer/answer signaling to the local Pipecat WebRTC bridge.
 - `POST /api/voice/sessions`: create a persistent ConversationAgentEvals realtime-audio target session.

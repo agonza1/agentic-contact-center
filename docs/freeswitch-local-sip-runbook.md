@@ -8,7 +8,7 @@ For the shared Pipecat media-engine contract, run ACC and inspect:
 curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness
 ```
 
-That route is the Issue #214 review surface for browser WebRTC, local SIP/FreeSWITCH, and future SignalWire SIP trunk audio. It currently reports the browser Pipecat voice bridge as implemented and the SIP/FreeSWITCH realtime RTP adapter as blocked; the SIP proof steps below still capture live media/proof artifacts and must not be treated as completed bidirectional Pipecat RTP streaming.
+That route is the Issue #214 review surface for browser WebRTC, local SIP/FreeSWITCH, and future SignalWire SIP trunk audio. The local SIP bridge now packetizes Pipecat/Kokoro TTS as PCMU RTP proof evidence and also writes the same Kokoro frame to a FreeSWITCH-visible WAV before issuing `uuid_broadcast`, so Linphone hears return audio through FreeSWITCH instead of only `silence_stream://1000` plus `park`.
 
 ## Ports and credentials
 
@@ -57,7 +57,7 @@ Use `npm run docker:sip` when you want Compose to start the wider local SIP lab 
 3. Start the ESL bridge from another terminal:
 
 ```sh
-ACC_BASE_URL=http://127.0.0.1:8026 node scripts/freeswitch-acc-bridge.mjs --recording-dir artifacts/freeswitch-live/media --freeswitch-recording-dir /var/log/freeswitch/acc/media --log artifacts/freeswitch-live/freeswitch-esl-events.json
+ACC_BASE_URL=http://127.0.0.1:8026 KOKORO_BASE_URL=http://127.0.0.1:8880 node scripts/freeswitch-acc-bridge.mjs --recording-dir artifacts/freeswitch-live/media --freeswitch-recording-dir /var/log/freeswitch/acc/media --log artifacts/freeswitch-live/freeswitch-esl-events.json
 ```
 
 The bridge also writes a bundle-compatible manifest by default:
@@ -68,7 +68,7 @@ artifacts/freeswitch-live/freeswitch-live-proof-manifest.json
 
 Override it with `--manifest <path>` if needed. If rtc-asr is running and you have a transcript/evidence JSON path, pass `--rtc-asr-evidence <path>` so the manifest can distinguish a configured websocket from attached ASR proof.
 
-To collect live inbound PCMU RTP packets into Pipecat-compatible `InputAudioRawFrameBatch` manifest evidence while experimenting with FreeSWITCH media routing, add `--rtp-listen-port <udp-port>` and point the FreeSWITCH RTP stream at that host/port. This proves the SIP RTP -> Pipecat input-frame boundary only; SIP caller playback remains blocked until Kokoro/Pipecat TTS frames are encoded back to FreeSWITCH RTP.
+To collect live inbound PCMU RTP packets into Pipecat-compatible `InputAudioRawFrameBatch` manifest evidence while experimenting with FreeSWITCH media routing, add `--rtp-listen-port <udp-port>` and point the FreeSWITCH RTP stream at that host/port. For return audio, keep `--freeswitch-recording-dir` set to the same path mounted into FreeSWITCH; the bridge writes each Kokoro TTS frame as a WAV there and sends `uuid_broadcast <uuid> <wav> aleg` while also retaining outbound RTP packetization evidence.
 
 4. Register a local SIP softphone:
 
