@@ -561,6 +561,18 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /id="vad-threshold"/);
   assert.match(narrative.body, /VADUserStartedSpeakingFrame/);
   assert.match(narrative.body, /UserStoppedSpeakingFrame/);
+  assert.match(narrative.body, /VAD_END_OF_TURN_MS = 4000/);
+  assert.match(narrative.body, /turn wait: 4\.0 s/);
+  assert.match(narrative.body, /Holding audio output until 4\.0 s/);
+  assert.match(narrative.body, /Audio output starts after the 4 s end-of-turn gate/);
+  assert.match(narrative.body, /Agent audio cannot start while the 4 s end-of-turn gate/);
+  assert.match(narrative.body, /End-of-turn timing diagram/);
+  assert.match(narrative.body, /silence \/ turn wait: 4 s/);
+  assert.match(narrative.body, /MinWordsUserTurnStartStrategy/);
+  assert.match(narrative.body, /https:\/\/docs\.pipecat\.ai\/api-reference\/server\/utilities\/turn-management\/user-turn-strategies#minwordsuserturnstartstrategy/);
+  assert.match(narrative.body, /https:\/\/github\.com\/pipecat-ai\/smart-turn/);
+  assert.match(narrative.body, /TEN-vad, Silero VAD, and livekit-turn-detector/);
+  assert.match(narrative.body, /End-of-turn detection adds to STT, first token, and TTS latency/);
   assert.match(narrative.body, /InterruptionFrame clears queue/);
   assert.match(narrative.body, /function vadLoop\(\)/);
   assert.match(narrative.body, /navigator\.mediaDevices\.getUserMedia/);
@@ -645,6 +657,9 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /window\.__CLUECON__/);
   assert.match(html, /Browser microphone VAD/);
   assert.match(html, /Simulate barge-in/);
+  assert.match(html, /turn wait: 4\.0 s/);
+  assert.match(html, /MinWordsUserTurnStartStrategy/);
+  assert.match(html, /TEN-vad, Silero VAD, and livekit-turn-detector/);
   assert.doesNotMatch(html, /30-minute session/);
   assert.doesNotMatch(html, /15 min system story/);
   assert.doesNotMatch(html, /10 min live demo/);
