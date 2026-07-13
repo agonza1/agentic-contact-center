@@ -443,6 +443,7 @@ test("FreeSWITCH bridge streams captured Pipecat input frames to rtc-asr Local S
 test("FreeSWITCH bridge sends live Kokoro TTS frames to RTP playback sink", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-kokoro-broadcast-"));
   const http = await import("node:http");
   const pcm16 = Buffer.alloc(8);
   [0, 1200, -1200, 32000].forEach((sample, index) => pcm16.writeInt16LE(sample, index * 2));
@@ -464,12 +465,15 @@ test("FreeSWITCH bridge sends live Kokoro TTS frames to RTP playback sink", asyn
   try {
     const script = [
       "const { EslBridge } = await import(" + JSON.stringify(moduleUrl) + ");",
+      "const sentCommands = [];",
       "const sentRtp = [];",
       "const bridge = new EslBridge({" +
         "kokoroBaseUrl:" + JSON.stringify(`http://127.0.0.1:${address.port}`) + "," +
         "kokoroSpeechPath:\"/v1/audio/speech\"," +
         "kokoroVoice:\"af_heart\"," +
         "kokoroModel:\"kokoro\"," +
+        "recordingDir:" + JSON.stringify(tempDir) + "," +
+        "freeswitchRecordingDir:\"/var/log/freeswitch/acc/media\"," +
         "rtpPlaybackHost:\"127.0.0.1\"," +
         "rtpPlaybackPort:40002," +
         "rtpPlaybackSequenceNumber:0xfffe," +
@@ -478,15 +482,17 @@ test("FreeSWITCH bridge sends live Kokoro TTS frames to RTP playback sink", asyn
         "rtpPlaybackSamplesPerPacket:2" +
       "});",
       "bridge.pipecatPlaybackEventPosted = true;",
+      "bridge.send = (command) => sentCommands.push(command);",
       "bridge.rtpPlaybackSocket = { send(packet, port, host, callback) { sentRtp.push({ sequenceNumber: packet.readUInt16BE(2), timestamp: packet.readUInt32BE(4), port, host }); callback(); } };",
       "const summary = await bridge.playLiveKokoroTts(\"Agent response from ACC\", \"fs-live-kokoro\");",
-      "console.log(JSON.stringify({ sentRtp, summary, events: bridge.events }));"
+      "console.log(JSON.stringify({ sentRtp, sentCommands, summary, events: bridge.events }));"
     ].join("\n");
     const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], { cwd: repoRoot, encoding: "utf8" });
     const parsed = JSON.parse(stdout) as {
       sentRtp: Array<{ sequenceNumber: number; timestamp: number; port: number; host: string }>;
-      summary: { rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; remotePort: number; totalDurationMs: number; ssrc: number; lastSentAt: string | null };
-      events: Array<{ pipecatLiveKokoroTtsPlayback?: { sourceText: string; tts: { engine: string; outputSampleRateHz: number } } }>;
+      sentCommands: string[];
+      summary: { rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; remotePort: number; totalDurationMs: number; ssrc: number; lastSentAt: string | null; freeswitchBroadcast: { mode: string; hostPath: string; freeswitchPath: string; audioBytes: number } };
+      events: Array<{ pipecatLiveKokoroTtsPlayback?: { sourceText: string; tts: { engine: string; outputSampleRateHz: number }; freeswitchBroadcast: { mode: string; hostPath: string; freeswitchPath: string; audioBytes: number } } }>;
     };
 
     assert.deepEqual(requests, [{ model: "kokoro", voice: "af_heart", input: "Agent response from ACC", response_format: "wav", sample_rate: 8000 }]);
@@ -500,6 +506,13 @@ test("FreeSWITCH bridge sends live Kokoro TTS frames to RTP playback sink", asyn
     assert.equal(parsed.summary.remotePort, 40002);
     assert.equal(parsed.summary.totalDurationMs, 0.5);
     assert.equal(parsed.summary.ssrc, 0x0badf00d);
+    assert.equal(parsed.sentCommands.length, 1);
+    assert.equal(parsed.sentCommands[0].startsWith("api uuid_broadcast fs-live-kokoro /var/log/freeswitch/acc/media/fs-live-kokoro-kokoro-tts-"), true);
+    assert.equal(parsed.sentCommands[0].endsWith(".wav aleg"), true);
+    assert.equal(parsed.summary.freeswitchBroadcast.mode, "freeswitch_uuid_broadcast");
+    assert.equal(parsed.summary.freeswitchBroadcast.freeswitchPath.startsWith("/var/log/freeswitch/acc/media/fs-live-kokoro-kokoro-tts-"), true);
+    assert.equal(parsed.summary.freeswitchBroadcast.hostPath.startsWith(tempDir), true);
+    assert.equal(parsed.summary.freeswitchBroadcast.audioBytes, 8);
     assert.match(parsed.summary.lastSentAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
     const playback = parsed.events.find((event) => event.pipecatLiveKokoroTtsPlayback)?.pipecatLiveKokoroTtsPlayback;
     assert.equal(playback?.sourceText, "Agent response from ACC");
@@ -507,6 +520,7 @@ test("FreeSWITCH bridge sends live Kokoro TTS frames to RTP playback sink", asyn
     assert.equal(playback?.tts.outputSampleRateHz, 8000);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await rm(tempDir, { recursive: true, force: true });
   }
 });
 

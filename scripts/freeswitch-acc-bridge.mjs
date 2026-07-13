@@ -223,6 +223,32 @@ function downsamplePcm16MonoTo8k(pcm16, sampleRateHz) {
   return target;
 }
 
+function pcm16MonoWav(pcm16, sampleRateHz = 8000) {
+  if (!Buffer.isBuffer(pcm16) || pcm16.length === 0 || pcm16.length % 2 !== 0) throw new Error("pcm16_payload_invalid");
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0, "ascii");
+  header.writeUInt32LE(36 + pcm16.length, 4);
+  header.write("WAVE", 8, "ascii");
+  header.write("fmt ", 12, "ascii");
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRateHz, 24);
+  header.writeUInt32LE(sampleRateHz * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36, "ascii");
+  header.writeUInt32LE(pcm16.length, 40);
+  return Buffer.concat([header, pcm16]);
+}
+
+function visiblePlaybackPath(recordingDir, freeswitchRecordingDir, uuid) {
+  const filename = String(uuid) + "-kokoro-tts-" + Date.now() + ".wav";
+  const hostPath = path.join(recordingDir, filename);
+  const freeswitchPath = freeswitchRecordingDir ? path.posix.join(freeswitchRecordingDir, filename) : hostPath;
+  return { hostPath, freeswitchPath };
+}
+
 function decodeKokoroAudioResponse(response) {
   const contentType = String(response.contentType ?? "").toLowerCase();
   if (contentType.includes("json")) {
@@ -1062,16 +1088,27 @@ export class EslBridge {
         model: this.options.kokoroModel,
       });
       await state.sink.sendFrame(this.rtpPlaybackSocket, frame);
+      const broadcast = await this.broadcastKokoroFrame(uuid, frame);
       const summary = state.sink.summary();
-      this.events.push({ at: nowIso(), pipecatLiveKokoroTtsPlayback: { ...summary, sourceText: agentText, tts: frame.tts } });
+      this.events.push({ at: nowIso(), pipecatLiveKokoroTtsPlayback: { ...summary, sourceText: agentText, tts: frame.tts, freeswitchBroadcast: broadcast } });
       await this.postPipecatPlaybackEvent(uuid);
-      return summary;
+      return { ...summary, freeswitchBroadcast: broadcast };
     } catch (error) {
       const failure = { at: nowIso(), error: error instanceof Error ? error.message : String(error) };
       state.sink.errors.push(failure);
       this.events.push({ at: failure.at, pipecatLiveKokoroTtsPlaybackBlocked: failure });
       return null;
     }
+  }
+
+  async broadcastKokoroFrame(uuid, frame) {
+    if (!uuid || !this.options.freeswitchRecordingDir) return { mode: "rtp_socket_only", reason: "freeswitch_recording_dir_unset" };
+    const pcm16 = Buffer.from(frame.pcm16Base64 ?? "", "base64");
+    const { hostPath, freeswitchPath } = visiblePlaybackPath(this.options.recordingDir, this.options.freeswitchRecordingDir, uuid);
+    await mkdir(path.dirname(hostPath), { recursive: true });
+    await writeFile(hostPath, pcm16MonoWav(pcm16, frame.sampleRateHz ?? 8000));
+    this.send("api uuid_broadcast " + uuid + " " + freeswitchPath + " aleg");
+    return { mode: "freeswitch_uuid_broadcast", hostPath, freeswitchPath, sampleRateHz: frame.sampleRateHz ?? 8000, audioBytes: pcm16.length };
   }
 
   async postPipecatPlaybackEvent(uuid) {
@@ -1161,6 +1198,7 @@ export class EslBridge {
     this.currentRtpCallUuid = uuid;
     this.send(`api uuid_record ${uuid} start ${freeswitchPath}`);
     await this.playPipecatOutputFixture(uuid);
+    await this.playLiveKokoroTts(latestAgentText(response.body) || this.options.initialGreetingText, uuid);
     await this.postPipecatPlaybackEvent(uuid);
   }
 
@@ -1291,6 +1329,7 @@ async function main() {
     kokoroSpeechPath: argValue("--kokoro-speech-path", process.env.KOKORO_SPEECH_PATH || process.env.KOKORO_TTS_PATH || "/v1/audio/speech"),
     kokoroVoice: argValue("--kokoro-voice", process.env.KOKORO_VOICE || "af_heart"),
     kokoroModel: argValue("--kokoro-model", process.env.KOKORO_MODEL || "kokoro"),
+    initialGreetingText: argValue("--initial-greeting", process.env.ACC_SIP_INITIAL_GREETING || "Hello, this is the agentic contact center. I can hear you now."),
   });
   await bridge.start();
   console.log(`FreeSWITCH ACC bridge connected target ${bridge.options.eslHost}:${bridge.options.eslPort}; ACC ${bridge.options.accBaseUrl}`);
