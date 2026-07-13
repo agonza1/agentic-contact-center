@@ -1,9 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createServer, request } from "node:http";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildHttpServer } from "../src/http/createServer";
+
+test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeline", () => {
+  const bridge = readFileSync("scripts/pipecat-browser-webrtc-bridge.py", "utf8");
+
+  assert.match(bridge, /SmallWebRTCRequestHandler/);
+  assert.match(bridge, /SmallWebRTCTransport/);
+  assert.match(bridge, /Pipeline\(\[/);
+  assert.match(bridge, /transport\.input\(\)/);
+  assert.match(bridge, /RtcAsrTurnProcessor\(session\)/);
+  assert.match(bridge, /AccCallerTurnProcessor\(session\)/);
+  assert.match(bridge, /KokoroTtsProcessor\(session\)/);
+  assert.match(bridge, /transport\.output\(\)/);
+  assert.doesNotMatch(bridge, /RTCPeerConnection/);
+  assert.doesNotMatch(bridge, /RTCSessionDescription/);
+});
 
 test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract", async () => {
   const server = buildHttpServer(loadPocConfig());
