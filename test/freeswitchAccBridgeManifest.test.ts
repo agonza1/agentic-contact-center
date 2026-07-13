@@ -1315,6 +1315,46 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     assert.equal(broadcastOnlyManifest.pipecatMediaEngine.bidirectionalPlaybackReady, true);
     assert.equal(broadcastOnlyManifest.pipecatMediaEngine.outboundRtpPlayback.freeswitchBroadcast.mode, "freeswitch_uuid_broadcast");
 
+    const incompleteBroadcastScript = `
+      const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
+      const manifest = await buildFreeswitchLiveProofManifest({
+        uuid: "fs-proof-broadcast-incomplete",
+        accCallId: "demo-call-broadcast-incomplete",
+        destination: "8600",
+        wavPath: ${JSON.stringify(audioPath)},
+        logPath: ${JSON.stringify(logPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
+        telephonyMode: "local_sip",
+        pipecatOutboundRtpEvidence: {
+          outboundRtpReady: true,
+          rtpSocketSendReady: false,
+          packetCount: 1,
+          sentPacketCount: 0,
+          totalDurationMs: 20,
+          freeswitchBroadcast: {
+            mode: "freeswitch_uuid_broadcast",
+            audioBytes: 0
+          },
+          callerPlaybackConfirmed: true,
+          callerPlaybackEvidencePath: ${JSON.stringify(callerPlaybackEvidencePath)}
+        }
+      });
+      console.log(JSON.stringify(manifest));
+    `;
+    const incompleteBroadcastResult = await execFileAsync(process.execPath, ["--input-type=module", "--eval", incompleteBroadcastScript], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const incompleteBroadcastManifest = JSON.parse(incompleteBroadcastResult.stdout) as {
+      reviewReady: boolean;
+      blockers: string[];
+      pipecatMediaEngine: { bidirectionalPlaybackReady: boolean };
+    };
+    assert.equal(incompleteBroadcastManifest.reviewReady, false);
+    assert.equal(incompleteBroadcastManifest.pipecatMediaEngine.bidirectionalPlaybackReady, false);
+    assert.ok(incompleteBroadcastManifest.blockers.some((blocker) => blocker.includes("uuid_broadcast playback evidence is incomplete")));
+
     const broadcastWithMismatchedRtpScript = `
       const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
       const manifest = await buildFreeswitchLiveProofManifest({
