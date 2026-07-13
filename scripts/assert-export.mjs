@@ -702,6 +702,64 @@ async function exportAssertArtifacts() {
     }),
   }));
 
+  const assertFlowMapping = {
+    generated_at: generatedAt,
+    source_flow: {
+      repository: "agonza1/ConversationAgentEvals",
+      issue: "https://github.com/agonza1/ConversationAgentEvals/issues/94",
+      pull_request: "https://github.com/agonza1/ConversationAgentEvals/pull/95",
+      merged_commit: "d123dae734d1201ae248fac12531f30cb1f96ddd",
+      demo_doc: "https://github.com/agonza1/ConversationAgentEvals/blob/main/docs/assert-flow-demo.md",
+      demo_json: "https://github.com/agonza1/ConversationAgentEvals/blob/main/docs/examples/assert-flow-demo.json",
+    },
+    acc_requirement:
+      "A local voice contact-center agent must move a caller toward a safe next step, reuse prior context, avoid unsupported account promises, and preserve supervised handoff evidence.",
+    five_step_flow: [
+      {
+        step: 1,
+        name: "Natural-language ACC requirements",
+        artifact: "assert-flow-mapping.json#acc_requirement",
+        summary:
+          "The requirement keeps the ACC voice-agent goal, memory, policy, and handoff boundaries connected to the evaluation run.",
+      },
+      {
+        step: 2,
+        name: "Behavior taxonomy",
+        artifact: "taxonomy.json",
+        summary: taxonomy.behavior.definition,
+      },
+      {
+        step: 3,
+        name: "Generated scenario/test set",
+        artifact: "test_set.jsonl",
+        summary:
+          String(scenarioCases.length) +
+          " ACC voice scenarios are generated from the taxonomy and retain a regression_focus dimension.",
+      },
+      {
+        step: 4,
+        name: "ACC target execution evidence",
+        artifact: path.join(runId, "inference_set.jsonl"),
+        summary: "Each scenario points at the same local ACC demo transcript and event evidence exported from /api/demo/run-end-to-end.",
+      },
+      {
+        step: 5,
+        name: "Judged results shaped for ASSERT",
+        artifact: path.join(runId, "scores.jsonl"),
+        summary: "Local judge rows keep the scenario, taxonomy category, score dimensions, and proof-oriented verdict connected.",
+      },
+    ],
+    scenario_links: scenarioCases.map((scenario) => ({
+      test_case_id: scenario.testCaseId,
+      requirement: "ACC voice-agent requirement",
+      taxonomy_category: taxonomy.behavior_categories[scenario.relevantCategoryIndex].name,
+      regression_focus: scenario.regression_focus,
+      generated_test_set: "test_set.jsonl",
+      execution_evidence: path.join(runId, "inference_set.jsonl"),
+      judged_result: path.join(runId, "scores.jsonl"),
+    })),
+  };
+
   const configYaml = [
     `suite: ${suiteId}`,
     `run: ${runId}`,
@@ -737,6 +795,7 @@ async function exportAssertArtifacts() {
 
   await mkdir(runDir, { recursive: true });
   await writeFile(path.join(suiteDir, "suite.json"), `${JSON.stringify({ created_at: generatedAt }, null, 2)}\n`);
+  await writeFile(path.join(suiteDir, "assert-flow-mapping.json"), `${JSON.stringify(assertFlowMapping, null, 2)}\n`);
   await writeFile(path.join(suiteDir, "taxonomy.json"), `${JSON.stringify(taxonomy, null, 2)}\n`);
   await writeFile(path.join(suiteDir, "systematization.json"), `${JSON.stringify({ generated_at: generatedAt, source: "agentic-contact-center demo export" }, null, 2)}\n`);
   await writeFile(path.join(suiteDir, "test_set.jsonl"), seedRows.map(jsonLine).join(""));
