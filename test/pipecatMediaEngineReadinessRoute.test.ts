@@ -123,6 +123,15 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       true,
     );
     assert.equal(payload.remainingWork.some((item: string) => item.includes("softphone evidence")), true);
+    assert.deepEqual(payload.liveSipProofAcceptance, {
+      requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_rtp_playback_sent", "caller_audible_playback"],
+      rejectedShortcuts: [
+        "generated_media_without_live_capture",
+        "stale_rtc_asr_evidence_reused_across_calls",
+        "uuid_broadcast_without_caller_capture",
+      ],
+      proofBundleCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
+    });
     assert.deepEqual(payload.nextUnblockedSlice, {
       id: "live_softphone_playback_acceptance",
       title: "Capture end-to-end softphone playback proof",
@@ -130,6 +139,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       entryPoint: "scripts/freeswitch-acc-bridge.mjs",
       targetContract: "softphone SIP call -> FreeSWITCH RTP -> Pipecat input frames -> rtc-asr transcript -> ACC turn -> Kokoro/Pipecat TTS -> PCMU RTP playback heard by caller",
       verification: "scripts/live-sip-proof-bundle.mjs must carry live_capture, rtc_asr_live, Pipecat RTP playback send evidence, and caller-audible playback proof before issue #214 can be accepted.",
+      acceptance: payload.liveSipProofAcceptance,
     });
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

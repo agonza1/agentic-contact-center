@@ -6,6 +6,15 @@ const issue222Url = "https://github.com/agonza1/agentic-contact-center/issues/22
 export function buildPipecatMediaEngineReadinessPayload() {
   const liveSoftphoneProofBlocker =
     "Local 8600 return audio is wired through Kokoro/Pipecat TTS, PCMU RTP packetization evidence, and FreeSWITCH uuid_broadcast WAV playback; live softphone capture still needs to prove the caller heard that playback end-to-end.";
+  const liveSipProofAcceptance = {
+    requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_rtp_playback_sent", "caller_audible_playback"],
+    rejectedShortcuts: [
+      "generated_media_without_live_capture",
+      "stale_rtc_asr_evidence_reused_across_calls",
+      "uuid_broadcast_without_caller_capture",
+    ],
+    proofBundleCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
+  };
   const nextUnblockedSlice = {
     id: "live_softphone_playback_acceptance",
     title: "Capture end-to-end softphone playback proof",
@@ -13,6 +22,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
     entryPoint: "scripts/freeswitch-acc-bridge.mjs",
     targetContract: "softphone SIP call -> FreeSWITCH RTP -> Pipecat input frames -> rtc-asr transcript -> ACC turn -> Kokoro/Pipecat TTS -> PCMU RTP playback heard by caller",
     verification: "scripts/live-sip-proof-bundle.mjs must carry live_capture, rtc_asr_live, Pipecat RTP playback send evidence, and caller-audible playback proof before issue #214 can be accepted.",
+    acceptance: liveSipProofAcceptance,
   };
 
   return {
@@ -115,6 +125,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
     ],
     nextUnblockedSlice,
+    liveSipProofAcceptance,
     reviewBlockers: [liveSoftphoneProofBlocker],
     acceptanceCriteria: [
       {
