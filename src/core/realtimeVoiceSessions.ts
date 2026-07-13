@@ -244,6 +244,16 @@ export class RealtimeVoiceSessionStore {
         bytes: session.output.bytes,
       });
     }
+    if (input.action === "flush" && session.output.status === "streaming") {
+      session.output.status = "completed";
+      session.output.completedAt = at;
+      this.record(session, "output.stream.completed", at, {
+        streamId: session.output.streamId,
+        reason: input.reason ?? "flush",
+        chunks: session.output.chunks,
+        bytes: session.output.bytes,
+      });
+    }
     if (input.action === "close") {
       session.status = "closed";
       session.closedAt = at;
