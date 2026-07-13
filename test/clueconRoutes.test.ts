@@ -191,7 +191,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.sourceRepos.agenticContactCenter, "https://github.com/agonza1/agentic-contact-center");
   assert.equal(payload.sourceRepos.rtcAsr, "https://github.com/agonza1/rtc-asr");
   assert.equal(payload.demoGoal.issue, "agonza1/agentic-contact-center#177");
-  assert.deepEqual(payload.demoGoal.chain, ["sip", "pipecat", "rtc_asr", "openclaw_agent", "kokoro_tts", "conversation_agent_evals"]);
+  assert.deepEqual(payload.demoGoal.chain, ["sip", "pipecat", "rtc_asr", "agent", "kokoro_tts", "conversation_agent_evals"]);
   assert.match(payload.demoGoal.successSignal, /scorecard passes/);
   assert.equal(payload.callFlow.issue, "agonza1/agentic-contact-center#217");
   assert.equal(payload.callFlow.cadenceMs, 1000);

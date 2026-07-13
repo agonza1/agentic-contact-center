@@ -41,26 +41,6 @@ services:
         - provider_credentials_mocked
         - --expect-production-readiness-blocker
         - state_store_in_memory
-        - --expect-speech-enhancement-runtime-enabled
-        - "false"
-        - --expect-speech-enhancement-issue-close-ready
-        - "false"
-        - --expect-speech-enhancement-close-gate-status
-        - blocked_before_real_capture
-        - --expect-speech-enhancement-live-demo-gate
-        - blocked_until_real_capture
-        - --expect-speech-enhancement-recommended-latency-ms
-        - "12.5"
-        - --expect-speech-enhancement-runtime-latency-ms
-        - "12.5"
-        - --expect-speech-enhancement-runtime-bypass-reason
-        - feature_flag_disabled
-        - --expect-speech-enhancement-runtime-profile-expected-use
-        - default
-        - --expect-speech-enhancement-runtime-profile-recommendation
-        - recommended
-        - --expect-speech-enhancement-missing-evidence
-        - real_noisy_local_sip_capture_baseline_vs_enhanced_replay
       interval: 10s
       timeout: 3s
       retries: 5
