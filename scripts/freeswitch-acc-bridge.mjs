@@ -1088,6 +1088,7 @@ export class EslBridge {
         model: this.options.kokoroModel,
       });
       if (this.rtpPlaybackSocket) await state.sink.sendFrame(this.rtpPlaybackSocket, frame);
+      else state.sink.packetize(frame);
       const broadcast = await this.broadcastKokoroFrame(uuid, frame);
       const summary = state.sink.summary();
       this.events.push({ at: nowIso(), pipecatLiveKokoroTtsPlayback: { ...summary, sourceText: agentText, tts: frame.tts, freeswitchBroadcast: broadcast } });
