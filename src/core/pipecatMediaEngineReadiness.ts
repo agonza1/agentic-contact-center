@@ -25,13 +25,14 @@ export function buildPipecatMediaEngineReadinessPayload() {
     pipecat14Alignment: {
       issue: issue222,
       issueUrl: issue222Url,
-      status: "migration_contract_recorded",
+      status: "small_webrtc_pipeline_primary",
       packageRequirement: "pipecat-ai[webrtc]==1.4.0",
       primaryTransportTarget: "SmallWebRTCTransport",
       targetPipeline: ["transport.input", "rtc-asr STT", "ACC caller-turn adapter", "Kokoro TTS", "transport.output"],
       browserPrimaryBridge: {
         current: "scripts/pipecat-browser-webrtc-bridge.py",
         target: "Pipecat SmallWebRTCTransport offer route backed by a Pipeline",
+        implementedNow: true,
         legacyFallbackAllowed: false,
       },
       sipTransportStrategy: {
@@ -51,7 +52,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
           replacement: "SmallWebRTCTransport + Pipeline browser path",
         },
       ],
-      nextUnblockedSlice: "Replace the custom aiortc turn loop with a SmallWebRTCTransport/Pipeline sidecar while preserving /api/browser-webrtc/session semantics.",
+      nextUnblockedSlice: "Capture live browser media proof against the SmallWebRTCTransport/Pipeline sidecar while preserving /api/browser-webrtc/session semantics.",
     },
     sharedEngineContract: {
       engine: "pipecat-ai",
@@ -93,7 +94,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       ],
     },
     implementedNow: [
-      "Browser voice turns are normalized into Pipecat frames by scripts/pipecat-browser-webrtc-bridge.py and use rtc-asr, ACC caller-turn, and Kokoro; Issue #222 tracks replacing the custom aiortc loop with SmallWebRTCTransport plus Pipeline processors.",
+      "Browser voice turns use scripts/pipecat-browser-webrtc-bridge.py with Pipecat SmallWebRTCTransport and a Pipeline of rtc-asr, ACC caller-turn, Kokoro, and transport output processors.",
       "Local SIP and FreeSWITCH proof paths preserve live_capture/generated_media labels, attach WAV/SIP artifacts, collect live PCMU RTP into Pipecat InputAudioRawFrameBatch evidence, stream captured frames to rtc-asr when RTC_ASR_WS_URL is set, packetize Pipecat/Kokoro TTS frames as PCMU RTP, and report RTP socket-send playback evidence.",
       "SignalWire readiness is explicit through local webhook labels and the future SIP trunk-to-FreeSWITCH route.",
       "Operator console payloads label local_sip, signalwire_live, live_capture, generated_media, rtc_asr_live, and rtc_asr_blocked modes.",
@@ -109,7 +110,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       {
         name: "browser_webrtc_uses_pipecat_rtc_asr_kokoro",
         passed: true,
-        evidence: "scripts/pipecat-browser-webrtc-bridge.py normalizes browser audio to Pipecat frames and calls rtc-asr, ACC, and Kokoro; SmallWebRTCTransport/Pipeline migration status is exposed under pipecat14Alignment.",
+        evidence: "scripts/pipecat-browser-webrtc-bridge.py builds SmallWebRTCTransport plus Pipeline([transport.input(), RtcAsrTurnProcessor, AccCallerTurnProcessor, KokoroTtsProcessor, transport.output()]).",
       },
       {
         name: "sip_freeswitch_uses_same_realtime_pipecat_engine",
@@ -144,7 +145,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       {
         name: "pipecat_14_small_webrtc_migration_recorded",
         passed: true,
-        evidence: "requirements-pipecat-voice.txt requests pipecat-ai[webrtc]==1.4.0, the readiness payload records the SmallWebRTCTransport/Pipeline target, and docs/runtime-reference.md records the ACC-owned Flows decision.",
+        evidence: "requirements-pipecat-voice.txt requests pipecat-ai[webrtc]==1.4.0, the browser sidecar imports SmallWebRTCTransport/Pipeline, and docs/runtime-reference.md records the ACC-owned Flows decision.",
       },
     ],
     validationCommands: ["npm test", "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness"],

@@ -74,47 +74,68 @@ test("Pipecat voice readiness scripts distinguish WebRTC from the legacy ffmpeg 
 });
 
 
-test("Pipecat browser WebRTC bridge normalizes answer SDP for Chrome", () => {
+test("Pipecat browser WebRTC bridge uses SmallWebRTCTransport with a real Pipeline", () => {
   const bridge = browserWebrtcBridgeSource();
 
-  assert.match(bridge, /def normalize_browser_answer_sdp\(sdp: str\) -> str:/);
-  assert.match(bridge, /aiortc 1\.14 can emit a=setup after ICE candidates/);
-  assert.match(bridge, /if line\.startswith\("a=fingerprint:"\)/);
-  assert.match(bridge, /reordered\[insert_at \+ 1:insert_at \+ 1\] = setup_lines/);
-  assert.match(bridge, /return "\\r\\n"\.join\(output\) \+ "\\r\\n"/);
-  assert.match(bridge, /answer_sdp = normalize_browser_answer_sdp\(pc\.localDescription\.sdp\)/);
-  assert.match(bridge, /"sdp": answer_sdp/);
+  assert.match(bridge, /SmallWebRTCRequestHandler/);
+  assert.ok(bridge.includes("SmallWebRTCRequest.from_dict"));
+  assert.ok(bridge.includes("SmallWebRTCTransport"));
+  assert.ok(bridge.includes("Pipeline(["));
+  assert.ok(bridge.includes("transport.input()"));
+  assert.ok(bridge.includes("RtcAsrTurnProcessor(session)"));
+  assert.ok(bridge.includes("AccCallerTurnProcessor(session)"));
+  assert.ok(bridge.includes("KokoroTtsProcessor(session)"));
+  assert.ok(bridge.includes("transport.output()"));
+  assert.match(bridge, /PipelineTask/);
+  assert.match(bridge, /PipelineRunner/);
+  assert.doesNotMatch(bridge, /RTCPeerConnection/);
+  assert.doesNotMatch(bridge, /RTCSessionDescription/);
 });
 
 
-test("Pipecat browser WebRTC bridge cancels remote audio on caller barge-in", () => {
+test("Pipecat browser WebRTC bridge keeps Chrome SDP normalization and proof metadata", () => {
   const bridge = browserWebrtcBridgeSource();
 
-  assert.match(bridge, /def clear_buffer\(self\) -> dict\[str, Any\]:/);
-  assert.match(bridge, /self\._buffer\.clear\(\)/);
-  assert.match(bridge, /def cancel_output\(self, reason: str = "barge-in"\) -> dict\[str, Any\]:/);
-  assert.match(bridge, /self\.output_generation \+= 1/);
-  assert.match(bridge, /"type": "browser_webrtc_output_cancelled"/);
-  assert.match(bridge, /turn_output_generation = self\.output_generation/);
-  assert.match(bridge, /if turn_output_generation == self\.output_generation:/);
-  assert.match(bridge, /"cancelReason": "barge-in"/);
-  assert.match(bridge, /pipeline\.cancel_output\("barge-in"\)/);
-  assert.match(bridge, /"bargeInEvidence": pipeline\.last_barge_in_evidence/);
+  assert.ok(bridge.includes(`def normalize_browser_answer_sdp(sdp: str) -> str:`));
+  assert.ok(bridge.includes(`aiortc 1.14 can emit a=setup after ICE candidates`));
+  assert.ok(bridge.includes(`if line.startswith("a=fingerprint:")`));
+  assert.ok(bridge.includes(`reordered[insert_at + 1:insert_at + 1] = setup_lines`));
+  assert.ok(bridge.includes(`normalize_browser_answer_sdp(str(answer.get("sdp", "")))`));
+  assert.ok(bridge.includes(`"source": "pipecat_small_webrtc_pipeline"`));
+  assert.ok(bridge.includes(`"runtimeMode": "pipecat_small_webrtc_pipeline"`));
+  assert.ok(bridge.includes(`"transport": "SmallWebRTCTransport"`));
+  assert.ok(bridge.includes(`"ffmpegRequired": False`));
 });
 
 
-
-test("Pipecat browser WebRTC bridge serializes finalized turns", () => {
+test("Pipecat browser WebRTC bridge handles barge-in inside the Pipeline processors", () => {
   const bridge = browserWebrtcBridgeSource();
 
-  assert.match(bridge, /self\.turn_queue: asyncio\.Queue\[bytes\] = asyncio\.Queue\(\)/);
-  assert.match(bridge, /self\.turn_worker = asyncio\.create_task\(self\.consume_turn_queue\(\)\)/);
-  assert.match(bridge, /def enqueue_turn\(self, pcm16_16k: bytes\) -> None:/);
-  assert.match(bridge, /async def consume_turn_queue\(self\) -> None:/);
-  assert.match(bridge, /await self\.run_turn\(pcm16_16k\)/);
-  assert.match(bridge, /self\.turn_queue\.task_done\(\)/);
-  assert.match(bridge, /pipeline\.enqueue_turn\(pcm_turn\)/);
-  assert.doesNotMatch(bridge, /asyncio\.create_task\(pipeline\.run_turn\(pcm_turn\)\)/);
+  assert.ok(bridge.includes(`class BrowserTurnSession:`));
+  assert.ok(bridge.includes(`def cancel_output(self, reason: str = "barge-in") -> dict[str, Any]:`));
+  assert.ok(bridge.includes(`self.output_generation += 1`));
+  assert.ok(bridge.includes(`"type": "browser_webrtc_output_cancelled"`));
+  assert.ok(bridge.includes(`class RtcAsrTurnProcessor(FrameProcessor):`));
+  assert.ok(bridge.includes(`self.session.cancel_output("barge-in")`));
+  assert.ok(bridge.includes(`turn_output_generation = self.session.output_generation`));
+  assert.ok(bridge.includes(`output_cancelled = turn_output_generation != self.session.output_generation`));
+  assert.ok(bridge.includes(`"cancelReason": "barge-in"`));
+  assert.ok(bridge.includes(`"bargeInEvidence": turn_session.last_barge_in_evidence`));
+});
+
+
+test("Pipecat browser WebRTC bridge serializes finalized turns through Pipeline frame order", () => {
+  const bridge = browserWebrtcBridgeSource();
+
+  assert.ok(bridge.includes("class RtcAsrTurnProcessor(FrameProcessor):"));
+  assert.ok(bridge.includes("await self.session.transcribe(InputAudioRawFrame"));
+  assert.ok(bridge.includes("await self.push_frame(transcription_frame, FrameDirection.DOWNSTREAM)"));
+  assert.ok(bridge.includes("class AccCallerTurnProcessor(FrameProcessor):"));
+  assert.ok(bridge.includes("await self.push_frame(TextFrame(agent_text), FrameDirection.DOWNSTREAM)"));
+  assert.ok(bridge.includes("class KokoroTtsProcessor(FrameProcessor):"));
+  assert.ok(bridge.includes("await self.push_frame(OutputAudioRawFrame"));
+  assert.equal(bridge.includes("turn_queue: asyncio.Queue"), false);
+  assert.equal(bridge.includes("asyncio.create_task(pipeline.run_turn"), false);
 });
 
 test("operator console surfaces fail-closed voice bridge readiness", () => {

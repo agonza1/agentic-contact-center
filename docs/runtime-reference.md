@@ -44,9 +44,9 @@ Issue #222 is the migration lane from the current custom browser WebRTC bridge t
 transport.input -> rtc-asr STT -> ACC caller-turn adapter -> Kokoro TTS -> transport.output
 ```
 
-`requirements-pipecat-voice.txt` requests `pipecat-ai[webrtc]==1.4.0` so local installs include the WebRTC extras needed for `SmallWebRTCTransport`. The current bridge remains `scripts/pipecat-browser-webrtc-bridge.py`; the target is a Pipecat `SmallWebRTCTransport` offer route backed by a real `Pipeline`, while preserving the existing ACC `POST /api/browser-webrtc/session` contract. SIP should not use SmallWebRTCTransport; it should enter through the FreeSWITCH/SIP RTP adapter and share the same rtc-asr, ACC adapter, and Kokoro processors behind that transport.
+`requirements-pipecat-voice.txt` requests `pipecat-ai[webrtc]==1.4.0` so local installs include the WebRTC extras needed for `SmallWebRTCTransport`. `scripts/pipecat-browser-webrtc-bridge.py` is now the Pipecat `SmallWebRTCTransport` offer route backed by a real `Pipeline`, while preserving the existing ACC `POST /api/browser-webrtc/session` contract. SIP should not use SmallWebRTCTransport; it should enter through the FreeSWITCH/SIP RTP adapter and share the same rtc-asr, ACC adapter, and Kokoro processors behind that transport.
 
-Flows decision for the current MVP: keep cancellation-rescue conversation policy in ACC TypeScript for now. Policy hold, operator steer, proof artifacts, and queue state already live in ACC, so `FlowManager` is not required before the shared media Pipeline is live. Revisit Pipecat Flows after the browser and SIP transports share Pipeline processors. The older `scripts/pipecat-local-voice-bridge.py` path is legacy proof-only and should not be used as the normal browser voice path.
+Flows decision for the current MVP: keep cancellation-rescue conversation policy in ACC TypeScript for now. Policy hold, operator steer, proof artifacts, and queue state already live in ACC, so `FlowManager` is not required before the shared media Pipeline is live. Revisit Pipecat Flows after the SIP transport shares the same Pipeline processors. The older `scripts/pipecat-local-voice-bridge.py` path is legacy proof-only and should not be used as the normal browser voice path.
 
 ## Browser WebRTC voice readiness
 
@@ -93,7 +93,7 @@ npm run pipecat:webrtc:check
 npm run pipecat:webrtc
 ```
 
-`npm run pipecat:webrtc` starts `scripts/pipecat-browser-webrtc-bridge.py` on `http://127.0.0.1:8766`. Its offer endpoint is `POST /api/webrtc/offer`; ACC proxies browser SDP offers to it from `POST /api/browser-webrtc/session`. The bridge terminates browser WebRTC with `aiortc`, converts audio to PCM with PyAV/audioop, wraps the turn in Pipecat frame types, streams PCM to rtc-asr Local STT v1, posts the final transcript to `/api/calls/:callId/caller-turn`, requests Kokoro WAV audio, and streams PCM back as a WebRTC remote audio track. This normal path has no `ffmpeg` dependency.
+`npm run pipecat:webrtc` starts `scripts/pipecat-browser-webrtc-bridge.py` on `http://127.0.0.1:8766`. Its offer endpoint is `POST /api/webrtc/offer`; ACC proxies browser SDP offers to it from `POST /api/browser-webrtc/session`. The bridge accepts offers through Pipecat `SmallWebRTCRequestHandler`, creates `SmallWebRTCTransport`, and runs `Pipeline([transport.input(), RtcAsrTurnProcessor, AccCallerTurnProcessor, KokoroTtsProcessor, transport.output()])`. The processors stream browser PCM to rtc-asr Local STT v1, post the final transcript to `/api/calls/:callId/caller-turn`, request Kokoro WAV audio, and push output audio frames to `transport.output()`. This normal path has no `ffmpeg` dependency.
 
 ## Legacy local voice bridge sidecars
 
