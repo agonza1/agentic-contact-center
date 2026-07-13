@@ -1045,15 +1045,24 @@ function buildOperatorConsoleHtml(): string {
         state.voiceLastProofTurnCount = Math.max(state.voiceLastProofTurnCount, turnCount);
         await refresh();
       }
-      if (bridge.reviewReady || (turn.callerTranscript && turn.tts && turn.tts.audioBytes)) {
+      const proofReady = bridge.reviewReady || (turn.callerTranscript && turn.tts && turn.tts.audioBytes);
+      const proofBlocked = (bridge.lastError && bridge.lastError.error) || turn.error || (turn.callerTranscript && !turn.agentText);
+      if (proofReady) {
         state.voiceLiveTurnVerified = true;
         updateVoiceBridgeStatus("running", detail);
-      } else if ((bridge.lastError && bridge.lastError.error) || turn.error || (turn.callerTranscript && !turn.agentText)) {
+        setStatus(detail);
+      } else if (hasVerifiedLiveVoiceSession() && proofBlocked) {
+        if (state.voiceBridge.status !== "running") {
+          updateVoiceBridgeStatus("running", "Live browser WebRTC audio remains verified; latest incomplete rtc-asr proof is available from Copy Proof.");
+        }
+        if (!state.voiceMuted) setStatus("Live browser WebRTC audio remains verified");
+      } else if (proofBlocked) {
         updateVoiceBridgeStatus("degraded", detail);
+        setStatus(detail);
       } else {
         updateVoiceBridgeStatus("connected", detail);
+        if (!state.voiceMuted) setStatus(detail);
       }
-      setStatus(detail);
     }
     function armVoiceSessionProofPolling() {
       if (state.voiceSessionProofTimer) window.clearTimeout(state.voiceSessionProofTimer);
