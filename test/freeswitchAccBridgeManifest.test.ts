@@ -1333,7 +1333,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     const broadcastOnlyPath = path.join(tempDir, "fs-proof-broadcast-only.wav");
     const broadcastMismatchedRtpPath = path.join(tempDir, "fs-proof-broadcast-mismatched-rtp.wav");
     await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: { text: "hello from local sip", final: true } })}\n`, "utf8");
-    await writeFile(callerPlaybackEvidencePath, `${JSON.stringify({ confirmed: true, method: "softphone_capture", note: "caller heard the Kokoro response" })}\n`, "utf8");
+    await writeFile(callerPlaybackEvidencePath, `${JSON.stringify({ status: "caller_playback_confirmed", callerPlaybackConfirmed: true, method: "softphone_capture", note: "caller heard the Kokoro response" })}\n`, "utf8");
     await writeFile(broadcastOnlyPath, validWavFixture(1));
     await writeFile(broadcastMismatchedRtpPath, validWavFixture(1));
     const readyScript = `

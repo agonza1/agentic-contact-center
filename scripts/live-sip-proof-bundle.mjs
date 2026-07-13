@@ -371,7 +371,6 @@ async function callerPlaybackEvidence(filePath, required) {
 
 function hasCallerPlaybackConfirmation(entry) {
   return nestedEvidenceObjects(entry).some((candidate) =>
-    candidate?.confirmed === true ||
     candidate?.callerPlaybackConfirmed === true ||
     candidate?.caller_playback_confirmed === true ||
     candidate?.status === "caller_playback_confirmed"
