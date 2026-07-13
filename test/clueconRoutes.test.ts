@@ -166,8 +166,9 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     routes: { scrollable: string; present: string; scriptedDemo: string; operatorDrill: string; evalPreview: string; evalRun: string };
     readiness: Array<{ id: string; status: string; caveat: string; repoUrl?: string }>;
     liveProbes: Array<{ id: string; configured: boolean; status: string; ok: boolean; metadata: Record<string, unknown> }>;
+    architectureCenter: { issue: string; target: string; adapterRule: string; currentGaps: string[] };
     demoGoal: { issue: string; statement: string; chain: string[]; successSignal: string };
-    callFlow: { issue: string; cadenceMs: number; credentialRequirement: string; stages: Array<{ id: string; label: string; packet: string }> };
+    callFlow: { issue: string; cadenceMs: number; credentialRequirement: string; stages: Array<{ id: string; label: string; detail: string; packet: string }> };
     scenario: { callerTurns: string[]; failureDrills: string[] };
     asrPanel: {
       contract: string;
@@ -190,9 +191,13 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.activeWorkboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
   assert.equal(payload.sourceRepos.agenticContactCenter, "https://github.com/agonza1/agentic-contact-center");
   assert.equal(payload.sourceRepos.rtcAsr, "https://github.com/agonza1/rtc-asr");
-  assert.equal(payload.demoGoal.issue, "agonza1/agentic-contact-center#177");
-  assert.deepEqual(payload.demoGoal.chain, ["sip", "pipecat", "rtc_asr", "agent", "kokoro_tts", "conversation_agent_evals"]);
-  assert.match(payload.demoGoal.successSignal, /scorecard passes/);
+  assert.equal(payload.architectureCenter.issue, "agonza1/agentic-contact-center#222");
+  assert.match(payload.architectureCenter.target, /transport\.input -> rtc-asr STT/);
+  assert.match(payload.architectureCenter.adapterRule, /Browser, fixture\/tester, and SIP/);
+  assert.ok(payload.architectureCenter.currentGaps.some((gap) => /turn-buffered/.test(gap)));
+  assert.equal(payload.demoGoal.issue, "agonza1/agentic-contact-center#222");
+  assert.deepEqual(payload.demoGoal.chain, ["adapter", "pipecat_pipeline_target", "rtc_asr", "acc_policy_tools", "kokoro_tts", "evidence"]);
+  assert.match(payload.demoGoal.successSignal, /#222 gaps/);
   assert.equal(payload.callFlow.issue, "agonza1/agentic-contact-center#217");
   assert.equal(payload.callFlow.cadenceMs, 1000);
   assert.equal(payload.callFlow.credentialRequirement, "none");
@@ -201,6 +206,8 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.ok(payload.callFlow.stages.some((stage) => stage.label === "Transport + codec normalize"));
   assert.ok(payload.callFlow.stages.some((stage) => stage.label === "Text → audio out"));
   assert.ok(payload.callFlow.stages.some((stage) => /PCM16/.test(stage.packet)));
+  assert.ok(payload.callFlow.stages.some((stage) => /fixture\/tester/.test(stage.detail)));
+  assert.ok(payload.callFlow.stages.some((stage) => /Pipeline frames/.test(stage.detail)));
   assert.equal(payload.routes.scrollable, "/cluecon");
   assert.equal(payload.routes.present, "/cluecon/present");
   assert.equal(payload.routes.scriptedDemo, "/api/demo/run-end-to-end");
@@ -527,14 +534,14 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   const narrative = await get("/cluecon");
   assert.equal(narrative.statusCode, 200);
   assert.match(narrative.contentType, /text\/html/);
-  assert.match(narrative.body, /From SIP to Tokens/);
+  assert.match(narrative.body, /Shared Realtime Pipeline/);
   assert.match(narrative.body, /ClueCon 2026 presentation/);
   assert.doesNotMatch(narrative.body, /ClueCon vertical slice/i);
   assert.match(narrative.body, /Alberto Gonzalez CTO @ WebRTC\.ventures/);
   assert.match(narrative.body, /Realtime call flow visualization/);
   assert.match(narrative.body, /Caller audio in/);
-  assert.match(narrative.body, /Telephony SIP/);
-  assert.match(narrative.body, /Browser WebRTC/);
+  assert.match(narrative.body, /SIP adapter/);
+  assert.match(narrative.body, /Browser \/ fixture adapter/);
   assert.match(narrative.body, /Transport \+ codec normalize/);
   assert.match(narrative.body, /Audio → text \/ tokens/);
   assert.match(narrative.body, /Text → audio out/);
@@ -580,7 +587,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   const present = await get("/cluecon/present");
   assert.equal(present.statusCode, 200);
   assert.match(present.body, /class="present"/);
-  assert.match(present.body, /From SIP to tokens/);
+  assert.match(present.body, /One realtime pipeline/);
   assert.match(present.body, /Alberto Gonzalez CTO @ WebRTC\.ventures/);
   assert.match(present.body, /ArrowRight/);
   assert.match(present.body, /Run eval proof/);
