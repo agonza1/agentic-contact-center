@@ -389,6 +389,35 @@ class BrowserTurnSession:
         self.output_generation = 0
         self.last_barge_in_evidence: dict[str, Any] = {}
         self.last_evidence: dict[str, Any] = {}
+        self.last_audio_evidence: dict[str, Any] = {}
+        self.last_stt_evidence: dict[str, Any] = {}
+        self.last_acc_evidence: dict[str, Any] = {}
+        self.last_tts_evidence: dict[str, Any] = {}
+        self.last_error: dict[str, Any] = {}
+        self.stage_events: list[dict[str, Any]] = []
+
+    def record_stage(self, stage: str, *, ok: bool = True, **detail: Any) -> dict[str, Any]:
+        event = {
+            "stage": stage,
+            "ok": ok,
+            "callId": self.call_id,
+            "timestamp": datetime.now(UTC).isoformat(timespec="milliseconds"),
+            **detail,
+        }
+        self.stage_events.append(event)
+        self.stage_events = self.stage_events[-40:]
+        if stage.startswith("audio."):
+            self.last_audio_evidence = event
+        elif stage.startswith("stt."):
+            self.last_stt_evidence = event
+        elif stage.startswith("acc."):
+            self.last_acc_evidence = event
+        elif stage.startswith("tts."):
+            self.last_tts_evidence = event
+        if not ok:
+            self.last_error = event
+        print(json.dumps({"type": "browser_webrtc_stage", **event}), flush=True)
+        return event
 
     def cancel_output(self, reason: str = "barge-in") -> dict[str, Any]:
         self.output_generation += 1
@@ -496,6 +525,7 @@ class RtcAsrTurnProcessor(FrameProcessor):
         self.silence_ms = int(os.environ.get("ACC_WEBRTC_SILENCE_MS", "1200"))
         self.min_turn_ms = int(os.environ.get("ACC_WEBRTC_MIN_TURN_MS", "600"))
         self.max_turn_ms = int(os.environ.get("ACC_WEBRTC_MAX_TURN_MS", "9000"))
+        self.last_audio_report_at = 0.0
 
     async def process_frame(self, frame: Any, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
@@ -507,10 +537,24 @@ class RtcAsrTurnProcessor(FrameProcessor):
             return
         rms = audioop.rms(pcm, SAMPLE_WIDTH_BYTES)
         now = time.monotonic()
+        frame_ms = round(len(pcm) / (INPUT_SAMPLE_RATE * SAMPLE_WIDTH_BYTES) * 1000)
+        if now - self.last_audio_report_at >= 1.0:
+            self.last_audio_report_at = now
+            self.session.record_stage(
+                "audio.frame",
+                rms=rms,
+                frameBytes=len(pcm),
+                frameMs=frame_ms,
+                sampleRate=getattr(frame, "sample_rate", INPUT_SAMPLE_RATE),
+                silenceThresholdRms=self.silence_rms,
+                inSpeech=self.in_speech,
+                collectedMs=round(sum(len(chunk) for chunk in self.speech_chunks) / (INPUT_SAMPLE_RATE * SAMPLE_WIDTH_BYTES) * 1000),
+            )
         if rms > self.silence_rms:
             if not self.in_speech:
                 self.session.cancel_output("barge-in")
                 self.turn_started_at = now
+                self.session.record_stage("audio.speech_started", rms=rms, silenceThresholdRms=self.silence_rms)
             self.in_speech = True
             self.last_voice_at = now
         if self.in_speech:
@@ -526,10 +570,36 @@ class RtcAsrTurnProcessor(FrameProcessor):
         self.in_speech = False
         self.turn_started_at = now
         self.last_voice_at = now
-        transcript, stt_meta, transcription_frame = await self.session.transcribe(InputAudioRawFrame(audio=pcm_turn, sample_rate=INPUT_SAMPLE_RATE, num_channels=1))
-        if not transcript.strip():
-            self.session.last_evidence = {"ok": False, "error": "empty_transcript", "stt": stt_meta, "callId": self.session.call_id}
+        self.session.record_stage(
+            "stt.finalize_started",
+            audioBytes=len(pcm_turn),
+            collectedMs=collected_ms,
+            silenceElapsedMs=silence_elapsed_ms,
+            maxElapsedMs=max_elapsed_ms,
+        )
+        try:
+            transcript, stt_meta, transcription_frame = await self.session.transcribe(InputAudioRawFrame(audio=pcm_turn, sample_rate=INPUT_SAMPLE_RATE, num_channels=1))
+        except Exception as exc:
+            self.session.last_evidence = {
+                "ok": False,
+                "error": "stt_transcription_failed",
+                "detail": str(exc),
+                "audio": self.session.last_audio_evidence,
+                "callId": self.session.call_id,
+            }
+            self.session.record_stage("stt.failed", ok=False, error="stt_transcription_failed", detail=str(exc), audioBytes=len(pcm_turn))
             return
+        if not transcript.strip():
+            self.session.last_evidence = {
+                "ok": False,
+                "error": "empty_transcript",
+                "audio": self.session.last_audio_evidence,
+                "stt": stt_meta,
+                "callId": self.session.call_id,
+            }
+            self.session.record_stage("stt.empty_transcript", ok=False, error="empty_transcript", stt=stt_meta)
+            return
+        self.session.record_stage("stt.transcript_final", transcript=transcript, stt=stt_meta)
         transcription_frame.result = {**(transcription_frame.result or {}), "stt": stt_meta}
         await self.push_frame(transcription_frame, FrameDirection.DOWNSTREAM)
 
@@ -544,19 +614,41 @@ class AccCallerTurnProcessor(FrameProcessor):
         if direction != FrameDirection.DOWNSTREAM or not isinstance(frame, TranscriptionFrame):
             await self.push_frame(frame, direction)
             return
-        call = await asyncio.to_thread(
-            json_http,
-            "POST",
-            f"{self.session.acc_url}/api/calls/{self.session.call_id}/caller-turn",
-            {"text": frame.text, "conversationMode": "free_caller"},
-        )
+        try:
+            call = await asyncio.to_thread(
+                json_http,
+                "POST",
+                f"{self.session.acc_url}/api/calls/{self.session.call_id}/caller-turn",
+                {"text": frame.text, "conversationMode": "free_caller"},
+            )
+        except Exception as exc:
+            self.session.last_evidence = {
+                "ok": False,
+                "error": "acc_caller_turn_failed",
+                "detail": str(exc),
+                "callerTranscript": frame.text,
+                "callId": self.session.call_id,
+            }
+            self.session.record_stage("acc.failed", ok=False, error="acc_caller_turn_failed", detail=str(exc), callerTranscript=frame.text)
+            return
         agent_text = latest_agent_text(call)
         self.session.turn_count += 1
+        self.session.record_stage(
+            "acc.caller_turn_completed",
+            turn=self.session.turn_count,
+            callerTranscript=frame.text,
+            agentText=agent_text,
+            agentTextAvailable=bool(agent_text),
+            flowState=call.get("flowState") if isinstance(call, dict) else None,
+        )
         self.session.last_evidence = {
+            "ok": bool(agent_text),
             "turn": self.session.turn_count,
             "callerTranscript": frame.text,
             "agentText": agent_text,
+            "audio": self.session.last_audio_evidence,
             "stt": (frame.result or {}).get("stt", {}),
+            "acc": self.session.last_acc_evidence,
             "tts": {"engine": "kokoro", "skipped": not bool(agent_text), "audioBytes": 0},
             "bargeIn": self.session.last_barge_in_evidence,
             "outputCancelled": False,
@@ -570,6 +662,8 @@ class AccCallerTurnProcessor(FrameProcessor):
         }
         if agent_text:
             await self.push_frame(TextFrame(agent_text), FrameDirection.DOWNSTREAM)
+        else:
+            self.session.record_stage("tts.skipped", ok=False, error="agent_text_empty", turn=self.session.turn_count)
 
 
 class KokoroTtsProcessor(FrameProcessor):
@@ -583,12 +677,26 @@ class KokoroTtsProcessor(FrameProcessor):
             await self.push_frame(frame, direction)
             return
         turn_output_generation = self.session.output_generation
-        pcm, sample_rate, tts_meta = await self.session.synthesize(frame)
+        try:
+            pcm, sample_rate, tts_meta = await self.session.synthesize(frame)
+        except Exception as exc:
+            self.session.last_evidence = {
+                **self.session.last_evidence,
+                "ok": False,
+                "error": "tts_synthesis_failed",
+                "detail": str(exc),
+            }
+            self.session.record_stage("tts.failed", ok=False, error="tts_synthesis_failed", detail=str(exc), agentText=frame.text)
+            return
         output_cancelled = turn_output_generation != self.session.output_generation
         if output_cancelled:
             tts_meta = {**tts_meta, "cancelled": True, "cancelReason": "barge-in", "audioBytesEnqueued": 0}
+            self.session.record_stage("tts.cancelled", ok=False, error="output_cancelled", tts=tts_meta)
+        else:
+            self.session.record_stage("tts.audio_ready", tts=tts_meta)
         self.session.last_evidence = {
             **self.session.last_evidence,
+            "ok": not output_cancelled,
             "tts": tts_meta,
             "outputCancelled": output_cancelled,
         }
@@ -745,6 +853,8 @@ class BrowserWebrtcBridge:
             return web.json_response({"ok": False, "error": "webrtc_session_not_found", "sessionId": session_id}, status=404)
         turn_session = session.get("turnSession")
         evidence = turn_session.last_evidence if isinstance(turn_session, BrowserTurnSession) else {}
+        runner_task = session.get("runnerTask")
+        runner_done = isinstance(runner_task, asyncio.Task) and runner_task.done()
         return web.json_response(
             {
                 "ok": True,
@@ -754,8 +864,25 @@ class BrowserWebrtcBridge:
                 "transport": "SmallWebRTCTransport",
                 "pipeline": ["transport.input", "rtc-asr STT", "ACC caller-turn adapter", "Kokoro TTS", "transport.output"],
                 "turnEvidence": evidence,
+                "turnCount": turn_session.turn_count if isinstance(turn_session, BrowserTurnSession) else 0,
+                "runnerDone": runner_done,
+                "lastAudio": turn_session.last_audio_evidence if isinstance(turn_session, BrowserTurnSession) else {},
+                "lastStt": turn_session.last_stt_evidence if isinstance(turn_session, BrowserTurnSession) else {},
+                "lastAcc": turn_session.last_acc_evidence if isinstance(turn_session, BrowserTurnSession) else {},
+                "lastTts": turn_session.last_tts_evidence if isinstance(turn_session, BrowserTurnSession) else {},
+                "lastError": turn_session.last_error if isinstance(turn_session, BrowserTurnSession) else {},
+                "stageEvents": turn_session.stage_events if isinstance(turn_session, BrowserTurnSession) else [],
                 "bargeInEvidence": turn_session.last_barge_in_evidence if isinstance(turn_session, BrowserTurnSession) else {},
                 "reviewReady": bool(evidence.get("callerTranscript") and evidence.get("tts", {}).get("audioBytes", 0) > 0),
+                "nextAction": (
+                    "rtc-asr returned no final transcript; inspect lastAudio.rms/sampleRate and lower ACC_WEBRTC_SILENCE_RMS or validate rtc-asr audio if needed."
+                    if evidence.get("error") == "empty_transcript"
+                    else "ACC returned no agent text for the transcribed turn; inspect lastAcc.flowState and the call transcript."
+                    if evidence.get("callerTranscript") and not evidence.get("agentText")
+                    else "Kokoro did not enqueue playable audio; inspect lastTts and browser inbound RTP stats."
+                    if evidence.get("agentText") and not evidence.get("tts", {}).get("audioBytes")
+                    else "Talk into the browser microphone and wait for rtc-asr/Kokoro turn evidence."
+                ),
             }
         )
 
