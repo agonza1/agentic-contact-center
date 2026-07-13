@@ -166,7 +166,17 @@ test("FreeSWITCH bridge WAV fallback skips broadcast delay plus greeting audio",
         recordingStartedAtMs: 1000,
         startedAt: 900,
         initialGreetingPlaybackDurationMs: 1200,
-        freeswitchBroadcast: { mode: "freeswitch_uuid_broadcast", issuedAtMs: 1750 },
+        freeswitchBroadcast: {
+          mode: "freeswitch_uuid_broadcast",
+          issuedAtMs: 1750,
+          hostPath: "/tmp/fs-greeting.wav",
+          freeswitchPath: "/var/log/freeswitch/acc/media/fs-greeting.wav",
+          audioBytes: 3200,
+        },
+      }),
+      directRtpOffset: wavFallbackStartOffsetMs({
+        recordingStartedAtMs: 1000,
+        initialGreetingPlaybackDurationMs: 1200,
       }),
     }));
   `;
@@ -174,9 +184,10 @@ test("FreeSWITCH bridge WAV fallback skips broadcast delay plus greeting audio",
     cwd: repoRoot,
     encoding: "utf8",
   });
-  const parsed = JSON.parse(stdout) as { offset: number };
+  const parsed = JSON.parse(stdout) as { offset: number; directRtpOffset: number };
 
   assert.equal(parsed.offset, 1950);
+  assert.equal(parsed.directRtpOffset, 0);
 });
 
 test("FreeSWITCH bridge packetizes Pipecat output audio into outbound RTP proof evidence", async () => {

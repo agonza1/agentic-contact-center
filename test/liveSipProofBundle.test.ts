@@ -201,6 +201,82 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
 });
 
 
+
+test("live SIP proof bundle fails the review gate when caller playback proof is missing", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-missing-playback-"));
+  const audioPath = path.join(tempDir, "caller-capture.wav");
+  const sipLogPath = path.join(tempDir, "sip.log.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+  const manifestPath = path.join(tempDir, "local-sip-live-proof-manifest.json");
+  const outDir = path.join(tempDir, "bundle");
+
+  try {
+    await writeFile(audioPath, validWavFixture());
+    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: "I need billing help.", final: true })}\n`, "utf8");
+    await writeFile(sipLogPath, `${JSON.stringify([{ startLine: "INVITE sip:8600@127.0.0.1 SIP/2.0" }, { startLine: "SIP/2.0 200 OK" }])}\n`, "utf8");
+    await writeFile(
+      manifestPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        generatedAt: "2026-06-30T10:00:00.000Z",
+        callId: "call-live-sip-missing-playback",
+        sipCallId: "sip-proof-missing-playback",
+        runtimeModeLabels: {
+          telephony: "local_sip",
+          media: "live_capture",
+          rtcAsr: "rtc_asr_live",
+          credentialsMode: "mocked",
+        },
+        localSip: {
+          acceptedInvite: true,
+          rtpPacketCount: 4,
+        },
+        pipecatMediaEngine: {
+          bidirectionalPlaybackReady: true,
+        },
+        artifacts: {
+          audioWav: audioPath,
+          sipLog: sipLogPath,
+          rtcAsrEvidence: rtcAsrEvidencePath,
+          callerPlaybackEvidence: path.join(tempDir, "missing-caller-playback-proof.json"),
+        },
+        artifactIntegrity: [],
+        reviewGate: {
+          requiredLabels: ["local_sip", "live_capture", "rtc_asr_live"],
+          missingLabels: [],
+          nextActions: [],
+        },
+        reviewReady: true,
+        blockers: [],
+      }, null, 2)}\n`,
+      "utf8",
+    );
+
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      ["scripts/live-sip-proof-bundle.mjs", "--live-manifest", manifestPath, "--out-dir", outDir],
+      { cwd: repoRoot },
+    );
+
+    const summary = JSON.parse(stdout) as { reviewGatePassed: boolean; failedChecks: string[]; validationStatus: string };
+    assert.equal(summary.reviewGatePassed, false);
+    assert.equal(summary.validationStatus, "blocked_before_review");
+    assert.ok(summary.failedChecks.includes("callerPlaybackEvidenceValid"));
+
+    const bundleManifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
+      reviewGate: { checks: Record<string, boolean>; failureReasons: Record<string, string> };
+      validationSummary: { callerPlaybackEvidence: { required: boolean; ready: boolean; reason: string | null } };
+    };
+    assert.equal(bundleManifest.reviewGate.checks.callerPlaybackEvidenceValid, false);
+    assert.match(bundleManifest.reviewGate.failureReasons.callerPlaybackEvidenceValid, /caller-audible playback proof/);
+    assert.equal(bundleManifest.validationSummary.callerPlaybackEvidence.required, true);
+    assert.equal(bundleManifest.validationSummary.callerPlaybackEvidence.ready, false);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("live SIP proof bundle blocks malformed caller WAV evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-bad-wav-"));

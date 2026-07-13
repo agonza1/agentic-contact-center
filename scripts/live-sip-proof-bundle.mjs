@@ -454,7 +454,7 @@ function reviewNextActions(liveManifest) {
   return actions;
 }
 
-function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult) {
+function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, callerPlaybackEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult) {
   const checks = {
     localSipMode: liveManifest.runtimeModeLabels?.telephony === "local_sip",
     acceptedInvite: liveManifest.localSip?.acceptedInvite === true,
@@ -465,6 +465,7 @@ function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidence
     liveCapture: liveManifest.runtimeModeLabels?.media === "live_capture",
     rtcAsrLive: liveManifest.runtimeModeLabels?.rtcAsr === "rtc_asr_live",
     rtcAsrEvidenceValid: liveManifest.runtimeModeLabels?.rtcAsr !== "rtc_asr_live" || rtcAsrEvidenceResult.ready === true,
+    callerPlaybackEvidenceValid: callerPlaybackEvidenceResult.required !== true || callerPlaybackEvidenceResult.ready === true,
     artifactsPresent: artifactIntegrity.every((artifact) => artifact.readiness === "ready"),
     sourceArtifactIntegrityReady: sourceArtifactIntegrityResult.ready === true,
     sourceManifestReviewReady: liveManifest.reviewReady === true,
@@ -480,7 +481,7 @@ function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidence
     requiredLabels,
     missingLabels: requiredLabels.filter((label) => !labels.includes(label)),
     checks,
-    failureReasons: reviewGateFailureReasons(checks, { rtcAsrEvidence: rtcAsrEvidenceResult }),
+    failureReasons: reviewGateFailureReasons(checks, { rtcAsrEvidence: rtcAsrEvidenceResult, callerPlaybackEvidence: callerPlaybackEvidenceResult }),
   };
 }
 
@@ -497,6 +498,9 @@ function reviewGateFailureReasons(checks, details = {}) {
     rtcAsrEvidenceValid: details.rtcAsrEvidence?.reason
       ? `rtc-asr live transcript evidence failed validation: ${details.rtcAsrEvidence.reason}`
       : "rtc-asr live transcript evidence is missing, invalid, empty, or not final.",
+    callerPlaybackEvidenceValid: details.callerPlaybackEvidence?.reason
+      ? `caller-audible playback proof failed validation: ${details.callerPlaybackEvidence.reason}`
+      : "caller-audible playback proof is missing or invalid.",
     artifactsPresent: "One or more required proof artifacts are missing or empty.",
     sourceArtifactIntegrityReady: "Source live proof manifest reports blocked, missing, or changed artifacts.",
     sourceManifestReviewReady: "Source live proof manifest is not review-ready; inspect its blockers before submitting the bundle.",
@@ -701,7 +705,7 @@ async function main() {
   const rtcAsrEvidenceResult = await rtcAsrEvidence(rtcAsrEvidencePath);
   const wavEvidenceResult = await wavEvidence(audioPath);
   const sourceArtifactIntegrityResult = await sourceArtifactIntegrityEvidence(liveManifest);
-  const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult);
+  const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, callerPlaybackEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult);
   const validationSummary = {
     status: gate.passed ? "ready_for_review" : "blocked_before_review",
     checks: gate.checks,

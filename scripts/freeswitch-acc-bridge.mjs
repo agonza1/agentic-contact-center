@@ -735,7 +735,7 @@ export async function pipecatInputFrameBatchFromWav(filePath, options = {}) {
 }
 
 export function wavFallbackStartOffsetMs(call) {
-  const greetingDurationMs = Math.max(0, Number(call?.initialGreetingPlaybackDurationMs ?? 0) || 0);
+  const greetingDurationMs = playbackHasCompleteFreeswitchBroadcastEvidence(call) ? Math.max(0, Number(call?.initialGreetingPlaybackDurationMs ?? 0) || 0) : 0;
   const recordingStartedAtMs = Number(call?.recordingStartedAtMs ?? call?.startedAt ?? 0) || 0;
   const broadcastIssuedAtMs = Number(call?.freeswitchBroadcast?.issuedAtMs ?? 0) || 0;
   const broadcastStartDelayMs = recordingStartedAtMs > 0 && broadcastIssuedAtMs > recordingStartedAtMs
@@ -1364,9 +1364,8 @@ export class EslBridge {
     const greetingPlayback = await this.playLiveKokoroTts(latestAgentText(response.body) || this.options.initialGreetingText, uuid);
     const call = this.callMap.get(uuid);
     if (call) {
-      const greetingWasSentToCaller =
-        greetingPlayback?.rtpSocketSendReady === true || playbackHasCompleteFreeswitchBroadcastEvidence(greetingPlayback);
-      call.initialGreetingPlaybackDurationMs = greetingWasSentToCaller ? greetingPlayback.totalDurationMs : 0;
+      const greetingWasRecordedInCallerWav = playbackHasCompleteFreeswitchBroadcastEvidence(greetingPlayback);
+      call.initialGreetingPlaybackDurationMs = greetingWasRecordedInCallerWav ? greetingPlayback.totalDurationMs : 0;
     }
     await this.postPipecatPlaybackEvent(uuid);
   }
