@@ -156,6 +156,51 @@ test("FreeSWITCH bridge WAV fallback can skip answer-time greeting audio", async
   }
 });
 
+test("FreeSWITCH bridge WAV fallback reports when the trim offset consumes all caller audio", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-wav-input-exhausted-"));
+  const audioPath = path.join(tempDir, "fs-call.wav");
+
+  try {
+    await writeFile(audioPath, validWavFixture(3));
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = `
+      const { pipecatInputFrameBatchFromWav } = await import(${JSON.stringify(moduleUrl)});
+      const batch = await pipecatInputFrameBatchFromWav(${JSON.stringify(audioPath)}, { maxFrames: 10, startOffsetMs: 1000, receivedAt: "2026-07-13T13:40:00.000Z" });
+      console.log(JSON.stringify(batch));
+    `;
+    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const batch = JSON.parse(stdout) as {
+      packetCount: number;
+      sourceDurationMs: number;
+      sourceFrameCount: number;
+      sourceStartOffsetMs: number;
+      alignedSourceStartOffsetMs: number;
+      sourceFramesSkipped: number;
+      errors: Array<{ error: string; sourceDurationMs: number; sourceStartOffsetMs: number }>;
+    };
+
+    assert.equal(batch.packetCount, 0);
+    assert.equal(batch.sourceDurationMs, 60);
+    assert.equal(batch.sourceFrameCount, 3);
+    assert.equal(batch.sourceStartOffsetMs, 1000);
+    assert.equal(batch.alignedSourceStartOffsetMs, 60);
+    assert.equal(batch.sourceFramesSkipped, 3);
+    assert.deepEqual(batch.errors, [{
+      at: "2026-07-13T13:40:00.000Z",
+      error: "wav_fallback_start_offset_exhausted_recording",
+      source: "freeswitch_recording_wav",
+      sourceDurationMs: 60,
+      sourceStartOffsetMs: 1000,
+    }]);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("FreeSWITCH bridge WAV fallback skips broadcast delay plus greeting audio", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;

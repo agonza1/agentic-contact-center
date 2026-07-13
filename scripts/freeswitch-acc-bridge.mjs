@@ -706,6 +706,8 @@ export async function pipecatInputFrameBatchFromWav(filePath, options = {}) {
   const startOffsetMs = Math.max(0, Number(options.startOffsetMs ?? 0) || 0);
   const startByteOffset = Math.min(pcm16At8k.length, Math.floor((startOffsetMs / 1000) * 8000) * 2);
   const alignedStartOffset = Math.floor(startByteOffset / bytesPerFrame) * bytesPerFrame;
+  const sourceFrameCount = Math.floor(pcm16At8k.length / bytesPerFrame);
+  const alignedStartFrameIndex = Math.floor(alignedStartOffset / bytesPerFrame);
   const frames = [];
   for (let offset = alignedStartOffset; offset + bytesPerFrame <= pcm16At8k.length && frames.length < maxFrames; offset += bytesPerFrame) {
     const index = frames.length;
@@ -723,6 +725,17 @@ export async function pipecatInputFrameBatchFromWav(filePath, options = {}) {
       sourceStartOffsetMs: startOffsetMs,
     });
   }
+  const sourceDurationMs = (pcm16At8k.length / 2 / 8000) * 1000;
+  const errors = [];
+  if (frames.length === 0 && pcm16At8k.length > 0) {
+    errors.push({
+      at: options.receivedAt ?? nowIso(),
+      error: "wav_fallback_start_offset_exhausted_recording",
+      source: "freeswitch_recording_wav",
+      sourceDurationMs,
+      sourceStartOffsetMs: startOffsetMs,
+    });
+  }
   return {
     liveRtpCaptured: false,
     frameType: "InputAudioRawFrameBatch",
@@ -732,10 +745,14 @@ export async function pipecatInputFrameBatchFromWav(filePath, options = {}) {
     packetCount: frames.length,
     totalDurationMs: frames.reduce((total, frame) => total + frame.durationMs, 0),
     sequenceGaps: [],
-    errors: [],
+    errors,
     captureSource: "freeswitch_recording_wav",
     sourceSampleRateHz: sampleRateHz,
+    sourceDurationMs,
+    sourceFrameCount,
     sourceStartOffsetMs: startOffsetMs,
+    alignedSourceStartOffsetMs: (alignedStartOffset / 2 / 8000) * 1000,
+    sourceFramesSkipped: Math.min(alignedStartFrameIndex, sourceFrameCount),
     frames,
   };
 }
