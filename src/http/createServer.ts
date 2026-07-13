@@ -1928,6 +1928,13 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
   const hasLiveAudioCapture = Boolean(mediaCaptureEvent && labels.media === "live_capture" && !generatedMedia);
   const hasLiveTelephony = labels.telephony === "local_sip" || labels.telephony === "signalwire_live";
   const hasFreeswitchBroadcast = playbackEvent?.detail.freeswitchBroadcastMode === "freeswitch_uuid_broadcast";
+  const hasCompleteFreeswitchBroadcastEvidence = Boolean(
+    hasFreeswitchBroadcast &&
+      getOptionalEventString(playbackEvent?.detail.freeswitchBroadcastHostPath) &&
+      getOptionalEventString(playbackEvent?.detail.freeswitchBroadcastPath) &&
+      typeof playbackEvent?.detail.freeswitchBroadcastAudioBytes === "number" &&
+      playbackEvent.detail.freeswitchBroadcastAudioBytes > 0,
+  );
   const hasCallerPlaybackProof = Boolean(
     playbackEvent?.detail.callerPlaybackConfirmed === true &&
       callerPlaybackEvidencePath &&
@@ -1937,7 +1944,7 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
           typeof playbackEvent.detail.sentPacketCount === "number" &&
           playbackEvent.detail.sentPacketCount > 0
         ) ||
-        hasFreeswitchBroadcast
+        hasCompleteFreeswitchBroadcastEvidence
       ),
   );
   const asrStatus = asrTranscriptEvent
@@ -4851,7 +4858,7 @@ async function routeRequest(
           writeBadRequest(response, "live_sip_playback_confirmation_without_socket_send");
           return;
         }
-        if (body.callerPlaybackConfirmed === true && hasFreeswitchBroadcast && (!freeswitchBroadcastHostPath || !freeswitchBroadcastPath || !freeswitchBroadcastAudioBytes)) {
+        if (hasFreeswitchBroadcast && (!freeswitchBroadcastHostPath || !freeswitchBroadcastPath || !freeswitchBroadcastAudioBytes)) {
           writeBadRequest(response, "live_sip_playback_broadcast_evidence_incomplete");
           return;
         }

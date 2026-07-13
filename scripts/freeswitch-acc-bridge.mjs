@@ -734,6 +734,16 @@ export async function pipecatInputFrameBatchFromWav(filePath, options = {}) {
   };
 }
 
+export function wavFallbackStartOffsetMs(call) {
+  const greetingDurationMs = Math.max(0, Number(call?.initialGreetingPlaybackDurationMs ?? 0) || 0);
+  const recordingStartedAtMs = Number(call?.recordingStartedAtMs ?? call?.startedAt ?? 0) || 0;
+  const broadcastIssuedAtMs = Number(call?.freeswitchBroadcast?.issuedAtMs ?? 0) || 0;
+  const broadcastStartDelayMs = recordingStartedAtMs > 0 && broadcastIssuedAtMs > recordingStartedAtMs
+    ? broadcastIssuedAtMs - recordingStartedAtMs
+    : 0;
+  return broadcastStartDelayMs + greetingDurationMs;
+}
+
 async function postJson(baseUrl, route, body) {
   const url = new URL(route, baseUrl);
   const rawBody = Buffer.from(JSON.stringify(body));
@@ -1206,7 +1216,8 @@ export class EslBridge {
     await mkdir(path.dirname(hostPath), { recursive: true });
     await writeFile(hostPath, pcm16MonoWav(pcm16, frame.sampleRateHz ?? 8000));
     this.send("api uuid_broadcast " + uuid + " " + freeswitchPath + " aleg");
-    return { mode: "freeswitch_uuid_broadcast", hostPath, freeswitchPath, sampleRateHz: frame.sampleRateHz ?? 8000, audioBytes: pcm16.length };
+    const issuedAtMs = Date.now();
+    return { mode: "freeswitch_uuid_broadcast", hostPath, freeswitchPath, sampleRateHz: frame.sampleRateHz ?? 8000, audioBytes: pcm16.length, issuedAtMs };
   }
 
   async postPipecatPlaybackEvent(uuid) {
@@ -1305,6 +1316,7 @@ export class EslBridge {
       wavPath,
       freeswitchPath,
       startedAt: Date.now(),
+      recordingStartedAtMs: Date.now(),
       destination,
       remoteRtp,
       accCallId: response?.body?.call?.session?.callId ?? null,
@@ -1334,7 +1346,7 @@ export class EslBridge {
       try {
         pipecatRtpFrameBatch = await pipecatInputFrameBatchFromWav(call.wavPath, {
           maxFrames: this.options.rtpMaxFrames ?? 200,
-          startOffsetMs: call.initialGreetingPlaybackDurationMs ?? 0,
+          startOffsetMs: wavFallbackStartOffsetMs(call),
         });
         this.events.push({ at: nowIso(), pipecatRecordingFrameBatch: { packetCount: pipecatRtpFrameBatch.packetCount, captureSource: pipecatRtpFrameBatch.captureSource } });
       } catch (error) {

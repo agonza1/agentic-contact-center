@@ -156,6 +156,29 @@ test("FreeSWITCH bridge WAV fallback can skip answer-time greeting audio", async
   }
 });
 
+test("FreeSWITCH bridge WAV fallback skips broadcast delay plus greeting audio", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+  const script = `
+    const { wavFallbackStartOffsetMs } = await import(${JSON.stringify(moduleUrl)});
+    console.log(JSON.stringify({
+      offset: wavFallbackStartOffsetMs({
+        recordingStartedAtMs: 1000,
+        startedAt: 900,
+        initialGreetingPlaybackDurationMs: 1200,
+        freeswitchBroadcast: { mode: "freeswitch_uuid_broadcast", issuedAtMs: 1750 },
+      }),
+    }));
+  `;
+  const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  const parsed = JSON.parse(stdout) as { offset: number };
+
+  assert.equal(parsed.offset, 1950);
+});
+
 test("FreeSWITCH bridge packetizes Pipecat output audio into outbound RTP proof evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-outbound-rtp-"));

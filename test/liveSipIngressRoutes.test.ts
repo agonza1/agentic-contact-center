@@ -130,6 +130,20 @@ test("live SIP events create local_sip live-capture calls and attach honest rtc-
     assert.equal(invalidConfirmedBroadcast.statusCode, 400);
     assert.equal(invalidConfirmedBroadcast.payload.error, "live_sip_playback_broadcast_evidence_incomplete");
 
+    const invalidBroadcastEvidence = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.playback",
+      timestamp: "2026-06-30T10:00:02.457Z",
+      sipCallId: "sip-proof-1",
+      outboundRtpReady: true,
+      freeswitchBroadcast: {
+        mode: "freeswitch_uuid_broadcast",
+        freeswitchPath: "/var/log/freeswitch/acc/media/response.wav",
+        audioBytes: 0,
+      },
+    });
+    assert.equal(invalidBroadcastEvidence.statusCode, 400);
+    assert.equal(invalidBroadcastEvidence.payload.error, "live_sip_playback_broadcast_evidence_incomplete");
+
     const invalidPlaybackMissingHost = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.playback",
       timestamp: "2026-06-30T10:00:02.460Z",
