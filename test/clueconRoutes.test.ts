@@ -592,6 +592,9 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /renderAsrPanel/);
   assert.match(narrative.body, /runEvalProof/);
   assert.match(narrative.body, /goToSlide/);
+  assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 9'));
+  assert.match(narrative.body, /aria-label="Previous slide"/);
+  assert.ok(narrative.body.includes('status.textContent = String(state.slide + 1) + " / " + String(state.slideCount)'));
   assert.match(narrative.body, /@media \(max-width: 1100px\) \{ #demo \.two/);
   assert.match(narrative.body, /\.present #demo \{ height: calc\(100vh - 62px\)/);
   assert.match(narrative.body, /\.present \.topbar \{ position: static/);
