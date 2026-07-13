@@ -357,12 +357,7 @@ async function callerPlaybackEvidence(filePath, required) {
   }
   const evidence = parseJsonOrJsonLines(raw).flatMap(expandEvidenceEntries);
   if (evidence.length === 0) return { required, ready: false, path: relativePath, reason: "caller-audible playback proof is not valid JSON." };
-  const confirmed = evidence.some((entry) =>
-    entry?.confirmed === true ||
-    entry?.callerPlaybackConfirmed === true ||
-    entry?.caller_playback_confirmed === true ||
-    entry?.status === "caller_playback_confirmed"
-  );
+  const confirmed = evidence.some(hasCallerPlaybackConfirmation);
   if (!confirmed) {
     return {
       required,
@@ -372,6 +367,21 @@ async function callerPlaybackEvidence(filePath, required) {
     };
   }
   return { required, ready: true, path: relativePath, confirmed: true, eventCount: evidence.length, reason: null };
+}
+
+function hasCallerPlaybackConfirmation(entry) {
+  return nestedEvidenceObjects(entry).some((candidate) =>
+    candidate?.confirmed === true ||
+    candidate?.callerPlaybackConfirmed === true ||
+    candidate?.caller_playback_confirmed === true ||
+    candidate?.status === "caller_playback_confirmed"
+  );
+}
+
+function nestedEvidenceObjects(value, depth = 0) {
+  if (depth > 6 || value === null || typeof value !== "object") return [];
+  const children = Array.isArray(value) ? value : Object.values(value);
+  return [value, ...children.flatMap((child) => nestedEvidenceObjects(child, depth + 1))];
 }
 
 async function wavEvidence(filePath) {
