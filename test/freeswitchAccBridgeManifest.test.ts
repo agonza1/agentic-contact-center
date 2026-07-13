@@ -1327,8 +1327,12 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
 
     const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
     const callerPlaybackEvidencePath = path.join(tempDir, "caller-playback-proof.json");
+    const broadcastOnlyPath = path.join(tempDir, "fs-proof-broadcast-only.wav");
+    const broadcastMismatchedRtpPath = path.join(tempDir, "fs-proof-broadcast-mismatched-rtp.wav");
     await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: { text: "hello from local sip", final: true } })}\n`, "utf8");
     await writeFile(callerPlaybackEvidencePath, `${JSON.stringify({ confirmed: true, method: "softphone_capture", note: "caller heard the Kokoro response" })}\n`, "utf8");
+    await writeFile(broadcastOnlyPath, validWavFixture(1));
+    await writeFile(broadcastMismatchedRtpPath, validWavFixture(1));
     const readyScript = `
       const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
       const manifest = await buildFreeswitchLiveProofManifest({
@@ -1470,7 +1474,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
           lastSentAt: null,
           freeswitchBroadcast: {
             mode: "freeswitch_uuid_broadcast",
-            hostPath: ${JSON.stringify(path.join(tempDir, "fs-proof-broadcast-only.wav"))},
+            hostPath: ${JSON.stringify(broadcastOnlyPath)},
             freeswitchPath: "/var/log/freeswitch/acc/media/fs-proof-broadcast-only.wav",
             sampleRateHz: 8000,
             audioBytes: 320
@@ -1487,6 +1491,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     });
     const broadcastOnlyManifest = JSON.parse(broadcastOnlyResult.stdout) as {
       reviewReady: boolean;
+      artifactIntegrity: Array<{ artifactId: string; readiness: string; sha256: string; sizeBytes: number }>;
       pipecatMediaEngine: {
         bidirectionalPlaybackReady: boolean;
         outboundRtpPlayback: { freeswitchBroadcast: { mode: string } };
@@ -1495,6 +1500,52 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     assert.equal(broadcastOnlyManifest.reviewReady, true);
     assert.equal(broadcastOnlyManifest.pipecatMediaEngine.bidirectionalPlaybackReady, true);
     assert.equal(broadcastOnlyManifest.pipecatMediaEngine.outboundRtpPlayback.freeswitchBroadcast.mode, "freeswitch_uuid_broadcast");
+    assert.ok(broadcastOnlyManifest.artifactIntegrity.some((artifact) => artifact.artifactId === "freeswitch-uuid-broadcast-wav" && artifact.readiness === "ready" && artifact.sizeBytes > 0 && /^[a-f0-9]{64}$/.test(artifact.sha256)));
+
+    const missingBroadcastArtifactScript = `
+      const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
+      const manifest = await buildFreeswitchLiveProofManifest({
+        uuid: "fs-proof-broadcast-missing-artifact",
+        accCallId: "demo-call-broadcast-missing-artifact",
+        destination: "8600",
+        wavPath: ${JSON.stringify(audioPath)},
+        logPath: ${JSON.stringify(logPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
+        telephonyMode: "local_sip",
+        pipecatOutboundRtpEvidence: {
+          outboundRtpReady: true,
+          rtpSocketSendReady: false,
+          packetCount: 1,
+          sentPacketCount: 0,
+          totalDurationMs: 20,
+          freeswitchBroadcast: {
+            mode: "freeswitch_uuid_broadcast",
+            hostPath: ${JSON.stringify(path.join(tempDir, "missing-broadcast.wav"))},
+            freeswitchPath: "/var/log/freeswitch/acc/media/missing-broadcast.wav",
+            sampleRateHz: 8000,
+            audioBytes: 320
+          },
+          callerPlaybackConfirmed: true,
+          callerPlaybackEvidencePath: ${JSON.stringify(callerPlaybackEvidencePath)}
+        }
+      });
+      console.log(JSON.stringify(manifest));
+    `;
+    const missingBroadcastArtifactResult = await execFileAsync(process.execPath, ["--input-type=module", "--eval", missingBroadcastArtifactScript], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const missingBroadcastArtifactManifest = JSON.parse(missingBroadcastArtifactResult.stdout) as {
+      reviewReady: boolean;
+      blockers: string[];
+      artifactIntegrity: Array<{ artifactId: string; readiness: string; sha256: string | null; sizeBytes: number }>;
+      pipecatMediaEngine: { bidirectionalPlaybackReady: boolean };
+    };
+    assert.equal(missingBroadcastArtifactManifest.reviewReady, false);
+    assert.equal(missingBroadcastArtifactManifest.pipecatMediaEngine.bidirectionalPlaybackReady, false);
+    assert.ok(missingBroadcastArtifactManifest.blockers.some((blocker) => blocker.includes("readable broadcast WAV artifact")));
+    assert.ok(missingBroadcastArtifactManifest.artifactIntegrity.some((artifact) => artifact.artifactId === "freeswitch-uuid-broadcast-wav" && artifact.readiness === "blocked" && artifact.sha256 === null && artifact.sizeBytes === 0));
 
     const incompleteBroadcastScript = `
       const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
@@ -1562,7 +1613,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
           lastSentAt: "2026-06-30T10:00:02.220Z",
           freeswitchBroadcast: {
             mode: "freeswitch_uuid_broadcast",
-            hostPath: ${JSON.stringify(path.join(tempDir, "fs-proof-broadcast-mismatched-rtp.wav"))},
+            hostPath: ${JSON.stringify(broadcastMismatchedRtpPath)},
             freeswitchPath: "/var/log/freeswitch/acc/media/fs-proof-broadcast-mismatched-rtp.wav",
             sampleRateHz: 8000,
             audioBytes: 320

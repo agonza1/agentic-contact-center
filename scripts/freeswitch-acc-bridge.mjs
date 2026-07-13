@@ -888,10 +888,10 @@ function playbackTargetMatchesCallerRtp(remoteRtp, playbackEvidence) {
   return playbackEvidence.remoteHost === remoteRtp.address && playbackEvidence.remotePort === remoteRtp.port;
 }
 
-function playbackHasCallerAudibleProof(playbackEvidence) {
+function playbackHasCallerAudibleProof(playbackEvidence, broadcastStats = null) {
   const hasEvidencePath = typeof playbackEvidence?.callerPlaybackEvidencePath === "string" && playbackEvidence.callerPlaybackEvidencePath.trim().length > 0;
   const hasSocketSend = playbackEvidence?.rtpSocketSendReady === true;
-  const hasBroadcast = playbackHasCompleteFreeswitchBroadcastEvidence(playbackEvidence);
+  const hasBroadcast = playbackHasVerifiedFreeswitchBroadcastEvidence(playbackEvidence, broadcastStats);
   return playbackEvidence?.callerPlaybackConfirmed === true && hasEvidencePath && (hasSocketSend || hasBroadcast);
 }
 
@@ -901,6 +901,10 @@ function playbackHasCompleteFreeswitchBroadcastEvidence(playbackEvidence) {
   const hasFreeswitchPath = typeof broadcast?.freeswitchPath === "string" && broadcast.freeswitchPath.trim().length > 0;
   const hasAudioBytes = Number.isFinite(broadcast?.audioBytes) && broadcast.audioBytes > 0;
   return broadcast?.mode === "freeswitch_uuid_broadcast" && hasHostPath && hasFreeswitchPath && hasAudioBytes;
+}
+
+function playbackHasVerifiedFreeswitchBroadcastEvidence(playbackEvidence, broadcastStats = null) {
+  return playbackHasCompleteFreeswitchBroadcastEvidence(playbackEvidence) && Boolean(broadcastStats && broadcastStats.size > 0);
 }
 
 function playbackHasPacketizedEvidence(playbackEvidence) {
@@ -928,23 +932,27 @@ export async function buildFreeswitchLiveProofManifest(options) {
   const pipecatOutboundRtpEvidence = options.pipecatOutboundRtpEvidence ?? null;
   const callerPlaybackPath = callerPlaybackEvidencePath(pipecatOutboundRtpEvidence);
   const callerPlaybackStats = callerPlaybackPath ? await stat(callerPlaybackPath).catch(() => null) : null;
+  const broadcastHostPath = typeof pipecatOutboundRtpEvidence?.freeswitchBroadcast?.hostPath === "string"
+    ? pipecatOutboundRtpEvidence.freeswitchBroadcast.hostPath.trim()
+    : "";
+  const broadcastStats = broadcastHostPath ? await stat(broadcastHostPath).catch(() => null) : null;
   const outboundPlaybackTargetMatchedCallerRtp = playbackTargetMatchesCallerRtp(options.remoteRtp, pipecatOutboundRtpEvidence);
   const outboundBroadcastPlaybackAttempted = pipecatOutboundRtpEvidence?.freeswitchBroadcast?.mode === "freeswitch_uuid_broadcast";
-  const outboundBroadcastEvidenceComplete = playbackHasCompleteFreeswitchBroadcastEvidence(pipecatOutboundRtpEvidence);
+  const outboundBroadcastEvidenceComplete = playbackHasVerifiedFreeswitchBroadcastEvidence(pipecatOutboundRtpEvidence, broadcastStats);
   const outboundSocketPlaybackReviewReady =
     pipecatOutboundRtpEvidence?.rtpSocketSendReady === true &&
     outboundPlaybackTargetMatchedCallerRtp &&
-    playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence);
+    playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence, broadcastStats);
   const outboundBroadcastReviewReady =
     outboundBroadcastPlaybackAttempted &&
     outboundBroadcastEvidenceComplete &&
     playbackHasPacketizedEvidence(pipecatOutboundRtpEvidence) &&
-    playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence);
+    playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence, broadcastStats);
   const outboundPlaybackReviewReady = outboundSocketPlaybackReviewReady || outboundBroadcastReviewReady;
   const outboundPlaybackBlocker = outboundPlaybackReviewReady
     ? null
     : outboundBroadcastPlaybackAttempted && !outboundBroadcastEvidenceComplete
-      ? "FreeSWITCH uuid_broadcast playback evidence is incomplete: host path, FreeSWITCH path, and positive audio byte count are required."
+      ? "FreeSWITCH uuid_broadcast playback evidence is incomplete: host path, FreeSWITCH path, positive audio byte count, and a readable broadcast WAV artifact are required."
       : outboundBroadcastPlaybackAttempted && !playbackHasPacketizedEvidence(pipecatOutboundRtpEvidence)
         ? "FreeSWITCH uuid_broadcast playback evidence is missing packetized Pipecat/Kokoro RTP evidence."
         : outboundBroadcastPlaybackAttempted
@@ -979,12 +987,12 @@ export async function buildFreeswitchLiveProofManifest(options) {
   if (!pipecatOutboundRtpEvidence?.rtpSocketSendReady && !outboundBroadcastPlaybackAttempted) {
     blockers.push("FreeSWITCH caller playback RTP was not sent, so SIP bidirectional playback is not proven.");
   } else if (outboundBroadcastPlaybackAttempted && !outboundBroadcastEvidenceComplete) {
-    blockers.push("FreeSWITCH uuid_broadcast playback evidence is incomplete: host path, FreeSWITCH path, and positive audio byte count are required.");
+    blockers.push("FreeSWITCH uuid_broadcast playback evidence is incomplete: host path, FreeSWITCH path, positive audio byte count, and a readable broadcast WAV artifact are required.");
   } else if (outboundBroadcastPlaybackAttempted && !playbackHasPacketizedEvidence(pipecatOutboundRtpEvidence)) {
     blockers.push("FreeSWITCH uuid_broadcast playback evidence is missing packetized Pipecat/Kokoro RTP evidence.");
   } else if (pipecatOutboundRtpEvidence?.rtpSocketSendReady === true && !outboundPlaybackTargetMatchedCallerRtp && !outboundBroadcastReviewReady) {
     blockers.push("FreeSWITCH caller playback RTP was sent, but the playback target did not match the caller RTP target.");
-  } else if (!playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence)) {
+  } else if (!playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence, broadcastStats)) {
     blockers.push(
       outboundBroadcastPlaybackAttempted
         ? "FreeSWITCH uuid_broadcast playback was issued, but no caller-audible playback proof is attached."
@@ -1014,10 +1022,10 @@ export async function buildFreeswitchLiveProofManifest(options) {
   if (!pipecatOutboundRtpEvidence?.rtpSocketSendReady && !outboundBroadcastPlaybackAttempted) {
     nextActions.push("Send Kokoro/Pipecat RTP playback to the FreeSWITCH caller target before marking the proof review-ready.");
   } else if (outboundBroadcastPlaybackAttempted && !outboundBroadcastEvidenceComplete) {
-    nextActions.push("Attach complete FreeSWITCH uuid_broadcast playback evidence with host path, FreeSWITCH path, and positive audio byte count before marking the proof review-ready.");
+    nextActions.push("Attach complete FreeSWITCH uuid_broadcast playback evidence with host path, FreeSWITCH path, positive audio byte count, and a readable broadcast WAV artifact before marking the proof review-ready.");
   } else if (pipecatOutboundRtpEvidence?.rtpSocketSendReady === true && !outboundPlaybackTargetMatchedCallerRtp && !outboundBroadcastReviewReady) {
     nextActions.push("Discover the caller RTP target from FreeSWITCH media headers and send playback RTP to that target.");
-  } else if (!playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence)) {
+  } else if (!playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence, broadcastStats)) {
     nextActions.push(
       outboundBroadcastPlaybackAttempted
         ? "Attach caller-audible playback proof for the FreeSWITCH uuid_broadcast path before marking the proof review-ready."
@@ -1066,6 +1074,17 @@ export async function buildFreeswitchLiveProofManifest(options) {
       sha256: callerPlaybackStats ? await sha256File(callerPlaybackPath) : null,
       sizeBytes: callerPlaybackStats?.size ?? 0,
       readiness: callerPlaybackStats && callerPlaybackStats.size > 0 ? "ready" : "blocked",
+    });
+  }
+  if (outboundBroadcastPlaybackAttempted && broadcastHostPath) {
+    artifactIntegrity.push({
+      artifactId: "freeswitch-uuid-broadcast-wav",
+      kind: "playback_media",
+      path: broadcastHostPath,
+      freeswitchPath: pipecatOutboundRtpEvidence.freeswitchBroadcast.freeswitchPath ?? null,
+      sha256: broadcastStats ? await sha256File(broadcastHostPath) : null,
+      sizeBytes: broadcastStats?.size ?? 0,
+      readiness: broadcastStats && broadcastStats.size > 0 ? "ready" : "blocked",
     });
   }
 
