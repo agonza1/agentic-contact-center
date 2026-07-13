@@ -272,6 +272,21 @@ test("live SIP proof bundle fails the review gate when caller playback proof is 
     assert.match(bundleManifest.reviewGate.failureReasons.callerPlaybackEvidenceValid, /caller-audible playback proof/);
     assert.equal(bundleManifest.validationSummary.callerPlaybackEvidence.required, true);
     assert.equal(bundleManifest.validationSummary.callerPlaybackEvidence.ready, false);
+
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        ["scripts/live-sip-proof-bundle.mjs", "--live-manifest", manifestPath, "--out-dir", path.join(tempDir, "bundle-require-ready"), "--require-review-ready"],
+        { cwd: repoRoot },
+      ),
+      (error: any) => {
+        assert.equal(error.code, 2);
+        const failedSummary = JSON.parse(error.stdout) as { reviewGatePassed: boolean; failedChecks: string[] };
+        assert.equal(failedSummary.reviewGatePassed, false);
+        assert.ok(failedSummary.failedChecks.includes("callerPlaybackEvidenceValid"));
+        return true;
+      },
+    );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
