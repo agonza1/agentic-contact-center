@@ -141,6 +141,12 @@ test("voice sessions expose persistent CAE realtime-audio lifecycle and proof", 
     assert.equal(created.payload.contract.transcriptShortcutAllowed, false);
     assert.equal(created.payload.endpoints.mediaInput, "/api/voice/sessions/cae-session-1/media/input");
     assert.equal(created.payload.endpoints.mediaOutput, "/api/voice/sessions/cae-session-1/media/output");
+    const snapshot = await requestJson(address.port, "GET", "/api/voice/sessions/cae-session-1");
+    assert.equal(snapshot.statusCode, 200);
+    assert.equal(snapshot.payload.route, "/api/voice/sessions/:id");
+    assert.equal(snapshot.payload.session.id, "cae-session-1");
+    assert.equal(snapshot.payload.session.endpoints.proof, "/api/voice/sessions/cae-session-1/proof");
+
 
     const play = await requestJson(address.port, "POST", "/api/voice/sessions/cae-session-1/play", {
       callerActId: "act-1",

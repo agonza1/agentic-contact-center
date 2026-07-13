@@ -4173,7 +4173,7 @@ async function routeRequest(
     return;
   }
 
-  const voiceSessionMatch = pathname.match(/^\/api\/voice\/sessions\/([^/]+)\/(play|media\/input|media\/output|events|control|close|proof)$/);
+  const voiceSessionMatch = pathname.match(/^\/api\/voice\/sessions\/([^/]+)(?:\/(play|media\/input|media\/output|events|control|close|proof))?$/);
   if (voiceSessionMatch) {
     let sessionId: string;
     try {
@@ -4182,13 +4182,22 @@ async function routeRequest(
       writeBadRequest(response, "voice_session_id_invalid");
       return;
     }
-    const action = voiceSessionMatch[2];
+    const action = voiceSessionMatch[2] ?? "snapshot";
     const session = voiceSessions.get(sessionId);
     if (!session) {
       writeJson(response, 404, { ok: false, error: "voice_session_not_found" });
       return;
     }
     const call = await ingress.getSnapshot(session.callId);
+
+    if (request.method === "GET" && action === "snapshot") {
+      writeJson(response, 200, {
+        ok: true,
+        route: "/api/voice/sessions/:id",
+        session: voiceSessions.snapshot(sessionId, call),
+      });
+      return;
+    }
 
     if (request.method === "GET" && action === "events") {
       const after = parseOptionalNonNegativeIntegerFilter(requestUrl.searchParams.get("afterSequence"), "voice_session_after_sequence_invalid");

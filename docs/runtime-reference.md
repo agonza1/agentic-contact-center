@@ -55,6 +55,7 @@ Adapter rule for #222:
 Persistent evaluator session surface for ConversationAgentEvals and bounded tester agents:
 
 - `POST /api/voice/sessions`: create a persistent realtime-audio session and matching ACC call/proof context.
+- `GET /api/voice/sessions/:id`: inspect the current session snapshot, endpoints, and linked ACC call context without advancing the event stream.
 - `POST /api/voice/sessions/:id/play`: request an audio caller act without accepting expected transcript shortcuts.
 - `POST /api/voice/sessions/:id/media/input`: attach realtime input audio bytes for the session; the same path is reserved as the future WebSocket media input route.
 - `POST /api/voice/sessions/:id/media/output`: attach caller-audible output audio chunks from the shared Pipecat/Kokoro path. Use `x-output-stream-id` to correlate chunks and `x-output-final: true` on the final chunk.
@@ -222,6 +223,7 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `GET /api/browser-webrtc/readiness`: expose the Issue #213 browser WebRTC voice contract, dependency readiness, and bridge endpoint.
 - `POST /api/browser-webrtc/session`: validate browser SDP offers, allocate or preserve an ACC call ID, and proxy offer/answer signaling to the local Pipecat WebRTC bridge.
 - `POST /api/voice/sessions`: create a persistent ConversationAgentEvals realtime-audio target session.
+- `GET /api/voice/sessions/:id`: inspect the current session snapshot, endpoints, and linked ACC call context without advancing the event stream.
 - `POST /api/voice/sessions/:id/play`: queue a caller audio act without transcript injection.
 - `POST /api/voice/sessions/:id/media/input`: attach realtime audio bytes for the persistent session.
 - `POST /api/voice/sessions/:id/media/output`: attach streamed caller-audible TTS/output chunks for the persistent session.
