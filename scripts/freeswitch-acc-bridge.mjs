@@ -1207,7 +1207,16 @@ export class EslBridge {
       });
       if (this.rtpPlaybackSocket) await state.sink.sendFrame(this.rtpPlaybackSocket, frame);
       else state.sink.packetize(frame);
-      const broadcast = await this.broadcastKokoroFrame(uuid, frame);
+      let broadcast = null;
+      try {
+        broadcast = await this.broadcastKokoroFrame(uuid, frame);
+      } catch (error) {
+        broadcast = {
+          mode: "freeswitch_uuid_broadcast_failed",
+          error: error instanceof Error ? error.message : String(error),
+        };
+        state.sink.errors.push({ at: nowIso(), error: broadcast.error, source: "freeswitch_uuid_broadcast" });
+      }
       const summary = state.sink.summary();
       if (state.call) state.call.freeswitchBroadcast = broadcast;
       else this.freeswitchBroadcast = broadcast;
