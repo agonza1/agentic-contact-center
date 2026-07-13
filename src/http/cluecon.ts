@@ -298,14 +298,25 @@ function buildBasePayload(
     },
     workboardCard: "85ea5a1a-3a68-4e5d-ac1d-10d5851017ae",
     activeWorkboardCard: clueConProofEvalCard,
-    title: "From SIP to Tokens: Deterministic Telephony Meets Real-Time Voice AI",
+    title: "Shared Realtime Pipeline: Browser, Fixtures, and SIP as Adapters",
     thesis:
-      "SIP gives deterministic call state. Pipecat gives the media runtime. rtc-asr gives the local STT boundary. The agent owns policy and tools. Kokoro speaks locally. ConversationAgentEvals / ASSERT proves whether the workflow completed safely.",
+      "Issue #222 is the center: one Pipecat Pipeline should run rtc-asr, ACC policy/tool control, and Kokoro, while browser WebRTC, fixture/tester injection, and SIP/FreeSWITCH enter as adapters. The current demo proves contracts, not the finished shared-media architecture.",
+    architectureCenter: {
+      issue: "agonza1/agentic-contact-center#222",
+      target: "transport.input -> rtc-asr STT -> ACC caller-turn adapter -> Kokoro TTS -> transport.output",
+      adapterRule: "Browser, fixture/tester, and SIP must feed the same Pipeline processors instead of growing separate demo paths.",
+      currentGaps: [
+        "browser ASR -> ACC -> TTS remains turn-buffered",
+        "browser and SIP media implementations are still separate",
+        "SIP caller-audible playback proof is not complete",
+        "audio fixture injection and tester agent are not implemented",
+      ],
+    },
     demoGoal: {
-      issue: "agonza1/agentic-contact-center#177",
-      statement: "Run one inspectable local cancellation-rescue call from SIP ingress through Pipecat, rtc-asr, agent policy/tool control, Kokoro/local TTS, and ASSERT proof.",
-      chain: ["sip", "pipecat", "rtc_asr", "agent", "kokoro_tts", "conversation_agent_evals"],
-      successSignal: "The scorecard passes with transcript, operator action, latency, fallback caveat, and proof-bundle evidence attached.",
+      issue: "agonza1/agentic-contact-center#222",
+      statement: "Show the cancellation-rescue proof as a contract slice on the path to one shared realtime Pipeline, not as another standalone demo path.",
+      chain: ["adapter", "pipecat_pipeline_target", "rtc_asr", "acc_policy_tools", "kokoro_tts", "evidence"],
+      successSignal: "The scorecard passes and the runtime copy names the remaining #222 gaps instead of implying browser/SIP parity is complete.",
     },
     callFlow: {
       workboardCard: "c9455e37-8b08-4351-8079-9e8f82899ab6",
@@ -317,13 +328,13 @@ function buildBasePayload(
         {
           id: "audio_in",
           label: "Caller audio in",
-          detail: "SIP telephony or browser WebRTC — different codecs, same voice path",
-          packet: "SIP PCMU/PCMA · WebRTC Opus",
+          detail: "Browser, fixture/tester, or SIP adapters should feed the same Pipeline input",
+          packet: "WebRTC Opus · fixture PCM16 · SIP PCMU/PCMA",
         },
         {
           id: "transport",
           label: "Transport + codec normalize",
-          detail: "Pipecat media bridge converts wire codecs into shared PCM16 frames",
+          detail: "Pipecat transport adapter normalizes wire codecs into Pipeline frames",
           packet: "codec → PCM16 16 kHz",
         },
         {
@@ -341,8 +352,8 @@ function buildBasePayload(
         {
           id: "tts",
           label: "Text → audio out",
-          detail: "TTS synthesizes speech, then codec + transport return SIP RTP or WebRTC",
-          packet: "tokens → waveform → RTP/Opus",
+          detail: "TTS synthesizes speech, then each adapter returns audio through its transport",
+          packet: "tokens → waveform → adapter output",
         },
       ],
     },
@@ -476,7 +487,7 @@ function buildBasePayload(
       drillKinds: ["scripted_approve", "tool_timeout", "runtime_failure", "transfer", "takeover", "end_call"],
       actions: ["pause", "resume", "approve_offer", "ask_operator", "escalate_to_human", "fallback", "transfer", "takeover", "end_call"],
       proofLinks: ["/api/operator/console", "/api/queue?attentionRequired=true", "/api/demo/run-end-to-end"],
-      caveat: "Cockpit drills reuse the local call/session APIs; browser voice remains optional when Pipecat and rtc-asr are configured.",
+      caveat: "Cockpit drills reuse the local call/session APIs; #222 still needs fixture/tester and SIP adapters sharing the same Pipeline processors.",
     },
     proofPreview: {
       workboardCard: clueConProofEvalCard,
@@ -577,7 +588,7 @@ function buildCallFlowMarkup(callFlow: {
   <div class="voice-pipeline__chrome">
     <div class="voice-pipeline__title">
       <span class="voice-pipeline__eyebrow">Media transformation path</span>
-      <strong>SIP or WebRTC audio → codec normalize → tokens → speech out</strong>
+      <strong>Adapters → shared Pipeline frames → tokens → speech out</strong>
     </div>
     <div class="voice-pipeline__meta">
       <span>${callFlow.cadenceMs / 1000}s cadence</span>
@@ -601,14 +612,14 @@ function buildCallFlowMarkup(callFlow: {
         <span class="voice-pipeline__detail">${escapeHtml(ingress?.detail ?? "")}</span>
         <div class="ingress-fork">
           <div class="ingress-lane ingress-lane--sip">
-            <span class="ingress-lane__name">Telephony SIP</span>
+            <span class="ingress-lane__name">SIP adapter</span>
             <span class="ingress-lane__codec">RTP · PCMU / PCMA</span>
             ${waveformMarkup("media-wave--sip")}
           </div>
           <div class="ingress-or">or</div>
           <div class="ingress-lane ingress-lane--webrtc">
-            <span class="ingress-lane__name">Browser WebRTC</span>
-            <span class="ingress-lane__codec">Opus / SRTP</span>
+            <span class="ingress-lane__name">Browser / fixture adapter</span>
+            <span class="ingress-lane__codec">Opus / PCM16 test frames</span>
             ${waveformMarkup("media-wave--webrtc")}
           </div>
         </div>
@@ -624,7 +635,7 @@ function buildCallFlowMarkup(callFlow: {
           <span class="codec-arrow">⟶</span>
           <span class="codec-chip codec-chip--target">PCM16</span>
         </div>
-        <div class="transport-tag">Pipecat media bridge</div>
+        <div class="transport-tag">Pipecat Pipeline target</div>
         <code class="voice-pipeline__metric">${escapeHtml(transport?.packet ?? "")}</code>
       </li>
       <li class="voice-pipeline__stage voice-pipeline__stage--stt" style="--stage-index:2">
@@ -658,8 +669,8 @@ function buildCallFlowMarkup(callFlow: {
           ${waveformMarkup("media-wave--out")}
         </div>
         <div class="egress-fork">
-          <span class="egress-chip">SIP RTP</span>
-          <span class="egress-chip">WebRTC Opus</span>
+          <span class="egress-chip">SIP RTP adapter</span>
+          <span class="egress-chip">WebRTC / fixture proof</span>
         </div>
         <code class="voice-pipeline__metric">${escapeHtml(tts?.packet ?? "")}</code>
       </li>
@@ -857,8 +868,8 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
 <body class="${bodyClass}">
   <header class="topbar"><div class="brand"><span class="kicker">ClueCon 2026 presentation</span><strong>Agentic Contact Center</strong></div><nav class="toolbar" aria-label="ClueCon sections"><a href="/cluecon">Narrative</a><a href="/cluecon/present">Present</a><a href="/operator/console">Operator</a><a href="/assert">Proof</a><button id="prev" type="button">Prev</button><button id="next" type="button" class="primary">Next</button></nav></header>
   <main>
-    <section class="hero flow-hero active" data-slide="0" id="flow"><div class="flow-header"><span class="kicker">Opening</span><h1>From SIP to tokens.</h1><p class="subhead">A local, inspectable voice path: deterministic telephony state, Pipecat media, rtc-asr speech recognition, operator-safe agent control, and ASSERT-ready proof.</p><p class="talk-attribution">Alberto Gonzalez CTO @ WebRTC.ventures</p></div>${buildCallFlowMarkup(payload.callFlow)}<div class="actions"><button class="primary" id="run-demo-top" type="button">Run scripted proof</button><button id="open-demo-slide" type="button">Open cancellation rescue</button></div></section>
-    <section class="section-band slide" data-slide="1" id="map"><div class="two"><div><span class="kicker">System map</span><h2>Every boundary stays visible.</h2><p class="subhead">Telephony state, media transport, local ASR, agent policy, operator steer, TTS fallback, and evaluation evidence are separate contracts — not one opaque black box.</p><svg class="arch" viewBox="0 0 980 380" role="img" aria-label="On-prem voice agent architecture"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#2457a6"/></marker></defs><rect class="nodeAccent" x="24" y="74" width="130" height="74" rx="8"/><text class="label" x="89" y="105" text-anchor="middle">Caller</text><text class="small" x="89" y="126" text-anchor="middle">SIP / browser</text><rect class="node" x="194" y="74" width="132" height="74" rx="8"/><text class="label" x="260" y="105" text-anchor="middle">Pipecat</text><text class="small" x="260" y="126" text-anchor="middle">transport</text><rect class="nodeWarn" x="366" y="74" width="132" height="74" rx="8"/><text class="label" x="432" y="105" text-anchor="middle">rtc-asr</text><text class="small" x="432" y="126" text-anchor="middle">Local STT v1</text><rect class="nodeAccent" x="538" y="74" width="144" height="74" rx="8"/><text class="label" x="610" y="105" text-anchor="middle">Agent</text><text class="small" x="610" y="126" text-anchor="middle">policy + tools</text><rect class="nodeWarn" x="722" y="74" width="112" height="74" rx="8"/><text class="label" x="778" y="105" text-anchor="middle">Kokoro</text><text class="small" x="778" y="126" text-anchor="middle">TTS</text><rect class="node" x="298" y="236" width="160" height="78" rx="8"/><text class="label" x="378" y="267" text-anchor="middle">Operator</text><text class="small" x="378" y="288" text-anchor="middle">approve / handoff</text><rect class="nodeAccent" x="536" y="236" width="158" height="78" rx="8"/><text class="label" x="615" y="267" text-anchor="middle">Proof bundle</text><text class="small" x="615" y="288" text-anchor="middle">events + latency</text><rect class="nodeAccent" x="748" y="236" width="160" height="78" rx="8"/><text class="label" x="828" y="267" text-anchor="middle">ASSERT eval</text><text class="small" x="828" y="288" text-anchor="middle">scorecard</text><path class="line" d="M154 111 H194"/><path class="line" d="M326 111 H366"/><path class="line" d="M498 111 H538"/><path class="line" d="M682 111 H722"/><path class="line" d="M610 148 V236"/><path class="line" d="M694 275 H748"/><path class="line" d="M458 275 H536"/><path class="line" d="M378 236 C412 184 496 154 538 126"/></svg></div><div class="grid" id="readiness"></div></div></section>
+    <section class="hero flow-hero active" data-slide="0" id="flow"><div class="flow-header"><span class="kicker">Opening</span><h1>One realtime pipeline.</h1><p class="subhead">Issue #222 is the center: browser, fixture/tester, and SIP should be adapters into one Pipecat Pipeline for rtc-asr, ACC policy/tool control, Kokoro, and evidence.</p><p class="talk-attribution">Alberto Gonzalez CTO @ WebRTC.ventures</p></div>${buildCallFlowMarkup(payload.callFlow)}<div class="actions"><button class="primary" id="run-demo-top" type="button">Run scripted proof</button><button id="open-demo-slide" type="button">Open cancellation rescue</button></div></section>
+    <section class="section-band slide" data-slide="1" id="map"><div class="two"><div><span class="kicker">System map</span><h2>#222 is the architecture.</h2><p class="subhead">The visible boundaries remain, but they should converge into one shared Pipeline: transport adapter in, rtc-asr, ACC policy/tools, Kokoro, transport adapter out. Browser and SIP are not separate products.</p><svg class="arch" viewBox="0 0 980 380" role="img" aria-label="Shared voice pipeline architecture"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#2457a6"/></marker></defs><rect class="nodeAccent" x="24" y="74" width="130" height="74" rx="8"/><text class="label" x="89" y="105" text-anchor="middle">Caller</text><text class="small" x="89" y="126" text-anchor="middle">SIP / browser</text><rect class="node" x="194" y="74" width="132" height="74" rx="8"/><text class="label" x="260" y="105" text-anchor="middle">Pipecat</text><text class="small" x="260" y="126" text-anchor="middle">Pipeline</text><rect class="nodeWarn" x="366" y="74" width="132" height="74" rx="8"/><text class="label" x="432" y="105" text-anchor="middle">rtc-asr</text><text class="small" x="432" y="126" text-anchor="middle">Local STT v1</text><rect class="nodeAccent" x="538" y="74" width="144" height="74" rx="8"/><text class="label" x="610" y="105" text-anchor="middle">Agent</text><text class="small" x="610" y="126" text-anchor="middle">policy + tools</text><rect class="nodeWarn" x="722" y="74" width="112" height="74" rx="8"/><text class="label" x="778" y="105" text-anchor="middle">Kokoro</text><text class="small" x="778" y="126" text-anchor="middle">TTS</text><rect class="node" x="298" y="236" width="160" height="78" rx="8"/><text class="label" x="378" y="267" text-anchor="middle">Operator</text><text class="small" x="378" y="288" text-anchor="middle">approve / handoff</text><rect class="nodeAccent" x="536" y="236" width="158" height="78" rx="8"/><text class="label" x="615" y="267" text-anchor="middle">Proof bundle</text><text class="small" x="615" y="288" text-anchor="middle">events + latency</text><rect class="nodeAccent" x="748" y="236" width="160" height="78" rx="8"/><text class="label" x="828" y="267" text-anchor="middle">ASSERT eval</text><text class="small" x="828" y="288" text-anchor="middle">scorecard</text><path class="line" d="M154 111 H194"/><path class="line" d="M326 111 H366"/><path class="line" d="M498 111 H538"/><path class="line" d="M682 111 H722"/><path class="line" d="M610 148 V236"/><path class="line" d="M694 275 H748"/><path class="line" d="M458 275 H536"/><path class="line" d="M378 236 C412 184 496 154 538 126"/></svg></div><div class="grid" id="readiness"></div></div></section>
     <section class="section-band slide" data-slide="2" id="demo"><span class="kicker">Live demo</span><h2>Cancellation rescue, end to end.</h2><p class="subhead">Run the operator-safe scripted story: policy hold, approved steer, wrap, and reviewable evidence — no production credentials required.</p><div class="two"><div class="demo-shell"><div class="actions"><button class="primary" id="run-demo" type="button">Run scripted demo</button><button id="drill-tool" type="button" class="danger">Tool timeout drill</button><button id="drill-runtime" type="button" class="danger">Runtime failure drill</button><button id="drill-transfer" type="button">Transfer</button><button id="drill-takeover" type="button">Takeover</button><button id="drill-end" type="button">End call</button><button id="drill-asr" type="button">rtc-asr unavailable</button><button id="drill-tts" type="button">TTS unavailable</button></div><div class="screen" id="demo-screen">Ready. Scripted mode needs no external credentials.</div></div><div class="timeline" id="timeline"></div></div></section>
     <section class="section-band slide" data-slide="3" id="asr"><span class="kicker">Live ASR lab</span><div class="asr-heading"><h2>rtc-asr is measurable and swappable.</h2><div class="actions"><a class="mode-link" href="${payload.asrPanel.pipecatDemoUrl}" target="_blank" rel="noreferrer">Pipecat demo source ↗</a><a class="mode-link" href="${payload.asrPanel.benchmarkUrl}" target="_blank" rel="noreferrer">Open benchmark site ↗</a></div></div><p class="subhead">Start realtime mode to see partial transcript revisions while you speak, or run a short batch clip. Model choices map to separately warmed rtc-asr endpoints, so switching is real and does not hide model-load latency.</p><p class="asr-rtf-note muted">RTF (Real-Time Factor) = processing time ÷ audio duration. Below 1× means faster than real time; lower is better.</p><div class="two"><div><div class="asr-live-lab"><div class="asr-live-head"><strong>Microphone → Local STT v1 → live transcript</strong><span class="badge fixture" id="asr-live-badge">checking sidecar</span></div><div class="asr-live-controls"><label><span class="muted">Active model target</span><select id="asr-model-select" aria-label="rtc-asr model target" disabled><option>Loading models…</option></select></label><button class="primary" id="asr-realtime" type="button" disabled>Start realtime</button><button id="asr-record" type="button" disabled>Batch 6 seconds</button></div><div class="asr-live-wave" id="asr-live-wave" aria-hidden="true"><span style="--wave-i:0;height:12px"></span><span style="--wave-i:1;height:28px"></span><span style="--wave-i:2;height:18px"></span><span style="--wave-i:3;height:42px"></span><span style="--wave-i:4;height:22px"></span><span style="--wave-i:5;height:34px"></span><span style="--wave-i:6;height:16px"></span><span style="--wave-i:7;height:38px"></span><span style="--wave-i:8;height:24px"></span><span style="--wave-i:9;height:46px"></span><span style="--wave-i:10;height:20px"></span><span style="--wave-i:11;height:32px"></span><span style="--wave-i:12;height:14px"></span><span style="--wave-i:13;height:36px"></span><span style="--wave-i:14;height:26px"></span><span style="--wave-i:15;height:40px"></span></div><span class="asr-live-status" id="asr-live-status" aria-live="polite">Waiting for rtc-asr model discovery.</span><pre class="asr-live-result" id="asr-live-result">Realtime partial and final transcripts will appear here.</pre></div><div class="asr-events" id="asr-events"></div></div><div class="grid" id="asr-benchmarks"></div></div></section>
     <section class="section-band slide" data-slide="4" id="agent"><span class="kicker">Agent harness</span><h2>Policy stays inspectable.</h2><p class="subhead">Markdown brain blocks show how tools, policy, and fallback stay explicit in the runtime story.</p><div class="plain" id="brain-state"></div><div class="brain" id="brain"></div><div class="actions"><button id="preview-brain" type="button">Preview edits</button><button id="apply-brain" type="button" class="primary">Apply to session</button><button id="reset-brain" type="button">Reset</button></div></section>
