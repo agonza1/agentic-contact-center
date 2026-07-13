@@ -170,11 +170,11 @@ export class RealtimeVoiceSessionStore {
     if (!session || session.status === "closed") return null;
     const at = input.timestamp ?? new Date().toISOString();
     const streamId = input.streamId?.trim() || session.output.streamId || `output-${session.playback.requestedTurns || 1}`;
-    if (session.output.status === "cancelled" && session.output.streamId === streamId) {
+    if ((session.output.status === "cancelled" || session.output.status === "completed") && session.output.streamId === streamId) {
       this.record(session, "output.audio.chunk.ignored", at, {
         streamId,
         bytes: input.bytes,
-        reason: session.output.cancellationReason ?? "cancelled_stream",
+        reason: session.output.status === "cancelled" ? session.output.cancellationReason ?? "cancelled_stream" : "completed_stream",
       });
       return cloneSession(session);
     }
@@ -258,6 +258,8 @@ export class RealtimeVoiceSessionStore {
     const hasOutputAudio = snapshot.output.chunks > 0 && snapshot.output.bytes > 0;
     const hasRtcAsrFinalTranscript = call?.events.some((event) => event.type === "rtc_asr_transcript") === true;
     const transcriptTurns = call?.transcript.length ?? 0;
+    const outputCancelledByBargeIn = snapshot.output.status === "cancelled"
+      && snapshot.events.some((event) => event.type === "control.received" && event.detail.action === "barge_in");
     return {
       ok: true,
       schemaVersion: 1,
@@ -284,7 +286,7 @@ export class RealtimeVoiceSessionStore {
         outputBytes: snapshot.output.bytes,
         hasOutputAudio,
         outputStatus: snapshot.output.status,
-        outputCancelledByBargeIn: snapshot.output.status === "cancelled" && snapshot.controls.lastAction === "barge_in",
+        outputCancelledByBargeIn,
         hasAudioInput,
         hasRtcAsrFinalTranscript,
         transcriptTurns,

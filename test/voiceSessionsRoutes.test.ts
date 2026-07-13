@@ -129,6 +129,10 @@ test("voice sessions expose persistent CAE realtime-audio lifecycle and proof", 
       "output.audio.chunk.ignored",
     ]);
 
+    const laterControl = await requestJson(address.port, "POST", "/api/voice/sessions/cae-session-1/control", { action: "mark", reason: "post barge-in note" });
+    assert.equal(laterControl.statusCode, 200);
+    assert.equal(laterControl.payload.session.controls.lastAction, "mark");
+
     const proof = await requestJson(address.port, "GET", "/api/voice/sessions/cae-session-1/proof");
     assert.equal(proof.statusCode, 200);
     assert.equal(proof.payload.mediaPipeline.persistent, true);
@@ -201,12 +205,22 @@ test("voice sessions complete output streams without barge-in cancellation", asy
     assert.equal(output.payload.session.output.status, "completed");
     assert.equal(output.payload.session.output.completedAt !== null, true);
 
+    const lateOutput = await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-output-complete/media/output", Buffer.from([4, 5]), {
+      "content-type": "audio/l16",
+      "x-output-stream-id": "tts-turn-complete",
+    });
+    assert.equal(lateOutput.statusCode, 202);
+    assert.equal(lateOutput.payload.session.output.status, "completed");
+    assert.equal(lateOutput.payload.session.output.chunks, 1);
+    assert.equal(lateOutput.payload.session.output.bytes, 3);
+
     const events = await requestJson(address.port, "GET", "/api/voice/sessions/cae-session-output-complete/events");
     assert.deepEqual(events.payload.events.map((event: any) => event.type), [
       "session.created",
       "output.stream.started",
       "output.audio.chunk",
       "output.stream.completed",
+      "output.audio.chunk.ignored",
     ]);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
