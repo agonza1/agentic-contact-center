@@ -1079,7 +1079,7 @@ export class EslBridge {
 
   async playLiveKokoroTts(agentText, uuid) {
     const state = this.callPlaybackState(uuid);
-    if (!this.options.kokoroBaseUrl || !this.rtpPlaybackSocket || !agentText) return null;
+    if (!this.options.kokoroBaseUrl || !agentText) return null;
     try {
       const frame = await synthesizeKokoroTtsFrame(agentText, {
         baseUrl: this.options.kokoroBaseUrl,
@@ -1087,7 +1087,7 @@ export class EslBridge {
         voice: this.options.kokoroVoice,
         model: this.options.kokoroModel,
       });
-      await state.sink.sendFrame(this.rtpPlaybackSocket, frame);
+      if (this.rtpPlaybackSocket) await state.sink.sendFrame(this.rtpPlaybackSocket, frame);
       const broadcast = await this.broadcastKokoroFrame(uuid, frame);
       const summary = state.sink.summary();
       this.events.push({ at: nowIso(), pipecatLiveKokoroTtsPlayback: { ...summary, sourceText: agentText, tts: frame.tts, freeswitchBroadcast: broadcast } });

@@ -524,6 +524,59 @@ test("FreeSWITCH bridge sends live Kokoro TTS frames to RTP playback sink", asyn
   }
 });
 
+
+test("FreeSWITCH bridge broadcasts live Kokoro TTS even without caller RTP socket", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-kokoro-broadcast-no-rtp-"));
+  const http = await import("node:http");
+  const pcm16 = Buffer.alloc(8);
+  [0, 1200, -1200, 32000].forEach((sample, index) => pcm16.writeInt16LE(sample, index * 2));
+  const server = http.createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ audio_base64: pcm16.toString("base64"), format: "pcm", sample_rate: 8000 }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const script = [
+      "const { EslBridge } = await import(" + JSON.stringify(moduleUrl) + ");",
+      "const sentCommands = [];",
+      "const bridge = new EslBridge({" +
+        "kokoroBaseUrl:" + JSON.stringify(`http://127.0.0.1:${address.port}`) + "," +
+        "recordingDir:" + JSON.stringify(tempDir) + "," +
+        "freeswitchRecordingDir:\"/var/log/freeswitch/acc/media\"" +
+      "});",
+      "bridge.pipecatPlaybackEventPosted = true;",
+      "bridge.send = (command) => sentCommands.push(command);",
+      "const summary = await bridge.playLiveKokoroTts(\"Agent response from ACC\", \"fs-live-kokoro-no-rtp\");",
+      "console.log(JSON.stringify({ sentCommands, summary, events: bridge.events }));"
+    ].join("\n");
+    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], { cwd: repoRoot, encoding: "utf8" });
+    const parsed = JSON.parse(stdout) as {
+      sentCommands: string[];
+      summary: { outboundRtpReady: boolean; rtpSocketSendReady: boolean; freeswitchBroadcast: { mode: string; audioBytes: number } };
+      events: Array<{ pipecatLiveKokoroTtsPlayback?: { freeswitchBroadcast: { mode: string } } }>;
+    };
+
+    assert.equal(parsed.summary.outboundRtpReady, false);
+    assert.equal(parsed.summary.rtpSocketSendReady, false);
+    assert.equal(parsed.summary.freeswitchBroadcast.mode, "freeswitch_uuid_broadcast");
+    assert.equal(parsed.summary.freeswitchBroadcast.audioBytes, 8);
+    assert.equal(parsed.sentCommands.length, 1);
+    assert.equal(parsed.sentCommands[0].startsWith("api uuid_broadcast fs-live-kokoro-no-rtp /var/log/freeswitch/acc/media/fs-live-kokoro-no-rtp-kokoro-tts-"), true);
+    assert.equal(parsed.events.some((event) => event.pipecatLiveKokoroTtsPlayback?.freeswitchBroadcast.mode === "freeswitch_uuid_broadcast"), true);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 function decodePcmuSampleForTest(sample: number): number {
   const inverted = (~sample) & 0xff;
   const sign = inverted & 0x80;
