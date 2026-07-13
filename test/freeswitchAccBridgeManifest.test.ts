@@ -124,6 +124,38 @@ test("FreeSWITCH bridge derives Pipecat input frames from recorded caller WAV fa
   }
 });
 
+test("FreeSWITCH bridge WAV fallback can skip answer-time greeting audio", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-wav-input-offset-"));
+  const audioPath = path.join(tempDir, "fs-call.wav");
+
+  try {
+    await writeFile(audioPath, validWavFixture(5));
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = `
+      const { pipecatInputFrameBatchFromWav } = await import(${JSON.stringify(moduleUrl)});
+      const batch = await pipecatInputFrameBatchFromWav(${JSON.stringify(audioPath)}, { maxFrames: 10, startOffsetMs: 60, receivedAt: "2026-07-13T06:35:00.000Z" });
+      console.log(JSON.stringify(batch));
+    `;
+    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const batch = JSON.parse(stdout) as {
+      packetCount: number;
+      sourceStartOffsetMs: number;
+      frames: Array<{ sourceStartOffsetMs: number; timestamp: number }>;
+    };
+
+    assert.equal(batch.sourceStartOffsetMs, 60);
+    assert.equal(batch.packetCount, 2);
+    assert.deepEqual(batch.frames.map((frame) => frame.timestamp), [0, 160]);
+    assert.equal(batch.frames[0].sourceStartOffsetMs, 60);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("FreeSWITCH bridge packetizes Pipecat output audio into outbound RTP proof evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-outbound-rtp-"));
@@ -1259,6 +1291,57 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     assert.equal(broadcastOnlyManifest.reviewReady, true);
     assert.equal(broadcastOnlyManifest.pipecatMediaEngine.bidirectionalPlaybackReady, true);
     assert.equal(broadcastOnlyManifest.pipecatMediaEngine.outboundRtpPlayback.freeswitchBroadcast.mode, "freeswitch_uuid_broadcast");
+
+    const broadcastWithMismatchedRtpScript = `
+      const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
+      const manifest = await buildFreeswitchLiveProofManifest({
+        uuid: "fs-proof-broadcast-mismatched-rtp",
+        accCallId: "demo-call-broadcast-mismatched-rtp",
+        destination: "8600",
+        wavPath: ${JSON.stringify(audioPath)},
+        logPath: ${JSON.stringify(logPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
+        telephonyMode: "local_sip",
+        remoteRtp: { address: "127.0.0.1", port: 40002 },
+        pipecatOutboundRtpEvidence: {
+          outboundRtpReady: true,
+          rtpSocketSendReady: true,
+          packetCount: 1,
+          sentPacketCount: 1,
+          remoteHost: "127.0.0.1",
+          remotePort: 49999,
+          totalDurationMs: 20,
+          nextSequenceNumber: 1,
+          nextTimestamp: 160,
+          ssrc: 0xacc0ffee,
+          lastSentAt: "2026-06-30T10:00:02.220Z",
+          freeswitchBroadcast: {
+            mode: "freeswitch_uuid_broadcast",
+            hostPath: ${JSON.stringify(path.join(tempDir, "fs-proof-broadcast-mismatched-rtp.wav"))},
+            freeswitchPath: "/var/log/freeswitch/acc/media/fs-proof-broadcast-mismatched-rtp.wav",
+            sampleRateHz: 8000,
+            audioBytes: 320
+          },
+          callerPlaybackConfirmed: true,
+          callerPlaybackEvidencePath: ${JSON.stringify(callerPlaybackEvidencePath)}
+        }
+      });
+      console.log(JSON.stringify(manifest));
+    `;
+    const broadcastWithMismatchedRtpResult = await execFileAsync(process.execPath, ["--input-type=module", "--eval", broadcastWithMismatchedRtpScript], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const broadcastWithMismatchedRtpManifest = JSON.parse(broadcastWithMismatchedRtpResult.stdout) as {
+      reviewReady: boolean;
+      blockers: string[];
+      pipecatMediaEngine: { bidirectionalPlaybackReady: boolean; outboundRtpPlayback: { targetMatchedCallerRtp: boolean } };
+    };
+    assert.equal(broadcastWithMismatchedRtpManifest.reviewReady, true);
+    assert.equal(broadcastWithMismatchedRtpManifest.pipecatMediaEngine.bidirectionalPlaybackReady, true);
+    assert.equal(broadcastWithMismatchedRtpManifest.pipecatMediaEngine.outboundRtpPlayback.targetMatchedCallerRtp, false);
+    assert.equal(broadcastWithMismatchedRtpManifest.blockers.some((blocker) => blocker.includes("playback target did not match")), false);
 
     const readyBundleDir = path.join(tempDir, "ready-bundle");
     const readyManifestPath = path.join(tempDir, "freeswitch-ready-live-proof-manifest.json");

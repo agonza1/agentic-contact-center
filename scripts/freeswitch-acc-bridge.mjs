@@ -697,8 +697,11 @@ export async function pipecatInputFrameBatchFromWav(filePath, options = {}) {
   const samplesPerFrame = options.samplesPerFrame ?? 160;
   const bytesPerFrame = samplesPerFrame * 2;
   const maxFrames = options.maxFrames ?? 200;
+  const startOffsetMs = Math.max(0, Number(options.startOffsetMs ?? 0) || 0);
+  const startByteOffset = Math.min(pcm16At8k.length, Math.floor((startOffsetMs / 1000) * 8000) * 2);
+  const alignedStartOffset = Math.floor(startByteOffset / bytesPerFrame) * bytesPerFrame;
   const frames = [];
-  for (let offset = 0; offset + bytesPerFrame <= pcm16At8k.length && frames.length < maxFrames; offset += bytesPerFrame) {
+  for (let offset = alignedStartOffset; offset + bytesPerFrame <= pcm16At8k.length && frames.length < maxFrames; offset += bytesPerFrame) {
     const index = frames.length;
     frames.push({
       frameType: "InputAudioRawFrame",
@@ -711,6 +714,7 @@ export async function pipecatInputFrameBatchFromWav(filePath, options = {}) {
       receivedAt: options.receivedAt ?? nowIso(),
       pcm16Base64: pcm16At8k.subarray(offset, offset + bytesPerFrame).toString("base64"),
       source: "freeswitch_recording_wav",
+      sourceStartOffsetMs: startOffsetMs,
     });
   }
   return {
@@ -725,6 +729,7 @@ export async function pipecatInputFrameBatchFromWav(filePath, options = {}) {
     errors: [],
     captureSource: "freeswitch_recording_wav",
     sourceSampleRateHz: sampleRateHz,
+    sourceStartOffsetMs: startOffsetMs,
     frames,
   };
 }
@@ -910,7 +915,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
   if (rtcAsrEvidenceInspection.blocker) blockers.push(rtcAsrEvidenceInspection.blocker);
   if (!pipecatOutboundRtpEvidence?.rtpSocketSendReady && !outboundBroadcastPlaybackAttempted) {
     blockers.push("FreeSWITCH caller playback RTP was not sent, so SIP bidirectional playback is not proven.");
-  } else if (pipecatOutboundRtpEvidence?.rtpSocketSendReady === true && !outboundPlaybackTargetMatchedCallerRtp) {
+  } else if (pipecatOutboundRtpEvidence?.rtpSocketSendReady === true && !outboundPlaybackTargetMatchedCallerRtp && !outboundBroadcastReviewReady) {
     blockers.push("FreeSWITCH caller playback RTP was sent, but the playback target did not match the caller RTP target.");
   } else if (!playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence)) {
     blockers.push(
@@ -941,7 +946,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
   if (rtcAsrEvidenceInspection.nextAction) nextActions.push(rtcAsrEvidenceInspection.nextAction);
   if (!pipecatOutboundRtpEvidence?.rtpSocketSendReady && !outboundBroadcastPlaybackAttempted) {
     nextActions.push("Send Kokoro/Pipecat RTP playback to the FreeSWITCH caller target before marking the proof review-ready.");
-  } else if (pipecatOutboundRtpEvidence?.rtpSocketSendReady === true && !outboundPlaybackTargetMatchedCallerRtp) {
+  } else if (pipecatOutboundRtpEvidence?.rtpSocketSendReady === true && !outboundPlaybackTargetMatchedCallerRtp && !outboundBroadcastReviewReady) {
     nextActions.push("Discover the caller RTP target from FreeSWITCH media headers and send playback RTP to that target.");
   } else if (!playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence)) {
     nextActions.push(
@@ -1309,11 +1314,14 @@ export class EslBridge {
       pipecatPlaybackEventPosted: false,
       pipecatPlaybackEventSignature: null,
       freeswitchBroadcast: null,
+      initialGreetingPlaybackDurationMs: 0,
     });
     this.currentRtpCallUuid = uuid;
     this.send(`api uuid_record ${uuid} start ${freeswitchPath}`);
     await this.playPipecatOutputFixture(uuid);
-    await this.playLiveKokoroTts(latestAgentText(response.body) || this.options.initialGreetingText, uuid);
+    const greetingPlayback = await this.playLiveKokoroTts(latestAgentText(response.body) || this.options.initialGreetingText, uuid);
+    const call = this.callMap.get(uuid);
+    if (call) call.initialGreetingPlaybackDurationMs = greetingPlayback?.totalDurationMs ?? 0;
     await this.postPipecatPlaybackEvent(uuid);
   }
 
@@ -1324,7 +1332,10 @@ export class EslBridge {
     let pipecatRtpFrameBatch = (call.rtpCollector ?? this.rtpCollector).summary();
     if (pipecatRtpFrameBatch.frames.length === 0) {
       try {
-        pipecatRtpFrameBatch = await pipecatInputFrameBatchFromWav(call.wavPath, { maxFrames: this.options.rtpMaxFrames ?? 200 });
+        pipecatRtpFrameBatch = await pipecatInputFrameBatchFromWav(call.wavPath, {
+          maxFrames: this.options.rtpMaxFrames ?? 200,
+          startOffsetMs: call.initialGreetingPlaybackDurationMs ?? 0,
+        });
         this.events.push({ at: nowIso(), pipecatRecordingFrameBatch: { packetCount: pipecatRtpFrameBatch.packetCount, captureSource: pipecatRtpFrameBatch.captureSource } });
       } catch (error) {
         pipecatRtpFrameBatch.errors.push({ at: nowIso(), error: error instanceof Error ? error.message : String(error), source: "freeswitch_recording_wav" });
