@@ -1816,6 +1816,8 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /connectPipecatVoice/);
     assert.match(response.body, /togglePipecatMute/);
     assert.match(response.body, /probeVoiceBridge/);
+    assert.match(response.body, /hasVerifiedLiveVoicePlayback/);
+    assert.match(response.body, /readiness polling preserved the active session state/);
     assert.match(response.body, /startVoiceBridgeProbing/);
     assert.match(response.body, /browserWebrtcReadinessUrl/);
     assert.match(response.body, /captureTranscriptScroll/);
