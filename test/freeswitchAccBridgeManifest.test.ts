@@ -1515,7 +1515,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
 });
 
 
-test("FreeSWITCH bridge forwards attached rtc-asr evidence to ACC when live rtc-asr is not configured", async () => {
+test("FreeSWITCH bridge blocks attached rtc-asr evidence when live rtc-asr is not configured", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-forward-rtc-asr-"));
   const audioPath = path.join(tempDir, "fs-call.wav");
@@ -1569,12 +1569,12 @@ test("FreeSWITCH bridge forwards attached rtc-asr evidence to ACC when live rtc-
     });
 
     assert.equal(receivedEvents.some((event) => event.eventType === "media.capture"), true);
-    const transcriptEvent = receivedEvents.find((event) => event.eventType === "media.transcript");
-    assert.equal(transcriptEvent?.text ?? transcriptEvent?.transcript, "I need billing help.");
-    assert.equal(transcriptEvent?.rtcAsrEvidencePath, rtcAsrEvidencePath);
+    assert.equal(receivedEvents.some((event) => event.eventType === "media.transcript"), false);
+    const blockedEvent = receivedEvents.find((event) => event.eventType === "rtc_asr.blocked");
+    assert.match(blockedEvent?.blocker ?? "", /RTC_ASR_WS_URL unset/);
     const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { reviewReady: boolean; blockers: string[] };
     assert.equal(manifest.reviewReady, false);
-    assert.ok(manifest.blockers.some((blocker) => blocker.includes("caller playback RTP was not sent")));
+    assert.ok(manifest.blockers.some((blocker) => blocker.includes("RTC_ASR_WS_URL was not set")));
   } finally {
     server.close();
     await rm(tempDir, { recursive: true, force: true });

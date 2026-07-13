@@ -2027,9 +2027,7 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
         ? hasCallerPlaybackProof
           ? "caller_playback_confirmed"
           : playbackEvent.detail.rtpSocketSendReady === true
-          ? playbackEvent.detail.callerPlaybackConfirmed === true
-            ? "caller_playback_confirmed"
-            : "rtp_sent_to_socket"
+          ? "rtp_sent_to_socket"
           : playbackEvent.detail.outboundRtpReady === true
             ? "rtp_packetized"
             : "blocked"

@@ -880,6 +880,10 @@ function playbackHasCompleteFreeswitchBroadcastEvidence(playbackEvidence) {
   return broadcast?.mode === "freeswitch_uuid_broadcast" && hasHostPath && hasFreeswitchPath && hasAudioBytes;
 }
 
+function playbackHasPacketizedEvidence(playbackEvidence) {
+  return playbackEvidence?.outboundRtpReady === true && Number.isFinite(playbackEvidence?.packetCount) && playbackEvidence.packetCount > 0;
+}
+
 function callerPlaybackEvidencePath(playbackEvidence) {
   const evidencePath = playbackEvidence?.callerPlaybackEvidencePath;
   return typeof evidencePath === "string" && evidencePath.trim().length > 0 ? evidencePath : null;
@@ -911,6 +915,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
   const outboundBroadcastReviewReady =
     outboundBroadcastPlaybackAttempted &&
     outboundBroadcastEvidenceComplete &&
+    playbackHasPacketizedEvidence(pipecatOutboundRtpEvidence) &&
     playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence);
   const outboundPlaybackReviewReady = outboundSocketPlaybackReviewReady || outboundBroadcastReviewReady;
   const rtcAsrStreamEvidence = options.rtcAsrStreamEvidence ?? null;
@@ -937,6 +942,8 @@ export async function buildFreeswitchLiveProofManifest(options) {
     blockers.push("FreeSWITCH caller playback RTP was not sent, so SIP bidirectional playback is not proven.");
   } else if (outboundBroadcastPlaybackAttempted && !outboundBroadcastEvidenceComplete) {
     blockers.push("FreeSWITCH uuid_broadcast playback evidence is incomplete: host path, FreeSWITCH path, and positive audio byte count are required.");
+  } else if (outboundBroadcastPlaybackAttempted && !playbackHasPacketizedEvidence(pipecatOutboundRtpEvidence)) {
+    blockers.push("FreeSWITCH uuid_broadcast playback evidence is missing packetized Pipecat/Kokoro RTP evidence.");
   } else if (pipecatOutboundRtpEvidence?.rtpSocketSendReady === true && !outboundPlaybackTargetMatchedCallerRtp && !outboundBroadcastReviewReady) {
     blockers.push("FreeSWITCH caller playback RTP was sent, but the playback target did not match the caller RTP target.");
   } else if (!playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence)) {
@@ -1409,20 +1416,7 @@ export class EslBridge {
     }
     await this.postPipecatPlaybackEvent(uuid);
 
-    const currentRtcAsrEvidence = this.options.rtcAsrEvidencePath
-      ? await inspectRtcAsrEvidence(this.options.rtcAsrEvidencePath, await stat(this.options.rtcAsrEvidencePath).catch(() => null))
-      : null;
-    if (this.options.rtcAsrEvidencePath && currentRtcAsrEvidence?.ready && currentRtcAsrEvidence.transcript) {
-      const transcriptResponse = await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
-        eventType: "media.transcript",
-        timestamp: nowIso(),
-        sipCallId: uuid,
-        fsUuid: uuid,
-        text: currentRtcAsrEvidence.transcript,
-        rtcAsrEvidencePath: this.options.rtcAsrEvidencePath,
-      });
-      await this.playLiveKokoroTts(latestAgentText(transcriptResponse.body), uuid);
-    } else if (!this.options.rtcAsrUrl) {
+    if (!this.options.rtcAsrUrl) {
       await postJson(this.options.accBaseUrl, "/api/live-sip/events", {
         eventType: "rtc_asr.blocked",
         timestamp: nowIso(),
