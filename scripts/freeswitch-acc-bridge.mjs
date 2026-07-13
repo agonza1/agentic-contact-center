@@ -718,7 +718,7 @@ export async function pipecatInputFrameBatchFromWav(filePath, options = {}) {
     });
   }
   return {
-    liveRtpCaptured: frames.length > 0,
+    liveRtpCaptured: false,
     frameType: "InputAudioRawFrameBatch",
     audioFormat: "pcm_s16le",
     sampleRateHz: 8000,
@@ -1356,7 +1356,11 @@ export class EslBridge {
     await this.playPipecatOutputFixture(uuid);
     const greetingPlayback = await this.playLiveKokoroTts(latestAgentText(response.body) || this.options.initialGreetingText, uuid);
     const call = this.callMap.get(uuid);
-    if (call) call.initialGreetingPlaybackDurationMs = greetingPlayback?.totalDurationMs ?? 0;
+    if (call) {
+      const greetingWasSentToCaller =
+        greetingPlayback?.rtpSocketSendReady === true || playbackHasCompleteFreeswitchBroadcastEvidence(greetingPlayback);
+      call.initialGreetingPlaybackDurationMs = greetingWasSentToCaller ? greetingPlayback.totalDurationMs : 0;
+    }
     await this.postPipecatPlaybackEvent(uuid);
   }
 

@@ -111,7 +111,7 @@ test("FreeSWITCH bridge derives Pipecat input frames from recorded caller WAV fa
       frames: Array<{ frameType: string; source: string; timestamp: number; durationMs: number; pcm16Base64: string }>;
     };
 
-    assert.equal(batch.liveRtpCaptured, true);
+    assert.equal(batch.liveRtpCaptured, false);
     assert.equal(batch.captureSource, "freeswitch_recording_wav");
     assert.equal(batch.packetCount, 2);
     assert.equal(batch.totalDurationMs, 40);
