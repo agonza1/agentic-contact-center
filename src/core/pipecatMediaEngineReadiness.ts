@@ -37,8 +37,10 @@ export function buildPipecatMediaEngineReadinessPayload() {
       },
       sipTransportStrategy: {
         transport: "FreeSWITCH/SIP RTP adapter",
-        sharesPipelineProcessors: true,
-        note: "SIP should feed the same rtc-asr, ACC adapter, and Kokoro processors; SmallWebRTCTransport remains browser-only.",
+        sharesPipelineProcessors: false,
+        processorContractAligned: true,
+        liveMediaProofComplete: false,
+        note: "SIP is a FreeSWITCH/RTP transport aligned to the rtc-asr, ACC adapter, and Kokoro processor contract. It must not be called complete until it is wired through the shared Pipeline processors and live caller-audible proof exists.",
       },
       flowsDecision: {
         owner: "ACC TypeScript flow for current cancellation-rescue MVP",
@@ -78,9 +80,11 @@ export function buildPipecatMediaEngineReadinessPayload() {
           source: "FreeSWITCH local SIP extension 8600",
           transport: "SIP/FreeSWITCH RTP",
           implementedNow: true,
+          processorContractAligned: true,
+          liveMediaProofComplete: false,
           currentEntryPoint: "scripts/freeswitch-acc-bridge.mjs",
-          path: "SIP/FreeSWITCH RTP -> Pipecat InputAudioRawFrame -> rtc-asr -> ACC caller-turn -> Kokoro -> FreeSWITCH uuid_broadcast caller playback",
-          blocker: liveSoftphoneProofBlocker,
+          path: "SIP/FreeSWITCH RTP -> Pipecat-compatible PCM frames -> rtc-asr -> ACC caller-turn -> Kokoro -> FreeSWITCH uuid_broadcast caller playback",
+          blocker: `${liveSoftphoneProofBlocker} The adapter is not yet the same Python Pipeline object used by the browser SmallWebRTC path.`,
         },
         {
           id: "signalwire_sip_trunk",
@@ -95,12 +99,12 @@ export function buildPipecatMediaEngineReadinessPayload() {
     },
     implementedNow: [
       "Browser voice turns use scripts/pipecat-browser-webrtc-bridge.py with Pipecat SmallWebRTCTransport and a Pipeline of rtc-asr, ACC caller-turn, Kokoro, and transport output processors.",
-      "Local SIP and FreeSWITCH proof paths preserve live_capture/generated_media labels, attach WAV/SIP artifacts, collect live PCMU RTP into Pipecat InputAudioRawFrameBatch evidence, stream captured frames to rtc-asr when RTC_ASR_WS_URL is set, packetize Pipecat/Kokoro TTS frames as PCMU RTP, write Kokoro WAV playback artifacts, issue FreeSWITCH uuid_broadcast, and report RTP socket-send playback evidence.",
+      "Local SIP and FreeSWITCH proof paths preserve live_capture/generated_media labels, attach WAV/SIP artifacts, collect live PCMU RTP into Pipecat-compatible frame evidence, stream captured frames to rtc-asr when RTC_ASR_WS_URL is set, packetize Kokoro/Pipecat-shaped TTS frames as PCMU RTP, write Kokoro WAV playback artifacts, issue FreeSWITCH uuid_broadcast, and report RTP socket-send playback evidence. This is transport alignment, not completed SIP acceptance.",
       "SignalWire readiness is explicit through local webhook labels and the future SIP trunk-to-FreeSWITCH route.",
       "Operator console payloads label local_sip, signalwire_live, live_capture, generated_media, rtc_asr_live, and rtc_asr_blocked modes.",
     ],
     remainingWork: [
-      "Feed rtc-asr final transcripts from the SIP media adapter directly into the shared ACC call-turn loop during the call.",
+      "Wire the SIP media adapter through the same shared Pipecat Pipeline processors used by the browser SmallWebRTC path instead of only mirroring their rtc-asr/ACC/Kokoro contract.",
       "Capture live softphone evidence that the caller hears Kokoro/Pipecat TTS played through FreeSWITCH uuid_broadcast on the 8600 path.",
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
     ],
@@ -113,9 +117,14 @@ export function buildPipecatMediaEngineReadinessPayload() {
         evidence: "scripts/pipecat-browser-webrtc-bridge.py builds SmallWebRTCTransport plus Pipeline([transport.input(), RtcAsrTurnProcessor, AccCallerTurnProcessor, KokoroTtsProcessor, transport.output()]).",
       },
       {
-        name: "sip_freeswitch_uses_same_realtime_pipecat_engine",
+        name: "sip_freeswitch_processor_contract_aligned",
         passed: true,
-        evidence: "scripts/freeswitch-acc-bridge.mjs now sends answer-time Kokoro/Pipecat TTS to the caller via PCMU RTP proof packets and a FreeSWITCH-visible WAV played with uuid_broadcast.",
+        evidence: "scripts/freeswitch-acc-bridge.mjs preserves the rtc-asr -> ACC caller-turn -> Kokoro contract behind a FreeSWITCH/RTP transport, but does not yet instantiate the same Python Pipeline object as the browser path.",
+      },
+      {
+        name: "sip_caller_audible_playback_live_proof",
+        passed: false,
+        evidence: "SIP remains blocked until a fresh Linphone/FreeSWITCH 8600 proof bundle shows caller-audible Kokoro/Pipecat playback plus current rtc-asr final transcript evidence.",
       },
       {
         name: "shared_media_engine_contract_documented",

@@ -54,7 +54,9 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     ]);
     assert.equal(payload.pipecat14Alignment.browserPrimaryBridge.current, "scripts/pipecat-browser-webrtc-bridge.py");
     assert.equal(payload.pipecat14Alignment.browserPrimaryBridge.legacyFallbackAllowed, false);
-    assert.equal(payload.pipecat14Alignment.sipTransportStrategy.sharesPipelineProcessors, true);
+    assert.equal(payload.pipecat14Alignment.sipTransportStrategy.sharesPipelineProcessors, false);
+    assert.equal(payload.pipecat14Alignment.sipTransportStrategy.processorContractAligned, true);
+    assert.equal(payload.pipecat14Alignment.sipTransportStrategy.liveMediaProofComplete, false);
     assert.equal(payload.pipecat14Alignment.flowsDecision.owner, "ACC TypeScript flow for current cancellation-rescue MVP");
     assert.equal(payload.pipecat14Alignment.flowsDecision.flowManagerRequiredNow, false);
     assert.deepEqual(payload.validationCommands, [
@@ -74,8 +76,12 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     );
     assert.equal(adapters.find((adapter: any) => adapter.id === "browser_webrtc").implementedNow, true);
     assert.equal(adapters.find((adapter: any) => adapter.id === "browser_webrtc").currentEntryPoint, "scripts/pipecat-browser-webrtc-bridge.py");
-    assert.equal(adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp").implementedNow, true);
-    assert.match(adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp").blocker, /live softphone capture/);
+    const sipAdapter = adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp");
+    assert.equal(sipAdapter.implementedNow, true);
+    assert.equal(sipAdapter.processorContractAligned, true);
+    assert.equal(sipAdapter.liveMediaProofComplete, false);
+    assert.match(sipAdapter.blocker, /live softphone capture/);
+    assert.match(sipAdapter.blocker, /not yet the same Python Pipeline object/);
     assert.match(adapters.find((adapter: any) => adapter.id === "signalwire_sip_trunk").blocker, /past-call import remains out of scope/);
 
     assert.deepEqual(payload.reviewBlockers, [
@@ -86,8 +92,12 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       true,
     );
     assert.equal(
-      payload.acceptanceCriteria.find((criterion: any) => criterion.name === "sip_freeswitch_uses_same_realtime_pipecat_engine").passed,
+      payload.acceptanceCriteria.find((criterion: any) => criterion.name === "sip_freeswitch_processor_contract_aligned").passed,
       true,
+    );
+    assert.equal(
+      payload.acceptanceCriteria.find((criterion: any) => criterion.name === "sip_caller_audible_playback_live_proof").passed,
+      false,
     );
     assert.equal(
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "signalwire_past_call_gap_explicit").passed,
