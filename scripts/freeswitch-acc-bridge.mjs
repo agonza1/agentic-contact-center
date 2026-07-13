@@ -857,6 +857,11 @@ function playbackHasCallerAudibleProof(playbackEvidence) {
   return playbackEvidence?.callerPlaybackConfirmed === true && hasEvidencePath && (hasSocketSend || hasBroadcast);
 }
 
+function callerPlaybackEvidencePath(playbackEvidence) {
+  const evidencePath = playbackEvidence?.callerPlaybackEvidencePath;
+  return typeof evidencePath === "string" && evidencePath.trim().length > 0 ? evidencePath : null;
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -871,6 +876,8 @@ export async function buildFreeswitchLiveProofManifest(options) {
   const rtpPacketCountEstimate = audioBytes > 44 ? Math.floor((audioBytes - 44) / 320) : 0;
   const pipecatRtpEvidence = options.pipecatRtpEvidence ?? null;
   const pipecatOutboundRtpEvidence = options.pipecatOutboundRtpEvidence ?? null;
+  const callerPlaybackPath = callerPlaybackEvidencePath(pipecatOutboundRtpEvidence);
+  const callerPlaybackStats = callerPlaybackPath ? await stat(callerPlaybackPath).catch(() => null) : null;
   const outboundPlaybackTargetMatchedCallerRtp = playbackTargetMatchesCallerRtp(options.remoteRtp, pipecatOutboundRtpEvidence);
   const outboundBroadcastPlaybackAttempted = pipecatOutboundRtpEvidence?.freeswitchBroadcast?.mode === "freeswitch_uuid_broadcast";
   const outboundSocketPlaybackReviewReady =
@@ -911,6 +918,8 @@ export async function buildFreeswitchLiveProofManifest(options) {
         ? "FreeSWITCH uuid_broadcast playback was issued, but no caller-audible playback proof is attached."
         : "FreeSWITCH caller playback RTP was sent to the caller target, but no caller-audible playback proof is attached.",
     );
+  } else if (!callerPlaybackStats || callerPlaybackStats.size === 0) {
+    blockers.push("Caller-audible playback proof path was attached, but the artifact is missing or empty.");
   }
 
   const nextActions = [];
@@ -940,6 +949,8 @@ export async function buildFreeswitchLiveProofManifest(options) {
         ? "Attach caller-audible playback proof for the FreeSWITCH uuid_broadcast path before marking the proof review-ready."
         : "Attach caller-audible playback proof, such as a softphone capture/check artifact, before marking the proof review-ready.",
     );
+  } else if (!callerPlaybackStats || callerPlaybackStats.size === 0) {
+    nextActions.push("Write the caller-audible playback proof artifact before marking the FreeSWITCH proof review-ready.");
   }
 
   const artifactIntegrity = [];
@@ -971,6 +982,16 @@ export async function buildFreeswitchLiveProofManifest(options) {
       sha256: await sha256File(options.rtcAsrEvidencePath),
       sizeBytes: rtcAsrEvidenceStats.size,
       readiness: rtcAsrEvidenceInspection.ready ? "ready" : "blocked",
+    });
+  }
+  if (callerPlaybackPath) {
+    artifactIntegrity.push({
+      artifactId: "caller-audible-playback-proof",
+      kind: "playback_evidence",
+      path: callerPlaybackPath,
+      sha256: callerPlaybackStats ? await sha256File(callerPlaybackPath) : null,
+      sizeBytes: callerPlaybackStats?.size ?? 0,
+      readiness: callerPlaybackStats && callerPlaybackStats.size > 0 ? "ready" : "blocked",
     });
   }
 
@@ -1015,13 +1036,15 @@ export async function buildFreeswitchLiveProofManifest(options) {
         ? { ...pipecatOutboundRtpEvidence, targetMatchedCallerRtp: outboundPlaybackTargetMatchedCallerRtp }
         : null,
     },
-    artifacts: { audioWav: options.wavPath, sipLog: options.logPath, rtcAsrEvidence: options.rtcAsrEvidencePath ?? null },
+    artifacts: { audioWav: options.wavPath, sipLog: options.logPath, rtcAsrEvidence: options.rtcAsrEvidencePath ?? null, callerPlaybackEvidence: callerPlaybackPath },
     artifactIntegrity,
     reviewReady:
       blockers.length === 0 &&
       runtimeModeLabels.telephony === "local_sip" &&
       rtcAsrEvidenceInspection.ready &&
       outboundPlaybackReviewReady &&
+      callerPlaybackStats &&
+      callerPlaybackStats.size > 0 &&
       !generatedMedia,
     reviewGate: {
       requiredLabels: requiredReviewLabels,

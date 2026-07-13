@@ -605,7 +605,9 @@ async function main() {
   const audioPath = path.resolve(repoRoot, liveManifest.artifacts.audioWav);
   const sipLogPath = path.resolve(repoRoot, liveManifest.artifacts.sipLog);
   const rtcAsrEvidencePath = liveManifest.artifacts.rtcAsrEvidence ? path.resolve(repoRoot, liveManifest.artifacts.rtcAsrEvidence) : null;
+  const callerPlaybackEvidencePath = liveManifest.artifacts.callerPlaybackEvidence ? path.resolve(repoRoot, liveManifest.artifacts.callerPlaybackEvidence) : null;
   const rtcAsrEvidencePathExists = await fileExists(rtcAsrEvidencePath);
+  const callerPlaybackEvidencePathExists = await fileExists(callerPlaybackEvidencePath);
   const runtimeTracePath = path.join(outDir, "runtime-event-trace.json");
   const blockerPath = path.join(outDir, "rtc-asr-blocker.json");
   const labels = [
@@ -645,6 +647,7 @@ async function main() {
         await artifact(runtimeTracePath, "agentic-contact-center-runtime-event-trace", "action_trace", "application/json"),
         await artifact(blockerPath, "rtc-asr-live-status", "manifest", "application/json"),
         ...(rtcAsrEvidencePathExists ? [await artifact(rtcAsrEvidencePath, "rtc-asr-transcript-evidence", "transcript_evidence", "application/json")] : []),
+        ...(callerPlaybackEvidencePathExists ? [await artifact(callerPlaybackEvidencePath, "caller-audible-playback-proof", "playback_evidence", "application/json")] : []),
       ],
       provenance: {
         source_repo: "agonza1/agentic-contact-center",
@@ -679,6 +682,7 @@ async function main() {
     await integrity(blockerPath, "rtc-asr-live-status", "manifest"),
     await integrity(assertRequestPath, "conversation-agent-evals-assert-request", "assert_request"),
     ...(rtcAsrEvidencePathExists ? [await integrity(rtcAsrEvidencePath, "rtc-asr-transcript-evidence", "transcript_evidence")] : []),
+    ...(callerPlaybackEvidencePathExists ? [await integrity(callerPlaybackEvidencePath, "caller-audible-playback-proof", "playback_evidence")] : []),
   ];
   const sipEvidence = await sipLogEvidence(sipLogPath);
   const rtcAsrEvidenceResult = await rtcAsrEvidence(rtcAsrEvidencePath);
@@ -712,6 +716,7 @@ async function main() {
       rtcAsrStatus: rel(blockerPath),
       conversationAgentEvalsRequest: rel(assertRequestPath),
       rtcAsrEvidence: rtcAsrEvidencePath ? rel(rtcAsrEvidencePath) : null,
+      callerPlaybackEvidence: callerPlaybackEvidencePath ? rel(callerPlaybackEvidencePath) : null,
     },
     artifactIntegrity,
     reviewGate: gate,

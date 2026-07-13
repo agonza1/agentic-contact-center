@@ -1090,7 +1090,9 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     assert.ok(invalidEvidenceManifest.artifactIntegrity.some((artifact) => artifact.artifactId === "rtc-asr-transcript-evidence" && artifact.readiness === "blocked"));
 
     const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+    const callerPlaybackEvidencePath = path.join(tempDir, "caller-playback-proof.json");
     await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: { text: "hello from local sip", final: true } })}\n`, "utf8");
+    await writeFile(callerPlaybackEvidencePath, `${JSON.stringify({ confirmed: true, method: "softphone_capture", note: "caller heard the Kokoro response" })}\n`, "utf8");
     const readyScript = `
       const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
       const manifest = await buildFreeswitchLiveProofManifest({
@@ -1116,7 +1118,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
           ssrc: 0xacc0ffee,
           lastSentAt: "2026-06-30T10:00:02.220Z",
           callerPlaybackConfirmed: true,
-          callerPlaybackEvidencePath: "artifacts/freeswitch-live/caller-playback-proof.json"
+          callerPlaybackEvidencePath: ${JSON.stringify(callerPlaybackEvidencePath)}
         }
       });
       console.log(JSON.stringify(manifest));
@@ -1125,9 +1127,11 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
       cwd: repoRoot,
       encoding: "utf8",
     });
-    const readyManifest = JSON.parse(readyResult.stdout) as typeof manifest;
+    const readyManifest = JSON.parse(readyResult.stdout) as typeof manifest & { artifacts: { callerPlaybackEvidence: string | null } };
     assert.equal(readyManifest.reviewReady, true);
     assert.equal(readyManifest.artifacts.rtcAsrEvidence, rtcAsrEvidencePath);
+    assert.equal(readyManifest.artifacts.callerPlaybackEvidence, callerPlaybackEvidencePath);
+    assert.ok(readyManifest.artifactIntegrity.some((artifact) => artifact.artifactId === "caller-audible-playback-proof" && artifact.readiness === "ready"));
 
     const socketOnlyScript = `
       const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
@@ -1166,6 +1170,45 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
     assert.ok(socketOnlyManifest.blockers.some((blocker) => blocker.includes("caller-audible playback proof")));
     assert.ok(readyManifest.artifactIntegrity.some((artifact) => artifact.artifactId === "rtc-asr-transcript-evidence" && artifact.readiness === "ready"));
 
+    const missingPlaybackProofScript = `
+      const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
+      const manifest = await buildFreeswitchLiveProofManifest({
+        uuid: "fs-proof-missing-playback-proof",
+        accCallId: "demo-call-missing-playback-proof",
+        destination: "8600",
+        wavPath: ${JSON.stringify(audioPath)},
+        logPath: ${JSON.stringify(logPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
+        telephonyMode: "local_sip",
+        remoteRtp: { address: "127.0.0.1", port: 40002 },
+        pipecatOutboundRtpEvidence: {
+          outboundRtpReady: true,
+          rtpSocketSendReady: true,
+          packetCount: 3,
+          sentPacketCount: 3,
+          remoteHost: "127.0.0.1",
+          remotePort: 40002,
+          totalDurationMs: 60,
+          nextSequenceNumber: 3,
+          nextTimestamp: 480,
+          ssrc: 0xacc0ffee,
+          lastSentAt: "2026-06-30T10:00:02.220Z",
+          callerPlaybackConfirmed: true,
+          callerPlaybackEvidencePath: ${JSON.stringify(path.join(tempDir, "missing-caller-playback-proof.json"))}
+        }
+      });
+      console.log(JSON.stringify(manifest));
+    `;
+    const missingPlaybackProofResult = await execFileAsync(process.execPath, ["--input-type=module", "--eval", missingPlaybackProofScript], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const missingPlaybackProofManifest = JSON.parse(missingPlaybackProofResult.stdout) as typeof manifest;
+    assert.equal(missingPlaybackProofManifest.reviewReady, false);
+    assert.ok(missingPlaybackProofManifest.blockers.some((blocker) => blocker.includes("artifact is missing or empty")));
+    assert.ok(missingPlaybackProofManifest.artifactIntegrity.some((artifact) => artifact.artifactId === "caller-audible-playback-proof" && artifact.readiness === "blocked"));
+
     const broadcastOnlyScript = `
       const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
       const manifest = await buildFreeswitchLiveProofManifest({
@@ -1197,7 +1240,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
             audioBytes: 320
           },
           callerPlaybackConfirmed: true,
-          callerPlaybackEvidencePath: "artifacts/freeswitch-live/caller-playback-proof.json"
+          callerPlaybackEvidencePath: ${JSON.stringify(callerPlaybackEvidencePath)}
         }
       });
       console.log(JSON.stringify(manifest));
@@ -1233,6 +1276,7 @@ test("FreeSWITCH bridge manifest is bundle-compatible and blocks missing rtc-asr
       artifactIntegrity: Array<{ artifactId: string; readiness: string }>;
     };
     assert.equal(readyBundleManifest.artifacts.rtcAsrEvidence, path.relative(repoRoot, rtcAsrEvidencePath).replaceAll(path.sep, "/"));
+    assert.ok(readyBundleManifest.artifactIntegrity.some((artifact) => artifact.artifactId === "caller-audible-playback-proof" && artifact.readiness === "ready"));
     assert.ok(readyBundleManifest.artifactIntegrity.some((artifact) => artifact.artifactId === "rtc-asr-transcript-evidence" && artifact.readiness === "ready"));
     assert.match(readyBundleSummary.reviewGateReportJson, /review-gate-report\.json$/);
     const readyReviewGateReport = JSON.parse(await readFile(path.join(readyBundleDir, "review-gate-report.json"), "utf8")) as {
@@ -1403,9 +1447,11 @@ test("FreeSWITCH bridge manifest accepts nested OpenAI realtime transcript evide
   const audioPath = path.join(tempDir, "fs-call.wav");
   const logPath = path.join(tempDir, "freeswitch-esl-events.json");
   const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+  const callerPlaybackEvidencePath = path.join(tempDir, "caller-playback-proof.json");
 
   try {
     await writeFile(audioPath, validWavFixture());
+    await writeFile(callerPlaybackEvidencePath, JSON.stringify({ confirmed: true, method: "softphone_capture" }) + "\n", "utf8");
     await writeFile(logPath, `${JSON.stringify({ events: [{ headers: { "Event-Name": "CHANNEL_ANSWER" } }] })}\n`, "utf8");
     await writeFile(
       rtcAsrEvidencePath,
@@ -1447,7 +1493,7 @@ test("FreeSWITCH bridge manifest accepts nested OpenAI realtime transcript evide
           ssrc: 0xacc0ffee,
           lastSentAt: "2026-06-30T10:00:02.220Z",
           callerPlaybackConfirmed: true,
-          callerPlaybackEvidencePath: "artifacts/freeswitch-live/caller-playback-proof.json"
+          callerPlaybackEvidencePath: ${JSON.stringify(callerPlaybackEvidencePath)}
         }
       });
       console.log(JSON.stringify(manifest));
@@ -1476,9 +1522,11 @@ test("FreeSWITCH bridge manifest accepts string-wrapped rtc-asr evidence", async
   const audioPath = path.join(tempDir, "fs-call.wav");
   const logPath = path.join(tempDir, "freeswitch-esl-events.json");
   const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+  const callerPlaybackEvidencePath = path.join(tempDir, "caller-playback-proof.json");
 
   try {
     await writeFile(audioPath, validWavFixture());
+    await writeFile(callerPlaybackEvidencePath, JSON.stringify({ confirmed: true, method: "softphone_capture" }) + "\n", "utf8");
     await writeFile(logPath, JSON.stringify({ events: [{ headers: { "Event-Name": "CHANNEL_ANSWER" } }] }) + "\n", "utf8");
     await writeFile(rtcAsrEvidencePath, JSON.stringify({
       event: JSON.stringify({
@@ -1513,7 +1561,7 @@ test("FreeSWITCH bridge manifest accepts string-wrapped rtc-asr evidence", async
           ssrc: 0xacc0ffee,
           lastSentAt: "2026-06-30T10:00:02.220Z",
           callerPlaybackConfirmed: true,
-          callerPlaybackEvidencePath: "artifacts/freeswitch-live/caller-playback-proof.json"
+          callerPlaybackEvidencePath: ${JSON.stringify(callerPlaybackEvidencePath)}
         }
       });
       console.log(JSON.stringify(manifest));
@@ -1539,9 +1587,11 @@ test("FreeSWITCH bridge manifest accepts wrapped channel ASR evidence", async ()
   const audioPath = path.join(tempDir, "fs-call.wav");
   const logPath = path.join(tempDir, "freeswitch-esl-events.json");
   const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+  const callerPlaybackEvidencePath = path.join(tempDir, "caller-playback-proof.json");
 
   try {
     await writeFile(audioPath, validWavFixture());
+    await writeFile(callerPlaybackEvidencePath, JSON.stringify({ confirmed: true, method: "softphone_capture" }) + "\n", "utf8");
     await writeFile(logPath, JSON.stringify({ events: [{ headers: { "Event-Name": "CHANNEL_ANSWER" } }] }) + "\n", "utf8");
     await writeFile(rtcAsrEvidencePath, JSON.stringify({
       type: "Results",
@@ -1575,7 +1625,7 @@ test("FreeSWITCH bridge manifest accepts wrapped channel ASR evidence", async ()
           ssrc: 0xacc0ffee,
           lastSentAt: "2026-06-30T10:00:02.220Z",
           callerPlaybackConfirmed: true,
-          callerPlaybackEvidencePath: "artifacts/freeswitch-live/caller-playback-proof.json"
+          callerPlaybackEvidencePath: ${JSON.stringify(callerPlaybackEvidencePath)}
         }
       });
       console.log(JSON.stringify(manifest));
