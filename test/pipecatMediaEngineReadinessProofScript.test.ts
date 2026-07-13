@@ -29,7 +29,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.match(stdout, /Saved Pipecat media engine readiness artifact/);
     assert.match(stdout, /Updated latest Pipecat media engine readiness artifact/);
     assert.match(stdout, /Review ready: no/);
-    assert.match(stdout, /Acceptance criteria: 6\/7/);
+    assert.match(stdout, /Acceptance criteria: 7\/8/);
     assert.match(stdout, /Next slice: live_softphone_playback_acceptance/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
@@ -65,8 +65,8 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
       reviewBlockers: [
         "Live softphone caller playback has not yet been accepted end-to-end; the current SIP bridge can collect FreeSWITCH RTP into Pipecat input frames, stream those frames to rtc-asr, packetize Pipecat/Kokoro TTS frames back to PCMU RTP, and report socket-send playback evidence.",
       ],
-      acceptanceCriteriaPassed: 6,
-      acceptanceCriteriaTotal: 7,
+      acceptanceCriteriaPassed: 7,
+      acceptanceCriteriaTotal: 8,
       implementedAdapters: ["browser_webrtc"],
       blockedAdapters: ["sip_freeswitch_rtp", "signalwire_sip_trunk"],
       nextUnblockedSlice: {
@@ -83,7 +83,8 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.equal(artifact.readiness.ok, true);
     assert.equal(artifact.readiness.route, "/api/pipecat-media-engine/readiness");
     assert.equal(artifact.readiness.status, "shared_contract_ready_sip_rtp_blocked");
-    assert.equal(artifact.readiness.acceptanceCriteria.filter((criterion) => criterion.passed).length, 6);
+    assert.equal(artifact.readiness.acceptanceCriteria.filter((criterion) => criterion.passed).length, 7);
+    assert.equal(artifact.readiness.acceptanceCriteria.find((criterion) => criterion.name === "pipecat_14_small_webrtc_migration_recorded")?.passed, true);
     assert.deepEqual(latestArtifact, artifact);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
