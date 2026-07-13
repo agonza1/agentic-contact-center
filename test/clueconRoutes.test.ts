@@ -549,6 +549,24 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /xform-carrier/);
   assert.match(narrative.body, /media-wave/);
   assert.match(narrative.body, /media-tokens/);
+  assert.equal((narrative.body.match(/data-slide="\d+"/g) ?? []).length, 9);
+  assert.match(narrative.body, /Deterministic telephony meets probabilistic inference/);
+  assert.match(narrative.body, /One runs on clocks\. One runs on confidence/);
+  assert.match(narrative.body, /id="vad-interruption"/);
+  assert.match(narrative.body, /id="vad-mic"/);
+  assert.match(narrative.body, /id="vad-threshold"/);
+  assert.match(narrative.body, /VADUserStartedSpeakingFrame/);
+  assert.match(narrative.body, /UserStoppedSpeakingFrame/);
+  assert.match(narrative.body, /InterruptionFrame clears queue/);
+  assert.match(narrative.body, /function vadLoop\(\)/);
+  assert.match(narrative.body, /navigator\.mediaDevices\.getUserMedia/);
+  assert.match(narrative.body, /window\.speechSynthesis\.cancel/);
+  assert.match(narrative.body, /vadStarting: false/);
+  assert.match(narrative.body, /vadStartToken/);
+  assert.match(narrative.body, /vadPendingStream/);
+  assert.match(narrative.body, /Starting microphone…/);
+  assert.match(narrative.body, /MIC_START_CANCELLED/);
+  assert.match(narrative.body, /slideCount: 9/);
   assert.match(narrative.body, /Run scripted demo/);
   assert.match(narrative.body, /Run scripted proof/);
   assert.match(narrative.body, /Run eval proof/);
@@ -612,8 +630,14 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /Agentic Contact Center/);
   assert.match(html, /Static GitHub Pages snapshot/);
   assert.match(html, /window\.__CLUECON__/);
+  assert.match(html, /Browser microphone VAD/);
+  assert.match(html, /Simulate barge-in/);
+  assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 9);
   assert.match(html, /href="\.\/present\/"/);
   assert.doesNotMatch(html, /href="\/cluecon"/);
+  for (const [, script] of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+    assert.doesNotThrow(() => new Function(script));
+  }
 
   const presentHtml = readFileSync(presentPath, "utf8");
   assert.match(presentHtml, /href="\.\/"/);
