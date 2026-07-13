@@ -147,7 +147,7 @@ const activeClueConBrainEvidence: Array<{ id: string; type: "preview" | "apply" 
 ];
 
 async function probeBrowserWebrtcBridgeRuntime(): Promise<BrowserWebrtcBridgeRuntimeProbe> {
-  const bridgeUrl = `${getBrowserWebrtcBridgeBaseUrl().replace(/\/$/, "")}/health`;
+  const bridgeUrl = `${getBrowserWebrtcBridgeBaseUrl().replace(/\/$/, "")}/health?skipAcc=1`;
   try {
     const response = await fetch(bridgeUrl, {
       method: "GET",
@@ -367,7 +367,7 @@ function buildBrowserWebrtcBridgeUnavailablePayload(error: unknown): object {
       status: "offline",
       detail: "Offer proxy failed before bridge readiness could be confirmed.",
       blockers: ["pipecat_webrtc_bridge_unavailable"],
-      checkedUrl: `${getBrowserWebrtcBridgeBaseUrl().replace(/\/$/, "")}/health`,
+      checkedUrl: `${getBrowserWebrtcBridgeBaseUrl().replace(/\/$/, "")}/health?skipAcc=1`,
     }),
   };
 }

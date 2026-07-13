@@ -20,6 +20,7 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(bridge, /record_stage/);
   assert.match(bridge, /stt\.empty_transcript/);
   assert.match(bridge, /stageEvents/);
+  assert.match(bridge, /skipAcc/);
   assert.doesNotMatch(bridge, /RTCPeerConnection/);
   assert.doesNotMatch(bridge, /RTCSessionDescription/);
 });
@@ -137,7 +138,7 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
     assert.equal(payload.readiness.pipecatWebrtcBridge.failClosedWhenUnavailable, true);
     assert.equal(payload.readiness.pipecatWebrtcBridge.timeoutMs, 5000);
     assert.match(payload.readiness.pipecatWebrtcBridge.bridgeUrl, /127\.0\.0\.1/);
-    assert.match(payload.readiness.pipecatWebrtcBridge.healthUrl, /\/health$/);
+    assert.match(payload.readiness.pipecatWebrtcBridge.healthUrl, /\/health\?skipAcc=1$/);
     assert.deepEqual(payload.readiness.rtcAsr, {
       status: "contract_ready",
       engine: "rtc-asr",
@@ -245,7 +246,7 @@ test("GET /api/browser-webrtc/readiness reports bridge offline before live media
     assert.deepEqual(payload.readiness.pipecatWebrtcBridge.blockers, ["pipecat_webrtc_bridge_unavailable"]);
     assert.ok(payload.blockers.includes("pipecat_webrtc_bridge_unavailable"));
     assert.ok(payload.blockers.includes("live_webrtc_media_turn_evidence_missing"));
-    assert.match(payload.nextActions[0] ?? "", /confirm .*\/health returns ok=true/);
+    assert.match(payload.nextActions[0] ?? "", /confirm .*\/health\?skipAcc=1 returns ok=true/);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     if (previousBridgeUrl === undefined) {

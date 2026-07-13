@@ -180,10 +180,16 @@ def pick_model_metadata(health: dict[str, Any], models_payload: dict[str, Any] |
     return "unknown", backend
 
 
-def check_readiness(acc_url: str = DEFAULT_ACC_URL) -> BridgeReadiness:
+def check_readiness(acc_url: str = DEFAULT_ACC_URL, skip_acc: bool = False) -> BridgeReadiness:
     rtc_probe = probe_json(join_url(DEFAULT_RTC_ASR_BASE_URL, DEFAULT_RTC_ASR_HEALTH_PATH), "rtc-asr")
     kokoro_probe = probe_json(join_url(DEFAULT_KOKORO_BASE_URL, DEFAULT_KOKORO_HEALTH_PATH), "kokoro")
-    acc_probe = probe_json(join_url(acc_url, "/health"), "acc")
+    acc_probe = ProbeResult(
+        id="acc",
+        ok=True,
+        status="skipped",
+        url=join_url(acc_url, "/health"),
+        detail="ACC probe skipped by caller to avoid recursive /health checks",
+    ) if skip_acc else probe_json(join_url(acc_url, "/health"), "acc")
     models_payload = None
     if rtc_probe.ok:
         with contextlib.suppress(Exception):
@@ -717,7 +723,8 @@ class BrowserWebrtcBridge:
 
     async def readiness(self, request: web.Request) -> web.Response:
         acc_url = request.query.get("accUrl", DEFAULT_ACC_URL)
-        readiness = await asyncio.to_thread(check_readiness, acc_url)
+        skip_acc = request.query.get("skipAcc", "").lower() in {"1", "true", "yes"}
+        readiness = await asyncio.to_thread(check_readiness, acc_url, skip_acc)
         return web.json_response(ready_payload(readiness, self.host, self.port), status=200 if readiness.ok else 503)
 
     async def start_pipeline(self, *, connection: Any, session_id: str, acc_url: str, call_id: str, readiness: BridgeReadiness) -> BrowserTurnSession:
