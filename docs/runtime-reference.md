@@ -44,7 +44,7 @@ Issue #222 is the architectural center for realtime voice. Do not add new standa
 transport.input -> rtc-asr STT -> ACC caller-turn adapter -> Kokoro TTS -> transport.output
 ```
 
-`requirements-pipecat-voice.txt` requests `pipecat-ai[webrtc]==1.4.0` so local installs include the WebRTC extras needed for `SmallWebRTCTransport`. `scripts/pipecat-browser-webrtc-bridge.py` is now the Pipecat `SmallWebRTCTransport` offer route backed by a real `Pipeline`, while preserving the existing ACC `POST /api/browser-webrtc/session` contract.
+`requirements-pipecat-voice.txt` requests `pipecat-ai[webrtc]==1.4.0` so local installs include the WebRTC extras needed for `SmallWebRTCTransport`. `scripts/acc_pipecat_voice_pipeline.py` owns the reusable STT -> ACC -> TTS Pipeline processors and `build_acc_voice_pipeline()`. `scripts/pipecat-browser-webrtc-bridge.py` is now the browser `SmallWebRTCTransport` offer route/adaptor around that shared Pipeline, while preserving the existing ACC `POST /api/browser-webrtc/session` contract.
 
 Adapter rule for #222:
 
@@ -119,7 +119,7 @@ npm run pipecat:webrtc:check
 npm run pipecat:webrtc
 ```
 
-`npm run pipecat:webrtc` starts `scripts/pipecat-browser-webrtc-bridge.py` on `http://127.0.0.1:8766`. Its offer endpoint is `POST /api/webrtc/offer`; ACC proxies browser SDP offers to it from `POST /api/browser-webrtc/session`. The bridge accepts offers through Pipecat `SmallWebRTCRequestHandler`, creates `SmallWebRTCTransport`, and runs `Pipeline([transport.input(), RtcAsrTurnProcessor, AccCallerTurnProcessor, KokoroTtsProcessor, transport.output()])`. The processors stream browser PCM to rtc-asr Local STT v1, post the final transcript to `/api/calls/:callId/caller-turn`, request Kokoro WAV audio, and push output audio frames to `transport.output()`. This normal path has no `ffmpeg` dependency.
+`npm run pipecat:webrtc` starts `scripts/pipecat-browser-webrtc-bridge.py` on `http://127.0.0.1:8766`. Its offer endpoint is `POST /api/webrtc/offer`; ACC proxies browser SDP offers to it from `POST /api/browser-webrtc/session`. The bridge accepts offers through Pipecat `SmallWebRTCRequestHandler`, creates `SmallWebRTCTransport`, and calls `build_acc_voice_pipeline(transport.input(), transport.output(), session)` from `scripts/acc_pipecat_voice_pipeline.py`. The shared processors stream browser PCM to rtc-asr Local STT v1, post the final transcript to `/api/calls/:callId/caller-turn`, request Kokoro WAV audio, and push output audio frames to the adapter's `transport.output()`. This normal path has no `ffmpeg` dependency.
 
 ## Unified Pipecat media-engine readiness
 
