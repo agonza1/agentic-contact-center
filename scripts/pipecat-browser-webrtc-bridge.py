@@ -77,6 +77,11 @@ class BrowserWebrtcBridge:
         if isinstance(alias, str) and alias.strip():
             self.sessions[alias.strip()] = session
 
+    def forget_session_record(self, session: dict[str, Any]) -> None:
+        aliases = [alias for alias, record in self.sessions.items() if record is session]
+        for alias in aliases:
+            self.sessions.pop(alias, None)
+
     async def readiness(self, request: web.Request) -> web.Response:
         acc_url = request.query.get("accUrl", DEFAULT_ACC_URL)
         skip_acc = request.query.get("skipAcc", "").lower() in {"1", "true", "yes"}
@@ -120,8 +125,23 @@ class BrowserWebrtcBridge:
             "turnSession": session,
             "callId": call_id,
             "startedAt": datetime.now(UTC).isoformat(timespec="seconds"),
+            "closedAt": None,
+            "closeReason": None,
         }
         self.remember_session_alias(session_id, session_record)
+
+        @connection.event_handler("closed")
+        async def close_pipeline_for_peer(_connection: Any) -> None:
+            session_record["closedAt"] = datetime.now(UTC).isoformat(timespec="seconds")
+            session_record["closeReason"] = "small_webrtc_peer_closed"
+            asyncio.create_task(
+                self.close_session(
+                    session_id,
+                    session_record=session_record,
+                    reason="small_webrtc_peer_closed",
+                )
+            )
+
         return session
 
     async def offer(self, request: web.Request) -> web.Response:
@@ -238,6 +258,8 @@ class BrowserWebrtcBridge:
                 "pcId": session.get("pcId") or session_id,
                 "callId": session.get("callId"),
                 "startedAt": session.get("startedAt"),
+                "closedAt": session.get("closedAt"),
+                "closeReason": session.get("closeReason"),
                 "transport": "SmallWebRTCTransport",
                 "pipeline": ACC_VOICE_PIPELINE_CONTRACT,
                 "turnEvidence": evidence,
@@ -263,11 +285,21 @@ class BrowserWebrtcBridge:
             }
         )
 
-    async def close_session(self, session_id: str) -> None:
-        session = self.sessions.pop(session_id, {})
+    async def close_session(
+        self,
+        session_id: str,
+        *,
+        session_record: dict[str, Any] | None = None,
+        reason: str = "browser WebRTC session closed",
+    ) -> None:
+        session = session_record or self.sessions.get(session_id) or {}
+        if session:
+            session["closedAt"] = session.get("closedAt") or datetime.now(UTC).isoformat(timespec="seconds")
+            session["closeReason"] = session.get("closeReason") or reason
+            self.forget_session_record(session)
         runner = session.get("runner")
         if isinstance(runner, PipelineRunner):
-            await runner.cancel("browser WebRTC session closed")
+            await runner.cancel(reason)
         task = session.get("runnerTask")
         if isinstance(task, asyncio.Task):
             task.cancel()

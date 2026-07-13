@@ -25,7 +25,7 @@ from uuid import uuid4
 
 import audioop
 import websockets
-from pipecat.frames.frames import InputAudioRawFrame, OutputAudioRawFrame, TextFrame, TranscriptionFrame, TTSAudioRawFrame
+from pipecat.frames.frames import InputAudioRawFrame, InterruptionFrame, OutputAudioRawFrame, TextFrame, TranscriptionFrame, TTSAudioRawFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -415,6 +415,7 @@ class AccVoicePipelineSession:
         self.last_barge_in_evidence = {
             "reason": reason,
             "skipped": False,
+            "pipecatInterruptionFrame": "pending",
             "outputGeneration": self.output_generation,
             "timestamp": datetime.now(UTC).isoformat(timespec="milliseconds"),
         }
@@ -619,7 +620,13 @@ class RtcAsrTurnProcessor(FrameProcessor):
             )
         if rms > self.silence_rms:
             if not self.in_speech:
-                self.session.cancel_output("barge-in")
+                cancellation = self.session.cancel_output("barge-in")
+                if not cancellation.get("skipped"):
+                    await self.broadcast_frame(InterruptionFrame)
+                    self.session.last_barge_in_evidence = {
+                        **self.session.last_barge_in_evidence,
+                        "pipecatInterruptionFrame": "broadcast",
+                    }
                 self.turn_started_at = now
                 self.session.record_stage("audio.speech_started", rms=rms, silenceThresholdRms=self.silence_rms)
             self.in_speech = True
