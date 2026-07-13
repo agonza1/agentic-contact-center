@@ -298,6 +298,12 @@ export async function synthesizeKokoroTtsFrame(text, options = {}) {
   };
 }
 
+function outputAudioFrameDurationMs(frame) {
+  const sampleRateHz = Number(frame?.sampleRateHz ?? 8000) || 8000;
+  const pcm16 = Buffer.from(frame?.pcm16Base64 ?? "", "base64");
+  return (pcm16.length / 2 / sampleRateHz) * 1000;
+}
+
 function decodePcmuSample(sample) {
   const inverted = (~sample) & 0xff;
   const sign = inverted & 0x80;
@@ -1232,7 +1238,7 @@ export class EslBridge {
       const summary = state.sink.summary();
       if (state.call) state.call.freeswitchBroadcast = broadcast;
       else this.freeswitchBroadcast = broadcast;
-      const playbackEvidence = { ...summary, freeswitchBroadcast: broadcast };
+      const playbackEvidence = { ...summary, ttsFrameDurationMs: outputAudioFrameDurationMs(frame), freeswitchBroadcast: broadcast };
       this.events.push({ at: nowIso(), pipecatLiveKokoroTtsPlayback: { ...playbackEvidence, sourceText: agentText, tts: frame.tts } });
       await this.postPipecatPlaybackEvent(uuid);
       return playbackEvidence;
@@ -1370,7 +1376,7 @@ export class EslBridge {
     const call = this.callMap.get(uuid);
     if (call) {
       const greetingWasRecordedInCallerWav = playbackHasCompleteFreeswitchBroadcastEvidence(greetingPlayback);
-      call.initialGreetingPlaybackDurationMs = greetingWasRecordedInCallerWav ? greetingPlayback.totalDurationMs : 0;
+      call.initialGreetingPlaybackDurationMs = greetingWasRecordedInCallerWav ? greetingPlayback.ttsFrameDurationMs : 0;
     }
     await this.postPipecatPlaybackEvent(uuid);
   }

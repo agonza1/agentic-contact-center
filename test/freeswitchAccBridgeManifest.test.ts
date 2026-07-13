@@ -645,7 +645,7 @@ test("FreeSWITCH bridge sends live Kokoro TTS frames to RTP playback sink", asyn
     const parsed = JSON.parse(stdout) as {
       sentRtp: Array<{ sequenceNumber: number; timestamp: number; port: number; host: string }>;
       sentCommands: string[];
-      summary: { rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; remotePort: number; totalDurationMs: number; ssrc: number; lastSentAt: string | null; freeswitchBroadcast: { mode: string; hostPath: string; freeswitchPath: string; audioBytes: number } };
+      summary: { rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; remotePort: number; totalDurationMs: number; ttsFrameDurationMs: number; ssrc: number; lastSentAt: string | null; freeswitchBroadcast: { mode: string; hostPath: string; freeswitchPath: string; audioBytes: number } };
       events: Array<{ pipecatLiveKokoroTtsPlayback?: { sourceText: string; tts: { engine: string; outputSampleRateHz: number }; freeswitchBroadcast: { mode: string; hostPath: string; freeswitchPath: string; audioBytes: number } } }>;
     };
 
@@ -659,6 +659,7 @@ test("FreeSWITCH bridge sends live Kokoro TTS frames to RTP playback sink", asyn
     assert.equal(parsed.summary.rtpSocketSendReady, true);
     assert.equal(parsed.summary.remotePort, 40002);
     assert.equal(parsed.summary.totalDurationMs, 0.5);
+    assert.equal(parsed.summary.ttsFrameDurationMs, 0.5);
     assert.equal(parsed.summary.ssrc, 0x0badf00d);
     assert.equal(parsed.sentCommands.length, 1);
     assert.equal(parsed.sentCommands[0].startsWith("api uuid_broadcast fs-live-kokoro /var/log/freeswitch/acc/media/fs-live-kokoro-kokoro-tts-"), true);
@@ -796,8 +797,8 @@ test("FreeSWITCH bridge broadcasts live Kokoro TTS even without caller RTP socke
     const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], { cwd: repoRoot, encoding: "utf8" });
     const parsed = JSON.parse(stdout) as {
       sentCommands: string[];
-      summary: { outboundRtpReady: boolean; rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; totalDurationMs: number; freeswitchBroadcast: { mode: string; audioBytes: number } };
-      responseSummary: { outboundRtpReady: boolean; rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; totalDurationMs: number; freeswitchBroadcast: { mode: string; audioBytes: number } };
+      summary: { outboundRtpReady: boolean; rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; totalDurationMs: number; ttsFrameDurationMs: number; freeswitchBroadcast: { mode: string; audioBytes: number } };
+      responseSummary: { outboundRtpReady: boolean; rtpSocketSendReady: boolean; packetCount: number; sentPacketCount: number; totalDurationMs: number; ttsFrameDurationMs: number; freeswitchBroadcast: { mode: string; audioBytes: number } };
       events: Array<{ pipecatLiveKokoroTtsPlayback?: { freeswitchBroadcast: { mode: string } } }>;
     };
 
@@ -806,11 +807,14 @@ test("FreeSWITCH bridge broadcasts live Kokoro TTS even without caller RTP socke
     assert.equal(parsed.summary.packetCount, 1);
     assert.equal(parsed.summary.sentPacketCount, 0);
     assert.equal(parsed.summary.totalDurationMs, 0.5);
+    assert.equal(parsed.summary.ttsFrameDurationMs, 0.5);
     assert.equal(parsed.summary.freeswitchBroadcast.mode, "freeswitch_uuid_broadcast");
     assert.equal(parsed.summary.freeswitchBroadcast.audioBytes, 8);
     assert.equal(parsed.responseSummary.outboundRtpReady, true);
     assert.equal(parsed.responseSummary.rtpSocketSendReady, false);
     assert.equal(parsed.responseSummary.packetCount, 2);
+    assert.equal(parsed.responseSummary.totalDurationMs, 1);
+    assert.equal(parsed.responseSummary.ttsFrameDurationMs, 0.5);
     assert.equal(parsed.responseSummary.sentPacketCount, 0);
     assert.equal(parsed.responseSummary.freeswitchBroadcast.mode, "freeswitch_uuid_broadcast");
     assert.equal(parsed.sentCommands.length, 2);
