@@ -31,6 +31,8 @@ test("operator console polls browser WebRTC session proof for turn diagnostics",
   assert.match(serverSource, /armVoiceSessionProofPolling/);
   assert.match(serverSource, /Audio reached the Pipecat bridge, but rtc-asr returned an empty transcript/);
   assert.match(serverSource, /rtc-asr transcript arrived/);
+  assert.match(serverSource, /voiceLastProofTurnCount/);
+  assert.match(serverSource, /await refresh\(\);/);
   assert.match(serverSource, /armVoiceSessionProofPolling\(\);/);
 });
 
