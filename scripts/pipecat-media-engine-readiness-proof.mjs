@@ -125,6 +125,7 @@ async function main() {
         adapter: readiness.nextUnblockedSlice.adapter,
         entryPoint: readiness.nextUnblockedSlice.entryPoint,
       },
+      liveSipProofAcceptance: readiness.liveSipProofAcceptance,
       validationCommands: readiness.validationCommands,
     },
     readiness,
