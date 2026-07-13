@@ -377,6 +377,123 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
     await new Promise<void>((resolve, reject) => bridge.close((error) => error ? reject(error) : resolve()));
   }
 });
+test("GET /api/browser-webrtc/session/:sessionId/proof follows generated SmallWebRTC pc_id", async () => {
+  const bridgeRequests: string[] = [];
+  const bridge = createServer(async (request, response) => {
+    if (request.method === "POST" && request.url === "/api/webrtc/offer") {
+      bridgeRequests.push("offer");
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({
+        ok: true,
+        type: "answer",
+        sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=ACC Pipecat WebRTC\r\nt=0 0\r\n",
+        sessionId: "smallwebrtc-generated-pc-id",
+        pcId: "smallwebrtc-generated-pc-id",
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        evidence: { pipecatTransport: "webrtc", stt: { engine: "rtc-asr" }, tts: { engine: "kokoro" } },
+      }));
+      return;
+    }
+
+    if (request.method === "GET" && request.url === "/api/webrtc/sessions/smallwebrtc-generated-pc-id/proof") {
+      bridgeRequests.push(request.url ?? "");
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({
+        ok: true,
+        sessionId: "smallwebrtc-generated-pc-id",
+        callId: "call-123",
+        turnEvidence: {
+          callerTranscript: "I need help with billing.",
+          stt: { engine: "rtc-asr", audioBytes: 32000 },
+          tts: { engine: "kokoro", audioBytes: 64000 },
+        },
+        lastAudio: { stage: "audio.frame", rms: 612, frameBytes: 640 },
+        lastStt: { stage: "stt.transcript_final", transcript: "I need help with billing." },
+        lastAcc: { stage: "acc.caller_turn_completed", flowState: "diagnose" },
+        lastTts: { stage: "tts.audio_ready", tts: { audioBytes: 64000 } },
+        lastError: {},
+        stageEvents: [
+          { stage: "audio.speech_started", ok: true },
+          { stage: "stt.transcript_final", ok: true },
+          { stage: "tts.audio_ready", ok: true },
+        ],
+        reviewReady: true,
+      }));
+      return;
+    }
+
+    response.statusCode = 404;
+    response.end();
+  });
+  await new Promise<void>((resolve) => bridge.listen(0, "127.0.0.1", resolve));
+  const bridgeAddress = bridge.address();
+  if (!bridgeAddress || typeof bridgeAddress === "string") {
+    throw new Error("Expected an ephemeral bridge TCP port");
+  }
+  const previousBridgeUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL;
+  process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const sessionResponse = await new Promise<string>((resolve, reject) => {
+      const req = request({
+        host: "127.0.0.1",
+        port: address.port,
+        path: "/api/browser-webrtc/session",
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      }, (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => { body += chunk; });
+        response.on("end", () => resolve(body));
+      });
+      req.on("error", reject);
+      req.end(JSON.stringify({ type: "offer", sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=browser\r\nt=0 0\r\n" }));
+    });
+    const sessionPayload = JSON.parse(sessionResponse) as { sessionId: string };
+
+    const proofResponse = await new Promise<string>((resolve, reject) => {
+      const req = request({
+        host: "127.0.0.1",
+        port: address.port,
+        path: `/api/browser-webrtc/session/${sessionPayload.sessionId}/proof`,
+        method: "GET",
+      }, (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => { body += chunk; });
+        response.on("end", () => resolve(body));
+      });
+      req.on("error", reject);
+      req.end();
+    });
+    const proofPayload = JSON.parse(proofResponse) as { ok: boolean; sessionId: string; bridge: { reviewReady: boolean } };
+
+    assert.equal(sessionPayload.sessionId, "smallwebrtc-generated-pc-id");
+    assert.equal(proofPayload.ok, true);
+    assert.equal(proofPayload.sessionId, "smallwebrtc-generated-pc-id");
+    assert.equal(proofPayload.bridge.reviewReady, true);
+    assert.deepEqual(bridgeRequests, ["offer", "/api/webrtc/sessions/smallwebrtc-generated-pc-id/proof"]);
+  } finally {
+    if (previousBridgeUrl === undefined) {
+      delete process.env.BROWSER_WEBRTC_BRIDGE_URL;
+    } else {
+      process.env.BROWSER_WEBRTC_BRIDGE_URL = previousBridgeUrl;
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    bridge.closeAllConnections();
+    await new Promise<void>((resolve, reject) => bridge.close((error) => error ? reject(error) : resolve()));
+  }
+});
 
 test("GET /api/browser-webrtc/session/:sessionId/proof proxies Pipecat bridge turn evidence", async () => {
   const bridgeRequests: string[] = [];
