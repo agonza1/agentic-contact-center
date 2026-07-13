@@ -918,6 +918,21 @@ export async function buildFreeswitchLiveProofManifest(options) {
     playbackHasPacketizedEvidence(pipecatOutboundRtpEvidence) &&
     playbackHasCallerAudibleProof(pipecatOutboundRtpEvidence);
   const outboundPlaybackReviewReady = outboundSocketPlaybackReviewReady || outboundBroadcastReviewReady;
+  const outboundPlaybackBlocker = outboundPlaybackReviewReady
+    ? null
+    : outboundBroadcastPlaybackAttempted && !outboundBroadcastEvidenceComplete
+      ? "FreeSWITCH uuid_broadcast playback evidence is incomplete: host path, FreeSWITCH path, and positive audio byte count are required."
+      : outboundBroadcastPlaybackAttempted && !playbackHasPacketizedEvidence(pipecatOutboundRtpEvidence)
+        ? "FreeSWITCH uuid_broadcast playback evidence is missing packetized Pipecat/Kokoro RTP evidence."
+        : outboundBroadcastPlaybackAttempted
+          ? "FreeSWITCH uuid_broadcast playback was issued, but no caller-audible playback proof is attached."
+          : pipecatOutboundRtpEvidence?.rtpSocketSendReady
+            ? outboundPlaybackTargetMatchedCallerRtp
+              ? "Pipecat/Kokoro TTSAudioRawFrame output was sent to the caller RTP target, but no caller-audible playback proof is attached."
+              : "Pipecat/Kokoro TTSAudioRawFrame output was sent, but not to the discovered FreeSWITCH caller RTP target."
+            : pipecatOutboundRtpEvidence?.outboundRtpReady
+              ? "Kokoro/Pipecat output and TTSAudioRawFrame fixtures can be packetized as RTP, but they have not been sent to a FreeSWITCH caller RTP target yet."
+              : "Kokoro/Pipecat TTSAudioRawFrame output is not yet connected to the FreeSWITCH RTP playback socket for SIP caller playback.";
   const rtcAsrStreamEvidence = options.rtcAsrStreamEvidence ?? null;
   const runtimeModeLabels = {
     telephony: options.telephonyMode,
@@ -1055,17 +1070,7 @@ export async function buildFreeswitchLiveProofManifest(options) {
         : "sip_rtp_inbound_to_pipecat_input_frames",
       outboundPlaybackAdapter: pipecatOutboundRtpEvidence?.outboundRtpReady ? "packetized_output_audio_frames_to_pcmu_rtp" : "not_connected",
       bidirectionalPlaybackReady: outboundPlaybackReviewReady,
-      blocker: outboundPlaybackReviewReady
-        ? null
-        : outboundBroadcastPlaybackAttempted
-          ? "FreeSWITCH uuid_broadcast playback was issued, but no caller-audible playback proof is attached."
-          : pipecatOutboundRtpEvidence?.rtpSocketSendReady
-          ? outboundPlaybackTargetMatchedCallerRtp
-            ? "Pipecat/Kokoro TTSAudioRawFrame output was sent to the caller RTP target, but no caller-audible playback proof is attached."
-            : "Pipecat/Kokoro TTSAudioRawFrame output was sent, but not to the discovered FreeSWITCH caller RTP target."
-        : pipecatOutboundRtpEvidence?.outboundRtpReady
-          ? "Kokoro/Pipecat output and TTSAudioRawFrame fixtures can be packetized as RTP, but they have not been sent to a FreeSWITCH caller RTP target yet."
-          : "Kokoro/Pipecat TTSAudioRawFrame output is not yet connected to the FreeSWITCH RTP playback socket for SIP caller playback.",
+      blocker: outboundPlaybackBlocker,
       rtpFrameBatch: pipecatRtpEvidence,
       rtcAsrLiveStream: rtcAsrStreamEvidence,
       outboundRtpPlayback: pipecatOutboundRtpEvidence

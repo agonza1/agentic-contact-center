@@ -264,6 +264,55 @@ test("FreeSWITCH bridge packetizes Pipecat output audio into outbound RTP proof 
   }
 });
 
+test("FreeSWITCH bridge manifest reports incomplete broadcast playback evidence", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-broadcast-blocker-"));
+  const audioPath = path.join(tempDir, "fs-call.wav");
+  const logPath = path.join(tempDir, "freeswitch-esl-events.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+
+  try {
+    await writeFile(audioPath, validWavFixture());
+    await writeFile(logPath, JSON.stringify({ events: [{ headers: { "Event-Name": "CHANNEL_ANSWER" } }] }) + "\n", "utf8");
+    await writeFile(rtcAsrEvidencePath, JSON.stringify({ transcript: { text: "hello from local sip", final: true } }) + "\n", "utf8");
+
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = [
+      "const { buildFreeswitchLiveProofManifest } = await import(" + JSON.stringify(moduleUrl) + ");",
+      "const manifest = await buildFreeswitchLiveProofManifest({",
+      "  uuid: 'fs-proof-incomplete-broadcast',",
+      "  accCallId: 'demo-call-incomplete-broadcast',",
+      "  destination: '8600',",
+      "  wavPath: " + JSON.stringify(audioPath) + ",",
+      "  logPath: " + JSON.stringify(logPath) + ",",
+      "  rtcAsrUrl: 'ws://127.0.0.1:8080/v1/stt/stream',",
+      "  rtcAsrEvidencePath: " + JSON.stringify(rtcAsrEvidencePath) + ",",
+      "  telephonyMode: 'local_sip',",
+      "  remoteRtp: { address: '127.0.0.1', port: 40002 },",
+      "  pipecatOutboundRtpEvidence: {",
+      "    outboundRtpReady: true,",
+      "    rtpSocketSendReady: false,",
+      "    packetCount: 2,",
+      "    sentPacketCount: 0,",
+      "    freeswitchBroadcast: { mode: 'freeswitch_uuid_broadcast', freeswitchPath: '/var/log/freeswitch/acc/fs-call.wav', audioBytes: 320 },",
+      "  },",
+      "});",
+      "console.log(JSON.stringify(manifest));",
+    ].join("\n");
+    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const manifest = JSON.parse(stdout) as { reviewReady: boolean; blockers: string[]; pipecatMediaEngine: { blocker: string } };
+
+    assert.equal(manifest.reviewReady, false);
+    assert.match(manifest.pipecatMediaEngine.blocker, /uuid_broadcast playback evidence is incomplete/);
+    assert.ok(manifest.blockers.some((blocker) => blocker.includes("uuid_broadcast playback evidence is incomplete")));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("FreeSWITCH bridge sends fixture Pipecat output frames to RTP playback sink", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-send-rtp-"));
