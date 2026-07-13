@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { request } from "node:http";
+import { connect } from "node:net";
+import { randomBytes } from "node:crypto";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildHttpServer } from "../src/http/createServer";
@@ -29,6 +31,72 @@ function requestJson(port: number, method: string, route: string, body?: unknown
   });
 }
 
+
+function encodeClientWebSocketFrame(payload: Buffer, opcode: number, fin: boolean): Buffer {
+  const mask = randomBytes(4);
+  const length = payload.byteLength;
+  const first = (fin ? 0x80 : 0) | opcode;
+  let header: Buffer;
+  if (length < 126) {
+    header = Buffer.from([first, 0x80 | length]);
+  } else if (length <= 0xffff) {
+    header = Buffer.allocUnsafe(4);
+    header[0] = first;
+    header[1] = 0x80 | 126;
+    header.writeUInt16BE(length, 2);
+  } else {
+    header = Buffer.allocUnsafe(10);
+    header[0] = first;
+    header[1] = 0x80 | 127;
+    header.writeBigUInt64BE(BigInt(length), 2);
+  }
+  const masked = Buffer.from(payload);
+  for (let index = 0; index < masked.byteLength; index += 1) {
+    masked[index] = masked[index] ^ mask[index % 4];
+  }
+  return Buffer.concat([header, mask, masked]);
+}
+
+function writeFragmentedWebSocketAudio(port: number, sessionId: string, chunks: Buffer[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const socket = connect({ host: "127.0.0.1", port });
+    let handshake = "";
+    let upgraded = false;
+    socket.setTimeout(2000);
+    socket.on("error", reject);
+    socket.on("timeout", () => reject(new Error("websocket timeout")));
+    socket.on("connect", () => {
+      const key = randomBytes(16).toString("base64");
+      socket.write(
+        `GET /api/voice/sessions/${encodeURIComponent(sessionId)}/media/input HTTP/1.1\r\n` +
+          `Host: 127.0.0.1:${port}\r\n` +
+          "Upgrade: websocket\r\n" +
+          "Connection: Upgrade\r\n" +
+          `Sec-WebSocket-Key: ${key}\r\n` +
+          "Sec-WebSocket-Version: 13\r\n" +
+          "\r\n",
+      );
+    });
+    socket.on("data", (data) => {
+      if (upgraded) return;
+      handshake += data.toString("latin1");
+      if (!handshake.includes("\r\n\r\n")) return;
+      if (!handshake.startsWith("HTTP/1.1 101")) {
+        reject(new Error(`websocket upgrade failed: ${handshake.split("\r\n")[0]}`));
+        socket.destroy();
+        return;
+      }
+      upgraded = true;
+      chunks.forEach((chunk, index) => {
+        socket.write(encodeClientWebSocketFrame(chunk, index === 0 ? 0x2 : 0x0, index === chunks.length - 1));
+      });
+      setTimeout(() => {
+        socket.end(encodeClientWebSocketFrame(Buffer.alloc(0), 0x8, true));
+        resolve();
+      }, 50);
+    });
+  });
+}
 
 function requestRaw(port: number, method: string, route: string, body: Buffer, headers: Record<string, string> = {}): Promise<{ statusCode: number; payload: any }> {
   return new Promise((resolve, reject) => {
@@ -269,6 +337,82 @@ test("voice sessions reject duplicate IDs, invalid sample rates, and post-close 
     const postCloseMedia = await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-guards/media/output", Buffer.from([2]));
     assert.equal(postCloseMedia.statusCode, 409);
     assert.equal(postCloseMedia.payload.error, "voice_session_closed");
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+
+test("voice session proof scopes rtc-asr transcripts to evidence captured after session creation", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      sipCallId: "scope-proof-call",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+    const callId = started.payload.call.session.callId;
+
+    const oldTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      sipCallId: "scope-proof-call",
+      timestamp: "2026-01-01T00:00:01.000Z",
+      text: "old transcript from before this voice session",
+    });
+    assert.equal(oldTranscript.statusCode, 200);
+
+    const created = await requestJson(address.port, "POST", "/api/voice/sessions", { sessionId: "cae-session-scoped-asr", callId });
+    assert.equal(created.statusCode, 201);
+
+    await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-scoped-asr/media/input", Buffer.from([1, 2, 3]), { "x-sample-rate-hz": "16000" });
+    await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-scoped-asr/media/output", Buffer.from([4, 5, 6]), { "x-output-final": "true" });
+
+    const proofBefore = await requestJson(address.port, "GET", "/api/voice/sessions/cae-session-scoped-asr/proof");
+    assert.equal(proofBefore.statusCode, 200);
+    assert.equal(proofBefore.payload.evidence.hasRtcAsrFinalTranscript, false);
+    assert.equal(proofBefore.payload.evidence.rtcAsrTranscriptEvents, 0);
+    assert.deepEqual(proofBefore.payload.review.blockers, ["rtc_asr_final_transcript_missing"]);
+
+    const newTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      sipCallId: "scope-proof-call",
+      timestamp: "2999-01-01T00:00:01.000Z",
+      text: "new transcript for this voice session",
+    });
+    assert.equal(newTranscript.statusCode, 200);
+
+    const proofAfter = await requestJson(address.port, "GET", "/api/voice/sessions/cae-session-scoped-asr/proof");
+    assert.equal(proofAfter.payload.evidence.hasRtcAsrFinalTranscript, true);
+    assert.equal(proofAfter.payload.evidence.rtcAsrTranscriptEvents, 1);
+    assert.equal(proofAfter.payload.review.ready, true);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+
+test("voice session WebSocket media input reassembles fragmented binary messages", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const created = await requestJson(address.port, "POST", "/api/voice/sessions", { sessionId: "cae-session-ws-fragmented" });
+    assert.equal(created.statusCode, 201);
+
+    await writeFragmentedWebSocketAudio(address.port, "cae-session-ws-fragmented", [Buffer.from([1, 2]), Buffer.from([3, 4, 5])]);
+
+    const proof = await requestJson(address.port, "GET", "/api/voice/sessions/cae-session-ws-fragmented/proof");
+    assert.equal(proof.statusCode, 200);
+    assert.equal(proof.payload.session.media.inputChunks, 1);
+    assert.equal(proof.payload.session.media.inputBytes, 5);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

@@ -3805,13 +3805,14 @@ function encodeWebSocketTextFrame(payload: object): Buffer {
   return Buffer.concat([header, data]);
 }
 
-function decodeWebSocketFrames(buffer: Buffer): { frames: Array<{ opcode: number; payload: Buffer }>; remaining: Buffer } {
-  const frames: Array<{ opcode: number; payload: Buffer }> = [];
+function decodeWebSocketFrames(buffer: Buffer): { frames: Array<{ fin: boolean; opcode: number; payload: Buffer }>; remaining: Buffer } {
+  const frames: Array<{ fin: boolean; opcode: number; payload: Buffer }> = [];
   let offset = 0;
   while (offset + 2 <= buffer.byteLength) {
     const frameStart = offset;
     const first = buffer[offset];
     const second = buffer[offset + 1];
+    const fin = (first & 0x80) !== 0;
     const opcode = first & 0x0f;
     const masked = (second & 0x80) !== 0;
     let length = second & 0x7f;
@@ -3841,7 +3842,7 @@ function decodeWebSocketFrames(buffer: Buffer): { frames: Array<{ opcode: number
         payload[index] = payload[index] ^ mask[index % 4];
       }
     }
-    frames.push({ opcode, payload });
+    frames.push({ fin, opcode, payload });
   }
   return { frames, remaining: buffer.subarray(offset) };
 }
@@ -5859,6 +5860,7 @@ export function buildHttpServer(config: PocConfig) {
     );
     socket.write(encodeWebSocketTextFrame({ ok: true, type: "voice_session.media_input.ready", sessionId }));
     let websocketBuffer = Buffer.alloc(0);
+    let fragmentedMessage: { opcode: number; chunks: Buffer[] } | null = null;
     socket.on("data", (chunk) => {
       websocketBuffer = Buffer.concat([websocketBuffer, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
       const decoded = decodeWebSocketFrames(websocketBuffer);
@@ -5868,7 +5870,42 @@ export function buildHttpServer(config: PocConfig) {
           socket.end(Buffer.from([0x88, 0x00]));
           return;
         }
+        if (frame.opcode === 0x0) {
+          if (!fragmentedMessage) {
+            socket.write(encodeWebSocketTextFrame({ ok: false, type: "voice_session.media_input.invalid_fragment", sessionId }));
+            socket.end();
+            return;
+          }
+          fragmentedMessage.chunks.push(frame.payload);
+          if (!frame.fin) continue;
+          const payload = Buffer.concat(fragmentedMessage.chunks);
+          const opcode = fragmentedMessage.opcode;
+          fragmentedMessage = null;
+          const updated = voiceSessions.recordMediaInput(sessionId, {
+            bytes: payload.byteLength,
+            mimeType: opcode === 0x1 ? "application/json" : "application/octet-stream",
+            sampleRateHz: undefined,
+          });
+          if (!updated) {
+            socket.write(encodeWebSocketTextFrame({ ok: false, type: "voice_session.closed", sessionId }));
+            socket.end();
+            return;
+          }
+          socket.write(encodeWebSocketTextFrame({
+            ok: true,
+            type: "voice_session.media_input.received",
+            sessionId,
+            bytes: payload.byteLength,
+            inputChunks: updated.media.inputChunks,
+            inputBytes: updated.media.inputBytes,
+          }));
+          continue;
+        }
         if (frame.opcode !== 0x1 && frame.opcode !== 0x2) continue;
+        if (!frame.fin) {
+          fragmentedMessage = { opcode: frame.opcode, chunks: [frame.payload] };
+          continue;
+        }
         const updated = voiceSessions.recordMediaInput(sessionId, {
           bytes: frame.payload.byteLength,
           mimeType: frame.opcode === 0x1 ? "application/json" : "application/octet-stream",

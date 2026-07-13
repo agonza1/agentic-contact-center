@@ -86,6 +86,13 @@ export function buildRealtimeVoiceSessionEndpoints(sessionId: string) {
   };
 }
 
+function compareIsoTimestamps(left: string, right: string): number {
+  const leftMs = Date.parse(left);
+  const rightMs = Date.parse(right);
+  if (!Number.isFinite(leftMs) || !Number.isFinite(rightMs)) return left.localeCompare(right);
+  return leftMs - rightMs;
+}
+
 export class RealtimeVoiceSessionStore {
   private readonly sessions = new Map<string, RealtimeVoiceSession>();
 
@@ -267,7 +274,17 @@ export class RealtimeVoiceSessionStore {
     const snapshot = cloneSession(session);
     const hasAudioInput = snapshot.media.inputChunks > 0 && snapshot.media.inputBytes > 0;
     const hasOutputAudio = snapshot.output.chunks > 0 && snapshot.output.bytes > 0;
-    const hasRtcAsrFinalTranscript = call?.events.some((event) => event.type === "rtc_asr_transcript") === true;
+    const sessionRtcAsrTranscriptEvents = call?.events.filter((event) => {
+      if (event.type !== "rtc_asr_transcript") return false;
+      if (compareIsoTimestamps(event.at, snapshot.createdAt) < 0) return false;
+      const eventSessionId = typeof event.detail.voiceSessionId === "string"
+        ? event.detail.voiceSessionId
+        : typeof event.detail.realtimeVoiceSessionId === "string"
+          ? event.detail.realtimeVoiceSessionId
+          : null;
+      return eventSessionId === null || eventSessionId === snapshot.id;
+    }) ?? [];
+    const hasRtcAsrFinalTranscript = sessionRtcAsrTranscriptEvents.length > 0;
     const transcriptTurns = call?.transcript.length ?? 0;
     const outputCancelledByBargeIn = snapshot.output.bargeInCancellationObserved
       || snapshot.events.some((event) => event.type === "output.stream.cancelled" && event.detail.reason === "barge_in");
@@ -300,6 +317,7 @@ export class RealtimeVoiceSessionStore {
         outputCancelledByBargeIn,
         hasAudioInput,
         hasRtcAsrFinalTranscript,
+        rtcAsrTranscriptEvents: sessionRtcAsrTranscriptEvents.length,
         transcriptTurns,
         callProofRoute: call?.session.openclawSession.artifactLinks.proof ?? null,
         eventRoute: buildRealtimeVoiceSessionEndpoints(sessionId).events,
