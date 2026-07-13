@@ -231,6 +231,23 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `npm run docker:app`: build and run the Docker app service in the foreground.
 - `npm run docker:smoke`: run a bounded Docker health probe and clean up.
 - `npm run docker:proof`: run the proof harness in Compose and write artifacts.
+- `npm run docker:voice`: run ACC with optional rtc-asr and Kokoro sidecars.
+- `npm run docker:browser-webrtc`: run ACC, rtc-asr, Kokoro, and the Pipecat browser WebRTC bridge.
+- `npm run docker:sip`: run ACC, FreeSWITCH, the FreeSWITCH ESL bridge, rtc-asr, and Kokoro for local SIP lab work.
+- `npm run docker:assert`: export ASSERT artifacts and start the upstream ASSERT viewer.
+- `npm run docker:full`: run all optional local contact-center services.
+
+## Docker Compose profiles
+
+The default Compose path only starts `app` unless another service is requested. Optional profiles describe the full local contact-center lab stack without making every dependency mandatory for a quick demo:
+
+- `voice`: `rtc-asr` and `kokoro` sidecars. `rtc-asr` listens on `8080`, Kokoro listens on `8880`, and ACC is preconfigured with Docker-network URLs for both.
+- `browser-webrtc`: adds `browser-webrtc-bridge` on `8766`, using the `voice-runtime` Dockerfile target with Pipecat WebRTC Python dependencies installed into `.pipecat-runtime`.
+- `sip`: adds FreeSWITCH plus `freeswitch-bridge`, writes SIP/media proof artifacts under `artifacts/freeswitch-live`, and points the bridge at Docker-network rtc-asr/Kokoro URLs.
+- `eval`: runs `assert-viewer`, exporting ACC ASSERT artifacts before starting the upstream ASSERT viewer on `5174`.
+- `full`: enables every optional service above for an end-to-end local lab stack.
+
+The `rtc-asr` service defaults to `RTC_ASR_IMAGE=rtc-asr:local` because the ASR server is owned by the sibling `rtc-asr` project. Build that image from the `rtc-asr` checkout or override `RTC_ASR_IMAGE` with a compatible image before using `voice`, `browser-webrtc`, `sip`, or `full`. Kokoro defaults to `KOKORO_IMAGE=ghcr.io/remsky/kokoro-fastapi-cpu:latest`; override it if the lab uses a different Kokoro FastAPI image.
 
 ## Local SIP live capture
 

@@ -52,6 +52,8 @@ npm run docker:freeswitch:only
 
 Use `npm run docker:freeswitch` instead when you want compose to build and start both ACC and FreeSWITCH together.
 
+Use `npm run docker:sip` when you want Compose to start the wider local SIP lab stack: ACC, FreeSWITCH, the FreeSWITCH ESL bridge, rtc-asr, and Kokoro. That path expects a compatible `rtc-asr` image, defaulting to `rtc-asr:local`, and keeps live proof artifacts under `artifacts/freeswitch-live`.
+
 3. Start the ESL bridge from another terminal:
 
 ```sh

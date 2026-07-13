@@ -35,6 +35,15 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /proof:\n[\s\S]*scripts\/demo-proof\.mjs/);
   assert.match(compose, /proof:\n[\s\S]*artifacts\/demo-proof-docker\.json/);
   assert.match(compose, /proof:\n[\s\S]*\.\/artifacts:\/app\/artifacts/);
+  assert.match(compose, /rtc-asr:\n[\s\S]*profiles: \["voice", "browser-webrtc", "sip", "full"\]/);
+  assert.match(compose, /rtc-asr:\n[\s\S]*ASR_VAD_FILTER: \${ASR_VAD_FILTER:-false}/);
+  assert.match(compose, /kokoro:\n[\s\S]*profiles: \["voice", "browser-webrtc", "sip", "full"\]/);
+  assert.match(compose, /browser-webrtc-bridge:\n[\s\S]*target: voice-runtime/);
+  assert.match(compose, /browser-webrtc-bridge:\n[\s\S]*RTC_ASR_WS_URL: ws:\/\/rtc-asr:8080\/v1\/stt\/stream/);
+  assert.match(compose, /freeswitch:\n[\s\S]*profiles: \["freeswitch", "sip", "full"\]/);
+  assert.match(compose, /freeswitch-bridge:\n[\s\S]*scripts\/freeswitch-acc-bridge\.mjs/);
+  assert.match(compose, /assert-viewer:\n[\s\S]*target: assert-runtime/);
+  assert.match(compose, /assert-viewer:\n[\s\S]*scripts\/assert-viewer\.mjs/);
 
   assert.equal(packageJson.scripts?.["docker:app"], "docker compose up --build app");
   assert.equal(packageJson.scripts?.["health:smoke"], "node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health");
@@ -46,10 +55,23 @@ test("Docker runtime assets keep the documented health and proof contract", () =
     packageJson.scripts?.["docker:proof"],
     "sh -c 'LOCAL_UID=${LOCAL_UID:-$(id -u)} LOCAL_GID=${LOCAL_GID:-$(id -g)} docker compose run --rm proof'",
   );
+  assert.equal(packageJson.scripts?.["docker:voice"], "docker compose --profile voice up --build app rtc-asr kokoro");
+  assert.equal(
+    packageJson.scripts?.["docker:browser-webrtc"],
+    "docker compose --profile browser-webrtc up --build app rtc-asr kokoro browser-webrtc-bridge",
+  );
+  assert.equal(packageJson.scripts?.["docker:sip"], "docker compose --profile sip up --build app freeswitch rtc-asr kokoro freeswitch-bridge");
+  assert.equal(packageJson.scripts?.["docker:assert"], "docker compose --profile eval up --build assert-viewer");
+  assert.equal(packageJson.scripts?.["docker:full"], "docker compose --profile full up --build");
   assert.equal(packageJson.scripts?.["docker:freeswitch:only"], "docker compose --profile freeswitch up -d freeswitch --no-deps");
   assert.match(readme, /npm run docker:app/);
   assert.match(readme, /npm run docker:smoke/);
   assert.match(readme, /npm run health:smoke/);
   assert.match(readme, /npm run docker:proof/);
+  assert.match(readme, /npm run docker:voice/);
+  assert.match(readme, /npm run docker:browser-webrtc/);
+  assert.match(readme, /npm run docker:sip/);
+  assert.match(readme, /npm run docker:assert/);
+  assert.match(readme, /npm run docker:full/);
   assert.match(readme, /npm run docker:freeswitch:only/);
 });

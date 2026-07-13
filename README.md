@@ -147,10 +147,23 @@ For detailed API route, script, Docker, and local SIP notes, see `docs/runtime-r
 npm run docker:app
 npm run docker:smoke
 npm run docker:proof
+npm run docker:voice
+npm run docker:browser-webrtc
 npm run docker:freeswitch:only
+npm run docker:sip
+npm run docker:assert
+npm run docker:full
 ```
 
-Docker exposes the app on port `8026` and includes `/health` checks in both `Dockerfile` and `docker-compose.yml`.
+Docker exposes the app on port `8026` and includes `/health` checks in both `Dockerfile` and `docker-compose.yml`. The default app/proof commands stay small. Optional Compose profiles add the local contact-center sidecars:
+
+- `voice`: rtc-asr on `8080` and Kokoro on `8880`.
+- `browser-webrtc`: voice sidecars plus the Pipecat browser WebRTC bridge on `8766`.
+- `sip`: FreeSWITCH, the FreeSWITCH-to-ACC ESL bridge, rtc-asr, and Kokoro.
+- `eval`: ASSERT artifact export/viewer on `5174`.
+- `full`: all optional local services for an end-to-end lab stack.
+
+The `rtc-asr` service defaults to the local image name `rtc-asr:local`; build it from the sibling `rtc-asr` checkout or override `RTC_ASR_IMAGE` before starting a voice profile. Override `KOKORO_IMAGE` if a different Kokoro FastAPI image is preferred.
 
 ## Project Layout
 
