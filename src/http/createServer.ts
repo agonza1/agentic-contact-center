@@ -814,7 +814,7 @@ function buildOperatorConsoleHtml(): string {
     function hasVerifiedLiveVoicePlayback() {
       const pc = state.voicePeer;
       const audio = state.voiceRemoteAudio;
-      const peerActive = Boolean(pc && !["closed", "failed", "disconnected"].includes(pc.connectionState));
+      const peerActive = Boolean(pc && !["closed", "failed"].includes(pc.connectionState));
       const playbackProgressed = Boolean(audio && audio.currentTime > 0 && !audio.paused);
       return peerActive && state.voiceRemoteTrackReceived && (state.voiceRemoteAudioStarted || playbackProgressed);
     }
@@ -824,7 +824,9 @@ function buildOperatorConsoleHtml(): string {
       if (!(options && options.force) && state.voiceBridge.lastProbeAt && now - state.voiceBridge.lastProbeAt < 10000) return;
       state.voiceBridge.probing = true;
       state.voiceBridge.lastProbeAt = now;
-      updateVoiceBridgeStatus("checking", "Checking " + browserWebrtcReadinessUrl());
+      if (!hasVerifiedLiveVoicePlayback()) {
+        updateVoiceBridgeStatus("checking", "Checking " + browserWebrtcReadinessUrl());
+      }
       try {
         const response = await fetch(browserWebrtcReadinessUrl());
         const payload = await response.json();
@@ -1160,7 +1162,15 @@ function buildOperatorConsoleHtml(): string {
           });
         };
         pc.onconnectionstatechange = function() {
-          if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
+          if (pc.connectionState === "disconnected") {
+            if (hasVerifiedLiveVoicePlayback()) {
+              updateVoiceBridgeStatus("running", "Live browser WebRTC audio remains verified while the peer reports disconnected; keeping the session open.");
+              return;
+            }
+            updateVoiceBridgeStatus("degraded", "WebRTC connection disconnected; waiting for reconnection before closing the voice peer.");
+            return;
+          }
+          if (["failed", "closed"].includes(pc.connectionState)) {
             updateVoiceBridgeStatus("degraded", "WebRTC connection " + pc.connectionState);
             if (state.voicePeer === pc) {
               try { pc.close(); } catch (error) {}
