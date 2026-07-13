@@ -39,6 +39,12 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
     );
     const inference = parseJsonl<{ test_case_id: string; events: unknown[] }>(await readFile(path.join(runDir, "inference_set.jsonl"), "utf8"));
     const configYaml = await readFile(path.join(runDir, "config.yaml"), "utf8");
+    const flowMapping = JSON.parse(await readFile(path.join(suiteDir, "assert-flow-mapping.json"), "utf8")) as {
+      source_flow: { demo_json: string; merged_commit: string };
+      acc_requirement: string;
+      five_step_flow: Array<{ step: number; name: string; artifact: string }>;
+      scenario_links: Array<{ test_case_id: string; taxonomy_category: string; regression_focus: string; judged_result: string }>;
+    };
 
     assert.deepEqual(
       testSet.map((row) => row.test_case_id),
@@ -130,6 +136,32 @@ test("ASSERT export covers voice-agent regression scenarios and judge dimensions
       ),
     );
     assert.ok(scores.every((row) => row.verdict.node_judgments.some((judgment) => judgment.relevant)));
+    assert.equal(
+      flowMapping.source_flow.demo_json,
+      "https://github.com/agonza1/ConversationAgentEvals/blob/main/docs/examples/assert-flow-demo.json",
+    );
+    assert.equal(flowMapping.source_flow.merged_commit, "d123dae734d1201ae248fac12531f30cb1f96ddd");
+    assert.match(flowMapping.acc_requirement, /supervised handoff evidence/);
+    assert.deepEqual(
+      flowMapping.five_step_flow.map((step) => step.name),
+      [
+        "Natural-language ACC requirements",
+        "Behavior taxonomy",
+        "Generated scenario/test set",
+        "ACC target execution evidence",
+        "Judged results shaped for ASSERT",
+      ],
+    );
+    assert.equal(flowMapping.scenario_links.length, testSet.length);
+    assert.ok(
+      flowMapping.scenario_links.some(
+        (link) =>
+          link.test_case_id === "acc-voice-demo-002" &&
+          link.taxonomy_category === "Unsupported account action without handoff" &&
+          link.regression_focus === "handoff_discipline" &&
+          link.judged_result === path.join(runId, "scores.jsonl"),
+      ),
+    );
     assert.match(configYaml, /goal_progression:/);
     assert.match(configYaml, /handoff_discipline:/);
     assert.match(configYaml, /latency_evidence:/);
