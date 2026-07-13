@@ -586,7 +586,7 @@ function buildOperatorConsoleHtml(): string {
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceRemoteTrackReceived: false, voiceRemoteAudioStarted: false, voiceAudioWatchdog: null, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceRemoteTrackReceived: false, voiceRemoteAudioStarted: false, voiceAudioWatchdog: null, voiceSessionProofTimer: null, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
     const repoHeadEvidence = ${JSON.stringify(getRepoHeadEvidence())};
     const actions = ["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "goto_slide", "ask_operator", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
@@ -808,6 +808,10 @@ function buildOperatorConsoleHtml(): string {
         window.clearTimeout(state.voiceAudioWatchdog);
         state.voiceAudioWatchdog = null;
       }
+      if (state.voiceSessionProofTimer) {
+        window.clearTimeout(state.voiceSessionProofTimer);
+        state.voiceSessionProofTimer = null;
+      }
       if (state.voicePeer) {
         try { state.voicePeer.close(); } catch (error) {}
         state.voicePeer = null;
@@ -913,6 +917,69 @@ function buildOperatorConsoleHtml(): string {
       };
       window.__ACC_BROWSER_WEBRTC_LIVE_PROOF__ = proof;
       return proof;
+    }
+    function describeVoiceSessionProof(proof) {
+      const bridge = proof && proof.bridge ? proof.bridge : {};
+      const turn = bridge.turnEvidence || {};
+      const lastError = bridge.lastError || {};
+      const lastAudio = bridge.lastAudio || {};
+      const lastStt = bridge.lastStt || {};
+      const lastAcc = bridge.lastAcc || {};
+      const lastTts = bridge.lastTts || {};
+      if (lastError.error === "empty_transcript" || turn.error === "empty_transcript") {
+        return "Audio reached the Pipecat bridge, but rtc-asr returned an empty transcript. Last audio RMS " + escapeHtml(String(lastAudio.rms || "unknown")) + "; inspect session proof for STT events.";
+      }
+      if (lastError.error) {
+        return "Browser WebRTC turn blocked at " + String(lastError.stage || "pipeline") + ": " + String(lastError.detail || lastError.error);
+      }
+      if (turn.callerTranscript && !turn.agentText) {
+        return "rtc-asr transcript arrived (" + String(turn.callerTranscript) + "), but ACC returned no agent text. Flow: " + String(lastAcc.flowState || "unknown") + ".";
+      }
+      if (turn.agentText && !(turn.tts && turn.tts.audioBytes)) {
+        return "ACC returned agent text, but Kokoro audio is not ready yet. Last TTS stage: " + String(lastTts.stage || "none") + ".";
+      }
+      if (turn.callerTranscript && turn.tts && turn.tts.audioBytes) {
+        return "Live turn proof ready: rtc-asr transcript and Kokoro audio are present for turn " + String(turn.turn || bridge.turnCount || 1) + ".";
+      }
+      if (lastStt.stage === "stt.finalize_started") {
+        return "Audio turn finalized; waiting for rtc-asr final transcript.";
+      }
+      if (lastAudio.stage) {
+        return "Audio is reaching the Pipecat bridge; waiting for speech finalization. Last RMS " + escapeHtml(String(lastAudio.rms || "unknown")) + ".";
+      }
+      return bridge.nextAction || "Waiting for browser microphone audio to reach the Pipecat bridge.";
+    }
+    async function pollVoiceSessionProof() {
+      if (!state.voiceSessionId || !state.voicePeer || state.voicePeer.connectionState === "closed") return;
+      const response = await fetch("/api/browser-webrtc/session/" + encodeURIComponent(state.voiceSessionId) + "/proof").catch(function() { return null; });
+      if (!response || !response.ok) return;
+      const proof = await response.json().catch(function() { return null; });
+      if (!proof || !proof.bridge) return;
+      const bridge = proof.bridge;
+      const turn = bridge.turnEvidence || {};
+      const detail = describeVoiceSessionProof(proof);
+      if (bridge.reviewReady || (turn.callerTranscript && turn.tts && turn.tts.audioBytes)) {
+        updateVoiceBridgeStatus("running", detail);
+      } else if ((bridge.lastError && bridge.lastError.error) || turn.error || (turn.callerTranscript && !turn.agentText)) {
+        updateVoiceBridgeStatus("degraded", detail);
+      } else {
+        updateVoiceBridgeStatus("connected", detail);
+      }
+      setStatus(detail);
+    }
+    function armVoiceSessionProofPolling() {
+      if (state.voiceSessionProofTimer) window.clearTimeout(state.voiceSessionProofTimer);
+      function tick() {
+        state.voiceSessionProofTimer = null;
+        pollVoiceSessionProof()
+          .catch(function(error) { setStatus(error.message); })
+          .finally(function() {
+            if (state.voiceSessionId && state.voicePeer && state.voicePeer.connectionState !== "closed") {
+              state.voiceSessionProofTimer = window.setTimeout(tick, 3000);
+            }
+          });
+      }
+      state.voiceSessionProofTimer = window.setTimeout(tick, 2000);
     }
     async function checkRemoteAudioAfterConnect(pc) {
       if (state.voicePeer !== pc || pc.connectionState === "closed") return;
@@ -1061,6 +1128,7 @@ function buildOperatorConsoleHtml(): string {
         state.voiceStatus = "Browser WebRTC signaling connected; waiting for remote agent audio";
         updateVoiceBridgeStatus("connected", "Offer/answer succeeded through the Pipecat WebRTC bridge (" + formatVoiceBridgeEngineEvidence(payload.evidence || {}) + "). Waiting for remote audio track and rtc-asr/Kokoro turn proof.");
         armRemoteAudioWatchdog(pc);
+        armVoiceSessionProofPolling();
         await refresh();
         setStatus(state.voiceStatus);
       } catch (error) {

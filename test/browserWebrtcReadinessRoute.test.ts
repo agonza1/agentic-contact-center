@@ -17,8 +17,21 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(bridge, /AccCallerTurnProcessor\(session\)/);
   assert.match(bridge, /KokoroTtsProcessor\(session\)/);
   assert.match(bridge, /transport\.output\(\)/);
+  assert.match(bridge, /record_stage/);
+  assert.match(bridge, /stt\.empty_transcript/);
+  assert.match(bridge, /stageEvents/);
   assert.doesNotMatch(bridge, /RTCPeerConnection/);
   assert.doesNotMatch(bridge, /RTCSessionDescription/);
+});
+
+test("operator console polls browser WebRTC session proof for turn diagnostics", () => {
+  const serverSource = readFileSync("src/http/createServer.ts", "utf8");
+
+  assert.match(serverSource, /pollVoiceSessionProof/);
+  assert.match(serverSource, /armVoiceSessionProofPolling/);
+  assert.match(serverSource, /Audio reached the Pipecat bridge, but rtc-asr returned an empty transcript/);
+  assert.match(serverSource, /rtc-asr transcript arrived/);
+  assert.match(serverSource, /armVoiceSessionProofPolling\(\);/);
 });
 
 test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract", async () => {
@@ -283,6 +296,16 @@ test("GET /api/browser-webrtc/session/:sessionId/proof proxies Pipecat bridge tu
         stt: { engine: "rtc-asr", audioBytes: 32000 },
         tts: { engine: "kokoro", audioBytes: 64000 },
       },
+      lastAudio: { stage: "audio.frame", rms: 612, frameBytes: 640 },
+      lastStt: { stage: "stt.transcript_final", transcript: "I need help with billing." },
+      lastAcc: { stage: "acc.caller_turn_completed", flowState: "diagnose" },
+      lastTts: { stage: "tts.audio_ready", tts: { audioBytes: 64000 } },
+      lastError: {},
+      stageEvents: [
+        { stage: "audio.speech_started", ok: true },
+        { stage: "stt.transcript_final", ok: true },
+        { stage: "tts.audio_ready", ok: true },
+      ],
       reviewReady: true,
     }));
   });
@@ -325,7 +348,13 @@ test("GET /api/browser-webrtc/session/:sessionId/proof proxies Pipecat bridge tu
       ok: boolean;
       route: string;
       sessionId: string;
-      bridge: { turnEvidence: { callerTranscript: string; tts: { audioBytes: number } }; reviewReady: boolean };
+      bridge: {
+        turnEvidence: { callerTranscript: string; tts: { audioBytes: number } };
+        lastAudio: { rms: number };
+        lastStt: { stage: string };
+        stageEvents: Array<{ stage: string }>;
+        reviewReady: boolean;
+      };
     };
 
     assert.equal(payload.ok, true);
@@ -333,6 +362,9 @@ test("GET /api/browser-webrtc/session/:sessionId/proof proxies Pipecat bridge tu
     assert.equal(payload.sessionId, "browser-webrtc-session-123");
     assert.equal(payload.bridge.turnEvidence.callerTranscript, "I need help with billing.");
     assert.equal(payload.bridge.turnEvidence.tts.audioBytes, 64000);
+    assert.equal(payload.bridge.lastAudio.rms, 612);
+    assert.equal(payload.bridge.lastStt.stage, "stt.transcript_final");
+    assert.equal(payload.bridge.stageEvents.some((event) => event.stage === "tts.audio_ready"), true);
     assert.equal(payload.bridge.reviewReady, true);
     assert.deepEqual(bridgeRequests, ["/api/webrtc/sessions/browser-webrtc-session-123/proof"]);
   } finally {
