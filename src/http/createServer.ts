@@ -3766,6 +3766,11 @@ function isVoiceSessionControlAction(value: string): boolean {
   return ["barge_in", "pause", "resume", "close", "flush", "mark"].includes(value);
 }
 
+function parseBooleanHeader(value: string | string[] | undefined): boolean {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === "1" || raw?.toLowerCase() === "true";
+}
+
 function buildWebSocketAcceptKey(key: string): string {
   return createHash("sha1")
     .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
@@ -4110,7 +4115,7 @@ async function routeRequest(
     return;
   }
 
-  const voiceSessionMatch = pathname.match(/^\/api\/voice\/sessions\/([^/]+)\/(play|media\/input|events|control|close|proof)$/);
+  const voiceSessionMatch = pathname.match(/^\/api\/voice\/sessions\/([^/]+)\/(play|media\/input|media\/output|events|control|close|proof)$/);
   if (voiceSessionMatch) {
     const sessionId = decodeURIComponent(voiceSessionMatch[1]);
     const action = voiceSessionMatch[2];
@@ -4181,6 +4186,28 @@ async function routeRequest(
         sampleRateHz,
       });
       writeJson(response, 202, { ok: true, route: "/api/voice/sessions/:id/media/input", session: updated, accepted: true });
+      return;
+    }
+
+    if (request.method === "POST" && action === "media/output") {
+      const sampleRateHz = parseOptionalPositiveInteger(Number(request.headers["x-sample-rate-hz"] ?? "") || undefined, "voice_session_sample_rate_invalid");
+      if (sampleRateHz !== undefined && typeof sampleRateHz !== "number") {
+        writeBadRequest(response, sampleRateHz.error);
+        return;
+      }
+      const body = await readRawBody(request);
+      if (body.byteLength === 0) {
+        writeBadRequest(response, "voice_session_media_output_empty");
+        return;
+      }
+      const updated = voiceSessions.recordOutputChunk(sessionId, {
+        bytes: body.byteLength,
+        mimeType: request.headers["content-type"]?.toString(),
+        sampleRateHz,
+        streamId: Array.isArray(request.headers["x-output-stream-id"]) ? request.headers["x-output-stream-id"][0] : request.headers["x-output-stream-id"],
+        final: parseBooleanHeader(request.headers["x-output-final"]),
+      });
+      writeJson(response, 202, { ok: true, route: "/api/voice/sessions/:id/media/output", session: updated, accepted: true });
       return;
     }
 

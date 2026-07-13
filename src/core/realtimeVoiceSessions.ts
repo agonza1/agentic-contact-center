@@ -34,6 +34,19 @@ export interface RealtimeVoiceSession {
     requestedTurns: number;
     lastRequestedAt: string | null;
   };
+  output: {
+    streamId: string | null;
+    status: "idle" | "streaming" | "completed" | "cancelled";
+    chunks: number;
+    bytes: number;
+    mimeType: string | null;
+    sampleRateHz: number | null;
+    startedAt: string | null;
+    lastChunkAt: string | null;
+    completedAt: string | null;
+    cancelledAt: string | null;
+    cancellationReason: string | null;
+  };
   controls: {
     lastAction: string | null;
     lastReason: string | null;
@@ -63,6 +76,7 @@ export function buildRealtimeVoiceSessionEndpoints(sessionId: string) {
     create: "/api/voice/sessions",
     play: `/api/voice/sessions/${encoded}/play`,
     mediaInput: `/api/voice/sessions/${encoded}/media/input`,
+    mediaOutput: `/api/voice/sessions/${encoded}/media/output`,
     events: `/api/voice/sessions/${encoded}/events`,
     control: `/api/voice/sessions/${encoded}/control`,
     close: `/api/voice/sessions/${encoded}/close`,
@@ -90,6 +104,19 @@ export class RealtimeVoiceSessionStore {
       metadata: { ...(input.metadata ?? {}) },
       media: { inputChunks: 0, inputBytes: 0, inputSampleRateHz: null, inputMimeType: null, lastInputAt: null },
       playback: { requestedTurns: 0, lastRequestedAt: null },
+      output: {
+        streamId: null,
+        status: "idle",
+        chunks: 0,
+        bytes: 0,
+        mimeType: null,
+        sampleRateHz: null,
+        startedAt: null,
+        lastChunkAt: null,
+        completedAt: null,
+        cancelledAt: null,
+        cancellationReason: null,
+      },
       controls: { lastAction: null, lastReason: null },
       events: [],
     };
@@ -138,6 +165,44 @@ export class RealtimeVoiceSessionStore {
     return cloneSession(session);
   }
 
+  recordOutputChunk(sessionId: string, input: { bytes: number; mimeType?: string; sampleRateHz?: number; streamId?: string; final?: boolean; timestamp?: string }): RealtimeVoiceSession | null {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.status === "closed") return null;
+    const at = input.timestamp ?? new Date().toISOString();
+    const streamId = input.streamId?.trim() || session.output.streamId || `output-${session.playback.requestedTurns || 1}`;
+    const starting = session.output.status !== "streaming" || session.output.streamId !== streamId;
+    if (starting) {
+      session.output.streamId = streamId;
+      session.output.status = "streaming";
+      session.output.chunks = 0;
+      session.output.bytes = 0;
+      session.output.startedAt = at;
+      session.output.completedAt = null;
+      session.output.cancelledAt = null;
+      session.output.cancellationReason = null;
+      this.record(session, "output.stream.started", at, { streamId });
+    }
+    session.output.chunks += 1;
+    session.output.bytes += input.bytes;
+    session.output.mimeType = input.mimeType ?? session.output.mimeType;
+    session.output.sampleRateHz = input.sampleRateHz ?? session.output.sampleRateHz;
+    session.output.lastChunkAt = at;
+    this.record(session, "output.audio.chunk", at, {
+      streamId,
+      bytes: input.bytes,
+      totalBytes: session.output.bytes,
+      chunks: session.output.chunks,
+      mimeType: session.output.mimeType,
+      sampleRateHz: session.output.sampleRateHz,
+    });
+    if (input.final) {
+      session.output.status = "completed";
+      session.output.completedAt = at;
+      this.record(session, "output.stream.completed", at, { streamId, chunks: session.output.chunks, bytes: session.output.bytes });
+    }
+    return cloneSession(session);
+  }
+
   recordControl(sessionId: string, input: { action: string; reason?: string; timestamp?: string }): RealtimeVoiceSession | null {
     const session = this.sessions.get(sessionId);
     if (!session || session.status === "closed") return null;
@@ -146,6 +211,17 @@ export class RealtimeVoiceSessionStore {
     session.controls.lastReason = input.reason ?? null;
     if (input.action === "close") session.status = "closing";
     this.record(session, "control.received", at, { action: input.action, reason: input.reason ?? null });
+    if (input.action === "barge_in" && session.output.status === "streaming") {
+      session.output.status = "cancelled";
+      session.output.cancelledAt = at;
+      session.output.cancellationReason = input.reason ?? "barge_in";
+      this.record(session, "output.stream.cancelled", at, {
+        streamId: session.output.streamId,
+        reason: session.output.cancellationReason,
+        chunks: session.output.chunks,
+        bytes: session.output.bytes,
+      });
+    }
     return cloneSession(session);
   }
 
@@ -171,6 +247,7 @@ export class RealtimeVoiceSessionStore {
     if (!session) return null;
     const snapshot = cloneSession(session);
     const hasAudioInput = snapshot.media.inputChunks > 0 && snapshot.media.inputBytes > 0;
+    const hasOutputAudio = snapshot.output.chunks > 0 && snapshot.output.bytes > 0;
     const hasRtcAsrFinalTranscript = call?.events.some((event) => event.type === "rtc_asr_transcript") === true;
     const transcriptTurns = call?.transcript.length ?? 0;
     return {
@@ -195,6 +272,11 @@ export class RealtimeVoiceSessionStore {
         inputChunks: snapshot.media.inputChunks,
         inputBytes: snapshot.media.inputBytes,
         playbackRequests: snapshot.playback.requestedTurns,
+        outputChunks: snapshot.output.chunks,
+        outputBytes: snapshot.output.bytes,
+        hasOutputAudio,
+        outputStatus: snapshot.output.status,
+        outputCancelledByBargeIn: snapshot.output.status === "cancelled" && snapshot.controls.lastAction === "barge_in",
         hasAudioInput,
         hasRtcAsrFinalTranscript,
         transcriptTurns,
@@ -202,9 +284,9 @@ export class RealtimeVoiceSessionStore {
         eventRoute: buildRealtimeVoiceSessionEndpoints(sessionId).events,
       },
       review: {
-        status: hasAudioInput && hasRtcAsrFinalTranscript ? "ready_for_evaluator" : "collecting_realtime_evidence",
-        ready: hasAudioInput && hasRtcAsrFinalTranscript,
-        blockers: [hasAudioInput ? null : "voice_session_media_input_missing", hasRtcAsrFinalTranscript ? null : "rtc_asr_final_transcript_missing"].filter((blocker): blocker is string => blocker !== null),
+        status: hasAudioInput && hasOutputAudio && hasRtcAsrFinalTranscript ? "ready_for_evaluator" : "collecting_realtime_evidence",
+        ready: hasAudioInput && hasOutputAudio && hasRtcAsrFinalTranscript,
+        blockers: [hasAudioInput ? null : "voice_session_media_input_missing", hasOutputAudio ? null : "voice_session_output_audio_missing", hasRtcAsrFinalTranscript ? null : "rtc_asr_final_transcript_missing"].filter((blocker): blocker is string => blocker !== null),
       },
       call: call ?? null,
     };
