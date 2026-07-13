@@ -35,6 +35,19 @@ test("operator console polls browser WebRTC session proof for turn diagnostics",
 });
 
 test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract", async () => {
+  const bridge = createServer((_request, response) => {
+    response.statusCode = 200;
+    response.setHeader("content-type", "application/json; charset=utf-8");
+    response.end(JSON.stringify({ ok: true, status: "ready", detail: "test bridge ready" }));
+  });
+  await new Promise<void>((resolve) => bridge.listen(0, "127.0.0.1", resolve));
+  const bridgeAddress = bridge.address();
+  if (!bridgeAddress || typeof bridgeAddress === "string") {
+    throw new Error("Expected an ephemeral bridge TCP port");
+  }
+  const previousBridgeUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL;
+  process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
+
   const server = buildHttpServer(loadPocConfig());
 
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -80,7 +93,7 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
       };
       readiness: {
         acc: { status: string };
-        pipecatWebrtcBridge: { status: string; bridgeUrl: string; timeoutMs: number; failClosedWhenUnavailable: boolean };
+        pipecatWebrtcBridge: { status: string; bridgeUrl: string; healthUrl: string; timeoutMs: number; failClosedWhenUnavailable: boolean };
         rtcAsr: { status: string; engine: string; contract: string };
         kokoro: { status: string; engine: string };
       };
@@ -121,7 +134,8 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
     assert.equal(payload.readiness.pipecatWebrtcBridge.status, "signaling_ready");
     assert.equal(payload.readiness.pipecatWebrtcBridge.failClosedWhenUnavailable, true);
     assert.equal(payload.readiness.pipecatWebrtcBridge.timeoutMs, 5000);
-    assert.match(payload.readiness.pipecatWebrtcBridge.bridgeUrl, /127\.0\.0\.1:8766/);
+    assert.match(payload.readiness.pipecatWebrtcBridge.bridgeUrl, /127\.0\.0\.1/);
+    assert.match(payload.readiness.pipecatWebrtcBridge.healthUrl, /\/health$/);
     assert.deepEqual(payload.readiness.rtcAsr, {
       status: "contract_ready",
       engine: "rtc-asr",
@@ -163,7 +177,8 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
     ]);
     assert.ok(payload.liveMedia.setupCommands.some((command) => command.includes("BROWSER_WEBRTC_BRIDGE_URL")));
     assert.deepEqual(payload.blockers, ["live_webrtc_media_turn_evidence_missing"]);
-    assert.match(payload.nextActions[0] ?? "", /Pipecat WebRTC bridge/);
+    assert.match(payload.nextActions[0] ?? "", /Capture one browser voice turn/);
+    assert.match(payload.nextActions[2] ?? "", /issue #222/);
     assert.deepEqual(payload.validationCommands, ["npm test", "npm run browser-webrtc:check -- --url http://127.0.0.1:8026/health"]);
     assert.equal(payload.contractReady, true);
     assert.equal(payload.liveMediaVerified, false);
@@ -177,6 +192,70 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
         resolve();
       });
     });
+    await new Promise<void>((resolve, reject) => bridge.close((error) => error ? reject(error) : resolve()));
+    if (previousBridgeUrl === undefined) {
+      delete process.env.BROWSER_WEBRTC_BRIDGE_URL;
+    } else {
+      process.env.BROWSER_WEBRTC_BRIDGE_URL = previousBridgeUrl;
+    }
+  }
+});
+
+
+test("GET /api/browser-webrtc/readiness reports bridge offline before live media proof", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+  const unavailableBridge = createServer();
+  await new Promise<void>((resolve) => unavailableBridge.listen(0, "127.0.0.1", resolve));
+  const unavailableAddress = unavailableBridge.address();
+  if (!unavailableAddress || typeof unavailableAddress === "string") {
+    throw new Error("Expected an ephemeral bridge TCP port");
+  }
+  await new Promise<void>((resolve, reject) => unavailableBridge.close((error) => error ? reject(error) : resolve()));
+  const previousBridgeUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL;
+  const previousTimeout = process.env.BROWSER_WEBRTC_BRIDGE_TIMEOUT_MS;
+  process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${unavailableAddress.port}`;
+  process.env.BROWSER_WEBRTC_BRIDGE_TIMEOUT_MS = "50";
+
+  try {
+    const responseBody = await new Promise<string>((resolve, reject) => {
+      const req = request(
+        { host: "127.0.0.1", port: address.port, path: "/api/browser-webrtc/readiness", method: "GET" },
+        (response) => {
+          let body = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => { body += chunk; });
+          response.on("end", () => resolve(body));
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+    const payload = JSON.parse(responseBody) as { ok: boolean; status: string; readiness: { pipecatWebrtcBridge: { status: string; blockers: string[]; healthUrl: string } }; blockers: string[]; nextActions: string[]; architectureIssue: string };
+    assert.equal(payload.ok, false);
+    assert.equal(payload.status, "realtime_contract_blocked_bridge_offline");
+    assert.equal(payload.architectureIssue, "agonza1/agentic-contact-center#222");
+    assert.equal(payload.readiness.pipecatWebrtcBridge.status, "offline");
+    assert.deepEqual(payload.readiness.pipecatWebrtcBridge.blockers, ["pipecat_webrtc_bridge_unavailable"]);
+    assert.ok(payload.blockers.includes("pipecat_webrtc_bridge_unavailable"));
+    assert.ok(payload.blockers.includes("live_webrtc_media_turn_evidence_missing"));
+    assert.match(payload.nextActions[0] ?? "", /confirm .*\/health returns ok=true/);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    if (previousBridgeUrl === undefined) {
+      delete process.env.BROWSER_WEBRTC_BRIDGE_URL;
+    } else {
+      process.env.BROWSER_WEBRTC_BRIDGE_URL = previousBridgeUrl;
+    }
+    if (previousTimeout === undefined) {
+      delete process.env.BROWSER_WEBRTC_BRIDGE_TIMEOUT_MS;
+    } else {
+      process.env.BROWSER_WEBRTC_BRIDGE_TIMEOUT_MS = previousTimeout;
+    }
   }
 });
 

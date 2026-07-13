@@ -56,6 +56,15 @@ const operatorConsoleWorkboardCard = "82771d3a-de4d-4b6e-869c-328e8264d01e";
 const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
 const defaultBrowserWebrtcBridgeTimeoutMs = 5000;
 
+interface BrowserWebrtcBridgeRuntimeProbe {
+  ok: boolean;
+  status: "ready" | "degraded" | "offline";
+  detail: string;
+  blockers: string[];
+  checkedUrl: string;
+  payload?: unknown;
+}
+
 interface RtcAsrModelTarget {
   id: string;
   label: string;
@@ -137,19 +146,57 @@ const activeClueConBrainEvidence: Array<{ id: string; type: "preview" | "apply" 
   { id: "brain-seed-1", type: "apply", revision: 1, changedFiles: activeClueConBrainBlocks.map((block) => block.file), createdAt: "2026-07-09T00:00:00.000Z" },
 ];
 
-function buildBrowserWebrtcReadinessPayload(): object {
+async function probeBrowserWebrtcBridgeRuntime(): Promise<BrowserWebrtcBridgeRuntimeProbe> {
+  const bridgeUrl = `${getBrowserWebrtcBridgeBaseUrl().replace(/\/$/, "")}/health`;
+  try {
+    const response = await fetch(bridgeUrl, {
+      method: "GET",
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs()),
+    });
+    const contentType = response.headers.get("content-type") ?? "";
+    const payload = contentType.includes("json") ? await response.json() : { detail: await response.text() };
+    const payloadRecord = isRecord(payload) ? payload : {};
+    const explicitOk = payloadRecord.ok !== false && payloadRecord.ready !== false;
+    const status = typeof payloadRecord.status === "string" ? payloadRecord.status : response.ok && explicitOk ? "ready" : "degraded";
+    const bridgeOk = response.ok && explicitOk && !["offline", "error", "failed", "degraded"].includes(status.toLowerCase());
+    const blockers = Array.isArray(payloadRecord.blockers) ? payloadRecord.blockers.filter((item): item is string => typeof item === "string" && Boolean(item.trim())) : [];
+    return {
+      ok: bridgeOk,
+      status: bridgeOk ? "ready" : "degraded",
+      detail: bridgeOk ? "Pipecat WebRTC bridge health probe passed." : typeof payloadRecord.detail === "string" ? payloadRecord.detail : `Pipecat WebRTC bridge returned HTTP ${response.status}.`,
+      blockers: bridgeOk ? [] : blockers.length ? blockers : ["pipecat_webrtc_bridge_not_ready"],
+      checkedUrl: bridgeUrl,
+      payload,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "offline",
+      detail: error instanceof Error ? error.message : String(error),
+      blockers: ["pipecat_webrtc_bridge_unavailable"],
+      checkedUrl: bridgeUrl,
+    };
+  }
+}
+
+function buildBrowserWebrtcReadinessPayload(bridgeRuntime: BrowserWebrtcBridgeRuntimeProbe): object {
   const contractReady = true;
   const signalingRoute = "/api/browser-webrtc/session";
   const browserWebrtcBridgeBaseUrl = getBrowserWebrtcBridgeBaseUrl();
   const browserWebrtcBridgeTimeoutMs = getBrowserWebrtcBridgeTimeoutMs();
   const liveMediaVerified = false;
+  const runtimeReady = bridgeRuntime.ok;
+  const blockers = runtimeReady ? ["live_webrtc_media_turn_evidence_missing"] : [...bridgeRuntime.blockers, "live_webrtc_media_turn_evidence_missing"];
 
   return {
-    ok: contractReady,
+    ok: contractReady && runtimeReady,
     route: "/api/browser-webrtc/readiness",
     issue: "agonza1/agentic-contact-center#213",
     issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/213",
-    status: contractReady ? "contract_ready_pending_live_media_evidence" : "realtime_contract_degraded",
+    architectureIssue: "agonza1/agentic-contact-center#222",
+    architectureIssueUrl: "https://github.com/agonza1/agentic-contact-center/issues/222",
+    status: runtimeReady ? "contract_ready_pending_live_media_evidence" : "realtime_contract_blocked_bridge_offline",
     intendedPath: "browser microphone -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC/browser playback",
     normalOperation: {
       transport: "webrtc",
@@ -164,12 +211,14 @@ function buildBrowserWebrtcReadinessPayload(): object {
         evidence: "Existing call APIs, transcript, event trail, latency marks, and proof routes remain owned by ACC.",
       },
       pipecatWebrtcBridge: {
-        status: "signaling_ready",
+        status: runtimeReady ? "signaling_ready" : bridgeRuntime.status,
         bridgeUrl: browserWebrtcBridgeBaseUrl,
+        healthUrl: bridgeRuntime.checkedUrl,
         timeoutMs: browserWebrtcBridgeTimeoutMs,
         offerRoute: `${signalingRoute} -> ${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/offer`,
-        evidence: "ACC validates browser SDP offers, preserves/allocates call IDs, and proxies signaling to the local Pipecat WebRTC bridge.",
+        evidence: runtimeReady ? "ACC validates browser SDP offers, preserves/allocates call IDs, and the local Pipecat WebRTC bridge health probe passed." : `ACC is ready to proxy browser SDP offers, but the Pipecat WebRTC bridge is not reachable/ready: ${bridgeRuntime.detail}`,
         failClosedWhenUnavailable: true,
+        blockers: bridgeRuntime.blockers,
       },
       rtcAsr: {
         status: "contract_ready",
@@ -257,10 +306,11 @@ function buildBrowserWebrtcReadinessPayload(): object {
         evidence: "Pending local proof that a browser microphone turn reached the Pipecat WebRTC bridge, rtc-asr emitted a final transcript, Kokoro produced TTS, and the browser played the remote WebRTC audio track.",
       },
     ],
-    blockers: ["live_webrtc_media_turn_evidence_missing"],
+    blockers,
     nextActions: [
-      `Run the Pipecat WebRTC bridge at ${browserWebrtcBridgeBaseUrl} before connecting browser voice.`,
+      runtimeReady ? "Capture one browser voice turn with transcript, Kokoro audio, and remote playback evidence attached to this PR commit." : `Run the Pipecat WebRTC bridge at ${browserWebrtcBridgeBaseUrl} before connecting browser voice, then confirm ${bridgeRuntime.checkedUrl} returns ok=true.`,
       "Open /operator/console, click Connect Voice, allow microphone access, and verify the remote WebRTC audio track plays agent audio.",
+      "Keep issue #222 as the center: browser, fixture, tester, and SIP should become adapters over the same shared realtime Pipecat pipeline.",
     ],
     validationCommands: ["npm test", "npm run browser-webrtc:check -- --url http://127.0.0.1:8026/health"],
     relatedEvidenceRoutes: [
@@ -312,7 +362,13 @@ function buildBrowserWebrtcBridgeUnavailablePayload(error: unknown): object {
     error: "pipecat_webrtc_bridge_unavailable",
     detail: error instanceof Error ? error.message : String(error),
     bridgeOfferRoute: buildBrowserWebrtcBridgeOfferUrl(),
-    readiness: buildBrowserWebrtcReadinessPayload(),
+    readiness: buildBrowserWebrtcReadinessPayload({
+      ok: false,
+      status: "offline",
+      detail: "Offer proxy failed before bridge readiness could be confirmed.",
+      blockers: ["pipecat_webrtc_bridge_unavailable"],
+      checkedUrl: `${getBrowserWebrtcBridgeBaseUrl().replace(/\/$/, "")}/health`,
+    }),
   };
 }
 
@@ -3699,7 +3755,7 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/health") {
     const pipecatFlow = getPipecatPrototypeHealth();
-    const browserWebRtc = buildBrowserWebrtcReadinessPayload();
+    const browserWebRtc = buildBrowserWebrtcReadinessPayload(await probeBrowserWebrtcBridgeRuntime());
     writeJson(response, 200, {
       ok: true,
       demoName: config.demoName,
@@ -3724,7 +3780,7 @@ async function routeRequest(
   }
 
   if (request.method === "GET" && pathname === "/api/browser-webrtc/readiness") {
-    writeJson(response, 200, buildBrowserWebrtcReadinessPayload());
+    writeJson(response, 200, buildBrowserWebrtcReadinessPayload(await probeBrowserWebrtcBridgeRuntime()));
     return;
   }
 
