@@ -238,7 +238,7 @@ function sipHeaderValues(entry, headerName) {
     .filter(Boolean);
 }
 
-async function rtcAsrEvidence(filePath, liveManifest = {}) {
+async function rtcAsrEvidence(filePath, liveManifest = {}, options = {}) {
   if (!filePath) return { required: false, ready: false, reason: "rtc-asr transcript evidence is not attached." };
   let raw;
   try {
@@ -261,6 +261,9 @@ async function rtcAsrEvidence(filePath, liveManifest = {}) {
   const mismatchedEvidenceCallIds = [...evidenceCallIds].filter((callId) => expectedCallIds.length > 0 && !expectedCallIds.includes(callId));
   if (!transcript) return { required: true, ready: false, reason: "rtc-asr transcript evidence has no non-empty transcript text." };
   if (!final) return { required: true, ready: false, reason: "rtc-asr transcript evidence is missing a final transcript marker." };
+  if (options.requireCurrentCallId === true && expectedCallIds.length > 0 && evidenceCallIds.size === 0) {
+    return { required: true, ready: false, reason: "rtc-asr transcript evidence is missing the current call identifier." };
+  }
   if (mismatchedEvidenceCallIds.length > 0) {
     return {
       required: true,
@@ -273,11 +276,15 @@ async function rtcAsrEvidence(filePath, liveManifest = {}) {
 
 function requiredReviewChecks() {
   return [
-    ["--require-review-ready", "reviewGate"],
-    ["--require-live-capture", "liveCapture"],
-    ["--require-rtc-asr-live", "rtcAsrLive"],
-    ["--require-caller-playback", "callerPlaybackEvidenceValid"],
-  ].filter(([flag]) => hasArg(flag)).map(([, check]) => check);
+    ["--require-review-ready", ["reviewGate"]],
+    ["--require-live-capture", ["liveCapture"]],
+    ["--require-rtc-asr-live", ["rtcAsrLive", "rtcAsrEvidenceValid"]],
+    ["--require-caller-playback", ["callerPlaybackEvidenceValid"]],
+  ].filter(([flag]) => hasArg(flag)).flatMap(([, checks]) => checks);
+}
+
+function requiresCurrentRtcAsrCallId() {
+  return hasArg("--require-review-ready") || hasArg("--require-rtc-asr-live");
 }
 
 function requiredReviewChecksPassed(bundleManifest) {
@@ -765,7 +772,7 @@ async function main() {
     ...(callerPlaybackEvidencePathExists ? [await integrity(callerPlaybackEvidencePath, "caller-audible-playback-proof", "playback_evidence")] : []),
   ];
   const sipEvidence = await sipLogEvidence(sipLogPath);
-  const rtcAsrEvidenceResult = await rtcAsrEvidence(rtcAsrEvidencePath, liveManifest);
+  const rtcAsrEvidenceResult = await rtcAsrEvidence(rtcAsrEvidencePath, liveManifest, { requireCurrentCallId: requiresCurrentRtcAsrCallId() });
   const wavEvidenceResult = await wavEvidence(audioPath);
   const sourceArtifactIntegrityResult = await sourceArtifactIntegrityEvidence(liveManifest);
   const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, callerPlaybackEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult);
