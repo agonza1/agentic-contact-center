@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import hashlib
 import json
 import os
@@ -264,7 +265,8 @@ def main() -> int:
 
     if args.input_wav:
         try:
-            payload = asyncio.run(run_live_fixture(args))
+            with contextlib.redirect_stdout(sys.stderr):
+                payload = asyncio.run(run_live_fixture(args))
         except Exception as exc:
             payload = {
                 "ok": False,
