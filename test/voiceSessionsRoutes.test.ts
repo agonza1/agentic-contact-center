@@ -176,6 +176,8 @@ test("voice sessions expose persistent CAE realtime-audio lifecycle and proof", 
     assert.equal(output.payload.session.output.status, "streaming");
     assert.equal(output.payload.session.output.chunks, 1);
     assert.equal(output.payload.session.output.bytes, 6);
+    assert.equal(output.payload.session.output.totalChunks, 1);
+    assert.equal(output.payload.session.output.totalBytes, 6);
 
     const control = await requestJson(address.port, "POST", "/api/voice/sessions/cae-session-1/control", { action: "barge_in", reason: "tester interruption" });
     assert.equal(control.statusCode, 200);
@@ -215,6 +217,10 @@ test("voice sessions expose persistent CAE realtime-audio lifecycle and proof", 
     });
     assert.equal(followUpOutput.statusCode, 202);
     assert.equal(followUpOutput.payload.session.output.status, "completed");
+    assert.equal(followUpOutput.payload.session.output.chunks, 1);
+    assert.equal(followUpOutput.payload.session.output.bytes, 2);
+    assert.equal(followUpOutput.payload.session.output.totalChunks, 2);
+    assert.equal(followUpOutput.payload.session.output.totalBytes, 8);
 
     const proof = await requestJson(address.port, "GET", "/api/voice/sessions/cae-session-1/proof");
     assert.equal(proof.statusCode, 200);
@@ -224,6 +230,10 @@ test("voice sessions expose persistent CAE realtime-audio lifecycle and proof", 
     assert.equal(proof.payload.evidence.hasAudioInput, true);
     assert.equal(proof.payload.evidence.hasOutputAudio, true);
     assert.equal(proof.payload.evidence.outputStatus, "completed");
+    assert.equal(proof.payload.evidence.outputChunks, 1);
+    assert.equal(proof.payload.evidence.outputBytes, 2);
+    assert.equal(proof.payload.evidence.totalOutputChunks, 2);
+    assert.equal(proof.payload.evidence.totalOutputBytes, 8);
     assert.equal(proof.payload.evidence.outputCancelledByBargeIn, true);
     assert.equal(proof.payload.evidence.hasRtcAsrFinalTranscript, false);
     assert.deepEqual(proof.payload.review.blockers, ["rtc_asr_final_transcript_missing"]);

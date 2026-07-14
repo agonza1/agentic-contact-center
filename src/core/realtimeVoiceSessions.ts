@@ -39,6 +39,8 @@ export interface RealtimeVoiceSession {
     status: "idle" | "streaming" | "completed" | "cancelled";
     chunks: number;
     bytes: number;
+    totalChunks: number;
+    totalBytes: number;
     mimeType: string | null;
     sampleRateHz: number | null;
     startedAt: string | null;
@@ -122,6 +124,8 @@ export class RealtimeVoiceSessionStore {
         status: "idle",
         chunks: 0,
         bytes: 0,
+        totalChunks: 0,
+        totalBytes: 0,
         mimeType: null,
         sampleRateHz: null,
         startedAt: null,
@@ -206,6 +210,8 @@ export class RealtimeVoiceSessionStore {
     }
     session.output.chunks += 1;
     session.output.bytes += input.bytes;
+    session.output.totalChunks += 1;
+    session.output.totalBytes += input.bytes;
     session.output.mimeType = input.mimeType ?? session.output.mimeType;
     session.output.sampleRateHz = input.sampleRateHz ?? session.output.sampleRateHz;
     session.output.lastChunkAt = at;
@@ -323,6 +329,8 @@ export class RealtimeVoiceSessionStore {
         playbackRequests: snapshot.playback.requestedTurns,
         outputChunks: snapshot.output.chunks,
         outputBytes: snapshot.output.bytes,
+        totalOutputChunks: snapshot.output.totalChunks,
+        totalOutputBytes: snapshot.output.totalBytes,
         hasOutputAudio,
         outputStatus: snapshot.output.status,
         outputCancelledByBargeIn,
