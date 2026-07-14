@@ -6,6 +6,15 @@ const issue222Url = "https://github.com/agonza1/agentic-contact-center/issues/22
 export function buildPipecatMediaEngineReadinessPayload() {
   const liveSoftphoneProofBlocker =
     "Local 8600 return audio is wired through Kokoro/Pipecat TTS, PCMU RTP packetization evidence, and FreeSWITCH uuid_broadcast WAV playback; live softphone capture still needs to prove the caller heard that playback end-to-end.";
+  const liveSipProofAcceptance = {
+    requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_rtp_playback_sent", "caller_audible_playback"],
+    rejectedShortcuts: [
+      "generated_media_without_live_capture",
+      "stale_rtc_asr_evidence_reused_across_calls",
+      "uuid_broadcast_without_caller_capture",
+    ],
+    proofBundleCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
+  };
   const nextUnblockedSlice = {
     id: "live_softphone_playback_acceptance",
     title: "Capture end-to-end softphone playback proof",
@@ -13,6 +22,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
     entryPoint: "scripts/freeswitch-acc-bridge.mjs",
     targetContract: "softphone SIP call -> FreeSWITCH RTP -> Pipecat input frames -> rtc-asr transcript -> ACC turn -> Kokoro/Pipecat TTS -> PCMU RTP playback heard by caller",
     verification: "scripts/live-sip-proof-bundle.mjs must carry live_capture, rtc_asr_live, Pipecat RTP playback send evidence, and caller-audible playback proof before issue #214 can be accepted.",
+    acceptance: liveSipProofAcceptance,
   };
 
   return {
@@ -41,6 +51,11 @@ export function buildPipecatMediaEngineReadinessPayload() {
         processorContractAligned: true,
         liveMediaProofComplete: false,
         note: "SIP is a FreeSWITCH/RTP transport aligned to the rtc-asr, ACC adapter, and Kokoro processor contract. It must not be called complete until it is wired through the shared Pipeline processors and live caller-audible proof exists.",
+        pipelineUnificationDelta: [
+          "Move SIP RTP PCM frames into build_acc_voice_pipeline() instead of the Node mirror of rtc-asr/ACC/Kokoro stages.",
+          "Reuse the same RtcAsrTurnProcessor, AccCallerTurnProcessor, and KokoroTtsProcessor stage-event contract as the browser SmallWebRTC path.",
+          "Keep FreeSWITCH packetization and uuid_broadcast at the telephony boundary after transport.output() emits caller audio.",
+        ],
       },
       flowsDecision: {
         owner: "ACC TypeScript flow for current cancellation-rescue MVP",
@@ -84,6 +99,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
           liveMediaProofComplete: false,
           currentEntryPoint: "scripts/freeswitch-acc-bridge.mjs",
           path: "SIP/FreeSWITCH RTP -> Pipecat-compatible PCM frames -> rtc-asr -> ACC caller-turn -> Kokoro -> FreeSWITCH uuid_broadcast caller playback",
+          pipelineUnificationDelta: "Replace mirrored Node processor orchestration with build_acc_voice_pipeline() while preserving FreeSWITCH RTP ingress/egress and proof manifests.",
           blocker: `${liveSoftphoneProofBlocker} The adapter is not yet the same Python Pipeline object used by the browser SmallWebRTC path.`,
         },
         {
@@ -109,6 +125,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
     ],
     nextUnblockedSlice,
+    liveSipProofAcceptance,
     reviewBlockers: [liveSoftphoneProofBlocker],
     acceptanceCriteria: [
       {

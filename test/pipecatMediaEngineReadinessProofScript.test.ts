@@ -45,6 +45,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         implementedAdapters: string[];
         blockedAdapters: string[];
         nextUnblockedSlice: { id: string; title: string; adapter: string; entryPoint: string };
+        liveSipProofAcceptance: { requiredManifestFlags: string[]; rejectedShortcuts: string[]; proofBundleCommand: string };
         validationCommands: string[];
       };
       readiness: {
@@ -74,6 +75,15 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         title: "Capture end-to-end softphone playback proof",
         adapter: "sip_freeswitch_rtp",
         entryPoint: "scripts/freeswitch-acc-bridge.mjs",
+      },
+      liveSipProofAcceptance: {
+        requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_rtp_playback_sent", "caller_audible_playback"],
+        rejectedShortcuts: [
+          "generated_media_without_live_capture",
+          "stale_rtc_asr_evidence_reused_across_calls",
+          "uuid_broadcast_without_caller_capture",
+        ],
+        proofBundleCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
       },
       validationCommands: [
         "npm test",

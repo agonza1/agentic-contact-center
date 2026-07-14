@@ -57,6 +57,11 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.sharesPipelineProcessors, false);
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.processorContractAligned, true);
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.liveMediaProofComplete, false);
+    assert.deepEqual(payload.pipecat14Alignment.sipTransportStrategy.pipelineUnificationDelta, [
+      "Move SIP RTP PCM frames into build_acc_voice_pipeline() instead of the Node mirror of rtc-asr/ACC/Kokoro stages.",
+      "Reuse the same RtcAsrTurnProcessor, AccCallerTurnProcessor, and KokoroTtsProcessor stage-event contract as the browser SmallWebRTC path.",
+      "Keep FreeSWITCH packetization and uuid_broadcast at the telephony boundary after transport.output() emits caller audio.",
+    ]);
     assert.equal(payload.pipecat14Alignment.flowsDecision.owner, "ACC TypeScript flow for current cancellation-rescue MVP");
     assert.equal(payload.pipecat14Alignment.flowsDecision.flowManagerRequiredNow, false);
     assert.deepEqual(payload.validationCommands, [
@@ -80,6 +85,8 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.equal(sipAdapter.implementedNow, true);
     assert.equal(sipAdapter.processorContractAligned, true);
     assert.equal(sipAdapter.liveMediaProofComplete, false);
+    assert.match(sipAdapter.pipelineUnificationDelta, /build_acc_voice_pipeline\(\)/);
+    assert.match(sipAdapter.pipelineUnificationDelta, /FreeSWITCH RTP ingress\/egress/);
     assert.match(sipAdapter.blocker, /live softphone capture/);
     assert.match(sipAdapter.blocker, /not yet the same Python Pipeline object/);
     assert.match(adapters.find((adapter: any) => adapter.id === "signalwire_sip_trunk").blocker, /past-call import remains out of scope/);
@@ -116,6 +123,15 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       true,
     );
     assert.equal(payload.remainingWork.some((item: string) => item.includes("softphone evidence")), true);
+    assert.deepEqual(payload.liveSipProofAcceptance, {
+      requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_rtp_playback_sent", "caller_audible_playback"],
+      rejectedShortcuts: [
+        "generated_media_without_live_capture",
+        "stale_rtc_asr_evidence_reused_across_calls",
+        "uuid_broadcast_without_caller_capture",
+      ],
+      proofBundleCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
+    });
     assert.deepEqual(payload.nextUnblockedSlice, {
       id: "live_softphone_playback_acceptance",
       title: "Capture end-to-end softphone playback proof",
@@ -123,6 +139,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       entryPoint: "scripts/freeswitch-acc-bridge.mjs",
       targetContract: "softphone SIP call -> FreeSWITCH RTP -> Pipecat input frames -> rtc-asr transcript -> ACC turn -> Kokoro/Pipecat TTS -> PCMU RTP playback heard by caller",
       verification: "scripts/live-sip-proof-bundle.mjs must carry live_capture, rtc_asr_live, Pipecat RTP playback send evidence, and caller-audible playback proof before issue #214 can be accepted.",
+      acceptance: payload.liveSipProofAcceptance,
     });
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

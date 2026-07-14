@@ -29,6 +29,10 @@ function argValue(flag, fallback = undefined) {
   return index >= 0 ? process.argv[index + 1] : fallback;
 }
 
+function hasArg(flag) {
+  return process.argv.includes(flag);
+}
+
 function rel(filePath) {
   return path.relative(repoRoot, filePath).replaceAll(path.sep, "/");
 }
@@ -234,7 +238,7 @@ function sipHeaderValues(entry, headerName) {
     .filter(Boolean);
 }
 
-async function rtcAsrEvidence(filePath) {
+async function rtcAsrEvidence(filePath, liveManifest = {}, options = {}) {
   if (!filePath) return { required: false, ready: false, reason: "rtc-asr transcript evidence is not attached." };
   let raw;
   try {
@@ -249,9 +253,44 @@ async function rtcAsrEvidence(filePath) {
   }
   const transcript = evidence.flatMap(transcriptFragments).join(" ").trim();
   const final = evidence.some(isFinalTranscriptEvidence);
+  const evidenceCallIds = new Set(evidence.flatMap(callIdValues));
+  const expectedCallIds = [liveManifest.callId, liveManifest.sipCallId]
+    .filter((value) => typeof value === "string")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const mismatchedEvidenceCallIds = [...evidenceCallIds].filter((callId) => expectedCallIds.length > 0 && !expectedCallIds.includes(callId));
   if (!transcript) return { required: true, ready: false, reason: "rtc-asr transcript evidence has no non-empty transcript text." };
   if (!final) return { required: true, ready: false, reason: "rtc-asr transcript evidence is missing a final transcript marker." };
+  if (options.requireCurrentCallId === true && expectedCallIds.length > 0 && evidenceCallIds.size === 0) {
+    return { required: true, ready: false, reason: "rtc-asr transcript evidence is missing the current call identifier." };
+  }
+  if (mismatchedEvidenceCallIds.length > 0) {
+    return {
+      required: true,
+      ready: false,
+      reason: `rtc-asr transcript evidence belongs to a different call (${mismatchedEvidenceCallIds.join(", ")}).`,
+    };
+  }
   return { required: true, ready: true, transcriptChars: transcript.length, eventCount: evidence.length };
+}
+
+function requiredReviewChecks() {
+  return [
+    ["--require-review-ready", ["reviewGate"]],
+    ["--require-live-capture", ["liveCapture"]],
+    ["--require-rtc-asr-live", ["rtcAsrLive", "rtcAsrEvidenceValid"]],
+    ["--require-caller-playback", ["callerPlaybackEvidenceValid"]],
+  ].filter(([flag]) => hasArg(flag)).flatMap(([, checks]) => checks);
+}
+
+function requiresCurrentRtcAsrCallId() {
+  return hasArg("--require-review-ready") || hasArg("--require-rtc-asr-live");
+}
+
+function requiredReviewChecksPassed(bundleManifest) {
+  const checks = requiredReviewChecks();
+  if (checks.length === 0) return true;
+  return checks.every((check) => check === "reviewGate" ? bundleManifest.reviewGate.passed : bundleManifest.reviewGate.checks[check] === true);
 }
 
 function parseJsonOrJsonLines(raw) {
@@ -652,7 +691,7 @@ async function main() {
   const callerPlaybackEvidencePathExists = await fileExists(callerPlaybackEvidencePath);
   const callerPlaybackEvidenceResult = await callerPlaybackEvidence(
     callerPlaybackEvidencePath,
-    liveManifest.pipecatMediaEngine?.bidirectionalPlaybackReady === true || Boolean(liveManifest.artifacts.callerPlaybackEvidence),
+    liveManifest.pipecatMediaEngine?.bidirectionalPlaybackReady === true || Boolean(liveManifest.artifacts.callerPlaybackEvidence) || hasArg("--require-caller-playback"),
   );
   const runtimeTracePath = path.join(outDir, "runtime-event-trace.json");
   const blockerPath = path.join(outDir, "rtc-asr-blocker.json");
@@ -733,7 +772,7 @@ async function main() {
     ...(callerPlaybackEvidencePathExists ? [await integrity(callerPlaybackEvidencePath, "caller-audible-playback-proof", "playback_evidence")] : []),
   ];
   const sipEvidence = await sipLogEvidence(sipLogPath);
-  const rtcAsrEvidenceResult = await rtcAsrEvidence(rtcAsrEvidencePath);
+  const rtcAsrEvidenceResult = await rtcAsrEvidence(rtcAsrEvidencePath, liveManifest, { requireCurrentCallId: requiresCurrentRtcAsrCallId() });
   const wavEvidenceResult = await wavEvidence(audioPath);
   const sourceArtifactIntegrityResult = await sourceArtifactIntegrityEvidence(liveManifest);
   const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, callerPlaybackEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult);
@@ -789,7 +828,7 @@ async function main() {
     validationStatus: bundleManifest.validationSummary.status,
     blockers: bundleManifest.blockers,
   }, null, 2));
-  if (!bundleManifest.reviewGate.passed && process.argv.includes("--require-review-ready")) process.exitCode = 2;
+  if (!requiredReviewChecksPassed(bundleManifest)) process.exitCode = 2;
 }
 
 main().catch((error) => {
