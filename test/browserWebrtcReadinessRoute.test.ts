@@ -58,7 +58,13 @@ test("fixture adapter smoke check is wired to the shared Pipeline contract", () 
   assert.equal(payload.mode, "contract_only");
   assert.equal(payload.sidecarsRequired, false);
   assert.equal(payload.targetPipelineBuilder, "scripts/acc_pipecat_voice_pipeline.py:build_acc_voice_pipeline");
+  assert.match(payload.repoHead, /^[0-9a-f]{12}$/);
+  assert.match(payload.targetPipelineSha256, /^[0-9a-f]{64}$/);
   assert.deepEqual(payload.missingContractTokens, []);
+  assert.equal(payload.contractChecks.contract_constant.present, true);
+  assert.equal(payload.contractChecks.pipeline_builder.token, "def build_acc_voice_pipeline");
+  assert.equal(payload.contractChecks.transport_input_boundary.present, true);
+  assert.equal(payload.contractChecks.transport_output_boundary.present, true);
   assert.deepEqual(payload.pipelineStages, [
     "transport.input",
     "RtcAsrTurnProcessor",
