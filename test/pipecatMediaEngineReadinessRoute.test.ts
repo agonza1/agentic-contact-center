@@ -77,7 +77,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     const adapters = payload.sharedEngineContract.requiredAdapters;
     assert.deepEqual(
       adapters.map((adapter: any) => adapter.id),
-      ["browser_webrtc", "sip_freeswitch_rtp", "signalwire_sip_trunk"],
+      ["browser_webrtc", "sip_freeswitch_rtp", "fixture_audio_injection", "signalwire_sip_trunk"],
     );
     assert.equal(adapters.find((adapter: any) => adapter.id === "browser_webrtc").implementedNow, true);
     assert.equal(adapters.find((adapter: any) => adapter.id === "browser_webrtc").currentEntryPoint, "scripts/pipecat-browser-webrtc-bridge.py");
@@ -89,6 +89,11 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.match(sipAdapter.pipelineUnificationDelta, /FreeSWITCH RTP ingress\/egress/);
     assert.match(sipAdapter.blocker, /live softphone capture/);
     assert.match(sipAdapter.blocker, /not yet the same Python Pipeline object/);
+    const fixtureAdapter = adapters.find((adapter: any) => adapter.id === "fixture_audio_injection");
+    assert.equal(fixtureAdapter.implementedNow, false);
+    assert.equal(fixtureAdapter.targetEntryPoint, "scripts/pipecat-fixture-pipeline-smoke.py");
+    assert.match(fixtureAdapter.path, /InputAudioRawFrame/);
+    assert.match(fixtureAdapter.blocker, /build_acc_voice_pipeline\(\)/);
     assert.match(adapters.find((adapter: any) => adapter.id === "signalwire_sip_trunk").blocker, /past-call import remains out of scope/);
 
     assert.deepEqual(payload.reviewBlockers, [
