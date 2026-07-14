@@ -29,7 +29,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.match(stdout, /Saved Pipecat media engine readiness artifact/);
     assert.match(stdout, /Updated latest Pipecat media engine readiness artifact/);
     assert.match(stdout, /Review ready: no/);
-    assert.match(stdout, /Acceptance criteria: 8\/9/);
+    assert.match(stdout, /Acceptance criteria: 8\/10/);
     assert.match(stdout, /Next slice: live_softphone_playback_acceptance/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
@@ -67,9 +67,9 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         "Local 8600 return audio is wired through Kokoro/Pipecat TTS, PCMU RTP packetization evidence, and FreeSWITCH uuid_broadcast WAV playback; live softphone capture still needs to prove the caller heard that playback end-to-end.",
       ],
       acceptanceCriteriaPassed: 8,
-      acceptanceCriteriaTotal: 9,
+      acceptanceCriteriaTotal: 10,
       implementedAdapters: ["browser_webrtc", "sip_freeswitch_rtp"],
-      blockedAdapters: ["signalwire_sip_trunk"],
+      blockedAdapters: ["fixture_audio_injection", "signalwire_sip_trunk"],
       nextUnblockedSlice: {
         id: "live_softphone_playback_acceptance",
         title: "Capture end-to-end softphone playback proof",
@@ -94,7 +94,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.equal(artifact.readiness.route, "/api/pipecat-media-engine/readiness");
     assert.equal(artifact.readiness.status, "shared_contract_ready_local_sip_playback_proof_pending");
     assert.equal(artifact.readiness.acceptanceCriteria.filter((criterion) => criterion.passed).length, 8);
-    assert.equal(artifact.readiness.acceptanceCriteria.length, 9);
+    assert.equal(artifact.readiness.acceptanceCriteria.length, 10);
     assert.equal(artifact.readiness.acceptanceCriteria.find((criterion) => criterion.name === "pipecat_14_small_webrtc_migration_recorded")?.passed, true);
     assert.deepEqual(latestArtifact, artifact);
   } finally {
