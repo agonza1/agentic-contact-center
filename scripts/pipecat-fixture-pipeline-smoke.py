@@ -124,7 +124,7 @@ def read_fixture_wav(path: Path) -> tuple[bytes, int, int]:
 
 async def run_live_fixture(args: argparse.Namespace) -> dict[str, object]:
     add_local_runtime_path()
-    from pipecat.frames.frames import InputAudioRawFrame, OutputAudioRawFrame, TextFrame, TTSAudioRawFrame
+    from pipecat.frames.frames import InputAudioRawFrame, OutputAudioRawFrame, StartFrame, TTSAudioRawFrame
     from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
     from acc_pipecat_voice_pipeline import (
@@ -140,6 +140,10 @@ async def run_live_fixture(args: argparse.Namespace) -> dict[str, object]:
     class FixtureInput(FrameProcessor):
         def __init__(self) -> None:
             super().__init__(name="fixture-audio-input")
+
+        async def process_frame(self, frame: object, direction: FrameDirection) -> None:
+            await super().process_frame(frame, direction)
+            await self.push_frame(frame, direction)
 
     class FixtureOutput(FrameProcessor):
         def __init__(self) -> None:
@@ -165,38 +169,42 @@ async def run_live_fixture(args: argparse.Namespace) -> dict[str, object]:
     normalized_pcm = resample_pcm16_mono(pcm, sample_rate, INPUT_SAMPLE_RATE)
     silence_ms = max(int(args.trailing_silence_ms), 0)
     trailing_silence = b"\x00\x00" * (INPUT_SAMPLE_RATE * silence_ms // 1000)
-    call_id = args.call_id or f"fixture-{uuid4().hex[:12]}"
     readiness = check_readiness(acc_url=args.acc_url)
+    started_call = None
+    call_id = args.call_id
+    if not call_id:
+        started_call = await asyncio.to_thread(
+            json_http,
+            "POST",
+            f"{args.acc_url.rstrip('/')}/api/demo/start",
+            {"openclawSessionLabel": "pipecat-fixture-pipeline-smoke"},
+        )
+        session_payload = started_call.get("session") if isinstance(started_call, dict) else None
+        call_id = session_payload.get("callId") if isinstance(session_payload, dict) else None
+        if not isinstance(call_id, str) or not call_id:
+            raise RuntimeError("ACC demo start did not return session.callId")
     session = AccVoicePipelineSession(acc_url=args.acc_url, call_id=call_id, readiness=readiness)
     fixture_input = FixtureInput()
     fixture_output = FixtureOutput()
     pipeline = build_acc_voice_pipeline(transport_input=fixture_input, transport_output=fixture_output, session=session)
     input_frame = InputAudioRawFrame(audio=normalized_pcm + trailing_silence, sample_rate=INPUT_SAMPLE_RATE, num_channels=channels)
-    session.record_stage("fixture.pipeline_constructed", pipeline=type(pipeline).__name__, source="fixture-audio-input", sink="fixture-audio-output")
-    transcript, stt_meta, transcription_frame = await asyncio.wait_for(session.transcribe(input_frame), timeout=float(args.timeout_sec))
-    session.record_stage("stt.fixture_completed", transcript=transcript, stt=stt_meta)
-    call = await asyncio.to_thread(
-        json_http,
-        "POST",
-        f"{session.acc_url}/api/calls/{session.call_id}/caller-turn",
-        {"text": transcription_frame.text, "conversationMode": "free_caller"},
+    for processor in getattr(pipeline, "processors", []):
+        setattr(processor, "_enable_direct_mode", True)
+        if type(processor).__name__ == "RtcAsrTurnProcessor":
+            processor.min_turn_ms = 0
+            processor.silence_ms = 0
+    session.record_stage(
+        "fixture.pipeline_constructed",
+        pipeline=type(pipeline).__name__,
+        source="fixture-audio-input",
+        sink="fixture-audio-output",
+        callCreated=started_call is not None,
     )
-    agent_text = latest_agent_text(call)
-    session.record_stage("acc.fixture_completed", callerTranscript=transcription_frame.text, agentText=agent_text, agentTextAvailable=bool(agent_text))
-    if not agent_text:
-        raise RuntimeError("ACC caller turn returned no agent text")
-    output_pcm, output_sample_rate, tts_meta = await asyncio.wait_for(session.synthesize(TextFrame(agent_text)), timeout=float(args.timeout_sec))
-    output_frame = OutputAudioRawFrame(audio=output_pcm, sample_rate=output_sample_rate, num_channels=1)
-    await fixture_output.process_frame(output_frame, FrameDirection.DOWNSTREAM)
-    session.record_stage("tts.fixture_completed", tts=tts_meta)
-    session.last_evidence = {
-        "ok": True,
-        "callerTranscript": transcription_frame.text,
-        "agentText": agent_text,
-        "stt": stt_meta,
-        "tts": tts_meta,
-        "callId": session.call_id,
-    }
+    await pipeline.queue_frame(StartFrame(audio_in_sample_rate=INPUT_SAMPLE_RATE, audio_out_sample_rate=24000), FrameDirection.DOWNSTREAM)
+    await asyncio.wait_for(pipeline.queue_frame(input_frame, FrameDirection.DOWNSTREAM), timeout=float(args.timeout_sec))
+    deadline = asyncio.get_running_loop().time() + float(args.timeout_sec)
+    while not fixture_output.frames and not session.last_error and asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(0.05)
     output_sha = hashlib.sha256(bytes(fixture_output.audio)).hexdigest() if fixture_output.audio else None
     return {
         "ok": bool(fixture_output.frames) and not session.last_error,
@@ -207,6 +215,7 @@ async def run_live_fixture(args: argparse.Namespace) -> dict[str, object]:
         "entryPoint": "scripts/pipecat-fixture-pipeline-smoke.py",
         "targetPipelineBuilder": "scripts/acc_pipecat_voice_pipeline.py:build_acc_voice_pipeline",
         "callId": call_id,
+        "callCreated": started_call is not None,
         "readiness": {
             "ok": readiness.ok,
             "status": readiness.status,
