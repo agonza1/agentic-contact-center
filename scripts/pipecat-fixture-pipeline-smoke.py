@@ -252,7 +252,7 @@ def main() -> int:
     parser.add_argument("--contract-only", action="store_true", help="Run the sidecar-free adapter contract check.")
     parser.add_argument("--input-wav", help="Run the live in-process fixture path with a mono PCM16 WAV input.")
     parser.add_argument("--acc-url", default=os.environ.get("ACC_URL", "http://127.0.0.1:8026"), help="ACC base URL for live fixture mode.")
-    parser.add_argument("--call-id", help="Existing ACC call id to use for live fixture mode; defaults to a generated fixture id.")
+    parser.add_argument("--call-id", help="Existing ACC call id to use for live fixture mode; defaults to starting an ACC demo call.")
     parser.add_argument("--timeout-sec", type=float, default=20.0, help="Maximum time to wait for captured output audio in live fixture mode.")
     parser.add_argument("--trailing-silence-ms", type=int, default=1500, help="Silence appended after fixture audio to trigger turn finalization.")
     parser.add_argument("--out", help="Optional JSON artifact path.")
