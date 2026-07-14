@@ -48,6 +48,9 @@ test("fixture adapter smoke check is wired to the shared Pipeline contract", () 
   assert.match(adapter, /build_acc_voice_pipeline/);
   assert.match(adapter, /InputAudioRawFrame/);
   assert.match(adapter, /OutputAudioRawFrame\|TTSAudioRawFrame/);
+  assert.match(adapter, /api\/demo\/start/);
+  assert.match(adapter, /pipeline\.queue_frame\(input_frame/);
+  assert.match(adapter, /contextlib\.redirect_stdout\(sys\.stderr\)/);
 
   const payload = JSON.parse(execFileSync("python3", [
     "scripts/pipecat-fixture-pipeline-smoke.py",
