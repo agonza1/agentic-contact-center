@@ -49,7 +49,7 @@ transport.input -> rtc-asr STT -> ACC caller-turn adapter -> Kokoro TTS -> trans
 Adapter rule for #222:
 
 - Browser: `SmallWebRTCTransport` through the ACC-compatible offer/answer adapter into the Pipeline.
-- Fixture/tester: synthetic caller audio frames and tester-agent turns injected at the Pipeline input, not a parallel proof-only route. `npm run pipecat:fixture:check` is the current sidecar-free contract gate; the remaining work is a live in-process frame source/sink that captures Pipeline output audio.
+- Fixture/tester: synthetic caller audio frames and tester-agent turns injected at the Pipeline input, not a parallel proof-only route. `npm run pipecat:fixture:check` remains the sidecar-free contract gate; `python3 scripts/pipecat-fixture-pipeline-smoke.py --input-wav <mono-pcm16.wav>` runs the live in-process fixture source/sink and captures Pipeline output audio when ACC, rtc-asr, and Kokoro are running; omit `--call-id` to start an ACC demo call automatically.
 - SIP/FreeSWITCH: separate telephony transport aligned to the same rtc-asr, ACC caller-turn, and Kokoro processor contract. It still needs a transport adapter that instantiates the same shared Pipeline processors, and it must not be called caller-audible complete until live proof exists. Do not force SmallWebRTCTransport onto SIP.
 
 Persistent evaluator session surface for ConversationAgentEvals and bounded tester agents:

@@ -106,11 +106,11 @@ export function buildPipecatMediaEngineReadinessPayload() {
           id: "fixture_audio_injection",
           source: "deterministic PCM/WAV fixture or tester harness audio",
           transport: "fixture/tester injection adapter",
-          implementedNow: false,
-          currentEntryPoint: "scripts/pipecat-fixture-pipeline-smoke.py --contract-only",
-          targetEntryPoint: "scripts/pipecat-fixture-pipeline-smoke.py",
+          implementedNow: true,
+          currentEntryPoint: "scripts/pipecat-fixture-pipeline-smoke.py --input-wav <mono-pcm16.wav>",
+          contractEntryPoint: "scripts/pipecat-fixture-pipeline-smoke.py --contract-only",
           path: "fixture PCM/WAV -> Pipecat InputAudioRawFrame -> rtc-asr -> ACC caller-turn -> Kokoro -> captured OutputAudioRawFrame proof",
-          blocker: "Fixture/tester audio now has a sidecar-free contract smoke entry point; it still needs a live in-process transport that feeds build_acc_voice_pipeline() directly, so regression proofs exercise the same processors as browser WebRTC before SIP parity work continues.",
+          blocker: "Live fixture execution now feeds build_acc_voice_pipeline() through in-process Pipecat source/sink processors; full success still requires ACC, rtc-asr, and Kokoro sidecars to be running.",
         },
         {
           id: "signalwire_sip_trunk",
@@ -126,11 +126,12 @@ export function buildPipecatMediaEngineReadinessPayload() {
     implementedNow: [
       "Browser voice turns use scripts/pipecat-browser-webrtc-bridge.py with Pipecat SmallWebRTCTransport and a Pipeline of rtc-asr, ACC caller-turn, Kokoro, and transport output processors.",
       "Local SIP and FreeSWITCH proof paths preserve live_capture/generated_media labels, attach WAV/SIP artifacts, collect live PCMU RTP into Pipecat-compatible frame evidence, stream captured frames to rtc-asr when RTC_ASR_WS_URL is set, packetize Kokoro/Pipecat-shaped TTS frames as PCMU RTP, write Kokoro WAV playback artifacts, issue FreeSWITCH uuid_broadcast, and report RTP socket-send playback evidence. This is transport alignment, not completed SIP acceptance.",
+      "Fixture/tester audio can now be injected through an in-process Pipecat source/sink around build_acc_voice_pipeline(), with sidecar-free contract mode retained for CI.",
       "SignalWire readiness is explicit through local webhook labels and the future SIP trunk-to-FreeSWITCH route.",
       "Operator console payloads label local_sip, signalwire_live, live_capture, generated_media, rtc_asr_live, and rtc_asr_blocked modes.",
     ],
     remainingWork: [
-      "Promote scripts/pipecat-fixture-pipeline-smoke.py from contract-only checking to a live fixture/tester injection adapter that drives build_acc_voice_pipeline() directly with deterministic PCM/WAV input and captures OutputAudioRawFrame proof for CI-friendly regression checks.",
+      "Run the live fixture/tester injection adapter with sidecars in CI or local proof mode and archive captured OutputAudioRawFrame evidence with the media-engine readiness artifact.",
       "Wire the SIP media adapter through the same shared Pipecat Pipeline processors used by the browser SmallWebRTC path instead of only mirroring their rtc-asr/ACC/Kokoro contract.",
       "Capture live softphone evidence that the caller hears Kokoro/Pipecat TTS played through FreeSWITCH uuid_broadcast on the 8600 path.",
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
@@ -161,8 +162,8 @@ export function buildPipecatMediaEngineReadinessPayload() {
       },
       {
         name: "fixture_tester_pipeline_adapter_present",
-        passed: false,
-        evidence: "The fixture/tester adapter is now tracked as a required #222 adapter, but it still needs an executable transport that calls build_acc_voice_pipeline() with deterministic audio fixtures.",
+        passed: true,
+        evidence: "scripts/pipecat-fixture-pipeline-smoke.py supports --contract-only and --input-wav live in-process modes; the live mode calls build_acc_voice_pipeline() with fixture source/sink processors and captures OutputAudioRawFrame proof when ACC, rtc-asr, and Kokoro are available.",
       },
       {
         name: "operator_console_runtime_labels",
