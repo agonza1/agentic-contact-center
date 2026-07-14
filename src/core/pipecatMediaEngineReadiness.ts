@@ -107,10 +107,10 @@ export function buildPipecatMediaEngineReadinessPayload() {
           source: "deterministic PCM/WAV fixture or tester harness audio",
           transport: "fixture/tester injection adapter",
           implementedNow: false,
-          currentEntryPoint: "pending",
+          currentEntryPoint: "scripts/pipecat-fixture-pipeline-smoke.py --contract-only",
           targetEntryPoint: "scripts/pipecat-fixture-pipeline-smoke.py",
           path: "fixture PCM/WAV -> Pipecat InputAudioRawFrame -> rtc-asr -> ACC caller-turn -> Kokoro -> captured OutputAudioRawFrame proof",
-          blocker: "Fixture/tester audio still needs a thin transport adapter that feeds build_acc_voice_pipeline() directly, so regression proofs exercise the same processors as browser WebRTC before SIP parity work continues.",
+          blocker: "Fixture/tester audio now has a sidecar-free contract smoke entry point; it still needs a live in-process transport that feeds build_acc_voice_pipeline() directly, so regression proofs exercise the same processors as browser WebRTC before SIP parity work continues.",
         },
         {
           id: "signalwire_sip_trunk",
@@ -130,7 +130,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       "Operator console payloads label local_sip, signalwire_live, live_capture, generated_media, rtc_asr_live, and rtc_asr_blocked modes.",
     ],
     remainingWork: [
-      "Add a fixture/tester injection adapter that drives build_acc_voice_pipeline() directly with deterministic PCM/WAV input and captures OutputAudioRawFrame proof for CI-friendly regression checks.",
+      "Promote scripts/pipecat-fixture-pipeline-smoke.py from contract-only checking to a live fixture/tester injection adapter that drives build_acc_voice_pipeline() directly with deterministic PCM/WAV input and captures OutputAudioRawFrame proof for CI-friendly regression checks.",
       "Wire the SIP media adapter through the same shared Pipecat Pipeline processors used by the browser SmallWebRTC path instead of only mirroring their rtc-asr/ACC/Kokoro contract.",
       "Capture live softphone evidence that the caller hears Kokoro/Pipecat TTS played through FreeSWITCH uuid_broadcast on the 8600 path.",
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",

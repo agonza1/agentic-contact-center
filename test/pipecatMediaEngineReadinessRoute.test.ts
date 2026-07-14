@@ -91,9 +91,11 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.match(sipAdapter.blocker, /not yet the same Python Pipeline object/);
     const fixtureAdapter = adapters.find((adapter: any) => adapter.id === "fixture_audio_injection");
     assert.equal(fixtureAdapter.implementedNow, false);
+    assert.equal(fixtureAdapter.currentEntryPoint, "scripts/pipecat-fixture-pipeline-smoke.py --contract-only");
     assert.equal(fixtureAdapter.targetEntryPoint, "scripts/pipecat-fixture-pipeline-smoke.py");
     assert.match(fixtureAdapter.path, /InputAudioRawFrame/);
     assert.match(fixtureAdapter.blocker, /build_acc_voice_pipeline\(\)/);
+    assert.match(fixtureAdapter.blocker, /contract smoke entry point/);
     assert.match(adapters.find((adapter: any) => adapter.id === "signalwire_sip_trunk").blocker, /past-call import remains out of scope/);
 
     assert.deepEqual(payload.reviewBlockers, [

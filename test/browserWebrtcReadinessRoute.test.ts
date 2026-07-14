@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createServer, request } from "node:http";
 
@@ -39,6 +40,32 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(sharedPipeline, /finalize_turn\("silence_timer"\)/);
   assert.doesNotMatch(bridge, /RTCPeerConnection/);
   assert.doesNotMatch(bridge, /RTCSessionDescription/);
+});
+
+test("fixture adapter smoke check is wired to the shared Pipeline contract", () => {
+  const adapter = readFileSync("scripts/pipecat-fixture-pipeline-smoke.py", "utf8");
+  assert.match(adapter, /fixture_audio_injection/);
+  assert.match(adapter, /build_acc_voice_pipeline/);
+  assert.match(adapter, /InputAudioRawFrame/);
+  assert.match(adapter, /OutputAudioRawFrame\|TTSAudioRawFrame/);
+
+  const payload = JSON.parse(execFileSync("python3", [
+    "scripts/pipecat-fixture-pipeline-smoke.py",
+    "--contract-only",
+  ], { encoding: "utf8" }));
+  assert.equal(payload.ok, true);
+  assert.equal(payload.adapter, "fixture_audio_injection");
+  assert.equal(payload.mode, "contract_only");
+  assert.equal(payload.sidecarsRequired, false);
+  assert.equal(payload.targetPipelineBuilder, "scripts/acc_pipecat_voice_pipeline.py:build_acc_voice_pipeline");
+  assert.deepEqual(payload.missingContractTokens, []);
+  assert.deepEqual(payload.pipelineStages, [
+    "transport.input",
+    "RtcAsrTurnProcessor",
+    "AccCallerTurnProcessor",
+    "KokoroTtsProcessor",
+    "transport.output",
+  ]);
 });
 
 test("operator console polls browser WebRTC session proof for turn diagnostics", () => {
