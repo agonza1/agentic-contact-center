@@ -1937,6 +1937,58 @@ test("FreeSWITCH bridge manifest accepts nested OpenAI realtime transcript evide
   }
 });
 
+test("FreeSWITCH bridge manifest accepts caller-audible playback confirmation evidence", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-caller-audible-playback-"));
+  const audioPath = path.join(tempDir, "fs-call.wav");
+  const logPath = path.join(tempDir, "freeswitch-esl-events.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+  const callerPlaybackEvidencePath = path.join(tempDir, "caller-playback-proof.json");
+
+  try {
+    await writeFile(audioPath, validWavFixture());
+    await writeFile(logPath, `${JSON.stringify({ events: [{ headers: { "Event-Name": "CHANNEL_ANSWER" } }] })}\n`, "utf8");
+    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ transcript: "hello from local sip", final: true })}\n`, "utf8");
+    await writeFile(callerPlaybackEvidencePath, `${JSON.stringify({ callerAudiblePlaybackConfirmed: true, method: "softphone_capture" })}\n`, "utf8");
+
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = `
+      const { buildFreeswitchLiveProofManifest } = await import(${JSON.stringify(moduleUrl)});
+      const manifest = await buildFreeswitchLiveProofManifest({
+        uuid: "fs-proof-caller-audible-playback",
+        accCallId: "demo-call-caller-audible-playback",
+        destination: "8600",
+        wavPath: ${JSON.stringify(audioPath)},
+        logPath: ${JSON.stringify(logPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(rtcAsrEvidencePath)},
+        telephonyMode: "local_sip",
+        remoteRtp: { address: "127.0.0.1", port: 40002 },
+        pipecatOutboundRtpEvidence: {
+          outboundRtpReady: true,
+          rtpSocketSendReady: true,
+          packetCount: 3,
+          sentPacketCount: 3,
+          remoteHost: "127.0.0.1",
+          remotePort: 40002,
+          callerPlaybackConfirmed: true,
+          callerPlaybackEvidencePath: ${JSON.stringify(callerPlaybackEvidencePath)}
+        }
+      });
+      console.log(JSON.stringify(manifest));
+    `;
+    const { stdout } = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const manifest = JSON.parse(stdout) as { reviewReady: boolean; blockers: string[] };
+    assert.equal(manifest.reviewReady, true);
+    assert.deepEqual(manifest.blockers, []);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 
 test("FreeSWITCH bridge manifest accepts string-wrapped rtc-asr evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
