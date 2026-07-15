@@ -25,9 +25,12 @@ from uuid import uuid4
 
 import audioop
 import websockets
-from pipecat.frames.frames import InputAudioRawFrame, InterruptionFrame, OutputAudioRawFrame, TextFrame, TranscriptionFrame, TTSAudioRawFrame
+from pipecat.audio.turn.base_turn_analyzer import EndOfTurnState
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
+from pipecat.frames.frames import BotStartedSpeakingFrame, BotStoppedSpeakingFrame, InputAudioRawFrame, InterruptionFrame, OutputAudioRawFrame, TextFrame, TranscriptionFrame, TTSAudioRawFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.turns.user_start import MinWordsUserTurnStartStrategy
 
 DEFAULT_ACC_URL = os.environ.get("ACC_URL", "http://127.0.0.1:8026")
 DEFAULT_RTC_ASR_BASE_URL = os.environ.get("RTC_ASR_BASE_URL", "http://127.0.0.1:8080")
@@ -365,6 +368,7 @@ class AccVoicePipelineSession:
         self.last_tts_evidence: dict[str, Any] = {}
         self.last_error: dict[str, Any] = {}
         self.stage_events: list[dict[str, Any]] = []
+        self.turn_controls: PipecatTurnControls | None = None
 
     def record_stage(self, stage: str, *, ok: bool = True, **detail: Any) -> dict[str, Any]:
         event = {
@@ -506,6 +510,58 @@ class AccVoicePipelineSession:
         return output_frame.audio, output_frame.sample_rate, meta
 
 
+class PipecatTurnControls:
+    """Use Pipecat's turn primitives while keeping the external rtc-asr boundary."""
+
+    def __init__(self, session: AccVoicePipelineSession, interrupt_output: Any):
+        self.session = session
+        self.interrupt_output = interrupt_output
+        self.min_words = int(os.environ.get("ACC_WEBRTC_BARGE_IN_MIN_WORDS", "3"))
+        self.start_strategy = MinWordsUserTurnStartStrategy(min_words=self.min_words, use_interim=False)
+        self.start_strategy.add_event_handler("on_user_turn_started", self._on_user_turn_started)
+        self.smart_turn = LocalSmartTurnAnalyzerV3(sample_rate=INPUT_SAMPLE_RATE)
+        self.bot_speaking = False
+
+    async def bot_started(self) -> None:
+        if self.bot_speaking:
+            return
+        self.bot_speaking = True
+        await self.start_strategy.process_frame(BotStartedSpeakingFrame())
+
+    async def sync_bot_state(self) -> None:
+        if self.bot_speaking and time.monotonic() > self.session.output_active_until:
+            self.bot_speaking = False
+            await self.start_strategy.process_frame(BotStoppedSpeakingFrame())
+
+    def observe_audio(self, pcm: bytes, is_speech: bool) -> None:
+        self.smart_turn.append_audio(pcm, is_speech)
+
+    async def is_turn_complete(self) -> bool:
+        state, metrics = await self.smart_turn.analyze_end_of_turn()
+        self.session.record_stage(
+            "turn.smart_turn_decision",
+            complete=state == EndOfTurnState.COMPLETE,
+            strategy="LocalSmartTurnAnalyzerV3",
+            probability=getattr(metrics, "probability", None),
+        )
+        return state == EndOfTurnState.COMPLETE
+
+    async def observe_transcription(self, frame: TranscriptionFrame) -> None:
+        await self.sync_bot_state()
+        await self.start_strategy.process_frame(frame)
+
+    async def _on_user_turn_started(self, _strategy: Any, _params: Any) -> None:
+        cancellation = self.session.cancel_output("min_words_barge_in")
+        self.session.record_stage(
+            "turn.min_words_start",
+            strategy="MinWordsUserTurnStartStrategy",
+            minWords=self.min_words,
+            skipped=cancellation.get("skipped"),
+        )
+        if not cancellation.get("skipped"):
+            await self.interrupt_output()
+
+
 class RtcAsrTurnProcessor(FrameProcessor):
     def __init__(self, session: AccVoicePipelineSession):
         super().__init__(name="rtc-asr-turn-processor")
@@ -521,6 +577,8 @@ class RtcAsrTurnProcessor(FrameProcessor):
         self.last_audio_report_at = 0.0
         self.silence_finalize_task: asyncio.Task[None] | None = None
         self.finalize_lock = asyncio.Lock()
+        self.turn_controls = PipecatTurnControls(session, self.interrupt_output)
+        self.session.turn_controls = self.turn_controls
 
     def collected_speech_ms(self) -> int:
         return round(sum(len(chunk) for chunk in self.speech_chunks) / (INPUT_SAMPLE_RATE * SAMPLE_WIDTH_BYTES) * 1000)
@@ -532,13 +590,13 @@ class RtcAsrTurnProcessor(FrameProcessor):
         if self.silence_finalize_task is not current_task:
             self.silence_finalize_task = None
 
-    def arm_silence_finalize_task(self) -> None:
+    def arm_silence_finalize_task(self, delay_ms: int | None = None) -> None:
         self.cancel_silence_finalize_task()
-        self.silence_finalize_task = asyncio.create_task(self.finalize_after_silence())
+        self.silence_finalize_task = asyncio.create_task(self.finalize_after_silence(delay_ms))
 
-    async def finalize_after_silence(self) -> None:
+    async def finalize_after_silence(self, delay_ms: int | None = None) -> None:
         try:
-            await asyncio.sleep(max(self.silence_ms, 1) / 1000)
+            await asyncio.sleep(max(delay_ms if delay_ms is not None else self.silence_ms, 1) / 1000)
             await self.finalize_turn("silence_timer")
         except asyncio.CancelledError:
             return
@@ -554,6 +612,14 @@ class RtcAsrTurnProcessor(FrameProcessor):
             if reason == "silence_timer" and (collected_ms < self.min_turn_ms or silence_elapsed_ms < self.silence_ms):
                 if self.in_speech:
                     self.arm_silence_finalize_task()
+                return
+            should_check_smart_turn = reason == "silence_timer" and max_elapsed_ms < self.max_turn_ms
+        if should_check_smart_turn and not await self.turn_controls.is_turn_complete():
+            if self.in_speech:
+                self.arm_silence_finalize_task(delay_ms=200)
+            return
+        async with self.finalize_lock:
+            if not self.in_speech or not self.speech_chunks:
                 return
             pcm_turn = b"".join(self.speech_chunks)
             self.speech_chunks = []
@@ -593,7 +659,15 @@ class RtcAsrTurnProcessor(FrameProcessor):
             return
         self.session.record_stage("stt.transcript_final", transcript=transcript, stt=stt_meta)
         transcription_frame.result = {**(transcription_frame.result or {}), "stt": stt_meta}
+        await self.turn_controls.observe_transcription(transcription_frame)
         await self.push_frame(transcription_frame, FrameDirection.DOWNSTREAM)
+
+    async def interrupt_output(self) -> None:
+        await self.broadcast_frame(InterruptionFrame)
+        self.session.last_barge_in_evidence = {
+            **self.session.last_barge_in_evidence,
+            "pipecatInterruptionFrame": "broadcast",
+        }
 
     async def process_frame(self, frame: Any, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
@@ -620,17 +694,11 @@ class RtcAsrTurnProcessor(FrameProcessor):
             )
         if rms > self.silence_rms:
             if not self.in_speech:
-                cancellation = self.session.cancel_output("barge-in")
-                if not cancellation.get("skipped"):
-                    await self.broadcast_frame(InterruptionFrame)
-                    self.session.last_barge_in_evidence = {
-                        **self.session.last_barge_in_evidence,
-                        "pipecatInterruptionFrame": "broadcast",
-                    }
                 self.turn_started_at = now
                 self.session.record_stage("audio.speech_started", rms=rms, silenceThresholdRms=self.silence_rms)
             self.in_speech = True
             self.last_voice_at = now
+        self.turn_controls.observe_audio(pcm, rms > self.silence_rms)
         if self.in_speech:
             self.speech_chunks.append(pcm)
             self.arm_silence_finalize_task()
@@ -733,6 +801,8 @@ class KokoroTtsProcessor(FrameProcessor):
             self.session.record_stage("tts.cancelled", ok=False, error="output_cancelled", tts=tts_meta)
         else:
             output_window = self.session.mark_output_active(audio_bytes=len(pcm), sample_rate=sample_rate)
+            if self.session.turn_controls:
+                await self.session.turn_controls.bot_started()
             tts_meta = {**tts_meta, "outputWindow": output_window}
             self.session.record_stage("tts.audio_ready", tts=tts_meta)
         self.session.last_evidence = {
