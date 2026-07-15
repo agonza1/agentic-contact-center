@@ -3069,6 +3069,59 @@ function isClueConOperatorDrillKind(value: unknown): value is ClueConOperatorDri
   );
 }
 
+function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, callId: string) {
+  const common = {
+    boundary: "acc_control_plane_to_telephony_adapter",
+    controlPlane: "ACC emits a structured JSON command; a telephony adapter authenticates it, maps the call id, and executes the media-server action.",
+    mediaPlane: "FreeSWITCH or another SIP/media server remains responsible for SIP dialogs, RTP continuity, and the actual transfer or hangup.",
+    demoCaveat: "This presentation records the command and evidence but does not place an external transfer leg.",
+  };
+
+  if (kind === "transfer") {
+    return {
+      ...common,
+      controlMessage: {
+        type: "telephony.transfer.requested",
+        callId,
+        mode: "blind_transfer",
+        target: { type: "sip_uri", uri: "sip:retention@pbx.example" },
+      },
+      executionPatterns: [
+        "FreeSWITCH ESL: map callId to channel UUID, then use uuid_transfer or originate + uuid_bridge.",
+        "SIP REFER: ask the current endpoint to transfer the existing dialog to the target URI.",
+        "SIP B2BUA: create an outbound INVITE and bridge the new leg when the platform must retain call control.",
+        "Other media servers: consume the same JSON command over HTTP, WebSocket, or an event bus and use their native call-control API.",
+      ],
+    };
+  }
+
+  if (kind === "tool_timeout" || kind === "runtime_failure") {
+    return {
+      ...common,
+      controlMessage: {
+        type: "telephony.handoff.requested",
+        callId,
+        reason: kind,
+        target: { type: "queue", id: "human-support" },
+      },
+      executionPatterns: [
+        "Keep the existing SIP/RTP session stable while automated responses stop.",
+        "Send the handoff JSON to the FreeSWITCH/media-server adapter, which creates or bridges the human leg.",
+        "If the handoff cannot be completed, preserve the call and emit explicit failure evidence instead of improvising an AI response.",
+      ],
+    };
+  }
+
+  const controlType = kind === "end_call" ? "telephony.call.end_requested" : "telephony.operator_leg.requested";
+  return {
+    ...common,
+    controlMessage: { type: controlType, callId, action: kind },
+    executionPatterns: kind === "end_call"
+      ? ["FreeSWITCH can end the mapped channel through ESL; SIP endpoints complete the dialog with BYE."]
+      : ["The adapter stops automated output and bridges or promotes the operator leg through the media server."],
+  };
+}
+
 async function runClueConOperatorDrill(
   ingress: InMemoryTelephonyIngress,
   config: PocConfig,
@@ -3083,6 +3136,7 @@ async function runClueConOperatorDrill(
       steps,
       summary: "scripted_approve -> policy hold, operator approval, safe wrap, and proof bundle.",
       outcome: "scripted_wrap_complete",
+      integration: buildClueConOperatorDrillIntegration(kind, latest.session.callId),
     };
   }
 
@@ -3127,6 +3181,7 @@ async function runClueConOperatorDrill(
       steps,
       summary: `${kind} -> fail-closed human handoff; no improvised offer.`,
       outcome: "fail_closed_handoff",
+      integration: buildClueConOperatorDrillIntegration(kind, callId),
     };
   }
 
@@ -3144,8 +3199,11 @@ async function runClueConOperatorDrill(
   return {
     latest,
     steps,
-    summary: `${kind} -> operator cockpit applied bounded control and preserved evidence.`,
+    summary: kind === "transfer"
+      ? "Transfer requested: ACC emitted a JSON call-control command for a FreeSWITCH or SIP/media-server adapter to execute."
+      : `${kind} -> operator cockpit applied bounded control and preserved evidence.`,
     outcome: `operator_${kind}`,
+    integration: buildClueConOperatorDrillIntegration(kind, callId),
   };
 }
 
@@ -4625,6 +4683,7 @@ async function routeRequest(
       kind: body.kind,
       outcome: drill.outcome,
       summary: drill.summary,
+      integration: drill.integration,
       simulatedEvents: drill.steps.map((step) => step.step),
       steps: drill.steps,
       call: buildCallPayload(drill.latest),
