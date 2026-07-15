@@ -1775,9 +1775,11 @@ test("GET /operator/console serves a compact console with contextual controls", 
     assert.match(response.body, /Run Demo/);
     assert.match(response.body, /Start empty call/);
     assert.match(response.body, /<details class="toolbar-menu"><summary>More<\/summary>/);
+    assert.match(response.body, /\.toolbar-menu:not\(\[open\]\) > \.menu-panel \{ display: none; \}/);
     assert.match(response.body, /Needs attention/);
     assert.match(response.body, /aria-label="Search calls"/);
     assert.match(response.body, /<details class="filter-drawer"><summary>Filters<\/summary>/);
+    assert.match(response.body, /\.filter-drawer:not\(\[open\]\) > \.filters-advanced \{ display: none; \}/);
     assert.match(response.body, /Over-budget latency/);
     assert.match(response.body, /href="\/assert\/full"/);
     assert.match(response.body, /href="\/assert"/);
@@ -1893,6 +1895,7 @@ test("GET /operator/console serves a compact console with contextual controls", 
     assert.match(response.body, /Test tools/);
     assert.match(response.body, /Notes & disposition/);
     assert.match(response.body, /Evidence & QA/);
+    assert.match(response.body, /\.section-drawer:not\(\[open\]\) > \.drawer-content \{ display: none; \}/);
     assert.match(response.body, /approvalPending/);
     assert.match(response.body, /primaryActions/);
     assert.doesNotMatch(response.body, /<h3 class="section-title">Operator Actions<\/h3>/);

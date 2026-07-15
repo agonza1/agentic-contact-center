@@ -577,6 +577,7 @@ function buildOperatorConsoleHtml(): string {
     .toolbar-menu summary { display: inline-flex; align-items: center; min-height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; font-weight: 700; list-style: none; }
     .toolbar-menu summary::-webkit-details-marker { display: none; }
     .menu-panel { position: absolute; right: 0; z-index: 5; display: grid; gap: 6px; width: 190px; margin-top: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: var(--shadow); }
+    .toolbar-menu:not([open]) > .menu-panel { display: none; }
     .menu-panel button, .menu-panel .nav-link { width: 100%; justify-content: flex-start; }
     .nav-link { display: inline-flex; align-items: center; min-height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--text); font-size: 13px; font-weight: 700; text-decoration: none; }
     .nav-link:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -591,6 +592,7 @@ function buildOperatorConsoleHtml(): string {
     .filter-drawer summary:hover { color: var(--text); }
     .filter-drawer[open] summary { border-bottom: 1px solid var(--line); color: var(--text); }
     .filters-advanced { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .filter-drawer:not([open]) > .filters-advanced { display: none; }
     .filter-toggle { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; background: var(--panel-soft); }
     .status, .meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
     .status { display: inline-flex; align-items: center; min-height: 28px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-soft); font-weight: 650; }
@@ -620,6 +622,7 @@ function buildOperatorConsoleHtml(): string {
     .section-drawer[open] > summary { border-bottom: 1px solid var(--line); }
     .section-drawer[open] > summary::after { content: "−"; }
     .drawer-content { display: grid; gap: 10px; padding: 12px; }
+    .section-drawer:not([open]) > .drawer-content { display: none; }
     .section-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; font-size: 13px; font-weight: 760; color: var(--text); }
     .proof-panel { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fff; }
     .proof-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
