@@ -133,6 +133,7 @@ async function main() {
       liveSipProofAcceptance: readiness.liveSipProofAcceptance,
       remainingWorkCount: readiness.remainingWork.length,
       validationCommands: readiness.validationCommands,
+      nextValidationCommand: readiness.liveSipProofAcceptance.proofBundleCommand,
     },
     readiness,
   };
@@ -152,6 +153,7 @@ async function main() {
   console.log(`Acceptance criteria: ${passedCriteria}/${totalCriteria}`);
   console.log(`Failing criteria: ${failingCriteria.length > 0 ? failingCriteria.join(", ") : "none"}`);
   console.log(`Next slice: ${readiness.nextUnblockedSlice.id}`);
+  console.log(`Next validation: ${artifact.artifactSummary.nextValidationCommand}`);
 }
 
 main().catch((error) => {

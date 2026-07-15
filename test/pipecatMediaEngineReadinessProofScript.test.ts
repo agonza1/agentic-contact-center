@@ -33,6 +33,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.match(stdout, /Acceptance criteria: 9\/10/);
     assert.match(stdout, /Failing criteria: sip_caller_audible_playback_live_proof/);
     assert.match(stdout, /Next slice: live_softphone_playback_acceptance/);
+    assert.match(stdout, /Next validation: node scripts\/live-sip-proof-bundle\.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       ok: boolean;
@@ -52,6 +53,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         liveSipProofAcceptance: { requiredManifestFlags: string[]; rejectedShortcuts: string[]; proofBundleCommand: string };
         remainingWorkCount: number;
         validationCommands: string[];
+        nextValidationCommand: string;
       };
       readiness: {
         ok: boolean;
@@ -97,6 +99,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         "npm test",
         "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
       ],
+      nextValidationCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
     });
     assert.equal(artifact.readiness.ok, true);
     assert.equal(artifact.readiness.route, "/api/pipecat-media-engine/readiness");
