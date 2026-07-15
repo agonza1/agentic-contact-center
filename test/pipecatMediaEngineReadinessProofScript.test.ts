@@ -34,6 +34,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.match(stdout, /Failing criteria: sip_caller_audible_playback_live_proof/);
     assert.match(stdout, /Next slice: live_softphone_playback_acceptance/);
     assert.match(stdout, /Next validation: node scripts\/live-sip-proof-bundle\.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback/);
+    assert.match(stdout, /Runtime prerequisites: acc_http, freeswitch_sip, freeswitch_esl, rtc_asr_ws, kokoro_http/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       ok: boolean;
@@ -54,6 +55,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         remainingWorkCount: number;
         validationCommands: string[];
         nextValidationCommand: string;
+        requiredRuntimeEndpoints: Array<{ id: string; evidence: string }>;
       };
       readiness: {
         ok: boolean;
@@ -87,6 +89,13 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
       },
       liveSipProofAcceptance: {
         requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_rtp_playback_sent", "caller_audible_playback"],
+        requiredRuntimeEndpoints: [
+          { id: "acc_http", defaultUrl: "http://127.0.0.1:8026", evidence: "ACC health/readiness routes are reachable while the SIP proof listener runs." },
+          { id: "freeswitch_sip", defaultAddress: "127.0.0.1:5060", evidence: "A local softphone can place an accepted INVITE to extension 8600." },
+          { id: "freeswitch_esl", defaultAddress: "127.0.0.1:8021", evidence: "freeswitch-acc-bridge can observe CHANNEL_ANSWER and RTP call events." },
+          { id: "rtc_asr_ws", env: "RTC_ASR_WS_URL", evidence: "The current call audio is transcribed into fresh rtc_asr_live final transcript evidence." },
+          { id: "kokoro_http", env: "KOKORO_BASE_URL", evidence: "Kokoro returns TTS audio that is packetized and played back to the caller." },
+        ],
         rejectedShortcuts: [
           "generated_media_without_live_capture",
           "stale_rtc_asr_evidence_reused_across_calls",
@@ -100,6 +109,13 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
       ],
       nextValidationCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
+      requiredRuntimeEndpoints: [
+        { id: "acc_http", defaultUrl: "http://127.0.0.1:8026", evidence: "ACC health/readiness routes are reachable while the SIP proof listener runs." },
+        { id: "freeswitch_sip", defaultAddress: "127.0.0.1:5060", evidence: "A local softphone can place an accepted INVITE to extension 8600." },
+        { id: "freeswitch_esl", defaultAddress: "127.0.0.1:8021", evidence: "freeswitch-acc-bridge can observe CHANNEL_ANSWER and RTP call events." },
+        { id: "rtc_asr_ws", env: "RTC_ASR_WS_URL", evidence: "The current call audio is transcribed into fresh rtc_asr_live final transcript evidence." },
+        { id: "kokoro_http", env: "KOKORO_BASE_URL", evidence: "Kokoro returns TTS audio that is packetized and played back to the caller." },
+      ],
     });
     assert.equal(artifact.readiness.ok, true);
     assert.equal(artifact.readiness.route, "/api/pipecat-media-engine/readiness");
