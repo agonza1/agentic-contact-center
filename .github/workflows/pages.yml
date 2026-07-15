@@ -12,9 +12,12 @@ permissions:
   pages: write
   id-token: write
 
+# Keep production deploys isolated from PR validation. GitHub only retains one
+# pending run per concurrency group, so sharing `pages` allowed busy PR traffic
+# to replace a queued deployment from main.
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'production' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -31,7 +34,17 @@ jobs:
         run: npm ci
       - name: Export ClueCon static pages
         run: npm run pages:cluecon
+      - name: Validate Pages export
+        run: |
+          test -s site/cluecon-pages/index.html
+          test -s site/cluecon-pages/present/index.html
+          test -s site/cluecon-pages/404.html
+          test -f site/cluecon-pages/.nojekyll
+      - name: Setup Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site/cluecon-pages
@@ -45,4 +58,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
