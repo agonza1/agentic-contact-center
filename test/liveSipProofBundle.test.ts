@@ -516,6 +516,55 @@ test("live SIP proof bundle accepts copied live proof playback evidence", async 
   }
 });
 
+test("live SIP proof bundle accepts caller-audible playback confirmation evidence", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-caller-audible-playback-"));
+  const audioPath = path.join(tempDir, "caller-capture.wav");
+  const sipLogPath = path.join(tempDir, "sip.log.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+  const callerPlaybackEvidencePath = path.join(tempDir, "caller-playback-proof.json");
+  const manifestPath = path.join(tempDir, "local-sip-live-proof-manifest.json");
+  const outDir = path.join(tempDir, "bundle");
+
+  try {
+    await writeFile(audioPath, validWavFixture());
+    await writeFile(rtcAsrEvidencePath, JSON.stringify({ callId: "call-live-sip-caller-audible-playback", transcript: "I need billing help.", final: true }) + "\n", "utf8");
+    await writeFile(sipLogPath, JSON.stringify([{ startLine: "INVITE sip:8600@127.0.0.1 SIP/2.0" }, { startLine: "SIP/2.0 200 OK" }]) + "\n", "utf8");
+    await writeFile(callerPlaybackEvidencePath, JSON.stringify({ callerAudiblePlaybackConfirmed: true, method: "softphone_capture" }) + "\n", "utf8");
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        generatedAt: "2026-06-30T10:00:00.000Z",
+        callId: "call-live-sip-caller-audible-playback",
+        sipCallId: "sip-proof-caller-audible-playback",
+        runtimeModeLabels: { telephony: "local_sip", media: "live_capture", rtcAsr: "rtc_asr_live", credentialsMode: "mocked" },
+        localSip: { acceptedInvite: true, rtpPacketCount: 4 },
+        pipecatMediaEngine: { bidirectionalPlaybackReady: true },
+        artifacts: { audioWav: audioPath, sipLog: sipLogPath, rtcAsrEvidence: rtcAsrEvidencePath, callerPlaybackEvidence: callerPlaybackEvidencePath },
+        artifactIntegrity: [],
+        reviewGate: { requiredLabels: ["local_sip", "live_capture", "rtc_asr_live"], missingLabels: [], nextActions: [] },
+        reviewReady: true,
+        blockers: [],
+      }, null, 2) + "\n",
+      "utf8",
+    );
+
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      ["scripts/live-sip-proof-bundle.mjs", "--live-manifest", manifestPath, "--out-dir", outDir, "--require-review-ready"],
+      { cwd: repoRoot },
+    );
+
+    const summary = JSON.parse(stdout) as { reviewGatePassed: boolean; validationStatus: string; failedChecks: string[] };
+    assert.equal(summary.reviewGatePassed, true);
+    assert.equal(summary.validationStatus, "ready_for_review");
+    assert.deepEqual(summary.failedChecks, []);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("live SIP proof bundle rejects generic nested confirmation as caller playback proof", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-generic-confirmed-playback-"));
