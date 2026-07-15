@@ -368,6 +368,14 @@ class AccVoicePipelineSession:
         self.last_tts_evidence: dict[str, Any] = {}
         self.last_error: dict[str, Any] = {}
         self.stage_events: list[dict[str, Any]] = []
+        self.rtc_asr_ws: Any | None = None
+        self.rtc_asr_connection_id = 0
+        self.rtc_asr_started = False
+        self.rtc_asr_lock = asyncio.Lock()
+        self.rtc_asr_current_audio_bytes = 0
+        self.rtc_asr_session_audio_bytes = 0
+        self.rtc_asr_session_event_count = 0
+        self.rtc_asr_interim_events: list[dict[str, Any]] = []
         self.turn_controls: PipecatTurnControls | None = None
 
     def record_stage(self, stage: str, *, ok: bool = True, **detail: Any) -> dict[str, Any]:
@@ -430,54 +438,132 @@ class AccVoicePipelineSession:
         started = time.perf_counter()
         final_text = ""
         events: list[dict[str, Any]] = []
-        async with websockets.connect(DEFAULT_RTC_ASR_WS_URL, max_size=20 * 1024 * 1024) as ws:
-            await ws.send(
-                json.dumps(
-                    {
-                        "type": "start",
-                        "version": "local-stt.v1",
-                        "audio": {
-                            "sample_rate": INPUT_SAMPLE_RATE,
-                            "channels": 1,
-                            "format": "pcm_s16le",
-                            "frame_ms": 20,
-                            "bytes_per_frame": 640,
-                        },
-                        "interim_results": True,
-                        "model": self.readiness.stt_model if self.readiness.stt_model != "unknown" else None,
-                    }
-                )
-            )
-            for offset in range(0, len(frame.audio), 640):
-                await ws.send(frame.audio[offset : offset + 640])
+        async with self.rtc_asr_lock:
+            await self.ensure_rtc_asr_stream()
+            if self.rtc_asr_current_audio_bytes == 0 and frame.audio:
+                await self.send_rtc_asr_audio_locked(frame.audio)
+            ws = self.rtc_asr_ws
+            if ws is None:
+                raise RuntimeError("rtc-asr websocket was not available after start")
             await ws.send(json.dumps({"type": "finalize"}))
             deadline = time.monotonic() + float(os.environ.get("RTC_ASR_FINAL_TIMEOUT_SEC", "12"))
             while time.monotonic() < deadline:
-                message = await asyncio.wait_for(ws.recv(), timeout=max(0.1, deadline - time.monotonic()))
-                if not isinstance(message, str):
+                event = await self.recv_rtc_asr_event_locked(timeout=max(0.1, deadline - time.monotonic()))
+                if event is None:
                     continue
-                event = json.loads(message)
-                if isinstance(event, dict):
-                    events.append(event)
-                    candidate = transcript_text_from_event(event)
-                    if candidate:
-                        final_text = candidate
-                    if is_final_stt_event(event):
-                        break
-            with contextlib.suppress(Exception):
-                await ws.send(json.dumps({"type": "close"}))
+                events.append(event)
+                candidate = transcript_text_from_event(event)
+                if candidate:
+                    final_text = candidate
+                if is_final_stt_event(event):
+                    break
         elapsed_ms = round((time.perf_counter() - started) * 1000)
+        audio_bytes = self.rtc_asr_current_audio_bytes or len(frame.audio)
         meta = {
             "engine": "rtc-asr",
             "contract": "local-stt.v1",
             "model": self.readiness.stt_model,
             "backend": self.readiness.stt_backend,
+            "connectionId": self.rtc_asr_connection_id,
+            "persistentSession": True,
             "elapsedMs": elapsed_ms,
-            "audioBytes": len(frame.audio),
+            "audioBytes": audio_bytes,
+            "sessionAudioBytes": self.rtc_asr_session_audio_bytes,
+            "sessionEventCount": self.rtc_asr_session_event_count,
+            "interimEventCount": len([event for event in events if not is_final_stt_event(event) and transcript_text_from_event(event)]),
             "eventCount": len(events),
         }
+        self.rtc_asr_current_audio_bytes = 0
         result_frame = TranscriptionFrame(final_text.strip(), user_id="browser", timestamp=str(time.time()), result={"events": events}, finalized=True)
         return result_frame.text.strip(), meta, result_frame
+
+    async def ensure_rtc_asr_stream(self) -> None:
+        if self.rtc_asr_ws is not None and (getattr(self.rtc_asr_ws, "closed", False) or getattr(self.rtc_asr_ws, "close_code", None) is not None):
+            self.rtc_asr_ws = None
+            self.rtc_asr_started = False
+        if self.rtc_asr_ws is not None and self.rtc_asr_started:
+            return
+        self.rtc_asr_connection_id += 1
+        self.rtc_asr_ws = await websockets.connect(DEFAULT_RTC_ASR_WS_URL, max_size=20 * 1024 * 1024)
+        self.rtc_asr_started = True
+        await self.rtc_asr_ws.send(
+            json.dumps(
+                {
+                    "type": "start",
+                    "version": "local-stt.v1",
+                    "audio": {
+                        "sample_rate": INPUT_SAMPLE_RATE,
+                        "channels": 1,
+                        "format": "pcm_s16le",
+                        "frame_ms": 20,
+                        "bytes_per_frame": 640,
+                    },
+                    "interim_results": True,
+                    "model": self.readiness.stt_model if self.readiness.stt_model != "unknown" else None,
+                }
+            )
+        )
+        self.record_stage(
+            "stt.session_started",
+            connectionId=self.rtc_asr_connection_id,
+            persistentSession=True,
+            wsUrl=DEFAULT_RTC_ASR_WS_URL,
+        )
+
+    async def recv_rtc_asr_event_locked(self, *, timeout: float) -> dict[str, Any] | None:
+        ws = self.rtc_asr_ws
+        if ws is None:
+            return None
+        try:
+            message = await asyncio.wait_for(ws.recv(), timeout=timeout)
+        except asyncio.TimeoutError:
+            return None
+        if not isinstance(message, str):
+            return None
+        event = json.loads(message)
+        if not isinstance(event, dict):
+            return None
+        self.rtc_asr_session_event_count += 1
+        transcript = transcript_text_from_event(event)
+        if transcript and not is_final_stt_event(event):
+            interim = self.record_stage(
+                "stt.transcript_interim",
+                transcript=transcript,
+                connectionId=self.rtc_asr_connection_id,
+                persistentSession=True,
+            )
+            self.rtc_asr_interim_events.append(interim)
+            self.rtc_asr_interim_events = self.rtc_asr_interim_events[-20:]
+        return event
+
+    async def send_rtc_asr_audio_locked(self, pcm: bytes) -> None:
+        await self.ensure_rtc_asr_stream()
+        ws = self.rtc_asr_ws
+        if ws is None:
+            raise RuntimeError("rtc-asr websocket was not available after start")
+        for offset in range(0, len(pcm), 640):
+            chunk = pcm[offset : offset + 640]
+            await ws.send(chunk)
+            self.rtc_asr_current_audio_bytes += len(chunk)
+            self.rtc_asr_session_audio_bytes += len(chunk)
+            await self.recv_rtc_asr_event_locked(timeout=0.001)
+
+    async def stream_rtc_asr_audio(self, pcm: bytes) -> None:
+        async with self.rtc_asr_lock:
+            await self.send_rtc_asr_audio_locked(pcm)
+
+    async def close_rtc_asr_stream(self, reason: str = "session_closed") -> None:
+        async with self.rtc_asr_lock:
+            ws = self.rtc_asr_ws
+            if ws is None:
+                return
+            with contextlib.suppress(Exception):
+                await ws.send(json.dumps({"type": "close", "reason": reason}))
+            with contextlib.suppress(Exception):
+                await ws.close()
+            self.rtc_asr_ws = None
+            self.rtc_asr_started = False
+            self.record_stage("stt.session_closed", connectionId=self.rtc_asr_connection_id, reason=reason, persistentSession=True)
 
     async def synthesize(self, frame: TextFrame) -> tuple[bytes, int, dict[str, Any]]:
         started = time.perf_counter()
@@ -701,6 +787,11 @@ class RtcAsrTurnProcessor(FrameProcessor):
         self.turn_controls.observe_audio(pcm, rms > self.silence_rms)
         if self.in_speech:
             self.speech_chunks.append(pcm)
+            try:
+                await self.session.stream_rtc_asr_audio(pcm)
+            except Exception as exc:
+                self.session.record_stage("stt.stream_failed", ok=False, error="stt_stream_failed", detail=str(exc), audioBytes=len(pcm))
+                return
             self.arm_silence_finalize_task()
         collected_ms = self.collected_speech_ms()
         silence_elapsed_ms = round((now - self.last_voice_at) * 1000)

@@ -298,6 +298,9 @@ class BrowserWebrtcBridge:
             session["closeReason"] = session.get("closeReason") or reason
             self.forget_session_record(session)
         runner = session.get("runner")
+        turn_session = session.get("turnSession")
+        if isinstance(turn_session, AccVoicePipelineSession):
+            await turn_session.close_rtc_asr_stream(reason)
         if isinstance(runner, PipelineRunner):
             await runner.cancel(reason)
         task = session.get("runnerTask")
