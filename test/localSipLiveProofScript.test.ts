@@ -284,6 +284,7 @@ test("local SIP live-caller gate exits nonzero when no caller arrives", async ()
         assert.equal(error.code, 2);
         const summary = JSON.parse(error.stdout.slice(error.stdout.indexOf("{")).trim()) as { reviewReady: boolean; blockers: string[] };
         assert.equal(summary.reviewReady, false);
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("No SIP INVITE was accepted")));
         assert.ok(summary.blockers.some((blocker) => blocker.includes("No RTP packets")));
         return true;
       },
@@ -303,6 +304,7 @@ test("local SIP live-caller gate exits nonzero when no caller arrives", async ()
     assert.deepEqual(manifest.reviewGate.missingLabels, ["rtc_asr_live"]);
     assert.deepEqual(manifest.reviewGate.nextActions, [
       "Place a real local SIP/FreeSWITCH softphone call and rerun the live proof without --self-test.",
+      `Verify the softphone or FreeSWITCH route is sending INVITE traffic to sip:8600@127.0.0.1:${portBase}.`,
       "Start rtc-asr, set RTC_ASR_WS_URL, and rerun the live proof to capture a websocket-backed transcript.",
     ]);
   } finally {
