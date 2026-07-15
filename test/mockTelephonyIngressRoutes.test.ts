@@ -1774,6 +1774,10 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /<title>Operator Console<\/title>/);
     assert.match(response.body, /Run Demo Flow/);
     assert.match(response.body, /Start Empty Call/);
+    assert.match(response.body, /Needs attention/);
+    assert.match(response.body, /aria-label="Search calls"/);
+    assert.match(response.body, /<details class="filter-drawer"><summary>Filters<\/summary>/);
+    assert.match(response.body, /Over-budget latency/);
     assert.match(response.body, /href="\/assert\/full"/);
     assert.match(response.body, /href="\/assert"/);
     assert.match(response.body, /href="\/assert\/spec"/);
@@ -1832,7 +1836,7 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.doesNotMatch(response.body, /new MediaRecorder/);
     assert.doesNotMatch(response.body, /new WebSocket/);
     assert.match(response.body, /new RTCPeerConnection/);
-    assert.match(response.body, /Attention only/);
+    assert.match(response.body, /Needs attention/);
     assert.match(response.body, /Over-budget latency/);
     assert.match(response.body, /Flow state filter/);
     assert.match(response.body, /Fallback mode filter/);
@@ -1850,7 +1854,7 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Script minimum progress filter/);
     assert.match(response.body, /Script maximum progress filter/);
     assert.match(response.body, /Any max progress/);
-    assert.match(response.body, /Transcript search/);
+    assert.match(response.body, /Search calls/);
     assert.match(response.body, /operatorConsoleQuery/);
     assert.match(response.body, /refreshIntervalMs/);
     assert.match(response.body, /scheduleRefresh/);
