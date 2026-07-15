@@ -579,7 +579,9 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /MinWordsUserTurnStartStrategy/);
   assert.match(narrative.body, /https:\/\/docs\.pipecat\.ai\/api-reference\/server\/utilities\/turn-management\/user-turn-strategies#minwordsuserturnstartstrategy/);
   assert.match(narrative.body, /https:\/\/github\.com\/pipecat-ai\/smart-turn/);
-  assert.match(narrative.body, /TEN-vad, Silero VAD, and livekit-turn-detector/);
+  assert.match(narrative.body, /https:\/\/github\.com\/TEN-framework\/ten-vad/);
+  assert.match(narrative.body, /https:\/\/github\.com\/snakers4\/silero-vad/);
+  assert.match(narrative.body, /https:\/\/github\.com\/livekit\/agents\/tree\/main\/livekit-plugins\/livekit-plugins-turn-detector/);
   assert.match(narrative.body, /Audio output waits for 2 s of silence/);
   assert.match(narrative.body, /InterruptionFrame clears queue/);
   assert.match(narrative.body, /function vadLoop\(\)/);
@@ -668,7 +670,9 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /turn wait: 2\.0 s/);
   assert.match(html, /ACC policy \+ turn wait: 2 s/);
   assert.match(html, /MinWordsUserTurnStartStrategy/);
-  assert.match(html, /TEN-vad, Silero VAD, and livekit-turn-detector/);
+  assert.match(html, /https:\/\/github\.com\/TEN-framework\/ten-vad/);
+  assert.match(html, /https:\/\/github\.com\/snakers4\/silero-vad/);
+  assert.match(html, /https:\/\/github\.com\/livekit\/agents\/tree\/main\/livekit-plugins\/livekit-plugins-turn-detector/);
   assert.doesNotMatch(html, /30-minute session/);
   assert.doesNotMatch(html, /15 min system story/);
   assert.doesNotMatch(html, /10 min live demo/);
