@@ -1765,15 +1765,16 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
   });
 });
 
-test("GET /operator/console serves the local console with the full action set", async () => {
+test("GET /operator/console serves a compact console with contextual controls", async () => {
   await withServer(async (port) => {
     const response = await requestText(port, "GET", "/operator/console");
 
     assert.equal(response.statusCode, 200);
     assert.equal(response.contentType, "text/html; charset=utf-8");
     assert.match(response.body, /<title>Operator Console<\/title>/);
-    assert.match(response.body, /Run Demo Flow/);
-    assert.match(response.body, /Start Empty Call/);
+    assert.match(response.body, /Run Demo/);
+    assert.match(response.body, /Start empty call/);
+    assert.match(response.body, /<details class="toolbar-menu"><summary>More<\/summary>/);
     assert.match(response.body, /Needs attention/);
     assert.match(response.body, /aria-label="Search calls"/);
     assert.match(response.body, /<details class="filter-drawer"><summary>Filters<\/summary>/);
@@ -1786,12 +1787,13 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Eval Spec/);
     assert.match(response.body, /runDemoFlow/);
     assert.match(response.body, /\/api\/demo\/run-end-to-end/);
-    assert.match(response.body, /Pipecat WebRTC Caller/);
+    assert.match(response.body, /Browser Voice/);
     assert.match(response.body, /workbench single/);
     assert.match(response.body, /Connect Voice/);
     assert.match(response.body, /Unmute Caller/);
     assert.match(response.body, /Mute Caller/);
-    assert.match(response.body, /Copy Proof/);
+    assert.match(response.body, /Copy voice proof/);
+    assert.match(response.body, /Connection details/);
     assert.match(response.body, /const repoHeadEvidence = "[a-f0-9]{40}"/);
     assert.match(response.body, /gitHead: repoHeadEvidence/);
     assert.doesNotMatch(response.body, /Check Bridge/);
@@ -1805,18 +1807,14 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /voice-bridge-status/);
     assert.match(response.body, /voice-bridge-detail/);
     assert.match(response.body, /voiceBridgeIntervalMs: 5000/);
-    assert.match(response.body, /Demo Flow/);
-    assert.match(response.body, /class="demo-flow-svg"/);
-    assert.match(response.body, /browser mic/);
+    assert.doesNotMatch(response.body, /class="demo-flow-svg"/);
     assert.match(response.body, /ASSERT/);
-    assert.match(response.body, /viewer \+ eval spec/);
     assert.match(response.body, /npm run assert:export/);
     assert.match(response.body, /npm run assert:viewer/);
     assert.match(response.body, /Voice disconnected/);
     assert.match(response.body, /api\/browser-webrtc\/readiness/);
-    assert.match(response.body, /ffmpeg for normal operation/);
-    assert.match(response.body, /rtc-asr Local STT v1/);
-    assert.match(response.body, /Kokoro TTS/);
+    assert.doesNotMatch(response.body, /ffmpeg for normal operation/);
+    assert.match(response.body, /Browser mic → WebRTC → Pipecat → rtc-asr → ACC → Kokoro → browser playback/);
     assert.match(response.body, /connectPipecatVoice/);
     assert.match(response.body, /togglePipecatMute/);
     assert.match(response.body, /probeVoiceBridge/);
@@ -1880,7 +1878,6 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /caller-turn-form/);
     assert.match(response.body, /Caller transcript turn/);
     assert.match(response.body, /scripted-turns/);
-    assert.match(response.body, /Scripted Turns/);
     assert.match(response.body, /data-scripted-turn/);
     assert.match(response.body, /postScriptedTurn/);
     assert.match(response.body, /\/api\/operator\/console\/scripted-turn/);
@@ -1890,6 +1887,16 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /"goto_slide"/);
     assert.match(response.body, /"ask_operator"/);
     assert.match(response.body, /"transfer"/);
+    assert.match(response.body, /Call Controls/);
+    assert.match(response.body, /Take Over/);
+    assert.match(response.body, /Advanced controls/);
+    assert.match(response.body, /Test tools/);
+    assert.match(response.body, /Notes & disposition/);
+    assert.match(response.body, /Evidence & QA/);
+    assert.match(response.body, /approvalPending/);
+    assert.match(response.body, /primaryActions/);
+    assert.doesNotMatch(response.body, /<h3 class="section-title">Operator Actions<\/h3>/);
+    assert.doesNotMatch(response.body, /id="refresh"/);
     assert.match(response.body, /reasonPrompt/);
     assert.match(response.body, /requiresReason/);
     assert.match(response.body, /confirmationRequired/);
@@ -1902,8 +1909,6 @@ test("GET /operator/console serves the local console with the full action set", 
     assert.match(response.body, /Artifacts \/ Eval/);
     assert.match(response.body, /Handoff State/);
     assert.match(response.body, /runtimeLabels/);
-    assert.match(response.body, /Runtime Mode/);
-    assert.match(response.body, /runtimeModeText/);
     assert.match(response.body, /ready_with_rtc_asr_blocker/);
     assert.match(response.body, /not_review_ready/);
     assert.match(response.body, /pathHtml/);
@@ -2033,7 +2038,7 @@ test("GET / serves the operator console instead of a dead end", async () => {
     assert.equal(response.statusCode, 200);
     assert.equal(response.contentType, "text/html; charset=utf-8");
     assert.match(response.body, /<title>Operator Console<\/title>/);
-    assert.match(response.body, /Run Demo Flow/);
+    assert.match(response.body, /Run Demo/);
   });
 });
 
