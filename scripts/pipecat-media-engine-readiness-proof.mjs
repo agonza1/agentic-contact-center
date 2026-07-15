@@ -134,6 +134,7 @@ async function main() {
       remainingWorkCount: readiness.remainingWork.length,
       validationCommands: readiness.validationCommands,
       nextValidationCommand: readiness.liveSipProofAcceptance.proofBundleCommand,
+      requiredRuntimeEndpoints: readiness.liveSipProofAcceptance.requiredRuntimeEndpoints,
     },
     readiness,
   };
@@ -154,6 +155,7 @@ async function main() {
   console.log(`Failing criteria: ${failingCriteria.length > 0 ? failingCriteria.join(", ") : "none"}`);
   console.log(`Next slice: ${readiness.nextUnblockedSlice.id}`);
   console.log(`Next validation: ${artifact.artifactSummary.nextValidationCommand}`);
+  console.log(`Runtime prerequisites: ${artifact.artifactSummary.requiredRuntimeEndpoints.map((endpoint) => endpoint.id).join(", ")}`);
 }
 
 main().catch((error) => {
