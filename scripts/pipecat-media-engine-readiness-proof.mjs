@@ -148,7 +148,9 @@ async function main() {
   }
 
   console.log(`Review ready: ${artifact.artifactSummary.reviewReady ? "yes" : "no"}`);
+  console.log(`Review blockers: ${artifact.artifactSummary.reviewBlockerCount}`);
   console.log(`Acceptance criteria: ${passedCriteria}/${totalCriteria}`);
+  console.log(`Failing criteria: ${failingCriteria.length > 0 ? failingCriteria.join(", ") : "none"}`);
   console.log(`Next slice: ${readiness.nextUnblockedSlice.id}`);
 }
 

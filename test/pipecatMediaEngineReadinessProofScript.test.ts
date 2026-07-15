@@ -29,7 +29,9 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.match(stdout, /Saved Pipecat media engine readiness artifact/);
     assert.match(stdout, /Updated latest Pipecat media engine readiness artifact/);
     assert.match(stdout, /Review ready: no/);
+    assert.match(stdout, /Review blockers: 1/);
     assert.match(stdout, /Acceptance criteria: 9\/10/);
+    assert.match(stdout, /Failing criteria: sip_caller_audible_playback_live_proof/);
     assert.match(stdout, /Next slice: live_softphone_playback_acceptance/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
