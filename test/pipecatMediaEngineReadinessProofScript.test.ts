@@ -29,8 +29,11 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.match(stdout, /Saved Pipecat media engine readiness artifact/);
     assert.match(stdout, /Updated latest Pipecat media engine readiness artifact/);
     assert.match(stdout, /Review ready: no/);
+    assert.match(stdout, /Review blockers: 1/);
     assert.match(stdout, /Acceptance criteria: 9\/10/);
+    assert.match(stdout, /Failing criteria: sip_caller_audible_playback_live_proof/);
     assert.match(stdout, /Next slice: live_softphone_playback_acceptance/);
+    assert.match(stdout, /Next validation: node scripts\/live-sip-proof-bundle\.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       ok: boolean;
@@ -40,13 +43,17 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         readinessStatus: string;
         reviewReady: boolean;
         reviewBlockers: string[];
+        reviewBlockerCount: number;
         acceptanceCriteriaPassed: number;
         acceptanceCriteriaTotal: number;
+        failingAcceptanceCriteria: string[];
         implementedAdapters: string[];
         blockedAdapters: string[];
         nextUnblockedSlice: { id: string; title: string; adapter: string; entryPoint: string };
         liveSipProofAcceptance: { requiredManifestFlags: string[]; rejectedShortcuts: string[]; proofBundleCommand: string };
+        remainingWorkCount: number;
         validationCommands: string[];
+        nextValidationCommand: string;
       };
       readiness: {
         ok: boolean;
@@ -66,8 +73,10 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
       reviewBlockers: [
         "Local 8600 return audio is wired through Kokoro/Pipecat TTS, PCMU RTP packetization evidence, and FreeSWITCH uuid_broadcast WAV playback; live softphone capture still needs to prove the caller heard that playback end-to-end.",
       ],
+      reviewBlockerCount: 1,
       acceptanceCriteriaPassed: 9,
       acceptanceCriteriaTotal: 10,
+      failingAcceptanceCriteria: ["sip_caller_audible_playback_live_proof"],
       implementedAdapters: ["browser_webrtc", "sip_freeswitch_rtp", "fixture_audio_injection"],
       blockedAdapters: ["signalwire_sip_trunk"],
       nextUnblockedSlice: {
@@ -85,10 +94,12 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         ],
         proofBundleCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
       },
+      remainingWorkCount: 4,
       validationCommands: [
         "npm test",
         "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
       ],
+      nextValidationCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
     });
     assert.equal(artifact.readiness.ok, true);
     assert.equal(artifact.readiness.route, "/api/pipecat-media-engine/readiness");

@@ -102,6 +102,9 @@ async function main() {
   });
 
   const passedCriteria = readiness.acceptanceCriteria.filter((criterion) => criterion.passed).length;
+  const failingCriteria = readiness.acceptanceCriteria
+    .filter((criterion) => !criterion.passed)
+    .map((criterion) => criterion.name);
   const totalCriteria = readiness.acceptanceCriteria.length;
   const artifact = {
     ok: true,
@@ -111,8 +114,10 @@ async function main() {
       readinessStatus: readiness.status,
       reviewReady: readiness.reviewReady,
       reviewBlockers: readiness.reviewBlockers,
+      reviewBlockerCount: readiness.reviewBlockers.length,
       acceptanceCriteriaPassed: passedCriteria,
       acceptanceCriteriaTotal: totalCriteria,
+      failingAcceptanceCriteria: failingCriteria,
       implementedAdapters: readiness.sharedEngineContract.requiredAdapters
         .filter((adapter) => adapter.implementedNow)
         .map((adapter) => adapter.id),
@@ -126,7 +131,9 @@ async function main() {
         entryPoint: readiness.nextUnblockedSlice.entryPoint,
       },
       liveSipProofAcceptance: readiness.liveSipProofAcceptance,
+      remainingWorkCount: readiness.remainingWork.length,
       validationCommands: readiness.validationCommands,
+      nextValidationCommand: readiness.liveSipProofAcceptance.proofBundleCommand,
     },
     readiness,
   };
@@ -142,8 +149,11 @@ async function main() {
   }
 
   console.log(`Review ready: ${artifact.artifactSummary.reviewReady ? "yes" : "no"}`);
+  console.log(`Review blockers: ${artifact.artifactSummary.reviewBlockerCount}`);
   console.log(`Acceptance criteria: ${passedCriteria}/${totalCriteria}`);
+  console.log(`Failing criteria: ${failingCriteria.length > 0 ? failingCriteria.join(", ") : "none"}`);
   console.log(`Next slice: ${readiness.nextUnblockedSlice.id}`);
+  console.log(`Next validation: ${artifact.artifactSummary.nextValidationCommand}`);
 }
 
 main().catch((error) => {
