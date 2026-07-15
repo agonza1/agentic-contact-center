@@ -109,6 +109,8 @@ test("operator console polls browser WebRTC session proof for turn diagnostics",
   assert.match(serverSource, /track\.enabled = state\.voiceOpenConversation/);
   assert.match(serverSource, /muteIcon/);
   assert.match(serverSource, /aria-label="' \+ muteLabel/);
+  assert.match(serverSource, /const actions = \["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "ask_operator", "arm_fallback", "disarm_fallback"\]/);
+  assert.doesNotMatch(serverSource, /const actions = \[[^\]]*"goto_slide"/);
 });
 
 test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract", async () => {
