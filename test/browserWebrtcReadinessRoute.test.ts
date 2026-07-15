@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createServer, request } from "node:http";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
@@ -58,7 +58,22 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.doesNotMatch(bridge, /RTCSessionDescription/);
 });
 
-test("persistent rtc-asr session repeats utterance lifecycle and closes promptly", () => {
+test("browser WebRTC close interrupts rtc-asr before awaiting runner shutdown", () => {
+  const bridge = readFileSync("scripts/pipecat-browser-webrtc-bridge.py", "utf8");
+  const closeIndex = bridge.indexOf("await turn_session.close_rtc_asr_stream(reason)");
+  const cancelIndex = bridge.indexOf("await runner.cancel(reason)");
+  const taskCancelIndex = bridge.indexOf("task.cancel()");
+
+  assert.ok(closeIndex > 0, "expected close_session to close rtc-asr");
+  assert.ok(cancelIndex > 0, "expected close_session to cancel the runner");
+  assert.ok(taskCancelIndex > 0, "expected close_session to cancel the runner task");
+  assert.ok(closeIndex < cancelIndex, "rtc-asr should close before runner cancellation is awaited");
+  assert.ok(closeIndex < taskCancelIndex, "rtc-asr should close before runner task shutdown is awaited");
+});
+
+const hasOptionalPipecatRuntime = existsSync(".pipecat-runtime");
+
+test("persistent rtc-asr session repeats utterance lifecycle and closes promptly", { skip: !hasOptionalPipecatRuntime }, () => {
   const payload = JSON.parse(execFileSync("python3", [
     "test/fixtures/rtc_asr_persistent_session_regression.py",
   ], { encoding: "utf8" }).trim().split("\n").at(-1) ?? "{}");
