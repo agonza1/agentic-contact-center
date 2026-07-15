@@ -72,25 +72,29 @@ services:
   freeswitch:
     image: safarov/freeswitch:latest
     platform: linux/amd64
-    profiles: ["freeswitch", "sip", "full"]
+    profiles: ["freeswitch", "sip", "sip-verto", "full"]
     depends_on:
       - app
     ports:
       - "127.0.0.1:5060:5060/udp"
       - "127.0.0.1:5060:5060/tcp"
       - "127.0.0.1:8021:8021/tcp"
+      - "127.0.0.1:8081:8081/tcp"
+      - "127.0.0.1:8082:8082/tcp"
       - "127.0.0.1:16384-16484:16384-16484/udp"
     volumes:
       - ./freeswitch/conf/dialplan/default/acc_local_sip.xml:/etc/freeswitch/dialplan/default/acc_local_sip.xml:ro
       - ./freeswitch/conf/directory/default/1000.xml:/etc/freeswitch/directory/default/1000.xml:ro
+      - ./freeswitch/conf/directory/default/acc-pipecat.xml:/etc/freeswitch/directory/default/acc-pipecat.xml:ro
       - ./freeswitch/conf/autoload_configs/event_socket.conf.xml:/etc/freeswitch/autoload_configs/event_socket.conf.xml:ro
+      - ./freeswitch/conf/autoload_configs/verto.conf.xml:/etc/freeswitch/autoload_configs/verto.conf.xml:ro
       - ./artifacts/freeswitch-live:/var/log/freeswitch/acc
     environment:
       ACC_BASE_URL: http://app:8026
 
   rtc-asr:
     image: ${RTC_ASR_IMAGE:-rtc-asr:local}
-    profiles: ["voice", "browser-webrtc", "sip", "full"]
+    profiles: ["voice", "browser-webrtc", "sip", "sip-verto", "full"]
     ports:
       - "127.0.0.1:8080:8080"
     environment:
@@ -111,7 +115,7 @@ services:
 
   kokoro:
     image: ${KOKORO_IMAGE:-ghcr.io/remsky/kokoro-fastapi-cpu:latest}
-    profiles: ["voice", "browser-webrtc", "sip", "full"]
+    profiles: ["voice", "browser-webrtc", "sip", "sip-verto", "full"]
     ports:
       - "127.0.0.1:8880:8880"
     environment:
@@ -190,6 +194,49 @@ services:
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
       KOKORO_BASE_URL: http://kokoro:8880
       KOKORO_VOICE: ${KOKORO_VOICE:-af_heart}
+
+  pipecat-verto-bridge:
+    build:
+      context: .
+      target: voice-runtime
+    image: agentic-contact-center:voice-local
+    profiles: ["sip-verto", "full"]
+    depends_on:
+      - app
+      - freeswitch
+      - rtc-asr
+      - kokoro
+    command:
+      - python3
+      - scripts/pipecat-verto-agent-bridge.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8770"
+      - --verto-url
+      - ws://freeswitch:8081
+      - --login
+      - acc-pipecat@127.0.0.1
+      - --password
+      - local-verto-pass
+    ports:
+      - "127.0.0.1:8770:8770"
+    environment:
+      ACC_URL: http://app:8026
+      RTC_ASR_BASE_URL: http://rtc-asr:8080
+      RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
+      KOKORO_BASE_URL: http://kokoro:8880
+      FREESWITCH_VERTO_URL: ws://freeswitch:8081
+      FREESWITCH_VERTO_LOGIN: acc-pipecat@127.0.0.1
+      FREESWITCH_VERTO_PASSWORD: local-verto-pass
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c 'import json, urllib.request; payload = json.load(urllib.request.urlopen("http://127.0.0.1:8770/health", timeout=2)); raise SystemExit(0 if payload.get("ok") else 1)'
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
 
   assert-viewer:
     build:

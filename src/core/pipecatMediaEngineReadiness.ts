@@ -5,13 +5,15 @@ const issue222Url = "https://github.com/agonza1/agentic-contact-center/issues/22
 
 export function buildPipecatMediaEngineReadinessPayload() {
   const liveSoftphoneProofBlocker =
-    "Local 8600 return audio is wired through Kokoro/Pipecat TTS, PCMU RTP packetization evidence, and FreeSWITCH uuid_broadcast WAV playback; live softphone capture still needs to prove the caller heard that playback end-to-end.";
+    "Local 8600 now routes to the preferred FreeSWITCH Verto/WebRTC agent leg, but live softphone capture still needs to prove caller PCM reaches Pipecat and Kokoro/Pipecat audio returns through that same active call.";
   const liveSipProofAcceptance = {
-    requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_rtp_playback_sent", "caller_audible_playback"],
+    requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_verto_webrtc", "caller_audible_playback"],
     requiredRuntimeEndpoints: [
       { id: "acc_http", defaultUrl: "http://127.0.0.1:8026", evidence: "ACC health/readiness routes are reachable while the SIP proof listener runs." },
       { id: "freeswitch_sip", defaultAddress: "127.0.0.1:5060", evidence: "A local softphone can place an accepted INVITE to extension 8600." },
       { id: "freeswitch_esl", defaultAddress: "127.0.0.1:8021", evidence: "freeswitch-acc-bridge can observe CHANNEL_ANSWER and RTP call events." },
+      { id: "freeswitch_verto", defaultUrl: "ws://127.0.0.1:8081", evidence: "FreeSWITCH Verto accepts the registered acc-pipecat WebRTC agent leg." },
+      { id: "pipecat_verto_bridge", defaultUrl: "http://127.0.0.1:8770/health", evidence: "Pipecat Verto sidecar is registered and ready to answer the FreeSWITCH WebRTC dialog." },
       { id: "rtc_asr_ws", env: "RTC_ASR_WS_URL", evidence: "The current call audio is transcribed into fresh rtc_asr_live final transcript evidence." },
       { id: "kokoro_http", env: "KOKORO_BASE_URL", evidence: "Kokoro returns TTS audio that is packetized and played back to the caller." },
     ],
@@ -19,16 +21,17 @@ export function buildPipecatMediaEngineReadinessPayload() {
       "generated_media_without_live_capture",
       "stale_rtc_asr_evidence_reused_across_calls",
       "uuid_broadcast_without_caller_capture",
+      "parked_esl_post_hangup_transcription",
     ],
     proofBundleCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
   };
   const nextUnblockedSlice = {
     id: "live_softphone_playback_acceptance",
     title: "Capture end-to-end softphone playback proof",
-    adapter: "sip_freeswitch_rtp",
-    entryPoint: "scripts/freeswitch-acc-bridge.mjs",
-    targetContract: "softphone SIP call -> FreeSWITCH RTP -> Pipecat input frames -> rtc-asr transcript -> ACC turn -> Kokoro/Pipecat TTS -> PCMU RTP playback heard by caller",
-    verification: "scripts/live-sip-proof-bundle.mjs must carry live_capture, rtc_asr_live, Pipecat RTP playback send evidence, and caller-audible playback proof before issue #214 can be accepted.",
+    adapter: "sip_freeswitch_verto",
+    entryPoint: "scripts/pipecat-verto-agent-bridge.py",
+    targetContract: "softphone SIP call -> FreeSWITCH Verto/WebRTC agent leg -> Pipecat input frames -> rtc-asr transcript -> ACC turn -> Kokoro/Pipecat TTS -> same Verto/WebRTC leg heard by caller",
+    verification: "scripts/live-sip-proof-bundle.mjs must carry live_capture, rtc_asr_live, pipecat_verto_webrtc, and caller-audible playback proof before issue #222 can be accepted.",
     acceptance: liveSipProofAcceptance,
   };
 
@@ -53,15 +56,17 @@ export function buildPipecatMediaEngineReadinessPayload() {
         legacyFallbackAllowed: false,
       },
       sipTransportStrategy: {
-        transport: "FreeSWITCH/SIP RTP adapter",
+        transport: "FreeSWITCH Verto/WebRTC agent leg",
         sharesPipelineProcessors: false,
         processorContractAligned: true,
         liveMediaProofComplete: false,
-        note: "SIP is a FreeSWITCH/RTP transport aligned to the rtc-asr, ACC adapter, and Kokoro processor contract. It must not be called complete until it is wired through the shared Pipeline processors and live caller-audible proof exists.",
+        preferredRoute: "Linphone SIP 1000 -> FreeSWITCH 8600 -> registered Verto user acc-pipecat -> Pipecat Verto/WebRTC sidecar",
+        legacyFallback: "scripts/freeswitch-acc-bridge.mjs remains a proof/debug bridge and must not be used as the acceptance route for #222.",
+        note: "SIP is now targeted at a FreeSWITCH-owned WebRTC/Verto leg. It must not be called complete until that active leg feeds the shared Pipecat processors and live caller-audible proof exists.",
         pipelineUnificationDelta: [
-          "Move SIP RTP PCM frames into build_acc_voice_pipeline() instead of the Node mirror of rtc-asr/ACC/Kokoro stages.",
+          "Answer incoming Verto dialogs with a Pipecat media transport that calls build_acc_voice_pipeline().",
           "Reuse the same RtcAsrTurnProcessor, AccCallerTurnProcessor, and KokoroTtsProcessor stage-event contract as the browser SmallWebRTC path.",
-          "Keep FreeSWITCH packetization and uuid_broadcast at the telephony boundary after transport.output() emits caller audio.",
+          "Keep SIP/RTP and WebRTC DTLS-SRTP/Opus ownership inside FreeSWITCH; Pipecat should only see decoded PCM frames.",
         ],
       },
       flowsDecision: {
@@ -98,16 +103,28 @@ export function buildPipecatMediaEngineReadinessPayload() {
           path: "browser mic -> Pipecat InputAudioRawFrame -> rtc-asr -> ACC caller-turn -> Kokoro -> browser playback",
         },
         {
-          id: "sip_freeswitch_rtp",
+          id: "sip_freeswitch_verto",
           source: "FreeSWITCH local SIP extension 8600",
-          transport: "SIP/FreeSWITCH RTP",
+          transport: "SIP/FreeSWITCH bridged to Verto/WebRTC",
+          implementedNow: false,
+          processorContractAligned: true,
+          liveMediaProofComplete: false,
+          currentEntryPoint: "scripts/pipecat-verto-agent-bridge.py",
+          freeswitchDialplan: "freeswitch/conf/dialplan/default/acc_local_sip.xml bridges 8600 to ${verto_contact(acc-pipecat@$${domain})}",
+          path: "SIP/FreeSWITCH RTP -> Verto/WebRTC agent leg -> Pipecat PCM frames -> rtc-asr -> ACC caller-turn -> Kokoro -> same Verto/WebRTC leg -> SIP caller",
+          pipelineUnificationDelta: "Implement Verto WebRTC dialog answer around build_acc_voice_pipeline(); the current slice configures/health-checks the Verto signaling leg and prevents acceptance via the parked ESL fallback.",
+          blocker: `${liveSoftphoneProofBlocker} The Verto signaling surface is configured, but live WebRTC media answer and proof are still required.`,
+        },
+        {
+          id: "sip_freeswitch_rtp_legacy",
+          source: "FreeSWITCH local SIP extension 8600 legacy proof/debug lane",
+          transport: "SIP/FreeSWITCH RTP plus ESL uuid_broadcast",
           implementedNow: true,
           processorContractAligned: true,
           liveMediaProofComplete: false,
           currentEntryPoint: "scripts/freeswitch-acc-bridge.mjs",
-          path: "SIP/FreeSWITCH RTP -> Pipecat-compatible PCM frames -> rtc-asr -> ACC caller-turn -> Kokoro -> FreeSWITCH uuid_broadcast caller playback",
-          pipelineUnificationDelta: "Replace mirrored Node processor orchestration with build_acc_voice_pipeline() while preserving FreeSWITCH RTP ingress/egress and proof manifests.",
-          blocker: `${liveSoftphoneProofBlocker} The adapter is not yet the same Python Pipeline object used by the browser SmallWebRTC path.`,
+          path: "SIP/FreeSWITCH RTP -> Node proof bridge -> rtc-asr -> ACC caller-turn -> Kokoro -> uuid_broadcast/RTP playback",
+          blocker: "This lane is retained for proof diagnostics only and is no longer the preferred #222 SIP acceptance route.",
         },
         {
           id: "fixture_audio_injection",
@@ -132,15 +149,15 @@ export function buildPipecatMediaEngineReadinessPayload() {
     },
     implementedNow: [
       "Browser voice turns use scripts/pipecat-browser-webrtc-bridge.py with Pipecat SmallWebRTCTransport and a Pipeline of rtc-asr, ACC caller-turn, Kokoro, and transport output processors.",
-      "Local SIP and FreeSWITCH proof paths preserve live_capture/generated_media labels, attach WAV/SIP artifacts, collect live PCMU RTP into Pipecat-compatible frame evidence, stream captured frames to rtc-asr when RTC_ASR_WS_URL is set, packetize Kokoro/Pipecat-shaped TTS frames as PCMU RTP, write Kokoro WAV playback artifacts, issue FreeSWITCH uuid_broadcast, and report RTP socket-send playback evidence. This is transport alignment, not completed SIP acceptance.",
+      "Local SIP extension 8600 now targets a registered FreeSWITCH Verto/WebRTC user (acc-pipecat) and a Pipecat Verto sidecar health surface; the older ESL/RTP bridge remains proof/debug support, not the preferred acceptance path.",
       "Fixture/tester audio can now be injected through an in-process Pipecat source/sink around build_acc_voice_pipeline(), with sidecar-free contract mode retained for CI.",
       "SignalWire readiness is explicit through local webhook labels and the future SIP trunk-to-FreeSWITCH route.",
       "Operator console payloads label local_sip, signalwire_live, live_capture, generated_media, rtc_asr_live, and rtc_asr_blocked modes.",
     ],
     remainingWork: [
       "Run the live fixture/tester injection adapter with sidecars in CI or local proof mode and archive captured OutputAudioRawFrame evidence with the media-engine readiness artifact.",
-      "Wire the SIP media adapter through the same shared Pipecat Pipeline processors used by the browser SmallWebRTC path instead of only mirroring their rtc-asr/ACC/Kokoro contract.",
-      "Capture live softphone evidence that the caller hears Kokoro/Pipecat TTS played through FreeSWITCH uuid_broadcast on the 8600 path.",
+      "Implement the Verto incoming-call media answer so the active FreeSWITCH WebRTC leg feeds the same shared Pipecat Pipeline processors used by the browser SmallWebRTC path.",
+      "Capture live softphone evidence that the caller hears Kokoro/Pipecat TTS returned through the same bridged Verto/WebRTC leg on the 8600 path.",
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
     ],
     nextUnblockedSlice,
@@ -153,9 +170,9 @@ export function buildPipecatMediaEngineReadinessPayload() {
         evidence: "scripts/pipecat-browser-webrtc-bridge.py builds SmallWebRTCTransport plus Pipeline([transport.input(), RtcAsrTurnProcessor, AccCallerTurnProcessor, KokoroTtsProcessor, transport.output()]).",
       },
       {
-        name: "sip_freeswitch_processor_contract_aligned",
+        name: "sip_freeswitch_verto_route_configured",
         passed: true,
-        evidence: "scripts/freeswitch-acc-bridge.mjs preserves the rtc-asr -> ACC caller-turn -> Kokoro contract behind a FreeSWITCH/RTP transport, but does not yet instantiate the same Python Pipeline object as the browser path.",
+        evidence: "freeswitch/conf/dialplan/default/acc_local_sip.xml bridges 8600 to the registered Verto user acc-pipecat, docker-compose exposes Verto 8081/8082, and scripts/pipecat-verto-agent-bridge.py owns the sidecar health/registration surface.",
       },
       {
         name: "sip_caller_audible_playback_live_proof",

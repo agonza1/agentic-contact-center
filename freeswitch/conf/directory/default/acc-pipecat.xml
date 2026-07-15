@@ -1,0 +1,14 @@
+<include>
+  <user id="acc-pipecat">
+    <params>
+      <param name="password" value="local-verto-pass"/>
+    </params>
+    <variables>
+      <variable name="toll_allow" value="local"/>
+      <variable name="accountcode" value="acc-pipecat"/>
+      <variable name="user_context" value="default"/>
+      <variable name="effective_caller_id_name" value="ACC Pipecat Agent"/>
+      <variable name="effective_caller_id_number" value="8600"/>
+    </variables>
+  </user>
+</include>

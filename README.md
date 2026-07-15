@@ -160,6 +160,7 @@ npm run docker:proof
 npm run docker:voice
 npm run docker:browser-webrtc
 npm run docker:freeswitch:only
+npm run docker:sip-verto
 npm run docker:sip
 npm run docker:assert
 npm run docker:full
@@ -169,7 +170,8 @@ Docker exposes the app on port `8026` and includes `/health` checks in both `Doc
 
 - `voice`: rtc-asr on `8080` and Kokoro on `8880`.
 - `browser-webrtc`: voice sidecars plus the Pipecat browser WebRTC bridge on `8766`.
-- `sip`: FreeSWITCH, the FreeSWITCH-to-ACC ESL bridge, rtc-asr, and Kokoro.
+- `sip-verto`: FreeSWITCH, rtc-asr, Kokoro, and the preferred Pipecat Verto/WebRTC agent-leg bridge for extension `8600`.
+- `sip`: legacy FreeSWITCH-to-ACC ESL proof/debug bridge with rtc-asr and Kokoro.
 - `eval`: ASSERT artifact export/viewer on `5174`.
 - `full`: all optional local services for an end-to-end lab stack.
 
@@ -184,4 +186,4 @@ Active code lives in `src/`, tests in `test/`, proof/runtime scripts in `scripts
 - State is in-memory and process-local.
 - The browser voice bridge uses Pipecat `SmallWebRTCTransport` plus the shared `Pipeline`, but live browser proof still requires local rtc-asr, Kokoro, and browser playback evidence.
 - `/api/assert/spec` saves the eval spec in memory for the running process; restart resets it to the default.
-- Local SIP live capture is supported for review workflows and follows the same rtc-asr/ACC/Kokoro processor contract behind a FreeSWITCH/RTP transport. It is not accepted as complete SIP audio until caller-audible playback proof is captured.
+- Local SIP `8600` now targets a FreeSWITCH-owned Verto/WebRTC agent leg (`acc-pipecat`) as the preferred #222 route. It is not accepted as complete SIP audio until live proof shows caller PCM entering Pipecat and caller-audible Kokoro/Pipecat audio returning through that same active call.

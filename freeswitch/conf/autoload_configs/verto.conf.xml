@@ -1,0 +1,26 @@
+<configuration name="verto.conf" description="ACC local Verto endpoint">
+  <settings>
+    <param name="debug" value="0"/>
+  </settings>
+
+  <profiles>
+    <profile name="default-v4">
+      <param name="bind-local" value="0.0.0.0:8081"/>
+      <param name="bind-local" value="0.0.0.0:8082" secure="true"/>
+      <param name="force-register-domain" value="$${domain}"/>
+      <param name="secure-combined" value="$${certs_dir}/wss.pem"/>
+      <param name="secure-chain" value="$${certs_dir}/wss.pem"/>
+      <param name="userauth" value="true"/>
+      <param name="blind-reg" value="false"/>
+      <param name="rtp-ip" value="$${local_ip_v4}"/>
+      <param name="ext-rtp-ip" value="$${external_rtp_ip}"/>
+      <param name="local-network" value="localnet.auto"/>
+      <param name="inbound-codec-string" value="opus,PCMU"/>
+      <param name="outbound-codec-string" value="opus,PCMU"/>
+      <param name="apply-candidate-acl" value="localnet.auto"/>
+      <param name="apply-candidate-acl" value="rfc1918.auto"/>
+      <param name="apply-candidate-acl" value="any_v4.auto"/>
+      <param name="timer-name" value="soft"/>
+    </profile>
+  </profiles>
+</configuration>

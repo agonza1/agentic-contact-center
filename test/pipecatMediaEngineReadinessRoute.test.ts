@@ -54,13 +54,16 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     ]);
     assert.equal(payload.pipecat14Alignment.browserPrimaryBridge.current, "scripts/pipecat-browser-webrtc-bridge.py");
     assert.equal(payload.pipecat14Alignment.browserPrimaryBridge.legacyFallbackAllowed, false);
+    assert.equal(payload.pipecat14Alignment.sipTransportStrategy.transport, "FreeSWITCH Verto/WebRTC agent leg");
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.sharesPipelineProcessors, false);
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.processorContractAligned, true);
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.liveMediaProofComplete, false);
+    assert.match(payload.pipecat14Alignment.sipTransportStrategy.preferredRoute, /acc-pipecat/);
+    assert.match(payload.pipecat14Alignment.sipTransportStrategy.legacyFallback, /freeswitch-acc-bridge/);
     assert.deepEqual(payload.pipecat14Alignment.sipTransportStrategy.pipelineUnificationDelta, [
-      "Move SIP RTP PCM frames into build_acc_voice_pipeline() instead of the Node mirror of rtc-asr/ACC/Kokoro stages.",
+      "Answer incoming Verto dialogs with a Pipecat media transport that calls build_acc_voice_pipeline().",
       "Reuse the same RtcAsrTurnProcessor, AccCallerTurnProcessor, and KokoroTtsProcessor stage-event contract as the browser SmallWebRTC path.",
-      "Keep FreeSWITCH packetization and uuid_broadcast at the telephony boundary after transport.output() emits caller audio.",
+      "Keep SIP/RTP and WebRTC DTLS-SRTP/Opus ownership inside FreeSWITCH; Pipecat should only see decoded PCM frames.",
     ]);
     assert.equal(payload.pipecat14Alignment.flowsDecision.owner, "ACC TypeScript flow for current cancellation-rescue MVP");
     assert.equal(payload.pipecat14Alignment.flowsDecision.flowManagerRequiredNow, false);
@@ -77,18 +80,22 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     const adapters = payload.sharedEngineContract.requiredAdapters;
     assert.deepEqual(
       adapters.map((adapter: any) => adapter.id),
-      ["browser_webrtc", "sip_freeswitch_rtp", "fixture_audio_injection", "signalwire_sip_trunk"],
+      ["browser_webrtc", "sip_freeswitch_verto", "sip_freeswitch_rtp_legacy", "fixture_audio_injection", "signalwire_sip_trunk"],
     );
     assert.equal(adapters.find((adapter: any) => adapter.id === "browser_webrtc").implementedNow, true);
     assert.equal(adapters.find((adapter: any) => adapter.id === "browser_webrtc").currentEntryPoint, "scripts/pipecat-browser-webrtc-bridge.py");
-    const sipAdapter = adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp");
-    assert.equal(sipAdapter.implementedNow, true);
+    const sipAdapter = adapters.find((adapter: any) => adapter.id === "sip_freeswitch_verto");
+    assert.equal(sipAdapter.implementedNow, false);
     assert.equal(sipAdapter.processorContractAligned, true);
     assert.equal(sipAdapter.liveMediaProofComplete, false);
+    assert.equal(sipAdapter.currentEntryPoint, "scripts/pipecat-verto-agent-bridge.py");
+    assert.match(sipAdapter.freeswitchDialplan, /acc-pipecat/);
     assert.match(sipAdapter.pipelineUnificationDelta, /build_acc_voice_pipeline\(\)/);
-    assert.match(sipAdapter.pipelineUnificationDelta, /FreeSWITCH RTP ingress\/egress/);
-    assert.match(sipAdapter.blocker, /live softphone capture/);
-    assert.match(sipAdapter.blocker, /not yet the same Python Pipeline object/);
+    assert.match(sipAdapter.pipelineUnificationDelta, /Verto WebRTC dialog answer/);
+    assert.match(sipAdapter.blocker, /Verto signaling surface is configured/);
+    const legacySipAdapter = adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp_legacy");
+    assert.equal(legacySipAdapter.implementedNow, true);
+    assert.match(legacySipAdapter.blocker, /proof diagnostics/);
     const fixtureAdapter = adapters.find((adapter: any) => adapter.id === "fixture_audio_injection");
     assert.equal(fixtureAdapter.implementedNow, true);
     assert.equal(fixtureAdapter.currentEntryPoint, "scripts/pipecat-fixture-pipeline-smoke.py --input-wav <mono-pcm16.wav>");
@@ -99,14 +106,14 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.match(adapters.find((adapter: any) => adapter.id === "signalwire_sip_trunk").blocker, /past-call import remains out of scope/);
 
     assert.deepEqual(payload.reviewBlockers, [
-      "Local 8600 return audio is wired through Kokoro/Pipecat TTS, PCMU RTP packetization evidence, and FreeSWITCH uuid_broadcast WAV playback; live softphone capture still needs to prove the caller heard that playback end-to-end.",
+      "Local 8600 now routes to the preferred FreeSWITCH Verto/WebRTC agent leg, but live softphone capture still needs to prove caller PCM reaches Pipecat and Kokoro/Pipecat audio returns through that same active call.",
     ]);
     assert.equal(
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "browser_webrtc_uses_pipecat_rtc_asr_kokoro").passed,
       true,
     );
     assert.equal(
-      payload.acceptanceCriteria.find((criterion: any) => criterion.name === "sip_freeswitch_processor_contract_aligned").passed,
+      payload.acceptanceCriteria.find((criterion: any) => criterion.name === "sip_freeswitch_verto_route_configured").passed,
       true,
     );
     assert.equal(
@@ -129,13 +136,15 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "pipecat_14_small_webrtc_migration_recorded").passed,
       true,
     );
-    assert.equal(payload.remainingWork.some((item: string) => item.includes("softphone evidence")), true);
+    assert.equal(payload.remainingWork.some((item: string) => item.includes("Verto incoming-call media answer")), true);
     assert.deepEqual(payload.liveSipProofAcceptance, {
-      requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_rtp_playback_sent", "caller_audible_playback"],
+      requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_verto_webrtc", "caller_audible_playback"],
       requiredRuntimeEndpoints: [
         { id: "acc_http", defaultUrl: "http://127.0.0.1:8026", evidence: "ACC health/readiness routes are reachable while the SIP proof listener runs." },
         { id: "freeswitch_sip", defaultAddress: "127.0.0.1:5060", evidence: "A local softphone can place an accepted INVITE to extension 8600." },
         { id: "freeswitch_esl", defaultAddress: "127.0.0.1:8021", evidence: "freeswitch-acc-bridge can observe CHANNEL_ANSWER and RTP call events." },
+        { id: "freeswitch_verto", defaultUrl: "ws://127.0.0.1:8081", evidence: "FreeSWITCH Verto accepts the registered acc-pipecat WebRTC agent leg." },
+        { id: "pipecat_verto_bridge", defaultUrl: "http://127.0.0.1:8770/health", evidence: "Pipecat Verto sidecar is registered and ready to answer the FreeSWITCH WebRTC dialog." },
         { id: "rtc_asr_ws", env: "RTC_ASR_WS_URL", evidence: "The current call audio is transcribed into fresh rtc_asr_live final transcript evidence." },
         { id: "kokoro_http", env: "KOKORO_BASE_URL", evidence: "Kokoro returns TTS audio that is packetized and played back to the caller." },
       ],
@@ -143,16 +152,17 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
         "generated_media_without_live_capture",
         "stale_rtc_asr_evidence_reused_across_calls",
         "uuid_broadcast_without_caller_capture",
+        "parked_esl_post_hangup_transcription",
       ],
       proofBundleCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
     });
     assert.deepEqual(payload.nextUnblockedSlice, {
       id: "live_softphone_playback_acceptance",
       title: "Capture end-to-end softphone playback proof",
-      adapter: "sip_freeswitch_rtp",
-      entryPoint: "scripts/freeswitch-acc-bridge.mjs",
-      targetContract: "softphone SIP call -> FreeSWITCH RTP -> Pipecat input frames -> rtc-asr transcript -> ACC turn -> Kokoro/Pipecat TTS -> PCMU RTP playback heard by caller",
-      verification: "scripts/live-sip-proof-bundle.mjs must carry live_capture, rtc_asr_live, Pipecat RTP playback send evidence, and caller-audible playback proof before issue #214 can be accepted.",
+      adapter: "sip_freeswitch_verto",
+      entryPoint: "scripts/pipecat-verto-agent-bridge.py",
+      targetContract: "softphone SIP call -> FreeSWITCH Verto/WebRTC agent leg -> Pipecat input frames -> rtc-asr transcript -> ACC turn -> Kokoro/Pipecat TTS -> same Verto/WebRTC leg heard by caller",
+      verification: "scripts/live-sip-proof-bundle.mjs must carry live_capture, rtc_asr_live, pipecat_verto_webrtc, and caller-audible playback proof before issue #222 can be accepted.",
       acceptance: payload.liveSipProofAcceptance,
     });
   } finally {

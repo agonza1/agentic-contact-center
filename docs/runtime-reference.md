@@ -124,13 +124,13 @@ npm run pipecat:webrtc
 
 ## Unified Pipecat media-engine readiness
 
-Issue #214 exposes the current readiness contract for browser WebRTC, local SIP/FreeSWITCH, and future SignalWire SIP trunk audio. Issue #222 is the target architecture for sharing Pipeline processors across those adapters; the browser path now does this with `SmallWebRTCTransport`, while SIP remains contract-aligned and proof-blocked. The current reviewable contract is exposed at:
+Issue #214 exposes the current readiness contract for browser WebRTC, local SIP/FreeSWITCH, and future SignalWire SIP trunk audio. Issue #222 is the target architecture for sharing Pipeline processors across those adapters; the browser path now does this with `SmallWebRTCTransport`, and the SIP path now targets a FreeSWITCH-owned Verto/WebRTC agent leg instead of the parked ESL bridge. The current reviewable contract is exposed at:
 
 ```bash
 curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness
 ```
 
-The payload is intentionally not a fake green light. It marks the browser Pipecat voice bridge as implemented, keeps the local SIP/FreeSWITCH proof bundle behavior intact, and reports the current proof gate: local 8600 return audio is wired through Kokoro/Pipecat-shaped TTS evidence, outbound PCMU RTP evidence, and FreeSWITCH `uuid_broadcast` WAV playback, but a live softphone capture still needs to prove caller-audible playback. It also reports that SIP is not yet the same Python Pipeline object used by the browser SmallWebRTC path. The FreeSWITCH bridge can optionally listen on `ACC_FREESWITCH_RTP_LISTEN_PORT`/`--rtp-listen-port` and collect inbound PCMU RTP packets into Pipecat-compatible frame evidence. SignalWire is documented as a future SIP trunk -> FreeSWITCH/Pipecat route; historical/past-call import remains a separate importer task.
+The payload is intentionally not a fake green light. It marks the browser Pipecat voice bridge as implemented and reports the current SIP proof gate: local 8600 now bridges to a FreeSWITCH Verto/WebRTC `acc-pipecat` agent leg, but live softphone capture still needs to prove caller PCM reaches Pipecat and Kokoro/Pipecat audio returns through that same active call. The older FreeSWITCH ESL/RTP bridge remains a proof/debug lane and must not be used as the #222 acceptance route. SignalWire is documented as a future SIP trunk -> FreeSWITCH/Pipecat route; historical/past-call import remains a separate importer task.
 
 ## Demo flow
 
@@ -269,7 +269,8 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `npm run docker:proof`: run the proof harness in Compose and write artifacts.
 - `npm run docker:voice`: run ACC with optional rtc-asr and Kokoro sidecars.
 - `npm run docker:browser-webrtc`: run ACC, rtc-asr, Kokoro, and the Pipecat browser WebRTC bridge.
-- `npm run docker:sip`: run ACC, FreeSWITCH, the FreeSWITCH ESL bridge, rtc-asr, and Kokoro for local SIP lab work.
+- `npm run docker:sip-verto`: run ACC, FreeSWITCH, rtc-asr, Kokoro, and the preferred Pipecat Verto/WebRTC sidecar for local SIP 8600 lab work.
+- `npm run docker:sip`: run ACC, FreeSWITCH, the legacy FreeSWITCH ESL bridge, rtc-asr, and Kokoro for local SIP proof/debug work.
 - `npm run docker:assert`: export ASSERT artifacts and start the upstream ASSERT viewer.
 - `npm run docker:full`: run all optional local contact-center services.
 
@@ -279,7 +280,8 @@ The default Compose path only starts `app` unless another service is requested. 
 
 - `voice`: `rtc-asr` and `kokoro` sidecars. `rtc-asr` listens on `8080`, Kokoro listens on `8880`, and ACC is preconfigured with Docker-network URLs for both.
 - `browser-webrtc`: adds `browser-webrtc-bridge` on `8766`, using the `voice-runtime` Dockerfile target with Pipecat WebRTC Python dependencies installed into `.pipecat-runtime`.
-- `sip`: adds FreeSWITCH plus `freeswitch-bridge`, writes SIP/media proof artifacts under `artifacts/freeswitch-live`, and points the bridge at Docker-network rtc-asr/Kokoro URLs.
+- `sip-verto`: adds FreeSWITCH plus `pipecat-verto-bridge`, exposes Verto on `8081`/`8082`, and routes local extension `8600` to the registered `acc-pipecat` WebRTC agent leg.
+- `sip`: legacy proof/debug lane with FreeSWITCH plus `freeswitch-bridge`, writes SIP/media proof artifacts under `artifacts/freeswitch-live`, and points the bridge at Docker-network rtc-asr/Kokoro URLs.
 - `eval`: runs `assert-viewer`, exporting ACC ASSERT artifacts before starting the upstream ASSERT viewer on `5174`.
 - `full`: enables every optional service above for an end-to-end local lab stack.
 

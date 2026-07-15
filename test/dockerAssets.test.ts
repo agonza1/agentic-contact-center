@@ -35,13 +35,18 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /proof:\n[\s\S]*scripts\/demo-proof\.mjs/);
   assert.match(compose, /proof:\n[\s\S]*artifacts\/demo-proof-docker\.json/);
   assert.match(compose, /proof:\n[\s\S]*\.\/artifacts:\/app\/artifacts/);
-  assert.match(compose, /rtc-asr:\n[\s\S]*profiles: \["voice", "browser-webrtc", "sip", "full"\]/);
+  assert.match(compose, /rtc-asr:\n[\s\S]*profiles: \["voice", "browser-webrtc", "sip", "sip-verto", "full"\]/);
   assert.match(compose, /rtc-asr:\n[\s\S]*ASR_VAD_FILTER: \${ASR_VAD_FILTER:-false}/);
-  assert.match(compose, /kokoro:\n[\s\S]*profiles: \["voice", "browser-webrtc", "sip", "full"\]/);
+  assert.match(compose, /kokoro:\n[\s\S]*profiles: \["voice", "browser-webrtc", "sip", "sip-verto", "full"\]/);
   assert.match(compose, /browser-webrtc-bridge:\n[\s\S]*target: voice-runtime/);
   assert.match(compose, /browser-webrtc-bridge:\n[\s\S]*RTC_ASR_WS_URL: ws:\/\/rtc-asr:8080\/v1\/stt\/stream/);
-  assert.match(compose, /freeswitch:\n[\s\S]*profiles: \["freeswitch", "sip", "full"\]/);
+  assert.match(compose, /freeswitch:\n[\s\S]*profiles: \["freeswitch", "sip", "sip-verto", "full"\]/);
+  assert.match(compose, /freeswitch:\n[\s\S]*"127\.0\.0\.1:8081:8081\/tcp"/);
+  assert.match(compose, /freeswitch:\n[\s\S]*acc-pipecat\.xml/);
+  assert.match(compose, /freeswitch:\n[\s\S]*verto\.conf\.xml/);
   assert.match(compose, /freeswitch-bridge:\n[\s\S]*scripts\/freeswitch-acc-bridge\.mjs/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*target: voice-runtime/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*scripts\/pipecat-verto-agent-bridge\.py/);
   assert.match(compose, /assert-viewer:\n[\s\S]*target: assert-runtime/);
   assert.match(compose, /assert-viewer:\n[\s\S]*scripts\/assert-viewer\.mjs/);
 
@@ -60,6 +65,10 @@ test("Docker runtime assets keep the documented health and proof contract", () =
     packageJson.scripts?.["docker:browser-webrtc"],
     "docker compose --profile browser-webrtc up --build app rtc-asr kokoro browser-webrtc-bridge",
   );
+  assert.equal(
+    packageJson.scripts?.["docker:sip-verto"],
+    "docker compose --profile sip-verto up --build app freeswitch rtc-asr kokoro pipecat-verto-bridge",
+  );
   assert.equal(packageJson.scripts?.["docker:sip"], "docker compose --profile sip up --build app freeswitch rtc-asr kokoro freeswitch-bridge");
   assert.equal(packageJson.scripts?.["docker:assert"], "docker compose --profile eval up --build assert-viewer");
   assert.equal(packageJson.scripts?.["docker:full"], "docker compose --profile full up --build");
@@ -70,6 +79,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(readme, /npm run docker:proof/);
   assert.match(readme, /npm run docker:voice/);
   assert.match(readme, /npm run docker:browser-webrtc/);
+  assert.match(readme, /npm run docker:sip-verto/);
   assert.match(readme, /npm run docker:sip/);
   assert.match(readme, /npm run docker:assert/);
   assert.match(readme, /npm run docker:full/);
