@@ -17,19 +17,19 @@ const { buildHttpServer } = require("../dist/src/http/createServer.js");
 
 const SCRIPTED_CALLER_TURNS = [
   {
-    text: "I want to cancel my policy today.",
+    text: "I'm thinking about canceling my policy.",
     timestamp: "2026-06-11T20:45:00.000Z",
   },
   {
-    text: "The renewal increase is too high.",
+    text: "My renewal went up a lot, and I can't afford it.",
     timestamp: "2026-06-11T20:45:05.000Z",
   },
   {
-    text: "Okay, what safe options can you review for me?",
+    text: "Is there anything you can do before I cancel?",
     timestamp: "2026-06-11T20:45:10.000Z",
   },
   {
-    text: "Thanks, please note that follow-up and close the call.",
+    text: "Okay, that sounds good. Thanks.",
     timestamp: "2026-06-11T20:45:15.000Z",
   },
 ];

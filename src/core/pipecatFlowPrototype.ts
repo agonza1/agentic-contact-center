@@ -12,10 +12,10 @@ import type {
 import { defaultAssertEvaluationSpec } from "./assertEvaluationSpec";
 
 export const SCRIPTED_CALLER_TURNS = [
-  "I want to cancel my policy today.",
-  "The renewal increase is too high.",
-  "Okay, what safe options can you review for me?",
-  "Thanks, please note that follow-up and close the call.",
+  "I'm thinking about canceling my policy.",
+  "My renewal went up a lot, and I can't afford it.",
+  "Is there anything you can do before I cancel?",
+  "Okay, that sounds good. Thanks.",
 ] as const;
 
 export const PIPECAT_TOOL_COVERAGE = [
