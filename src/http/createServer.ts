@@ -587,8 +587,6 @@ function buildOperatorConsoleHtml(): string {
     .filter-drawer[open] summary { border-bottom: 1px solid var(--line); color: var(--text); }
     .filters-advanced { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .filter-toggle { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; background: var(--panel-soft); }
-    .help-tooltip { display: inline-grid; place-items: center; width: 16px; height: 16px; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--muted); cursor: help; font-size: 11px; font-weight: 750; line-height: 1; }
-    .help-tooltip:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
     .status, .meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
     .status { display: inline-flex; align-items: center; min-height: 28px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-soft); font-weight: 650; }
     .call-list { display: grid; }
@@ -651,7 +649,7 @@ function buildOperatorConsoleHtml(): string {
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceRemoteTrackReceived: false, voiceRemoteAudioStarted: false, voiceLiveAudioVerified: false, voiceLiveTurnVerified: false, voiceAudioWatchdog: null, voiceSessionProofTimer: null, voiceLastProofTurnCount: 0, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceOpenConversation: false, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceRemoteTrackReceived: false, voiceRemoteAudioStarted: false, voiceLiveAudioVerified: false, voiceLiveTurnVerified: false, voiceAudioWatchdog: null, voiceSessionProofTimer: null, voiceLastProofTurnCount: 0, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
     const repoHeadEvidence = ${JSON.stringify(getRepoHeadEvidence())};
     // Slide redirects are retained in the demo/proof API, but they do not control a live caller.
     // Keep that scaffold out of the operational action bar.
@@ -924,6 +922,7 @@ function buildOperatorConsoleHtml(): string {
       }
       state.voiceRecording = null;
       state.voiceChunks = [];
+      state.voiceMuted = true;
     }
     async function collectBrowserWebrtcLiveProof() {
       const pc = state.voicePeer;
@@ -1143,12 +1142,6 @@ function buildOperatorConsoleHtml(): string {
     }
     async function connectPipecatVoice() {
       if (isReusableVoicePeer(state.voicePeer)) {
-        if (!state.voiceOpenConversation) {
-          state.voiceStatus = "Open voice AI conversation is off";
-          setStatus(state.voiceStatus);
-          render();
-          return;
-        }
         state.voiceMuted = false;
         state.voiceStream && state.voiceStream.getAudioTracks().forEach(function(track) { track.enabled = true; });
         state.voiceStatus = "Browser WebRTC voice connected";
@@ -1213,7 +1206,7 @@ function buildOperatorConsoleHtml(): string {
             }
           }
         };
-        stream.getAudioTracks().forEach(function(track) { track.enabled = state.voiceOpenConversation; pc.addTrack(track, stream); });
+        stream.getAudioTracks().forEach(function(track) { track.enabled = true; pc.addTrack(track, stream); });
         pc.addTransceiver("audio", { direction: "recvonly" });
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
@@ -1245,9 +1238,9 @@ function buildOperatorConsoleHtml(): string {
         state.voiceCallId = payload.callId;
         state.selectedCallId = payload.callId;
         state.voiceConnecting = false;
-        state.voiceMuted = !state.voiceOpenConversation;
+        state.voiceMuted = false;
         state.voiceProcessing = false;
-        state.voiceStatus = state.voiceOpenConversation ? "Browser WebRTC signaling connected; waiting for remote agent audio" : "Browser WebRTC signaling connected; open voice AI conversation is off";
+        state.voiceStatus = "Browser WebRTC signaling connected; waiting for remote agent audio";
         updateVoiceBridgeStatus("connected", "Offer/answer succeeded through the Pipecat WebRTC bridge (" + formatVoiceBridgeEngineEvidence(payload.evidence || {}) + "). Waiting for remote audio track and rtc-asr/Kokoro turn proof.");
         armRemoteAudioWatchdog(pc);
         armVoiceSessionProofPolling();
@@ -1268,18 +1261,6 @@ function buildOperatorConsoleHtml(): string {
         state.voiceMuted = true;
         state.voiceStream && state.voiceStream.getAudioTracks().forEach(function(track) { track.enabled = false; });
         state.voiceStatus = "Voice muted";
-        setStatus(state.voiceStatus);
-        render();
-        return;
-      }
-      await connectPipecatVoice();
-    }
-    async function toggleOpenVoiceConversation(enabled) {
-      state.voiceOpenConversation = enabled;
-      if (!enabled) {
-        state.voiceMuted = true;
-        state.voiceStream && state.voiceStream.getAudioTracks().forEach(function(track) { track.enabled = false; });
-        state.voiceStatus = "Open voice AI conversation off; caller muted";
         setStatus(state.voiceStatus);
         render();
         return;
@@ -1317,20 +1298,22 @@ function buildOperatorConsoleHtml(): string {
       root.querySelectorAll("button[data-call-id]").forEach(function(button) { button.addEventListener("click", function() { state.selectedCallId = button.dataset.callId; render(); }); });
     }
     function voiceControlsHtml() {
+      const voiceConnected = isReusableVoicePeer(state.voicePeer);
+      const connectLabel = voiceConnected ? "Voice Connected" : "Connect Voice";
+      const connectDisabled = voiceConnected || state.voiceConnecting ? " disabled" : "";
       const muteLabel = state.voiceMuted ? "Unmute Caller" : "Mute Caller";
       const muteIcon = state.voiceMuted ? "🎙️" : "🔇";
-      const openConversationChecked = state.voiceOpenConversation ? " checked" : "";
+      const muteDisabled = voiceConnected ? "" : " disabled";
+      const muteTitle = voiceConnected ? muteLabel : "Connect Voice first";
       const bridgeDetail = state.voiceBridge.detail + (state.voiceBridge.checkedAt ? " | last check " + state.voiceBridge.checkedAt : "");
-      return '<section class="section"><h3 class="section-title">Pipecat WebRTC Caller</h3><div class="actions"><label class="filter-toggle"><input type="checkbox" id="voice-open-conversation"' + openConversationChecked + '> Open voice AI <span class="help-tooltip" id="voice-open-conversation-info" tabindex="0" role="img" aria-label="Open voice AI information" title="When on, your browser microphone is sent to the live AI conversation. Turn it off to mute the caller while keeping the WebRTC connection and agent playback available.">ⓘ</span></label><button type="button" id="voice-connect">Connect Voice</button><button type="button" class="primary" id="voice-mute" aria-label="' + muteLabel + '" title="' + muteLabel + '"><span aria-hidden="true">' + muteIcon + '</span> ' + muteLabel + '</button><button type="button" id="voice-copy-proof">Copy Proof</button></div><div class="actions"><span id="voice-bridge-status" class="' + voiceBridgeStatusClass() + '">' + escapeHtml(voiceBridgeStatusLabel()) + '</span><span class="status">' + escapeHtml(state.voiceStatus) + '</span></div><span class="meta" id="voice-bridge-detail">' + escapeHtml(bridgeDetail) + '</span><span class="meta">Target path: browser mic -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC playback. This path intentionally does not require ffmpeg for normal operation.</span></section><section class="section diagram"><h3 class="section-title">Demo Flow</h3><svg class="demo-flow-svg" viewBox="0 0 980 360" role="img" aria-label="Caller audio flows through Pipecat, rtc-asr, the agent, Kokoro, operator controls, and ASSERT artifacts" preserveAspectRatio="xMidYMid meet"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0969da"/></marker><style>.node{fill:#ffffff;stroke:#d0d7de;stroke-width:2}.primaryNode{fill:#ddf4ff;stroke:#0969da;stroke-width:2}.artifactNode{fill:#dafbe1;stroke:#1a7f37;stroke-width:2}.label{font:700 17px system-ui,sans-serif;fill:#24292f}.small{font:600 13px system-ui,sans-serif;fill:#57606a}.line{stroke:#0969da;stroke-width:3;fill:none;marker-end:url(#arrow)}.softLine{stroke:#57606a;stroke-width:2.5;stroke-dasharray:7 6;fill:none;marker-end:url(#arrow)}</style></defs><rect class="primaryNode" x="30" y="58" width="145" height="82" rx="10"/><text class="label" x="103" y="92" text-anchor="middle">Caller</text><text class="small" x="103" y="116" text-anchor="middle">browser mic</text><rect class="node" x="225" y="58" width="150" height="82" rx="10"/><text class="label" x="300" y="88" text-anchor="middle">Pipecat</text><text class="small" x="300" y="112" text-anchor="middle">WebRTC bridge</text><rect class="node" x="425" y="58" width="150" height="82" rx="10"/><text class="label" x="500" y="88" text-anchor="middle">rtc-asr</text><text class="small" x="500" y="112" text-anchor="middle">Local STT v1</text><rect class="primaryNode" x="625" y="58" width="150" height="82" rx="10"/><text class="label" x="700" y="88" text-anchor="middle">Agent</text><text class="small" x="700" y="112" text-anchor="middle">goal + memory</text><rect class="node" x="825" y="58" width="125" height="82" rx="10"/><text class="label" x="888" y="88" text-anchor="middle">Kokoro</text><text class="small" x="888" y="112" text-anchor="middle">TTS sidecar</text><rect class="artifactNode" x="515" y="225" width="170" height="82" rx="10"/><text class="label" x="600" y="255" text-anchor="middle">Artifacts</text><text class="small" x="600" y="279" text-anchor="middle">proof + transcript</text><rect class="artifactNode" x="742" y="225" width="178" height="82" rx="10"/><text class="label" x="831" y="255" text-anchor="middle">ASSERT</text><text class="small" x="831" y="279" text-anchor="middle">viewer + eval spec</text><rect class="node" x="210" y="225" width="180" height="82" rx="10"/><text class="label" x="300" y="255" text-anchor="middle">Operator</text><text class="small" x="300" y="279" text-anchor="middle">listen / steer</text><path class="line" d="M175 99 H225"/><path class="line" d="M375 99 H425"/><path class="line" d="M575 99 H625"/><path class="line" d="M775 99 H825"/><path class="line" d="M888 140 C888 178 816 178 775 140"/><path class="line" d="M700 140 V225"/><path class="line" d="M685 266 H742"/><path class="softLine" d="M390 266 C470 266 520 185 625 120"/></svg></section>';
+      return '<section class="section"><h3 class="section-title">Pipecat WebRTC Caller</h3><div class="actions"><button type="button" id="voice-connect"' + connectDisabled + '>' + connectLabel + '</button><button type="button" class="primary" id="voice-mute" aria-label="' + muteTitle + '" title="' + muteTitle + '"' + muteDisabled + '><span aria-hidden="true">' + muteIcon + '</span> ' + muteLabel + '</button><button type="button" id="voice-copy-proof">Copy Proof</button></div><div class="actions"><span id="voice-bridge-status" class="' + voiceBridgeStatusClass() + '">' + escapeHtml(voiceBridgeStatusLabel()) + '</span><span class="status">' + escapeHtml(state.voiceStatus) + '</span></div><span class="meta" id="voice-bridge-detail">' + escapeHtml(bridgeDetail) + '</span><span class="meta">Target path: browser mic -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC playback. This path intentionally does not require ffmpeg for normal operation.</span></section><section class="section diagram"><h3 class="section-title">Demo Flow</h3><svg class="demo-flow-svg" viewBox="0 0 980 360" role="img" aria-label="Caller audio flows through Pipecat, rtc-asr, the agent, Kokoro, operator controls, and ASSERT artifacts" preserveAspectRatio="xMidYMid meet"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0969da"/></marker><style>.node{fill:#ffffff;stroke:#d0d7de;stroke-width:2}.primaryNode{fill:#ddf4ff;stroke:#0969da;stroke-width:2}.artifactNode{fill:#dafbe1;stroke:#1a7f37;stroke-width:2}.label{font:700 17px system-ui,sans-serif;fill:#24292f}.small{font:600 13px system-ui,sans-serif;fill:#57606a}.line{stroke:#0969da;stroke-width:3;fill:none;marker-end:url(#arrow)}.softLine{stroke:#57606a;stroke-width:2.5;stroke-dasharray:7 6;fill:none;marker-end:url(#arrow)}</style></defs><rect class="primaryNode" x="30" y="58" width="145" height="82" rx="10"/><text class="label" x="103" y="92" text-anchor="middle">Caller</text><text class="small" x="103" y="116" text-anchor="middle">browser mic</text><rect class="node" x="225" y="58" width="150" height="82" rx="10"/><text class="label" x="300" y="88" text-anchor="middle">Pipecat</text><text class="small" x="300" y="112" text-anchor="middle">WebRTC bridge</text><rect class="node" x="425" y="58" width="150" height="82" rx="10"/><text class="label" x="500" y="88" text-anchor="middle">rtc-asr</text><text class="small" x="500" y="112" text-anchor="middle">Local STT v1</text><rect class="primaryNode" x="625" y="58" width="150" height="82" rx="10"/><text class="label" x="700" y="88" text-anchor="middle">Agent</text><text class="small" x="700" y="112" text-anchor="middle">goal + memory</text><rect class="node" x="825" y="58" width="125" height="82" rx="10"/><text class="label" x="888" y="88" text-anchor="middle">Kokoro</text><text class="small" x="888" y="112" text-anchor="middle">TTS sidecar</text><rect class="artifactNode" x="515" y="225" width="170" height="82" rx="10"/><text class="label" x="600" y="255" text-anchor="middle">Artifacts</text><text class="small" x="600" y="279" text-anchor="middle">proof + transcript</text><rect class="artifactNode" x="742" y="225" width="178" height="82" rx="10"/><text class="label" x="831" y="255" text-anchor="middle">ASSERT</text><text class="small" x="831" y="279" text-anchor="middle">viewer + eval spec</text><rect class="node" x="210" y="225" width="180" height="82" rx="10"/><text class="label" x="300" y="255" text-anchor="middle">Operator</text><text class="small" x="300" y="279" text-anchor="middle">listen / steer</text><path class="line" d="M175 99 H225"/><path class="line" d="M375 99 H425"/><path class="line" d="M575 99 H625"/><path class="line" d="M775 99 H825"/><path class="line" d="M888 140 C888 178 816 178 775 140"/><path class="line" d="M700 140 V225"/><path class="line" d="M685 266 H742"/><path class="softLine" d="M390 266 C470 266 520 185 625 120"/></svg></section>';
     }
     function attachVoiceControls() {
       const connect = document.getElementById("voice-connect");
       const mute = document.getElementById("voice-mute");
-      const openConversation = document.getElementById("voice-open-conversation");
       const copyProof = document.getElementById("voice-copy-proof");
       if (connect) connect.addEventListener("click", function() { connectPipecatVoice().catch(function(error) { setStatus(error.message); }); });
       if (mute) mute.addEventListener("click", function() { togglePipecatMute().catch(function(error) { setStatus(error.message); }); });
-      if (openConversation) openConversation.addEventListener("change", function() { toggleOpenVoiceConversation(openConversation.checked).catch(function(error) { setStatus(error.message); }); });
       if (copyProof) copyProof.addEventListener("click", function() { copyBrowserWebrtcLiveProof().catch(function(error) { setStatus(error.message); }); });
     }
     function renderDetail() {
