@@ -32,6 +32,7 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(sharedPipeline, /LocalSmartTurnAnalyzerV3/);
   assert.match(sharedPipeline, /turn\.smart_turn_decision/);
   assert.match(sharedPipeline, /min_words_barge_in/);
+  assert.doesNotMatch(sharedPipeline, /finalize_turn\("audio_frame"\)/);
   assert.match(sharedPipeline, /pipecatInterruptionFrame/);
   assert.match(sharedPipeline, /outputWindow/);
   assert.match(sharedPipeline, /stage_events/);

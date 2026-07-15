@@ -708,7 +708,9 @@ class RtcAsrTurnProcessor(FrameProcessor):
         should_finalize = self.in_speech and collected_ms >= self.min_turn_ms and (silence_elapsed_ms >= self.silence_ms or max_elapsed_ms >= self.max_turn_ms)
         if not should_finalize:
             return
-        await self.finalize_turn("audio_frame")
+        # Live WebRTC silence frames can reach this path before the timer fires.
+        # Keep the reason aligned with the timer so Smart Turn always gates completion.
+        await self.finalize_turn("silence_timer")
 
 
 class AccCallerTurnProcessor(FrameProcessor):
