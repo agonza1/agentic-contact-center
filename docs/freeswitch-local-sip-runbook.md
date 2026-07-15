@@ -8,15 +8,17 @@ For the shared Pipecat media-engine contract, run ACC and inspect:
 curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness
 ```
 
-That route is the Issue #214 review surface for browser WebRTC, local SIP/FreeSWITCH, and future SignalWire SIP trunk audio. The local SIP bridge now packetizes Pipecat/Kokoro TTS as PCMU RTP proof evidence and also writes the same Kokoro frame to a FreeSWITCH-visible WAV before issuing `uuid_broadcast`, so Linphone hears return audio through FreeSWITCH instead of only `silence_stream://1000` plus `park`.
+That route is the Issue #214/#222 review surface for browser WebRTC, local SIP/FreeSWITCH, and future SignalWire SIP trunk audio. The preferred local SIP path is now a live FreeSWITCH Verto/WebRTC agent leg: Linphone calls `8600`, FreeSWITCH bridges the call to registered user `acc-pipecat`, and the Pipecat sidecar must answer that WebRTC leg so caller PCM streams to rtc-asr/ACC/Kokoro and return audio is heard in the same active call.
 
 ## Ports and credentials
 
 - Agentic Contact Center: `http://127.0.0.1:8026`
 - FreeSWITCH SIP profile: `127.0.0.1:5060/UDP` or Docker-published `5060/UDP`
 - FreeSWITCH ESL: `127.0.0.1:8021`, password `ClueCon`
+- FreeSWITCH Verto: `ws://127.0.0.1:8081`, WSS on `127.0.0.1:8082`
 - Local SIP account: extension `1000`, password `local-sip-pass`, domain `127.0.0.1`
 - ACC destination: dial `8600`
+- Preferred Verto agent: `acc-pipecat@127.0.0.1`, password `local-verto-pass`
 - RTP range in compose: `16384-16484/UDP`
 
 ## Local harness without FreeSWITCH
@@ -52,23 +54,23 @@ npm run docker:freeswitch:only
 
 Use `npm run docker:freeswitch` instead when you want compose to build and start both ACC and FreeSWITCH together.
 
-Use `npm run docker:sip` when you want Compose to start the wider local SIP lab stack: ACC, FreeSWITCH, the FreeSWITCH ESL bridge, rtc-asr, and Kokoro. That path expects a compatible `rtc-asr` image, defaulting to `rtc-asr:local`, and keeps live proof artifacts under `artifacts/freeswitch-live`.
+Use `npm run docker:sip-verto` when you want Compose to start the preferred #222 local SIP lab stack: ACC, FreeSWITCH, rtc-asr, Kokoro, and the Pipecat Verto/WebRTC sidecar. That path expects a compatible `rtc-asr` image, defaulting to `rtc-asr:local`, exposes FreeSWITCH Verto on `127.0.0.1:8081`/`8082`, and keeps extension `8600` bridged to `acc-pipecat`.
 
-3. Start the ESL bridge from another terminal:
+Use `npm run docker:sip` only for the legacy ESL/RTP proof-debug lane. That bridge can still write bundle-compatible artifacts, but it is not the accepted #222 route.
+
+3. Start the Pipecat Verto sidecar from another terminal when not using Compose:
+
+```sh
+FREESWITCH_VERTO_URL=ws://127.0.0.1:8081 FREESWITCH_VERTO_LOGIN=acc-pipecat@127.0.0.1 FREESWITCH_VERTO_PASSWORD=local-verto-pass npm run pipecat:verto
+```
+
+The legacy ESL bridge can still be started for diagnostics and bundle scaffolding:
 
 ```sh
 ACC_BASE_URL=http://127.0.0.1:8026 KOKORO_BASE_URL=http://127.0.0.1:8880 node scripts/freeswitch-acc-bridge.mjs --recording-dir artifacts/freeswitch-live/media --freeswitch-recording-dir /var/log/freeswitch/acc/media --log artifacts/freeswitch-live/freeswitch-esl-events.json
 ```
 
-The bridge also writes a bundle-compatible manifest by default:
-
-```text
-artifacts/freeswitch-live/freeswitch-live-proof-manifest.json
-```
-
-Override it with `--manifest <path>` if needed. If rtc-asr is running and you have a transcript/evidence JSON path, pass `--rtc-asr-evidence <path>` so the manifest can distinguish a configured websocket from attached ASR proof.
-
-To collect live inbound PCMU RTP packets into Pipecat-compatible `InputAudioRawFrameBatch` manifest evidence while experimenting with FreeSWITCH media routing, add `--rtp-listen-port <udp-port>` and point the FreeSWITCH RTP stream at that host/port. For return audio, keep `--freeswitch-recording-dir` set to the same path mounted into FreeSWITCH; the bridge writes each Kokoro TTS frame as a WAV there and sends `uuid_broadcast <uuid> <wav> aleg` while also retaining outbound RTP packetization evidence.
+The accepted #222 proof must come from the active Verto/WebRTC call leg, not post-hangup transcription or a `uuid_broadcast`-only diagnostic artifact.
 
 4. Register a local SIP softphone:
 

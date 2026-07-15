@@ -14,6 +14,7 @@
     "docker:smoke": "sh -c 'cleanup(){ docker compose down --remove-orphans; }; trap cleanup EXIT; docker compose up --build -d app && node scripts/health-smoke.mjs --url http://127.0.0.1:8026/health'",
     "docker:voice": "docker compose --profile voice up --build app rtc-asr kokoro",
     "docker:browser-webrtc": "docker compose --profile browser-webrtc up --build app rtc-asr kokoro browser-webrtc-bridge",
+    "docker:sip-verto": "docker compose --profile sip-verto up --build app freeswitch rtc-asr kokoro pipecat-verto-bridge",
     "docker:full": "docker compose --profile full up --build",
     "pipecat:check": "python3 scripts/pipecat-local-runtime.py --self-test",
     "assert:export": "npm run build && node scripts/assert-export.mjs",
@@ -38,6 +39,8 @@
     "pipecat:webrtc:check": "python3 scripts/pipecat-browser-webrtc-bridge.py --check-sidecars",
     "pipecat:webrtc": "python3 scripts/pipecat-browser-webrtc-bridge.py",
     "pipecat:webrtc:readiness": "node scripts/browser-webrtc-readiness-smoke.mjs",
+    "pipecat:verto:check": "python3 scripts/pipecat-verto-agent-bridge.py --check",
+    "pipecat:verto": "python3 scripts/pipecat-verto-agent-bridge.py",
     "pipecat:fixture:check": "python3 scripts/pipecat-fixture-pipeline-smoke.py --contract-only",
     "pages:cluecon": "npm run build && node scripts/cluecon-pages-export.mjs"
   },
