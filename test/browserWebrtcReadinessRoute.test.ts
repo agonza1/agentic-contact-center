@@ -99,6 +99,13 @@ test("operator console polls browser WebRTC session proof for turn diagnostics",
   assert.match(serverSource, /voiceLastProofTurnCount/);
   assert.match(serverSource, /await refresh\(\);/);
   assert.match(serverSource, /armVoiceSessionProofPolling\(\);/);
+  assert.match(serverSource, /voiceOpenConversation: false/);
+  assert.match(serverSource, /toggleOpenVoiceConversation/);
+  assert.match(serverSource, /id="voice-open-conversation"/);
+  assert.match(serverSource, /Open voice AI/);
+  assert.match(serverSource, /track\.enabled = state\.voiceOpenConversation/);
+  assert.match(serverSource, /muteIcon/);
+  assert.match(serverSource, /aria-label="' \+ muteLabel/);
 });
 
 test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract", async () => {

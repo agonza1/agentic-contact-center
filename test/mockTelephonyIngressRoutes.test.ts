@@ -632,7 +632,7 @@ test("the risky offer boundary parks the flow in policy hold without promising a
     const callId = (started.payload as { session: { callId: string } }).session.callId;
 
     const firstTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
     const firstPayload = firstTurn.payload as SnapshotPayload;
@@ -647,7 +647,7 @@ test("the risky offer boundary parks the flow in policy hold without promising a
     assert.equal(firstOpenClawSummary.latestTranscriptAt, "2026-06-10T14:00:00.000Z");
 
     const secondTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:00:05.000Z",
     });
     const secondPayload = secondTurn.payload as SnapshotPayload;
@@ -679,11 +679,11 @@ test("GET /api/calls/:callId/proof exports a per-call QA proof bundle", async ()
     const callId = (started.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", "/api/calls/" + callId + "/caller-turn", {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-12T10:00:00.000Z",
     });
     await requestJson(port, "POST", "/api/calls/" + callId + "/caller-turn", {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-12T10:00:05.000Z",
     });
 
@@ -824,7 +824,7 @@ test("GET /api/calls/:callId/artifacts returns an OpenClaw artifact manifest", a
     const callId = (started.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", "/api/calls/" + callId + "/caller-turn", {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-12T10:00:00.000Z",
     });
 
@@ -931,15 +931,15 @@ test("GET /api/queue returns queue summary without call payloads", async () => {
     const callId = (started.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:00:05.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "Okay, what safe options can you review for me?",
+      text: "Is there anything you can do before I cancel?",
       timestamp: "2026-06-10T14:00:10.000Z",
     });
 
@@ -980,15 +980,15 @@ test("GET /api/queue orders oldest attention by timestamp value, not string form
     const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:00:05.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
-      text: "Okay, what safe options can you review for me?",
+      text: "Is there anything you can do before I cancel?",
       timestamp: "2026-06-10T14:00:10.000Z",
     });
 
@@ -999,15 +999,15 @@ test("GET /api/queue orders oldest attention by timestamp value, not string form
     const secondCallId = (secondStarted.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${secondCallId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "Wed, 10 Jun 2026 14:00:01 GMT",
     });
     await requestJson(port, "POST", `/api/calls/${secondCallId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "Wed, 10 Jun 2026 14:00:03 GMT",
     });
     await requestJson(port, "POST", `/api/calls/${secondCallId}/caller-turn`, {
-      text: "Okay, what safe options can you review for me?",
+      text: "Is there anything you can do before I cancel?",
       timestamp: "Wed, 10 Jun 2026 14:00:06 GMT",
     });
 
@@ -1101,7 +1101,7 @@ test("GET /api/calls lists active demo calls in start order", async () => {
     const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
 
@@ -1224,7 +1224,7 @@ test("POST /api/signalwire/events maps local SignalWire lifecycle into call runt
     const media = await requestJson(port, "POST", "/api/signalwire/events", {
       eventType: "media.transcript",
       callSid: "sw-call-123",
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:09:05.000Z",
     });
     const mediaPayload = media.payload as { ok: boolean; eventType: string; call: SnapshotPayload };
@@ -1234,7 +1234,7 @@ test("POST /api/signalwire/events maps local SignalWire lifecycle into call runt
     assert.equal(mediaPayload.call.session.callId, startedPayload.call.session.callId);
     assert.equal(mediaPayload.call.session.providerCallId, "sw-call-123");
     assert.equal(mediaPayload.call.transcript.at(-2)?.speaker, "caller");
-    assert.equal(mediaPayload.call.transcript.at(-2)?.text, "I want to cancel my policy today.");
+    assert.equal(mediaPayload.call.transcript.at(-2)?.text, "I'm thinking about canceling my policy.");
 
     const error = await requestJson(port, "POST", "/api/signalwire/events", {
       eventType: "call.error",
@@ -1282,15 +1282,15 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     const operatorCallId = (operatorStarted.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:10:00.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:10:05.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
-      text: "Okay, what safe options can you review for me?",
+      text: "Is there anything you can do before I cancel?",
       timestamp: "2026-06-10T14:10:10.000Z",
     });
 
@@ -1328,10 +1328,10 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       completeError: "operator_console_scripted_turn_complete",
     });
     assert.deepEqual(consolePayload.controls.scriptedCallerTurns, [
-      "I want to cancel my policy today.",
-      "The renewal increase is too high.",
-      "Okay, what safe options can you review for me?",
-      "Thanks, please note that follow-up and close the call.",
+      "I'm thinking about canceling my policy.",
+      "My renewal went up a lot, and I can't afford it.",
+      "Is there anything you can do before I cancel?",
+      "Okay, that sounds good. Thanks.",
     ]);
     const approveOfferAction = consolePayload.controls.actions.find((entry) => entry.action === "approve_offer");
     assert.deepEqual(approveOfferAction, {
@@ -1451,14 +1451,14 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
         matchedTurns: 3,
         totalTurns: 4,
         remainingTurns: 1,
-        remainingTurnTexts: ["Thanks, please note that follow-up and close the call."],
+        remainingTurnTexts: ["Okay, that sounds good. Thanks."],
         progressPct: 75,
         progressLabel: "3/4 scripted turns sent",
         nextTurnIndex: 3,
         nextTurnOrdinal: 4,
-        nextTurnText: "Thanks, please note that follow-up and close the call.",
+        nextTurnText: "Okay, that sounds good. Thanks.",
         nextTurnPostRoute: `/api/calls/${operatorCallId}/caller-turn`,
-        nextTurnBodyTemplate: { text: "Thanks, please note that follow-up and close the call." },
+        nextTurnBodyTemplate: { text: "Okay, that sounds good. Thanks." },
         nextScriptedTurnPostRoute: "/api/operator/console/scripted-turn",
         nextScriptedTurnBodyTemplate: { callId: operatorCallId, expectedTurnIndex: 3 },
         completed: false,
@@ -1609,18 +1609,18 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       totalTurns: 4,
       remainingTurns: 4,
       remainingTurnTexts: [
-        "I want to cancel my policy today.",
-        "The renewal increase is too high.",
-        "Okay, what safe options can you review for me?",
-        "Thanks, please note that follow-up and close the call.",
+        "I'm thinking about canceling my policy.",
+        "My renewal went up a lot, and I can't afford it.",
+        "Is there anything you can do before I cancel?",
+        "Okay, that sounds good. Thanks.",
       ],
       progressPct: 0,
       progressLabel: "0/4 scripted turns sent",
       nextTurnIndex: 0,
       nextTurnOrdinal: 1,
-      nextTurnText: "I want to cancel my policy today.",
+      nextTurnText: "I'm thinking about canceling my policy.",
       nextTurnPostRoute: `/api/calls/${idleCallId}/caller-turn`,
-      nextTurnBodyTemplate: { text: "I want to cancel my policy today." },
+      nextTurnBodyTemplate: { text: "I'm thinking about canceling my policy." },
       nextScriptedTurnPostRoute: "/api/operator/console/scripted-turn",
       nextScriptedTurnBodyTemplate: { callId: idleCallId, expectedTurnIndex: 0 },
       completed: false,
@@ -1715,7 +1715,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       timestamp: "2026-06-10T14:10:12.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
-      text: "Thanks, please note that follow-up and close the call.",
+      text: "Okay, that sounds good. Thanks.",
       timestamp: "2026-06-10T14:10:15.000Z",
     });
     const progressedConsole = await requestJson(port, "GET", "/api/operator/console?minScriptProgressPct=75");
@@ -2098,15 +2098,15 @@ test("POST /api/operator/console/action dispatches live call controls", async ()
     const callId = (started.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:11:00.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:11:05.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "Okay, what safe options can you review for me?",
+      text: "Is there anything you can do before I cancel?",
       timestamp: "2026-06-10T14:11:10.000Z",
     });
 
@@ -2248,9 +2248,9 @@ test("POST /api/operator/console/scripted-turn submits only the next scripted ca
     assert.equal(submittedPayload.route, "/api/operator/console/scripted-turn");
     assert.equal(submittedPayload.submittedTurnIndex, 0);
     assert.equal(submittedPayload.submittedTurnOrdinal, 1);
-    assert.equal(submittedPayload.submittedText, "I want to cancel my policy today.");
+    assert.equal(submittedPayload.submittedText, "I'm thinking about canceling my policy.");
     assert.equal(submittedPayload.nextTurnIndex, 1);
-    assert.equal(submittedPayload.nextTurnText, "The renewal increase is too high.");
+    assert.equal(submittedPayload.nextTurnText, "My renewal went up a lot, and I can't afford it.");
     assert.equal(submittedPayload.remainingTurns, 3);
     assert.equal(submittedPayload.progressPct, 25);
     assert.equal(submittedPayload.scriptCompleted, false);
@@ -2259,7 +2259,7 @@ test("POST /api/operator/console/scripted-turn submits only the next scripted ca
       submittedPayload.call.transcript.some(
         (turn) =>
           turn.speaker === "caller" &&
-          turn.text === "I want to cancel my policy today." &&
+          turn.text === "I'm thinking about canceling my policy." &&
           turn.timestamp === "2026-06-10T14:12:30.000Z",
       ),
       true,
@@ -2269,9 +2269,9 @@ test("POST /api/operator/console/scripted-turn submits only the next scripted ca
     assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.nextTurnIndex, 1);
     assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.nextTurnOrdinal, 2);
     assert.deepEqual(submittedPayload.call.actionState.scriptedCallerTurnState.remainingTurnTexts, [
-      "The renewal increase is too high.",
-      "Okay, what safe options can you review for me?",
-      "Thanks, please note that follow-up and close the call.",
+      "My renewal went up a lot, and I can't afford it.",
+      "Is there anything you can do before I cancel?",
+      "Okay, that sounds good. Thanks.",
     ]);
     assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.progressPct, 25);
     assert.equal(submittedPayload.call.actionState.scriptedCallerTurnState.progressLabel, "1/4 scripted turns sent");
@@ -2372,15 +2372,15 @@ test("GET /api/calls can sort operator attention before idle calls", async () =>
     const operatorCallId = (operatorStarted.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:10:00.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:10:05.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
-      text: "Okay, what safe options can you review for me?",
+      text: "Is there anything you can do before I cancel?",
       timestamp: "2026-06-10T14:10:10.000Z",
     });
 
@@ -2546,11 +2546,11 @@ test("GET /api/calls can filter the active demo call list by flow state", async 
     const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:00:05.000Z",
     });
 
@@ -2706,15 +2706,15 @@ test("GET /api/calls can filter operator attention queues", async () => {
     const pendingCallId = (pendingStarted.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${pendingCallId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${pendingCallId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:00:05.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${pendingCallId}/caller-turn`, {
-      text: "Okay, what safe options can you review for me?",
+      text: "Is there anything you can do before I cancel?",
       timestamp: "2026-06-10T14:00:10.000Z",
     });
 
@@ -2879,15 +2879,15 @@ test("GET /api/queue can filter operator summary slices", async () => {
     const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:00:05.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
-      text: "Okay, what safe options can you review for me?",
+      text: "Is there anything you can do before I cancel?",
       timestamp: "2026-06-10T14:00:10.000Z",
     });
 
@@ -3024,7 +3024,7 @@ test("GET /api/queue can filter operator summary slices", async () => {
     assert.equal(byProviderPayload.summary.totalCalls, 1);
     assert.equal(byProviderPayload.summary.oldestAttentionCallId, fallbackCallId);
 
-    const byTranscript = await requestJson(port, "GET", "/api/queue?transcriptText=safe%20options");
+    const byTranscript = await requestJson(port, "GET", "/api/queue?transcriptText=anything%20you%20can%20do");
     const byTranscriptPayload = byTranscript.payload as QueueSummaryPayload;
     assert.equal(byTranscript.statusCode, 200);
     assert.equal(byTranscriptPayload.summary.totalCalls, 1);
@@ -3186,15 +3186,15 @@ test("GET /api/calls and /api/queue can filter by attention source", async () =>
     const operatorCallId = (operatorStarted.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:00:05.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${operatorCallId}/caller-turn`, {
-      text: "Okay, what safe options can you review for me?",
+      text: "Is there anything you can do before I cancel?",
       timestamp: "2026-06-10T14:00:10.000Z",
     });
 
@@ -3209,15 +3209,15 @@ test("GET /api/calls and /api/queue can filter by attention source", async () =>
     const combinedStarted = await requestJson(port, "POST", "/api/demo/start");
     const combinedCallId = (combinedStarted.payload as SnapshotPayload).session.callId;
     await requestJson(port, "POST", `/api/calls/${combinedCallId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:12.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${combinedCallId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:00:13.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${combinedCallId}/caller-turn`, {
-      text: "Okay, what safe options can you review for me?",
+      text: "Is there anything you can do before I cancel?",
       timestamp: "2026-06-10T14:00:14.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${combinedCallId}/operator-steer`, {
@@ -3429,16 +3429,16 @@ test("the scripted flow pauses for operator steer and resumes with an approved s
     const callId = (started.payload as { session: { callId: string } }).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:00:05.000Z",
     });
 
     const pending = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "Okay, what safe options can you review for me?",
+      text: "Is there anything you can do before I cancel?",
       timestamp: "2026-06-10T14:00:10.000Z",
     });
     const pendingPayload = pending.payload as SnapshotPayload;
@@ -3477,7 +3477,7 @@ test("the scripted flow pauses for operator steer and resumes with an approved s
     assert.equal(safeAgentTurn.text.includes("will not promise any billing credit"), true);
 
     const wrapped = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "Thanks, please note that follow-up and close the call.",
+      text: "Okay, that sounds good. Thanks.",
       timestamp: "2026-06-10T14:00:15.000Z",
     });
     const wrappedPayload = wrapped.payload as SnapshotPayload;
@@ -3494,15 +3494,15 @@ test("operators can deny an offer approval with a visible safe response", async 
     const callId = (started.payload as { session: { callId: string } }).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:00:05.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "Okay, what safe options can you review for me?",
+      text: "Is there anything you can do before I cancel?",
       timestamp: "2026-06-10T14:00:10.000Z",
     });
 
@@ -3530,11 +3530,11 @@ test("an escalation steer triggers the human handoff path", async () => {
     const callId = (started.payload as { session: { callId: string } }).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:00:05.000Z",
     });
 
@@ -4218,7 +4218,7 @@ test("invalid route timestamps are rejected before mutating call state", async (
     const callId = (started.payload as { session: { callId: string } }).session.callId;
 
     const invalidTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "not-a-timestamp",
     });
     const invalidTurnPayload = invalidTurn.payload as { error: string };
@@ -4256,7 +4256,7 @@ test("off-script caller turns pause the prototype for operator guidance", async 
     const callId = (started.payload as { session: { callId: string } }).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
 
@@ -4407,7 +4407,7 @@ test("free caller cancellation flow captures reason instead of repeating reason 
       timestamp: "2026-07-08T03:17:44.961Z",
     });
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       conversationMode: "free_caller",
       timestamp: "2026-07-08T03:17:56.211Z",
     });
@@ -4596,7 +4596,7 @@ test("GET /api/calls and /api/queue can scope operator state by call id", async 
     const firstCallId = (firstStarted.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${firstCallId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
 
@@ -4650,7 +4650,7 @@ test("GET /api/calls/:callId/events returns filterable event evidence", async ()
     const callId = (started.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
 
@@ -4888,7 +4888,7 @@ test("GET /api/calls/:callId/latency returns filterable latency evidence", async
     const callId = (started.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
 
@@ -5028,15 +5028,15 @@ test("GET /api/calls/:callId/transcript returns filterable transcript pages", as
     const callId = (started.payload as SnapshotPayload).session.callId;
 
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "I want to cancel my policy today.",
+      text: "I'm thinking about canceling my policy.",
       timestamp: "2026-06-10T14:00:00.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "The renewal increase is too high.",
+      text: "My renewal went up a lot, and I can't afford it.",
       timestamp: "2026-06-10T14:00:05.000Z",
     });
     await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "Okay, what safe options can you review for me?",
+      text: "Is there anything you can do before I cancel?",
       timestamp: "2026-06-10T14:00:10.000Z",
     });
 
@@ -5064,8 +5064,8 @@ test("GET /api/calls/:callId/transcript returns filterable transcript pages", as
     assert.equal(callerPayload.callId, callId);
     assert.deepEqual(callerPayload.transcript.map((turn) => turn.speaker), ["caller", "caller"]);
     assert.deepEqual(callerPayload.transcript.map((turn) => turn.text), [
-      "I want to cancel my policy today.",
-      "The renewal increase is too high.",
+      "I'm thinking about canceling my policy.",
+      "My renewal went up a lot, and I can't afford it.",
     ]);
     assert.equal(callerPayload.summary.totalTurns, 6);
     assert.equal(callerPayload.summary.returnedTurns, 2);
@@ -5140,7 +5140,7 @@ test("GET /api/calls/:callId/transcript returns filterable transcript pages", as
     assert.equal(textFilteredPayload.summary.filteredText, "renewal");
     assert.equal(textFilteredPayload.summary.page.totalFilteredTurns, 2);
     assert.deepEqual(textFilteredPayload.transcript.map((turn) => turn.text), [
-      "The renewal increase is too high.",
+      "My renewal went up a lot, and I can't afford it.",
       "I heard the renewal increase concern. I am pausing before I discuss any retention offer so I stay within approved options.",
     ]);
 

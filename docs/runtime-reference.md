@@ -136,10 +136,10 @@ The payload is intentionally not a fake green light. It marks the browser Pipeca
 
 Seeded caller turns for the cancellation-rescue script:
 
-1. `I want to cancel my policy today.`
-2. `The renewal increase is too high.`
-3. `Okay, what safe options can you review for me?`
-4. `Thanks, please note that follow-up and close the call.`
+1. `I'm thinking about canceling my policy.`
+2. `My renewal went up a lot, and I can't afford it.`
+3. `Is there anything you can do before I cancel?`
+4. `Okay, that sounds good. Thanks.`
 
 The flow enters `policy_hold` before unsafe retention offers, requests operator steer, and resumes only after a safe action such as `approve_offer`. The fallback path accepts `tool_timeout` and `runtime_failure` modes to arm a fail-closed human handoff.
 
@@ -156,7 +156,7 @@ Use the returned `session.callId` in follow-up calls:
 ```bash
 curl -s -X POST http://localhost:8026/api/calls/<callId>/caller-turn \
   -H 'content-type: application/json' \
-  -d '{"text":"I want to cancel my policy today."}'
+  -d '{"text":"I'm thinking about canceling my policy."}'
 
 curl -s http://localhost:8026/api/calls/<callId>
 ```
@@ -170,7 +170,7 @@ curl -s -X POST http://localhost:8026/api/signalwire/events \
 
 curl -s -X POST http://localhost:8026/api/signalwire/events \
   -H 'content-type: application/json' \
-  -d '{"eventType":"media.transcript","signalWireCallId":"sw-demo-1","text":"I want to cancel my policy today."}'
+  -d '{"eventType":"media.transcript","signalWireCallId":"sw-demo-1","text":"I'm thinking about canceling my policy."}'
 ```
 
 The local bridge treats SignalWire as the telephony entrypoint while keeping credentials mocked and persists the SignalWire call id as `providerCallId` for queue lookup/filtering. `call.error` routes to the existing `tool_timeout` fallback/human handoff path, and `call.ended` safely closes the demo call. Demo recording and consent remain explicit operator responsibilities before connecting real callers.
