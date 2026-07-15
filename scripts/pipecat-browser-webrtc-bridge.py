@@ -298,6 +298,7 @@ class BrowserWebrtcBridge:
             session["closeReason"] = session.get("closeReason") or reason
             self.forget_session_record(session)
         runner = session.get("runner")
+        turn_session = session.get("turnSession")
         if isinstance(runner, PipelineRunner):
             await runner.cancel(reason)
         task = session.get("runnerTask")
@@ -305,6 +306,8 @@ class BrowserWebrtcBridge:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        if isinstance(turn_session, AccVoicePipelineSession):
+            await turn_session.close_rtc_asr_stream(reason)
 
     async def close_all(self) -> None:
         await asyncio.gather(*(self.close_session(session_id) for session_id in list(self.sessions)), return_exceptions=True)

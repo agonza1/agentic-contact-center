@@ -23,6 +23,16 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(sharedPipeline, /KokoroTtsProcessor\(session\)/);
   assert.match(sharedPipeline, /record_stage/);
   assert.match(sharedPipeline, /stt\.empty_transcript/);
+  assert.match(sharedPipeline, /ensure_rtc_asr_stream/);
+  assert.match(sharedPipeline, /stream_rtc_asr_audio/);
+  assert.match(sharedPipeline, /stt\.session_started/);
+  assert.match(sharedPipeline, /stt\.transcript_interim/);
+  assert.match(sharedPipeline, /persistentSession/);
+  assert.match(sharedPipeline, /connectionId/);
+  assert.match(sharedPipeline, /close_rtc_asr_stream/);
+  assert.match(sharedPipeline, /self\.session\.stream_rtc_asr_audio\(pcm\)/);
+  assert.match(sharedPipeline, /self\.rtc_asr_current_audio_bytes == 0/);
+  assert.match(sharedPipeline, /self\.rtc_asr_ws is not None and self\.rtc_asr_started/);
   assert.match(sharedPipeline, /mark_output_active/);
   assert.match(sharedPipeline, /no_active_output_audio/);
   assert.match(sharedPipeline, /InterruptionFrame/);
@@ -46,6 +56,16 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(sharedPipeline, /finalize_turn\("silence_timer"\)/);
   assert.doesNotMatch(bridge, /RTCPeerConnection/);
   assert.doesNotMatch(bridge, /RTCSessionDescription/);
+});
+
+test("persistent rtc-asr session repeats utterance lifecycle and closes promptly", () => {
+  const payload = JSON.parse(execFileSync("python3", [
+    "test/fixtures/rtc_asr_persistent_session_regression.py",
+  ], { encoding: "utf8" }).trim().split("\n").at(-1) ?? "{}");
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.twoTurnLifecycle, "one_connection_two_starts_two_finalizes_two_transcripts");
+  assert.equal(payload.promptClose, true);
 });
 
 test("fixture adapter smoke check is wired to the shared Pipeline contract", () => {
@@ -72,6 +92,10 @@ test("fixture adapter smoke check is wired to the shared Pipeline contract", () 
   assert.deepEqual(payload.missingContractTokens, []);
   assert.equal(payload.contractChecks.contract_constant.present, true);
   assert.equal(payload.contractChecks.pipeline_builder.token, "def build_acc_voice_pipeline");
+  assert.equal(payload.contractChecks.rtc_asr_persistent_start.present, true);
+  assert.equal(payload.contractChecks.rtc_asr_streaming_audio.present, true);
+  assert.equal(payload.contractChecks.rtc_asr_interim_events.present, true);
+  assert.equal(payload.contractChecks.rtc_asr_connection_reuse.present, true);
   assert.equal(payload.contractChecks.transport_input_boundary.present, true);
   assert.equal(payload.contractChecks.transport_output_boundary.present, true);
   assert.deepEqual(payload.pipelineStages, [
