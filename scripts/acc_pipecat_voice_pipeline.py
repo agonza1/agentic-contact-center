@@ -516,7 +516,7 @@ class PipecatTurnControls:
     def __init__(self, session: AccVoicePipelineSession, interrupt_output: Any):
         self.session = session
         self.interrupt_output = interrupt_output
-        self.min_words = int(os.environ.get("ACC_WEBRTC_BARGE_IN_MIN_WORDS", "3"))
+        self.min_words = int(os.environ.get("ACC_WEBRTC_BARGE_IN_MIN_WORDS", "2"))
         self.start_strategy = MinWordsUserTurnStartStrategy(min_words=self.min_words, use_interim=False)
         self.start_strategy.add_event_handler("on_user_turn_started", self._on_user_turn_started)
         self.smart_turn = LocalSmartTurnAnalyzerV3(sample_rate=INPUT_SAMPLE_RATE)

@@ -28,7 +28,7 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(sharedPipeline, /InterruptionFrame/);
   assert.match(sharedPipeline, /broadcast_frame\(InterruptionFrame\)/);
   assert.match(sharedPipeline, /MinWordsUserTurnStartStrategy\(min_words=self\.min_words/);
-  assert.match(sharedPipeline, /ACC_WEBRTC_BARGE_IN_MIN_WORDS/);
+  assert.match(sharedPipeline, /ACC_WEBRTC_BARGE_IN_MIN_WORDS", "2"/);
   assert.match(sharedPipeline, /LocalSmartTurnAnalyzerV3/);
   assert.match(sharedPipeline, /turn\.smart_turn_decision/);
   assert.match(sharedPipeline, /min_words_barge_in/);
@@ -99,13 +99,18 @@ test("operator console polls browser WebRTC session proof for turn diagnostics",
   assert.match(serverSource, /voiceLastProofTurnCount/);
   assert.match(serverSource, /await refresh\(\);/);
   assert.match(serverSource, /armVoiceSessionProofPolling\(\);/);
-  assert.match(serverSource, /voiceOpenConversation: false/);
-  assert.match(serverSource, /toggleOpenVoiceConversation/);
-  assert.match(serverSource, /id="voice-open-conversation"/);
-  assert.match(serverSource, /Open voice AI/);
-  assert.match(serverSource, /track\.enabled = state\.voiceOpenConversation/);
+  assert.doesNotMatch(serverSource, /voiceOpenConversation/);
+  assert.doesNotMatch(serverSource, /voice-open-conversation/);
+  assert.doesNotMatch(serverSource, /Open voice AI/);
+  assert.match(serverSource, /track\.enabled = true; pc\.addTrack/);
+  assert.match(serverSource, /connectLabel = voiceConnected \? "Voice Connected" : "Connect Voice"/);
+  assert.match(serverSource, /muteDisabled = voiceConnected \? "" : " disabled"/);
+  assert.match(serverSource, /muteTitle = voiceConnected \? muteLabel : "Connect Voice first"/);
+  assert.match(serverSource, /togglePipecatMute/);
   assert.match(serverSource, /muteIcon/);
-  assert.match(serverSource, /aria-label="' \+ muteLabel/);
+  assert.match(serverSource, /aria-label="' \+ muteTitle/);
+  assert.match(serverSource, /const actions = \["pause", "resume", "approve_offer", "deny_offer", "takeover", "escalate_to_human", "transfer", "end_call", "ask_operator", "arm_fallback", "disarm_fallback"\]/);
+  assert.doesNotMatch(serverSource, /const actions = \[[^\]]*"goto_slide"/);
 });
 
 test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract", async () => {
