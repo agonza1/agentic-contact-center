@@ -58,6 +58,16 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.doesNotMatch(bridge, /RTCSessionDescription/);
 });
 
+test("persistent rtc-asr session repeats utterance lifecycle and closes promptly", () => {
+  const payload = JSON.parse(execFileSync("python3", [
+    "test/fixtures/rtc_asr_persistent_session_regression.py",
+  ], { encoding: "utf8" }).trim().split("\n").at(-1) ?? "{}");
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.twoTurnLifecycle, "one_connection_two_starts_two_finalizes_two_transcripts");
+  assert.equal(payload.promptClose, true);
+});
+
 test("fixture adapter smoke check is wired to the shared Pipeline contract", () => {
   const adapter = readFileSync("scripts/pipecat-fixture-pipeline-smoke.py", "utf8");
   assert.match(adapter, /fixture_audio_injection/);
