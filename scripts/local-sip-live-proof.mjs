@@ -417,6 +417,7 @@ class LocalSipProofServer {
     const callerPlaybackEvidenceInspection = await inspectCallerPlaybackEvidence(this.options.callerPlaybackEvidencePath);
     const callerPlaybackEvidenceRequired = !this.options.generatedMedia && this.rtpPacketCount > 0 && this.options.rtcAsrUrl && rtcAsrEvidenceInspection.ready;
     if (this.options.generatedMedia) blockers.push("Self-test generated RTP audio; rerun with a real local SIP softphone call before review.");
+    if (!this.callId) blockers.push(`No SIP INVITE was accepted on sip:8600@${this.options.host}:${this.options.sipPort}.`);
     if (this.rtpPacketCount === 0) blockers.push("No RTP packets were captured.");
     if (!this.options.rtcAsrUrl) blockers.push("RTC_ASR_WS_URL was not set, so rtc-asr live transcription was not attempted.");
     if (this.options.rtcAsrUrl && !this.options.rtcAsrEvidencePath) blockers.push("rtc-asr URL was configured, but no transcript/evidence path was attached to this local SIP proof.");
@@ -434,6 +435,9 @@ class LocalSipProofServer {
     const nextActions = [];
     if (this.options.generatedMedia || this.rtpPacketCount === 0) {
       nextActions.push("Place a real local SIP/FreeSWITCH softphone call and rerun the live proof without --self-test.");
+    }
+    if (!this.callId) {
+      nextActions.push(`Verify the softphone or FreeSWITCH route is sending INVITE traffic to sip:8600@${this.options.host}:${this.options.sipPort}.`);
     }
     if (!this.options.rtcAsrUrl) {
       nextActions.push("Start rtc-asr, set RTC_ASR_WS_URL, and rerun the live proof to capture a websocket-backed transcript.");
