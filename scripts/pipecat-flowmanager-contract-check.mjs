@@ -45,6 +45,7 @@ assert.ok(contract.parityChecks.some((check) => check.id === "runtime_failure_fa
 assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "scripted_policy_hold" && fixture.expectedState === "policy_hold"));
 assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "operator_steer_handoff" && fixture.expectedEvents.includes("operator_steer_requested")));
 assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "operator_denial_safe_response" && fixture.expectedEvents.includes("operator_offer_denied")));
+assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "operator_approval_safe_response" && fixture.requiredAgentClaims.includes("retention specialist follow-up")));
 assert.ok(contract.parityFixtures.every((fixture) => fixture.forbiddenAgentClaims.includes("billing credit")));
 
 const parityFixturesById = new Map(contract.parityFixtures.map((fixture) => [fixture.id, fixture]));
@@ -58,6 +59,7 @@ assert.equal(parityReplays.length, contract.parityFixtures.length);
 for (const replay of parityReplays) {
   assert.equal(replay.passed, true, `${replay.fixtureId} parity replay failed`);
   assert.equal(replay.expectedEventsInOrder, true, `${replay.fixtureId} parity events were out of order`);
+  assert.deepEqual(replay.missingRequiredAgentClaims, []);
   assert.deepEqual(replay.forbiddenAgentClaimsFound, []);
 }
 
