@@ -169,6 +169,7 @@ export function buildPipecatFlowManagerRuntimePlan(input: {
     nodeHandlers,
     requiredGuards: input.requiredGuards,
   });
+  const nextPendingCutoverStep = FLOW_MANAGER_CUTOVER_SEQUENCE.find((step) => step.status === "pending") ?? null;
 
   return {
     status: "node_handlers_mirrored_adapter_cutover_pending",
@@ -178,6 +179,7 @@ export function buildPipecatFlowManagerRuntimePlan(input: {
     retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
     nodeHandlers,
     cutoverSequence: FLOW_MANAGER_CUTOVER_SEQUENCE,
+    nextPendingCutoverStep,
     cutoverPreconditions: FLOW_MANAGER_CUTOVER_PRECONDITIONS,
     validation,
     missingRequiredNodes: validation.missingRequiredNodes,

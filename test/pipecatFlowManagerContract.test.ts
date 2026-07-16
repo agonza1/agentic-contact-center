@@ -68,6 +68,7 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
       ["route_caller_turns_through_flowmanager", "pending"],
     ],
   );
+  assert.equal(contract.runtimePlan.nextPendingCutoverStep?.id, "route_caller_turns_through_flowmanager");
   assert.equal(
     contract.runtimePlan.cutoverSequence.at(-1)?.blocker,
     "typescript_deterministic_flow_still_owns_runtime_turns",
@@ -173,6 +174,7 @@ test("Pipecat FlowManager runtime plan mirrors node handlers and guarded transit
     ["npm run pipecat:flows:contract", "npm run pipecat:flows:contract", "npm test"],
   );
   assert.equal(runtimePlan.cutoverSequence.find((step) => step.status === "pending")?.owner, "Pipecat FlowManager adapter");
+  assert.deepEqual(runtimePlan.nextPendingCutoverStep, runtimePlan.cutoverSequence.at(-1));
   assert.equal(runtimePlan.cutoverPreconditions.filter((precondition) => precondition.satisfied).length, 2);
   assert.equal(runtimePlan.cutoverPreconditions.at(-1)?.verificationCommand, "npm test");
   assert.deepEqual(runtimePlan.validation, {

@@ -51,6 +51,7 @@ assert.deepEqual(contract.runtimePlan.cutoverSequence.map((step) => [step.id, st
   ["lock_fail_closed_parity", "complete"],
   ["route_caller_turns_through_flowmanager", "pending"],
 ]);
+assert.equal(contract.runtimePlan.nextPendingCutoverStep?.id, "route_caller_turns_through_flowmanager");
 assert.equal(
   contract.runtimePlan.cutoverSequence.at(-1)?.blocker,
   "typescript_deterministic_flow_still_owns_runtime_turns",
