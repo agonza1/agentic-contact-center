@@ -23,6 +23,7 @@ import {
 } from "../core/assertEvaluationSpec";
 import { compareTimestamps, getAttentionMetadata } from "../core/attention";
 import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
+import { buildPipecatFlowManagerContractPayload } from "../core/pipecatFlowManagerContract";
 import { buildPipecatMediaEngineReadinessPayload } from "../core/pipecatMediaEngineReadiness";
 import { RealtimeVoiceSessionStore, buildRealtimeVoiceSessionEndpoints } from "../core/realtimeVoiceSessions";
 import { getPipecatPrototypeHealth, SCRIPTED_CALLER_TURNS } from "../core/pipecatFlowPrototype";
@@ -4049,6 +4050,11 @@ async function routeRequest(
 
   if (request.method === "GET" && pathname === "/api/pipecat-media-engine/readiness") {
     writeJson(response, 200, buildPipecatMediaEngineReadinessPayload());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/pipecat-flowmanager/contract") {
+    writeJson(response, 200, buildPipecatFlowManagerContractPayload());
     return;
   }
 
