@@ -80,4 +80,28 @@ test("Pipecat FlowManager parity fixtures replay against the current ACC flow", 
   );
   assert.equal(replays.every((replay) => replay.missingExpectedEvents.length === 0), true);
   assert.equal(replays.every((replay) => replay.forbiddenAgentClaimsFound.length === 0), true);
+  assert.deepEqual(
+    replays.map((replay) => ({
+      fixtureId: replay.fixtureId,
+      traceStates: replay.transitionTrace.map((step) => step.flowState),
+      finalTraceEvent: replay.transitionTrace.at(-1)?.latestEventType,
+    })),
+    [
+      {
+        fixtureId: "scripted_policy_hold",
+        traceStates: ["call_started", "diagnose", "policy_hold"],
+        finalTraceEvent: "agent_turn_appended",
+      },
+      {
+        fixtureId: "operator_steer_handoff",
+        traceStates: ["call_started", "diagnose", "policy_hold", "operator_steer"],
+        finalTraceEvent: "agent_turn_appended",
+      },
+      {
+        fixtureId: "runtime_failure_fail_closed",
+        traceStates: ["call_started", "wrap"],
+        finalTraceEvent: "flow_state_transition",
+      },
+    ],
+  );
 });

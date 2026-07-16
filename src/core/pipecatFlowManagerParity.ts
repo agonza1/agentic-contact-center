@@ -3,7 +3,15 @@ import {
   PIPECAT_FLOW_MANAGER_PARITY_FIXTURES,
   type PipecatFlowManagerParityFixture,
 } from "./pipecatFlowManagerContract";
-import type { PocConfig } from "./types";
+import type { FlowState, PocConfig } from "./types";
+
+export interface PipecatFlowManagerParityTraceStep {
+  step: "start" | "caller_turn" | "injected_failure";
+  input: string | null;
+  flowState: FlowState;
+  latestEventType: string | null;
+  transcriptTurns: number;
+}
 
 export interface PipecatFlowManagerParityReplay {
   fixtureId: string;
@@ -16,6 +24,7 @@ export interface PipecatFlowManagerParityReplay {
   missingExpectedEvents: string[];
   observedEvents: string[];
   forbiddenAgentClaimsFound: string[];
+  transitionTrace: PipecatFlowManagerParityTraceStep[];
 }
 
 function includesUnsafeClaim(agentText: string, claim: string): boolean {
@@ -49,6 +58,15 @@ export async function replayPipecatFlowManagerParityFixtures(
     let snapshot = await ingress.startCall(config, {
       openclawSessionLabel: `flowmanager-parity:${fixture.id}`,
     });
+    const transitionTrace: PipecatFlowManagerParityTraceStep[] = [
+      {
+        step: "start",
+        input: null,
+        flowState: snapshot.flowState,
+        latestEventType: snapshot.events.at(-1)?.type ?? null,
+        transcriptTurns: snapshot.transcript.length,
+      },
+    ];
 
     const callerTurns = "callerTurns" in fixture ? fixture.callerTurns : [];
     for (const [turnIndex, callerText] of callerTurns.entries()) {
@@ -62,6 +80,13 @@ export async function replayPipecatFlowManagerParityFixtures(
         config,
         { conversationMode: "scripted" },
       );
+      transitionTrace.push({
+        step: "caller_turn",
+        input: callerText,
+        flowState: snapshot.flowState,
+        latestEventType: snapshot.events.at(-1)?.type ?? null,
+        transcriptTurns: snapshot.transcript.length,
+      });
     }
 
     if ("injectedFailure" in fixture && fixture.injectedFailure === "pipecat_runtime_failure") {
@@ -71,6 +96,13 @@ export async function replayPipecatFlowManagerParityFixtures(
         new Date(Date.UTC(2026, 0, fixtureIndex + 1, 1, 0)).toISOString(),
         "flowmanager parity runtime failure fixture",
       );
+      transitionTrace.push({
+        step: "injected_failure",
+        input: fixture.injectedFailure,
+        flowState: snapshot.flowState,
+        latestEventType: snapshot.events.at(-1)?.type ?? null,
+        transcriptTurns: snapshot.transcript.length,
+      });
     }
 
     const observedEvents = snapshot.events.map((event) => event.type);
@@ -95,6 +127,7 @@ export async function replayPipecatFlowManagerParityFixtures(
       missingExpectedEvents,
       observedEvents,
       forbiddenAgentClaimsFound,
+      transitionTrace,
     });
   }
 
