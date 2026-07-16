@@ -152,6 +152,7 @@ test("Pipecat FlowManager parity fixtures replay against the current ACC flow", 
     ],
   );
   assert.equal(replays.every((replay) => replay.missingExpectedEvents.length === 0), true);
+  assert.equal(replays.every((replay) => replay.expectedEventsInOrder), true);
   assert.equal(replays.every((replay) => replay.forbiddenAgentClaimsFound.length === 0), true);
   assert.deepEqual(
     replays.map((replay) => ({

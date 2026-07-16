@@ -57,6 +57,7 @@ for (const parityCheck of contract.parityChecks) {
 assert.equal(parityReplays.length, contract.parityFixtures.length);
 for (const replay of parityReplays) {
   assert.equal(replay.passed, true, `${replay.fixtureId} parity replay failed`);
+  assert.equal(replay.expectedEventsInOrder, true, `${replay.fixtureId} parity events were out of order`);
   assert.deepEqual(replay.forbiddenAgentClaimsFound, []);
 }
 

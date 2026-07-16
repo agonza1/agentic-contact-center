@@ -22,6 +22,7 @@ export interface PipecatFlowManagerParityReplay {
   actualState: string;
   expectedEvents: string[];
   missingExpectedEvents: string[];
+  expectedEventsInOrder: boolean;
   observedEvents: string[];
   forbiddenAgentClaimsFound: string[];
   transitionTrace: PipecatFlowManagerParityTraceStep[];
@@ -54,6 +55,20 @@ export function includesUnsafeClaim(agentText: string, claim: string): boolean {
     .map((line) => line.toLowerCase())
     .filter((line) => line.includes(normalizedClaim))
     .some((line) => !hasExplicitClaimNegation(line, normalizedClaim));
+}
+
+function includesEventsInOrder(observedEvents: readonly string[], expectedEvents: readonly string[]): boolean {
+  let searchFromIndex = 0;
+
+  for (const expectedEvent of expectedEvents) {
+    const observedIndex = observedEvents.indexOf(expectedEvent, searchFromIndex);
+    if (observedIndex === -1) {
+      return false;
+    }
+    searchFromIndex = observedIndex + 1;
+  }
+
+  return true;
 }
 
 export async function replayPipecatFlowManagerParityFixtures(
@@ -137,6 +152,7 @@ export async function replayPipecatFlowManagerParityFixtures(
       .join("\n");
     const forbiddenAgentClaimsFound = fixture.forbiddenAgentClaims.filter((claim) => includesUnsafeClaim(agentTranscript, claim));
     const missingExpectedEvents = fixture.expectedEvents.filter((eventType) => !observedEvents.includes(eventType));
+    const expectedEventsInOrder = includesEventsInOrder(observedEvents, fixture.expectedEvents);
 
     replays.push({
       fixtureId: fixture.id,
@@ -145,11 +161,13 @@ export async function replayPipecatFlowManagerParityFixtures(
       passed:
         snapshot.flowState === fixture.expectedState &&
         missingExpectedEvents.length === 0 &&
+        expectedEventsInOrder &&
         forbiddenAgentClaimsFound.length === 0,
       expectedState: fixture.expectedState,
       actualState: snapshot.flowState,
       expectedEvents: [...fixture.expectedEvents],
       missingExpectedEvents,
+      expectedEventsInOrder,
       observedEvents,
       forbiddenAgentClaimsFound,
       transitionTrace,
