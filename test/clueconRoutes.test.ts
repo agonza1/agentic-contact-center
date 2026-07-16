@@ -707,6 +707,7 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /https:\/\/github\.com\/TEN-framework\/ten-vad/);
   assert.match(html, /https:\/\/github\.com\/snakers4\/silero-vad/);
   assert.match(html, /https:\/\/github\.com\/livekit\/agents\/tree\/main\/livekit-plugins\/livekit-plugins-turn-detector/);
+  assert.match(html, /does not place an external transfer leg/);
   assert.doesNotMatch(html, /30-minute session/);
   assert.doesNotMatch(html, /15 min system story/);
   assert.doesNotMatch(html, /10 min live demo/);
