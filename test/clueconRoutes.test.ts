@@ -183,7 +183,14 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     };
     brainBlocks: Array<{ file: string; affects: string[] }>;
     brainPanel: { previewRoute: string; applyRoute: string; resetRoute: string; safeMutation: string; activeFiles: string[] };
-    operatorCockpit: { workboardCard: string; drillRoute: string; modes: string[]; drillKinds: string[]; actions: string[] };
+    operatorCockpit: {
+      workboardCard: string;
+      drillRoute: string;
+      modes: string[];
+      drillKinds: string[];
+      actions: string[];
+      telephonyControlBoundary: { command: string; adapters: string[]; standardPatterns: string[]; responsibility: string };
+    };
     proofPreview: { workboardCard: string; previewRoute: string; runRoute: string; compatibleRequest: string; includes: string[]; scorecardChecks: string[] };
   };
 
@@ -248,6 +255,9 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.ok(payload.operatorCockpit.modes.includes("operator_click_simulation"));
   assert.ok(payload.operatorCockpit.drillKinds.includes("transfer"));
   assert.ok(payload.operatorCockpit.actions.includes("takeover"));
+  assert.equal(payload.operatorCockpit.telephonyControlBoundary.command, "structured JSON from ACC");
+  assert.ok(payload.operatorCockpit.telephonyControlBoundary.adapters.includes("FreeSWITCH ESL"));
+  assert.ok(payload.operatorCockpit.telephonyControlBoundary.standardPatterns.includes("SIP REFER"));
   assert.equal(payload.proofPreview.workboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
   assert.equal(payload.proofPreview.compatibleRequest, "conversation-agent-evals-assert-request.json");
   assert.equal(payload.proofPreview.previewRoute, "/api/cluecon/eval/preview");
@@ -366,9 +376,29 @@ test("POST /api/cluecon/operator/drill runs fail-closed and operator action dril
   assert.equal(transferResponse.statusCode, 201);
   const transfer = JSON.parse(transferResponse.body) as {
     outcome: string;
+    summary: string;
+    integration: {
+      boundary: string;
+      controlPlane: string;
+      mediaPlane: string;
+      demoCaveat: string;
+      controlMessage: { type: string; callId: string; mode: string; target: { type: string; uri: string } };
+      executionPatterns: string[];
+    };
     call: { flowState: string; operatorSteer: { lastAction: string | null }; events: Array<{ type: string }> };
   };
   assert.equal(transfer.outcome, "operator_transfer");
+  assert.match(transfer.summary, /FreeSWITCH or SIP\/media-server adapter/);
+  assert.equal(transfer.integration.boundary, "acc_control_plane_to_telephony_adapter");
+  assert.equal(transfer.integration.controlMessage.type, "telephony.transfer.requested");
+  assert.equal(transfer.integration.controlMessage.mode, "blind_transfer");
+  assert.equal(transfer.integration.controlMessage.target.type, "sip_uri");
+  assert.match(transfer.integration.controlMessage.target.uri, /^sip:/);
+  assert.ok(transfer.integration.executionPatterns.some((pattern) => /uuid_transfer/.test(pattern)));
+  assert.ok(transfer.integration.executionPatterns.some((pattern) => /SIP REFER/.test(pattern)));
+  assert.ok(transfer.integration.executionPatterns.some((pattern) => /SIP B2BUA/.test(pattern)));
+  assert.match(transfer.integration.mediaPlane, /SIP dialogs, RTP continuity/);
+  assert.match(transfer.integration.demoCaveat, /does not place an external transfer leg/);
   assert.equal(transfer.call.flowState, "wrap");
   assert.equal(transfer.call.operatorSteer.lastAction, "transfer");
   assert.ok(transfer.call.events.some((event) => event.type === "operator_transfer_started"));
@@ -594,6 +624,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /MIC_START_CANCELLED/);
   assert.match(narrative.body, /slideCount: 9/);
   assert.match(narrative.body, /Run scripted demo/);
+  assert.match(narrative.body, /ACC emits auditable JSON; FreeSWITCH or another SIP\/media server executes transfer/);
+  assert.match(narrative.body, /Control plane → media plane/);
+  assert.match(narrative.body, /renderOperatorDrill\(payload\)/);
+  assert.match(narrative.body, /JSON\.stringify\(integration\.controlMessage, null, 2\)/);
   assert.match(narrative.body, /Run proof/);
   assert.match(narrative.body, /Run eval/);
   assert.match(narrative.body, /window\.__CLUECON__/);
@@ -673,6 +707,7 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /https:\/\/github\.com\/TEN-framework\/ten-vad/);
   assert.match(html, /https:\/\/github\.com\/snakers4\/silero-vad/);
   assert.match(html, /https:\/\/github\.com\/livekit\/agents\/tree\/main\/livekit-plugins\/livekit-plugins-turn-detector/);
+  assert.match(html, /does not place an external transfer leg/);
   assert.doesNotMatch(html, /30-minute session/);
   assert.doesNotMatch(html, /15 min system story/);
   assert.doesNotMatch(html, /10 min live demo/);
