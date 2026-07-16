@@ -69,6 +69,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
     packageJson.scripts?.["docker:sip-verto"],
     "docker compose --profile sip-verto up --build app freeswitch rtc-asr kokoro pipecat-verto-bridge",
   );
+  assert.equal(packageJson.scripts?.["pipecat:verto:live-proof"], "node scripts/verto-sip-live-proof.mjs");
   assert.equal(packageJson.scripts?.["docker:sip"], "docker compose --profile sip up --build app freeswitch rtc-asr kokoro freeswitch-bridge");
   assert.equal(packageJson.scripts?.["docker:assert"], "docker compose --profile eval up --build assert-viewer");
   assert.equal(packageJson.scripts?.["docker:full"], "docker compose --profile full up --build");

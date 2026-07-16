@@ -845,6 +845,37 @@ class AccCallerTurnProcessor(FrameProcessor):
         if direction != FrameDirection.DOWNSTREAM or not isinstance(frame, TranscriptionFrame):
             await self.push_frame(frame, direction)
             return
+        deterministic_agent_text = os.environ.get("ACC_PIPECAT_AGENT_TEXT_OVERRIDE", "").strip()
+        if deterministic_agent_text:
+            self.session.turn_count += 1
+            self.session.record_stage(
+                "acc.caller_turn_overridden",
+                turn=self.session.turn_count,
+                callerTranscript=frame.text,
+                agentText=deterministic_agent_text,
+                reason="ACC_PIPECAT_AGENT_TEXT_OVERRIDE",
+            )
+            self.session.last_evidence = {
+                "ok": True,
+                "turn": self.session.turn_count,
+                "callerTranscript": frame.text,
+                "agentText": deterministic_agent_text,
+                "audio": self.session.last_audio_evidence,
+                "stt": (frame.result or {}).get("stt", {}),
+                "acc": self.session.last_acc_evidence,
+                "tts": {"engine": "kokoro", "skipped": False, "audioBytes": 0},
+                "bargeIn": self.session.last_barge_in_evidence,
+                "outputCancelled": False,
+                "pipecatFrames": {
+                    "input": "InputAudioRawFrame",
+                    "transcription": "TranscriptionFrame",
+                    "agentText": "TextFrame",
+                    "output": "TTSAudioRawFrame",
+                },
+                "callId": self.session.call_id,
+            }
+            await self.push_frame(TextFrame(deterministic_agent_text), FrameDirection.DOWNSTREAM)
+            return
         try:
             call = await asyncio.to_thread(
                 json_http,

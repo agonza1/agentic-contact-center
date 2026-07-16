@@ -79,8 +79,8 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
       acceptanceCriteriaPassed: 9,
       acceptanceCriteriaTotal: 10,
       failingAcceptanceCriteria: ["sip_caller_audible_playback_live_proof"],
-      implementedAdapters: ["browser_webrtc", "sip_freeswitch_rtp_legacy", "fixture_audio_injection"],
-      blockedAdapters: ["sip_freeswitch_verto", "signalwire_sip_trunk"],
+      implementedAdapters: ["browser_webrtc", "sip_freeswitch_verto", "sip_freeswitch_rtp_legacy", "fixture_audio_injection"],
+      blockedAdapters: ["signalwire_sip_trunk"],
       nextUnblockedSlice: {
         id: "live_softphone_playback_acceptance",
         title: "Capture end-to-end softphone playback proof",
