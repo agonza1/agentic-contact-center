@@ -8,9 +8,12 @@ import type { PocConfig } from "./types";
 export interface PipecatFlowManagerParityReplay {
   fixtureId: string;
   passed: boolean;
+  callId: string;
+  openclawSessionLabel: string;
   expectedState: string;
   actualState: string;
   expectedEvents: string[];
+  missingExpectedEvents: string[];
   observedEvents: string[];
   forbiddenAgentClaimsFound: string[];
 }
@@ -76,17 +79,20 @@ export async function replayPipecatFlowManagerParityFixtures(
       .map((turn) => turn.text.toLowerCase())
       .join("\n");
     const forbiddenAgentClaimsFound = fixture.forbiddenAgentClaims.filter((claim) => includesUnsafeClaim(agentTranscript, claim));
-    const hasExpectedEvents = fixture.expectedEvents.every((eventType) => observedEvents.includes(eventType));
+    const missingExpectedEvents = fixture.expectedEvents.filter((eventType) => !observedEvents.includes(eventType));
 
     replays.push({
       fixtureId: fixture.id,
+      callId: snapshot.session.callId,
+      openclawSessionLabel: snapshot.session.openclawSession.label,
       passed:
         snapshot.flowState === fixture.expectedState &&
-        hasExpectedEvents &&
+        missingExpectedEvents.length === 0 &&
         forbiddenAgentClaimsFound.length === 0,
       expectedState: fixture.expectedState,
       actualState: snapshot.flowState,
       expectedEvents: [...fixture.expectedEvents],
+      missingExpectedEvents,
       observedEvents,
       forbiddenAgentClaimsFound,
     });

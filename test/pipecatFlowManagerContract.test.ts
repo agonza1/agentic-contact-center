@@ -69,5 +69,15 @@ test("Pipecat FlowManager parity fixtures replay against the current ACC flow", 
     ],
   );
   assert.equal(replays.every((replay) => replay.passed), true);
+  assert.equal(replays.every((replay) => replay.callId.startsWith("demo-call-")), true);
+  assert.deepEqual(
+    replays.map((replay) => replay.openclawSessionLabel),
+    [
+      "flowmanager-parity:scripted_policy_hold",
+      "flowmanager-parity:operator_steer_handoff",
+      "flowmanager-parity:runtime_failure_fail_closed",
+    ],
+  );
+  assert.equal(replays.every((replay) => replay.missingExpectedEvents.length === 0), true);
   assert.equal(replays.every((replay) => replay.forbiddenAgentClaimsFound.length === 0), true);
 });
