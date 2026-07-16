@@ -64,7 +64,20 @@ Use `npm run docker:sip` only for the legacy ESL/RTP proof-debug lane. That brid
 FREESWITCH_VERTO_URL=ws://127.0.0.1:8081 FREESWITCH_VERTO_LOGIN=acc-pipecat@127.0.0.1 FREESWITCH_VERTO_PASSWORD=local-verto-pass PIPECAT_VERTO_PROOF_OUT=artifacts/freeswitch-live/pipecat-verto-proof.json npm run pipecat:verto
 ```
 
-The sidecar updates `PIPECAT_VERTO_PROOF_OUT` after login, invite, and error events. Attach that artifact with the strict live SIP bundle when debugging the Verto/WebRTC leg; it is signaling evidence only and remains `reviewReady: false` until media answer and caller playback proof are present.
+The sidecar updates `PIPECAT_VERTO_PROOF_OUT` after login, invite, and pipeline stage events. It includes the call-scoped rtc-asr final transcript and Kokoro TTS evidence needed by the strict caller harness.
+
+To run the deterministic two-way proof, create or supply a PCM16 WAV containing a spoken caller utterance, then run:
+
+```sh
+FREESWITCH_SIP_PASSWORD=local-sip-pass \
+  npm run pipecat:verto:live-proof -- \
+  --caller-audio artifacts/caller-speech.wav \
+  --rtc-asr-evidence artifacts/freeswitch-live/pipecat-verto-proof.json \
+  --out-dir artifacts/freeswitch-live/caller \
+  --require-review-ready
+```
+
+The harness keeps RTP flowing after the utterance, captures return RTP at the caller, and only reports `reviewReady: true` when the evidence contains a current rtc-asr final transcript plus Kokoro output and the caller capture contains at least ten non-silent PCMU packets. It also writes `rtc-asr-transcript-evidence.json`, normalized to the current SIP Call-ID, so the manifest can be passed directly to `npm run proof:live-sip-bundle -- --require-rtc-asr-live --require-caller-playback`.
 
 The legacy ESL bridge can still be started for diagnostics and bundle scaffolding:
 

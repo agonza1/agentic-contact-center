@@ -55,7 +55,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.equal(payload.pipecat14Alignment.browserPrimaryBridge.current, "scripts/pipecat-browser-webrtc-bridge.py");
     assert.equal(payload.pipecat14Alignment.browserPrimaryBridge.legacyFallbackAllowed, false);
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.transport, "FreeSWITCH Verto/WebRTC agent leg");
-    assert.equal(payload.pipecat14Alignment.sipTransportStrategy.sharesPipelineProcessors, false);
+    assert.equal(payload.pipecat14Alignment.sipTransportStrategy.sharesPipelineProcessors, true);
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.processorContractAligned, true);
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.liveMediaProofComplete, false);
     assert.match(payload.pipecat14Alignment.sipTransportStrategy.preferredRoute, /acc-pipecat/);
@@ -85,14 +85,14 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.equal(adapters.find((adapter: any) => adapter.id === "browser_webrtc").implementedNow, true);
     assert.equal(adapters.find((adapter: any) => adapter.id === "browser_webrtc").currentEntryPoint, "scripts/pipecat-browser-webrtc-bridge.py");
     const sipAdapter = adapters.find((adapter: any) => adapter.id === "sip_freeswitch_verto");
-    assert.equal(sipAdapter.implementedNow, false);
+    assert.equal(sipAdapter.implementedNow, true);
     assert.equal(sipAdapter.processorContractAligned, true);
     assert.equal(sipAdapter.liveMediaProofComplete, false);
     assert.equal(sipAdapter.currentEntryPoint, "scripts/pipecat-verto-agent-bridge.py");
     assert.match(sipAdapter.freeswitchDialplan, /acc-pipecat/);
     assert.match(sipAdapter.pipelineUnificationDelta, /build_acc_voice_pipeline\(\)/);
     assert.match(sipAdapter.pipelineUnificationDelta, /Verto WebRTC dialog answer/);
-    assert.match(sipAdapter.blocker, /Verto signaling surface is configured/);
+    assert.match(sipAdapter.blocker, /Verto media answer is implemented/);
     const legacySipAdapter = adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp_legacy");
     assert.equal(legacySipAdapter.implementedNow, true);
     assert.match(legacySipAdapter.blocker, /proof diagnostics/);

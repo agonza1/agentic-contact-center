@@ -8,7 +8,7 @@ The active app is the TypeScript service under `src/`.
 
 - Voice-agent demo that keeps control of call state, policy holds, operator decisions, fallback, and evidence.
 - Local Pipecat voice work centered on Issue #222: one shared realtime Pipeline, with browser, fixture/tester, and SIP entering as adapters.
-- Browser WebRTC now enters through Pipecat `SmallWebRTCTransport` and the shared rtc-asr -> ACC -> Kokoro Pipeline; SIP is contract-aligned behind FreeSWITCH/RTP and remains proof-blocked until caller-audible media is captured.
+- Browser WebRTC and local SIP/Verto now enter through Pipecat `SmallWebRTCTransport` and the shared rtc-asr -> ACC -> Kokoro Pipeline. The local SIP proof harness captures both the live rtc-asr transcript and non-silent return audio at the caller.
 - Operator console for pause/resume, safe-offer approval, takeover, transfer, end-call, fallback drills, notes, queue filters, and proof links.
 - QA evidence through transcripts, event trails, latency marks, call snapshots, proof bundles, ASSERT exports, and ConversationAgentEvals-ready handoff artifacts.
 
@@ -64,7 +64,7 @@ Issue #222 is the architectural center for realtime voice work. The target is on
 transport.input -> rtc-asr STT -> ACC caller-turn adapter -> Kokoro TTS -> transport.output
 ```
 
-Browser WebRTC, fixture/tester injection, and SIP/FreeSWITCH should be adapters into that same Pipeline. Do not add new standalone demo media paths. The browser bridge now uses Pipecat `SmallWebRTCTransport` and `build_acc_voice_pipeline()` to run the shared `Pipeline([transport.input(), RtcAsrTurnProcessor, AccCallerTurnProcessor, KokoroTtsProcessor, transport.output()])`. The fixture/tester lane keeps the sidecar-free contract check at `npm run pipecat:fixture:check` and now has a live in-process fixture path via `python3 scripts/pipecat-fixture-pipeline-smoke.py --input-wav <mono-pcm16.wav>` when ACC, rtc-asr, and Kokoro are running; omit `--call-id` to have the smoke script start an ACC demo call automatically. SIP/FreeSWITCH remains a separate telephony transport that is aligned to the same rtc-asr/ACC/Kokoro processor contract, but it still needs final caller-audible proof before anyone should call SIP audio complete.
+Browser WebRTC, fixture/tester injection, and SIP/FreeSWITCH are adapters into that same Pipeline. Do not add new standalone demo media paths. The browser and Verto bridges use Pipecat `SmallWebRTCTransport` and `build_acc_voice_pipeline()` to run the shared `Pipeline([transport.input(), RtcAsrTurnProcessor, AccCallerTurnProcessor, KokoroTtsProcessor, transport.output()])`. The fixture/tester lane keeps the sidecar-free contract check at `npm run pipecat:fixture:check` and has a live in-process fixture path via `python3 scripts/pipecat-fixture-pipeline-smoke.py --input-wav <mono-pcm16.wav>` when ACC, rtc-asr, and Kokoro are running; omit `--call-id` to have the smoke script start an ACC demo call automatically. The SIP harness at `npm run pipecat:verto:live-proof` sends a real caller WAV through extension `8600` and requires current-call rtc-asr plus non-silent caller-side return audio before reporting `reviewReady: true`.
 
 ## Browser WebRTC Voice Readiness
 
@@ -186,4 +186,4 @@ Active code lives in `src/`, tests in `test/`, proof/runtime scripts in `scripts
 - State is in-memory and process-local.
 - The browser voice bridge uses Pipecat `SmallWebRTCTransport` plus the shared `Pipeline`, but live browser proof still requires local rtc-asr, Kokoro, and browser playback evidence.
 - `/api/assert/spec` saves the eval spec in memory for the running process; restart resets it to the default.
-- Local SIP `8600` now targets a FreeSWITCH-owned Verto/WebRTC agent leg (`acc-pipecat`) as the preferred #222 route. It is not accepted as complete SIP audio until live proof shows caller PCM entering Pipecat and caller-audible Kokoro/Pipecat audio returning through that same active call.
+- Local SIP `8600` targets a FreeSWITCH-owned Verto/WebRTC agent leg (`acc-pipecat`) as the preferred #222 route. Use `npm run pipecat:verto:live-proof` to require caller PCM entering Pipecat, a current-call rtc-asr final transcript, Kokoro TTS completion, and non-silent caller-side return audio from that same active call.

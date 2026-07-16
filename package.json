@@ -41,6 +41,7 @@
     "pipecat:webrtc:readiness": "node scripts/browser-webrtc-readiness-smoke.mjs",
     "pipecat:verto:check": "python3 scripts/pipecat-verto-agent-bridge.py --check",
     "pipecat:verto": "python3 scripts/pipecat-verto-agent-bridge.py",
+    "pipecat:verto:live-proof": "node scripts/verto-sip-live-proof.mjs",
     "pipecat:fixture:check": "python3 scripts/pipecat-fixture-pipeline-smoke.py --contract-only",
     "pages:cluecon": "npm run build && node scripts/cluecon-pages-export.mjs"
   },
