@@ -136,7 +136,8 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "pipecat_14_small_webrtc_migration_recorded").passed,
       true,
     );
-    assert.equal(payload.remainingWork.some((item: string) => item.includes("Verto incoming-call media answer")), true);
+    assert.equal(payload.remainingWork.some((item: string) => item.includes("Implement the Verto incoming-call media answer")), false);
+    assert.equal(payload.remainingWork.some((item: string) => item.includes("Capture live softphone evidence")), true);
     assert.deepEqual(payload.liveSipProofAcceptance, {
       requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_verto_webrtc", "caller_audible_playback"],
       requiredRuntimeEndpoints: [
