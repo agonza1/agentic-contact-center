@@ -72,7 +72,7 @@ Current gaps to keep visible:
 - The presentation should describe #222 as the center, not OpenClaw/demo paths as the architecture.
 - SignalWire remains a future SIP trunk route into the same FreeSWITCH/Pipecat path; historical/past-call import is separate.
 
-Flows decision for the current MVP: the shared browser/SIP media Pipeline is now live-proofed, so the remaining #222 acceptance gap is moving cancellation-rescue policy into Pipecat Flows/`FlowManager`. FlowManager nodes should own `call_started`, `greet`, `diagnose`, `policy_hold`, `operator_steer`, `steered_response`, and `wrap` transitions while ACC TypeScript keeps product state, operator controls, proof artifacts, and queue state. The older `scripts/pipecat-local-voice-bridge.py` path is legacy proof-only and should not be used as the normal browser voice path.
+Flows decision for the current MVP: the shared browser/SIP media Pipeline is now live-proofed, so the remaining #222 acceptance gap is moving cancellation-rescue policy into Pipecat Flows/`FlowManager`. The FlowManager node handler plan now mirrors `call_started`, `greet`, `diagnose`, `policy_hold`, `operator_steer`, `steered_response`, and `wrap` with fail-closed guards for the policy hold, operator steer, and fallback paths. ACC TypeScript still owns the active caller-turn runtime adapter until the cutover routes those handlers through Pipecat FlowManager; it also keeps product state, operator controls, proof artifacts, and queue state. The older `scripts/pipecat-local-voice-bridge.py` path is legacy proof-only and should not be used as the normal browser voice path.
 
 ## Browser WebRTC voice readiness
 

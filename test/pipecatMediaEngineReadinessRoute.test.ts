@@ -178,8 +178,9 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
         },
         {
           id: "flowmanager_node_handlers",
-          deliverable: "Mirror call_started, greet, diagnose, policy_hold, operator_steer, steered_response, and wrap as Pipecat FlowManager nodes.",
+          deliverable: "Mirror call_started, greet, diagnose, policy_hold, operator_steer, steered_response, and wrap as Pipecat FlowManager node handlers.",
           verificationCommand: "npm run pipecat:flows:contract",
+          status: "implemented_contract_only",
         },
         {
           id: "acc_runtime_adapter_cutover",
@@ -207,6 +208,9 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       "wrap",
     ]);
     assert.equal(payload.flowManagerContract.sidecarFree, true);
+    assert.equal(payload.flowManagerContract.status, "node_handlers_mirrored_adapter_cutover_pending");
+    assert.equal(payload.flowManagerContract.runtimePlan.runtimeAdapter, "pipecat_flows.FlowManager");
+    assert.deepEqual(payload.flowManagerContract.runtimePlan.missingRequiredNodes, []);
     assert.equal(payload.flowManagerContract.requiredGuards.every((guard: any) => guard.failClosed), true);
     assert.deepEqual(
       payload.flowManagerContract.parityChecks.map((check: any) => check.id),

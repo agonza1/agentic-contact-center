@@ -42,8 +42,9 @@ export function buildPipecatMediaEngineReadinessPayload() {
       },
       {
         id: "flowmanager_node_handlers",
-        deliverable: "Mirror call_started, greet, diagnose, policy_hold, operator_steer, steered_response, and wrap as Pipecat FlowManager nodes.",
+        deliverable: "Mirror call_started, greet, diagnose, policy_hold, operator_steer, steered_response, and wrap as Pipecat FlowManager node handlers.",
         verificationCommand: "npm run pipecat:flows:contract",
+        status: "implemented_contract_only",
       },
       {
         id: "acc_runtime_adapter_cutover",
@@ -245,7 +246,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       {
         name: "pipecat_flows_flowmanager_owns_conversation_flow",
         passed: false,
-        evidence: "The cancellation-rescue flow still runs in ACC TypeScript; #222 acceptance still requires FlowManager nodes for call_started, greet, diagnose, policy_hold, operator_steer, steered_response, and wrap.",
+        evidence: "The FlowManager node handler plan is now mirrored and contract-checked, but the caller-turn runtime adapter still runs the ACC TypeScript deterministic flow; #222 acceptance still requires routing these handlers through Pipecat FlowManager.",
       },
     ],
     validationCommands: [

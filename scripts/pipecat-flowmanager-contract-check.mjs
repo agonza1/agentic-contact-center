@@ -23,7 +23,7 @@ const contract = buildPipecatFlowManagerContractPayload();
 const parityReplays = await replayPipecatFlowManagerParityFixtures(loadPocConfig());
 
 assert.equal(contract.sidecarFree, true);
-assert.equal(contract.status, "parity_harness_defined_implementation_pending");
+assert.equal(contract.status, "node_handlers_mirrored_adapter_cutover_pending");
 assert.equal(contract.parityHarnessCommand, "npm run pipecat:flows:contract");
 assert.deepEqual(contract.requiredNodes, [
   "call_started",
@@ -36,6 +36,11 @@ assert.deepEqual(contract.requiredNodes, [
 ]);
 assert.ok(contract.requiredGuards.some((guard) => guard.id === "policy_hold_before_retention_offer" && guard.failClosed));
 assert.ok(contract.requiredGuards.some((guard) => guard.id === "operator_steer_required_for_safe_offer" && guard.failClosed));
+assert.equal(contract.runtimePlan.status, "node_handlers_mirrored_adapter_cutover_pending");
+assert.equal(contract.runtimePlan.adapterCutoverPending, true);
+assert.deepEqual(contract.runtimePlan.missingRequiredNodes, []);
+assert.deepEqual(contract.runtimePlan.nodeHandlers.map((handler) => handler.node), contract.requiredNodes);
+assert.ok(contract.runtimePlan.nodeHandlers.find((handler) => handler.node === "policy_hold").guardIds.includes("operator_steer_required_for_safe_offer"));
 assert.ok(contract.parityChecks.some((check) => check.id === "runtime_failure_fail_closed"));
 assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "scripted_policy_hold" && fixture.expectedState === "policy_hold"));
 assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "operator_steer_handoff" && fixture.expectedEvents.includes("operator_steer_requested")));
