@@ -226,3 +226,42 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+test("GET /api/pipecat-flowmanager/contract exposes the sidecar-free migration contract", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const response = await requestJson(address.port, "/api/pipecat-flowmanager/contract");
+    assert.equal(response.statusCode, 200);
+
+    const payload = response.payload;
+    assert.equal(payload.status, "node_handlers_mirrored_adapter_cutover_pending");
+    assert.equal(payload.sidecarFree, true);
+    assert.equal(payload.parityHarnessCommand, "npm run pipecat:flows:contract");
+    assert.equal(payload.runtimePlan.runtimeAdapter, "pipecat_flows.FlowManager");
+    assert.deepEqual(payload.runtimePlan.cutoverSequence.map((step: any) => [step.id, step.status]), [
+      ["mirror_node_handlers", "complete"],
+      ["lock_fail_closed_parity", "complete"],
+      ["route_caller_turns_through_flowmanager", "pending"],
+    ]);
+    assert.deepEqual(payload.requiredNodes, [
+      "call_started",
+      "greet",
+      "diagnose",
+      "policy_hold",
+      "operator_steer",
+      "steered_response",
+      "wrap",
+    ]);
+    assert.equal(payload.requiredGuards.every((guard: any) => guard.failClosed), true);
+    assert.equal(
+      payload.adapterCutoverPreconditions.find((precondition: any) => precondition.id === "caller_turn_adapter_cutover")?.satisfied,
+      false,
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
