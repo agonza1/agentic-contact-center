@@ -51,6 +51,7 @@ export function includesUnsafeClaim(agentText: string, claim: string): boolean {
   const normalizedClaim = claim.toLowerCase();
   return agentText
     .split("\n")
+    .map((line) => line.toLowerCase())
     .filter((line) => line.includes(normalizedClaim))
     .some((line) => !hasExplicitClaimNegation(line, normalizedClaim));
 }
