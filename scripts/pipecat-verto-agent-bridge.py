@@ -97,6 +97,39 @@ def normalize_verto_answer_sdp(sdp: str) -> str:
     return "\r\n".join(normalized) + "\r\n"
 
 
+def run_sdp_normalization_self_test() -> int:
+    source = "\r\n".join(
+        [
+            "v=0",
+            "o=- 123 456 IN IP6 ::",
+            "s=-",
+            "t=0 0",
+            "a=group:BUNDLE 0",
+            "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+            "c=IN IP6 ::",
+            "a=fingerprint:sha-256 11:22",
+            "a=fingerprint:sha-384 33:44",
+            "a=fingerprint:sha-512 55:66",
+            "a=candidate:1 1 udp 2130706431 127.0.0.1 5004 typ host",
+            "a=candidate:2 1 udp 2130706431 ::1 5005 typ host",
+        ]
+    )
+    normalized = normalize_verto_answer_sdp(source)
+    checks = {
+        "drops_bundle_without_mid": "a=group:BUNDLE" not in normalized,
+        "keeps_sha256_fingerprint": "a=fingerprint:sha-256 11:22" in normalized,
+        "drops_sha384_fingerprint": "a=fingerprint:sha-384" not in normalized,
+        "drops_sha512_fingerprint": "a=fingerprint:sha-512" not in normalized,
+        "rewrites_ipv6_connection_address": "c=IN IP4 127.0.0.1" in normalized,
+        "drops_ipv6_host_candidate": "::1" not in normalized,
+        "keeps_ipv4_host_candidate": "127.0.0.1 5004 typ host" in normalized,
+        "uses_crlf_line_endings": normalized.endswith("\r\n") and "\n" in normalized,
+    }
+    ok = all(checks.values())
+    print(json.dumps({"ok": ok, "checks": checks}, indent=2))
+    return 0 if ok else 2
+
+
 async def create_verto_passive_answer(self: Any, sdp: str, type: str) -> None:
     """Create a FreeSWITCH-compatible answer with aiortc acting as DTLS server."""
     offer = RTCSessionDescription(sdp=sdp, type=type)
@@ -433,7 +466,10 @@ def main() -> int:
     parser.add_argument("--acc-url", default=os.environ.get("ACC_URL", DEFAULT_ACC_URL))
     parser.add_argument("--proof-out", default=os.environ.get("PIPECAT_VERTO_PROOF_OUT"))
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--sdp-normalization-self-test", action="store_true")
     args = parser.parse_args()
+    if args.sdp_normalization_self_test:
+        return run_sdp_normalization_self_test()
     bridge = VertoAgentBridge(verto_url=args.verto_url, login=args.login, password=args.password, acc_url=args.acc_url, proof_out=args.proof_out)
     if args.check:
         async def check_once() -> int:
