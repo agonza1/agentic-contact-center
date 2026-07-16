@@ -5479,6 +5479,12 @@ async function routeRequest(
       return;
     }
 
+    const commitMode = body.commitMode;
+    if (commitMode !== undefined && commitMode !== "immediate" && commitMode !== "delivery_ack") {
+      writeBadRequest(response, "caller_turn_commit_mode_invalid");
+      return;
+    }
+
     const timestamp = normalizeTimestamp(body.timestamp, "caller_turn_timestamp_invalid");
     if (typeof timestamp !== "string") {
       writeBadRequest(response, timestamp.error);
@@ -5492,10 +5498,86 @@ async function routeRequest(
     };
 
     try {
+      if (commitMode === "delivery_ack") {
+        const snapshot = await ingress.previewCallerTurn(callerTurnMatch[1], turn, config, {
+          conversationMode,
+        });
+        writeJson(response, 200, {
+          ...buildCallPayload(snapshot),
+          callerTurnCommit: {
+            mode: "delivery_ack",
+            status: "pending",
+            callId: callerTurnMatch[1],
+            callerTranscript: text,
+            timestamp,
+            conversationMode: conversationMode ?? null,
+          },
+        });
+        return;
+      }
       const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config, {
         conversationMode,
       });
       writeJson(response, 200, buildCallPayload(snapshot));
+    } catch {
+      writeNotFound(response);
+    }
+    return;
+  }
+
+  const callerTurnCommitMatch = request.method === "POST" ? pathname.match(/^\/api\/calls\/([^/]+)\/caller-turn\/commit$/) : null;
+  if (callerTurnCommitMatch) {
+    const body = await readJsonBody<unknown>(request);
+
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const text = getOptionalTrimmedString(body.text);
+
+    if (!text) {
+      writeBadRequest(response, "caller_turn_text_required");
+      return;
+    }
+
+    const conversationMode = body.conversationMode;
+    if (
+      conversationMode !== undefined &&
+      conversationMode !== "scripted" &&
+      conversationMode !== "free_caller"
+    ) {
+      writeBadRequest(response, "caller_turn_conversation_mode_invalid");
+      return;
+    }
+
+    const timestamp = normalizeTimestamp(body.timestamp, "caller_turn_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+
+    const turn: TranscriptTurn = {
+      speaker: "caller",
+      text,
+      timestamp,
+    };
+
+    try {
+      const snapshot = await ingress.appendCallerTurn(callerTurnCommitMatch[1], turn, config, {
+        conversationMode,
+      });
+      writeJson(response, 200, {
+        ...buildCallPayload(snapshot),
+        callerTurnCommit: {
+          mode: "delivery_ack",
+          status: "committed",
+          callId: callerTurnCommitMatch[1],
+          callerTranscript: text,
+          timestamp,
+          conversationMode: conversationMode ?? null,
+        },
+      });
     } catch {
       writeNotFound(response);
     }

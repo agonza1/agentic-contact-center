@@ -4258,6 +4258,65 @@ test("invalid route timestamps are rejected before mutating call state", async (
   });
 });
 
+test("delivery-ack caller turns preview without mutating until commit", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const invalidMode = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      commitMode: "eventual",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    assert.equal(invalidMode.statusCode, 400);
+    assert.equal((invalidMode.payload as { error: string }).error, "caller_turn_commit_mode_invalid");
+
+    const preview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      commitMode: "delivery_ack",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const previewPayload = preview.payload as SnapshotPayload & {
+      callerTurnCommit: { mode: string; status: string; callerTranscript: string };
+    };
+    assert.equal(preview.statusCode, 200);
+    assert.equal(previewPayload.callerTurnCommit.mode, "delivery_ack");
+    assert.equal(previewPayload.callerTurnCommit.status, "pending");
+    assert.equal(previewPayload.callerTurnCommit.callerTranscript, "Can you help with billing?");
+    assert.equal(previewPayload.transcript.length, 2);
+    assert.equal(previewPayload.transcript[0].speaker, "caller");
+    assert.equal(previewPayload.transcript[1].speaker, "agent");
+
+    const fetchedBeforeCommit = await requestJson(port, "GET", `/api/calls/${callId}`);
+    const beforeCommitPayload = fetchedBeforeCommit.payload as SnapshotPayload;
+    assert.equal(fetchedBeforeCommit.statusCode, 200);
+    assert.deepEqual(beforeCommitPayload.transcript, []);
+    assert.equal(beforeCommitPayload.events.some((event) => event.type === "caller_turn_appended"), false);
+
+    const committed = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn/commit`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const committedPayload = committed.payload as SnapshotPayload & {
+      callerTurnCommit: { mode: string; status: string; callerTranscript: string };
+    };
+    assert.equal(committed.statusCode, 200);
+    assert.equal(committedPayload.callerTurnCommit.status, "committed");
+    assert.equal(committedPayload.transcript.length, 2);
+    assert.equal(committedPayload.events.some((event) => event.type === "caller_turn_appended"), true);
+
+    const fetchedAfterCommit = await requestJson(port, "GET", `/api/calls/${callId}`);
+    const afterCommitPayload = fetchedAfterCommit.payload as SnapshotPayload;
+    assert.equal(fetchedAfterCommit.statusCode, 200);
+    assert.deepEqual(afterCommitPayload.transcript, committedPayload.transcript);
+  });
+});
+
 test("off-script caller turns pause the prototype for operator guidance", async () => {
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start");

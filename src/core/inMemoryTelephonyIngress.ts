@@ -50,6 +50,10 @@ function cloneSnapshot(snapshot: CallSnapshot): CallSnapshot {
   };
 }
 
+interface CallerTurnOptions {
+  conversationMode?: "scripted" | "free_caller";
+}
+
 
 function buildOpenClawArtifactLinks(callId: string) {
   const basePath = `/api/calls/${callId}`;
@@ -319,17 +323,9 @@ export class InMemoryTelephonyIngress {
     return cloneSnapshot(snapshot);
   }
 
-  async appendCallerTurn(
-    callId: string,
-    turn: TranscriptTurn,
-    config: PocConfig,
-    options: { conversationMode?: "scripted" | "free_caller" } = {},
-  ): Promise<CallSnapshot> {
-    const snapshot = this.calls.get(callId);
-
-    if (!snapshot) {
-      throw new Error(`Unknown call id: ${callId}`);
-    }
+  private applyCallerTurn(snapshot: CallSnapshot, turn: TranscriptTurn, config: PocConfig, options: CallerTurnOptions): void {
+    const conversationMode =
+      options.conversationMode ?? (snapshot.session.openclawSession.label === "pipecat-local-voice" ? "free_caller" : "scripted");
 
     snapshot.transcript.push({ ...turn });
     snapshot.events.push({
@@ -355,9 +351,6 @@ export class InMemoryTelephonyIngress {
       },
     });
 
-    const conversationMode =
-      options.conversationMode ?? (snapshot.session.openclawSession.label === "pipecat-local-voice" ? "free_caller" : "scripted");
-
     if (conversationMode === "free_caller") {
       applyFreeCallerPipecatFlow(snapshot, turn);
     } else {
@@ -377,6 +370,38 @@ export class InMemoryTelephonyIngress {
     }
 
     refreshOpenClawSessionEvidence(snapshot, turn.timestamp);
+  }
+
+  async previewCallerTurn(
+    callId: string,
+    turn: TranscriptTurn,
+    config: PocConfig,
+    options: CallerTurnOptions = {},
+  ): Promise<CallSnapshot> {
+    const snapshot = this.calls.get(callId);
+
+    if (!snapshot) {
+      throw new Error(`Unknown call id: ${callId}`);
+    }
+
+    const preview = cloneSnapshot(snapshot);
+    this.applyCallerTurn(preview, turn, config, options);
+    return preview;
+  }
+
+  async appendCallerTurn(
+    callId: string,
+    turn: TranscriptTurn,
+    config: PocConfig,
+    options: CallerTurnOptions = {},
+  ): Promise<CallSnapshot> {
+    const snapshot = this.calls.get(callId);
+
+    if (!snapshot) {
+      throw new Error(`Unknown call id: ${callId}`);
+    }
+
+    this.applyCallerTurn(snapshot, turn, config, options);
     return cloneSnapshot(snapshot);
   }
 
