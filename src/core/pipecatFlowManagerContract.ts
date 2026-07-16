@@ -1,5 +1,6 @@
 import type { FlowState } from "./types";
 import { SCRIPTED_CALLER_TURNS } from "./pipecatFlowPrototype";
+import { buildPipecatFlowManagerRuntimePlan } from "./pipecatFlowManagerRuntimePlan";
 
 export const PIPECAT_FLOW_MANAGER_REQUIRED_NODES: FlowState[] = [
   "call_started",
@@ -120,8 +121,14 @@ export const PIPECAT_FLOW_MANAGER_PARITY_FIXTURES = [
 export type PipecatFlowManagerParityFixture = (typeof PIPECAT_FLOW_MANAGER_PARITY_FIXTURES)[number];
 
 export function buildPipecatFlowManagerContractPayload() {
+  const runtimePlan = buildPipecatFlowManagerRuntimePlan({
+    requiredNodes: PIPECAT_FLOW_MANAGER_REQUIRED_NODES,
+    nodeSpecs: PIPECAT_FLOW_MANAGER_NODE_SPECS,
+    requiredGuards: PIPECAT_FLOW_MANAGER_REQUIRED_GUARDS,
+  });
+
   return {
-    status: "parity_harness_defined_implementation_pending",
+    status: runtimePlan.status,
     sidecarFree: true,
     implementationEntryPoint: "scripts/acc_pipecat_voice_pipeline.py",
     parityHarnessCommand: "npm run pipecat:flows:contract",
@@ -130,6 +137,7 @@ export function buildPipecatFlowManagerContractPayload() {
     requiredNodes: PIPECAT_FLOW_MANAGER_REQUIRED_NODES,
     nodeSpecs: PIPECAT_FLOW_MANAGER_NODE_SPECS,
     requiredGuards: PIPECAT_FLOW_MANAGER_REQUIRED_GUARDS,
+    runtimePlan,
     retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
     parityChecks: [
       {
@@ -152,6 +160,6 @@ export function buildPipecatFlowManagerContractPayload() {
       },
     ],
     parityFixtures: PIPECAT_FLOW_MANAGER_PARITY_FIXTURES,
-    acceptanceBlockedUntil: "FlowManager nodes execute these transitions instead of the ACC TypeScript deterministic flow.",
+    acceptanceBlockedUntil: "The ACC caller-turn runtime adapter routes these node handlers through Pipecat FlowManager instead of the TypeScript deterministic flow.",
   };
 }

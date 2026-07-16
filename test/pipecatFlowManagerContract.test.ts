@@ -2,13 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
-import { buildPipecatFlowManagerContractPayload } from "../src/core/pipecatFlowManagerContract";
+import {
+  buildPipecatFlowManagerContractPayload,
+  PIPECAT_FLOW_MANAGER_NODE_SPECS,
+  PIPECAT_FLOW_MANAGER_REQUIRED_GUARDS,
+  PIPECAT_FLOW_MANAGER_REQUIRED_NODES,
+} from "../src/core/pipecatFlowManagerContract";
+import { buildPipecatFlowManagerRuntimePlan } from "../src/core/pipecatFlowManagerRuntimePlan";
 import { includesUnsafeClaim, replayPipecatFlowManagerParityFixtures } from "../src/core/pipecatFlowManagerParity";
 
 test("Pipecat FlowManager contract records required nodes and fail-closed guards", () => {
   const contract = buildPipecatFlowManagerContractPayload();
 
-  assert.equal(contract.status, "parity_harness_defined_implementation_pending");
+  assert.equal(contract.status, "node_handlers_mirrored_adapter_cutover_pending");
   assert.equal(contract.sidecarFree, true);
   assert.equal(contract.parityHarnessCommand, "npm run pipecat:flows:contract");
   assert.deepEqual(contract.requiredNodes, [
@@ -43,6 +49,14 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
   assert.equal(contract.nodeSpecs.find((spec) => spec.node === "operator_steer")?.requiresAccState.includes("operator_controls"), true);
   assert.equal(contract.nodeSpecs.find((spec) => spec.node === "wrap")?.emitsEvents.includes("human_handoff_started"), true);
   assert.equal(contract.requiredGuards.every((guard) => guard.failClosed), true);
+  assert.equal(contract.runtimePlan.status, "node_handlers_mirrored_adapter_cutover_pending");
+  assert.equal(contract.runtimePlan.adapterCutoverPending, true);
+  assert.deepEqual(contract.runtimePlan.missingRequiredNodes, []);
+  assert.deepEqual(
+    contract.runtimePlan.nodeHandlers.map((handler) => handler.node),
+    contract.requiredNodes,
+  );
+  assert.deepEqual(contract.runtimePlan.retainedAccOwnership, contract.retainedAccOwnership);
   assert.equal(contract.retainedAccOwnership.includes("operator_controls"), true);
   assert.equal(contract.parityChecks.find((check) => check.id === "scripted_policy_hold")?.requiredState, "policy_hold");
   assert.equal(contract.parityChecks.find((check) => check.id === "operator_steer_handoff")?.requiredState, "operator_steer");
@@ -69,6 +83,46 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
     assert.equal(fixture.expectedState, parityCheck.requiredState);
     assert.deepEqual(fixture.expectedEvents, parityCheck.requiredEvents);
   }
+});
+
+test("Pipecat FlowManager runtime plan mirrors node handlers and guarded transitions", () => {
+  const runtimePlan = buildPipecatFlowManagerRuntimePlan({
+    requiredNodes: PIPECAT_FLOW_MANAGER_REQUIRED_NODES,
+    nodeSpecs: PIPECAT_FLOW_MANAGER_NODE_SPECS,
+    requiredGuards: PIPECAT_FLOW_MANAGER_REQUIRED_GUARDS,
+  });
+
+  assert.equal(runtimePlan.runtimeAdapter, "pipecat_flows.FlowManager");
+  assert.equal(runtimePlan.adapterCutoverPending, true);
+  assert.deepEqual(runtimePlan.missingRequiredNodes, []);
+  assert.deepEqual(
+    runtimePlan.nodeHandlers.map((handler) => [handler.node, handler.allowedTransitions]),
+    [
+      ["call_started", ["greet", "diagnose", "wrap"]],
+      ["greet", ["diagnose", "wrap"]],
+      ["diagnose", ["policy_hold", "wrap"]],
+      ["policy_hold", ["operator_steer", "wrap"]],
+      ["operator_steer", ["steered_response", "wrap"]],
+      ["steered_response", ["wrap"]],
+      ["wrap", []],
+    ],
+  );
+  assert.deepEqual(
+    runtimePlan.guardedTransitions.map((guard) => [guard.id, guard.sourceNode, guard.targetNode, guard.failClosed]),
+    [
+      ["policy_hold_before_retention_offer", "diagnose", "policy_hold", true],
+      ["operator_steer_required_for_safe_offer", "policy_hold", "operator_steer", true],
+      ["fallback_escalates_to_wrap", "policy_hold", "wrap", true],
+    ],
+  );
+  assert.deepEqual(runtimePlan.nodeHandlers.find((handler) => handler.node === "diagnose")?.guardIds, [
+    "policy_hold_before_retention_offer",
+  ]);
+  assert.deepEqual(runtimePlan.nodeHandlers.find((handler) => handler.node === "policy_hold")?.guardIds, [
+    "operator_steer_required_for_safe_offer",
+    "fallback_escalates_to_wrap",
+  ]);
+  assert.equal(runtimePlan.nodeHandlers.find((handler) => handler.node === "operator_steer")?.accStateInputs.includes("operator_controls"), true);
 });
 
 test("Pipecat FlowManager parity fixtures replay against the current ACC flow", async () => {
