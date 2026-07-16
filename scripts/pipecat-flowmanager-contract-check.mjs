@@ -46,6 +46,15 @@ assert.deepEqual(contract.adapterCutoverPreconditions.map((precondition) => [pre
 assert.deepEqual(contract.adapterCutoverPreconditions, contract.runtimePlan.cutoverPreconditions);
 assert.deepEqual(contract.runtimePlan.missingRequiredNodes, []);
 assert.deepEqual(contract.runtimePlan.nodeHandlers.map((handler) => handler.node), contract.requiredNodes);
+assert.deepEqual(contract.runtimePlan.cutoverSequence.map((step) => [step.id, step.status]), [
+  ["mirror_node_handlers", "complete"],
+  ["lock_fail_closed_parity", "complete"],
+  ["route_caller_turns_through_flowmanager", "pending"],
+]);
+assert.equal(
+  contract.runtimePlan.cutoverSequence.at(-1)?.blocker,
+  "typescript_deterministic_flow_still_owns_runtime_turns",
+);
 assert.ok(contract.runtimePlan.nodeHandlers.find((handler) => handler.node === "policy_hold").guardIds.includes("operator_steer_required_for_safe_offer"));
 assert.ok(contract.parityChecks.some((check) => check.id === "runtime_failure_fail_closed"));
 assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "scripted_policy_hold" && fixture.expectedState === "policy_hold"));
