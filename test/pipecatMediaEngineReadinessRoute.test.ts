@@ -40,7 +40,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.equal(payload.ok, true);
     assert.equal(payload.route, "/api/pipecat-media-engine/readiness");
     assert.equal(payload.issue, "agonza1/agentic-contact-center#214");
-    assert.equal(payload.status, "shared_contract_ready_local_sip_playback_proof_pending");
+    assert.equal(payload.status, "shared_media_live_proof_complete_flows_pending");
     assert.equal(payload.reviewReady, false);
     assert.equal(payload.pipecat14Alignment.issue, "agonza1/agentic-contact-center#222");
     assert.equal(payload.pipecat14Alignment.packageRequirement, "pipecat-ai[webrtc]==1.4.0");
@@ -57,7 +57,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.transport, "FreeSWITCH Verto/WebRTC agent leg");
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.sharesPipelineProcessors, true);
     assert.equal(payload.pipecat14Alignment.sipTransportStrategy.processorContractAligned, true);
-    assert.equal(payload.pipecat14Alignment.sipTransportStrategy.liveMediaProofComplete, false);
+    assert.equal(payload.pipecat14Alignment.sipTransportStrategy.liveMediaProofComplete, true);
     assert.match(payload.pipecat14Alignment.sipTransportStrategy.preferredRoute, /acc-pipecat/);
     assert.match(payload.pipecat14Alignment.sipTransportStrategy.legacyFallback, /freeswitch-acc-bridge/);
     assert.deepEqual(payload.pipecat14Alignment.sipTransportStrategy.pipelineUnificationDelta, [
@@ -66,7 +66,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       "Keep SIP/RTP and WebRTC DTLS-SRTP/Opus ownership inside FreeSWITCH; Pipecat should only see decoded PCM frames.",
     ]);
     assert.equal(payload.pipecat14Alignment.flowsDecision.owner, "ACC TypeScript flow for current cancellation-rescue MVP");
-    assert.equal(payload.pipecat14Alignment.flowsDecision.flowManagerRequiredNow, false);
+    assert.equal(payload.pipecat14Alignment.flowsDecision.flowManagerRequiredNow, true);
     assert.deepEqual(payload.validationCommands, [
       "npm test",
       "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
@@ -87,12 +87,12 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     const sipAdapter = adapters.find((adapter: any) => adapter.id === "sip_freeswitch_verto");
     assert.equal(sipAdapter.implementedNow, true);
     assert.equal(sipAdapter.processorContractAligned, true);
-    assert.equal(sipAdapter.liveMediaProofComplete, false);
+    assert.equal(sipAdapter.liveMediaProofComplete, true);
     assert.equal(sipAdapter.currentEntryPoint, "scripts/pipecat-verto-agent-bridge.py");
     assert.match(sipAdapter.freeswitchDialplan, /acc-pipecat/);
     assert.match(sipAdapter.pipelineUnificationDelta, /build_acc_voice_pipeline\(\)/);
     assert.match(sipAdapter.pipelineUnificationDelta, /Verto WebRTC dialog answer/);
-    assert.match(sipAdapter.blocker, /Verto media answer is implemented/);
+    assert.equal(sipAdapter.blocker, null);
     const legacySipAdapter = adapters.find((adapter: any) => adapter.id === "sip_freeswitch_rtp_legacy");
     assert.equal(legacySipAdapter.implementedNow, true);
     assert.match(legacySipAdapter.blocker, /proof diagnostics/);
@@ -106,7 +106,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.match(adapters.find((adapter: any) => adapter.id === "signalwire_sip_trunk").blocker, /past-call import remains out of scope/);
 
     assert.deepEqual(payload.reviewBlockers, [
-      "Local 8600 now routes to the preferred FreeSWITCH Verto/WebRTC agent leg, but live softphone capture still needs to prove caller PCM reaches Pipecat and Kokoro/Pipecat audio returns through that same active call.",
+      "Pipecat Flows/FlowManager does not yet own the cancellation-rescue conversation flow; ACC TypeScript still owns policy hold, operator steer, proof artifacts, and queue state.",
     ]);
     assert.equal(
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "browser_webrtc_uses_pipecat_rtc_asr_kokoro").passed,
@@ -118,7 +118,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     );
     assert.equal(
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "sip_caller_audible_playback_live_proof").passed,
-      false,
+      true,
     );
     assert.equal(
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "signalwire_past_call_gap_explicit").passed,
@@ -136,8 +136,13 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "pipecat_14_small_webrtc_migration_recorded").passed,
       true,
     );
+    assert.equal(
+      payload.acceptanceCriteria.find((criterion: any) => criterion.name === "pipecat_flows_flowmanager_owns_conversation_flow").passed,
+      false,
+    );
     assert.equal(payload.remainingWork.some((item: string) => item.includes("Implement the Verto incoming-call media answer")), false);
-    assert.equal(payload.remainingWork.some((item: string) => item.includes("Capture live softphone evidence")), true);
+    assert.equal(payload.remainingWork.some((item: string) => item.includes("Capture live softphone evidence")), false);
+    assert.equal(payload.remainingWork.some((item: string) => item.includes("FlowManager")), true);
     assert.deepEqual(payload.liveSipProofAcceptance, {
       requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_verto_webrtc", "caller_audible_playback"],
       requiredRuntimeEndpoints: [
@@ -158,13 +163,21 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       proofBundleCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
     });
     assert.deepEqual(payload.nextUnblockedSlice, {
-      id: "live_softphone_playback_acceptance",
-      title: "Capture end-to-end softphone playback proof",
-      adapter: "sip_freeswitch_verto",
-      entryPoint: "scripts/pipecat-verto-agent-bridge.py",
-      targetContract: "softphone SIP call -> FreeSWITCH Verto/WebRTC agent leg -> Pipecat input frames -> rtc-asr transcript -> ACC turn -> Kokoro/Pipecat TTS -> same Verto/WebRTC leg heard by caller",
-      verification: "scripts/live-sip-proof-bundle.mjs must carry live_capture, rtc_asr_live, pipecat_verto_webrtc, and caller-audible playback proof before issue #222 can be accepted.",
-      acceptance: payload.liveSipProofAcceptance,
+      id: "flow_manager_conversation_migration",
+      title: "Move cancellation-rescue policy flow into Pipecat Flows/FlowManager",
+      adapter: "pipecat_flows",
+      entryPoint: "scripts/acc_pipecat_voice_pipeline.py",
+      targetContract: "FlowManager nodes own cancellation-rescue state transitions while ACC TypeScript retains product state, operator controls, proof artifacts, and queue state.",
+      verification: "Add a sidecar-free FlowManager contract check plus route tests proving policy_hold and operator_steer still fail closed before #222 can be accepted.",
+      acceptance: {
+        requiredFlowNodes: ["call_started", "greet", "diagnose", "policy_hold", "operator_steer", "steered_response", "wrap"],
+        retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
+        rejectedShortcuts: [
+          "typescript_only_flow_claimed_as_flowmanager",
+          "flowmanager_without_policy_hold_guard",
+          "flowmanager_without_operator_steer_handoff",
+        ],
+      },
     });
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

@@ -4,8 +4,8 @@ const issue222 = "agonza1/agentic-contact-center#222";
 const issue222Url = "https://github.com/agonza1/agentic-contact-center/issues/222";
 
 export function buildPipecatMediaEngineReadinessPayload() {
-  const liveSoftphoneProofBlocker =
-    "Local 8600 now routes to the preferred FreeSWITCH Verto/WebRTC agent leg, but live softphone capture still needs to prove caller PCM reaches Pipecat and Kokoro/Pipecat audio returns through that same active call.";
+  const flowManagerBlocker =
+    "Pipecat Flows/FlowManager does not yet own the cancellation-rescue conversation flow; ACC TypeScript still owns policy hold, operator steer, proof artifacts, and queue state.";
   const liveSipProofAcceptance = {
     requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_verto_webrtc", "caller_audible_playback"],
     requiredRuntimeEndpoints: [
@@ -26,13 +26,21 @@ export function buildPipecatMediaEngineReadinessPayload() {
     proofBundleCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
   };
   const nextUnblockedSlice = {
-    id: "live_softphone_playback_acceptance",
-    title: "Capture end-to-end softphone playback proof",
-    adapter: "sip_freeswitch_verto",
-    entryPoint: "scripts/pipecat-verto-agent-bridge.py",
-    targetContract: "softphone SIP call -> FreeSWITCH Verto/WebRTC agent leg -> Pipecat input frames -> rtc-asr transcript -> ACC turn -> Kokoro/Pipecat TTS -> same Verto/WebRTC leg heard by caller",
-    verification: "scripts/live-sip-proof-bundle.mjs must carry live_capture, rtc_asr_live, pipecat_verto_webrtc, and caller-audible playback proof before issue #222 can be accepted.",
-    acceptance: liveSipProofAcceptance,
+    id: "flow_manager_conversation_migration",
+    title: "Move cancellation-rescue policy flow into Pipecat Flows/FlowManager",
+    adapter: "pipecat_flows",
+    entryPoint: "scripts/acc_pipecat_voice_pipeline.py",
+    targetContract: "FlowManager nodes own cancellation-rescue state transitions while ACC TypeScript retains product state, operator controls, proof artifacts, and queue state.",
+    verification: "Add a sidecar-free FlowManager contract check plus route tests proving policy_hold and operator_steer still fail closed before #222 can be accepted.",
+    acceptance: {
+      requiredFlowNodes: ["call_started", "greet", "diagnose", "policy_hold", "operator_steer", "steered_response", "wrap"],
+      retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
+      rejectedShortcuts: [
+        "typescript_only_flow_claimed_as_flowmanager",
+        "flowmanager_without_policy_hold_guard",
+        "flowmanager_without_operator_steer_handoff",
+      ],
+    },
   };
 
   return {
@@ -40,7 +48,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
     route: "/api/pipecat-media-engine/readiness",
     issue: issue214,
     issueUrl: issue214Url,
-    status: "shared_contract_ready_local_sip_playback_proof_pending",
+    status: "shared_media_live_proof_complete_flows_pending",
     reviewReady: false,
     pipecat14Alignment: {
       issue: issue222,
@@ -59,10 +67,10 @@ export function buildPipecatMediaEngineReadinessPayload() {
         transport: "FreeSWITCH Verto/WebRTC agent leg",
         sharesPipelineProcessors: true,
         processorContractAligned: true,
-        liveMediaProofComplete: false,
+        liveMediaProofComplete: true,
         preferredRoute: "Linphone SIP 1000 -> FreeSWITCH 8600 -> registered Verto user acc-pipecat -> Pipecat Verto/WebRTC sidecar",
         legacyFallback: "scripts/freeswitch-acc-bridge.mjs remains a proof/debug bridge and must not be used as the acceptance route for #222.",
-        note: "SIP is now targeted at a FreeSWITCH-owned WebRTC/Verto leg. It must not be called complete until that active leg feeds the shared Pipecat processors and live caller-audible proof exists.",
+        note: "SIP is targeted at a FreeSWITCH-owned WebRTC/Verto leg and has strict local proof for accepted SIP/RTP, current-call rtc-asr final transcript evidence, and caller-audible Kokoro/Pipecat playback.",
         pipelineUnificationDelta: [
           "Answer incoming Verto dialogs with a Pipecat media transport that calls build_acc_voice_pipeline().",
           "Reuse the same RtcAsrTurnProcessor, AccCallerTurnProcessor, and KokoroTtsProcessor stage-event contract as the browser SmallWebRTC path.",
@@ -71,8 +79,8 @@ export function buildPipecatMediaEngineReadinessPayload() {
       },
       flowsDecision: {
         owner: "ACC TypeScript flow for current cancellation-rescue MVP",
-        flowManagerRequiredNow: false,
-        rationale: "Policy hold, operator steer, proof artifacts, and queue state already live in ACC; Pipecat Flows can be revisited after the shared media Pipeline is live.",
+        flowManagerRequiredNow: true,
+        rationale: "The shared browser/SIP media Pipeline is now live-proofed; the remaining #222 acceptance gap is moving the cancellation-rescue conversation structure into Pipecat Flows/FlowManager while ACC retains product state and proof ownership.",
       },
       deprecatedBridges: [
         {
@@ -108,12 +116,12 @@ export function buildPipecatMediaEngineReadinessPayload() {
           transport: "SIP/FreeSWITCH bridged to Verto/WebRTC",
           implementedNow: true,
           processorContractAligned: true,
-          liveMediaProofComplete: false,
+          liveMediaProofComplete: true,
           currentEntryPoint: "scripts/pipecat-verto-agent-bridge.py",
           freeswitchDialplan: "freeswitch/conf/dialplan/default/acc_local_sip.xml bridges 8600 to ${verto_contact(acc-pipecat@$${domain})}",
           path: "SIP/FreeSWITCH RTP -> Verto/WebRTC agent leg -> Pipecat PCM frames -> rtc-asr -> ACC caller-turn -> Kokoro -> same Verto/WebRTC leg -> SIP caller",
-          pipelineUnificationDelta: "Verto WebRTC dialog answers are routed through build_acc_voice_pipeline(); strict acceptance still waits on caller-side playback capture.",
-          blocker: `${liveSoftphoneProofBlocker} The Verto media answer is implemented, but live caller audio plus returned Kokoro/Pipecat playback proof is still required.`,
+          pipelineUnificationDelta: "Verto WebRTC dialog answers are routed through build_acc_voice_pipeline(); strict local acceptance now has same-call rtc-asr final transcript evidence plus caller-side return audio proof.",
+          blocker: null,
         },
         {
           id: "sip_freeswitch_rtp_legacy",
@@ -155,13 +163,13 @@ export function buildPipecatMediaEngineReadinessPayload() {
       "Operator console payloads label local_sip, signalwire_live, live_capture, generated_media, rtc_asr_live, and rtc_asr_blocked modes.",
     ],
     remainingWork: [
-      "Run the live fixture/tester injection adapter with sidecars in CI or local proof mode and archive captured OutputAudioRawFrame evidence with the media-engine readiness artifact.",
-      "Capture live softphone evidence that the caller hears Kokoro/Pipecat TTS returned through the same bridged Verto/WebRTC leg on the 8600 path.",
+      "Move the cancellation-rescue conversation graph into Pipecat Flows/FlowManager while preserving ACC-owned product state, operator controls, proof artifacts, and queue state.",
+      "Add a sidecar-free FlowManager contract check that proves policy_hold, operator_steer, fail-closed fallback, and wrap transitions still match the current ACC route behavior.",
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
     ],
     nextUnblockedSlice,
     liveSipProofAcceptance,
-    reviewBlockers: [liveSoftphoneProofBlocker],
+    reviewBlockers: [flowManagerBlocker],
     acceptanceCriteria: [
       {
         name: "browser_webrtc_uses_pipecat_rtc_asr_kokoro",
@@ -175,8 +183,8 @@ export function buildPipecatMediaEngineReadinessPayload() {
       },
       {
         name: "sip_caller_audible_playback_live_proof",
-        passed: false,
-        evidence: "SIP remains blocked until a fresh Linphone/FreeSWITCH 8600 proof bundle shows caller-audible Kokoro/Pipecat playback plus current rtc-asr final transcript evidence.",
+        passed: true,
+        evidence: "Merged PR #274 and QA rerun proved authenticated local SIP 1000 -> 8600, accepted RTP, same-call rtc-asr final transcript evidence, and non-silent caller-side Kokoro/Pipecat return audio through the FreeSWITCH Verto/WebRTC leg.",
       },
       {
         name: "shared_media_engine_contract_documented",
@@ -212,6 +220,11 @@ export function buildPipecatMediaEngineReadinessPayload() {
         name: "pipecat_14_small_webrtc_migration_recorded",
         passed: true,
         evidence: "requirements-pipecat-voice.txt requests pipecat-ai[webrtc]==1.4.0, the browser sidecar imports SmallWebRTCTransport/Pipeline, and docs/runtime-reference.md records the ACC-owned Flows decision.",
+      },
+      {
+        name: "pipecat_flows_flowmanager_owns_conversation_flow",
+        passed: false,
+        evidence: "The cancellation-rescue flow still runs in ACC TypeScript; #222 acceptance still requires FlowManager nodes for call_started, greet, diagnose, policy_hold, operator_steer, steered_response, and wrap.",
       },
     ],
     validationCommands: ["npm test", "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness"],

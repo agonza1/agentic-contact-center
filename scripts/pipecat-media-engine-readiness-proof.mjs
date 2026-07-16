@@ -97,7 +97,7 @@ async function main() {
     assert.equal(response.payload.ok, true);
     assert.equal(response.payload.route, "/api/pipecat-media-engine/readiness");
     assert.equal(response.payload.issue, "agonza1/agentic-contact-center#214");
-    assert.equal(response.payload.status, "shared_contract_ready_local_sip_playback_proof_pending");
+    assert.equal(response.payload.status, "shared_media_live_proof_complete_flows_pending");
     return response.payload;
   });
 
