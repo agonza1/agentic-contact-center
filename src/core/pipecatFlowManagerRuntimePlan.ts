@@ -28,7 +28,9 @@ export interface PipecatFlowManagerNodeHandlerPlan {
 export interface PipecatFlowManagerRuntimePlanValidation {
   ok: boolean;
   missingRequiredNodes: FlowState[];
+  duplicateNodeHandlers: FlowState[];
   transitionsToUnknownNodes: Array<{ sourceNode: FlowState; targetNode: FlowState }>;
+  guardIdsOnDuplicateTransitions: string[];
   guardsOnUnknownTransitions: string[];
   nonFailClosedGuardIds: string[];
 }
@@ -133,11 +135,29 @@ export function validatePipecatFlowManagerRuntimePlan(input: {
   const implementedNodes = new Set(input.nodeHandlers.map((handler) => handler.node));
   const requiredNodeSet = new Set(input.requiredNodes);
   const missingRequiredNodes = input.requiredNodes.filter((node) => !implementedNodes.has(node));
+  const nodeHandlerCounts = new Map<FlowState, number>();
+  for (const handler of input.nodeHandlers) {
+    nodeHandlerCounts.set(handler.node, (nodeHandlerCounts.get(handler.node) ?? 0) + 1);
+  }
+  const duplicateNodeHandlers = Array.from(nodeHandlerCounts)
+    .filter(([, count]) => count > 1)
+    .map(([node]) => node);
   const transitionsToUnknownNodes = input.nodeHandlers.flatMap((handler) =>
     handler.allowedTransitions
       .filter((targetNode) => !requiredNodeSet.has(targetNode))
       .map((targetNode) => ({ sourceNode: handler.node, targetNode })),
   );
+  const guardTransitionKeys = new Set<string>();
+  const guardIdsOnDuplicateTransitions = input.requiredGuards
+    .filter((guard) => {
+      const transitionKey = `${guard.sourceNode}->${guard.targetNode}`;
+      if (guardTransitionKeys.has(transitionKey)) {
+        return true;
+      }
+      guardTransitionKeys.add(transitionKey);
+      return false;
+    })
+    .map((guard) => guard.id);
   const guardsOnUnknownTransitions = input.requiredGuards
     .filter((guard) => {
       const sourceHandler = input.nodeHandlers.find((handler) => handler.node === guard.sourceNode);
@@ -148,11 +168,15 @@ export function validatePipecatFlowManagerRuntimePlan(input: {
 
   return {
     ok: missingRequiredNodes.length === 0
+      && duplicateNodeHandlers.length === 0
       && transitionsToUnknownNodes.length === 0
+      && guardIdsOnDuplicateTransitions.length === 0
       && guardsOnUnknownTransitions.length === 0
       && nonFailClosedGuardIds.length === 0,
     missingRequiredNodes,
+    duplicateNodeHandlers,
     transitionsToUnknownNodes,
+    guardIdsOnDuplicateTransitions,
     guardsOnUnknownTransitions,
     nonFailClosedGuardIds,
   };

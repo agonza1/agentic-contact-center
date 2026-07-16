@@ -77,7 +77,9 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
   assert.deepEqual(contract.runtimePlan.validation, {
     ok: true,
     missingRequiredNodes: [],
+    duplicateNodeHandlers: [],
     transitionsToUnknownNodes: [],
+    guardIdsOnDuplicateTransitions: [],
     guardsOnUnknownTransitions: [],
     nonFailClosedGuardIds: [],
   });
@@ -180,10 +182,33 @@ test("Pipecat FlowManager runtime plan mirrors node handlers and guarded transit
   assert.deepEqual(runtimePlan.validation, {
     ok: true,
     missingRequiredNodes: [],
+    duplicateNodeHandlers: [],
     transitionsToUnknownNodes: [],
+    guardIdsOnDuplicateTransitions: [],
     guardsOnUnknownTransitions: [],
     nonFailClosedGuardIds: [],
   });
+});
+
+test("Pipecat FlowManager runtime plan validation flags duplicate ownership", () => {
+  const runtimePlan = buildPipecatFlowManagerRuntimePlan({
+    requiredNodes: PIPECAT_FLOW_MANAGER_REQUIRED_NODES,
+    nodeSpecs: [
+      ...PIPECAT_FLOW_MANAGER_NODE_SPECS,
+      PIPECAT_FLOW_MANAGER_NODE_SPECS[0],
+    ],
+    requiredGuards: [
+      ...PIPECAT_FLOW_MANAGER_REQUIRED_GUARDS,
+      {
+        ...PIPECAT_FLOW_MANAGER_REQUIRED_GUARDS[0],
+        id: "duplicate_policy_hold_guard",
+      },
+    ],
+  });
+
+  assert.equal(runtimePlan.validation.ok, false);
+  assert.deepEqual(runtimePlan.validation.duplicateNodeHandlers, ["call_started"]);
+  assert.deepEqual(runtimePlan.validation.guardIdsOnDuplicateTransitions, ["duplicate_policy_hold_guard"]);
 });
 
 test("Pipecat FlowManager parity fixtures replay against the current ACC flow", async () => {

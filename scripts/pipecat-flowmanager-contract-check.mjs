@@ -45,6 +45,15 @@ assert.deepEqual(contract.adapterCutoverPreconditions.map((precondition) => [pre
 ]);
 assert.deepEqual(contract.adapterCutoverPreconditions, contract.runtimePlan.cutoverPreconditions);
 assert.deepEqual(contract.runtimePlan.missingRequiredNodes, []);
+assert.deepEqual(contract.runtimePlan.validation, {
+  ok: true,
+  missingRequiredNodes: [],
+  duplicateNodeHandlers: [],
+  transitionsToUnknownNodes: [],
+  guardIdsOnDuplicateTransitions: [],
+  guardsOnUnknownTransitions: [],
+  nonFailClosedGuardIds: [],
+});
 assert.deepEqual(contract.runtimePlan.nodeHandlers.map((handler) => handler.node), contract.requiredNodes);
 assert.deepEqual(contract.runtimePlan.cutoverSequence.map((step) => [step.id, step.status]), [
   ["mirror_node_handlers", "complete"],
