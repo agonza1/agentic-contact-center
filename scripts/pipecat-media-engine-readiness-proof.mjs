@@ -129,6 +129,10 @@ async function main() {
         title: readiness.nextUnblockedSlice.title,
         adapter: readiness.nextUnblockedSlice.adapter,
         entryPoint: readiness.nextUnblockedSlice.entryPoint,
+        migrationStages: readiness.nextUnblockedSlice.migrationStages.map((stage) => ({
+          id: stage.id,
+          verificationCommand: stage.verificationCommand,
+        })),
       },
       liveSipProofAcceptance: readiness.liveSipProofAcceptance,
       remainingWorkCount: readiness.remainingWork.length,
