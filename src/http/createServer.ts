@@ -1916,6 +1916,27 @@ function buildCallPayload(snapshot: CallSnapshot) {
   };
 }
 
+function buildDeliveryAckSnapshotVersion(snapshot: CallSnapshot): string {
+  const latestEvent = snapshot.events.at(-1);
+  const latestTranscriptTurn = snapshot.transcript.at(-1);
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        flowState: snapshot.flowState,
+        transcriptLength: snapshot.transcript.length,
+        latestTranscriptSpeaker: latestTranscriptTurn?.speaker ?? null,
+        latestTranscriptAt: latestTranscriptTurn?.timestamp ?? null,
+        eventCount: snapshot.events.length,
+        latestEventType: latestEvent?.type ?? null,
+        latestEventAt: latestEvent?.at ?? null,
+        latencyMarkCount: snapshot.latencyMarks.length,
+        operatorSteer: snapshot.operatorSteer,
+        demoFallback: snapshot.demoFallback,
+      }),
+    )
+    .digest("hex");
+}
+
 function buildLatestLatencyTrail(snapshot: CallSnapshot): string | null {
   const latestLatencyMark = snapshot.latencyMarks.at(-1);
   return latestLatencyMark
@@ -5505,6 +5526,12 @@ async function routeRequest(
 
     try {
       if (commitMode === "delivery_ack") {
+        const currentSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
+        if (!currentSnapshot) {
+          writeNotFound(response);
+          return;
+        }
+        const snapshotVersion = buildDeliveryAckSnapshotVersion(currentSnapshot);
         const snapshot = await ingress.previewCallerTurn(callerTurnMatch[1], turn, config, {
           conversationMode,
         });
@@ -5515,6 +5542,7 @@ async function routeRequest(
             status: "pending",
             callId: callerTurnMatch[1],
             callerTranscript: text,
+            snapshotVersion,
             timestamp,
             conversationMode: conversationMode ?? null,
           },
@@ -5563,6 +5591,12 @@ async function routeRequest(
       return;
     }
 
+    const expectedSnapshotVersion = getOptionalTrimmedString(body.expectedSnapshotVersion);
+    if (!expectedSnapshotVersion) {
+      writeBadRequest(response, "caller_turn_commit_snapshot_version_required");
+      return;
+    }
+
     const timestamp = normalizeTimestamp(body.timestamp, "caller_turn_timestamp_invalid");
     if (typeof timestamp !== "string") {
       writeBadRequest(response, timestamp.error);
@@ -5576,6 +5610,15 @@ async function routeRequest(
     };
 
     try {
+      const currentSnapshot = await ingress.getSnapshot(callerTurnCommitMatch[1]);
+      if (!currentSnapshot) {
+        writeNotFound(response);
+        return;
+      }
+      if (buildDeliveryAckSnapshotVersion(currentSnapshot) !== expectedSnapshotVersion) {
+        writeBadRequest(response, "caller_turn_commit_stale");
+        return;
+      }
       const preview = await ingress.previewCallerTurn(callerTurnCommitMatch[1], turn, config, {
         conversationMode,
       });
@@ -5595,6 +5638,7 @@ async function routeRequest(
           callId: callerTurnCommitMatch[1],
           callerTranscript: text,
           expectedAgentText,
+          expectedSnapshotVersion,
           timestamp,
           conversationMode: conversationMode ?? null,
         },
