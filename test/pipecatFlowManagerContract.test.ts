@@ -51,6 +51,15 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
   assert.equal(contract.requiredGuards.every((guard) => guard.failClosed), true);
   assert.equal(contract.runtimePlan.status, "node_handlers_mirrored_adapter_cutover_pending");
   assert.equal(contract.runtimePlan.adapterCutoverPending, true);
+  assert.deepEqual(
+    contract.adapterCutoverPreconditions.map((precondition) => [precondition.id, precondition.satisfied]),
+    [
+      ["node_handlers_mirrored", true],
+      ["fail_closed_guards_locked", true],
+      ["caller_turn_adapter_cutover", false],
+    ],
+  );
+  assert.deepEqual(contract.adapterCutoverPreconditions, contract.runtimePlan.cutoverPreconditions);
   assert.deepEqual(contract.runtimePlan.missingRequiredNodes, []);
   assert.deepEqual(
     contract.runtimePlan.nodeHandlers.map((handler) => handler.node),
@@ -136,6 +145,12 @@ test("Pipecat FlowManager runtime plan mirrors node handlers and guarded transit
     "fallback_escalates_to_wrap",
   ]);
   assert.equal(runtimePlan.nodeHandlers.find((handler) => handler.node === "operator_steer")?.accStateInputs.includes("operator_controls"), true);
+  assert.deepEqual(
+    runtimePlan.cutoverPreconditions.map((precondition) => precondition.id),
+    ["node_handlers_mirrored", "fail_closed_guards_locked", "caller_turn_adapter_cutover"],
+  );
+  assert.equal(runtimePlan.cutoverPreconditions.filter((precondition) => precondition.satisfied).length, 2);
+  assert.equal(runtimePlan.cutoverPreconditions.at(-1)?.verificationCommand, "npm test");
 });
 
 test("Pipecat FlowManager parity fixtures replay against the current ACC flow", async () => {

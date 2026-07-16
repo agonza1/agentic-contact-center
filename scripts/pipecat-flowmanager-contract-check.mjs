@@ -38,6 +38,12 @@ assert.ok(contract.requiredGuards.some((guard) => guard.id === "policy_hold_befo
 assert.ok(contract.requiredGuards.some((guard) => guard.id === "operator_steer_required_for_safe_offer" && guard.failClosed));
 assert.equal(contract.runtimePlan.status, "node_handlers_mirrored_adapter_cutover_pending");
 assert.equal(contract.runtimePlan.adapterCutoverPending, true);
+assert.deepEqual(contract.adapterCutoverPreconditions.map((precondition) => [precondition.id, precondition.satisfied]), [
+  ["node_handlers_mirrored", true],
+  ["fail_closed_guards_locked", true],
+  ["caller_turn_adapter_cutover", false],
+]);
+assert.deepEqual(contract.adapterCutoverPreconditions, contract.runtimePlan.cutoverPreconditions);
 assert.deepEqual(contract.runtimePlan.missingRequiredNodes, []);
 assert.deepEqual(contract.runtimePlan.nodeHandlers.map((handler) => handler.node), contract.requiredNodes);
 assert.ok(contract.runtimePlan.nodeHandlers.find((handler) => handler.node === "policy_hold").guardIds.includes("operator_steer_required_for_safe_offer"));

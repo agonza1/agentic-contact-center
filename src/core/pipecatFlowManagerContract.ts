@@ -155,6 +155,7 @@ export function buildPipecatFlowManagerContractPayload() {
     nodeSpecs: PIPECAT_FLOW_MANAGER_NODE_SPECS,
     requiredGuards: PIPECAT_FLOW_MANAGER_REQUIRED_GUARDS,
     runtimePlan,
+    adapterCutoverPreconditions: runtimePlan.cutoverPreconditions,
     retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
     parityChecks: [
       {
