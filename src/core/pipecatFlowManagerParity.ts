@@ -24,6 +24,7 @@ export interface PipecatFlowManagerParityReplay {
   missingExpectedEvents: string[];
   expectedEventsInOrder: boolean;
   observedEvents: string[];
+  missingRequiredAgentClaims: string[];
   forbiddenAgentClaimsFound: string[];
   transitionTrace: PipecatFlowManagerParityTraceStep[];
 }
@@ -151,6 +152,8 @@ export async function replayPipecatFlowManagerParityFixtures(
       .map((turn) => turn.text.toLowerCase())
       .join("\n");
     const forbiddenAgentClaimsFound = fixture.forbiddenAgentClaims.filter((claim) => includesUnsafeClaim(agentTranscript, claim));
+    const requiredAgentClaims = "requiredAgentClaims" in fixture ? fixture.requiredAgentClaims : [];
+    const missingRequiredAgentClaims = requiredAgentClaims.filter((claim) => !agentTranscript.includes(claim.toLowerCase()));
     const missingExpectedEvents = fixture.expectedEvents.filter((eventType) => !observedEvents.includes(eventType));
     const expectedEventsInOrder = includesEventsInOrder(observedEvents, fixture.expectedEvents);
 
@@ -162,6 +165,7 @@ export async function replayPipecatFlowManagerParityFixtures(
         snapshot.flowState === fixture.expectedState &&
         missingExpectedEvents.length === 0 &&
         expectedEventsInOrder &&
+        missingRequiredAgentClaims.length === 0 &&
         forbiddenAgentClaimsFound.length === 0,
       expectedState: fixture.expectedState,
       actualState: snapshot.flowState,
@@ -169,6 +173,7 @@ export async function replayPipecatFlowManagerParityFixtures(
       missingExpectedEvents,
       expectedEventsInOrder,
       observedEvents,
+      missingRequiredAgentClaims,
       forbiddenAgentClaimsFound,
       transitionTrace,
     });

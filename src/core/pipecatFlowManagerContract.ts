@@ -118,6 +118,15 @@ export const PIPECAT_FLOW_MANAGER_PARITY_FIXTURES = [
     forbiddenAgentClaims: ["billing credit", "discount approved", "premium credit"],
   },
   {
+    id: "operator_approval_safe_response",
+    callerTurns: SCRIPTED_CALLER_TURNS.slice(0, 3),
+    operatorAction: "approve_offer",
+    expectedState: "steered_response",
+    expectedEvents: ["operator_steer_requested", "operator_steer_applied"],
+    requiredAgentClaims: ["retention specialist follow-up"],
+    forbiddenAgentClaims: ["billing credit", "discount approved", "premium credit"],
+  },
+  {
     id: "runtime_failure_fail_closed",
     injectedFailure: "pipecat_runtime_failure",
     expectedState: "wrap",
@@ -165,6 +174,12 @@ export function buildPipecatFlowManagerContractPayload() {
         input: "operator denies retention offer after the safe-offer review boundary",
         requiredState: "steered_response",
         requiredEvents: ["operator_steer_requested", "operator_steer_applied", "operator_offer_denied"],
+      },
+      {
+        id: "operator_approval_safe_response",
+        input: "operator approves the bounded safe follow-up after the safe-offer review boundary",
+        requiredState: "steered_response",
+        requiredEvents: ["operator_steer_requested", "operator_steer_applied"],
       },
       {
         id: "runtime_failure_fail_closed",
