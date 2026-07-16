@@ -38,6 +38,14 @@ assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "scripted_pol
 assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "operator_steer_handoff" && fixture.expectedEvents.includes("operator_steer_requested")));
 assert.ok(contract.parityFixtures.every((fixture) => fixture.forbiddenAgentClaims.includes("billing credit")));
 
+const parityFixturesById = new Map(contract.parityFixtures.map((fixture) => [fixture.id, fixture]));
+for (const parityCheck of contract.parityChecks) {
+  const fixture = parityFixturesById.get(parityCheck.id);
+  assert.ok(fixture, `missing parity fixture for ${parityCheck.id}`);
+  assert.equal(fixture.expectedState, parityCheck.requiredState);
+  assert.deepEqual(fixture.expectedEvents, parityCheck.requiredEvents);
+}
+
 if (outputPath) {
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, `${JSON.stringify({ ok: true, generatedAt: new Date().toISOString(), contract }, null, 2)}\n`);

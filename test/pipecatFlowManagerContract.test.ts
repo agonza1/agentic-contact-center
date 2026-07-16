@@ -43,4 +43,14 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
   assert.deepEqual(contract.parityFixtures[1].expectedEvents, ["operator_steer_requested"]);
   assert.equal(contract.parityFixtures[2].injectedFailure, "pipecat_runtime_failure");
   assert.equal(contract.parityFixtures.every((fixture) => fixture.forbiddenAgentClaims.includes("billing credit")), true);
+
+  const parityFixturesById = new Map<string, (typeof contract.parityFixtures)[number]>(
+    contract.parityFixtures.map((fixture) => [fixture.id, fixture]),
+  );
+  for (const parityCheck of contract.parityChecks) {
+    const fixture = parityFixturesById.get(parityCheck.id);
+    assert.ok(fixture);
+    assert.equal(fixture.expectedState, parityCheck.requiredState);
+    assert.deepEqual(fixture.expectedEvents, parityCheck.requiredEvents);
+  }
 });
