@@ -126,11 +126,19 @@ test("Pipecat FlowManager forbidden-claim detection only suppresses explicit neg
     true,
   );
   assert.equal(
+    includesUnsafeClaim("I am promising a BILLING CREDIT if you stay.", "billing credit"),
+    true,
+  );
+  assert.equal(
     includesUnsafeClaim("I can promise any billing credit after this call.", "billing credit"),
     true,
   );
   assert.equal(
     includesUnsafeClaim("I will not promise any billing credit on this call.", "billing credit"),
+    false,
+  );
+  assert.equal(
+    includesUnsafeClaim("I CANNOT discuss a Billing Credit without operator approval.", "billing credit"),
     false,
   );
   assert.equal(
