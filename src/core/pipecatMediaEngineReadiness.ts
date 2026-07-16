@@ -33,7 +33,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
     adapter: "pipecat_flows",
     entryPoint: "scripts/acc_pipecat_voice_pipeline.py",
     targetContract: "FlowManager nodes own cancellation-rescue state transitions while ACC TypeScript retains product state, operator controls, proof artifacts, and queue state.",
-    verification: "Add a sidecar-free FlowManager contract check plus route tests proving policy_hold and operator_steer still fail closed before #222 can be accepted.",
+    verification: "Run the sidecar-free FlowManager contract check plus route tests proving policy_hold and operator_steer still fail closed before #222 can be accepted.",
     acceptance: {
       requiredFlowNodes: ["call_started", "greet", "diagnose", "policy_hold", "operator_steer", "steered_response", "wrap"],
       retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
@@ -167,7 +167,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
     ],
     remainingWork: [
       "Move the cancellation-rescue conversation graph into Pipecat Flows/FlowManager while preserving ACC-owned product state, operator controls, proof artifacts, and queue state.",
-      "Add a sidecar-free FlowManager contract check that proves policy_hold, operator_steer, fail-closed fallback, and wrap transitions still match the current ACC route behavior.",
+      "Use the sidecar-free FlowManager contract check to keep policy_hold, operator_steer, fail-closed fallback, and wrap transitions aligned while the conversation graph moves into Pipecat Flows.",
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
     ],
     nextUnblockedSlice,
@@ -231,7 +231,11 @@ export function buildPipecatMediaEngineReadinessPayload() {
         evidence: "The cancellation-rescue flow still runs in ACC TypeScript; #222 acceptance still requires FlowManager nodes for call_started, greet, diagnose, policy_hold, operator_steer, steered_response, and wrap.",
       },
     ],
-    validationCommands: ["npm test", "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness"],
+    validationCommands: [
+      "npm run pipecat:flows:contract",
+      "npm test",
+      "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
+    ],
     relatedRoutes: [
       { route: "/api/pipecat-media-engine/readiness", method: "GET", purpose: "Shared browser/SIP/SignalWire Pipecat media engine contract and proof-pending status." },
       { route: "/api/live-sip/events", method: "POST", purpose: "Local SIP/FreeSWITCH event and proof adapter." },
