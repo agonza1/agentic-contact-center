@@ -5,17 +5,19 @@ This process owns the new preferred #222 signaling boundary:
 
 Linphone SIP 1000 -> FreeSWITCH 8600 -> Verto/WebRTC agent leg -> Pipecat
 
-The current implementation proves and holds the Verto registration surface. It
-does not claim caller-audible media acceptance until the incoming Verto dialog
-is answered with a Pipecat-backed WebRTC transport and live proof is captured.
+The sidecar registers a local Verto endpoint and answers incoming Verto WebRTC
+offers with the shared Pipecat voice pipeline. It does not claim caller-audible
+media acceptance until live proof is captured.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import os
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,13 +27,25 @@ from uuid import uuid4
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_RUNTIME_PATH = REPO_ROOT / ".pipecat-runtime"
 if LOCAL_RUNTIME_PATH.exists():
-    import sys
-
     sys.path.insert(0, str(LOCAL_RUNTIME_PATH))
 
 try:
     import websockets
     from aiohttp import web
+    from pipecat.pipeline.runner import PipelineRunner
+    from pipecat.pipeline.task import PipelineParams, PipelineTask
+    from pipecat.transports.base_transport import TransportParams
+    from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCRequest, SmallWebRTCRequestHandler
+    from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
+    from acc_pipecat_voice_pipeline import (
+        ACC_VOICE_PIPELINE_CONTRACT,
+        DEFAULT_ACC_URL,
+        INPUT_SAMPLE_RATE,
+        AccVoicePipelineSession,
+        build_acc_voice_pipeline,
+        check_readiness,
+        normalize_browser_answer_sdp,
+    )
 except Exception as exc:  # pragma: no cover - local setup guard
     print(
         json.dumps(
@@ -52,19 +66,23 @@ def now_iso() -> str:
 
 
 class VertoAgentBridge:
-    def __init__(self, *, verto_url: str, login: str, password: str, proof_out: str | None = None) -> None:
+    def __init__(self, *, verto_url: str, login: str, password: str, acc_url: str, proof_out: str | None = None) -> None:
         self.verto_url = verto_url
         self.login = login
         self.password = password
+        self.acc_url = acc_url.rstrip("/")
         self.proof_out = Path(proof_out).resolve() if proof_out else None
         self.started_at = now_iso()
         self.last_login: dict[str, Any] = {}
         self.last_event: dict[str, Any] = {}
         self.last_error: dict[str, Any] = {}
         self.last_invite: dict[str, Any] = {}
+        self.last_answer: dict[str, Any] = {}
         self.invite_count = 0
         self.websocket: Any = None
         self._rpc_id = 0
+        self.request_handler = SmallWebRTCRequestHandler(host="127.0.0.1")
+        self.sessions: dict[str, dict[str, Any]] = {}
 
     def write_proof_artifact(self, event_type: str) -> None:
         if self.proof_out is None:
@@ -74,7 +92,7 @@ class VertoAgentBridge:
             "schemaVersion": 1,
             "generatedAt": now_iso(),
             "eventType": event_type,
-            "status": "registered_pending_media_answer" if self.last_login.get("ok") else "blocked",
+            "status": "registered_media_answer_ready" if self.last_login.get("ok") else "blocked",
             "reviewReady": False,
             "vertoUrl": self.verto_url,
             "login": self.login,
@@ -82,9 +100,10 @@ class VertoAgentBridge:
             "inviteCount": self.invite_count,
             "lastLogin": self.last_login,
             "lastInvite": self.last_invite,
+            "lastAnswer": self.last_answer,
             "lastError": self.last_error,
-            "remainingMediaBlocker": "Verto signaling is configured, but live caller-audible acceptance still requires answering the Verto WebRTC dialog with a Pipecat media transport.",
-            "nextAction": "Place a local 8600 call with the Verto bridge running, then attach this artifact with the strict live SIP bundle once media answer and caller playback proof are implemented.",
+            "remainingMediaBlocker": "Verto signaling is configured and the sidecar can attempt a Pipecat-backed WebRTC answer, but caller-audible acceptance still requires a live 8600 proof showing rtc-asr final transcript and Kokoro/Pipecat playback heard by the caller.",
+            "nextAction": "Place a local 8600 call with the Verto bridge running, then attach this artifact with the strict live SIP bundle once caller playback proof is captured.",
         }
         self.proof_out.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = self.proof_out.with_suffix(f"{self.proof_out.suffix}.tmp")
@@ -134,24 +153,175 @@ class VertoAgentBridge:
     async def handle_invite(self, event: dict[str, Any]) -> None:
         params = event.get("params") if isinstance(event.get("params"), dict) else {}
         call_id = params.get("callID") or params.get("callId") or str(uuid4())
+        offer_sdp = params.get("sdp") if isinstance(params.get("sdp"), str) else ""
+        if not offer_sdp.strip():
+            proof = {
+                "type": "verto.invite.blocked",
+                "at": now_iso(),
+                "callId": call_id,
+                "mediaTarget": "pipecat_verto_webrtc_agent_leg",
+                "reviewReady": False,
+                "blocker": "Incoming FreeSWITCH Verto invite did not include SDP, so the Pipecat sidecar cannot create a WebRTC answer.",
+            }
+            self.last_invite = proof
+            print(json.dumps(proof), flush=True)
+            self.write_proof_artifact("verto.invite.blocked")
+            return
         proof = {
             "type": "verto.invite.received",
             "at": now_iso(),
             "callId": call_id,
             "mediaTarget": "pipecat_verto_webrtc_agent_leg",
             "reviewReady": False,
-            "blocker": "Incoming FreeSWITCH Verto signaling reached the Pipecat sidecar, but Verto WebRTC media answer is not implemented in this slice.",
-            "nextAction": "Implement Verto dialog answer with Pipecat WebRTC media frames, then rerun the strict live SIP bundle for caller-audible proof.",
+            "offerSdpBytes": len(offer_sdp.encode("utf-8")),
+            "nextAction": "Answer the Verto WebRTC dialog with the shared Pipecat pipeline and then rerun the strict live SIP bundle for caller-audible proof.",
         }
         self.last_invite = proof
         print(json.dumps(proof), flush=True)
         self.write_proof_artifact("verto.invite.received")
+        await self.answer_invite(call_id=call_id, offer_sdp=offer_sdp, params=params)
+
+    async def answer_invite(self, *, call_id: str, offer_sdp: str, params: dict[str, Any]) -> None:
+        readiness = await asyncio.to_thread(check_readiness, self.acc_url)
+        if not readiness.ok:
+            self.last_answer = {
+                "type": "verto.answer.blocked",
+                "at": now_iso(),
+                "callId": call_id,
+                "reviewReady": False,
+                "blocker": "ACC, rtc-asr, Kokoro, or Pipecat runtime readiness failed before answering Verto media.",
+                "readiness": {
+                    "status": readiness.status,
+                    "detail": readiness.detail,
+                    "blockers": readiness.blockers,
+                },
+            }
+            print(json.dumps(self.last_answer), flush=True)
+            self.write_proof_artifact("verto.answer.blocked")
+            return
+
+        session_id = f"verto-{call_id}"
+        small_request = SmallWebRTCRequest.from_dict(
+            {
+                "sdp": offer_sdp,
+                "type": "offer",
+                "pc_id": call_id,
+                "restart_pc": False,
+                "request_data": {
+                    "source": "freeswitch_verto",
+                    "sessionId": session_id,
+                    "callId": call_id,
+                    "vertoParams": {key: value for key, value in params.items() if key != "sdp"},
+                },
+            }
+        )
+
+        async def on_connection(connection: Any) -> None:
+            await self.start_pipeline(connection=connection, session_id=session_id, call_id=call_id, readiness=readiness)
+
+        answer = await self.request_handler.handle_web_request(small_request, on_connection)
+        if not answer or not isinstance(answer.get("sdp"), str):
+            self.last_answer = {
+                "type": "verto.answer.failed",
+                "at": now_iso(),
+                "callId": call_id,
+                "reviewReady": False,
+                "blocker": "Pipecat SmallWebRTCRequestHandler did not return an SDP answer for the Verto offer.",
+            }
+            print(json.dumps(self.last_answer), flush=True)
+            self.write_proof_artifact("verto.answer.failed")
+            return
+
+        answer_sdp = normalize_browser_answer_sdp(str(answer["sdp"]))
+        await self.send_rpc("verto.answer", {"callID": call_id, "sdp": answer_sdp})
+        self.last_answer = {
+            "type": "verto.answer.sent",
+            "at": now_iso(),
+            "callId": call_id,
+            "sessionId": session_id,
+            "pcId": str(answer.get("pc_id") or call_id),
+            "answerSdpBytes": len(answer_sdp.encode("utf-8")),
+            "transport": "SmallWebRTCTransport",
+            "pipeline": ACC_VOICE_PIPELINE_CONTRACT,
+            "reviewReady": False,
+            "nextAction": "Capture live Linphone 1000 -> 8600 proof with rtc_asr_live transcript and caller-audible Kokoro/Pipecat playback.",
+        }
+        print(json.dumps(self.last_answer), flush=True)
+        self.write_proof_artifact("verto.answer.sent")
+
+    async def start_pipeline(self, *, connection: Any, session_id: str, call_id: str, readiness: Any) -> None:
+        session = AccVoicePipelineSession(acc_url=self.acc_url, call_id=call_id, readiness=readiness)
+        transport = SmallWebRTCTransport(
+            webrtc_connection=connection,
+            params=TransportParams(
+                audio_in_enabled=True,
+                audio_in_sample_rate=INPUT_SAMPLE_RATE,
+                audio_in_channels=1,
+                audio_in_passthrough=True,
+                audio_out_enabled=True,
+                audio_out_sample_rate=24000,
+                audio_out_channels=1,
+                audio_out_auto_silence=True,
+            ),
+        )
+        pipeline = build_acc_voice_pipeline(
+            transport_input=transport.input(),
+            transport_output=transport.output(),
+            session=session,
+        )
+        task = PipelineTask(
+            pipeline,
+            params=PipelineParams(audio_in_sample_rate=INPUT_SAMPLE_RATE, audio_out_sample_rate=24000),
+            enable_rtvi=False,
+            idle_timeout_secs=None,
+        )
+        runner = PipelineRunner()
+        runner_task = asyncio.create_task(runner.run(task, auto_end=False))
+        session_record = {
+            "connection": connection,
+            "transport": transport,
+            "runner": runner,
+            "runnerTask": runner_task,
+            "pipelineTask": task,
+            "turnSession": session,
+            "callId": call_id,
+            "sessionId": session_id,
+            "startedAt": now_iso(),
+            "closedAt": None,
+            "closeReason": None,
+        }
+        self.sessions[session_id] = session_record
+        self.sessions[call_id] = session_record
+
+        @connection.event_handler("closed")
+        async def close_pipeline_for_peer(_connection: Any) -> None:
+            asyncio.create_task(self.close_session(session_id, reason="verto_peer_closed"))
+
+    async def close_session(self, session_id: str, *, reason: str = "verto session closed") -> None:
+        session = self.sessions.get(session_id) or {}
+        if session:
+            session["closedAt"] = session.get("closedAt") or now_iso()
+            session["closeReason"] = session.get("closeReason") or reason
+        for key, value in list(self.sessions.items()):
+            if value is session:
+                self.sessions.pop(key, None)
+        turn_session = session.get("turnSession")
+        if isinstance(turn_session, AccVoicePipelineSession):
+            await turn_session.close_rtc_asr_stream(reason)
+        runner = session.get("runner")
+        if isinstance(runner, PipelineRunner):
+            await runner.cancel(reason)
+        task = session.get("runnerTask")
+        if isinstance(task, asyncio.Task):
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
     def readiness_payload(self) -> dict[str, Any]:
         logged_in = bool(self.last_login.get("ok"))
         return {
             "ok": logged_in,
-            "status": "registered_pending_media_answer" if logged_in else "blocked",
+            "status": "registered_media_answer_ready" if logged_in else "blocked",
             "checkedAt": now_iso(),
             "startedAt": self.started_at,
             "vertoUrl": self.verto_url,
@@ -163,11 +333,12 @@ class VertoAgentBridge:
             "inviteCount": self.invite_count,
             "lastLogin": self.last_login,
             "lastInvite": self.last_invite,
+            "lastAnswer": self.last_answer,
             "lastError": self.last_error,
             "proofArtifactPath": str(self.proof_out) if self.proof_out else None,
             "reviewReady": False,
             "blockers": [] if logged_in else ["FreeSWITCH Verto login is not established."],
-            "remainingMediaBlocker": "Verto signaling is configured, but live caller-audible acceptance still requires answering the Verto WebRTC dialog with a Pipecat media transport.",
+            "remainingMediaBlocker": "Verto signaling is configured and the sidecar can attempt a Pipecat-backed WebRTC answer, but caller-audible acceptance still requires a live 8600 proof showing rtc-asr final transcript and Kokoro/Pipecat playback heard by the caller.",
         }
 
     async def health(self, _request: web.Request) -> web.Response:
@@ -197,10 +368,11 @@ def main() -> int:
     parser.add_argument("--verto-url", default=os.environ.get("FREESWITCH_VERTO_URL", "ws://127.0.0.1:8081"))
     parser.add_argument("--login", default=os.environ.get("FREESWITCH_VERTO_LOGIN", "acc-pipecat@127.0.0.1"))
     parser.add_argument("--password", default=os.environ.get("FREESWITCH_VERTO_PASSWORD", "local-verto-pass"))
+    parser.add_argument("--acc-url", default=os.environ.get("ACC_URL", DEFAULT_ACC_URL))
     parser.add_argument("--proof-out", default=os.environ.get("PIPECAT_VERTO_PROOF_OUT"))
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    bridge = VertoAgentBridge(verto_url=args.verto_url, login=args.login, password=args.password, proof_out=args.proof_out)
+    bridge = VertoAgentBridge(verto_url=args.verto_url, login=args.login, password=args.password, acc_url=args.acc_url, proof_out=args.proof_out)
     if args.check:
         async def check_once() -> int:
             started = time.monotonic()
