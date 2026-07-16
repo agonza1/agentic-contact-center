@@ -1,3 +1,5 @@
+import { buildPipecatFlowManagerContractPayload } from "./pipecatFlowManagerContract";
+
 const issue214 = "agonza1/agentic-contact-center#214";
 const issue214Url = "https://github.com/agonza1/agentic-contact-center/issues/214";
 const issue222 = "agonza1/agentic-contact-center#222";
@@ -42,6 +44,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       ],
     },
   };
+  const flowManagerContract = buildPipecatFlowManagerContractPayload();
 
   return {
     ok: true,
@@ -168,6 +171,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
     ],
     nextUnblockedSlice,
+    flowManagerContract,
     liveSipProofAcceptance,
     reviewBlockers: [flowManagerBlocker],
     acceptanceCriteria: [
