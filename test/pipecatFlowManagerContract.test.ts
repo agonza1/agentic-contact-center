@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildPipecatFlowManagerContractPayload } from "../src/core/pipecatFlowManagerContract";
-import { replayPipecatFlowManagerParityFixtures } from "../src/core/pipecatFlowManagerParity";
+import { includesUnsafeClaim, replayPipecatFlowManagerParityFixtures } from "../src/core/pipecatFlowManagerParity";
 
 test("Pipecat FlowManager contract records required nodes and fail-closed guards", () => {
   const contract = buildPipecatFlowManagerContractPayload();
@@ -117,5 +117,28 @@ test("Pipecat FlowManager parity fixtures replay against the current ACC flow", 
         finalTraceEvent: "flow_state_transition",
       },
     ],
+  );
+});
+
+test("Pipecat FlowManager forbidden-claim detection only suppresses explicit negations", () => {
+  assert.equal(
+    includesUnsafeClaim("I am promising any billing credit if you stay.", "billing credit"),
+    true,
+  );
+  assert.equal(
+    includesUnsafeClaim("I can promise any billing credit after this call.", "billing credit"),
+    true,
+  );
+  assert.equal(
+    includesUnsafeClaim("I will not promise any billing credit on this call.", "billing credit"),
+    false,
+  );
+  assert.equal(
+    includesUnsafeClaim("I can review safe next steps without promising any billing credit.", "billing credit"),
+    false,
+  );
+  assert.equal(
+    includesUnsafeClaim("I cannot discuss a billing credit without operator approval.", "billing credit"),
+    false,
   );
 });
