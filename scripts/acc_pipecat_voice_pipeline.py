@@ -1112,6 +1112,7 @@ class AccCallerTurnProcessor(FrameProcessor):
             commit_payload = {
                 "text": frame.text,
                 "conversationMode": "free_caller",
+                "expectedAgentText": agent_text,
             }
             commit_metadata = call.get("callerTurnCommit") if isinstance(call, dict) else None
             if isinstance(commit_metadata, dict) and isinstance(commit_metadata.get("timestamp"), str):

@@ -4317,6 +4317,52 @@ test("delivery-ack caller turns preview without mutating until commit", async ()
   });
 });
 
+test("delivery-ack commit rejects stale responses without mutating transcript", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const preview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      commitMode: "delivery_ack",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const previewPayload = preview.payload as SnapshotPayload & {
+      transcript: { speaker: string; text: string }[];
+    };
+    assert.equal(preview.statusCode, 200);
+    const expectedAgentText = previewPayload.transcript.find((turn) => turn.speaker === "agent")?.text;
+    assert.equal(typeof expectedAgentText, "string");
+
+    const intervening = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Actually I need operator guidance before billing.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:01.000Z",
+    });
+    assert.equal(intervening.statusCode, 200);
+
+    const beforeStaleCommit = await requestJson(port, "GET", `/api/calls/${callId}`);
+    const beforePayload = beforeStaleCommit.payload as SnapshotPayload;
+
+    const staleCommit = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn/commit`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      expectedAgentText,
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    assert.equal(staleCommit.statusCode, 400);
+    assert.equal((staleCommit.payload as { error: string }).error, "caller_turn_commit_stale");
+
+    const afterStaleCommit = await requestJson(port, "GET", `/api/calls/${callId}`);
+    const afterPayload = afterStaleCommit.payload as SnapshotPayload;
+    assert.deepEqual(afterPayload.transcript, beforePayload.transcript);
+    assert.deepEqual(afterPayload.events, beforePayload.events);
+  });
+});
+
 test("off-script caller turns pause the prototype for operator guidance", async () => {
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start");
