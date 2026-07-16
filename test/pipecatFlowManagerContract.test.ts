@@ -73,6 +73,13 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
     "typescript_deterministic_flow_still_owns_runtime_turns",
   );
   assert.deepEqual(contract.runtimePlan.missingRequiredNodes, []);
+  assert.deepEqual(contract.runtimePlan.validation, {
+    ok: true,
+    missingRequiredNodes: [],
+    transitionsToUnknownNodes: [],
+    guardsOnUnknownTransitions: [],
+    nonFailClosedGuardIds: [],
+  });
   assert.deepEqual(
     contract.runtimePlan.nodeHandlers.map((handler) => handler.node),
     contract.requiredNodes,
@@ -168,6 +175,13 @@ test("Pipecat FlowManager runtime plan mirrors node handlers and guarded transit
   assert.equal(runtimePlan.cutoverSequence.find((step) => step.status === "pending")?.owner, "Pipecat FlowManager adapter");
   assert.equal(runtimePlan.cutoverPreconditions.filter((precondition) => precondition.satisfied).length, 2);
   assert.equal(runtimePlan.cutoverPreconditions.at(-1)?.verificationCommand, "npm test");
+  assert.deepEqual(runtimePlan.validation, {
+    ok: true,
+    missingRequiredNodes: [],
+    transitionsToUnknownNodes: [],
+    guardsOnUnknownTransitions: [],
+    nonFailClosedGuardIds: [],
+  });
 });
 
 test("Pipecat FlowManager parity fixtures replay against the current ACC flow", async () => {

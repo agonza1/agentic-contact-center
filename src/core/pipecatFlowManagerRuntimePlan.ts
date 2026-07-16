@@ -25,6 +25,14 @@ export interface PipecatFlowManagerNodeHandlerPlan {
   guardIds: string[];
 }
 
+export interface PipecatFlowManagerRuntimePlanValidation {
+  ok: boolean;
+  missingRequiredNodes: FlowState[];
+  transitionsToUnknownNodes: Array<{ sourceNode: FlowState; targetNode: FlowState }>;
+  guardsOnUnknownTransitions: string[];
+  nonFailClosedGuardIds: string[];
+}
+
 interface PipecatFlowManagerCutoverStep {
   id: string;
   status: "complete" | "pending";
@@ -117,12 +125,50 @@ export function buildPipecatFlowManagerNodeHandlerPlan(
   }));
 }
 
+export function validatePipecatFlowManagerRuntimePlan(input: {
+  requiredNodes: readonly FlowState[];
+  nodeHandlers: readonly PipecatFlowManagerNodeHandlerPlan[];
+  requiredGuards: readonly PipecatFlowManagerGuardSpec[];
+}): PipecatFlowManagerRuntimePlanValidation {
+  const implementedNodes = new Set(input.nodeHandlers.map((handler) => handler.node));
+  const requiredNodeSet = new Set(input.requiredNodes);
+  const missingRequiredNodes = input.requiredNodes.filter((node) => !implementedNodes.has(node));
+  const transitionsToUnknownNodes = input.nodeHandlers.flatMap((handler) =>
+    handler.allowedTransitions
+      .filter((targetNode) => !requiredNodeSet.has(targetNode))
+      .map((targetNode) => ({ sourceNode: handler.node, targetNode })),
+  );
+  const guardsOnUnknownTransitions = input.requiredGuards
+    .filter((guard) => {
+      const sourceHandler = input.nodeHandlers.find((handler) => handler.node === guard.sourceNode);
+      return !sourceHandler || !sourceHandler.allowedTransitions.includes(guard.targetNode);
+    })
+    .map((guard) => guard.id);
+  const nonFailClosedGuardIds = input.requiredGuards.filter((guard) => !guard.failClosed).map((guard) => guard.id);
+
+  return {
+    ok: missingRequiredNodes.length === 0
+      && transitionsToUnknownNodes.length === 0
+      && guardsOnUnknownTransitions.length === 0
+      && nonFailClosedGuardIds.length === 0,
+    missingRequiredNodes,
+    transitionsToUnknownNodes,
+    guardsOnUnknownTransitions,
+    nonFailClosedGuardIds,
+  };
+}
+
 export function buildPipecatFlowManagerRuntimePlan(input: {
   requiredNodes: readonly FlowState[];
   nodeSpecs: readonly PipecatFlowManagerNodeSpec[];
   requiredGuards: readonly PipecatFlowManagerGuardSpec[];
 }) {
   const nodeHandlers = buildPipecatFlowManagerNodeHandlerPlan(input.nodeSpecs, input.requiredGuards);
+  const validation = validatePipecatFlowManagerRuntimePlan({
+    requiredNodes: input.requiredNodes,
+    nodeHandlers,
+    requiredGuards: input.requiredGuards,
+  });
 
   return {
     status: "node_handlers_mirrored_adapter_cutover_pending",
@@ -133,9 +179,8 @@ export function buildPipecatFlowManagerRuntimePlan(input: {
     nodeHandlers,
     cutoverSequence: FLOW_MANAGER_CUTOVER_SEQUENCE,
     cutoverPreconditions: FLOW_MANAGER_CUTOVER_PRECONDITIONS,
-    missingRequiredNodes: input.requiredNodes.filter(
-      (node) => !nodeHandlers.some((handler) => handler.node === node),
-    ),
+    validation,
+    missingRequiredNodes: validation.missingRequiredNodes,
     guardedTransitions: input.requiredGuards.map((guard) => ({
       id: guard.id,
       sourceNode: guard.sourceNode,
