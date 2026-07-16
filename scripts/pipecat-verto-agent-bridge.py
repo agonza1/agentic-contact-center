@@ -17,6 +17,7 @@ import asyncio
 import contextlib
 import json
 import os
+import re
 import sys
 import time
 from datetime import UTC, datetime
@@ -31,10 +32,12 @@ if LOCAL_RUNTIME_PATH.exists():
 
 try:
     import websockets
+    from aiortc import RTCSessionDescription
     from aiohttp import web
     from pipecat.pipeline.runner import PipelineRunner
     from pipecat.pipeline.task import PipelineParams, PipelineTask
     from pipecat.transports.base_transport import TransportParams
+    from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
     from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCRequest, SmallWebRTCRequestHandler
     from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
     from acc_pipecat_voice_pipeline import (
@@ -63,6 +66,53 @@ except Exception as exc:  # pragma: no cover - local setup guard
 
 def now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds")
+
+
+def normalize_verto_answer_sdp(sdp: str) -> str:
+    """Trim browser-oriented aiortc SDP details that native FreeSWITCH Verto rejects."""
+    lines = sdp.replace("\r\n", "\n").strip().split("\n")
+    has_mid = any(line.startswith("a=mid:") for line in lines)
+    ipv4_candidate = next(
+        (
+            match.group(1)
+            for line in lines
+            if line.startswith("a=candidate:")
+            for match in [re.search(r" udp \d+ ((?:\d{1,3}\.){3}\d{1,3}) \d+ typ host", line)]
+            if match
+        ),
+        None,
+    )
+    normalized: list[str] = []
+    for line in lines:
+        if line.startswith("a=group:BUNDLE") and not has_mid:
+            continue
+        if line.startswith("a=candidate:") and " typ host" in line and re.search(r" udp \d+ [0-9a-fA-F:]+ \d+ typ host", line):
+            continue
+        if line.startswith("a=fingerprint:sha-384") or line.startswith("a=fingerprint:sha-512"):
+            continue
+        if ipv4_candidate and line.startswith("c=IN IP6 "):
+            normalized.append(f"c=IN IP4 {ipv4_candidate}")
+            continue
+        normalized.append(line)
+    return "\r\n".join(normalized) + "\r\n"
+
+
+async def create_verto_passive_answer(self: Any, sdp: str, type: str) -> None:
+    """Create a FreeSWITCH-compatible answer with aiortc acting as DTLS server."""
+    offer = RTCSessionDescription(sdp=sdp, type=type)
+    await self._pc.setRemoteDescription(offer)
+    for transceiver in getattr(self._pc, "_RTCPeerConnection__transceivers", []):
+        transceiver.receiver.transport._set_role("server")
+    sctp = getattr(self._pc, "_RTCPeerConnection__sctp", None)
+    if sctp is not None:
+        sctp.transport._set_role("server")
+    self.force_transceivers_to_send_recv()
+    local_answer = await self._pc.createAnswer()
+    await self._pc.setLocalDescription(local_answer)
+    self._answer = self._pc.localDescription
+
+
+SmallWebRTCConnection._create_answer = create_verto_passive_answer
 
 
 class VertoAgentBridge:
@@ -110,6 +160,15 @@ class VertoAgentBridge:
         tmp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf8")
         tmp_path.replace(self.proof_out)
 
+    def write_sdp_artifact(self, call_id: str, kind: str, sdp: str) -> str | None:
+        if self.proof_out is None:
+            return None
+        safe_call_id = "".join(character if character.isalnum() or character in "._-" else "_" for character in call_id)
+        path = self.proof_out.parent / f"{safe_call_id}-{kind}.sdp"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(sdp, encoding="utf8")
+        return str(path)
+
     def next_id(self) -> str:
         self._rpc_id += 1
         return f"acc-verto-{self._rpc_id}"
@@ -124,7 +183,7 @@ class VertoAgentBridge:
     async def connect_and_register(self) -> None:
         while True:
             try:
-                async with websockets.connect(self.verto_url, ping_interval=20, ping_timeout=10) as ws:
+                async with websockets.connect(self.verto_url, ping_interval=None) as ws:
                     self.websocket = ws
                     login_id = await self.send_rpc("login", {"login": self.login, "passwd": self.password})
                     async for raw in ws:
@@ -174,6 +233,7 @@ class VertoAgentBridge:
             "mediaTarget": "pipecat_verto_webrtc_agent_leg",
             "reviewReady": False,
             "offerSdpBytes": len(offer_sdp.encode("utf-8")),
+            "offerSdpPath": self.write_sdp_artifact(call_id, "offer", offer_sdp),
             "nextAction": "Answer the Verto WebRTC dialog with the shared Pipecat pipeline and then rerun the strict live SIP bundle for caller-audible proof.",
         }
         self.last_invite = proof
@@ -232,8 +292,9 @@ class VertoAgentBridge:
             self.write_proof_artifact("verto.answer.failed")
             return
 
-        answer_sdp = normalize_browser_answer_sdp(str(answer["sdp"]))
-        await self.send_rpc("verto.answer", {"callID": call_id, "sdp": answer_sdp})
+        answer_sdp = normalize_verto_answer_sdp(normalize_browser_answer_sdp(str(answer["sdp"])))
+        await self.send_rpc("verto.answer", {"dialogParams": {"callID": call_id}, "sdp": answer_sdp})
+        answer_sdp_path = self.write_sdp_artifact(call_id, "answer", answer_sdp)
         self.last_answer = {
             "type": "verto.answer.sent",
             "at": now_iso(),
@@ -241,6 +302,7 @@ class VertoAgentBridge:
             "sessionId": session_id,
             "pcId": str(answer.get("pc_id") or call_id),
             "answerSdpBytes": len(answer_sdp.encode("utf-8")),
+            "answerSdpPath": answer_sdp_path,
             "transport": "SmallWebRTCTransport",
             "pipeline": ACC_VOICE_PIPELINE_CONTRACT,
             "reviewReady": False,
@@ -377,7 +439,7 @@ def main() -> int:
         async def check_once() -> int:
             started = time.monotonic()
             try:
-                async with websockets.connect(args.verto_url, open_timeout=3) as ws:
+                async with websockets.connect(args.verto_url, open_timeout=3, ping_interval=None) as ws:
                     bridge.websocket = ws
                     login_id = await bridge.send_rpc("login", {"login": args.login, "passwd": args.password})
                     while time.monotonic() - started < 5:
