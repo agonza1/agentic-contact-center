@@ -34,6 +34,23 @@ export function buildPipecatMediaEngineReadinessPayload() {
     entryPoint: "scripts/acc_pipecat_voice_pipeline.py",
     targetContract: "FlowManager nodes own cancellation-rescue state transitions while ACC TypeScript retains product state, operator controls, proof artifacts, and queue state.",
     verification: "Run the sidecar-free FlowManager contract check plus route tests proving policy_hold and operator_steer still fail closed before #222 can be accepted.",
+    migrationStages: [
+      {
+        id: "sidecar_free_contract_lock",
+        deliverable: "Keep the TypeScript parity harness as the acceptance contract before moving runtime ownership.",
+        verificationCommand: "npm run pipecat:flows:contract",
+      },
+      {
+        id: "flowmanager_node_handlers",
+        deliverable: "Mirror call_started, greet, diagnose, policy_hold, operator_steer, steered_response, and wrap as Pipecat FlowManager nodes.",
+        verificationCommand: "npm run pipecat:flows:contract",
+      },
+      {
+        id: "acc_runtime_adapter_cutover",
+        deliverable: "Route caller turns through FlowManager while ACC continues to own product state, operator controls, proof artifacts, and queue state.",
+        verificationCommand: "npm test",
+      },
+    ],
     acceptance: {
       requiredFlowNodes: ["call_started", "greet", "diagnose", "policy_hold", "operator_steer", "steered_response", "wrap"],
       retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],

@@ -49,7 +49,13 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         failingAcceptanceCriteria: string[];
         implementedAdapters: string[];
         blockedAdapters: string[];
-        nextUnblockedSlice: { id: string; title: string; adapter: string; entryPoint: string };
+        nextUnblockedSlice: {
+          id: string;
+          title: string;
+          adapter: string;
+          entryPoint: string;
+          migrationStages: Array<{ id: string; verificationCommand: string }>;
+        };
         liveSipProofAcceptance: { requiredManifestFlags: string[]; rejectedShortcuts: string[]; proofBundleCommand: string };
         remainingWorkCount: number;
         validationCommands: string[];
@@ -85,6 +91,11 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         title: "Move cancellation-rescue policy flow into Pipecat Flows/FlowManager",
         adapter: "pipecat_flows",
         entryPoint: "scripts/acc_pipecat_voice_pipeline.py",
+        migrationStages: [
+          { id: "sidecar_free_contract_lock", verificationCommand: "npm run pipecat:flows:contract" },
+          { id: "flowmanager_node_handlers", verificationCommand: "npm run pipecat:flows:contract" },
+          { id: "acc_runtime_adapter_cutover", verificationCommand: "npm test" },
+        ],
       },
       liveSipProofAcceptance: {
         requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_verto_webrtc", "caller_audible_playback"],
