@@ -77,7 +77,7 @@ FREESWITCH_SIP_PASSWORD=local-sip-pass \
   --require-review-ready
 ```
 
-The harness keeps RTP flowing after the utterance, captures return RTP at the caller, and only reports `reviewReady: true` when the evidence contains a current rtc-asr final transcript plus Kokoro output and the caller capture contains at least ten non-silent PCMU packets.
+The harness keeps RTP flowing after the utterance, captures return RTP at the caller, and only reports `reviewReady: true` when the evidence contains a current rtc-asr final transcript plus Kokoro output and the caller capture contains at least ten non-silent PCMU packets. It also writes `rtc-asr-transcript-evidence.json`, normalized to the current SIP Call-ID, so the manifest can be passed directly to `npm run proof:live-sip-bundle -- --require-rtc-asr-live --require-caller-playback`.
 
 The legacy ESL bridge can still be started for diagnostics and bundle scaffolding:
 

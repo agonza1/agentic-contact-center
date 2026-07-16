@@ -221,9 +221,17 @@ async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds }
       const stages = Array.isArray(snapshot?.stageEvents) ? snapshot.stageEvents : [];
       const isCurrentCallEvent = (event) => Number.isFinite(Date.parse(event?.timestamp)) && Date.parse(event.timestamp) >= startedAtMs;
       const finalTranscript = [...stages].reverse().find((event) => isCurrentCallEvent(event) && event?.stage === "stt.transcript_final" && event?.ok !== false && String(event?.transcript || "").trim());
-      const ttsReady = stages.some((event) => isCurrentCallEvent(event) && event?.stage === "tts.audio_ready" && event?.ok !== false);
-      if (finalTranscript && ttsReady) {
-        return { ready: true, transcript: String(finalTranscript.transcript).trim(), ttsReady, evidenceCallId, evidence };
+      const ttsReadyEvent = stages.find((event) => isCurrentCallEvent(event) && event?.stage === "tts.audio_ready" && event?.ok !== false);
+      if (finalTranscript && ttsReadyEvent) {
+        return {
+          ready: true,
+          transcript: String(finalTranscript.transcript).trim(),
+          transcriptAt: finalTranscript.timestamp,
+          ttsReady: true,
+          ttsReadyAt: ttsReadyEvent.timestamp,
+          evidenceCallId,
+          evidence,
+        };
       }
     }
     return { ready: false, transcript: "", ttsReady: false, evidence };
@@ -472,6 +480,7 @@ class SipProofCall {
     const playbackWavPath = path.join(this.options.outDir, "caller-playback-capture.wav");
     const sipLogPath = path.join(this.options.outDir, "sip-events.json");
     const playbackEvidencePath = path.join(this.options.outDir, "caller-playback-evidence.json");
+    const normalizedRtcAsrEvidencePath = path.join(this.options.outDir, "rtc-asr-transcript-evidence.json");
     const rtcAsrEvidencePath = this.options.rtcAsrEvidencePath ? path.resolve(this.options.rtcAsrEvidencePath) : null;
     const manifestPath = path.join(this.options.outDir, "verto-sip-live-proof-manifest.json");
     const callerWav = Buffer.concat([wavHeader(this.callerPcm.length), this.callerPcm]);
@@ -502,6 +511,26 @@ class SipProofCall {
       baselineCallIds: this.rtcAsrBaselineCallIds,
     });
     const rtcAsrReady = rtcAsrEvidence.ready;
+    await writeFile(
+      normalizedRtcAsrEvidencePath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        type: rtcAsrReady ? "transcript.final" : "transcript.blocked",
+        status: rtcAsrReady ? "final" : "blocked",
+        final: rtcAsrReady,
+        callId: this.callId,
+        sipCallId: this.callId,
+        vertoCallId: rtcAsrEvidence.evidenceCallId || null,
+        transcript: rtcAsrEvidence.transcript,
+        transcriptAt: rtcAsrEvidence.transcriptAt || null,
+        ttsAudioReady: rtcAsrEvidence.ttsReady,
+        ttsAudioReadyAt: rtcAsrEvidence.ttsReadyAt || null,
+        currentCallWindowStartedAt: new Date(this.startedAtMs).toISOString(),
+        sourcePipecatEvidence: rtcAsrEvidencePath,
+        generatedAt: nowIso(),
+      }, null, 2)}\n`,
+      "utf8",
+    );
     const blockers = [];
     if (!this.remoteRtp) blockers.push("FreeSWITCH did not return an RTP target in the accepted INVITE SDP.");
     if (!callerPlaybackConfirmed) blockers.push("No caller-side return RTP audio was captured.");
@@ -534,13 +563,15 @@ class SipProofCall {
         callerInputWav: callerWavPath,
         callerPlaybackWav: playbackWavPath,
         sipLog: sipLogPath,
-        rtcAsrEvidence: rtcAsrEvidencePath,
+        rtcAsrEvidence: normalizedRtcAsrEvidencePath,
+        pipecatVertoEvidence: rtcAsrEvidencePath,
         callerPlaybackEvidence: playbackEvidencePath,
       },
       artifactIntegrity: [
         { artifactId: "caller-input-wav", kind: "call_media", path: callerWavPath, sha256: await sha256File(callerWavPath), sizeBytes: callerWav.length, readiness: "ready" },
         { artifactId: "caller-playback-capture-wav", kind: "playback_media", path: playbackWavPath, sha256: await sha256File(playbackWavPath), sizeBytes: playbackWav.length, readiness: callerPlaybackConfirmed ? "ready" : "blocked" },
         { artifactId: "sip-events", kind: "sip_log", path: sipLogPath, sha256: await sha256File(sipLogPath), sizeBytes: (await stat(sipLogPath)).size, readiness: "ready" },
+        { artifactId: "rtc-asr-transcript-evidence", kind: "transcript_evidence", path: normalizedRtcAsrEvidencePath, sha256: await sha256File(normalizedRtcAsrEvidencePath), sizeBytes: (await stat(normalizedRtcAsrEvidencePath)).size, readiness: rtcAsrReady ? "ready" : "blocked" },
         { artifactId: "caller-audible-playback-proof", kind: "playback_evidence", path: playbackEvidencePath, sha256: await sha256File(playbackEvidencePath), sizeBytes: (await stat(playbackEvidencePath)).size, readiness: callerPlaybackConfirmed ? "ready" : "blocked" },
       ],
       reviewReady: blockers.length === 0,
