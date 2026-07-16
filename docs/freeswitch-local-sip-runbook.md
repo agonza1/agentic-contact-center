@@ -61,8 +61,10 @@ Use `npm run docker:sip` only for the legacy ESL/RTP proof-debug lane. That brid
 3. Start the Pipecat Verto sidecar from another terminal when not using Compose:
 
 ```sh
-FREESWITCH_VERTO_URL=ws://127.0.0.1:8081 FREESWITCH_VERTO_LOGIN=acc-pipecat@127.0.0.1 FREESWITCH_VERTO_PASSWORD=local-verto-pass npm run pipecat:verto
+FREESWITCH_VERTO_URL=ws://127.0.0.1:8081 FREESWITCH_VERTO_LOGIN=acc-pipecat@127.0.0.1 FREESWITCH_VERTO_PASSWORD=local-verto-pass PIPECAT_VERTO_PROOF_OUT=artifacts/freeswitch-live/pipecat-verto-proof.json npm run pipecat:verto
 ```
+
+The sidecar updates `PIPECAT_VERTO_PROOF_OUT` after login, invite, and error events. Attach that artifact with the strict live SIP bundle when debugging the Verto/WebRTC leg; it is signaling evidence only and remains `reviewReady: false` until media answer and caller playback proof are present.
 
 The legacy ESL bridge can still be started for diagnostics and bundle scaffolding:
 

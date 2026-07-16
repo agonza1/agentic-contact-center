@@ -52,17 +52,44 @@ def now_iso() -> str:
 
 
 class VertoAgentBridge:
-    def __init__(self, *, verto_url: str, login: str, password: str) -> None:
+    def __init__(self, *, verto_url: str, login: str, password: str, proof_out: str | None = None) -> None:
         self.verto_url = verto_url
         self.login = login
         self.password = password
+        self.proof_out = Path(proof_out).resolve() if proof_out else None
         self.started_at = now_iso()
         self.last_login: dict[str, Any] = {}
         self.last_event: dict[str, Any] = {}
         self.last_error: dict[str, Any] = {}
+        self.last_invite: dict[str, Any] = {}
         self.invite_count = 0
         self.websocket: Any = None
         self._rpc_id = 0
+
+    def write_proof_artifact(self, event_type: str) -> None:
+        if self.proof_out is None:
+            return
+
+        payload = {
+            "schemaVersion": 1,
+            "generatedAt": now_iso(),
+            "eventType": event_type,
+            "status": "registered_pending_media_answer" if self.last_login.get("ok") else "blocked",
+            "reviewReady": False,
+            "vertoUrl": self.verto_url,
+            "login": self.login,
+            "transport": "freeswitch_verto_webrtc",
+            "inviteCount": self.invite_count,
+            "lastLogin": self.last_login,
+            "lastInvite": self.last_invite,
+            "lastError": self.last_error,
+            "remainingMediaBlocker": "Verto signaling is configured, but live caller-audible acceptance still requires answering the Verto WebRTC dialog with a Pipecat media transport.",
+            "nextAction": "Place a local 8600 call with the Verto bridge running, then attach this artifact with the strict live SIP bundle once media answer and caller playback proof are implemented.",
+        }
+        self.proof_out.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = self.proof_out.with_suffix(f"{self.proof_out.suffix}.tmp")
+        tmp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf8")
+        tmp_path.replace(self.proof_out)
 
     def next_id(self) -> str:
         self._rpc_id += 1
@@ -91,6 +118,7 @@ class VertoAgentBridge:
                                 "response": event,
                             }
                             print(json.dumps({"type": "verto.login", **self.last_login}), flush=True)
+                            self.write_proof_artifact("verto.login")
                         if event.get("method") == "verto.invite":
                             self.invite_count += 1
                             await self.handle_invite(event)
@@ -100,6 +128,7 @@ class VertoAgentBridge:
                 self.websocket = None
                 self.last_error = {"at": now_iso(), "error": str(exc)}
                 print(json.dumps({"type": "verto.error", **self.last_error}), flush=True)
+                self.write_proof_artifact("verto.error")
                 await asyncio.sleep(2)
 
     async def handle_invite(self, event: dict[str, Any]) -> None:
@@ -114,7 +143,9 @@ class VertoAgentBridge:
             "blocker": "Incoming FreeSWITCH Verto signaling reached the Pipecat sidecar, but Verto WebRTC media answer is not implemented in this slice.",
             "nextAction": "Implement Verto dialog answer with Pipecat WebRTC media frames, then rerun the strict live SIP bundle for caller-audible proof.",
         }
+        self.last_invite = proof
         print(json.dumps(proof), flush=True)
+        self.write_proof_artifact("verto.invite.received")
 
     def readiness_payload(self) -> dict[str, Any]:
         logged_in = bool(self.last_login.get("ok"))
@@ -131,7 +162,9 @@ class VertoAgentBridge:
             "pipecatOwns": ["rtc-asr STT", "ACC caller-turn", "Kokoro TTS", "turn/barge-in policy"],
             "inviteCount": self.invite_count,
             "lastLogin": self.last_login,
+            "lastInvite": self.last_invite,
             "lastError": self.last_error,
+            "proofArtifactPath": str(self.proof_out) if self.proof_out else None,
             "reviewReady": False,
             "blockers": [] if logged_in else ["FreeSWITCH Verto login is not established."],
             "remainingMediaBlocker": "Verto signaling is configured, but live caller-audible acceptance still requires answering the Verto WebRTC dialog with a Pipecat media transport.",
@@ -164,9 +197,10 @@ def main() -> int:
     parser.add_argument("--verto-url", default=os.environ.get("FREESWITCH_VERTO_URL", "ws://127.0.0.1:8081"))
     parser.add_argument("--login", default=os.environ.get("FREESWITCH_VERTO_LOGIN", "acc-pipecat@127.0.0.1"))
     parser.add_argument("--password", default=os.environ.get("FREESWITCH_VERTO_PASSWORD", "local-verto-pass"))
+    parser.add_argument("--proof-out", default=os.environ.get("PIPECAT_VERTO_PROOF_OUT"))
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    bridge = VertoAgentBridge(verto_url=args.verto_url, login=args.login, password=args.password)
+    bridge = VertoAgentBridge(verto_url=args.verto_url, login=args.login, password=args.password, proof_out=args.proof_out)
     if args.check:
         async def check_once() -> int:
             started = time.monotonic()
