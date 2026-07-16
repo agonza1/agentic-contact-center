@@ -19,12 +19,14 @@ test("Verto SIP live proof self-test validates digest, SDP, and RTP packet helpe
   const summary = JSON.parse(stdout) as {
     ok: boolean;
     authorizationReady: boolean;
+    authorizationUriReady: boolean;
     sdpTarget: { host: string; port: number };
     packetCount: number;
   };
 
   assert.equal(summary.ok, true);
   assert.equal(summary.authorizationReady, true);
+  assert.equal(summary.authorizationUriReady, true);
   assert.deepEqual(summary.sdpTarget, { host: "127.0.0.1", port: 29790 });
   assert.ok(summary.packetCount > 0);
 });
@@ -36,6 +38,8 @@ test("Verto SIP proof requires transcript-backed non-silent caller playback", ()
   assert.match(script, /--tail-silence-ms/);
   assert.match(script, /stt\.transcript_final/);
   assert.match(script, /tts\.audio_ready/);
+  assert.match(script, /baselineCallIds\.has\(evidenceCallId\)/);
+  assert.match(script, /Date\.parse\(event\.timestamp\) >= startedAtMs/);
   assert.match(script, /this\.returnPacketCount >= 10/);
   assert.match(script, /playbackRms >= 50/);
 });

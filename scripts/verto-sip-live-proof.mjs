@@ -199,17 +199,31 @@ function pcm16MonoFromWav(wav, targetSampleRate = 8000) {
   return pcm;
 }
 
-async function loadRtcAsrEvidence(evidencePath) {
+async function readEvidenceCallIds(evidencePath) {
+  if (!evidencePath) return new Set();
+  try {
+    const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
+    const snapshots = Array.isArray(evidence.pipelineEvidence) ? evidence.pipelineEvidence : [evidence];
+    return new Set(snapshots.map((snapshot) => String(snapshot?.callId || "")).filter(Boolean));
+  } catch {
+    return new Set();
+  }
+}
+
+async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds }) {
   if (!evidencePath) return { ready: false, transcript: "", ttsReady: false, evidence: null };
   try {
     const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
     const snapshots = Array.isArray(evidence.pipelineEvidence) ? evidence.pipelineEvidence : [evidence];
     for (const snapshot of snapshots) {
+      const evidenceCallId = String(snapshot?.callId || "");
+      if (!evidenceCallId || baselineCallIds.has(evidenceCallId)) continue;
       const stages = Array.isArray(snapshot?.stageEvents) ? snapshot.stageEvents : [];
-      const finalTranscript = [...stages].reverse().find((event) => event?.stage === "stt.transcript_final" && event?.ok !== false && String(event?.transcript || "").trim());
-      const ttsReady = stages.some((event) => event?.stage === "tts.audio_ready" && event?.ok !== false);
+      const isCurrentCallEvent = (event) => Number.isFinite(Date.parse(event?.timestamp)) && Date.parse(event.timestamp) >= startedAtMs;
+      const finalTranscript = [...stages].reverse().find((event) => isCurrentCallEvent(event) && event?.stage === "stt.transcript_final" && event?.ok !== false && String(event?.transcript || "").trim());
+      const ttsReady = stages.some((event) => isCurrentCallEvent(event) && event?.stage === "tts.audio_ready" && event?.ok !== false);
       if (finalTranscript && ttsReady) {
-        return { ready: true, transcript: String(finalTranscript.transcript).trim(), ttsReady, evidence };
+        return { ready: true, transcript: String(finalTranscript.transcript).trim(), ttsReady, evidenceCallId, evidence };
       }
     }
     return { ready: false, transcript: "", ttsReady: false, evidence };
@@ -264,6 +278,8 @@ class SipProofCall {
 
   async run() {
     await mkdir(this.options.outDir, { recursive: true });
+    this.startedAtMs = Date.now();
+    this.rtcAsrBaselineCallIds = await readEvidenceCallIds(this.options.rtcAsrEvidencePath);
     const callerSpeechPcm = this.options.callerAudioPath
       ? pcm16MonoFromWav(await readFile(this.options.callerAudioPath))
       : tonePcm16({ durationMs: this.options.toneMs, frequency: this.options.frequency });
@@ -350,7 +366,7 @@ class SipProofCall {
         if (this.authInviteSent) return;
         this.authInviteSent = true;
         const challenge = parseDigestChallenge(header(message, "proxy-authenticate"));
-        const uri = `sip:${this.options.remoteHost}:${this.options.remoteSipPort}`;
+        const uri = `sip:${this.options.destination}@${this.options.remoteHost}:${this.options.remoteSipPort}`;
         const authorization = digestAuthorization({
           username: this.options.username,
           password: this.options.password,
@@ -481,7 +497,10 @@ class SipProofCall {
       }, null, 2)}\n`,
       "utf8",
     );
-    const rtcAsrEvidence = await loadRtcAsrEvidence(rtcAsrEvidencePath);
+    const rtcAsrEvidence = await loadRtcAsrEvidence(rtcAsrEvidencePath, {
+      startedAtMs: this.startedAtMs,
+      baselineCallIds: this.rtcAsrBaselineCallIds,
+    });
     const rtcAsrReady = rtcAsrEvidence.ready;
     const blockers = [];
     if (!this.remoteRtp) blockers.push("FreeSWITCH did not return an RTP target in the accepted INVITE SDP.");
@@ -546,6 +565,8 @@ class SipProofCall {
         transcriptCaptured: rtcAsrReady,
         transcript: rtcAsrEvidence.transcript,
         ttsAudioReady: rtcAsrEvidence.ttsReady,
+        vertoCallId: rtcAsrEvidence.evidenceCallId || null,
+        currentCallWindowStartedAt: new Date(this.startedAtMs).toISOString(),
       },
       blockers,
     };
@@ -556,18 +577,20 @@ class SipProofCall {
 
 function runSelfTest() {
   const challenge = parseDigestChallenge('Digest realm="192.168.86.28", nonce="abc", algorithm=MD5, qop="auth"');
+  const requestUri = "sip:8600@192.168.86.28:5060";
   const authorization = digestAuthorization({
     username: "1000",
     password: "local-sip-pass",
     method: "INVITE",
-    uri: "sip:192.168.86.28:5060",
+    uri: requestUri,
     challenge,
   });
   const sdpTarget = parseRtpTargetFromSdp("v=0\r\nc=IN IP4 127.0.0.1\r\nm=audio 29790 RTP/AVP 0\r\n", "fallback");
   const pcm = tonePcm16({ durationMs: 40 });
   const packets = ulawPacketsFromPcm(pcm, { ssrc: 1 });
-  const ok = authorization.includes('username="1000"') && authorization.includes('response="') && sdpTarget?.port === 29790 && packets.length > 0;
-  console.log(JSON.stringify({ ok, authorizationReady: authorization.includes("Digest "), sdpTarget, packetCount: packets.length }, null, 2));
+  const authorizationUriReady = authorization.includes(`uri="${requestUri}"`);
+  const ok = authorization.includes('username="1000"') && authorization.includes('response="') && authorizationUriReady && sdpTarget?.port === 29790 && packets.length > 0;
+  console.log(JSON.stringify({ ok, authorizationReady: authorization.includes("Digest "), authorizationUriReady, sdpTarget, packetCount: packets.length }, null, 2));
   return ok ? 0 : 2;
 }
 
