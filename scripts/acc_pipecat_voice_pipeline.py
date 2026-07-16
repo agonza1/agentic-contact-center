@@ -9,17 +9,14 @@ transport input/output processors.
 from __future__ import annotations
 
 import asyncio
-import base64
 import contextlib
 import importlib.metadata
 import json
 import os
 import time
 import urllib.request
-import wave
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from io import BytesIO
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -27,7 +24,7 @@ import audioop
 import websockets
 from pipecat.audio.turn.base_turn_analyzer import EndOfTurnState
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
-from pipecat.frames.frames import BotStartedSpeakingFrame, BotStoppedSpeakingFrame, InputAudioRawFrame, InterruptionFrame, OutputAudioRawFrame, TextFrame, TranscriptionFrame, TTSAudioRawFrame
+from pipecat.frames.frames import BotStartedSpeakingFrame, BotStoppedSpeakingFrame, InputAudioRawFrame, InterruptionFrame, TextFrame, TranscriptionFrame, TTSAudioRawFrame, TTSStartedFrame, TTSStoppedFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.turns.user_start import MinWordsUserTurnStartStrategy
@@ -89,11 +86,10 @@ def json_http(method: str, url: str, payload: dict[str, Any] | None = None, time
         return json.loads(raw) if raw else {}
 
 
-def http_request(method: str, url: str, payload: dict[str, Any] | None = None, timeout: float = 30) -> tuple[bytes, str, int]:
+def open_http_stream(method: str, url: str, payload: dict[str, Any] | None = None, timeout: float = 30) -> Any:
     body = None if payload is None else json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(url, data=body, method=method, headers={"content-type": "application/json"})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read(), response.headers.get("content-type", "application/octet-stream"), response.status
+    return urllib.request.urlopen(request, timeout=timeout)
 
 
 def probe_json(url: str, service_id: str, timeout: float = 1.5) -> ProbeResult:
@@ -265,49 +261,6 @@ def is_final_stt_event(event: dict[str, Any]) -> bool:
     )
 
 
-def pcm16_to_wav_base64(pcm: bytes, sample_rate: int, channels: int = 1) -> str:
-    buffer = BytesIO()
-    with wave.open(buffer, "wb") as wav_file:
-        wav_file.setnchannels(channels)
-        wav_file.setsampwidth(SAMPLE_WIDTH_BYTES)
-        wav_file.setframerate(sample_rate)
-        wav_file.writeframes(pcm)
-    return base64.b64encode(buffer.getvalue()).decode("ascii")
-
-
-def decode_kokoro_audio(raw: bytes, content_type: str) -> tuple[bytes, int, str]:
-    lowered = content_type.lower()
-    if "json" in lowered:
-        payload = json.loads(raw.decode("utf-8"))
-        encoded = payload.get("audio_base64") or payload.get("audioContent") or payload.get("audio") or payload.get("data")
-        if isinstance(encoded, dict):
-            encoded = encoded.get("base64") or encoded.get("audio_base64")
-        if not isinstance(encoded, str):
-            raise RuntimeError("Kokoro JSON response did not include base64 audio")
-        audio = base64.b64decode(encoded)
-        sample_rate = int(payload.get("sample_rate") or payload.get("sampleRate") or 24000)
-        response_format = str(payload.get("format") or payload.get("response_format") or "wav")
-        if response_format == "wav" or audio.startswith(b"RIFF"):
-            return wav_to_pcm(audio)
-        return audio, sample_rate, response_format
-    if raw.startswith(b"RIFF"):
-        return wav_to_pcm(raw)
-    return raw, int(os.environ.get("KOKORO_OUTPUT_SAMPLE_RATE", "24000")), "pcm_s16le"
-
-
-def wav_to_pcm(raw: bytes) -> tuple[bytes, int, str]:
-    with wave.open(BytesIO(raw), "rb") as wav_file:
-        channels = wav_file.getnchannels()
-        sample_width = wav_file.getsampwidth()
-        sample_rate = wav_file.getframerate()
-        pcm = wav_file.readframes(wav_file.getnframes())
-    if sample_width != SAMPLE_WIDTH_BYTES:
-        pcm = audioop.lin2lin(pcm, sample_width, SAMPLE_WIDTH_BYTES)
-    if channels > 1:
-        pcm = audioop.tomono(pcm, SAMPLE_WIDTH_BYTES, 1.0 / channels, 1.0 / channels)
-    return pcm, sample_rate, "wav"
-
-
 def resample_pcm16_mono(pcm: bytes, from_rate: int, to_rate: int) -> bytes:
     if from_rate == to_rate:
         return pcm
@@ -367,6 +320,14 @@ class AccVoicePipelineSession:
         self.turn_count = 0
         self.output_generation = 0
         self.output_active_until = 0.0
+        self.output_stream_active = False
+        self.output_stream_id: str | None = None
+        self.output_stream_started_monotonic = 0.0
+        self.output_stream_chunk_count = 0
+        self.output_stream_audio_bytes = 0
+        self.output_flush_count = 0
+        self.active_agent_task: asyncio.Task[Any] | None = None
+        self.active_tts_task: asyncio.Task[Any] | None = None
         self.last_barge_in_evidence: dict[str, Any] = {}
         self.last_evidence: dict[str, Any] = {}
         self.last_audio_evidence: dict[str, Any] = {}
@@ -405,6 +366,16 @@ class AccVoicePipelineSession:
                 "sessionAudioBytes": self.rtc_asr_session_audio_bytes,
                 "sessionEventCount": self.rtc_asr_session_event_count,
             },
+            "output": {
+                "generation": self.output_generation,
+                "streamActive": self.output_stream_active,
+                "streamId": self.output_stream_id,
+                "chunkCount": self.output_stream_chunk_count,
+                "audioBytesEnqueued": self.output_stream_audio_bytes,
+                "flushCount": self.output_flush_count,
+                "playbackPending": time.monotonic() <= self.output_active_until,
+            },
+            "bargeIn": self.last_barge_in_evidence,
         }
 
     def record_stage(self, stage: str, *, ok: bool = True, **detail: Any) -> dict[str, Any]:
@@ -432,19 +403,58 @@ class AccVoicePipelineSession:
             self.evidence_callback(self.evidence_snapshot())
         return event
 
-    def mark_output_active(self, *, audio_bytes: int, sample_rate: int, channels: int = 1) -> dict[str, Any]:
+    def has_active_response(self) -> bool:
+        return bool(
+            self.output_stream_active
+            or time.monotonic() <= self.output_active_until
+            or (self.active_agent_task and not self.active_agent_task.done())
+            or (self.active_tts_task and not self.active_tts_task.done())
+        )
+
+    def register_response_task(self, kind: str, task: asyncio.Task[Any]) -> None:
+        if kind == "agent":
+            self.active_agent_task = task
+        elif kind == "tts":
+            self.active_tts_task = task
+        else:
+            raise ValueError(f"unknown response task kind: {kind}")
+
+    def clear_response_task(self, kind: str, task: asyncio.Task[Any]) -> None:
+        if kind == "agent" and self.active_agent_task is task:
+            self.active_agent_task = None
+        elif kind == "tts" and self.active_tts_task is task:
+            self.active_tts_task = None
+
+    def begin_output_stream(self, *, stream_id: str) -> None:
+        self.output_stream_active = True
+        self.output_stream_id = stream_id
+        self.output_stream_started_monotonic = time.monotonic()
+        self.output_stream_chunk_count = 0
+        self.output_stream_audio_bytes = 0
+
+    def extend_output_window(self, *, audio_bytes: int, sample_rate: int, channels: int = 1) -> dict[str, Any]:
         duration_s = audio_bytes / max(sample_rate * SAMPLE_WIDTH_BYTES * channels, 1)
-        self.output_active_until = max(self.output_active_until, time.monotonic() + duration_s + 0.5)
+        now = time.monotonic()
+        if self.output_active_until < now:
+            self.output_active_until = now + 0.5
+        self.output_active_until += duration_s
         return {
             "audioBytes": audio_bytes,
             "sampleRate": sample_rate,
             "channels": channels,
-            "estimatedDurationMs": round(duration_s * 1000),
+            "estimatedChunkDurationMs": round(duration_s * 1000),
             "activeUntilMonotonicMs": round(self.output_active_until * 1000),
         }
 
+    def record_output_chunk(self, audio_bytes: int) -> None:
+        self.output_stream_chunk_count += 1
+        self.output_stream_audio_bytes += audio_bytes
+
+    def finish_output_stream(self) -> None:
+        self.output_stream_active = False
+
     def cancel_output(self, reason: str = "barge-in") -> dict[str, Any]:
-        if time.monotonic() > self.output_active_until:
+        if not self.has_active_response():
             self.last_barge_in_evidence = {
                 "reason": reason,
                 "skipped": True,
@@ -454,15 +464,53 @@ class AccVoicePipelineSession:
             }
             print(json.dumps({"type": "browser_webrtc_output_cancel_skipped", **self.last_barge_in_evidence}), flush=True)
             return self.last_barge_in_evidence
+        requested_at = time.monotonic()
         self.output_generation += 1
+        cancelled_tasks: list[str] = []
+        current_task = asyncio.current_task()
+        for kind, task in (("agent", self.active_agent_task), ("tts", self.active_tts_task)):
+            if task and task is not current_task and not task.done():
+                task.cancel()
+                cancelled_tasks.append(kind)
         self.last_barge_in_evidence = {
             "reason": reason,
             "skipped": False,
             "pipecatInterruptionFrame": "pending",
             "outputGeneration": self.output_generation,
+            "outputStreamId": self.output_stream_id,
+            "outputChunksEnqueued": self.output_stream_chunk_count,
+            "outputAudioBytesEnqueued": self.output_stream_audio_bytes,
+            "cancelledTasks": cancelled_tasks,
+            "stopRequestedMonotonicMs": round(requested_at * 1000, 3),
             "timestamp": datetime.now(UTC).isoformat(timespec="milliseconds"),
         }
         print(json.dumps({"type": "browser_webrtc_output_cancelled", **self.last_barge_in_evidence}), flush=True)
+        return self.last_barge_in_evidence
+
+    def mark_output_flushed(self) -> dict[str, Any]:
+        flushed_at = time.monotonic()
+        requested_at_ms = self.last_barge_in_evidence.get("stopRequestedMonotonicMs")
+        latency_ms = None
+        if isinstance(requested_at_ms, (int, float)):
+            latency_ms = round(flushed_at * 1000 - requested_at_ms, 3)
+        self.output_stream_active = False
+        self.output_active_until = flushed_at
+        self.output_flush_count += 1
+        self.last_barge_in_evidence = {
+            **self.last_barge_in_evidence,
+            "pipecatInterruptionFrame": "broadcast",
+            "transportOutputFlushed": True,
+            "transportFlushLatencyMs": latency_ms,
+            "flushedAtMonotonicMs": round(flushed_at * 1000, 3),
+        }
+        self.record_stage(
+            "output.transport_flushed",
+            streamId=self.output_stream_id,
+            outputGeneration=self.output_generation,
+            transportFlushLatencyMs=latency_ms,
+            outputChunksEnqueued=self.output_stream_chunk_count,
+            outputAudioBytesEnqueued=self.output_stream_audio_bytes,
+        )
         return self.last_barge_in_evidence
 
     async def transcribe(self, frame: InputAudioRawFrame) -> tuple[str, dict[str, Any], TranscriptionFrame]:
@@ -625,35 +673,53 @@ class AccVoicePipelineSession:
             await asyncio.wait_for(ws.close(), timeout=close_timeout)
         self.record_stage("stt.session_closed", connectionId=self.rtc_asr_connection_id, reason=reason, persistentSession=True)
 
-    async def synthesize(self, frame: TextFrame) -> tuple[bytes, int, dict[str, Any]]:
+    async def stream_synthesize(self, frame: TextFrame, *, chunk_bytes: int) -> Any:
+        """Yield raw Kokoro PCM chunks as the HTTP streaming response produces them."""
         started = time.perf_counter()
         payload = {
             "model": DEFAULT_KOKORO_MODEL,
             "voice": DEFAULT_KOKORO_VOICE,
             "input": frame.text,
-            "response_format": "wav",
+            "response_format": "pcm",
+            "stream": True,
         }
-        raw, content_type, _status = await asyncio.to_thread(
-            http_request,
+        response = await asyncio.to_thread(
+            open_http_stream,
             "POST",
             join_url(DEFAULT_KOKORO_BASE_URL, DEFAULT_KOKORO_SPEECH_PATH),
             payload,
             30,
         )
-        pcm, sample_rate, response_format = decode_kokoro_audio(raw, content_type)
-        output_frame = TTSAudioRawFrame(audio=pcm, sample_rate=sample_rate, num_channels=1, context_id=str(uuid4()))
-        elapsed_ms = round((time.perf_counter() - started) * 1000)
-        meta = {
-            "engine": "kokoro",
-            "voice": DEFAULT_KOKORO_VOICE,
-            "model": DEFAULT_KOKORO_MODEL,
-            "elapsedMs": elapsed_ms,
-            "audioBytes": len(output_frame.audio),
-            "sampleRate": output_frame.sample_rate,
-            "format": response_format,
-            "audioSha256AvailableInBrowserProof": False,
-        }
-        return output_frame.audio, output_frame.sample_rate, meta
+        sample_rate = int(os.environ.get("KOKORO_OUTPUT_SAMPLE_RATE", "24000"))
+        read_size = max(chunk_bytes - (chunk_bytes % SAMPLE_WIDTH_BYTES), SAMPLE_WIDTH_BYTES)
+        pending = b""
+        first_audio_ms: int | None = None
+        try:
+            while True:
+                raw = await asyncio.to_thread(response.read, read_size)
+                if not raw:
+                    break
+                pending += raw
+                aligned_bytes = len(pending) - (len(pending) % SAMPLE_WIDTH_BYTES)
+                if aligned_bytes <= 0:
+                    continue
+                chunk = pending[:aligned_bytes]
+                pending = pending[aligned_bytes:]
+                elapsed_ms = round((time.perf_counter() - started) * 1000)
+                if first_audio_ms is None:
+                    first_audio_ms = elapsed_ms
+                yield chunk, sample_rate, {
+                    "engine": "kokoro",
+                    "voice": DEFAULT_KOKORO_VOICE,
+                    "model": DEFAULT_KOKORO_MODEL,
+                    "format": "pcm_s16le",
+                    "providerStream": True,
+                    "firstAudioMs": first_audio_ms,
+                    "elapsedMs": elapsed_ms,
+                }
+        finally:
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(response.close)
 
 
 class PipecatTurnControls:
@@ -815,10 +881,7 @@ class RtcAsrTurnProcessor(FrameProcessor):
 
     async def interrupt_output(self) -> None:
         await self.broadcast_frame(InterruptionFrame)
-        self.session.last_barge_in_evidence = {
-            **self.session.last_barge_in_evidence,
-            "pipecatInterruptionFrame": "broadcast",
-        }
+        self.session.mark_output_flushed()
 
     async def process_frame(self, frame: Any, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
@@ -844,9 +907,13 @@ class RtcAsrTurnProcessor(FrameProcessor):
                 collectedMs=self.collected_speech_ms(),
             )
         if rms > self.silence_rms:
-            if not self.in_speech:
+            speech_started = not self.in_speech
+            if speech_started:
                 self.turn_started_at = now
                 self.session.record_stage("audio.speech_started", rms=rms, silenceThresholdRms=self.silence_rms)
+                cancellation = self.session.cancel_output("speech_started_barge_in")
+                if not cancellation.get("skipped"):
+                    await self.interrupt_output()
             self.in_speech = True
             self.last_voice_at = now
         self.turn_controls.observe_audio(pcm, rms > self.silence_rms)
@@ -910,13 +977,27 @@ class AccCallerTurnProcessor(FrameProcessor):
             }
             await self.push_frame(TextFrame(deterministic_agent_text), FrameDirection.DOWNSTREAM)
             return
+        turn_output_generation = self.session.output_generation
+        agent_task = asyncio.create_task(asyncio.to_thread(
+            json_http,
+            "POST",
+            f"{self.session.acc_url}/api/calls/{self.session.call_id}/caller-turn",
+            {"text": frame.text, "conversationMode": "free_caller"},
+        ))
+        self.session.register_response_task("agent", agent_task)
         try:
-            call = await asyncio.to_thread(
-                json_http,
-                "POST",
-                f"{self.session.acc_url}/api/calls/{self.session.call_id}/caller-turn",
-                {"text": frame.text, "conversationMode": "free_caller"},
-            )
+            call = await agent_task
+        except asyncio.CancelledError:
+            if turn_output_generation != self.session.output_generation:
+                self.session.record_stage(
+                    "acc.cancelled",
+                    ok=False,
+                    error="barge_in_cancelled_agent_task",
+                    callerTranscript=frame.text,
+                    outputGeneration=self.session.output_generation,
+                )
+                return
+            raise
         except Exception as exc:
             self.session.last_evidence = {
                 "ok": False,
@@ -926,6 +1007,17 @@ class AccCallerTurnProcessor(FrameProcessor):
                 "callId": self.session.call_id,
             }
             self.session.record_stage("acc.failed", ok=False, error="acc_caller_turn_failed", detail=str(exc), callerTranscript=frame.text)
+            return
+        finally:
+            self.session.clear_response_task("agent", agent_task)
+        if turn_output_generation != self.session.output_generation:
+            self.session.record_stage(
+                "acc.cancelled",
+                ok=False,
+                error="stale_agent_result_after_barge_in",
+                callerTranscript=frame.text,
+                outputGeneration=self.session.output_generation,
+            )
             return
         agent_text = latest_agent_text(call)
         self.session.turn_count += 1
@@ -973,8 +1065,92 @@ class KokoroTtsProcessor(FrameProcessor):
             await self.push_frame(frame, direction)
             return
         turn_output_generation = self.session.output_generation
+        tts_task = asyncio.current_task()
+        if tts_task is None:
+            raise RuntimeError("Kokoro TTS processor requires an active asyncio task")
+        self.session.register_response_task("tts", tts_task)
+        context_id = str(uuid4())
+        sample_rate = int(os.environ.get("KOKORO_OUTPUT_SAMPLE_RATE", "24000"))
+        chunk_ms = max(int(os.environ.get("ACC_TTS_OUTPUT_CHUNK_MS", "20")), 10)
+        chunk_bytes = max(sample_rate * SAMPLE_WIDTH_BYTES * chunk_ms // 1000, SAMPLE_WIDTH_BYTES)
+        output_cancelled = False
+        stream_started = False
+        tts_meta: dict[str, Any] = {
+            "engine": "kokoro",
+            "voice": DEFAULT_KOKORO_VOICE,
+            "model": DEFAULT_KOKORO_MODEL,
+            "format": "pcm_s16le",
+            "providerStream": True,
+            "streamId": context_id,
+            "chunkMs": chunk_ms,
+            "chunkBytes": chunk_bytes,
+        }
         try:
-            pcm, sample_rate, tts_meta = await self.session.synthesize(frame)
+            async for audio_chunk, sample_rate, chunk_meta in self.session.stream_synthesize(frame, chunk_bytes=chunk_bytes):
+                if turn_output_generation != self.session.output_generation:
+                    output_cancelled = True
+                    break
+                if not stream_started:
+                    stream_started = True
+                    self.session.begin_output_stream(stream_id=context_id)
+                    if self.session.turn_controls:
+                        await self.session.turn_controls.bot_started()
+                    tts_meta = {**tts_meta, **chunk_meta}
+                    self.session.record_stage("tts.stream_started", tts=tts_meta)
+                    await self.push_frame(TTSStartedFrame(context_id=context_id), FrameDirection.DOWNSTREAM)
+                output_window = self.session.extend_output_window(audio_bytes=len(audio_chunk), sample_rate=sample_rate)
+                await self.push_frame(
+                    TTSAudioRawFrame(audio=audio_chunk, sample_rate=sample_rate, num_channels=1, context_id=context_id),
+                    FrameDirection.DOWNSTREAM,
+                )
+                self.session.record_output_chunk(len(audio_chunk))
+                tts_meta = {**tts_meta, **chunk_meta, "outputWindow": output_window}
+                chunk_yield_ms = max(float(os.environ.get("ACC_TTS_OUTPUT_CHUNK_YIELD_MS", "0")), 0.0)
+                await asyncio.sleep(chunk_yield_ms / 1000)
+            if output_cancelled:
+                self.session.record_stage(
+                    "tts.stream_cancelled",
+                    ok=False,
+                    error="output_cancelled",
+                    streamId=context_id,
+                    chunkCount=self.session.output_stream_chunk_count,
+                    audioBytesEnqueued=self.session.output_stream_audio_bytes,
+                    outputGeneration=self.session.output_generation,
+                )
+                return
+            if not stream_started:
+                raise RuntimeError("Kokoro streaming response produced no PCM audio")
+            await self.push_frame(TTSStoppedFrame(context_id=context_id), FrameDirection.DOWNSTREAM)
+            self.session.record_stage(
+                "tts.stream_completed",
+                streamId=context_id,
+                chunkCount=self.session.output_stream_chunk_count,
+                audioBytesEnqueued=self.session.output_stream_audio_bytes,
+                outputGeneration=self.session.output_generation,
+            )
+            self.session.last_evidence = {
+                **self.session.last_evidence,
+                "ok": True,
+                "tts": {
+                    **tts_meta,
+                    "audioBytesEnqueued": self.session.output_stream_audio_bytes,
+                    "chunksEnqueued": self.session.output_stream_chunk_count,
+                    "streamCompleted": True,
+                },
+                "outputCancelled": False,
+            }
+            print(json.dumps({"type": "browser_webrtc_turn", **self.session.last_evidence}), flush=True)
+        except asyncio.CancelledError:
+            self.session.record_stage(
+                "tts.stream_cancelled",
+                ok=False,
+                error="pipecat_interruption",
+                streamId=context_id,
+                chunkCount=self.session.output_stream_chunk_count,
+                audioBytesEnqueued=self.session.output_stream_audio_bytes,
+                outputGeneration=self.session.output_generation,
+            )
+            raise
         except Exception as exc:
             self.session.last_evidence = {
                 **self.session.last_evidence,
@@ -983,26 +1159,9 @@ class KokoroTtsProcessor(FrameProcessor):
                 "detail": str(exc),
             }
             self.session.record_stage("tts.failed", ok=False, error="tts_synthesis_failed", detail=str(exc), agentText=frame.text)
-            return
-        output_cancelled = turn_output_generation != self.session.output_generation
-        if output_cancelled:
-            tts_meta = {**tts_meta, "cancelled": True, "cancelReason": "barge-in", "audioBytesEnqueued": 0}
-            self.session.record_stage("tts.cancelled", ok=False, error="output_cancelled", tts=tts_meta)
-        else:
-            output_window = self.session.mark_output_active(audio_bytes=len(pcm), sample_rate=sample_rate)
-            if self.session.turn_controls:
-                await self.session.turn_controls.bot_started()
-            tts_meta = {**tts_meta, "outputWindow": output_window}
-            self.session.record_stage("tts.audio_ready", tts=tts_meta)
-        self.session.last_evidence = {
-            **self.session.last_evidence,
-            "ok": not output_cancelled,
-            "tts": tts_meta,
-            "outputCancelled": output_cancelled,
-        }
-        print(json.dumps({"type": "browser_webrtc_turn", **self.session.last_evidence}), flush=True)
-        if not output_cancelled:
-            await self.push_frame(OutputAudioRawFrame(audio=pcm, sample_rate=sample_rate, num_channels=1), FrameDirection.DOWNSTREAM)
+        finally:
+            self.session.clear_response_task("tts", tts_task)
+            self.session.finish_output_stream()
 
 
 ACC_VOICE_PIPELINE_CONTRACT = [

@@ -33,7 +33,8 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(sharedPipeline, /self\.session\.stream_rtc_asr_audio\(pcm\)/);
   assert.match(sharedPipeline, /self\.rtc_asr_current_audio_bytes == 0/);
   assert.match(sharedPipeline, /self\.rtc_asr_ws is not None and self\.rtc_asr_started/);
-  assert.match(sharedPipeline, /mark_output_active/);
+  assert.match(sharedPipeline, /begin_output_stream/);
+  assert.match(sharedPipeline, /extend_output_window/);
   assert.match(sharedPipeline, /no_active_output_audio/);
   assert.match(sharedPipeline, /InterruptionFrame/);
   assert.match(sharedPipeline, /broadcast_frame\(InterruptionFrame\)/);
@@ -45,6 +46,16 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.doesNotMatch(sharedPipeline, /finalize_turn\("audio_frame"\)/);
   assert.match(sharedPipeline, /pipecatInterruptionFrame/);
   assert.match(sharedPipeline, /outputWindow/);
+  assert.match(sharedPipeline, /TTSStartedFrame/);
+  assert.match(sharedPipeline, /TTSAudioRawFrame\(audio=audio_chunk/);
+  assert.match(sharedPipeline, /TTSStoppedFrame/);
+  assert.match(sharedPipeline, /ACC_TTS_OUTPUT_CHUNK_MS/);
+  assert.match(sharedPipeline, /ACC_TTS_OUTPUT_CHUNK_YIELD_MS/);
+  assert.match(sharedPipeline, /speech_started_barge_in/);
+  assert.match(sharedPipeline, /output\.transport_flushed/);
+  assert.match(sharedPipeline, /transportFlushLatencyMs/);
+  assert.match(sharedPipeline, /active_agent_task/);
+  assert.match(sharedPipeline, /active_tts_task/);
   assert.match(sharedPipeline, /stage_events/);
   assert.match(bridge, /skipAcc/);
   assert.match(bridge, /event_handler\("closed"\)/);
@@ -81,6 +92,20 @@ test("persistent rtc-asr session repeats utterance lifecycle and closes promptly
   assert.equal(payload.ok, true);
   assert.equal(payload.twoTurnLifecycle, "one_connection_two_starts_two_finalizes_two_transcripts");
   assert.equal(payload.promptClose, true);
+});
+
+test("Pipecat transport output streams chunks and flushes on barge-in", { skip: !hasOptionalPipecatRuntime }, () => {
+  const payload = JSON.parse(execFileSync("python3", [
+    "test/fixtures/pipecat_output_barge_in_regression.py",
+  ], { encoding: "utf8" }).trim().split("\n").at(-1) ?? "{}");
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.normal.chunks, 6);
+  assert.equal(payload.interrupted.chunksBeforeStop, 1);
+  assert.equal(payload.interrupted.transportOutputFlushed, true);
+  assert.equal(payload.resumed.chunks, 3);
+  assert.equal(payload.checks.noStalePlaybackAfterInterruption, true);
+  assert.deepEqual(payload.activeTasks.cancelled.sort(), ["agent", "tts"]);
 });
 
 test("fixture adapter smoke check is wired to the shared Pipeline contract", () => {

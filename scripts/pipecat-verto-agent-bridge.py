@@ -521,6 +521,7 @@ class VertoAgentBridge:
                 self.sessions.pop(key, None)
         turn_session = session.get("turnSession")
         if isinstance(turn_session, AccVoicePipelineSession):
+            turn_session.cancel_output("verto_peer_closed")
             await turn_session.close_rtc_asr_stream(reason)
         runner = session.get("runner")
         if isinstance(runner, PipelineRunner):
