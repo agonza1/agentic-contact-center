@@ -3,10 +3,10 @@ import {
   PIPECAT_FLOW_MANAGER_PARITY_FIXTURES,
   type PipecatFlowManagerParityFixture,
 } from "./pipecatFlowManagerContract";
-import type { FlowState, PocConfig } from "./types";
+import type { FlowState, OperatorSteerAction, PocConfig } from "./types";
 
 export interface PipecatFlowManagerParityTraceStep {
-  step: "start" | "caller_turn" | "injected_failure";
+  step: "start" | "caller_turn" | "operator_steer" | "injected_failure";
   input: string | null;
   flowState: FlowState;
   latestEventType: string | null;
@@ -108,6 +108,22 @@ export async function replayPipecatFlowManagerParityFixtures(
       transitionTrace.push({
         step: "injected_failure",
         input: fixture.injectedFailure,
+        flowState: snapshot.flowState,
+        latestEventType: snapshot.events.at(-1)?.type ?? null,
+        transcriptTurns: snapshot.transcript.length,
+      });
+    }
+
+    if ("operatorAction" in fixture) {
+      snapshot = await ingress.applyOperatorSteer(
+        snapshot.session.callId,
+        fixture.operatorAction as OperatorSteerAction,
+        new Date(Date.UTC(2026, 0, fixtureIndex + 1, 2, 0)).toISOString(),
+        "flowmanager parity operator fixture",
+      );
+      transitionTrace.push({
+        step: "operator_steer",
+        input: fixture.operatorAction,
         flowState: snapshot.flowState,
         latestEventType: snapshot.events.at(-1)?.type ?? null,
         transcriptTurns: snapshot.transcript.length,

@@ -44,6 +44,7 @@ assert.ok(contract.runtimePlan.nodeHandlers.find((handler) => handler.node === "
 assert.ok(contract.parityChecks.some((check) => check.id === "runtime_failure_fail_closed"));
 assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "scripted_policy_hold" && fixture.expectedState === "policy_hold"));
 assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "operator_steer_handoff" && fixture.expectedEvents.includes("operator_steer_requested")));
+assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "operator_denial_safe_response" && fixture.expectedEvents.includes("operator_offer_denied")));
 assert.ok(contract.parityFixtures.every((fixture) => fixture.forbiddenAgentClaims.includes("billing credit")));
 
 const parityFixturesById = new Map(contract.parityFixtures.map((fixture) => [fixture.id, fixture]));
