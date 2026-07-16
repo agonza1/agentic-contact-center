@@ -68,6 +68,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.equal(payload.pipecat14Alignment.flowsDecision.owner, "ACC TypeScript flow for current cancellation-rescue MVP");
     assert.equal(payload.pipecat14Alignment.flowsDecision.flowManagerRequiredNow, true);
     assert.deepEqual(payload.validationCommands, [
+      "npm run pipecat:flows:contract",
       "npm test",
       "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
     ]);
@@ -168,7 +169,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       adapter: "pipecat_flows",
       entryPoint: "scripts/acc_pipecat_voice_pipeline.py",
       targetContract: "FlowManager nodes own cancellation-rescue state transitions while ACC TypeScript retains product state, operator controls, proof artifacts, and queue state.",
-      verification: "Add a sidecar-free FlowManager contract check plus route tests proving policy_hold and operator_steer still fail closed before #222 can be accepted.",
+      verification: "Run the sidecar-free FlowManager contract check plus route tests proving policy_hold and operator_steer still fail closed before #222 can be accepted.",
       acceptance: {
         requiredFlowNodes: ["call_started", "greet", "diagnose", "policy_hold", "operator_steer", "steered_response", "wrap"],
         retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],

@@ -133,7 +133,7 @@ async function main() {
       liveSipProofAcceptance: readiness.liveSipProofAcceptance,
       remainingWorkCount: readiness.remainingWork.length,
       validationCommands: readiness.validationCommands,
-      nextValidationCommand: readiness.liveSipProofAcceptance.proofBundleCommand,
+      nextValidationCommand: readiness.flowManagerContract.parityHarnessCommand,
       requiredRuntimeEndpoints: readiness.liveSipProofAcceptance.requiredRuntimeEndpoints,
     },
     readiness,

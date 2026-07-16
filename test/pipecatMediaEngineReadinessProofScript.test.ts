@@ -107,10 +107,11 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
       },
       remainingWorkCount: 3,
       validationCommands: [
+        "npm run pipecat:flows:contract",
         "npm test",
         "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
       ],
-      nextValidationCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
+      nextValidationCommand: "npm run pipecat:flows:contract",
       requiredRuntimeEndpoints: [
         { id: "acc_http", defaultUrl: "http://127.0.0.1:8026", evidence: "ACC health/readiness routes are reachable while the SIP proof listener runs." },
         { id: "freeswitch_sip", defaultAddress: "127.0.0.1:5060", evidence: "A local softphone can place an accepted INVITE to extension 8600." },
