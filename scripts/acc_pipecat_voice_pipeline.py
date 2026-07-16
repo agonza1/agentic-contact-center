@@ -1115,6 +1115,8 @@ class AccCallerTurnProcessor(FrameProcessor):
                 "expectedAgentText": agent_text,
             }
             commit_metadata = call.get("callerTurnCommit") if isinstance(call, dict) else None
+            if isinstance(commit_metadata, dict) and isinstance(commit_metadata.get("snapshotVersion"), str):
+                commit_payload["expectedSnapshotVersion"] = commit_metadata["snapshotVersion"]
             if isinstance(commit_metadata, dict) and isinstance(commit_metadata.get("timestamp"), str):
                 commit_payload["timestamp"] = commit_metadata["timestamp"]
             self.session.set_pending_caller_turn_commit(
