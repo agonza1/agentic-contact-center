@@ -30,10 +30,9 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.match(stdout, /Updated latest Pipecat media engine readiness artifact/);
     assert.match(stdout, /Review ready: no/);
     assert.match(stdout, /Review blockers: 1/);
-    assert.match(stdout, /Acceptance criteria: 9\/10/);
-    assert.match(stdout, /Failing criteria: sip_caller_audible_playback_live_proof/);
-    assert.match(stdout, /Next slice: live_softphone_playback_acceptance/);
-    assert.match(stdout, /Next validation: node scripts\/live-sip-proof-bundle\.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback/);
+    assert.match(stdout, /Acceptance criteria: 10\/11/);
+    assert.match(stdout, /Failing criteria: pipecat_flows_flowmanager_owns_conversation_flow/);
+    assert.match(stdout, /Next slice: flow_manager_conversation_migration/);
     assert.match(stdout, /Runtime prerequisites: acc_http, freeswitch_sip, freeswitch_esl, freeswitch_verto, pipecat_verto_bridge, rtc_asr_ws, kokoro_http/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
@@ -70,22 +69,22 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.equal(artifact.issue, "agonza1/agentic-contact-center#214");
     assert.doesNotThrow(() => new Date(artifact.generatedAt).toISOString());
     assert.deepEqual(artifact.artifactSummary, {
-      readinessStatus: "shared_contract_ready_local_sip_playback_proof_pending",
+      readinessStatus: "shared_media_live_proof_complete_flows_pending",
       reviewReady: false,
       reviewBlockers: [
-        "Local 8600 now routes to the preferred FreeSWITCH Verto/WebRTC agent leg, but live softphone capture still needs to prove caller PCM reaches Pipecat and Kokoro/Pipecat audio returns through that same active call.",
+        "Pipecat Flows/FlowManager does not yet own the cancellation-rescue conversation flow; ACC TypeScript still owns policy hold, operator steer, proof artifacts, and queue state.",
       ],
       reviewBlockerCount: 1,
-      acceptanceCriteriaPassed: 9,
-      acceptanceCriteriaTotal: 10,
-      failingAcceptanceCriteria: ["sip_caller_audible_playback_live_proof"],
+      acceptanceCriteriaPassed: 10,
+      acceptanceCriteriaTotal: 11,
+      failingAcceptanceCriteria: ["pipecat_flows_flowmanager_owns_conversation_flow"],
       implementedAdapters: ["browser_webrtc", "sip_freeswitch_verto", "sip_freeswitch_rtp_legacy", "fixture_audio_injection"],
       blockedAdapters: ["signalwire_sip_trunk"],
       nextUnblockedSlice: {
-        id: "live_softphone_playback_acceptance",
-        title: "Capture end-to-end softphone playback proof",
-        adapter: "sip_freeswitch_verto",
-        entryPoint: "scripts/pipecat-verto-agent-bridge.py",
+        id: "flow_manager_conversation_migration",
+        title: "Move cancellation-rescue policy flow into Pipecat Flows/FlowManager",
+        adapter: "pipecat_flows",
+        entryPoint: "scripts/acc_pipecat_voice_pipeline.py",
       },
       liveSipProofAcceptance: {
         requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_verto_webrtc", "caller_audible_playback"],
@@ -124,10 +123,11 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     });
     assert.equal(artifact.readiness.ok, true);
     assert.equal(artifact.readiness.route, "/api/pipecat-media-engine/readiness");
-    assert.equal(artifact.readiness.status, "shared_contract_ready_local_sip_playback_proof_pending");
-    assert.equal(artifact.readiness.acceptanceCriteria.filter((criterion) => criterion.passed).length, 9);
-    assert.equal(artifact.readiness.acceptanceCriteria.length, 10);
+    assert.equal(artifact.readiness.status, "shared_media_live_proof_complete_flows_pending");
+    assert.equal(artifact.readiness.acceptanceCriteria.filter((criterion) => criterion.passed).length, 10);
+    assert.equal(artifact.readiness.acceptanceCriteria.length, 11);
     assert.equal(artifact.readiness.acceptanceCriteria.find((criterion) => criterion.name === "pipecat_14_small_webrtc_migration_recorded")?.passed, true);
+    assert.equal(artifact.readiness.acceptanceCriteria.find((criterion) => criterion.name === "pipecat_flows_flowmanager_owns_conversation_flow")?.passed, false);
     assert.deepEqual(latestArtifact, artifact);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
