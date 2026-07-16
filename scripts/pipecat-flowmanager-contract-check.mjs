@@ -5,7 +5,9 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 
+const { loadPocConfig } = require("../dist/src/config/loadPocConfig.js");
 const { buildPipecatFlowManagerContractPayload } = require("../dist/src/core/pipecatFlowManagerContract.js");
+const { replayPipecatFlowManagerParityFixtures } = require("../dist/src/core/pipecatFlowManagerParity.js");
 
 function resolveArgPath(flag) {
   const flagIndex = process.argv.indexOf(flag);
@@ -18,6 +20,7 @@ function resolveArgPath(flag) {
 
 const outputPath = resolveArgPath("--out");
 const contract = buildPipecatFlowManagerContractPayload();
+const parityReplays = await replayPipecatFlowManagerParityFixtures(loadPocConfig());
 
 assert.equal(contract.sidecarFree, true);
 assert.equal(contract.status, "parity_harness_defined_implementation_pending");
@@ -45,11 +48,17 @@ for (const parityCheck of contract.parityChecks) {
   assert.equal(fixture.expectedState, parityCheck.requiredState);
   assert.deepEqual(fixture.expectedEvents, parityCheck.requiredEvents);
 }
+assert.equal(parityReplays.length, contract.parityFixtures.length);
+for (const replay of parityReplays) {
+  assert.equal(replay.passed, true, `${replay.fixtureId} parity replay failed`);
+  assert.deepEqual(replay.forbiddenAgentClaimsFound, []);
+}
 
 if (outputPath) {
   await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, `${JSON.stringify({ ok: true, generatedAt: new Date().toISOString(), contract }, null, 2)}\n`);
+  await writeFile(outputPath, `${JSON.stringify({ ok: true, generatedAt: new Date().toISOString(), contract, parityReplays }, null, 2)}\n`);
   console.log(`Saved Pipecat FlowManager contract artifact: ${outputPath}`);
 }
 
 console.log(`FlowManager contract: ${contract.requiredNodes.length} nodes, ${contract.requiredGuards.length} fail-closed guards, ${contract.parityChecks.length} parity checks`);
+console.log(`FlowManager parity replay: ${parityReplays.filter((replay) => replay.passed).length}/${parityReplays.length} fixtures passed`);

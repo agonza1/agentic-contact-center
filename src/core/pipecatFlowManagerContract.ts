@@ -59,6 +59,8 @@ export const PIPECAT_FLOW_MANAGER_PARITY_FIXTURES = [
   },
 ] as const;
 
+export type PipecatFlowManagerParityFixture = (typeof PIPECAT_FLOW_MANAGER_PARITY_FIXTURES)[number];
+
 export function buildPipecatFlowManagerContractPayload() {
   return {
     status: "parity_harness_defined_implementation_pending",

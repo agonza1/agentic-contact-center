@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildPipecatFlowManagerContractPayload } from "../src/core/pipecatFlowManagerContract";
+import { replayPipecatFlowManagerParityFixtures } from "../src/core/pipecatFlowManagerParity";
 
 test("Pipecat FlowManager contract records required nodes and fail-closed guards", () => {
   const contract = buildPipecatFlowManagerContractPayload();
@@ -53,4 +55,19 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
     assert.equal(fixture.expectedState, parityCheck.requiredState);
     assert.deepEqual(fixture.expectedEvents, parityCheck.requiredEvents);
   }
+});
+
+test("Pipecat FlowManager parity fixtures replay against the current ACC flow", async () => {
+  const replays = await replayPipecatFlowManagerParityFixtures(loadPocConfig());
+
+  assert.deepEqual(
+    replays.map((replay) => [replay.fixtureId, replay.actualState]),
+    [
+      ["scripted_policy_hold", "policy_hold"],
+      ["operator_steer_handoff", "operator_steer"],
+      ["runtime_failure_fail_closed", "wrap"],
+    ],
+  );
+  assert.equal(replays.every((replay) => replay.passed), true);
+  assert.equal(replays.every((replay) => replay.forbiddenAgentClaimsFound.length === 0), true);
 });
