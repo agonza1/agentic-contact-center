@@ -47,6 +47,8 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /freeswitch-bridge:\n[\s\S]*scripts\/freeswitch-acc-bridge\.mjs/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*target: voice-runtime/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*scripts\/pipecat-verto-agent-bridge\.py/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*\.\/artifacts:\/app\/artifacts/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*PIPECAT_VERTO_PROOF_OUT: \/app\/artifacts\/freeswitch-live\/pipecat-verto-proof\.json/);
   assert.match(compose, /assert-viewer:\n[\s\S]*target: assert-runtime/);
   assert.match(compose, /assert-viewer:\n[\s\S]*scripts\/assert-viewer\.mjs/);
 
