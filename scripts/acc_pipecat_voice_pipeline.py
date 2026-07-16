@@ -20,7 +20,7 @@ import wave
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from io import BytesIO
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 import audioop
@@ -353,7 +353,14 @@ def normalize_browser_answer_sdp(sdp: str) -> str:
 
 
 class AccVoicePipelineSession:
-    def __init__(self, *, acc_url: str, call_id: str, readiness: BridgeReadiness):
+    def __init__(
+        self,
+        *,
+        acc_url: str,
+        call_id: str,
+        readiness: BridgeReadiness,
+        evidence_callback: Callable[[dict[str, Any]], None] | None = None,
+    ):
         self.acc_url = acc_url.rstrip("/")
         self.call_id = call_id
         self.readiness = readiness
@@ -379,6 +386,26 @@ class AccVoicePipelineSession:
         self.rtc_asr_session_event_count = 0
         self.rtc_asr_interim_events: list[dict[str, Any]] = []
         self.turn_controls: PipecatTurnControls | None = None
+        self.evidence_callback = evidence_callback
+
+    def evidence_snapshot(self) -> dict[str, Any]:
+        return {
+            "callId": self.call_id,
+            "turnCount": self.turn_count,
+            "lastEvidence": self.last_evidence,
+            "lastAudioEvidence": self.last_audio_evidence,
+            "lastSttEvidence": self.last_stt_evidence,
+            "lastAccEvidence": self.last_acc_evidence,
+            "lastTtsEvidence": self.last_tts_evidence,
+            "lastError": self.last_error,
+            "stageEvents": self.stage_events,
+            "rtcAsr": {
+                "connectionId": self.rtc_asr_connection_id,
+                "persistentSession": True,
+                "sessionAudioBytes": self.rtc_asr_session_audio_bytes,
+                "sessionEventCount": self.rtc_asr_session_event_count,
+            },
+        }
 
     def record_stage(self, stage: str, *, ok: bool = True, **detail: Any) -> dict[str, Any]:
         event = {
@@ -401,6 +428,8 @@ class AccVoicePipelineSession:
         if not ok:
             self.last_error = event
         print(json.dumps({"type": "browser_webrtc_stage", **event}), flush=True)
+        if self.evidence_callback:
+            self.evidence_callback(self.evidence_snapshot())
         return event
 
     def mark_output_active(self, *, audio_bytes: int, sample_rate: int, channels: int = 1) -> dict[str, Any]:
@@ -637,6 +666,11 @@ class PipecatTurnControls:
         self.start_strategy = MinWordsUserTurnStartStrategy(min_words=self.min_words, use_interim=False)
         self.start_strategy.add_event_handler("on_user_turn_started", self._on_user_turn_started)
         self.smart_turn = LocalSmartTurnAnalyzerV3(sample_rate=INPUT_SAMPLE_RATE)
+        # BaseTurnAnalyzer retains the constructor value as its preferred rate
+        # but does not make it effective until set_sample_rate() is called.
+        # We use the analyzer directly rather than through a transport VAD, so
+        # initialize it here to avoid division by zero while appending silence.
+        self.smart_turn.set_sample_rate(INPUT_SAMPLE_RATE)
         self.bot_speaking = False
 
     async def bot_started(self) -> None:

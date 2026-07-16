@@ -14,13 +14,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import binascii
 import contextlib
 import json
 import os
 import re
 import sys
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -32,7 +33,13 @@ if LOCAL_RUNTIME_PATH.exists():
 
 try:
     import websockets
-    from aiortc import RTCSessionDescription
+    from OpenSSL import SSL
+    from aiortc import RTCCertificate, RTCSessionDescription
+    from aiortc.rtcdtlstransport import RTCDtlsTransport
+    from cryptography import x509
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import rsa
     from aiohttp import web
     from pipecat.pipeline.runner import PipelineRunner
     from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -97,6 +104,15 @@ def normalize_verto_answer_sdp(sdp: str) -> str:
     return "\r\n".join(normalized) + "\r\n"
 
 
+def normalize_verto_offer_sdp(sdp: str) -> str:
+    """Treat FreeSWITCH's Verto ICE endpoint as ICE-lite for aiortc role selection."""
+    lines = sdp.replace("\r\n", "\n").strip().split("\n")
+    if "a=ice-lite" not in lines:
+        session_boundary = next((index for index, line in enumerate(lines) if line.startswith("m=")), len(lines))
+        lines.insert(session_boundary, "a=ice-lite")
+    return "\r\n".join(lines) + "\r\n"
+
+
 def run_sdp_normalization_self_test() -> int:
     source = "\r\n".join(
         [
@@ -115,6 +131,9 @@ def run_sdp_normalization_self_test() -> int:
         ]
     )
     normalized = normalize_verto_answer_sdp(source)
+    normalized_offer = normalize_verto_offer_sdp(source)
+    marked_pcmu_packet = bytes([0x80, 0x80, *([0] * 10)])
+    normalized_pcmu_packet = normalize_verto_rtp_packet(marked_pcmu_packet)
     checks = {
         "drops_bundle_without_mid": "a=group:BUNDLE" not in normalized,
         "keeps_sha256_fingerprint": "a=fingerprint:sha-256 11:22" in normalized,
@@ -124,6 +143,8 @@ def run_sdp_normalization_self_test() -> int:
         "drops_ipv6_host_candidate": "::1" not in normalized,
         "keeps_ipv4_host_candidate": "127.0.0.1 5004 typ host" in normalized,
         "uses_crlf_line_endings": normalized.endswith("\r\n") and "\n" in normalized,
+        "marks_freeswitch_offer_ice_lite": "a=ice-lite\r\n" in normalized_offer,
+        "clears_repeated_pcmu_marker": normalized_pcmu_packet[1] == 0,
     }
     ok = all(checks.values())
     print(json.dumps({"ok": ok, "checks": checks}, indent=2))
@@ -132,7 +153,9 @@ def run_sdp_normalization_self_test() -> int:
 
 async def create_verto_passive_answer(self: Any, sdp: str, type: str) -> None:
     """Create a FreeSWITCH-compatible answer with aiortc acting as DTLS server."""
-    offer = RTCSessionDescription(sdp=sdp, type=type)
+    if os.environ.get("FREESWITCH_VERTO_DTLS_CERTIFICATE", "ecdsa").strip().lower() == "rsa":
+        self._pc._RTCPeerConnection__certificates = [_create_rsa_certificate()]
+    offer = RTCSessionDescription(sdp=normalize_verto_offer_sdp(sdp), type=type)
     await self._pc.setRemoteDescription(offer)
     for transceiver in getattr(self._pc, "_RTCPeerConnection__transceivers", []):
         transceiver.receiver.transport._set_role("server")
@@ -145,7 +168,92 @@ async def create_verto_passive_answer(self: Any, sdp: str, type: str) -> None:
     self._answer = self._pc.localDescription
 
 
-SmallWebRTCConnection._create_answer = create_verto_passive_answer
+async def create_verto_active_rsa_answer(self: Any, sdp: str, type: str) -> None:
+    """Create an answer with aiortc as RSA-capable DTLS client."""
+    self._pc._RTCPeerConnection__certificates = [_create_rsa_certificate()]
+    offer = RTCSessionDescription(sdp=normalize_verto_offer_sdp(sdp), type=type)
+    await self._pc.setRemoteDescription(offer)
+    self.force_transceivers_to_send_recv()
+    local_answer = await self._pc.createAnswer()
+    await self._pc.setLocalDescription(local_answer)
+    self._answer = self._pc.localDescription
+
+
+class _RsaRtcCertificate(RTCCertificate):
+    def _create_ssl_context(self, srtp_profiles: list[Any]) -> SSL.Context:
+        context = SSL.Context(SSL.DTLS_METHOD)
+        context.set_verify(SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, lambda *args: True)
+        context.use_certificate(self._cert)
+        context.use_privatekey(self._key)
+        context.set_cipher_list(
+            b"ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES256-SHA"
+        )
+        context.set_tlsext_use_srtp(b":".join(profile.openssl_profile for profile in srtp_profiles))
+        return context
+
+
+def _create_rsa_certificate() -> _RsaRtcCertificate:
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
+    name = x509.Name(
+        [x509.NameAttribute(x509.NameOID.COMMON_NAME, binascii.hexlify(os.urandom(16)).decode("ascii"))]
+    )
+    now = datetime.now(tz=UTC)
+    certificate = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=30))
+        .sign(key, hashes.SHA256(), default_backend())
+    )
+    return _RsaRtcCertificate(key=key, cert=certificate)
+
+
+async def _flush_verto_dtls_datagrams(self: Any) -> None:
+    """Drain every DTLS datagram OpenSSL queued for the FreeSWITCH peer."""
+    while True:
+        try:
+            data = self._ssl.bio_read(1500)
+        except SSL.Error:
+            return
+        if not data:
+            return
+        await self.transport._send(data)
+        self._RTCDtlsTransport__tx_bytes += len(data)
+        self._RTCDtlsTransport__tx_packets += 1
+
+
+_original_send_rtp = RTCDtlsTransport._send_rtp
+
+
+def normalize_verto_rtp_packet(data: bytes) -> bytes:
+    if len(data) >= 12 and data[0] >> 6 == 2 and data[1] & 0x7F == 0:
+        return data[:1] + bytes([data[1] & 0x7F]) + data[2:]
+    return data
+
+
+async def _send_verto_rtp_without_repeated_audio_marker(self: Any, data: bytes) -> None:
+    """Avoid marking every G.711 packet as a new talkspurt.
+
+    aiortc sets the RTP marker on the last payload emitted for each encoded
+    frame. G.711 emits one payload per frame, so that marks every packet.
+    FreeSWITCH treats each marker as a jitter-buffer reset and otherwise drops
+    almost all Pipecat return audio. The Verto leg is PCMU payload type 0, so
+    clear that marker before SRTP protection.
+    """
+    await _original_send_rtp(self, normalize_verto_rtp_packet(data))
+
+
+RTCDtlsTransport._write_ssl = _flush_verto_dtls_datagrams
+RTCDtlsTransport._send_rtp = _send_verto_rtp_without_repeated_audio_marker
+
+
+if os.environ.get("FREESWITCH_VERTO_DTLS_ROLE", "active").strip().lower() == "passive":
+    SmallWebRTCConnection._create_answer = create_verto_passive_answer
+else:
+    SmallWebRTCConnection._create_answer = create_verto_active_rsa_answer
 
 
 class VertoAgentBridge:
@@ -166,6 +274,7 @@ class VertoAgentBridge:
         self._rpc_id = 0
         self.request_handler = SmallWebRTCRequestHandler(host="127.0.0.1")
         self.sessions: dict[str, dict[str, Any]] = {}
+        self.pipeline_evidence: dict[str, dict[str, Any]] = {}
 
     def write_proof_artifact(self, event_type: str) -> None:
         if self.proof_out is None:
@@ -185,6 +294,7 @@ class VertoAgentBridge:
             "lastInvite": self.last_invite,
             "lastAnswer": self.last_answer,
             "lastError": self.last_error,
+            "pipelineEvidence": list(self.pipeline_evidence.values()),
             "remainingMediaBlocker": "Verto signaling is configured and the sidecar can attempt a Pipecat-backed WebRTC answer, but caller-audible acceptance still requires a live 8600 proof showing rtc-asr final transcript and Kokoro/Pipecat playback heard by the caller.",
             "nextAction": "Place a local 8600 call with the Verto bridge running, then attach this artifact with the strict live SIP bundle once caller playback proof is captured.",
         }
@@ -345,7 +455,16 @@ class VertoAgentBridge:
         self.write_proof_artifact("verto.answer.sent")
 
     async def start_pipeline(self, *, connection: Any, session_id: str, call_id: str, readiness: Any) -> None:
-        session = AccVoicePipelineSession(acc_url=self.acc_url, call_id=call_id, readiness=readiness)
+        def record_pipeline_evidence(snapshot: dict[str, Any]) -> None:
+            self.pipeline_evidence[call_id] = snapshot
+            self.write_proof_artifact("verto.pipeline.stage")
+
+        session = AccVoicePipelineSession(
+            acc_url=self.acc_url,
+            call_id=call_id,
+            readiness=readiness,
+            evidence_callback=record_pipeline_evidence,
+        )
         transport = SmallWebRTCTransport(
             webrtc_connection=connection,
             params=TransportParams(
@@ -434,6 +553,7 @@ class VertoAgentBridge:
             "reviewReady": False,
             "blockers": [] if logged_in else ["FreeSWITCH Verto login is not established."],
             "remainingMediaBlocker": "Verto signaling is configured and the sidecar can attempt a Pipecat-backed WebRTC answer, but caller-audible acceptance still requires a live 8600 proof showing rtc-asr final transcript and Kokoro/Pipecat playback heard by the caller.",
+            "pipelineEvidence": list(self.pipeline_evidence.values()),
         }
 
     async def health(self, _request: web.Request) -> web.Response:

@@ -13,7 +13,10 @@
       <param name="userauth" value="true"/>
       <param name="blind-reg" value="false"/>
       <param name="rtp-ip" value="$${local_ip_v4}"/>
-      <param name="ext-rtp-ip" value="$${external_rtp_ip}"/>
+      <!-- The ACC Verto agent is a local/LAN Pipecat peer. Advertising the
+           public NAT address here breaks DTLS-SRTP on hosts without NAT
+           hairpinning even though Verto signaling succeeds. -->
+      <param name="ext-rtp-ip" value="$${local_ip_v4}"/>
       <param name="local-network" value="localnet.auto"/>
       <param name="inbound-codec-string" value="opus,PCMU"/>
       <param name="outbound-codec-string" value="opus,PCMU"/>

@@ -139,6 +139,85 @@ function tonePcm16({ durationMs, sampleRate = 8000, frequency = 440 }) {
   return pcm;
 }
 
+function pcm16Rms(pcm) {
+  if (!pcm.length) return 0;
+  let sumSquares = 0;
+  const sampleCount = Math.floor(pcm.length / 2);
+  for (let offset = 0; offset + 1 < pcm.length; offset += 2) {
+    const sample = pcm.readInt16LE(offset);
+    sumSquares += sample * sample;
+  }
+  return Math.round(Math.sqrt(sumSquares / Math.max(sampleCount, 1)));
+}
+
+function pcm16MonoFromWav(wav, targetSampleRate = 8000) {
+  if (wav.toString("ascii", 0, 4) !== "RIFF" || wav.toString("ascii", 8, 12) !== "WAVE") {
+    throw new Error("caller audio must be a RIFF/WAVE file");
+  }
+  let offset = 12;
+  let format = null;
+  let audio = null;
+  while (offset + 8 <= wav.length) {
+    const chunkId = wav.toString("ascii", offset, offset + 4);
+    const declaredSize = wav.readUInt32LE(offset + 4);
+    const availableSize = Math.min(declaredSize, wav.length - offset - 8);
+    const chunk = wav.subarray(offset + 8, offset + 8 + availableSize);
+    if (chunkId === "fmt " && chunk.length >= 16) {
+      format = {
+        encoding: chunk.readUInt16LE(0),
+        channels: chunk.readUInt16LE(2),
+        sampleRate: chunk.readUInt32LE(4),
+        bitsPerSample: chunk.readUInt16LE(14),
+      };
+    } else if (chunkId === "data") {
+      audio = chunk;
+      break;
+    }
+    if (declaredSize === 0xffffffff) break;
+    offset += 8 + declaredSize + (declaredSize % 2);
+  }
+  if (!format || !audio) throw new Error("caller WAV is missing fmt or data audio");
+  if (format.encoding !== 1 || format.bitsPerSample !== 16 || ![1, 2].includes(format.channels)) {
+    throw new Error(`caller WAV must be PCM16 mono/stereo; got format=${format.encoding} bits=${format.bitsPerSample} channels=${format.channels}`);
+  }
+  const frameBytes = format.channels * 2;
+  const sourceSamples = Math.floor(audio.length / frameBytes);
+  const mono = new Int16Array(sourceSamples);
+  for (let index = 0; index < sourceSamples; index += 1) {
+    let sum = 0;
+    for (let channel = 0; channel < format.channels; channel += 1) {
+      sum += audio.readInt16LE(index * frameBytes + channel * 2);
+    }
+    mono[index] = Math.round(sum / format.channels);
+  }
+  const targetSamples = Math.floor((sourceSamples * targetSampleRate) / format.sampleRate);
+  const pcm = Buffer.alloc(targetSamples * 2);
+  for (let index = 0; index < targetSamples; index += 1) {
+    const sourceIndex = Math.min(sourceSamples - 1, Math.floor((index * format.sampleRate) / targetSampleRate));
+    pcm.writeInt16LE(mono[sourceIndex], index * 2);
+  }
+  return pcm;
+}
+
+async function loadRtcAsrEvidence(evidencePath) {
+  if (!evidencePath) return { ready: false, transcript: "", ttsReady: false, evidence: null };
+  try {
+    const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
+    const snapshots = Array.isArray(evidence.pipelineEvidence) ? evidence.pipelineEvidence : [evidence];
+    for (const snapshot of snapshots) {
+      const stages = Array.isArray(snapshot?.stageEvents) ? snapshot.stageEvents : [];
+      const finalTranscript = [...stages].reverse().find((event) => event?.stage === "stt.transcript_final" && event?.ok !== false && String(event?.transcript || "").trim());
+      const ttsReady = stages.some((event) => event?.stage === "tts.audio_ready" && event?.ok !== false);
+      if (finalTranscript && ttsReady) {
+        return { ready: true, transcript: String(finalTranscript.transcript).trim(), ttsReady, evidence };
+      }
+    }
+    return { ready: false, transcript: "", ttsReady: false, evidence };
+  } catch {
+    return { ready: false, transcript: "", ttsReady: false, evidence: null };
+  }
+}
+
 function ulawPacketsFromPcm(pcm, { payloadSamples = 160, ssrc = 0xacc222 }) {
   const packets = [];
   let sequence = 1;
@@ -178,12 +257,20 @@ class SipProofCall {
     this.remoteRtp = null;
     this.completed = false;
     this.accepted = false;
+    this.authInviteSent = false;
+    this.challengeAckSent = false;
     this.mediaTasks = new Set();
   }
 
   async run() {
     await mkdir(this.options.outDir, { recursive: true });
-    this.callerPcm = tonePcm16({ durationMs: this.options.toneMs, frequency: this.options.frequency });
+    const callerSpeechPcm = this.options.callerAudioPath
+      ? pcm16MonoFromWav(await readFile(this.options.callerAudioPath))
+      : tonePcm16({ durationMs: this.options.toneMs, frequency: this.options.frequency });
+    this.callerPcm = Buffer.concat([
+      callerSpeechPcm,
+      Buffer.alloc(Math.max(0, Math.round(this.options.tailSilenceMs * 8)) * 2),
+    ]);
     this.sipSocket = dgram.createSocket("udp4");
     this.rtpSocket = dgram.createSocket("udp4");
     this.sipSocket.on("message", (msg, rinfo) => void this.handleSip(msg, rinfo));
@@ -256,6 +343,12 @@ class SipProofCall {
     this.record("sip.recv", { remote: `${rinfo.address}:${rinfo.port}`, startLine: message.startLine, cseq: header(message, "cseq") });
     if (message.startLine.startsWith("SIP/2.0 407") && header(message, "cseq").includes("INVITE")) {
       if (header(message, "cseq").startsWith("1 ")) {
+        if (!this.challengeAckSent) {
+          this.challengeAckSent = true;
+          await this.sendAck({ cseq: 1, toHeader: header(message, "to"), transactionBranch: `${this.callId}-1` });
+        }
+        if (this.authInviteSent) return;
+        this.authInviteSent = true;
         const challenge = parseDigestChallenge(header(message, "proxy-authenticate"));
         const uri = `sip:${this.options.remoteHost}:${this.options.remoteSipPort}`;
         const authorization = digestAuthorization({
@@ -271,11 +364,11 @@ class SipProofCall {
       return;
     }
     if (message.startLine.startsWith("SIP/2.0 200") && header(message, "cseq").includes("INVITE")) {
+      this.toTag = header(message, "to").match(/;tag=([^;>\s]+)/)?.[1] ?? this.toTag;
+      await this.sendAck({ cseq: this.cseq, toHeader: header(message, "to") });
       if (this.accepted) return;
       this.accepted = true;
-      this.toTag = header(message, "to").match(/;tag=([^;>\s]+)/)?.[1] ?? this.toTag;
       this.remoteRtp = parseRtpTargetFromSdp(message.body, rinfo.address);
-      await this.sendAck();
       const task = this.sendCallerAudio()
         .catch((error) => this.record("rtp.caller_audio_failed", { error: String(error) }))
         .finally(() => this.mediaTasks.delete(task));
@@ -287,22 +380,24 @@ class SipProofCall {
     }
   }
 
-  async sendAck() {
+  async sendAck({ cseq = this.cseq, toHeader = "", transactionBranch = null } = {}) {
     const uri = `sip:${this.options.destination}@${this.options.remoteHost}:${this.options.remoteSipPort}`;
+    const resolvedTo = toHeader || `<sip:${this.options.destination}@${this.options.domain}>${this.toTag ? `;tag=${this.toTag}` : ""}`;
+    const branch = transactionBranch || `${this.callId}-ack-${cseq}`;
     const packet = Buffer.from([
       `ACK ${uri} SIP/2.0`,
-      `Via: SIP/2.0/UDP ${this.options.localHost}:${this.options.localSipPort};branch=z9hG4bK-${this.callId}-ack`,
+      `Via: SIP/2.0/UDP ${this.options.localHost}:${this.options.localSipPort};branch=z9hG4bK-${branch}`,
       "Max-Forwards: 70",
       `From: "ACC SIP Proof" <sip:${this.options.username}@${this.options.domain}>;tag=${this.fromTag}`,
-      `To: <sip:${this.options.destination}@${this.options.domain}>${this.toTag ? `;tag=${this.toTag}` : ""}`,
+      `To: ${resolvedTo}`,
       `Call-ID: ${this.callId}`,
-      `CSeq: ${this.cseq} ACK`,
+      `CSeq: ${cseq} ACK`,
       `Contact: <sip:${this.options.username}@${this.options.localHost}:${this.options.localSipPort}>`,
       "Content-Length: 0",
       "",
       "",
     ].join("\r\n"));
-    this.record("sip.send", { startLine: "ACK", cseq: this.cseq });
+    this.record("sip.send", { startLine: "ACK", cseq, transactionBranch: branch });
     await this.sendSip(packet);
   }
 
@@ -328,6 +423,10 @@ class SipProofCall {
     if (!this.remoteRtp) {
       this.record("rtp.caller_audio_blocked", { blocker: "No remote RTP target was discovered from FreeSWITCH answer SDP." });
       return;
+    }
+    if (this.options.mediaDelayMs > 0) {
+      this.record("rtp.caller_audio_waiting", { mediaDelayMs: this.options.mediaDelayMs });
+      await new Promise((resolve) => setTimeout(resolve, this.options.mediaDelayMs));
     }
     const packets = ulawPacketsFromPcm(this.callerPcm, { ssrc: this.options.ssrc });
     this.record("rtp.caller_audio_started", { packetCount: packets.length, remoteRtp: this.remoteRtp, audioBytes: this.callerPcm.length });
@@ -365,7 +464,8 @@ class SipProofCall {
     await writeFile(callerWavPath, callerWav);
     await writeFile(playbackWavPath, playbackWav);
     await writeFile(sipLogPath, `${JSON.stringify(this.events, null, 2)}\n`, "utf8");
-    const callerPlaybackConfirmed = this.returnPacketCount > 0 && playbackPcm.length > 0;
+    const playbackRms = pcm16Rms(playbackPcm);
+    const callerPlaybackConfirmed = this.returnPacketCount >= 10 && playbackRms >= 50;
     await writeFile(
       playbackEvidencePath,
       `${JSON.stringify({
@@ -374,13 +474,15 @@ class SipProofCall {
         method: "repo_sip_uac_rtp_capture",
         callId: this.callId,
         packetCount: this.returnPacketCount,
+        playbackRms,
         playbackWavPath,
         playbackAudioBytes: playbackPcm.length,
         generatedAt: nowIso(),
       }, null, 2)}\n`,
       "utf8",
     );
-    const rtcAsrReady = rtcAsrEvidencePath ? await stat(rtcAsrEvidencePath).then((stats) => stats.size > 0, () => false) : false;
+    const rtcAsrEvidence = await loadRtcAsrEvidence(rtcAsrEvidencePath);
+    const rtcAsrReady = rtcAsrEvidence.ready;
     const blockers = [];
     if (!this.remoteRtp) blockers.push("FreeSWITCH did not return an RTP target in the accepted INVITE SDP.");
     if (!callerPlaybackConfirmed) blockers.push("No caller-side return RTP audio was captured.");
@@ -406,6 +508,7 @@ class SipProofCall {
         rtpPacketCount: Math.ceil(this.callerPcm.length / 320),
         callerInputPacketCount: Math.ceil(this.callerPcm.length / 320),
         callerPlaybackPacketCount: this.returnPacketCount,
+        callerPlaybackRms: playbackRms,
       },
       artifacts: {
         audioWav: callerWavPath,
@@ -436,7 +539,13 @@ class SipProofCall {
       callerPlaybackEvidence: {
         callerPlaybackConfirmed,
         packetCount: this.returnPacketCount,
+        playbackRms,
         playbackWavPath,
+      },
+      rtcAsrEvidence: {
+        transcriptCaptured: rtcAsrReady,
+        transcript: rtcAsrEvidence.transcript,
+        ttsAudioReady: rtcAsrEvidence.ttsReady,
       },
       blockers,
     };
@@ -480,8 +589,11 @@ async function main() {
     domain: argValue("--domain", process.env.FREESWITCH_SIP_DOMAIN || remoteHost),
     destination: argValue("--destination", process.env.FREESWITCH_SIP_DESTINATION || "8600"),
     toneMs: Number(argValue("--tone-ms", "1800")),
+    tailSilenceMs: Number(argValue("--tail-silence-ms", process.env.ACC_SIP_PROOF_TAIL_SILENCE_MS || "10000")),
+    mediaDelayMs: Number(argValue("--media-delay-ms", process.env.ACC_SIP_PROOF_MEDIA_DELAY_MS || "1000")),
     callMs: Number(argValue("--call-ms", "10000")),
     frequency: Number(argValue("--frequency", "440")),
+    callerAudioPath: argValue("--caller-audio", process.env.ACC_SIP_PROOF_CALLER_AUDIO),
     ssrc: Number(argValue("--ssrc", "11324962")),
     rtcAsrEvidencePath: argValue("--rtc-asr-evidence", process.env.RTC_ASR_EVIDENCE_PATH),
     accCallId: argValue("--acc-call-id", process.env.ACC_CALL_ID),
