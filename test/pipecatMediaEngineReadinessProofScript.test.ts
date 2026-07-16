@@ -106,7 +106,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         ],
         proofBundleCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
       },
-      remainingWorkCount: 4,
+      remainingWorkCount: 3,
       validationCommands: [
         "npm test",
         "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",

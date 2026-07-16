@@ -156,7 +156,6 @@ export function buildPipecatMediaEngineReadinessPayload() {
     ],
     remainingWork: [
       "Run the live fixture/tester injection adapter with sidecars in CI or local proof mode and archive captured OutputAudioRawFrame evidence with the media-engine readiness artifact.",
-      "Implement the Verto incoming-call media answer so the active FreeSWITCH WebRTC leg feeds the same shared Pipecat Pipeline processors used by the browser SmallWebRTC path.",
       "Capture live softphone evidence that the caller hears Kokoro/Pipecat TTS returned through the same bridged Verto/WebRTC leg on the 8600 path.",
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
     ],
