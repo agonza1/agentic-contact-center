@@ -35,6 +35,64 @@ export const PIPECAT_FLOW_MANAGER_REQUIRED_GUARDS = [
   },
 ] as const;
 
+export const PIPECAT_FLOW_MANAGER_NODE_SPECS = [
+  {
+    node: "call_started",
+    owns: "session bootstrap and first user turn handoff",
+    handlerIntent: "create FlowManager context from ACC call metadata, then wait for caller audio/transcript",
+    emitsEvents: ["flow_state_transition"],
+    requiresAccState: ["product_state", "proof_artifacts"],
+  },
+  {
+    node: "greet",
+    owns: "first cancellation-rescue acknowledgement",
+    handlerIntent: "acknowledge caller intent without offering retention terms",
+    emitsEvents: ["flow_state_transition", "agent_turn_appended"],
+    requiresAccState: ["proof_artifacts"],
+  },
+  {
+    node: "diagnose",
+    owns: "reason collection before any retention discussion",
+    handlerIntent: "collect the cancellation reason and classify whether the retention boundary was reached",
+    emitsEvents: ["flow_state_transition", "agent_turn_appended"],
+    requiresAccState: ["proof_artifacts"],
+  },
+  {
+    node: "policy_hold",
+    owns: "fail-closed retention boundary",
+    handlerIntent: "pause automated response before unapproved offer language and request approved next action",
+    emitsEvents: ["flow_state_transition", "policy_hold_entered", "agent_turn_appended"],
+    requiresAccState: ["operator_controls", "proof_artifacts", "queue_state"],
+  },
+  {
+    node: "operator_steer",
+    owns: "operator approval wait",
+    handlerIntent: "hold response generation until ACC records a bounded operator steer action",
+    emitsEvents: ["flow_state_transition", "operator_steer_requested", "agent_turn_appended"],
+    requiresAccState: ["operator_controls", "proof_artifacts", "queue_state"],
+  },
+  {
+    node: "steered_response",
+    owns: "approved or denied safe response",
+    handlerIntent: "speak only the bounded response permitted by ACC operator controls",
+    emitsEvents: ["flow_state_transition", "operator_steer_applied", "agent_turn_appended"],
+    requiresAccState: ["operator_controls", "proof_artifacts"],
+  },
+  {
+    node: "wrap",
+    owns: "safe close or human handoff",
+    handlerIntent: "stop automated retention handling and attach wrap/handoff proof",
+    emitsEvents: ["flow_state_transition", "human_handoff_started", "agent_turn_appended"],
+    requiresAccState: ["product_state", "proof_artifacts", "queue_state"],
+  },
+] as const satisfies ReadonlyArray<{
+  node: FlowState;
+  owns: string;
+  handlerIntent: string;
+  emitsEvents: readonly string[];
+  requiresAccState: readonly string[];
+}>;
+
 export const PIPECAT_FLOW_MANAGER_PARITY_FIXTURES = [
   {
     id: "scripted_policy_hold",
@@ -70,6 +128,7 @@ export function buildPipecatFlowManagerContractPayload() {
     currentOwner: "ACC TypeScript flow",
     targetOwner: "Pipecat Flows/FlowManager",
     requiredNodes: PIPECAT_FLOW_MANAGER_REQUIRED_NODES,
+    nodeSpecs: PIPECAT_FLOW_MANAGER_NODE_SPECS,
     requiredGuards: PIPECAT_FLOW_MANAGER_REQUIRED_GUARDS,
     retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
     parityChecks: [
