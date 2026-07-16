@@ -28,6 +28,20 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
       "fallback_escalates_to_wrap",
     ],
   );
+  assert.deepEqual(
+    contract.nodeSpecs.map((spec) => spec.node),
+    contract.requiredNodes,
+  );
+  assert.equal(
+    contract.nodeSpecs.find((spec) => spec.node === "policy_hold")?.handlerIntent,
+    "pause automated response before unapproved offer language and request approved next action",
+  );
+  assert.deepEqual(
+    contract.nodeSpecs.find((spec) => spec.node === "policy_hold")?.emitsEvents,
+    ["flow_state_transition", "policy_hold_entered", "agent_turn_appended"],
+  );
+  assert.equal(contract.nodeSpecs.find((spec) => spec.node === "operator_steer")?.requiresAccState.includes("operator_controls"), true);
+  assert.equal(contract.nodeSpecs.find((spec) => spec.node === "wrap")?.emitsEvents.includes("human_handoff_started"), true);
   assert.equal(contract.requiredGuards.every((guard) => guard.failClosed), true);
   assert.equal(contract.retainedAccOwnership.includes("operator_controls"), true);
   assert.equal(contract.parityChecks.find((check) => check.id === "scripted_policy_hold")?.requiredState, "policy_hold");
