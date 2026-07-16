@@ -5551,6 +5551,12 @@ async function routeRequest(
       return;
     }
 
+    const expectedAgentText = getOptionalTrimmedString(body.expectedAgentText);
+    if (!expectedAgentText) {
+      writeBadRequest(response, "caller_turn_commit_expected_agent_text_required");
+      return;
+    }
+
     const timestamp = normalizeTimestamp(body.timestamp, "caller_turn_timestamp_invalid");
     if (typeof timestamp !== "string") {
       writeBadRequest(response, timestamp.error);
@@ -5564,6 +5570,14 @@ async function routeRequest(
     };
 
     try {
+      const preview = await ingress.previewCallerTurn(callerTurnCommitMatch[1], turn, config, {
+        conversationMode,
+      });
+      const previewAgentText = preview.transcript.at(-1)?.speaker === "agent" ? preview.transcript.at(-1)?.text : undefined;
+      if (previewAgentText !== expectedAgentText) {
+        writeBadRequest(response, "caller_turn_commit_stale");
+        return;
+      }
       const snapshot = await ingress.appendCallerTurn(callerTurnCommitMatch[1], turn, config, {
         conversationMode,
       });
@@ -5574,6 +5588,7 @@ async function routeRequest(
           status: "committed",
           callId: callerTurnCommitMatch[1],
           callerTranscript: text,
+          expectedAgentText,
           timestamp,
           conversationMode: conversationMode ?? null,
         },
