@@ -9,6 +9,8 @@ import contextlib
 import json
 import os
 import sys
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -19,10 +21,11 @@ RUNTIME_PATH = REPO_ROOT / ".pipecat-runtime"
 sys.path.insert(0, str(RUNTIME_PATH))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from pipecat.frames.frames import TextFrame, TTSAudioRawFrame, TTSStartedFrame, TTSStoppedFrame
+from pipecat.frames.frames import TextFrame, TranscriptionFrame, TTSAudioRawFrame, TTSStartedFrame, TTSStoppedFrame
 from pipecat.processors.frame_processor import FrameDirection
 
-from acc_pipecat_voice_pipeline import AccVoicePipelineSession, KokoroTtsProcessor
+import acc_pipecat_voice_pipeline as pipeline
+from acc_pipecat_voice_pipeline import AccCallerTurnProcessor, AccVoicePipelineSession, KokoroTtsProcessor
 
 
 SAMPLE_RATE = 24_000
@@ -41,6 +44,15 @@ class CapturingTtsProcessor(KokoroTtsProcessor):
         self.frames.append(frame)
         if self.pause_after_first_chunk and isinstance(frame, TTSAudioRawFrame):
             self.first_chunk.set()
+
+
+class CapturingCallerTurnProcessor(AccCallerTurnProcessor):
+    def __init__(self, session: AccVoicePipelineSession):
+        super().__init__(session)
+        self.frames: list[Any] = []
+
+    async def push_frame(self, frame: Any, direction: FrameDirection = FrameDirection.DOWNSTREAM) -> None:
+        self.frames.append(frame)
 
 
 def build_session(call_id: str) -> AccVoicePipelineSession:
@@ -71,14 +83,38 @@ def install_fake_synthesizer(session: AccVoicePipelineSession, *, chunks: int) -
 
 async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
     os.environ["ACC_TTS_OUTPUT_CHUNK_YIELD_MS"] = "5"
+    delivery_commit_calls: list[dict[str, Any]] = []
+    original_json_http = pipeline.json_http
+
+    def fake_delivery_commit_http(method: str, url: str, payload: dict[str, Any] | None = None, timeout: float = 30) -> dict[str, Any]:
+        if method == "POST" and url.endswith("/caller-turn/commit"):
+            delivery_commit_calls.append(payload or {})
+            return {
+                "flowState": "diagnose",
+                "transcript": [
+                    {"speaker": "caller", "text": (payload or {}).get("text", ""), "timestamp": "fixture"},
+                    {"speaker": "agent", "text": "Delivered response after acknowledgement.", "timestamp": "fixture"},
+                ],
+            }
+        return original_json_http(method, url, payload, timeout)
+
     normal_session = build_session("output-normal")
     if not live_kokoro:
         install_fake_synthesizer(normal_session, chunks=6)
-    normal_processor = CapturingTtsProcessor(normal_session)
-    await normal_processor.process_frame(
-        TextFrame("This normal response proves that Kokoro audio reaches the transport in playable chunks."),
-        FrameDirection.DOWNSTREAM,
+    normal_session.set_pending_caller_turn_commit(
+        payload={"text": "Normal caller turn", "conversationMode": "free_caller"},
+        expected_agent_text="Delivered response after acknowledgement.",
+        output_generation=normal_session.output_generation,
     )
+    normal_processor = CapturingTtsProcessor(normal_session)
+    pipeline.json_http = fake_delivery_commit_http
+    try:
+        await normal_processor.process_frame(
+            TextFrame("Delivered response after acknowledgement."),
+            FrameDirection.DOWNSTREAM,
+        )
+    finally:
+        pipeline.json_http = original_json_http
     normal_audio = [frame for frame in normal_processor.frames if isinstance(frame, TTSAudioRawFrame)]
 
     interrupted_session = build_session("output-interrupted")
@@ -111,6 +147,48 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
     task_cancellation = task_session.cancel_output("fixture_cancel_active_response_tasks")
     await asyncio.gather(agent_task, tts_task, return_exceptions=True)
 
+    cancelled_commit_calls: list[dict[str, Any]] = []
+    preview_started = threading.Event()
+
+    def fake_cancelled_caller_turn_http(method: str, url: str, payload: dict[str, Any] | None = None, timeout: float = 30) -> dict[str, Any]:
+        if method == "POST" and url.endswith("/caller-turn") and (payload or {}).get("commitMode") == "delivery_ack":
+            preview_started.set()
+            time.sleep(0.05)
+            return {
+                "flowState": "diagnose",
+                "callerTurnCommit": {"mode": "delivery_ack", "status": "pending", "timestamp": "fixture"},
+                "transcript": [
+                    {"speaker": "caller", "text": (payload or {}).get("text", ""), "timestamp": "fixture"},
+                    {"speaker": "agent", "text": "This cancelled response must never be committed.", "timestamp": "fixture"},
+                ],
+            }
+        if method == "POST" and url.endswith("/caller-turn/commit"):
+            cancelled_commit_calls.append(payload or {})
+            return {"transcript": []}
+        return original_json_http(method, url, payload, timeout)
+
+    cancelled_turn_session = build_session("caller-turn-cancelled-before-delivery")
+    caller_turn_processor = CapturingCallerTurnProcessor(cancelled_turn_session)
+    pipeline.json_http = fake_cancelled_caller_turn_http
+    try:
+        caller_turn_task = asyncio.create_task(
+            caller_turn_processor.process_frame(
+                TranscriptionFrame(
+                    "Please help with billing.",
+                    user_id="browser",
+                    timestamp="fixture",
+                    result={"stt": {"engine": "fixture"}},
+                    finalized=True,
+                ),
+                FrameDirection.DOWNSTREAM,
+            )
+        )
+        await asyncio.to_thread(preview_started.wait, 1)
+        cancellation_before_delivery = cancelled_turn_session.cancel_output("fixture_cancel_inflight_caller_turn")
+        await caller_turn_task
+    finally:
+        pipeline.json_http = original_json_http
+
     normal_started = [frame for frame in normal_processor.frames if isinstance(frame, TTSStartedFrame)]
     normal_stopped = [frame for frame in normal_processor.frames if isinstance(frame, TTSStoppedFrame)]
     interrupted_stopped = [frame for frame in interrupted_processor.frames if isinstance(frame, TTSStoppedFrame)]
@@ -125,6 +203,8 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         "freshResponseAfterInterruption": len(resumed_audio) >= (1 if live_kokoro else 3) and len(resumed_stopped) == 1,
         "noStalePlaybackAfterInterruption": interrupted_session.output_stream_audio_bytes == sum(len(frame.audio) for frame in resumed_audio),
         "activeAgentAndTtsTasksCancelled": sorted(task_cancellation.get("cancelledTasks", [])) == ["agent", "tts"] and agent_task.cancelled() and tts_task.cancelled(),
+        "callerTurnDeliveryAckCommitsAfterFirstAudio": len(delivery_commit_calls) == 1 and len(normal_audio) >= 1,
+        "cancelledCallerTurnDoesNotCommitUnheardAgent": len(cancelled_commit_calls) == 0 and not caller_turn_processor.frames and cancellation_before_delivery.get("cancelledTasks") == ["agent"],
     }
     return {
         "ok": all(checks.values()),
@@ -142,6 +222,11 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         },
         "resumed": {"chunks": len(resumed_audio), "audioBytes": sum(len(frame.audio) for frame in resumed_audio)},
         "activeTasks": {"cancelled": task_cancellation.get("cancelledTasks", [])},
+        "callerTurnCommit": {
+            "deliveryAckCommits": len(delivery_commit_calls),
+            "cancelledDeliveryAckCommits": len(cancelled_commit_calls),
+            "cancelledTasks": cancellation_before_delivery.get("cancelledTasks"),
+        },
         "checks": checks,
     }
 

@@ -348,6 +348,7 @@ class AccVoicePipelineSession:
         self.rtc_asr_interim_events: list[dict[str, Any]] = []
         self.turn_controls: PipecatTurnControls | None = None
         self.evidence_callback = evidence_callback
+        self.pending_caller_turn_commit: dict[str, Any] | None = None
 
     def evidence_snapshot(self) -> dict[str, Any]:
         return {
@@ -376,6 +377,7 @@ class AccVoicePipelineSession:
                 "playbackPending": time.monotonic() <= self.output_active_until,
             },
             "bargeIn": self.last_barge_in_evidence,
+            "pendingCallerTurnCommit": bool(self.pending_caller_turn_commit),
         }
 
     def record_stage(self, stage: str, *, ok: bool = True, **detail: Any) -> dict[str, Any]:
@@ -453,6 +455,62 @@ class AccVoicePipelineSession:
     def finish_output_stream(self) -> None:
         self.output_stream_active = False
 
+    def set_pending_caller_turn_commit(self, *, payload: dict[str, Any], expected_agent_text: str, output_generation: int) -> None:
+        self.pending_caller_turn_commit = {
+            "url": f"{self.acc_url}/api/calls/{self.call_id}/caller-turn/commit",
+            "payload": payload,
+            "expectedAgentText": expected_agent_text,
+            "outputGeneration": output_generation,
+            "createdAt": datetime.now(UTC).isoformat(timespec="milliseconds"),
+        }
+        self.record_stage(
+            "acc.caller_turn_commit_pending",
+            callerTranscript=payload.get("text"),
+            agentText=expected_agent_text,
+            outputGeneration=output_generation,
+        )
+
+    def discard_pending_caller_turn_commit(self, reason: str) -> None:
+        pending = self.pending_caller_turn_commit
+        if not pending:
+            return
+        self.pending_caller_turn_commit = None
+        payload = pending.get("payload") if isinstance(pending, dict) else {}
+        self.record_stage(
+            "acc.caller_turn_commit_discarded",
+            ok=False,
+            error=reason,
+            callerTranscript=payload.get("text") if isinstance(payload, dict) else None,
+            outputGeneration=self.output_generation,
+        )
+
+    async def commit_pending_caller_turn_delivery(self, *, expected_agent_text: str, output_generation: int) -> dict[str, Any] | None:
+        pending = self.pending_caller_turn_commit
+        if not pending:
+            return None
+        if pending.get("outputGeneration") != output_generation or self.output_generation != output_generation:
+            self.discard_pending_caller_turn_commit("stale_output_generation_before_delivery_ack")
+            return None
+        payload = pending.get("payload")
+        url = pending.get("url")
+        if not isinstance(payload, dict) or not isinstance(url, str):
+            self.discard_pending_caller_turn_commit("invalid_pending_delivery_ack")
+            return None
+        call = await asyncio.to_thread(json_http, "POST", url, payload)
+        self.pending_caller_turn_commit = None
+        committed_agent_text = latest_agent_text(call)
+        matches_expected = committed_agent_text == expected_agent_text
+        self.record_stage(
+            "acc.caller_turn_delivery_committed",
+            ok=matches_expected,
+            error=None if matches_expected else "committed_agent_text_mismatch",
+            callerTranscript=payload.get("text"),
+            agentText=committed_agent_text,
+            expectedAgentText=expected_agent_text,
+            outputGeneration=self.output_generation,
+        )
+        return call
+
     def cancel_output(self, reason: str = "barge-in") -> dict[str, Any]:
         if not self.has_active_response():
             self.last_barge_in_evidence = {
@@ -466,6 +524,7 @@ class AccVoicePipelineSession:
             return self.last_barge_in_evidence
         requested_at = time.monotonic()
         self.output_generation += 1
+        self.discard_pending_caller_turn_commit("barge_in_cancelled_before_delivery")
         cancelled_tasks: list[str] = []
         current_task = asyncio.current_task()
         for kind, task in (("agent", self.active_agent_task), ("tts", self.active_tts_task)):
@@ -978,11 +1037,12 @@ class AccCallerTurnProcessor(FrameProcessor):
             await self.push_frame(TextFrame(deterministic_agent_text), FrameDirection.DOWNSTREAM)
             return
         turn_output_generation = self.session.output_generation
+        caller_turn_payload = {"text": frame.text, "conversationMode": "free_caller", "commitMode": "delivery_ack"}
         agent_task = asyncio.create_task(asyncio.to_thread(
             json_http,
             "POST",
             f"{self.session.acc_url}/api/calls/{self.session.call_id}/caller-turn",
-            {"text": frame.text, "conversationMode": "free_caller"},
+            caller_turn_payload,
         ))
         self.session.register_response_task("agent", agent_task)
         try:
@@ -1049,8 +1109,21 @@ class AccCallerTurnProcessor(FrameProcessor):
             "callId": self.session.call_id,
         }
         if agent_text:
+            commit_payload = {
+                "text": frame.text,
+                "conversationMode": "free_caller",
+            }
+            commit_metadata = call.get("callerTurnCommit") if isinstance(call, dict) else None
+            if isinstance(commit_metadata, dict) and isinstance(commit_metadata.get("timestamp"), str):
+                commit_payload["timestamp"] = commit_metadata["timestamp"]
+            self.session.set_pending_caller_turn_commit(
+                payload=commit_payload,
+                expected_agent_text=agent_text,
+                output_generation=turn_output_generation,
+            )
             await self.push_frame(TextFrame(agent_text), FrameDirection.DOWNSTREAM)
         else:
+            self.session.discard_pending_caller_turn_commit("agent_text_empty")
             self.session.record_stage("tts.skipped", ok=False, error="agent_text_empty", turn=self.session.turn_count)
 
 
@@ -1103,6 +1176,11 @@ class KokoroTtsProcessor(FrameProcessor):
                     TTSAudioRawFrame(audio=audio_chunk, sample_rate=sample_rate, num_channels=1, context_id=context_id),
                     FrameDirection.DOWNSTREAM,
                 )
+                if self.session.pending_caller_turn_commit:
+                    await self.session.commit_pending_caller_turn_delivery(
+                        expected_agent_text=frame.text,
+                        output_generation=turn_output_generation,
+                    )
                 self.session.record_output_chunk(len(audio_chunk))
                 tts_meta = {**tts_meta, **chunk_meta, "outputWindow": output_window}
                 chunk_yield_ms = max(float(os.environ.get("ACC_TTS_OUTPUT_CHUNK_YIELD_MS", "0")), 0.0)
