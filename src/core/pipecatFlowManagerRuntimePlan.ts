@@ -25,6 +25,27 @@ export interface PipecatFlowManagerNodeHandlerPlan {
   guardIds: string[];
 }
 
+const FLOW_MANAGER_CUTOVER_PRECONDITIONS = [
+  {
+    id: "node_handlers_mirrored",
+    evidence: "All required cancellation-rescue nodes are represented in the FlowManager handler plan.",
+    verificationCommand: "npm run pipecat:flows:contract",
+    satisfied: true,
+  },
+  {
+    id: "fail_closed_guards_locked",
+    evidence: "Policy hold, operator steer, and fallback transitions have fail-closed guard coverage.",
+    verificationCommand: "npm run pipecat:flows:contract",
+    satisfied: true,
+  },
+  {
+    id: "caller_turn_adapter_cutover",
+    evidence: "ACC caller turns are routed through pipecat_flows.FlowManager while ACC retains product state, operator controls, proof artifacts, and queue state.",
+    verificationCommand: "npm test",
+    satisfied: false,
+  },
+] as const;
+
 const FLOW_MANAGER_TRANSITIONS: Readonly<Record<FlowState, readonly FlowState[]>> = {
   call_started: ["greet", "diagnose", "wrap"],
   greet: ["diagnose", "wrap"],
@@ -76,6 +97,7 @@ export function buildPipecatFlowManagerRuntimePlan(input: {
     implementationEntryPoint: "scripts/acc_pipecat_voice_pipeline.py",
     retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
     nodeHandlers,
+    cutoverPreconditions: FLOW_MANAGER_CUTOVER_PRECONDITIONS,
     missingRequiredNodes: input.requiredNodes.filter(
       (node) => !nodeHandlers.some((handler) => handler.node === node),
     ),
