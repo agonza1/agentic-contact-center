@@ -57,6 +57,12 @@ def build_contract_payload() -> dict[str, object]:
         "kokoro_tts_processor": "KokoroTtsProcessor(session)",
         "transport_input_boundary": "transport_input",
         "transport_output_boundary": "transport_output",
+        "tts_stream_lifecycle": "TTSStartedFrame",
+        "tts_stream_chunks": "TTSAudioRawFrame(audio=audio_chunk",
+        "tts_stream_completed": "TTSStoppedFrame",
+        "speech_started_barge_in": "speech_started_barge_in",
+        "transport_output_flush": "output.transport_flushed",
+        "interruption_latency": "transportFlushLatencyMs",
     }
     contract_checks = {
         name: {"token": token, "present": token in pipeline_source}

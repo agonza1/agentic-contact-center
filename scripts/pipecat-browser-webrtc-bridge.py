@@ -300,6 +300,7 @@ class BrowserWebrtcBridge:
         runner = session.get("runner")
         turn_session = session.get("turnSession")
         if isinstance(turn_session, AccVoicePipelineSession):
+            turn_session.cancel_output("small_webrtc_peer_closed")
             await turn_session.close_rtc_asr_stream(reason)
         if isinstance(runner, PipelineRunner):
             await runner.cancel(reason)
