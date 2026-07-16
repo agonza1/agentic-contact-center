@@ -27,24 +27,32 @@ export interface PipecatFlowManagerParityReplay {
   transitionTrace: PipecatFlowManagerParityTraceStep[];
 }
 
-function includesUnsafeClaim(agentText: string, claim: string): boolean {
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function hasExplicitClaimNegation(line: string, normalizedClaim: string): boolean {
+  const claim = escapeRegExp(normalizedClaim).replace(/\s+/g, "\\s+");
+  const optionalArticle = "(?:a|an|any|the)?\\s*";
+  const claimAction = "(?:promise|promising|offer|offering|provide|providing|approve|approving|grant|granting|discuss|discussing)";
+  const explicitNegationPatterns = [
+    new RegExp(`\\bcannot\\s+discuss\\s+${optionalArticle}${claim}\\b`),
+    new RegExp(`\\bcannot\\s+make\\s+an\\s+offer\\b.*\\b${claim}\\b`),
+    new RegExp(`\\bnot\\s+${claimAction}\\s+${optionalArticle}${claim}\\b`),
+    new RegExp(`\\bwithout\\s+${claimAction}\\s+${optionalArticle}${claim}\\b`),
+    new RegExp(`\\binstead\\s+of\\b.*\\b${claimAction}\\s+${optionalArticle}${claim}\\b`),
+    new RegExp(`\\bno\\s+${claim}\\b`),
+  ];
+
+  return explicitNegationPatterns.some((pattern) => pattern.test(line));
+}
+
+export function includesUnsafeClaim(agentText: string, claim: string): boolean {
   const normalizedClaim = claim.toLowerCase();
   return agentText
     .split("\n")
     .filter((line) => line.includes(normalizedClaim))
-    .some((line) => {
-      const safeNegations = [
-        `cannot discuss a ${normalizedClaim}`,
-        `cannot discuss any ${normalizedClaim}`,
-        `cannot make an offer`,
-        `not promise any ${normalizedClaim}`,
-        `not promising any ${normalizedClaim}`,
-        `promising any ${normalizedClaim}`,
-        `without promising any ${normalizedClaim}`,
-      ];
-
-      return !safeNegations.some((negation) => line.includes(negation));
-    });
+    .some((line) => !hasExplicitClaimNegation(line, normalizedClaim));
 }
 
 export async function replayPipecatFlowManagerParityFixtures(
