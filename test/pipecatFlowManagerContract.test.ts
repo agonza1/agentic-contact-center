@@ -60,6 +60,18 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
     ],
   );
   assert.deepEqual(contract.adapterCutoverPreconditions, contract.runtimePlan.cutoverPreconditions);
+  assert.deepEqual(
+    contract.runtimePlan.cutoverSequence.map((step) => [step.id, step.status]),
+    [
+      ["mirror_node_handlers", "complete"],
+      ["lock_fail_closed_parity", "complete"],
+      ["route_caller_turns_through_flowmanager", "pending"],
+    ],
+  );
+  assert.equal(
+    contract.runtimePlan.cutoverSequence.at(-1)?.blocker,
+    "typescript_deterministic_flow_still_owns_runtime_turns",
+  );
   assert.deepEqual(contract.runtimePlan.missingRequiredNodes, []);
   assert.deepEqual(
     contract.runtimePlan.nodeHandlers.map((handler) => handler.node),
@@ -149,6 +161,11 @@ test("Pipecat FlowManager runtime plan mirrors node handlers and guarded transit
     runtimePlan.cutoverPreconditions.map((precondition) => precondition.id),
     ["node_handlers_mirrored", "fail_closed_guards_locked", "caller_turn_adapter_cutover"],
   );
+  assert.deepEqual(
+    runtimePlan.cutoverSequence.map((step) => step.verificationCommand),
+    ["npm run pipecat:flows:contract", "npm run pipecat:flows:contract", "npm test"],
+  );
+  assert.equal(runtimePlan.cutoverSequence.find((step) => step.status === "pending")?.owner, "Pipecat FlowManager adapter");
   assert.equal(runtimePlan.cutoverPreconditions.filter((precondition) => precondition.satisfied).length, 2);
   assert.equal(runtimePlan.cutoverPreconditions.at(-1)?.verificationCommand, "npm test");
 });

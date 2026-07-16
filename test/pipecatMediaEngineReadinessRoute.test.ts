@@ -214,7 +214,13 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.equal(payload.flowManagerContract.requiredGuards.every((guard: any) => guard.failClosed), true);
     assert.deepEqual(
       payload.flowManagerContract.parityChecks.map((check: any) => check.id),
-      ["scripted_policy_hold", "operator_steer_handoff", "operator_denial_safe_response", "runtime_failure_fail_closed"],
+      [
+        "scripted_policy_hold",
+        "operator_steer_handoff",
+        "operator_denial_safe_response",
+        "operator_approval_safe_response",
+        "runtime_failure_fail_closed",
+      ],
     );
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

@@ -25,6 +25,40 @@ export interface PipecatFlowManagerNodeHandlerPlan {
   guardIds: string[];
 }
 
+interface PipecatFlowManagerCutoverStep {
+  id: string;
+  status: "complete" | "pending";
+  owner: string;
+  evidence: string;
+  verificationCommand: string;
+  blocker?: string;
+}
+
+const FLOW_MANAGER_CUTOVER_SEQUENCE: readonly PipecatFlowManagerCutoverStep[] = [
+  {
+    id: "mirror_node_handlers",
+    status: "complete",
+    owner: "ACC TypeScript contract",
+    evidence: "Required cancellation-rescue nodes are mirrored as FlowManager handler specs.",
+    verificationCommand: "npm run pipecat:flows:contract",
+  },
+  {
+    id: "lock_fail_closed_parity",
+    status: "complete",
+    owner: "ACC parity harness",
+    evidence: "Policy hold, operator steer, denial, approval, and runtime failure fixtures replay safely.",
+    verificationCommand: "npm run pipecat:flows:contract",
+  },
+  {
+    id: "route_caller_turns_through_flowmanager",
+    status: "pending",
+    owner: "Pipecat FlowManager adapter",
+    evidence: "Caller-turn runtime must invoke pipecat_flows.FlowManager node handlers before #222 can be accepted.",
+    verificationCommand: "npm test",
+    blocker: "typescript_deterministic_flow_still_owns_runtime_turns",
+  },
+] as const;
+
 const FLOW_MANAGER_CUTOVER_PRECONDITIONS = [
   {
     id: "node_handlers_mirrored",
@@ -97,6 +131,7 @@ export function buildPipecatFlowManagerRuntimePlan(input: {
     implementationEntryPoint: "scripts/acc_pipecat_voice_pipeline.py",
     retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
     nodeHandlers,
+    cutoverSequence: FLOW_MANAGER_CUTOVER_SEQUENCE,
     cutoverPreconditions: FLOW_MANAGER_CUTOVER_PRECONDITIONS,
     missingRequiredNodes: input.requiredNodes.filter(
       (node) => !nodeHandlers.some((handler) => handler.node === node),
