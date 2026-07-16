@@ -60,10 +60,11 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
   assert.equal(contract.retainedAccOwnership.includes("operator_controls"), true);
   assert.equal(contract.parityChecks.find((check) => check.id === "scripted_policy_hold")?.requiredState, "policy_hold");
   assert.equal(contract.parityChecks.find((check) => check.id === "operator_steer_handoff")?.requiredState, "operator_steer");
+  assert.equal(contract.parityChecks.find((check) => check.id === "operator_denial_safe_response")?.requiredState, "steered_response");
   assert.equal(contract.parityChecks.find((check) => check.id === "runtime_failure_fail_closed")?.requiredState, "wrap");
   assert.deepEqual(
     contract.parityFixtures.map((fixture) => fixture.id),
-    ["scripted_policy_hold", "operator_steer_handoff", "runtime_failure_fail_closed"],
+    ["scripted_policy_hold", "operator_steer_handoff", "operator_denial_safe_response", "runtime_failure_fail_closed"],
   );
   assert.deepEqual(contract.parityFixtures[0].callerTurns, [
     "I'm thinking about canceling my policy.",
@@ -71,7 +72,9 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
   ]);
   assert.equal(contract.parityFixtures[0].expectedState, "policy_hold");
   assert.deepEqual(contract.parityFixtures[1].expectedEvents, ["operator_steer_requested"]);
-  assert.equal(contract.parityFixtures[2].injectedFailure, "pipecat_runtime_failure");
+  assert.equal(contract.parityFixtures[2].operatorAction, "deny_offer");
+  assert.deepEqual(contract.parityFixtures[2].expectedEvents, ["operator_steer_requested", "operator_steer_applied", "operator_offer_denied"]);
+  assert.equal(contract.parityFixtures[3].injectedFailure, "pipecat_runtime_failure");
   assert.equal(contract.parityFixtures.every((fixture) => fixture.forbiddenAgentClaims.includes("billing credit")), true);
 
   const parityFixturesById = new Map<string, (typeof contract.parityFixtures)[number]>(
@@ -133,6 +136,7 @@ test("Pipecat FlowManager parity fixtures replay against the current ACC flow", 
     [
       ["scripted_policy_hold", "policy_hold"],
       ["operator_steer_handoff", "operator_steer"],
+      ["operator_denial_safe_response", "steered_response"],
       ["runtime_failure_fail_closed", "wrap"],
     ],
   );
@@ -143,6 +147,7 @@ test("Pipecat FlowManager parity fixtures replay against the current ACC flow", 
     [
       "flowmanager-parity:scripted_policy_hold",
       "flowmanager-parity:operator_steer_handoff",
+      "flowmanager-parity:operator_denial_safe_response",
       "flowmanager-parity:runtime_failure_fail_closed",
     ],
   );
@@ -163,6 +168,11 @@ test("Pipecat FlowManager parity fixtures replay against the current ACC flow", 
       {
         fixtureId: "operator_steer_handoff",
         traceStates: ["call_started", "diagnose", "policy_hold", "operator_steer"],
+        finalTraceEvent: "agent_turn_appended",
+      },
+      {
+        fixtureId: "operator_denial_safe_response",
+        traceStates: ["call_started", "diagnose", "policy_hold", "operator_steer", "steered_response"],
         finalTraceEvent: "agent_turn_appended",
       },
       {
