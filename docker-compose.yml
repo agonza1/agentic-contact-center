@@ -221,6 +221,8 @@ services:
       - local-verto-pass
     ports:
       - "127.0.0.1:8770:8770"
+    volumes:
+      - ./artifacts:/app/artifacts
     environment:
       ACC_URL: http://app:8026
       RTC_ASR_BASE_URL: http://rtc-asr:8080
@@ -229,6 +231,7 @@ services:
       FREESWITCH_VERTO_URL: ws://freeswitch:8081
       FREESWITCH_VERTO_LOGIN: acc-pipecat@127.0.0.1
       FREESWITCH_VERTO_PASSWORD: local-verto-pass
+      PIPECAT_VERTO_PROOF_OUT: /app/artifacts/freeswitch-live/pipecat-verto-proof.json
     healthcheck:
       test:
         - CMD-SHELL

@@ -56,6 +56,8 @@ Use `npm run docker:freeswitch` instead when you want compose to build and start
 
 Use `npm run docker:sip-verto` when you want Compose to start the preferred #222 local SIP lab stack: ACC, FreeSWITCH, rtc-asr, Kokoro, and the Pipecat Verto/WebRTC sidecar. That path expects a compatible `rtc-asr` image, defaulting to `rtc-asr:local`, exposes FreeSWITCH Verto on `127.0.0.1:8081`/`8082`, and keeps extension `8600` bridged to `acc-pipecat`.
 
+The Compose sidecar mounts `./artifacts` and writes its call-scoped proof to `artifacts/freeswitch-live/pipecat-verto-proof.json`.
+
 Use `npm run docker:sip` only for the legacy ESL/RTP proof-debug lane. That bridge can still write bundle-compatible artifacts, but it is not the accepted #222 route.
 
 3. Start the Pipecat Verto sidecar from another terminal when not using Compose:
@@ -70,12 +72,15 @@ To run the deterministic two-way proof, create or supply a PCM16 WAV containing 
 
 ```sh
 FREESWITCH_SIP_PASSWORD=local-sip-pass \
+  ACC_SIP_PROOF_LOCAL_HOST=192.168.86.28 \
   npm run pipecat:verto:live-proof -- \
   --caller-audio artifacts/caller-speech.wav \
   --rtc-asr-evidence artifacts/freeswitch-live/pipecat-verto-proof.json \
   --out-dir artifacts/freeswitch-live/caller \
   --require-review-ready
 ```
+
+Set `ACC_SIP_PROOF_LOCAL_HOST` to a non-loopback IPv4 address on the caller host that the FreeSWITCH container can reach. On macOS, `ipconfig getifaddr en0` is a common way to find it; on Linux, inspect `hostname -I`. The harness rejects `127.0.0.1` because container loopback points back into the FreeSWITCH container, not to the caller RTP socket. If the variable is omitted, the harness infers the first non-loopback IPv4 interface and fails fast when none is available.
 
 The harness keeps RTP flowing after the utterance, captures return RTP at the caller, and only reports `reviewReady: true` when the evidence contains a current rtc-asr final transcript plus Kokoro output and the caller capture contains at least ten non-silent PCMU packets. It also writes `rtc-asr-transcript-evidence.json`, normalized to the current SIP Call-ID, so the manifest can be passed directly to `npm run proof:live-sip-bundle -- --require-rtc-asr-live --require-caller-playback`.
 

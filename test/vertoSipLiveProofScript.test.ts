@@ -22,6 +22,8 @@ test("Verto SIP live proof self-test validates digest, SDP, and RTP packet helpe
     authorizationUriReady: boolean;
     sdpTarget: { host: string; port: number };
     packetCount: number;
+    inferredLocalHost: { host: string; source: string };
+    loopbackRejected: boolean;
   };
 
   assert.equal(summary.ok, true);
@@ -29,6 +31,8 @@ test("Verto SIP live proof self-test validates digest, SDP, and RTP packet helpe
   assert.equal(summary.authorizationUriReady, true);
   assert.deepEqual(summary.sdpTarget, { host: "127.0.0.1", port: 29790 });
   assert.ok(summary.packetCount > 0);
+  assert.deepEqual(summary.inferredLocalHost, { host: "192.168.86.28", source: "network_interface" });
+  assert.equal(summary.loopbackRejected, true);
 });
 
 test("Verto SIP proof requires transcript-backed non-silent caller playback", () => {
@@ -45,6 +49,10 @@ test("Verto SIP proof requires transcript-backed non-silent caller playback", ()
   assert.match(script, /type: rtcAsrReady \? "transcript\.final"/);
   assert.match(script, /this\.returnPacketCount >= 10/);
   assert.match(script, /playbackRms >= 50/);
+  assert.match(script, /--local-host must be a non-loopback IPv4 address reachable from FreeSWITCH/);
+  assert.match(script, /networkInterfaces\(\)/);
+  assert.match(script, /localBindHost: argValue\("--local-bind-host"/);
+  assert.match(script, /this\.rtpSocket\.bind\(this\.options\.localRtpPort, this\.options\.localBindHost/);
 });
 
 test("Verto bridge normalizes FreeSWITCH ICE, DTLS, and G.711 RTP", { skip: !existsSync(".pipecat-runtime") }, async () => {

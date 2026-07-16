@@ -2,6 +2,8 @@
 import { createHash } from "node:crypto";
 import dgram from "node:dgram";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { isIP } from "node:net";
+import { networkInterfaces } from "node:os";
 import path from "node:path";
 import process from "node:process";
 
@@ -16,6 +18,38 @@ function hasFlag(flag) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function isLoopbackAddress(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "localhost" || normalized === "::1" || normalized.startsWith("127.");
+}
+
+function resolveLocalHost({ explicitHost, interfaces = networkInterfaces() } = {}) {
+  const requested = String(explicitHost || "").trim();
+  if (requested) {
+    if (isIP(requested) !== 4 || isLoopbackAddress(requested)) {
+      throw new Error(
+        `--local-host must be a non-loopback IPv4 address reachable from FreeSWITCH; received ${requested}`,
+      );
+    }
+    return { host: requested, source: "explicit" };
+  }
+
+  for (const entries of Object.values(interfaces)) {
+    for (const entry of entries || []) {
+      const family = typeof entry.family === "string" ? entry.family : String(entry.family);
+      if (family === "IPv4" || family === "4") {
+        if (!entry.internal && isIP(entry.address) === 4 && !isLoopbackAddress(entry.address)) {
+          return { host: entry.address, source: "network_interface" };
+        }
+      }
+    }
+  }
+
+  throw new Error(
+    "Could not infer a non-loopback IPv4 address reachable from FreeSWITCH; pass --local-host or ACC_SIP_PROOF_LOCAL_HOST",
+  );
 }
 
 function md5(value) {
@@ -300,8 +334,8 @@ class SipProofCall {
     this.sipSocket.on("message", (msg, rinfo) => void this.handleSip(msg, rinfo));
     this.rtpSocket.on("message", (msg, rinfo) => this.handleRtp(msg, rinfo));
     await Promise.all([
-      new Promise((resolve) => this.sipSocket.bind(this.options.localSipPort, this.options.localHost, resolve)),
-      new Promise((resolve) => this.rtpSocket.bind(this.options.localRtpPort, this.options.localHost, resolve)),
+      new Promise((resolve) => this.sipSocket.bind(this.options.localSipPort, this.options.localBindHost, resolve)),
+      new Promise((resolve) => this.rtpSocket.bind(this.options.localRtpPort, this.options.localBindHost, resolve)),
     ]);
     await this.sendInvite();
     await new Promise((resolve) => setTimeout(resolve, this.options.callMs));
@@ -550,6 +584,8 @@ class SipProofCall {
       },
       localSip: {
         bind: `sip:${this.options.username}@${this.options.localHost}:${this.options.localSipPort}`,
+        socketBind: `${this.options.localBindHost}:${this.options.localSipPort}`,
+        advertisedRtpHost: this.options.localHost,
         destination: this.options.destination,
         acceptedInvite: Boolean(this.remoteRtp),
         remoteRtp: this.remoteRtp,
@@ -619,9 +655,35 @@ function runSelfTest() {
   const sdpTarget = parseRtpTargetFromSdp("v=0\r\nc=IN IP4 127.0.0.1\r\nm=audio 29790 RTP/AVP 0\r\n", "fallback");
   const pcm = tonePcm16({ durationMs: 40 });
   const packets = ulawPacketsFromPcm(pcm, { ssrc: 1 });
+  const inferredLocalHost = resolveLocalHost({
+    interfaces: {
+      lo0: [{ address: "127.0.0.1", family: "IPv4", internal: true }],
+      en0: [{ address: "192.168.86.28", family: "IPv4", internal: false }],
+    },
+  });
+  let loopbackRejected = false;
+  try {
+    resolveLocalHost({ explicitHost: "127.0.0.1", interfaces: {} });
+  } catch {
+    loopbackRejected = true;
+  }
   const authorizationUriReady = authorization.includes(`uri="${requestUri}"`);
-  const ok = authorization.includes('username="1000"') && authorization.includes('response="') && authorizationUriReady && sdpTarget?.port === 29790 && packets.length > 0;
-  console.log(JSON.stringify({ ok, authorizationReady: authorization.includes("Digest "), authorizationUriReady, sdpTarget, packetCount: packets.length }, null, 2));
+  const ok = authorization.includes('username="1000"')
+    && authorization.includes('response="')
+    && authorizationUriReady
+    && sdpTarget?.port === 29790
+    && packets.length > 0
+    && inferredLocalHost.host === "192.168.86.28"
+    && loopbackRejected;
+  console.log(JSON.stringify({
+    ok,
+    authorizationReady: authorization.includes("Digest "),
+    authorizationUriReady,
+    sdpTarget,
+    packetCount: packets.length,
+    inferredLocalHost,
+    loopbackRejected,
+  }, null, 2));
   return ok ? 0 : 2;
 }
 
@@ -629,13 +691,18 @@ async function main() {
   if (hasFlag("--self-test")) return runSelfTest();
   const remoteHost = argValue("--remote-host", process.env.FREESWITCH_SIP_HOST || "127.0.0.1");
   const remoteSipPort = Number(argValue("--remote-sip-port", process.env.FREESWITCH_SIP_PORT || "5060"));
-  const localHost = argValue("--local-host", process.env.ACC_SIP_PROOF_LOCAL_HOST || remoteHost);
+  const localHostResolution = resolveLocalHost({
+    explicitHost: argValue("--local-host", process.env.ACC_SIP_PROOF_LOCAL_HOST),
+  });
+  const localHost = localHostResolution.host;
+  console.error(`[verto-sip-live-proof] advertising caller RTP on ${localHost} (${localHostResolution.source})`);
   const outDir = path.resolve(process.cwd(), argValue("--out-dir", `artifacts/verto-sip-live-${new Date().toISOString().replaceAll(":", "-")}`));
   const call = new SipProofCall({
     outDir,
     remoteHost,
     remoteSipPort,
     localHost,
+    localBindHost: argValue("--local-bind-host", process.env.ACC_SIP_PROOF_LOCAL_BIND_HOST || "0.0.0.0"),
     localSipPort: Number(argValue("--local-sip-port", process.env.ACC_SIP_PROOF_LOCAL_SIP_PORT || "5094")),
     localRtpPort: Number(argValue("--local-rtp-port", process.env.ACC_SIP_PROOF_LOCAL_RTP_PORT || "6002")),
     username: argValue("--username", process.env.FREESWITCH_SIP_USERNAME || "1000"),
