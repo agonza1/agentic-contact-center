@@ -20,7 +20,8 @@ const outputPath = resolveArgPath("--out");
 const contract = buildPipecatFlowManagerContractPayload();
 
 assert.equal(contract.sidecarFree, true);
-assert.equal(contract.status, "contract_defined_implementation_pending");
+assert.equal(contract.status, "parity_harness_defined_implementation_pending");
+assert.equal(contract.parityHarnessCommand, "npm run pipecat:flows:contract");
 assert.deepEqual(contract.requiredNodes, [
   "call_started",
   "greet",
@@ -33,6 +34,9 @@ assert.deepEqual(contract.requiredNodes, [
 assert.ok(contract.requiredGuards.some((guard) => guard.id === "policy_hold_before_retention_offer" && guard.failClosed));
 assert.ok(contract.requiredGuards.some((guard) => guard.id === "operator_steer_required_for_safe_offer" && guard.failClosed));
 assert.ok(contract.parityChecks.some((check) => check.id === "runtime_failure_fail_closed"));
+assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "scripted_policy_hold" && fixture.expectedState === "policy_hold"));
+assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "operator_steer_handoff" && fixture.expectedEvents.includes("operator_steer_requested")));
+assert.ok(contract.parityFixtures.every((fixture) => fixture.forbiddenAgentClaims.includes("billing credit")));
 
 if (outputPath) {
   await mkdir(path.dirname(outputPath), { recursive: true });

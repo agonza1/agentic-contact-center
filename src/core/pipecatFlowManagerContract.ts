@@ -1,4 +1,5 @@
 import type { FlowState } from "./types";
+import { SCRIPTED_CALLER_TURNS } from "./pipecatFlowPrototype";
 
 export const PIPECAT_FLOW_MANAGER_REQUIRED_NODES: FlowState[] = [
   "call_started",
@@ -34,11 +35,36 @@ export const PIPECAT_FLOW_MANAGER_REQUIRED_GUARDS = [
   },
 ] as const;
 
+export const PIPECAT_FLOW_MANAGER_PARITY_FIXTURES = [
+  {
+    id: "scripted_policy_hold",
+    callerTurns: SCRIPTED_CALLER_TURNS.slice(0, 2),
+    expectedState: "policy_hold",
+    expectedEvents: ["policy_hold_entered"],
+    forbiddenAgentClaims: ["billing credit", "discount approved", "premium credit"],
+  },
+  {
+    id: "operator_steer_handoff",
+    callerTurns: SCRIPTED_CALLER_TURNS.slice(0, 3),
+    expectedState: "operator_steer",
+    expectedEvents: ["operator_steer_requested"],
+    forbiddenAgentClaims: ["billing credit", "discount approved", "premium credit"],
+  },
+  {
+    id: "runtime_failure_fail_closed",
+    injectedFailure: "pipecat_runtime_failure",
+    expectedState: "wrap",
+    expectedEvents: ["demo_fallback_triggered", "human_handoff_started"],
+    forbiddenAgentClaims: ["billing credit", "discount approved", "premium credit"],
+  },
+] as const;
+
 export function buildPipecatFlowManagerContractPayload() {
   return {
-    status: "contract_defined_implementation_pending",
+    status: "parity_harness_defined_implementation_pending",
     sidecarFree: true,
     implementationEntryPoint: "scripts/acc_pipecat_voice_pipeline.py",
+    parityHarnessCommand: "npm run pipecat:flows:contract",
     currentOwner: "ACC TypeScript flow",
     targetOwner: "Pipecat Flows/FlowManager",
     requiredNodes: PIPECAT_FLOW_MANAGER_REQUIRED_NODES,
@@ -64,6 +90,7 @@ export function buildPipecatFlowManagerContractPayload() {
         requiredEvents: ["demo_fallback_triggered", "human_handoff_started"],
       },
     ],
+    parityFixtures: PIPECAT_FLOW_MANAGER_PARITY_FIXTURES,
     acceptanceBlockedUntil: "FlowManager nodes execute these transitions instead of the ACC TypeScript deterministic flow.",
   };
 }
