@@ -563,6 +563,16 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         if method == "POST" and url.endswith("/fallback"):
             fallback_failure_requests.append("fallback")
             raise RuntimeError("fixture FlowManager fallback request failed")
+        if method == "POST" and url.endswith("/caller-turn"):
+            fallback_failure_requests.append("caller-turn")
+            return {
+                "flowState": "greet",
+                "transcript": [
+                    {"speaker": "caller", "text": (payload or {}).get("text", ""), "timestamp": "fixture"},
+                    {"speaker": "agent", "text": "ACC accepted the later caller turn.", "timestamp": "fixture"},
+                ],
+                "callerTurnCommit": {"snapshotVersion": 2},
+            }
         return original_json_http(method, url, payload, timeout)
 
     fallback_failure_session = build_session(
@@ -598,6 +608,19 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         frame for frame in fallback_failure_processor.frames if isinstance(frame, TTSStoppedFrame)
     ]
     fallback_failure_stages = [event["stage"] for event in fallback_failure_session.stage_events]
+    fallback_failure_pending_cleared = (
+        fallback_failure_session.pending_caller_turn_commit is None
+        and fallback_failure_session.flow_manager_adapter.pending_transition is None
+    )
+    terminal_cached_after_fallback_failure = fallback_failure_session.flow_manager_adapter._terminal_result is not None
+    pipeline.json_http = fake_fallback_failure_http
+    try:
+        fallback_failure_followup = await fallback_failure_session.flow_manager_adapter.preview_caller_turn(
+            text="Try ACC again after fallback failure",
+            conversation_mode="free_caller",
+        )
+    finally:
+        pipeline.json_http = original_json_http
 
     slow_activation_session = build_session(
         "flowmanager-slow-activation-barge-in",
@@ -876,7 +899,7 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             and failed_delivery_session.last_evidence.get("flowManager", {}).get("commitPolicy") == "terminal_handoff"
         ),
         "flowManagerFallbackFailureClosesZeroAudioLifecycle": (
-            fallback_failure_requests == ["fallback"]
+            fallback_failure_requests == ["fallback", "caller-turn"]
             and len(fallback_failure_audio) == 0
             and len(fallback_failure_started) == 1
             and len(fallback_failure_stopped) == 1
@@ -885,11 +908,20 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             and fallback_failure_turn_controls.bot_speaking is False
         ),
         "flowManagerFallbackFailureClearsPendingDelivery": (
-            fallback_failure_session.pending_caller_turn_commit is None
-            and fallback_failure_session.flow_manager_adapter.pending_transition is None
+            fallback_failure_pending_cleared
             and "tts.lifecycle_closed" in fallback_failure_stages
             and "tts.failed" in fallback_failure_stages
             and "acc.caller_turn_delivery_committed" not in fallback_failure_stages
+        ),
+        "flowManagerFallbackFailureDoesNotCacheSyntheticTerminal": (
+            terminal_cached_after_fallback_failure is False
+            and fallback_failure_followup.get("flowState") == "greet"
+            and fallback_failure_followup.get("transcript", [{}])[-1].get("text")
+            == "ACC accepted the later caller turn."
+            and fallback_failure_followup.get("flowManagerRuntime", {}).get("commitPolicy")
+            == "preview_until_output_delivery_ack"
+            and fallback_failure_session.flow_manager_adapter.pending_transition is not None
+            and fallback_failure_session.flow_manager_adapter.pending_transition.get("to") == "greet"
         ),
         "slowFlowManagerActivationBargeInRollsBack": (
             isinstance(slow_activation_result[0], asyncio.CancelledError)
@@ -972,6 +1004,13 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             },
             "pendingCommit": fallback_failure_session.pending_caller_turn_commit is not None,
             "pendingTransition": fallback_failure_session.flow_manager_adapter.pending_transition is not None,
+            "pendingClearedBeforeFollowup": fallback_failure_pending_cleared,
+            "terminalCachedAfterFailure": terminal_cached_after_fallback_failure,
+            "followupFlowState": fallback_failure_followup.get("flowState"),
+            "followupCommitPolicy": fallback_failure_followup.get("flowManagerRuntime", {}).get("commitPolicy"),
+            "followupPendingNode": (
+                fallback_failure_session.flow_manager_adapter.pending_transition or {}
+            ).get("to"),
             "stages": fallback_failure_stages,
         },
         "slowCommitBargeIn": {

@@ -152,7 +152,7 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
     outputChunksAtCancel: 0,
     pendingCommit: false,
   });
-  assert.deepEqual(payload.flowManagerFallbackFailure.requests, ["fallback"]);
+  assert.deepEqual(payload.flowManagerFallbackFailure.requests, ["fallback", "caller-turn"]);
   assert.equal(payload.flowManagerFallbackFailure.audioChunks, 0);
   assert.equal(payload.flowManagerFallbackFailure.ttsStarted, 1);
   assert.equal(payload.flowManagerFallbackFailure.ttsStopped, 1);
@@ -162,7 +162,12 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
     botSpeaking: false,
   });
   assert.equal(payload.flowManagerFallbackFailure.pendingCommit, false);
-  assert.equal(payload.flowManagerFallbackFailure.pendingTransition, false);
+  assert.equal(payload.flowManagerFallbackFailure.pendingTransition, true);
+  assert.equal(payload.flowManagerFallbackFailure.pendingClearedBeforeFollowup, true);
+  assert.equal(payload.flowManagerFallbackFailure.terminalCachedAfterFailure, false);
+  assert.equal(payload.flowManagerFallbackFailure.followupFlowState, "greet");
+  assert.equal(payload.flowManagerFallbackFailure.followupCommitPolicy, "preview_until_output_delivery_ack");
+  assert.equal(payload.flowManagerFallbackFailure.followupPendingNode, "greet");
   assert.equal(payload.slowFlowManagerActivationBargeIn.audioChunks, 0);
   assert.equal(payload.slowFlowManagerActivationBargeIn.cancelled, true);
   assert.equal(payload.slowFlowManagerActivationBargeIn.currentNode, "call_started");
@@ -191,6 +196,7 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.checks.flowManagerActivationFailureRetainsTerminalEvidence, true);
   assert.equal(payload.checks.flowManagerFallbackFailureClosesZeroAudioLifecycle, true);
   assert.equal(payload.checks.flowManagerFallbackFailureClearsPendingDelivery, true);
+  assert.equal(payload.checks.flowManagerFallbackFailureDoesNotCacheSyntheticTerminal, true);
   assert.deepEqual(payload.activeTasks.cancelled.sort(), ["agent", "tts"]);
 });
 

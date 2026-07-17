@@ -378,10 +378,14 @@ class AccPipecatFlowManagerAdapter:
                 "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
             }
             self.last_evidence = evidence
+            if fallback_error is not None:
+                # ACC did not accept the terminal handoff, so do not cache the
+                # synthetic default as an authoritative response. Reopen the
+                # preview gate and let a later caller turn consult ACC again.
+                self._transition_available.set()
+                raise fallback_error
             self._terminal_result = {**fallback, "flowManagerRuntime": evidence}
             self._transition_available.set()
-            if fallback_error is not None:
-                raise fallback_error
             return dict(self._terminal_result)
 
         # A peer close or repeated barge-in may cancel the response task while
