@@ -138,6 +138,14 @@ npm run proof:pipecat -- --out artifacts/agentic-call-center-demo/source-proof.j
 npm run proof:bundle -- --proof artifacts/agentic-call-center-demo/source-proof.json --out-dir artifacts/agentic-call-center-demo
 ```
 
+Generate a shared-pipeline tester-agent handoff for CAE/ASSERT:
+
+```bash
+npm run cae:assert:handoff -- --out-dir artifacts/cae-assert-handoff
+```
+
+That writes `conversation-agent-evals-assert-request.json`, a CAE prefill template, requirements/scenario/timeline/final-state/verdict artifacts, and explicit failure-mode notes. ConversationAgentEvals owns the generic editable spec UI and ASSERT run UX; ACC only supplies domain defaults and evidence pointers.
+
 See `docs/demo-proof-runbook.md` for the proof inspection checklist, local ASSERT workflow, expected artifact set, and ConversationAgentEvals handoff details.
 
 ## Useful Routes

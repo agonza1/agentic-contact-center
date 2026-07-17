@@ -21,6 +21,7 @@
     "assert:viewer:install": "node scripts/assert-viewer.mjs --install-only",
     "assert:viewer": "node scripts/assert-viewer.mjs",
     "assert:full": "npm run assert:export && npm run assert:viewer",
+    "cae:assert:handoff": "node scripts/cae-assert-handoff.mjs",
     "proof:pipecat": "npm run pipecat:check && npm run proof --",
     "proof:bundle": "node scripts/agentic-call-center-proof.mjs",
     "proof:pipecat-media-readiness": "npm run build && node scripts/pipecat-media-engine-readiness-proof.mjs",
