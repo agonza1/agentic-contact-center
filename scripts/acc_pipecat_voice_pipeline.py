@@ -474,6 +474,9 @@ class AccVoicePipelineSession:
 
     def begin_output_stream(self, *, stream_id: str) -> None:
         self.output_stream_active = True
+        self.reset_output_delivery_state(stream_id=stream_id)
+
+    def reset_output_delivery_state(self, *, stream_id: str) -> None:
         self.output_stream_id = stream_id
         self.output_stream_started_monotonic = time.monotonic()
         self.output_stream_chunk_count = 0
@@ -553,17 +556,41 @@ class AccVoicePipelineSession:
         if not isinstance(payload, dict) or not isinstance(url, str):
             self.discard_pending_caller_turn_commit("invalid_pending_delivery_ack")
             return None
-        commit_task = asyncio.create_task(asyncio.to_thread(json_http, "POST", url, payload))
+        async def run_commit() -> tuple[bool, dict[str, Any] | Exception]:
+            try:
+                return True, await asyncio.to_thread(json_http, "POST", url, payload)
+            except Exception as exc:
+                return False, exc
+
+        commit_task = asyncio.create_task(run_commit())
         cancelled_after_delivery = output_interrupted_after_delivery
         try:
-            call = await asyncio.shield(commit_task)
+            commit_ok, commit_result = await asyncio.shield(commit_task)
         except asyncio.CancelledError:
             # The first PCM frame is already downstream at this boundary. Finish
             # the in-flight commit so ACC evidence reflects the delivered turn,
             # then preserve the caller's cancellation for the TTS task.
-            call = await commit_task
+            commit_ok, commit_result = await commit_task
+            if not commit_ok:
+                exc = commit_result
+                self.discard_pending_caller_turn_commit("delivery_ack_commit_rejected_after_cancellation")
+                if self.flow_manager_adapter is not None:
+                    await self.flow_manager_adapter.rollback_pending_transition(
+                        "delivery_ack_commit_rejected_after_cancellation"
+                    )
+                self.record_stage(
+                    "acc.caller_turn_delivery_rejected",
+                    ok=False,
+                    error="delivery_ack_commit_rejected_after_cancellation",
+                    detail=str(exc),
+                    callerTranscript=payload.get("text"),
+                    expectedAgentText=expected_agent_text,
+                    outputGeneration=self.output_generation,
+                )
+                raise asyncio.CancelledError from exc
             cancelled_after_delivery = True
-        except Exception as exc:
+        if not commit_ok:
+            exc = commit_result
             self.discard_pending_caller_turn_commit("delivery_ack_commit_rejected")
             if self.flow_manager_adapter is not None:
                 await self.flow_manager_adapter.rollback_pending_transition("delivery_ack_commit_rejected")
@@ -576,7 +603,8 @@ class AccVoicePipelineSession:
                 expectedAgentText=expected_agent_text,
                 outputGeneration=self.output_generation,
             )
-            raise
+            raise exc
+        call = commit_result
         self.pending_caller_turn_commit = None
         if self.flow_manager_adapter is not None and self.flow_manager_adapter.pending_transition is not None:
             self.flow_manager_adapter.finalize_pending_transition()
@@ -1350,6 +1378,7 @@ class KokoroTtsProcessor(FrameProcessor):
             )
 
         try:
+            self.session.reset_output_delivery_state(stream_id=context_id)
             async for audio_chunk, sample_rate, chunk_meta in self.session.stream_synthesize(frame, chunk_bytes=chunk_bytes):
                 if turn_output_generation != self.session.output_generation:
                     output_cancelled = True

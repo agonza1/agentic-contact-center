@@ -217,6 +217,45 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         pipeline.json_http = original_json_http
     slow_commit_stages = slow_commit_session.stage_events
 
+    failing_cancel_commit_started = threading.Event()
+    release_failing_cancel_commit = threading.Event()
+    failing_cancel_commit_calls: list[dict[str, Any]] = []
+
+    def fake_failing_cancel_delivery_http(method: str, url: str, payload: dict[str, Any] | None = None, timeout: float = 30) -> dict[str, Any]:
+        if method == "POST" and url.endswith("/caller-turn/commit"):
+            failing_cancel_commit_started.set()
+            release_failing_cancel_commit.wait(1)
+            failing_cancel_commit_calls.append(payload or {})
+            raise RuntimeError("fixture delivery commit failed after cancellation")
+        return original_json_http(method, url, payload, timeout)
+
+    failing_cancel_session = build_session("failed-commit-after-barge-in")
+    install_fake_synthesizer(failing_cancel_session, chunks=3)
+    await failing_cancel_session.flow_manager_adapter.initialize()
+    failing_cancel_session.flow_manager_adapter.stage_transition("greet", reason="caller_turn_preview")
+    failing_cancel_session.set_pending_caller_turn_commit(
+        payload={"text": "Cancel while commit fails", "conversationMode": "free_caller"},
+        expected_agent_text="The first chunk was delivered but commit fails.",
+        output_generation=failing_cancel_session.output_generation,
+    )
+    failing_cancel_processor = CapturingTtsProcessor(failing_cancel_session)
+    pipeline.json_http = fake_failing_cancel_delivery_http
+    try:
+        failing_cancel_task = asyncio.create_task(
+            failing_cancel_processor.process_frame(
+                TextFrame("The first chunk was delivered but commit fails."),
+                FrameDirection.DOWNSTREAM,
+            )
+        )
+        assert await asyncio.to_thread(failing_cancel_commit_started.wait, 1)
+        failing_cancel_barge_in = failing_cancel_session.cancel_output("fixture_barge_in_during_failed_commit")
+        release_failing_cancel_commit.set()
+        failing_cancel_result = await asyncio.gather(failing_cancel_task, return_exceptions=True)
+    finally:
+        release_failing_cancel_commit.set()
+        pipeline.json_http = original_json_http
+    failing_cancel_stages = failing_cancel_session.stage_events
+
     failed_delivery_requests: list[str] = []
 
     def fake_failed_delivery_http(method: str, url: str, payload: dict[str, Any] | None = None, timeout: float = 30) -> dict[str, Any]:
@@ -320,6 +359,39 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
     await resumed_processor.process_frame(TextFrame("Fresh response after interruption."), FrameDirection.DOWNSTREAM)
     resumed_audio = [frame for frame in resumed_processor.frames if isinstance(frame, TTSAudioRawFrame)]
 
+    stale_pre_audio_started = asyncio.Event()
+
+    async def blocked_pre_audio_synthesizer(_frame: TextFrame, *, chunk_bytes: int):
+        assert chunk_bytes == CHUNK_BYTES
+        stale_pre_audio_started.set()
+        await asyncio.sleep(60)
+        yield b"\x20\x00" * (CHUNK_BYTES // 2), SAMPLE_RATE, {
+            "engine": "kokoro-fixture",
+            "sampleRate": SAMPLE_RATE,
+            "format": "pcm_s16le",
+            "providerStream": True,
+        }
+
+    stale_pre_audio_session = build_session("stale-counter-pre-audio-cancel")
+    stale_pre_audio_session.output_stream_chunk_count = 1
+    stale_pre_audio_session.output_stream_audio_bytes = CHUNK_BYTES
+    stale_pre_audio_session.set_pending_caller_turn_commit(
+        payload={"text": "This later response has no audio yet", "conversationMode": "free_caller"},
+        expected_agent_text="This later response should not be preserved.",
+        output_generation=stale_pre_audio_session.output_generation,
+    )
+    stale_pre_audio_session.stream_synthesize = blocked_pre_audio_synthesizer  # type: ignore[method-assign]
+    stale_pre_audio_processor = CapturingTtsProcessor(stale_pre_audio_session)
+    stale_pre_audio_task = asyncio.create_task(
+        stale_pre_audio_processor.process_frame(
+            TextFrame("This later response should not be preserved."),
+            FrameDirection.DOWNSTREAM,
+        )
+    )
+    await asyncio.wait_for(stale_pre_audio_started.wait(), timeout=1)
+    stale_pre_audio_cancellation = stale_pre_audio_session.cancel_output("fixture_pre_audio_cancel_with_stale_counter")
+    stale_pre_audio_result = await asyncio.gather(stale_pre_audio_task, return_exceptions=True)
+
     task_session = build_session("response-task-interrupted")
     agent_task = asyncio.create_task(asyncio.sleep(60))
     tts_task = asyncio.create_task(asyncio.sleep(60))
@@ -395,6 +467,18 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
                 for event in slow_commit_stages
             )
         ),
+        "failedCommitAfterCancellationCleansPendingDelivery": (
+            len(failing_cancel_commit_calls) == 1
+            and isinstance(failing_cancel_result[0], asyncio.CancelledError)
+            and failing_cancel_barge_in.get("outputChunksEnqueued") == 1
+            and failing_cancel_session.pending_caller_turn_commit is None
+            and failing_cancel_session.flow_manager_adapter.pending_transition is None
+            and any(
+                event["stage"] == "acc.caller_turn_delivery_rejected"
+                and event.get("error") == "delivery_ack_commit_rejected_after_cancellation"
+                for event in failing_cancel_stages
+            )
+        ),
         "flowManagerActivationFailureFailsDeliveryCommit": failed_delivery_requests == ["fallback"],
         "flowManagerActivationFailureEmitsNoPreviewAudio": len(failed_delivery_audio) == 0 and failed_delivery_session.output_stream_audio_bytes == 0,
         "flowManagerActivationFailureClosesTtsLifecycle": (
@@ -428,6 +512,11 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             and slow_activation_cancellation.get("outputChunksEnqueued") == 0
         ),
         "cancelledCallerTurnDoesNotCommitUnheardAgent": len(cancelled_commit_calls) == 0 and not caller_turn_processor.frames and cancellation_before_delivery.get("cancelledTasks") == ["agent"],
+        "stalePriorAudioCounterDoesNotPreservePreAudioCommit": (
+            isinstance(stale_pre_audio_result[0], asyncio.CancelledError)
+            and stale_pre_audio_cancellation.get("outputChunksEnqueued") == 0
+            and stale_pre_audio_session.pending_caller_turn_commit is None
+        ),
     }
     return {
         "ok": all(checks.values()),
@@ -468,6 +557,18 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             "commitCalls": len(slow_commit_calls),
             "cancelled": isinstance(slow_commit_result[0], asyncio.CancelledError),
             "outputChunksAtCancel": slow_commit_cancellation.get("outputChunksEnqueued"),
+        },
+        "failedCommitAfterCancellation": {
+            "commitCalls": len(failing_cancel_commit_calls),
+            "cancelled": isinstance(failing_cancel_result[0], asyncio.CancelledError),
+            "pendingCommit": failing_cancel_session.pending_caller_turn_commit is not None,
+            "pendingTransition": failing_cancel_session.flow_manager_adapter.pending_transition is not None,
+            "outputChunksAtCancel": failing_cancel_barge_in.get("outputChunksEnqueued"),
+        },
+        "stalePriorAudioPreAudioCancel": {
+            "cancelled": isinstance(stale_pre_audio_result[0], asyncio.CancelledError),
+            "outputChunksAtCancel": stale_pre_audio_cancellation.get("outputChunksEnqueued"),
+            "pendingCommit": stale_pre_audio_session.pending_caller_turn_commit is not None,
         },
         "slowFlowManagerActivationBargeIn": {
             "audioChunks": len(slow_activation_audio),
