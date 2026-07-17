@@ -120,6 +120,13 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
     cancelled: true,
     outputChunksAtCancel: 1,
   });
+  assert.equal(payload.slowFlowManagerActivationBargeIn.audioChunks, 0);
+  assert.equal(payload.slowFlowManagerActivationBargeIn.cancelled, true);
+  assert.equal(payload.slowFlowManagerActivationBargeIn.currentNode, "call_started");
+  assert.equal(payload.slowFlowManagerActivationBargeIn.pendingTransition, null);
+  assert.equal(payload.checks.slowFlowManagerActivationBargeInRollsBack, true);
+  assert.equal(payload.checks.slowFlowManagerActivationCancellationIsPrompt, true);
+  assert.equal(payload.checks.slowFlowManagerActivationCommitsNoAudioOrAccTurn, true);
   assert.equal(payload.checks.slowCommitStartsOnlyAfterFirstAudio, true);
   assert.equal(payload.checks.slowCommitBargeInPreservesDeliveredCommit, true);
   assert.equal(payload.checks.flowManagerActivationFailureClosesTtsLifecycle, true);

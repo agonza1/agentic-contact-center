@@ -72,6 +72,18 @@ class FailingFlowManager(FakeFlowManager):
         raise RuntimeError(f"fixture set_node_from_config failure for {node['name']}")
 
 
+class SlowActivatingFlowManager(FakeFlowManager):
+    def __init__(self, **kwargs: Any):
+        super().__init__(**kwargs)
+        self.activation_started = asyncio.Event()
+
+    async def set_node_from_config(self, node: dict[str, Any]) -> None:
+        self.current_node = node["name"]
+        if node["name"] != "call_started":
+            self.activation_started.set()
+            await asyncio.sleep(60)
+
+
 class FakeTurnControls:
     def __init__(self) -> None:
         self.bot_speaking = False
@@ -253,6 +265,39 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
     failed_delivery_stopped = [frame for frame in failed_delivery_processor.frames if isinstance(frame, TTSStoppedFrame)]
     failed_delivery_stages = [event["stage"] for event in failed_delivery_session.stage_events]
 
+    slow_activation_session = build_session(
+        "flowmanager-slow-activation-barge-in",
+        manager_factory=SlowActivatingFlowManager,
+    )
+    install_fake_synthesizer(slow_activation_session, chunks=2)
+    await slow_activation_session.flow_manager_adapter.initialize()
+    slow_activation_session.flow_manager_adapter.stage_transition("greet", reason="caller_turn_preview")
+    slow_activation_session.set_pending_caller_turn_commit(
+        payload={"text": "Do not commit this interrupted turn", "conversationMode": "free_caller"},
+        expected_agent_text="This preview must remain unheard and uncommitted.",
+        output_generation=slow_activation_session.output_generation,
+    )
+    slow_activation_processor = CapturingTtsProcessor(slow_activation_session)
+    slow_activation_manager = slow_activation_session.flow_manager_adapter.manager
+    slow_activation_task = asyncio.create_task(
+        slow_activation_processor.process_frame(
+            TextFrame("This preview must remain unheard and uncommitted."),
+            FrameDirection.DOWNSTREAM,
+        )
+    )
+    await asyncio.wait_for(slow_activation_manager.activation_started.wait(), timeout=1)
+    slow_activation_cancel_started = time.perf_counter()
+    slow_activation_cancellation = slow_activation_session.cancel_output("fixture_barge_in_during_flowmanager_activation")
+    slow_activation_result = await asyncio.wait_for(
+        asyncio.gather(slow_activation_task, return_exceptions=True),
+        timeout=2,
+    )
+    slow_activation_cancel_ms = round((time.perf_counter() - slow_activation_cancel_started) * 1000, 3)
+    slow_activation_audio = [
+        frame for frame in slow_activation_processor.frames if isinstance(frame, TTSAudioRawFrame)
+    ]
+    slow_activation_evidence = slow_activation_session.flow_manager_adapter.last_evidence
+
     interrupted_session = build_session("output-interrupted")
     if not live_kokoro:
         install_fake_synthesizer(interrupted_session, chunks=8)
@@ -368,6 +413,20 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             failed_delivery_session.last_evidence.get("flowManager", {}).get("ok") is False
             and failed_delivery_session.last_evidence.get("flowManager", {}).get("commitPolicy") == "terminal_handoff"
         ),
+        "slowFlowManagerActivationBargeInRollsBack": (
+            isinstance(slow_activation_result[0], asyncio.CancelledError)
+            and slow_activation_manager.current_node == "call_started"
+            and slow_activation_session.flow_manager_adapter.pending_transition is None
+            and slow_activation_evidence.get("commitPolicy") == "preview_discarded"
+            and slow_activation_evidence.get("rolledBackPreparedTransition") is True
+        ),
+        "slowFlowManagerActivationCancellationIsPrompt": slow_activation_cancel_ms < 2_000,
+        "slowFlowManagerActivationCommitsNoAudioOrAccTurn": (
+            len(slow_activation_audio) == 0
+            and slow_activation_session.output_stream_audio_bytes == 0
+            and slow_activation_session.pending_caller_turn_commit is None
+            and slow_activation_cancellation.get("outputChunksEnqueued") == 0
+        ),
         "cancelledCallerTurnDoesNotCommitUnheardAgent": len(cancelled_commit_calls) == 0 and not caller_turn_processor.frames and cancellation_before_delivery.get("cancelledTasks") == ["agent"],
     }
     return {
@@ -409,6 +468,14 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             "commitCalls": len(slow_commit_calls),
             "cancelled": isinstance(slow_commit_result[0], asyncio.CancelledError),
             "outputChunksAtCancel": slow_commit_cancellation.get("outputChunksEnqueued"),
+        },
+        "slowFlowManagerActivationBargeIn": {
+            "audioChunks": len(slow_activation_audio),
+            "cancelled": isinstance(slow_activation_result[0], asyncio.CancelledError),
+            "cancelElapsedMs": slow_activation_cancel_ms,
+            "currentNode": slow_activation_manager.current_node,
+            "pendingTransition": slow_activation_session.flow_manager_adapter.pending_transition,
+            "evidence": slow_activation_evidence,
         },
         "checks": checks,
     }

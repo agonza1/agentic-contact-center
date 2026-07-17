@@ -210,15 +210,37 @@ class AccPipecatFlowManagerAdapter:
             "transitionCount": len(self.transition_trace),
         }
 
-    async def commit_pending_transition(self) -> dict[str, Any]:
+    async def prepare_pending_transition(self) -> dict[str, Any]:
         pending = self.pending_transition
         if pending is None:
             raise FlowManagerRuntimeError("FlowManager has no pending delivery-ack transition")
-        self.pending_transition = None
         try:
             await self.activate_node(pending["to"], reason="caller_turn_delivery_ack")
+        except asyncio.CancelledError:
+            await self._restore_prepared_transition(pending, "delivery_ack_activation_cancelled")
+            raise
         except Exception as exc:
             return (await self.fail_closed(exc))["flowManagerRuntime"]
+        if self.pending_transition is not pending or pending.get("discardRequested"):
+            await self._restore_prepared_transition(
+                pending,
+                pending.get("discardReason", "delivery_ack_cancelled_before_audio"),
+            )
+            return self.last_evidence
+        pending["activated"] = True
+        self.last_evidence = {
+            **self.last_evidence,
+            "pendingNode": pending["to"],
+            "pendingTransition": dict(pending),
+            "commitPolicy": "transition_prepared_until_audio_delivery_ack",
+        }
+        return self.last_evidence
+
+    def finalize_pending_transition(self) -> dict[str, Any]:
+        pending = self.pending_transition
+        if pending is None or pending.get("activated") is not True:
+            raise FlowManagerRuntimeError("FlowManager has no prepared delivery-ack transition")
+        self.pending_transition = None
         self.last_evidence = {
             **self.last_evidence,
             "pendingNode": None,
@@ -227,11 +249,65 @@ class AccPipecatFlowManagerAdapter:
         }
         return self.last_evidence
 
+    async def commit_pending_transition(self) -> dict[str, Any]:
+        """Compatibility helper for non-media contract checks.
+
+        The media pipeline uses prepare_pending_transition() and finalizes only
+        after first-audio delivery plus the ACC acknowledgement.
+        """
+        prepared = await self.prepare_pending_transition()
+        if prepared.get("ok") is not True:
+            return prepared
+        if self.pending_transition is None or self.pending_transition.get("activated") is not True:
+            return prepared
+        return self.finalize_pending_transition()
+
+    async def _restore_prepared_transition(self, pending: dict[str, Any], reason: str) -> None:
+        previous_node = pending["from"]
+        current_node = getattr(self.manager, "current_node", None)
+        if self.manager and self.initialized and current_node != previous_node:
+            try:
+                await self.manager.set_node_from_config(flow_manager_node_config(previous_node))
+            except Exception as exc:
+                await self.fail_closed(
+                    FlowManagerRuntimeError(f"FlowManager delivery rollback failed after {reason}: {exc}")
+                )
+                return
+        if self.pending_transition is pending:
+            self.pending_transition = None
+        self.last_evidence = {
+            **self.last_evidence,
+            "ok": True,
+            "currentNode": getattr(self.manager, "current_node", previous_node),
+            "pendingNode": None,
+            "pendingTransition": None,
+            "commitPolicy": "preview_discarded",
+            "discardReason": reason,
+            "rolledBackPreparedTransition": current_node != previous_node,
+        }
+
+    async def rollback_pending_transition(self, reason: str) -> dict[str, Any]:
+        pending = self.pending_transition
+        if pending is None:
+            return self.last_evidence
+        await self._restore_prepared_transition(pending, reason)
+        return self.last_evidence
+
     def discard_pending_transition(self, reason: str) -> None:
         pending = self.pending_transition
-        self.pending_transition = None
         if pending is None:
             return
+        if pending.get("activated") is True:
+            pending["discardRequested"] = True
+            pending["discardReason"] = reason
+            self.last_evidence = {
+                **self.last_evidence,
+                "pendingTransition": dict(pending),
+                "commitPolicy": "prepared_transition_rollback_pending",
+                "discardReason": reason,
+            }
+            return
+        self.pending_transition = None
         self.last_evidence = {
             **self.last_evidence,
             "currentNode": getattr(self.manager, "current_node", None),

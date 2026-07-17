@@ -100,6 +100,8 @@ test("Pipecat tester-agent scenario runner emits deterministic evidence artifact
   const barge = scenarios.get("barge_in")!;
   assert.equal(barge.interruptedFrameSummary?.audioChunks, 1);
   assert.ok((barge.resumedFrameSummary?.audioChunks ?? 0) >= 1);
+  assert.equal(barge.checks.blockedTransportCancellationIsPrompt, true);
+  assert.equal(barge.checks.interruptedTurnRemainsUncommitted, true);
   assert.ok(barge.timingEvents.some((event) => event.stage === "output.transport_flushed"));
 
   const timeout = scenarios.get("no_speech_timeout")!;
