@@ -56,7 +56,7 @@ Persistent evaluator session surface for ConversationAgentEvals and bounded test
 
 - `POST /api/voice/sessions`: create a persistent realtime-audio session and matching ACC call/proof context.
 - `GET /api/voice/sessions/:id`: inspect the current session snapshot, endpoints including `snapshot`, and linked ACC call context without advancing the event stream.
-- `POST /api/voice/sessions/:id/play`: request an audio caller act without accepting expected transcript shortcuts.
+- `POST /api/voice/sessions/:id/play`: request an audio caller act without accepting expected transcript shortcuts. The route accepts base64 `audioData` plus `mimeType`, `sampleRateHz`, and `assetName`, validates the audio fixture, records `play.requested`, and injects the decoded bytes into the same voice-session media input evidence path used by `/media/input`. Synthetic license-safe test fixtures live in `test/fixtures/voice-session-audio-fixtures.json`.
 - `POST /api/voice/sessions/:id/media/input`: attach realtime input audio bytes for the session; the same path is reserved as the future WebSocket media input route.
 - `POST /api/voice/sessions/:id/media/output`: attach caller-audible output audio chunks from the shared Pipecat/Kokoro path. Use `x-output-stream-id` to correlate chunks and `x-output-final: true` on the final chunk.
 - `GET /api/voice/sessions/:id/events`: poll ordered session events with `afterSequence`, including `output.audio.chunk` and cancellation markers.
@@ -223,7 +223,7 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `POST /api/browser-webrtc/session`: validate browser SDP offers, allocate or preserve an ACC call ID, and proxy offer/answer signaling to the local Pipecat WebRTC bridge.
 - `POST /api/voice/sessions`: create a persistent ConversationAgentEvals realtime-audio target session.
 - `GET /api/voice/sessions/:id`: inspect the current session snapshot, endpoints, and linked ACC call context without advancing the event stream.
-- `POST /api/voice/sessions/:id/play`: queue a caller audio act without transcript injection.
+- `POST /api/voice/sessions/:id/play`: queue a caller audio act without transcript injection; base64 fixture audio is decoded, validated, and recorded as `media.input.received` with the asset name, sample rate, MIME type, byte count, and SHA-256 so QA can tie a fixture to resulting rtc-asr and agent evidence.
 - `POST /api/voice/sessions/:id/media/input`: attach realtime audio bytes for the persistent session.
 - `POST /api/voice/sessions/:id/media/output`: attach streamed caller-audible TTS/output chunks for the persistent session.
 - `GET /api/voice/sessions/:id/events`: poll persistent session event evidence.
