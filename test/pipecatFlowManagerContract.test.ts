@@ -73,6 +73,38 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
     contract.runtimePlan.cutoverSequence.at(-1)?.blocker,
     "typescript_deterministic_flow_still_owns_runtime_turns",
   );
+  assert.deepEqual(
+    contract.runtimePlan.adapterInvocations.map((invocation) => [
+      invocation.id,
+      invocation.source,
+      invocation.target,
+      invocation.commitPolicy,
+      invocation.failClosedFallback,
+    ]),
+    [
+      [
+        "caller_transcript_to_flowmanager_node",
+        "acc_pipecat_voice_pipeline",
+        "pipecat_flows.FlowManager",
+        "preview_until_output_delivery_ack",
+        "wrap",
+      ],
+      [
+        "operator_control_to_flowmanager_node",
+        "acc_pipecat_voice_pipeline",
+        "pipecat_flows.FlowManager",
+        "preview_until_output_delivery_ack",
+        "wrap",
+      ],
+      [
+        "runtime_failure_to_flowmanager_wrap",
+        "acc_pipecat_voice_pipeline",
+        "pipecat_flows.FlowManager",
+        "terminal_handoff",
+        "wrap",
+      ],
+    ],
+  );
   assert.deepEqual(contract.runtimePlan.missingRequiredNodes, []);
   assert.deepEqual(contract.runtimePlan.validation, {
     ok: true,
@@ -179,6 +211,30 @@ test("Pipecat FlowManager runtime plan mirrors node handlers and guarded transit
   assert.deepEqual(runtimePlan.nextPendingCutoverStep, runtimePlan.cutoverSequence.at(-1));
   assert.equal(runtimePlan.cutoverPreconditions.filter((precondition) => precondition.satisfied).length, 2);
   assert.equal(runtimePlan.cutoverPreconditions.at(-1)?.verificationCommand, "npm test");
+  assert.deepEqual(
+    runtimePlan.adapterInvocations.map((invocation) => [invocation.id, invocation.inputFrame, invocation.handlerResult]),
+    [
+      [
+        "caller_transcript_to_flowmanager_node",
+        "TranscriptionFrame",
+        "ACC caller-turn preview with flowState, agentText, events, and snapshotVersion",
+      ],
+      [
+        "operator_control_to_flowmanager_node",
+        "ACC operator control event",
+        "bounded steer result for steered_response or wrap",
+      ],
+      [
+        "runtime_failure_to_flowmanager_wrap",
+        "Pipeline error or interruption frame",
+        "fail-closed wrap/handoff event set",
+      ],
+    ],
+  );
+  assert.deepEqual(
+    runtimePlan.adapterInvocations.map((invocation) => invocation.failClosedFallback),
+    ["wrap", "wrap", "wrap"],
+  );
   assert.deepEqual(runtimePlan.validation, {
     ok: true,
     missingRequiredNodes: [],
