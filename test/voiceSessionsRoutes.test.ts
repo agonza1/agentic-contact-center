@@ -3,9 +3,14 @@ import assert from "node:assert/strict";
 import { request } from "node:http";
 import { connect } from "node:net";
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildHttpServer } from "../src/http/createServer";
+
+const voiceAudioFixtures = JSON.parse(readFileSync("test/fixtures/voice-session-audio-fixtures.json", "utf8")) as {
+  fixtures: Record<string, { mimeType: string; sampleRateHz: number; audioData: string }>;
+};
 
 function requestJson(port: number, method: string, route: string, body?: unknown): Promise<{ statusCode: number; payload: any }> {
   const rawBody = body === undefined ? undefined : JSON.stringify(body);
@@ -149,22 +154,33 @@ test("voice sessions expose persistent CAE realtime-audio lifecycle and proof", 
     assert.equal(snapshot.payload.session.endpoints.proof, "/api/voice/sessions/cae-session-1/proof");
 
 
+    const playFixture = voiceAudioFixtures.fixtures["caller-billing-short"];
     const play = await requestJson(address.port, "POST", "/api/voice/sessions/cae-session-1/play", {
       callerActId: "act-1",
-      audioData: Buffer.from([1, 2, 3, 4]).toString("base64"),
+      assetName: "caller-billing-short",
+      audioData: playFixture.audioData,
+      mimeType: playFixture.mimeType,
+      sampleRateHz: playFixture.sampleRateHz,
     });
     assert.equal(play.statusCode, 202);
     assert.equal(play.payload.session.playback.requestedTurns, 1);
-    assert.equal(play.payload.session.events.at(-1).type, "play.requested");
-    assert.equal(play.payload.session.events.at(-1).detail.expectedTranscriptAccepted, false);
+    assert.equal(play.payload.injectedAudio.assetName, "caller-billing-short");
+    assert.equal(play.payload.injectedAudio.path, "voice_session_media_input");
+    assert.equal(play.payload.session.playback.lastAudioAssetName, "caller-billing-short");
+    assert.equal(play.payload.session.media.inputChunks, 1);
+    assert.equal(play.payload.session.events.at(-2).type, "play.requested");
+    assert.equal(play.payload.session.events.at(-2).detail.expectedTranscriptAccepted, false);
+    assert.equal(play.payload.session.events.at(-2).detail.injectedToMediaInput, true);
+    assert.equal(play.payload.session.events.at(-1).type, "media.input.received");
+    assert.equal(play.payload.session.events.at(-1).detail.source, "play");
 
     const media = await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-1/media/input", Buffer.from([9, 8, 7, 6, 5]), {
       "content-type": "audio/l16",
       "x-sample-rate-hz": "16000",
     });
     assert.equal(media.statusCode, 202);
-    assert.equal(media.payload.session.media.inputChunks, 1);
-    assert.equal(media.payload.session.media.inputBytes, 5);
+    assert.equal(media.payload.session.media.inputChunks, 2);
+    assert.equal(media.payload.session.media.inputBytes, Buffer.from(playFixture.audioData, "base64").byteLength + 5);
     assert.equal(media.payload.session.media.inputSampleRateHz, 16000);
 
     const output = await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-1/media/output", Buffer.from([10, 11, 12, 13, 14, 15]), {
@@ -198,6 +214,7 @@ test("voice sessions expose persistent CAE realtime-audio lifecycle and proof", 
     assert.equal(events.statusCode, 200);
     assert.deepEqual(events.payload.events.map((event: any) => event.type), [
       "play.requested",
+      "media.input.received",
       "media.input.received",
       "output.stream.started",
       "output.audio.chunk",
@@ -263,7 +280,7 @@ test("voice sessions reject expected transcript shortcuts in realtime-audio mode
     assert.equal(created.statusCode, 201);
 
     const playShortcut = await requestJson(address.port, "POST", "/api/voice/sessions/cae-session-shortcut/play", {
-      audioData: Buffer.from([1, 2, 3]).toString("base64"),
+      audioData: voiceAudioFixtures.fixtures["caller-billing-short"].audioData,
       transcript: "Do not inject this as caller text.",
     });
     assert.equal(playShortcut.statusCode, 400);
@@ -273,6 +290,68 @@ test("voice sessions reject expected transcript shortcuts in realtime-audio mode
     assert.equal(proof.payload.evidence.transcriptTurns, 0);
     assert.equal(proof.payload.evidence.hasOutputAudio, false);
     assert.equal(proof.payload.mediaPipeline.realtimeAudioMode, true);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("voice session play validates and injects fixture audio acts", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const created = await requestJson(address.port, "POST", "/api/voice/sessions", { sessionId: "cae-session-play-fixtures" });
+    assert.equal(created.statusCode, 201);
+
+    const unsupported = await requestJson(address.port, "POST", "/api/voice/sessions/cae-session-play-fixtures/play", {
+      audioData: voiceAudioFixtures.fixtures["caller-billing-short"].audioData,
+      mimeType: "text/plain",
+    });
+    assert.equal(unsupported.statusCode, 400);
+    assert.equal(unsupported.payload.error, "voice_session_play_audio_format_unsupported");
+
+    const invalidAudio = await requestJson(address.port, "POST", "/api/voice/sessions/cae-session-play-fixtures/play", {
+      audioData: "not base64",
+      mimeType: "audio/l16",
+    });
+    assert.equal(invalidAudio.statusCode, 400);
+    assert.equal(invalidAudio.payload.error, "voice_session_play_audio_invalid");
+
+    const activeOutput = await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-play-fixtures/media/output", Buffer.from([1, 2, 3, 4]), {
+      "content-type": "audio/l16",
+      "x-output-stream-id": "active-tts",
+    });
+    assert.equal(activeOutput.statusCode, 202);
+    assert.equal(activeOutput.payload.session.output.status, "streaming");
+
+    const firstFixture = voiceAudioFixtures.fixtures["caller-billing-short"];
+    const firstPlay = await requestJson(address.port, "POST", "/api/voice/sessions/cae-session-play-fixtures/play", {
+      assetName: "caller-billing-short",
+      audioData: firstFixture.audioData,
+      mimeType: firstFixture.mimeType,
+      sampleRateHz: firstFixture.sampleRateHz,
+    });
+    assert.equal(firstPlay.statusCode, 202);
+    assert.equal(firstPlay.payload.session.output.status, "cancelled");
+    assert.equal(firstPlay.payload.session.output.bargeInCancellationObserved, true);
+    assert.equal(firstPlay.payload.session.media.inputChunks, 1);
+    assert.equal(firstPlay.payload.session.media.inputBytes, Buffer.from(firstFixture.audioData, "base64").byteLength);
+    assert.equal(firstPlay.payload.session.events.some((event: any) => event.type === "output.stream.cancelled" && event.detail.reason === "fixture_audio_play"), true);
+
+    const silenceFixture = voiceAudioFixtures.fixtures["caller-silence-short"];
+    const silencePlay = await requestJson(address.port, "POST", "/api/voice/sessions/cae-session-play-fixtures/play", {
+      assetName: "caller-silence-short",
+      audioData: silenceFixture.audioData,
+      mimeType: silenceFixture.mimeType,
+      sampleRateHz: silenceFixture.sampleRateHz,
+    });
+    assert.equal(silencePlay.statusCode, 202);
+    assert.equal(silencePlay.payload.injectedAudio.silentAudio, true);
+    assert.equal(silencePlay.payload.session.media.inputChunks, 2);
+    assert.equal(silencePlay.payload.session.playback.requestedTurns, 2);
+    assert.equal(silencePlay.payload.session.events.at(-1).detail.assetName, "caller-silence-short");
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

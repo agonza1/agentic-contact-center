@@ -57,6 +57,8 @@ const operatorConsoleRefreshIntervalMs = 5000;
 const operatorConsoleWorkboardCard = "82771d3a-de4d-4b6e-869c-328e8264d01e";
 const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
 const defaultBrowserWebrtcBridgeTimeoutMs = 5000;
+const maxVoiceSessionPlayAudioBytes = 2 * 1024 * 1024;
+const supportedVoiceSessionPlayMimeTypes = new Set(["audio/l16", "audio/pcm", "audio/wav", "audio/wave", "audio/x-wav"]);
 
 interface BrowserWebrtcBridgeRuntimeProbe {
   ok: boolean;
@@ -3914,6 +3916,16 @@ function parseOptionalPositiveIntegerHeader(value: string | string[] | undefined
   return parseOptionalPositiveInteger(Number(trimmed), error);
 }
 
+function parseRequiredBase64Audio(value: unknown, error: string): Buffer | { error: string } {
+  const raw = getOptionalTrimmedString(value);
+  if (!raw) return { error };
+  const normalized = raw.replace(/\s+/g, "");
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(normalized) || normalized.length % 4 !== 0) return { error };
+  const audio = Buffer.from(normalized, "base64");
+  if (audio.byteLength === 0 || audio.toString("base64").replace(/=+$/, "") !== normalized.replace(/=+$/, "")) return { error };
+  return audio;
+}
+
 function isVoiceSessionControlAction(value: string): boolean {
   return ["barge_in", "pause", "resume", "close", "flush", "mark"].includes(value);
 }
@@ -4343,18 +4355,78 @@ async function routeRequest(
         writeBadRequest(response, "voice_session_transcript_shortcut_rejected");
         return;
       }
-      const audioData = getOptionalTrimmedString(body.audioData);
-      const audioBytes = audioData ? Buffer.byteLength(audioData, "base64") : undefined;
-      const updated = voiceSessions.recordPlaybackRequest(sessionId, {
-        label: getOptionalTrimmedString(body.label) ?? getOptionalTrimmedString(body.callerActId),
-        audioBytes,
+      const audio = parseRequiredBase64Audio(body.audioData ?? body.audioBase64, "voice_session_play_audio_invalid");
+      if ("error" in audio) {
+        writeBadRequest(response, audio.error);
+        return;
+      }
+      if (audio.byteLength > maxVoiceSessionPlayAudioBytes) {
+        writeBadRequest(response, "voice_session_play_audio_too_large");
+        return;
+      }
+      const audioMimeType = getOptionalTrimmedString(body.mimeType) ?? getOptionalTrimmedString(body.audioMimeType) ?? "audio/l16";
+      if (!supportedVoiceSessionPlayMimeTypes.has(audioMimeType.toLowerCase())) {
+        writeBadRequest(response, "voice_session_play_audio_format_unsupported");
+        return;
+      }
+      const sampleRateHz = parseOptionalPositiveInteger(body.sampleRateHz, "voice_session_sample_rate_invalid");
+      if (sampleRateHz !== undefined && typeof sampleRateHz !== "number") {
+        writeBadRequest(response, sampleRateHz.error);
+        return;
+      }
+      const label = getOptionalTrimmedString(body.label) ?? getOptionalTrimmedString(body.callerActId) ?? getOptionalTrimmedString(body.assetName);
+      const assetName = getOptionalTrimmedString(body.assetName) ?? label;
+      const audioSha256 = createHash("sha256").update(audio).digest("hex");
+      const silentAudio = audio.every((byte) => byte === 0);
+      if (session.output.status === "streaming") {
+        const cancelled = voiceSessions.recordControl(sessionId, { action: "barge_in", reason: "fixture_audio_play" });
+        if (!cancelled) {
+          writeJson(response, 409, { ok: false, error: "voice_session_closed" });
+          return;
+        }
+      }
+      const requested = voiceSessions.recordPlaybackRequest(sessionId, {
+        label,
+        assetName,
+        audioBytes: audio.byteLength,
         audioUrl: getOptionalTrimmedString(body.audioUrl),
+        audioMimeType,
+        sampleRateHz,
+        audioSha256,
+        injectedToMediaInput: true,
+        silentAudio,
+      });
+      if (!requested) {
+        writeJson(response, 409, { ok: false, error: "voice_session_closed" });
+        return;
+      }
+      const updated = voiceSessions.recordMediaInput(sessionId, {
+        bytes: audio.byteLength,
+        mimeType: audioMimeType,
+        sampleRateHz,
+        assetName,
+        source: "play",
+        audioSha256,
       });
       if (!updated) {
         writeJson(response, 409, { ok: false, error: "voice_session_closed" });
         return;
       }
-      writeJson(response, 202, { ok: true, route: "/api/voice/sessions/:id/play", session: updated, accepted: true });
+      writeJson(response, 202, {
+        ok: true,
+        route: "/api/voice/sessions/:id/play",
+        session: updated,
+        accepted: true,
+        injectedAudio: {
+          assetName: assetName ?? null,
+          bytes: audio.byteLength,
+          mimeType: audioMimeType,
+          sampleRateHz: sampleRateHz ?? null,
+          sha256: audioSha256,
+          silentAudio,
+          path: "voice_session_media_input",
+        },
+      });
       return;
     }
 

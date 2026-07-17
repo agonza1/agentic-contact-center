@@ -33,6 +33,10 @@ export interface RealtimeVoiceSession {
   playback: {
     requestedTurns: number;
     lastRequestedAt: string | null;
+    lastAudioBytes: number | null;
+    lastAudioMimeType: string | null;
+    lastAudioSampleRateHz: number | null;
+    lastAudioAssetName: string | null;
   };
   output: {
     streamId: string | null;
@@ -118,7 +122,7 @@ export class RealtimeVoiceSessionStore {
       transport: "persistent_full_duplex",
       metadata: { ...(input.metadata ?? {}) },
       media: { inputChunks: 0, inputBytes: 0, inputSampleRateHz: null, inputMimeType: null, lastInputAt: null },
-      playback: { requestedTurns: 0, lastRequestedAt: null },
+      playback: { requestedTurns: 0, lastRequestedAt: null, lastAudioBytes: null, lastAudioMimeType: null, lastAudioSampleRateHz: null, lastAudioAssetName: null },
       output: {
         streamId: null,
         status: "idle",
@@ -148,22 +152,52 @@ export class RealtimeVoiceSessionStore {
     return session ? cloneSession(session) : null;
   }
 
-  recordPlaybackRequest(sessionId: string, input: { label?: string; audioBytes?: number; audioUrl?: string; timestamp?: string }): RealtimeVoiceSession | null {
+  recordPlaybackRequest(sessionId: string, input: {
+    label?: string;
+    audioBytes?: number;
+    audioUrl?: string;
+    audioMimeType?: string;
+    sampleRateHz?: number;
+    assetName?: string;
+    audioSha256?: string;
+    injectedToMediaInput?: boolean;
+    silentAudio?: boolean;
+    timestamp?: string;
+  }): RealtimeVoiceSession | null {
     const session = this.sessions.get(sessionId);
     if (!session || session.status !== "open") return null;
     const at = input.timestamp ?? new Date().toISOString();
     session.playback.requestedTurns += 1;
     session.playback.lastRequestedAt = at;
+    session.playback.lastAudioBytes = input.audioBytes ?? null;
+    session.playback.lastAudioMimeType = input.audioMimeType ?? null;
+    session.playback.lastAudioSampleRateHz = input.sampleRateHz ?? null;
+    session.playback.lastAudioAssetName = input.assetName ?? input.label ?? null;
     this.record(session, "play.requested", at, {
       label: input.label ?? null,
+      assetName: input.assetName ?? input.label ?? null,
       audioBytes: input.audioBytes ?? null,
+      audioMimeType: input.audioMimeType ?? null,
+      sampleRateHz: input.sampleRateHz ?? null,
       audioUrl: input.audioUrl ?? null,
+      audioSha256: input.audioSha256 ?? null,
+      injectedToMediaInput: input.injectedToMediaInput ?? false,
+      injectionPath: input.injectedToMediaInput ? "voice_session_media_input" : null,
+      silentAudio: input.silentAudio ?? false,
       expectedTranscriptAccepted: false,
     });
     return cloneSession(session);
   }
 
-  recordMediaInput(sessionId: string, input: { bytes: number; mimeType?: string; sampleRateHz?: number; timestamp?: string }): RealtimeVoiceSession | null {
+  recordMediaInput(sessionId: string, input: {
+    bytes: number;
+    mimeType?: string;
+    sampleRateHz?: number;
+    assetName?: string;
+    source?: string;
+    audioSha256?: string;
+    timestamp?: string;
+  }): RealtimeVoiceSession | null {
     const session = this.sessions.get(sessionId);
     if (!session || session.status !== "open") return null;
     const at = input.timestamp ?? new Date().toISOString();
@@ -178,6 +212,9 @@ export class RealtimeVoiceSessionStore {
       chunks: session.media.inputChunks,
       mimeType: session.media.inputMimeType,
       sampleRateHz: session.media.inputSampleRateHz,
+      source: input.source ?? null,
+      assetName: input.assetName ?? null,
+      audioSha256: input.audioSha256 ?? null,
       transcriptShortcut: false,
     });
     return cloneSession(session);

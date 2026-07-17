@@ -1,0 +1,23 @@
+{
+  "license": "Synthetic PCM16 fixtures generated for local tests; no customer recordings.",
+  "fixtures": {
+    "caller-billing-short": {
+      "description": "Short non-silent mono PCM16 caller act for the /play fixture injection path.",
+      "mimeType": "audio/l16",
+      "sampleRateHz": 16000,
+      "audioData": "AAABAAIAAwAEAAUABgAHAAgACQA="
+    },
+    "caller-interrupt-short": {
+      "description": "Short non-silent mono PCM16 caller act used to interrupt active TTS/output streams.",
+      "mimeType": "audio/l16",
+      "sampleRateHz": 16000,
+      "audioData": "CgAJAAgABwAGAAUABAADAAIAAQ=="
+    },
+    "caller-silence-short": {
+      "description": "Short silence fixture proving /play records silence as audio evidence instead of a transcript shortcut.",
+      "mimeType": "audio/l16",
+      "sampleRateHz": 16000,
+      "audioData": "AAAAAAAAAAAAAAAAAAAAAA=="
+    }
+  }
+}
