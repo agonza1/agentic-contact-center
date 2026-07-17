@@ -35,16 +35,25 @@ CHUNK_BYTES = SAMPLE_RATE * 2 * CHUNK_MS // 1000
 
 
 class CapturingTtsProcessor(KokoroTtsProcessor):
-    def __init__(self, session: AccVoicePipelineSession, *, pause_after_first_chunk: bool = False):
+    def __init__(
+        self,
+        session: AccVoicePipelineSession,
+        *,
+        pause_after_first_chunk: bool = False,
+        block_first_audio: bool = False,
+    ):
         super().__init__(session)
         self.frames: list[Any] = []
         self.pause_after_first_chunk = pause_after_first_chunk
+        self.block_first_audio = block_first_audio
         self.first_chunk = asyncio.Event()
 
     async def push_frame(self, frame: Any, direction: FrameDirection = FrameDirection.DOWNSTREAM) -> None:
         self.frames.append(frame)
-        if self.pause_after_first_chunk and isinstance(frame, TTSAudioRawFrame):
+        if (self.pause_after_first_chunk or self.block_first_audio) and isinstance(frame, TTSAudioRawFrame):
             self.first_chunk.set()
+        if self.block_first_audio and isinstance(frame, TTSAudioRawFrame):
+            await asyncio.sleep(60)
 
 
 class CapturingCallerTurnProcessor(AccCallerTurnProcessor):
@@ -70,6 +79,13 @@ class FakeFlowManager:
 class FailingFlowManager(FakeFlowManager):
     async def set_node_from_config(self, node: dict[str, Any]) -> None:
         raise RuntimeError(f"fixture set_node_from_config failure for {node['name']}")
+
+
+class FailingGreetFlowManager(FakeFlowManager):
+    async def set_node_from_config(self, node: dict[str, Any]) -> None:
+        if node["name"] == "greet":
+            raise RuntimeError("fixture greet activation failure")
+        self.current_node = node["name"]
 
 
 class SlowActivatingFlowManager(FakeFlowManager):
@@ -295,6 +311,61 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         followup_preview_result = await asyncio.wait_for(followup_preview_task, timeout=1)
     finally:
         release_followup_commit.set()
+        pipeline.json_http = original_json_http
+
+    fail_closed_started = threading.Event()
+    release_fail_closed = threading.Event()
+    fail_closed_fallback_calls: list[dict[str, Any]] = []
+    fail_closed_preview_calls: list[dict[str, Any]] = []
+
+    def fake_queued_fail_closed_http(
+        method: str,
+        url: str,
+        payload: dict[str, Any] | None = None,
+        timeout: float = 30,
+    ) -> dict[str, Any]:
+        if method == "POST" and url.endswith("/fallback"):
+            fail_closed_started.set()
+            release_fail_closed.wait(1)
+            fail_closed_fallback_calls.append(payload or {})
+            return {
+                "flowState": "wrap",
+                "transcript": [{"speaker": "agent", "text": "Human handoff started.", "timestamp": "fixture"}],
+            }
+        if method == "POST" and url.endswith("/caller-turn"):
+            fail_closed_preview_calls.append(payload or {})
+            return {
+                "flowState": "diagnose",
+                "callerTurnCommit": {"mode": "delivery_ack", "status": "pending", "timestamp": "fixture"},
+                "transcript": [],
+            }
+        return original_json_http(method, url, payload, timeout)
+
+    fail_closed_session = build_session(
+        "queued-preview-during-flowmanager-fail-closed",
+        manager_factory=FailingGreetFlowManager,
+    )
+    await fail_closed_session.flow_manager_adapter.initialize()
+    fail_closed_session.flow_manager_adapter.stage_transition("greet", reason="caller_turn_preview")
+    pipeline.json_http = fake_queued_fail_closed_http
+    try:
+        fail_closed_prepare_task = asyncio.create_task(
+            fail_closed_session.flow_manager_adapter.prepare_pending_transition()
+        )
+        assert await asyncio.to_thread(fail_closed_started.wait, 1)
+        fail_closed_preview_task = asyncio.create_task(
+            fail_closed_session.flow_manager_adapter.preview_caller_turn(
+                text="Queue this caller turn behind fail-closed",
+                conversation_mode="free_caller",
+            )
+        )
+        await asyncio.sleep(0)
+        fail_closed_preview_waited = not fail_closed_preview_task.done() and not fail_closed_preview_calls
+        release_fail_closed.set()
+        fail_closed_prepare_result = await asyncio.wait_for(fail_closed_prepare_task, timeout=1)
+        fail_closed_preview_result = await asyncio.wait_for(fail_closed_preview_task, timeout=1)
+    finally:
+        release_fail_closed.set()
         pipeline.json_http = original_json_http
 
     failing_cancel_commit_started = threading.Event()
@@ -555,6 +626,33 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
     ]
     slow_activation_evidence = slow_activation_session.flow_manager_adapter.last_evidence
 
+    prepared_rollback_session = build_session("prepared-flowmanager-transition-rolled-back-before-audio")
+    install_fake_synthesizer(prepared_rollback_session, chunks=2)
+    await prepared_rollback_session.flow_manager_adapter.initialize()
+    prepared_rollback_session.flow_manager_adapter.stage_transition("greet", reason="caller_turn_preview")
+    prepared_rollback_session.set_pending_caller_turn_commit(
+        payload={"text": "Interrupt after prepare", "conversationMode": "free_caller"},
+        expected_agent_text="This prepared transition must disappear from evidence.",
+        output_generation=prepared_rollback_session.output_generation,
+    )
+    prepared_rollback_processor = CapturingTtsProcessor(prepared_rollback_session, block_first_audio=True)
+    prepared_rollback_task = asyncio.create_task(
+        prepared_rollback_processor.process_frame(
+            TextFrame("This prepared transition must disappear from evidence."),
+            FrameDirection.DOWNSTREAM,
+        )
+    )
+    await asyncio.wait_for(prepared_rollback_processor.first_chunk.wait(), timeout=1)
+    prepared_rollback_cancellation = prepared_rollback_session.cancel_output(
+        "fixture_barge_in_after_flowmanager_prepare_before_audio_delivery"
+    )
+    prepared_rollback_result = await asyncio.wait_for(
+        asyncio.gather(prepared_rollback_task, return_exceptions=True),
+        timeout=2,
+    )
+    prepared_rollback_manager = prepared_rollback_session.flow_manager_adapter.manager
+    prepared_rollback_evidence = prepared_rollback_session.flow_manager_adapter.last_evidence
+
     interrupted_session = build_session("output-interrupted")
     if not live_kokoro:
         install_fake_synthesizer(interrupted_session, chunks=8)
@@ -705,6 +803,16 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             and followup_session.flow_manager_adapter.pending_transition is not None
             and followup_session.flow_manager_adapter.pending_transition.get("to") == "diagnose"
         ),
+        "queuedPreviewWaitsForFailClosedTerminalState": (
+            fail_closed_preview_waited
+            and len(fail_closed_fallback_calls) == 1
+            and not fail_closed_preview_calls
+            and fail_closed_prepare_result.get("commitPolicy") == "terminal_handoff"
+            and fail_closed_preview_result.get("flowManagerRuntime", {}).get("commitPolicy") == "terminal_handoff"
+            and fail_closed_preview_result.get("flowState") == "wrap"
+            and fail_closed_session.flow_manager_adapter.manager.current_node == "wrap"
+            and fail_closed_session.flow_manager_adapter.pending_transition is None
+        ),
         "failedCommitAfterCancellationCleansPendingDelivery": (
             len(failing_cancel_commit_calls) == 1
             and isinstance(failing_cancel_result[0], asyncio.CancelledError)
@@ -790,6 +898,16 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             and slow_activation_session.pending_caller_turn_commit is None
             and slow_activation_cancellation.get("outputChunksEnqueued") == 0
         ),
+        "rolledBackPreparedTransitionIsRemovedFromTraceEvidence": (
+            isinstance(prepared_rollback_result[0], asyncio.CancelledError)
+            and prepared_rollback_cancellation.get("outputChunksEnqueued") == 0
+            and prepared_rollback_manager.current_node == "call_started"
+            and prepared_rollback_session.flow_manager_adapter.pending_transition is None
+            and prepared_rollback_session.flow_manager_adapter.transition_trace == []
+            and prepared_rollback_evidence.get("transitionCount") == 0
+            and "lastTransition" not in prepared_rollback_evidence
+            and prepared_rollback_evidence.get("commitPolicy") == "preview_discarded"
+        ),
         "cancelledCallerTurnDoesNotCommitUnheardAgent": len(cancelled_commit_calls) == 0 and not caller_turn_processor.frames and cancellation_before_delivery.get("cancelledTasks") == ["agent"],
         "stalePriorAudioCounterDoesNotPreservePreAudioCommit": (
             isinstance(stale_pre_audio_result[0], asyncio.CancelledError)
@@ -863,6 +981,15 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             "priorDeliveryCancelled": isinstance(followup_delivery_result[0], asyncio.CancelledError),
             "pendingTransition": followup_session.flow_manager_adapter.pending_transition,
         },
+        "queuedPreviewDuringFailClosed": {
+            "waitedForTerminalState": fail_closed_preview_waited,
+            "fallbackCalls": len(fail_closed_fallback_calls),
+            "previewCalls": len(fail_closed_preview_calls),
+            "currentNode": fail_closed_session.flow_manager_adapter.manager.current_node,
+            "pendingTransition": fail_closed_session.flow_manager_adapter.pending_transition,
+            "previewFlowState": fail_closed_preview_result.get("flowState"),
+            "previewCommitPolicy": fail_closed_preview_result.get("flowManagerRuntime", {}).get("commitPolicy"),
+        },
         "failedCommitAfterCancellation": {
             "commitCalls": len(failing_cancel_commit_calls),
             "cancelled": isinstance(failing_cancel_result[0], asyncio.CancelledError),
@@ -896,6 +1023,14 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             "currentNode": slow_activation_manager.current_node,
             "pendingTransition": slow_activation_session.flow_manager_adapter.pending_transition,
             "evidence": slow_activation_evidence,
+        },
+        "preparedTransitionRollback": {
+            "cancelled": isinstance(prepared_rollback_result[0], asyncio.CancelledError),
+            "outputChunksAtCancel": prepared_rollback_cancellation.get("outputChunksEnqueued"),
+            "currentNode": prepared_rollback_manager.current_node,
+            "pendingTransition": prepared_rollback_session.flow_manager_adapter.pending_transition,
+            "transitionTrace": prepared_rollback_session.flow_manager_adapter.transition_trace,
+            "evidence": prepared_rollback_evidence,
         },
         "checks": checks,
     }

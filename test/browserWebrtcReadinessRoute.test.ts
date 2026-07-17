@@ -129,6 +129,15 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.followupDuringSlowCommit.fallbackCalls, 0);
   assert.equal(payload.followupDuringSlowCommit.priorDeliveryCancelled, true);
   assert.equal(payload.followupDuringSlowCommit.pendingTransition.to, "diagnose");
+  assert.deepEqual(payload.queuedPreviewDuringFailClosed, {
+    waitedForTerminalState: true,
+    fallbackCalls: 1,
+    previewCalls: 0,
+    currentNode: "wrap",
+    pendingTransition: null,
+    previewFlowState: "wrap",
+    previewCommitPolicy: "terminal_handoff",
+  });
   assert.deepEqual(payload.failedCommitAfterCancellation, {
     commitCalls: 1,
     cancelled: true,
@@ -156,6 +165,13 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.slowFlowManagerActivationBargeIn.cancelled, true);
   assert.equal(payload.slowFlowManagerActivationBargeIn.currentNode, "call_started");
   assert.equal(payload.slowFlowManagerActivationBargeIn.pendingTransition, null);
+  assert.equal(payload.preparedTransitionRollback.cancelled, true);
+  assert.equal(payload.preparedTransitionRollback.outputChunksAtCancel, 0);
+  assert.equal(payload.preparedTransitionRollback.currentNode, "call_started");
+  assert.equal(payload.preparedTransitionRollback.pendingTransition, null);
+  assert.deepEqual(payload.preparedTransitionRollback.transitionTrace, []);
+  assert.equal(payload.preparedTransitionRollback.evidence.transitionCount, 0);
+  assert.equal(payload.preparedTransitionRollback.evidence.lastTransition, undefined);
   assert.equal(payload.checks.slowFlowManagerActivationBargeInRollsBack, true);
   assert.equal(payload.checks.slowFlowManagerActivationCancellationIsPrompt, true);
   assert.equal(payload.checks.slowFlowManagerActivationCommitsNoAudioOrAccTurn, true);
@@ -163,6 +179,8 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.checks.slowCommitBargeInPreservesDeliveredCommit, true);
   assert.equal(payload.checks.followupTurnWaitsForPriorDeliveryAck, true);
   assert.equal(payload.checks.followupTurnStagesWithoutFallback, true);
+  assert.equal(payload.checks.queuedPreviewWaitsForFailClosedTerminalState, true);
+  assert.equal(payload.checks.rolledBackPreparedTransitionIsRemovedFromTraceEvidence, true);
   assert.equal(payload.checks.successfulTurnPublishesFinalizedFlowManagerEvidence, true);
   assert.equal(payload.checks.failedCommitAfterCancellationCleansPendingDelivery, true);
   assert.equal(payload.checks.stalePriorAudioCounterDoesNotPreservePreAudioCommit, true);
