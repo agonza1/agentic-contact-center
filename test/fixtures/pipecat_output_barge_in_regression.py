@@ -304,6 +304,56 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         pipeline.json_http = original_json_http
     repeated_cancel_stages = repeated_cancel_session.stage_events
 
+    stale_commit_started = threading.Event()
+    release_stale_commit = threading.Event()
+    stale_commit_calls: list[dict[str, Any]] = []
+
+    def fake_stale_delivery_http(method: str, url: str, payload: dict[str, Any] | None = None, timeout: float = 30) -> dict[str, Any]:
+        if method == "POST" and url.endswith("/caller-turn/commit"):
+            stale_commit_started.set()
+            release_stale_commit.wait(1)
+            stale_commit_calls.append(payload or {})
+            return {
+                "flowState": "greet",
+                "transcript": [
+                    {"speaker": "caller", "text": (payload or {}).get("text", ""), "timestamp": "fixture"},
+                    {"speaker": "agent", "text": "Old commit finishes late.", "timestamp": "fixture"},
+                ],
+            }
+        return original_json_http(method, url, payload, timeout)
+
+    stale_session = build_session("stale-delivery-commit-newer-turn")
+    install_fake_synthesizer(stale_session, chunks=3)
+    await stale_session.flow_manager_adapter.initialize()
+    stale_session.flow_manager_adapter.stage_transition("greet", reason="caller_turn_preview")
+    stale_session.set_pending_caller_turn_commit(
+        payload={"text": "Old caller turn", "conversationMode": "free_caller"},
+        expected_agent_text="Old commit finishes late.",
+        output_generation=stale_session.output_generation,
+    )
+    stale_processor = CapturingTtsProcessor(stale_session)
+    pipeline.json_http = fake_stale_delivery_http
+    try:
+        stale_task = asyncio.create_task(
+            stale_processor.process_frame(
+                TextFrame("Old commit finishes late."),
+                FrameDirection.DOWNSTREAM,
+            )
+        )
+        assert await asyncio.to_thread(stale_commit_started.wait, 1)
+        stale_barge_in = stale_session.cancel_output("fixture_barge_in_before_newer_turn")
+        stale_session.set_pending_caller_turn_commit(
+            payload={"text": "Newer caller turn", "conversationMode": "free_caller"},
+            expected_agent_text="Newer answer must remain pending.",
+            output_generation=stale_session.output_generation,
+        )
+        release_stale_commit.set()
+        stale_result = await asyncio.gather(stale_task, return_exceptions=True)
+    finally:
+        release_stale_commit.set()
+        pipeline.json_http = original_json_http
+    stale_stages = stale_session.stage_events
+
     failed_delivery_requests: list[str] = []
 
     def fake_failed_delivery_http(method: str, url: str, payload: dict[str, Any] | None = None, timeout: float = 30) -> dict[str, Any]:
@@ -586,6 +636,19 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
                 for event in repeated_cancel_stages
             )
         ),
+        "staleDeliveryCommitDoesNotClearNewerPendingTurn": (
+            len(stale_commit_calls) == 1
+            and isinstance(stale_result[0], asyncio.CancelledError)
+            and stale_barge_in.get("outputChunksEnqueued") == 1
+            and stale_session.pending_caller_turn_commit is not None
+            and stale_session.pending_caller_turn_commit.get("payload", {}).get("text") == "Newer caller turn"
+            and any(
+                event["stage"] == "acc.caller_turn_delivery_stale"
+                and event.get("error") == "stale_pending_delivery_ack_after_commit"
+                for event in stale_stages
+            )
+            and not any(event["stage"] == "acc.caller_turn_delivery_committed" for event in stale_stages)
+        ),
         "flowManagerActivationFailureFailsDeliveryCommit": failed_delivery_requests == ["fallback"],
         "flowManagerActivationFailureEmitsNoPreviewAudio": len(failed_delivery_audio) == 0 and failed_delivery_session.output_stream_audio_bytes == 0,
         "flowManagerActivationFailureClosesTtsLifecycle": (
@@ -712,6 +775,13 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             "pendingCommit": repeated_cancel_session.pending_caller_turn_commit is not None,
             "pendingTransition": repeated_cancel_session.flow_manager_adapter.pending_transition is not None,
             "outputChunksAtCancel": repeated_cancel_barge_in.get("outputChunksEnqueued"),
+        },
+        "staleDeliveryCommit": {
+            "commitCalls": len(stale_commit_calls),
+            "cancelled": isinstance(stale_result[0], asyncio.CancelledError),
+            "pendingCommit": stale_session.pending_caller_turn_commit,
+            "pendingTransition": stale_session.flow_manager_adapter.pending_transition,
+            "outputChunksAtCancel": stale_barge_in.get("outputChunksEnqueued"),
         },
         "stalePriorAudioPreAudioCancel": {
             "cancelled": isinstance(stale_pre_audio_result[0], asyncio.CancelledError),

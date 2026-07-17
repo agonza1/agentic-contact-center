@@ -556,6 +556,10 @@ class AccVoicePipelineSession:
         if not isinstance(payload, dict) or not isinstance(url, str):
             self.discard_pending_caller_turn_commit("invalid_pending_delivery_ack")
             return None
+        flow_manager_pending = (
+            self.flow_manager_adapter.pending_transition if self.flow_manager_adapter is not None else None
+        )
+
         async def run_commit() -> tuple[bool, dict[str, Any] | Exception]:
             try:
                 return True, await asyncio.to_thread(json_http, "POST", url, payload)
@@ -596,6 +600,26 @@ class AccVoicePipelineSession:
                 )
                 raise asyncio.CancelledError from exc
             cancelled_after_delivery = True
+        pending_still_current = self.pending_caller_turn_commit is pending
+        flow_pending_still_current = (
+            self.flow_manager_adapter is None or self.flow_manager_adapter.pending_transition is flow_manager_pending
+        )
+        if not pending_still_current or not flow_pending_still_current:
+            self.record_stage(
+                "acc.caller_turn_delivery_stale",
+                ok=False,
+                error="stale_pending_delivery_ack_after_commit",
+                callerTranscript=payload.get("text"),
+                expectedAgentText=expected_agent_text,
+                outputGeneration=self.output_generation,
+                pendingStillCurrent=pending_still_current,
+                flowPendingStillCurrent=flow_pending_still_current,
+            )
+            if cancelled_after_delivery:
+                raise asyncio.CancelledError
+            if not commit_ok:
+                raise commit_result
+            return commit_result
         if not commit_ok:
             exc = commit_result
             self.discard_pending_caller_turn_commit("delivery_ack_commit_rejected")
