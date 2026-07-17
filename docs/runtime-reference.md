@@ -41,10 +41,10 @@ This verifies the local `pipecat-ai` package boundary only. It does not open mic
 Issue #222 is the architectural center for realtime voice. Do not add new standalone demo paths. Every realtime input should become an adapter into the same Pipecat media Pipeline:
 
 ```text
-transport.input -> rtc-asr STT -> ACC caller-turn adapter -> Kokoro TTS -> transport.output
+transport.input -> rtc-asr STT -> ACC caller-turn + FlowManager adapter -> Kokoro TTS -> transport.output
 ```
 
-`requirements-pipecat-voice.txt` requests `pipecat-ai[webrtc]==1.4.0` so local installs include the WebRTC extras needed for `SmallWebRTCTransport`. `scripts/acc_pipecat_voice_pipeline.py` owns the reusable STT -> ACC -> TTS Pipeline processors and `build_acc_voice_pipeline()`. `scripts/pipecat-browser-webrtc-bridge.py` is now the browser `SmallWebRTCTransport` offer route/adaptor around that shared Pipeline, while preserving the existing ACC `POST /api/browser-webrtc/session` contract.
+`requirements-pipecat-voice.txt` pins `pipecat-ai[webrtc]==1.4.0` and the matching standalone `pipecat-ai-flows==1.4.0` release. Pipecat 1.5 folds Flows into `pipecat.flows`, but this repository stays on the version-matched 1.4 import `pipecat_flows.FlowManager`. `scripts/acc_pipecat_voice_pipeline.py` owns the reusable media processors and `build_acc_voice_pipeline()`; `scripts/acc_pipecat_flow_manager.py` owns the conversation-node activation and transition guard around ACC delivery-ack previews. `scripts/pipecat-browser-webrtc-bridge.py` is the browser `SmallWebRTCTransport` offer adapter around that shared Pipeline, while preserving the existing ACC `POST /api/browser-webrtc/session` contract.
 
 Adapter rule for #222:
 
@@ -68,11 +68,10 @@ Realtime-audio mode rejects `transcript` and `expectedTranscript` fields on sess
 
 Current gaps to keep visible:
 
-- Pipecat Flows/`FlowManager` does not yet own the cancellation-rescue conversation graph.
 - The presentation should describe #222 as the center, not OpenClaw/demo paths as the architecture.
 - SignalWire remains a future SIP trunk route into the same FreeSWITCH/Pipecat path; historical/past-call import is separate.
 
-Flows decision for the current MVP: the shared browser/SIP media Pipeline is now live-proofed, so the remaining #222 acceptance gap is moving cancellation-rescue policy into Pipecat Flows/`FlowManager`. The FlowManager node handler plan now mirrors `call_started`, `greet`, `diagnose`, `policy_hold`, `operator_steer`, `steered_response`, and `wrap` with fail-closed guards for the policy hold, operator steer, and fallback paths. ACC TypeScript still owns the active caller-turn runtime adapter until the cutover routes those handlers through Pipecat FlowManager; it also keeps product state, operator controls, proof artifacts, and queue state. The older `scripts/pipecat-local-voice-bridge.py` path is legacy proof-only and should not be used as the normal browser voice path.
+Flows decision for the current MVP: `AccCallerTurnProcessor` now routes each delivery-ack preview through `AccPipecatFlowManagerAdapter`. The adapter initializes the real `pipecat_flows.FlowManager`, guards pending transitions across `call_started`, `greet`, `diagnose`, `policy_hold`, `operator_steer`, `steered_response`, and `wrap`, and rejects transitions outside the fail-closed graph before agent text reaches Kokoro. ACC TypeScript still owns product state, operator controls, proof artifacts, queue state, deterministic response content, and the snapshot-version commit check; it no longer has sole ownership of runtime conversation transitions. Missing/incompatible Flows packages or an invalid node transition call ACC's existing `runtime_failure` fallback and enter the terminal `wrap`/human-handoff path. Normal turns remain previews until the first Kokoro audio frame triggers delivery acknowledgement; that acknowledgement commits both the ACC snapshot and the pending FlowManager node, while pre-output barge-in discards both, so unheard text cannot advance either state machine. Run `npm run pipecat:flows:runtime` after `npm run pipecat:webrtc:install` for the real-package check and `python3 test/fixtures/pipecat_flowmanager_adapter_regression.py` for deterministic normal/failure coverage. The older `scripts/pipecat-local-voice-bridge.py` path is legacy proof-only and should not be used as the normal browser voice path.
 
 ## Browser WebRTC voice readiness
 
@@ -129,7 +128,7 @@ Issue #214 exposes the current readiness contract for browser WebRTC, local SIP/
 curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness
 ```
 
-The payload is intentionally not a fake green light. It marks the browser Pipecat voice bridge and SIP/Verto shared media path as implemented with live local proof, then reports the remaining #222 blocker: Pipecat Flows/`FlowManager` does not yet own the cancellation-rescue conversation flow. The older FreeSWITCH ESL/RTP bridge remains a proof/debug lane and must not be used as the #222 acceptance route. SignalWire is documented as a future SIP trunk -> FreeSWITCH/Pipecat route; historical/past-call import remains a separate importer task.
+The payload records the browser Pipecat voice bridge and SIP/Verto shared media path as implemented with live local proof, plus the pinned Pipecat Flows runtime adapter and its fail-closed transition contract. The older FreeSWITCH ESL/RTP bridge remains a proof/debug lane and must not be used as the #222 acceptance route. SignalWire is documented as a future SIP trunk -> FreeSWITCH/Pipecat route; historical/past-call import remains a separate importer task.
 
 ## Demo flow
 
@@ -228,7 +227,7 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `GET /api/calls`: list active calls with optional queue/operator filters.
 - `GET /api/queue`: return queue summary metadata without full call payloads.
 - `GET /api/operator/actions`: expose the Slack-ready operator action catalog with command examples, reason/pending-call requirements, HTTP body templates, and outcome hints for console buttons.
-- `GET /api/pipecat-media-engine/readiness`: expose the Issue #214 shared browser WebRTC, local SIP/FreeSWITCH, and SignalWire SIP trunk Pipecat media-engine contract, including the current Pipecat Flows/FlowManager migration gate.
+- `GET /api/pipecat-media-engine/readiness`: expose the Issue #214 shared browser WebRTC, local SIP/FreeSWITCH, SignalWire SIP trunk, and completed Pipecat Flows/FlowManager runtime-adapter contract.
 - `GET /api/browser-webrtc/readiness`: expose the Issue #213 browser WebRTC voice contract, dependency readiness, and bridge endpoint.
 - `POST /api/browser-webrtc/session`: validate browser SDP offers, allocate or preserve an ACC call ID, and proxy offer/answer signaling to the local Pipecat WebRTC bridge.
 - `POST /api/voice/sessions`: create a persistent ConversationAgentEvals realtime-audio target session.

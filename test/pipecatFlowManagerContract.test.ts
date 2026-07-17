@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
 import {
@@ -11,10 +12,32 @@ import {
 import { buildPipecatFlowManagerRuntimePlan } from "../src/core/pipecatFlowManagerRuntimePlan";
 import { includesUnsafeClaim, replayPipecatFlowManagerParityFixtures } from "../src/core/pipecatFlowManagerParity";
 
+test("Pipecat FlowManager adapter owns guarded runtime transitions and fails closed", () => {
+  const payload = JSON.parse(execFileSync("python3", [
+    "test/fixtures/pipecat_flowmanager_adapter_regression.py",
+  ], { encoding: "utf8" }));
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.runtimeAdapter, "pipecat_flows.FlowManager");
+  assert.deepEqual(payload.requiredVersions, {
+    "pipecat-ai": "1.4.0",
+    "pipecat-ai-flows": "1.4.0",
+  });
+  assert.deepEqual(payload.normalTransitionTrace.map((step: any) => step.to), [
+    "greet",
+    "diagnose",
+    "diagnose",
+    "wrap",
+  ]);
+  assert.equal(payload.unsafeEvidence.commitPolicy, "terminal_handoff");
+  assert.equal(payload.missingRuntimeEvidence.error, "flowmanager_runtime_failed_closed");
+  assert.equal(Object.values(payload.checks).every(Boolean), true);
+});
+
 test("Pipecat FlowManager contract records required nodes and fail-closed guards", () => {
   const contract = buildPipecatFlowManagerContractPayload();
 
-  assert.equal(contract.status, "node_handlers_mirrored_adapter_cutover_pending");
+  assert.equal(contract.status, "runtime_adapter_wired");
   assert.equal(contract.sidecarFree, true);
   assert.equal(contract.parityHarnessCommand, "npm run pipecat:flows:contract");
   assert.deepEqual(contract.requiredNodes, [
@@ -49,14 +72,16 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
   assert.equal(contract.nodeSpecs.find((spec) => spec.node === "operator_steer")?.requiresAccState.includes("operator_controls"), true);
   assert.equal(contract.nodeSpecs.find((spec) => spec.node === "wrap")?.emitsEvents.includes("human_handoff_started"), true);
   assert.equal(contract.requiredGuards.every((guard) => guard.failClosed), true);
-  assert.equal(contract.runtimePlan.status, "node_handlers_mirrored_adapter_cutover_pending");
-  assert.equal(contract.runtimePlan.adapterCutoverPending, true);
+  assert.equal(contract.runtimePlan.status, "runtime_adapter_wired");
+  assert.equal(contract.runtimePlan.adapterCutoverPending, false);
+  assert.equal(contract.runtimePlan.runtimePackageRequirement, "pipecat-ai-flows==1.4.0");
+  assert.equal(contract.runtimeHarnessCommand, "npm run pipecat:flows:runtime");
   assert.deepEqual(
     contract.adapterCutoverPreconditions.map((precondition) => [precondition.id, precondition.satisfied]),
     [
       ["node_handlers_mirrored", true],
       ["fail_closed_guards_locked", true],
-      ["caller_turn_adapter_cutover", false],
+      ["caller_turn_adapter_cutover", true],
     ],
   );
   assert.deepEqual(contract.adapterCutoverPreconditions, contract.runtimePlan.cutoverPreconditions);
@@ -65,14 +90,12 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
     [
       ["mirror_node_handlers", "complete"],
       ["lock_fail_closed_parity", "complete"],
-      ["route_caller_turns_through_flowmanager", "pending"],
+      ["route_caller_turns_through_flowmanager", "complete"],
     ],
   );
-  assert.equal(contract.runtimePlan.nextPendingCutoverStep?.id, "route_caller_turns_through_flowmanager");
-  assert.equal(
-    contract.runtimePlan.cutoverSequence.at(-1)?.blocker,
-    "typescript_deterministic_flow_still_owns_runtime_turns",
-  );
+  assert.equal(contract.runtimePlan.nextPendingCutoverStep, null);
+  assert.equal(contract.runtimePlan.cutoverSequence.at(-1)?.blocker, undefined);
+  assert.equal(contract.acceptanceBlockedUntil, null);
   assert.deepEqual(
     contract.runtimePlan.adapterInvocations.map((invocation) => [
       invocation.id,
@@ -84,13 +107,6 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
     [
       [
         "caller_transcript_to_flowmanager_node",
-        "acc_pipecat_voice_pipeline",
-        "pipecat_flows.FlowManager",
-        "preview_until_output_delivery_ack",
-        "wrap",
-      ],
-      [
-        "operator_control_to_flowmanager_node",
         "acc_pipecat_voice_pipeline",
         "pipecat_flows.FlowManager",
         "preview_until_output_delivery_ack",
@@ -169,18 +185,18 @@ test("Pipecat FlowManager runtime plan mirrors node handlers and guarded transit
   });
 
   assert.equal(runtimePlan.runtimeAdapter, "pipecat_flows.FlowManager");
-  assert.equal(runtimePlan.adapterCutoverPending, true);
+  assert.equal(runtimePlan.adapterCutoverPending, false);
   assert.deepEqual(runtimePlan.missingRequiredNodes, []);
   assert.deepEqual(
     runtimePlan.nodeHandlers.map((handler) => [handler.node, handler.allowedTransitions]),
     [
-      ["call_started", ["greet", "diagnose", "wrap"]],
-      ["greet", ["diagnose", "wrap"]],
-      ["diagnose", ["policy_hold", "wrap"]],
-      ["policy_hold", ["operator_steer", "wrap"]],
-      ["operator_steer", ["steered_response", "wrap"]],
-      ["steered_response", ["wrap"]],
-      ["wrap", []],
+      ["call_started", ["call_started", "greet", "diagnose", "wrap"]],
+      ["greet", ["greet", "diagnose", "wrap"]],
+      ["diagnose", ["diagnose", "policy_hold", "wrap"]],
+      ["policy_hold", ["policy_hold", "operator_steer", "wrap"]],
+      ["operator_steer", ["operator_steer", "steered_response", "wrap"]],
+      ["steered_response", ["steered_response", "wrap"]],
+      ["wrap", ["wrap"]],
     ],
   );
   assert.deepEqual(
@@ -205,12 +221,12 @@ test("Pipecat FlowManager runtime plan mirrors node handlers and guarded transit
   );
   assert.deepEqual(
     runtimePlan.cutoverSequence.map((step) => step.verificationCommand),
-    ["npm run pipecat:flows:contract", "npm run pipecat:flows:contract", "npm test"],
+    ["npm run pipecat:flows:contract", "npm run pipecat:flows:contract", "npm run pipecat:flows:runtime"],
   );
-  assert.equal(runtimePlan.cutoverSequence.find((step) => step.status === "pending")?.owner, "Pipecat FlowManager adapter");
-  assert.deepEqual(runtimePlan.nextPendingCutoverStep, runtimePlan.cutoverSequence.at(-1));
-  assert.equal(runtimePlan.cutoverPreconditions.filter((precondition) => precondition.satisfied).length, 2);
-  assert.equal(runtimePlan.cutoverPreconditions.at(-1)?.verificationCommand, "npm test");
+  assert.equal(runtimePlan.cutoverSequence.at(-1)?.owner, "Pipecat FlowManager adapter");
+  assert.equal(runtimePlan.nextPendingCutoverStep, null);
+  assert.equal(runtimePlan.cutoverPreconditions.filter((precondition) => precondition.satisfied).length, 3);
+  assert.equal(runtimePlan.cutoverPreconditions.at(-1)?.verificationCommand, "npm run pipecat:flows:runtime");
   assert.deepEqual(
     runtimePlan.adapterInvocations.map((invocation) => [invocation.id, invocation.inputFrame, invocation.handlerResult]),
     [
@@ -220,20 +236,15 @@ test("Pipecat FlowManager runtime plan mirrors node handlers and guarded transit
         "ACC caller-turn preview with flowState, agentText, events, and snapshotVersion",
       ],
       [
-        "operator_control_to_flowmanager_node",
-        "ACC operator control event",
-        "bounded steer result for steered_response or wrap",
-      ],
-      [
         "runtime_failure_to_flowmanager_wrap",
-        "Pipeline error or interruption frame",
-        "fail-closed wrap/handoff event set",
+        "FlowManager initialization or transition failure",
+        "ACC runtime_failure fallback with terminal wrap/handoff evidence",
       ],
     ],
   );
   assert.deepEqual(
     runtimePlan.adapterInvocations.map((invocation) => invocation.failClosedFallback),
-    ["wrap", "wrap", "wrap"],
+    ["wrap", "wrap"],
   );
   assert.deepEqual(runtimePlan.validation, {
     ok: true,

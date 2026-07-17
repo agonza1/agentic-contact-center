@@ -30,6 +30,7 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.turns.user_start import MinWordsUserTurnStartStrategy
 
+from acc_pipecat_flow_manager import AccPipecatFlowManagerAdapter
 from acc_track_recorder import SeparateTrackRecorder
 
 DEFAULT_ACC_URL = os.environ.get("ACC_URL", "http://127.0.0.1:8026")
@@ -318,6 +319,7 @@ class AccVoicePipelineSession:
         evidence_callback: Callable[[dict[str, Any]], None] | None = None,
         track_recording_dir: str | Path | None = None,
         correlation_id: str | None = None,
+        flow_manager_adapter: AccPipecatFlowManagerAdapter | None = None,
     ):
         self.acc_url = acc_url.rstrip("/")
         self.call_id = call_id
@@ -358,6 +360,7 @@ class AccVoicePipelineSession:
         recording_dir = track_recording_dir or os.environ.get("ACC_TRACK_RECORDINGS_DIR")
         self.track_recorder = SeparateTrackRecorder(artifact_dir=recording_dir, call_id=call_id) if recording_dir else None
         self.last_track_recording_manifest: dict[str, Any] | None = None
+        self.flow_manager_adapter = flow_manager_adapter
 
     def evidence_snapshot(self) -> dict[str, Any]:
         return {
@@ -389,7 +392,17 @@ class AccVoicePipelineSession:
             "bargeIn": self.last_barge_in_evidence,
             "pendingCallerTurnCommit": bool(self.pending_caller_turn_commit),
             "trackRecordings": self.last_track_recording_manifest,
+            "flowManager": self.flow_manager_adapter.last_evidence if self.flow_manager_adapter else {},
         }
+
+    def get_flow_manager_adapter(self) -> AccPipecatFlowManagerAdapter:
+        if self.flow_manager_adapter is None:
+            self.flow_manager_adapter = AccPipecatFlowManagerAdapter(
+                acc_url=self.acc_url,
+                call_id=self.call_id,
+                request_json=lambda method, url, payload: json_http(method, url, payload),
+            )
+        return self.flow_manager_adapter
 
     def record_stage(self, stage: str, *, ok: bool = True, **detail: Any) -> dict[str, Any]:
         event = {
@@ -500,6 +513,9 @@ class AccVoicePipelineSession:
 
     def discard_pending_caller_turn_commit(self, reason: str) -> None:
         pending = self.pending_caller_turn_commit
+        if self.flow_manager_adapter is not None:
+            self.flow_manager_adapter.discard_pending_transition(reason)
+            self.last_evidence = {**self.last_evidence, "flowManager": self.flow_manager_adapter.last_evidence}
         if not pending:
             return
         self.pending_caller_turn_commit = None
@@ -524,8 +540,25 @@ class AccVoicePipelineSession:
         if not isinstance(payload, dict) or not isinstance(url, str):
             self.discard_pending_caller_turn_commit("invalid_pending_delivery_ack")
             return None
-        call = await asyncio.to_thread(json_http, "POST", url, payload)
+        try:
+            call = await asyncio.to_thread(json_http, "POST", url, payload)
+        except Exception as exc:
+            self.discard_pending_caller_turn_commit("delivery_ack_commit_rejected")
+            self.record_stage(
+                "acc.caller_turn_delivery_rejected",
+                ok=False,
+                error="delivery_ack_commit_rejected",
+                detail=str(exc),
+                callerTranscript=payload.get("text"),
+                expectedAgentText=expected_agent_text,
+                outputGeneration=self.output_generation,
+            )
+            raise
         self.pending_caller_turn_commit = None
+        flow_manager_evidence = None
+        if self.flow_manager_adapter is not None and self.flow_manager_adapter.pending_transition is not None:
+            flow_manager_evidence = await self.flow_manager_adapter.commit_pending_transition()
+            self.last_evidence = {**self.last_evidence, "flowManager": flow_manager_evidence}
         committed_agent_text = latest_agent_text(call)
         matches_expected = committed_agent_text == expected_agent_text
         self.record_stage(
@@ -536,6 +569,7 @@ class AccVoicePipelineSession:
             agentText=committed_agent_text,
             expectedAgentText=expected_agent_text,
             outputGeneration=self.output_generation,
+            flowManager=flow_manager_evidence,
         )
         return call
 
@@ -1070,12 +1104,13 @@ class AccCallerTurnProcessor(FrameProcessor):
             await self.push_frame(TextFrame(deterministic_agent_text), FrameDirection.DOWNSTREAM)
             return
         turn_output_generation = self.session.output_generation
-        caller_turn_payload = {"text": frame.text, "conversationMode": "free_caller", "commitMode": "delivery_ack"}
-        agent_task = asyncio.create_task(asyncio.to_thread(
-            json_http,
-            "POST",
-            f"{self.session.acc_url}/api/calls/{self.session.call_id}/caller-turn",
-            caller_turn_payload,
+        conversation_mode = os.environ.get("ACC_PIPECAT_CONVERSATION_MODE", "free_caller").strip() or "free_caller"
+        if conversation_mode not in {"free_caller", "scripted"}:
+            conversation_mode = "free_caller"
+        flow_manager = self.session.get_flow_manager_adapter()
+        agent_task = asyncio.create_task(flow_manager.preview_caller_turn(
+            text=frame.text,
+            conversation_mode=conversation_mode,
         ))
         self.session.register_response_task("agent", agent_task)
         try:
@@ -1113,6 +1148,12 @@ class AccCallerTurnProcessor(FrameProcessor):
             )
             return
         agent_text = latest_agent_text(call)
+        flow_manager_evidence = call.get("flowManagerRuntime") if isinstance(call, dict) else None
+        flow_manager_commit_policy = (
+            flow_manager_evidence.get("commitPolicy")
+            if isinstance(flow_manager_evidence, dict)
+            else None
+        )
         self.session.turn_count += 1
         self.session.record_stage(
             "acc.caller_turn_completed",
@@ -1121,6 +1162,7 @@ class AccCallerTurnProcessor(FrameProcessor):
             agentText=agent_text,
             agentTextAvailable=bool(agent_text),
             flowState=call.get("flowState") if isinstance(call, dict) else None,
+            flowManager=flow_manager_evidence,
         )
         self.session.last_evidence = {
             "ok": bool(agent_text),
@@ -1140,11 +1182,12 @@ class AccCallerTurnProcessor(FrameProcessor):
                 "output": "TTSAudioRawFrame" if agent_text else None,
             },
             "callId": self.session.call_id,
+            "flowManager": flow_manager_evidence,
         }
-        if agent_text:
+        if agent_text and flow_manager_commit_policy == "preview_until_output_delivery_ack":
             commit_payload = {
                 "text": frame.text,
-                "conversationMode": "free_caller",
+                "conversationMode": conversation_mode,
                 "expectedAgentText": agent_text,
             }
             commit_metadata = call.get("callerTurnCommit") if isinstance(call, dict) else None
@@ -1156,6 +1199,17 @@ class AccCallerTurnProcessor(FrameProcessor):
                 payload=commit_payload,
                 expected_agent_text=agent_text,
                 output_generation=turn_output_generation,
+            )
+            await self.push_frame(TextFrame(agent_text), FrameDirection.DOWNSTREAM)
+        elif agent_text and flow_manager_commit_policy == "terminal_handoff":
+            self.session.discard_pending_caller_turn_commit("flowmanager_terminal_handoff_already_committed")
+            self.session.record_stage(
+                "acc.flowmanager_fail_closed_handoff",
+                ok=False,
+                error="flowmanager_runtime_failed_closed",
+                callerTranscript=frame.text,
+                agentText=agent_text,
+                flowManager=flow_manager_evidence,
             )
             await self.push_frame(TextFrame(agent_text), FrameDirection.DOWNSTREAM)
         else:

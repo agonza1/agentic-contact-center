@@ -23,7 +23,7 @@ const contract = buildPipecatFlowManagerContractPayload();
 const parityReplays = await replayPipecatFlowManagerParityFixtures(loadPocConfig());
 
 assert.equal(contract.sidecarFree, true);
-assert.equal(contract.status, "node_handlers_mirrored_adapter_cutover_pending");
+assert.equal(contract.status, "runtime_adapter_wired");
 assert.equal(contract.parityHarnessCommand, "npm run pipecat:flows:contract");
 assert.deepEqual(contract.requiredNodes, [
   "call_started",
@@ -36,12 +36,12 @@ assert.deepEqual(contract.requiredNodes, [
 ]);
 assert.ok(contract.requiredGuards.some((guard) => guard.id === "policy_hold_before_retention_offer" && guard.failClosed));
 assert.ok(contract.requiredGuards.some((guard) => guard.id === "operator_steer_required_for_safe_offer" && guard.failClosed));
-assert.equal(contract.runtimePlan.status, "node_handlers_mirrored_adapter_cutover_pending");
-assert.equal(contract.runtimePlan.adapterCutoverPending, true);
+assert.equal(contract.runtimePlan.status, "runtime_adapter_wired");
+assert.equal(contract.runtimePlan.adapterCutoverPending, false);
 assert.deepEqual(contract.adapterCutoverPreconditions.map((precondition) => [precondition.id, precondition.satisfied]), [
   ["node_handlers_mirrored", true],
   ["fail_closed_guards_locked", true],
-  ["caller_turn_adapter_cutover", false],
+  ["caller_turn_adapter_cutover", true],
 ]);
 assert.deepEqual(contract.adapterCutoverPreconditions, contract.runtimePlan.cutoverPreconditions);
 assert.deepEqual(contract.runtimePlan.missingRequiredNodes, []);
@@ -58,13 +58,11 @@ assert.deepEqual(contract.runtimePlan.nodeHandlers.map((handler) => handler.node
 assert.deepEqual(contract.runtimePlan.cutoverSequence.map((step) => [step.id, step.status]), [
   ["mirror_node_handlers", "complete"],
   ["lock_fail_closed_parity", "complete"],
-  ["route_caller_turns_through_flowmanager", "pending"],
+  ["route_caller_turns_through_flowmanager", "complete"],
 ]);
-assert.equal(contract.runtimePlan.nextPendingCutoverStep?.id, "route_caller_turns_through_flowmanager");
-assert.equal(
-  contract.runtimePlan.cutoverSequence.at(-1)?.blocker,
-  "typescript_deterministic_flow_still_owns_runtime_turns",
-);
+assert.equal(contract.runtimePlan.nextPendingCutoverStep, null);
+assert.equal(contract.runtimePlan.cutoverSequence.at(-1)?.blocker, undefined);
+assert.equal(contract.runtimeHarnessCommand, "npm run pipecat:flows:runtime");
 assert.ok(contract.runtimePlan.nodeHandlers.find((handler) => handler.node === "policy_hold").guardIds.includes("operator_steer_required_for_safe_offer"));
 assert.ok(contract.parityChecks.some((check) => check.id === "runtime_failure_fail_closed"));
 assert.ok(contract.parityFixtures.some((fixture) => fixture.id === "scripted_policy_hold" && fixture.expectedState === "policy_hold"));
