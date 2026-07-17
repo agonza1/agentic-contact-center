@@ -318,8 +318,33 @@ test("voice session proof exposes session-wide correlation timeline and metrics"
       sipCallId: "correlation-proof-call",
       text: "new transcript for the correlated voice session",
       voiceSessionId: "cae-session-correlation",
+      rtcAsrEvidencePath: "artifacts/qa-correlation-001-rtc-asr.json",
     });
     assert.equal(transcript.statusCode, 200);
+
+    const capture = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.capture",
+      sipCallId: "correlation-proof-call",
+      voiceSessionId: "cae-session-correlation",
+      audioWavPath: "artifacts/qa-correlation-001-capture.wav",
+    });
+    assert.equal(capture.statusCode, 200);
+
+    const playback = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.playback",
+      sipCallId: "correlation-proof-call",
+      voiceSessionId: "cae-session-correlation",
+      callerPlaybackEvidencePath: "artifacts/qa-correlation-001-playback.json",
+    });
+    assert.equal(playback.statusCode, 200);
+
+    const otherSessionCapture = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.capture",
+      sipCallId: "correlation-proof-call",
+      voiceSessionId: "cae-session-correlation-other",
+      audioWavPath: "artifacts/qa-correlation-002-capture.wav",
+    });
+    assert.equal(otherSessionCapture.statusCode, 200);
 
     const turn = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
       text: "I need to change my appointment.",
@@ -369,6 +394,11 @@ test("voice session proof exposes session-wide correlation timeline and metrics"
     assert.ok(proof.payload.correlation.clock.warnings.some((warning: string) => warning === "call_event_before_voice_session:rtc_asr_transcript"));
     assert.equal(proof.payload.correlation.timeline.every((event: any) => event.correlationId === "qa-correlation-001"), true);
     assert.equal(proof.payload.correlation.timeline.some((event: any) => event.type === "rtc_asr_transcript" && event.phase === "stt.final"), true);
+    assert.equal(proof.payload.correlation.timeline.some((event: any) => event.type === "rtc_asr_transcript" && event.artifactPath === "artifacts/qa-correlation-001-rtc-asr.json"), true);
+    assert.equal(proof.payload.correlation.timeline.some((event: any) => event.type === "media_capture_attached" && event.artifactPath === "artifacts/qa-correlation-001-capture.wav"), true);
+    assert.equal(proof.payload.correlation.timeline.some((event: any) => event.type === "pipecat_rtp_playback_attached" && event.artifactPath === "artifacts/qa-correlation-001-playback.json"), true);
+    assert.equal(proof.payload.correlation.timeline.some((event: any) => event.artifactPath === "artifacts/qa-correlation-002-capture.wav"), false);
+    assert.equal(proof.payload.correlation.timeline.filter((event: any) => event.type === "media_capture_attached").length, 2);
     assert.equal(proof.payload.correlation.timeline.some((event: any) => event.type === "agent_response_ready" && event.phase === "acc.agent_response_ready"), true);
     assert.equal(proof.payload.correlation.timeline.some((event: any) => event.phase === "media.ingress" && event.bytes === 4), true);
     assert.equal(proof.payload.correlation.timeline.some((event: any) => event.phase === "tts.playback_completed" && event.streamId === "tts-correlation-2"), true);

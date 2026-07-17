@@ -4951,6 +4951,13 @@ async function routeRequest(
       return;
     }
 
+    const voiceSessionId = getOptionalTrimmedString(body.voiceSessionId);
+    const realtimeVoiceSessionId = getOptionalTrimmedString(body.realtimeVoiceSessionId);
+    const voiceSessionScope = {
+      ...(voiceSessionId ? { voiceSessionId } : {}),
+      ...(realtimeVoiceSessionId ? { realtimeVoiceSessionId } : {}),
+    };
+
     try {
       if (eventType === "media.transcript") {
         const text = getOptionalTrimmedString(body.text) ?? getOptionalTrimmedString(body.transcript);
@@ -4958,7 +4965,7 @@ async function routeRequest(
           writeBadRequest(response, "live_sip_transcript_text_required");
           return;
         }
-        await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config);
+        await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config, voiceSessionScope);
         const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
           eventType: "rtc_asr_transcript",
           timestamp,
@@ -4966,6 +4973,7 @@ async function routeRequest(
             provider: "rtc-asr",
             transcriptText: text,
             evidencePath: getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+            ...voiceSessionScope,
           },
         });
         writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
@@ -4987,6 +4995,7 @@ async function routeRequest(
             sipLogPath: getOptionalTrimmedString(body.sipLogPath) ?? null,
             rtpPacketCount,
             generatedMedia: body.generatedMedia === true,
+            ...voiceSessionScope,
           },
         });
         writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
@@ -5091,6 +5100,7 @@ async function routeRequest(
             freeswitchBroadcastPath: freeswitchBroadcastPath ?? null,
             freeswitchBroadcastSampleRateHz,
             freeswitchBroadcastAudioBytes,
+            ...voiceSessionScope,
           },
         });
         writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
@@ -5105,6 +5115,7 @@ async function routeRequest(
             blocker: getOptionalTrimmedString(body.blocker) ?? "rtc_asr_unavailable",
             nextAction: getOptionalTrimmedString(body.nextAction) ?? "Start rtc-asr and set RTC_ASR_WS_URL before rerunning live SIP proof.",
             evidencePath: getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+            ...voiceSessionScope,
           },
         });
         writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });

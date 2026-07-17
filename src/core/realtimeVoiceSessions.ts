@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { CallSnapshot } from "./types";
+import type { CallSnapshot, EventTrailEntry, LatencyMark } from "./types";
 
 export type RealtimeVoiceSessionStatus = "open" | "closing" | "closed";
 export type RealtimeVoiceSessionTransport = "persistent_full_duplex";
@@ -182,9 +182,39 @@ function artifactPathsFromMetadata(metadata: Record<string, string>): string[] {
   ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
 }
 
+function detailString(detail: Record<string, string | number | boolean | null>, key: string): string | null {
+  const value = detail[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function detailVoiceSessionId(detail: Record<string, string | number | boolean | null>): string | null {
+  return detailString(detail, "voiceSessionId") ?? detailString(detail, "realtimeVoiceSessionId");
+}
+
+function callEventBelongsToSession(event: EventTrailEntry, session: RealtimeVoiceSession): boolean {
+  const eventSessionId = detailVoiceSessionId(event.detail);
+  return eventSessionId === null || eventSessionId === session.id;
+}
+
+function latencyMarkBelongsToSession(mark: LatencyMark, session: RealtimeVoiceSession): boolean {
+  const markSessionId = mark.voiceSessionId?.trim() || mark.realtimeVoiceSessionId?.trim() || null;
+  return markSessionId === null || markSessionId === session.id;
+}
+
+function normalizedArtifactPath(detail: Record<string, string | number | boolean | null>): string | null {
+  return detailString(detail, "artifactPath")
+    ?? detailString(detail, "evidencePath")
+    ?? detailString(detail, "audioWavPath")
+    ?? detailString(detail, "callerPlaybackEvidencePath");
+}
+
 function buildCorrelationProof(session: RealtimeVoiceSession, call?: CallSnapshot | null) {
-  const callEvents = call?.events.filter((event) => compareIsoTimestamps(event.at, session.createdAt) >= 0) ?? [];
-  const callLatencyMarks = call?.latencyMarks.filter((mark) => compareIsoTimestamps(mark.recordedAt, session.createdAt) >= 0) ?? [];
+  const callEvents = call?.events.filter((event) =>
+    compareIsoTimestamps(event.at, session.createdAt) >= 0 && callEventBelongsToSession(event, session)
+  ) ?? [];
+  const callLatencyMarks = call?.latencyMarks.filter((mark) =>
+    compareIsoTimestamps(mark.recordedAt, session.createdAt) >= 0 && latencyMarkBelongsToSession(mark, session)
+  ) ?? [];
   const recordingPaths = artifactPathsFromMetadata(session.metadata);
   const voiceTimeline: CorrelatedTimelineEntry[] = session.events.map((event) => ({
     sequence: event.sequence,
@@ -199,7 +229,7 @@ function buildCorrelationProof(session: RealtimeVoiceSession, call?: CallSnapsho
     streamId: typeof event.detail.streamId === "string" ? event.detail.streamId : null,
     bytes: typeof event.detail.bytes === "number" ? event.detail.bytes : null,
     status: typeof event.detail.reason === "string" ? event.detail.reason : null,
-    artifactPath: typeof event.detail.artifactPath === "string" ? event.detail.artifactPath : null,
+    artifactPath: normalizedArtifactPath(event.detail),
   }));
   const callEventTimeline: CorrelatedTimelineEntry[] = callEvents.map((event, index) => ({
     sequence: session.events.length + index + 1,
@@ -214,7 +244,7 @@ function buildCorrelationProof(session: RealtimeVoiceSession, call?: CallSnapsho
     streamId: typeof event.detail.streamId === "string" ? event.detail.streamId : null,
     bytes: typeof event.detail.audioBytes === "number" ? event.detail.audioBytes : null,
     status: typeof event.detail.error === "string" ? event.detail.error : null,
-    artifactPath: typeof event.detail.artifactPath === "string" ? event.detail.artifactPath : null,
+    artifactPath: normalizedArtifactPath(event.detail),
   }));
   const latencyTimeline: CorrelatedTimelineEntry[] = callLatencyMarks.map((mark, index) => ({
     sequence: session.events.length + callEvents.length + index + 1,
@@ -239,7 +269,9 @@ function buildCorrelationProof(session: RealtimeVoiceSession, call?: CallSnapsho
   const agentResponseAt = callLatencyMarks.find((mark) => mark.stage === "agent_response_ready")?.recordedAt ?? null;
   const clockWarnings = [
     ...session.events.filter((event) => compareIsoTimestamps(event.at, session.createdAt) < 0).map((event) => `voice_session_event_before_created:${event.type}`),
-    ...(call?.events ?? []).filter((event) => compareIsoTimestamps(event.at, session.createdAt) < 0).map((event) => `call_event_before_voice_session:${event.type}`),
+    ...(call?.events ?? [])
+      .filter((event) => compareIsoTimestamps(event.at, session.createdAt) < 0 && callEventBelongsToSession(event, session))
+      .map((event) => `call_event_before_voice_session:${event.type}`),
   ];
   const expectedPhases = [
     "media.ingress",
@@ -514,12 +546,7 @@ export class RealtimeVoiceSessionStore {
     const sessionRtcAsrTranscriptEvents = call?.events.filter((event) => {
       if (event.type !== "rtc_asr_transcript") return false;
       if (compareIsoTimestamps(event.at, snapshot.createdAt) < 0) return false;
-      const eventSessionId = typeof event.detail.voiceSessionId === "string"
-        ? event.detail.voiceSessionId
-        : typeof event.detail.realtimeVoiceSessionId === "string"
-          ? event.detail.realtimeVoiceSessionId
-          : null;
-      return eventSessionId === null || eventSessionId === snapshot.id;
+      return callEventBelongsToSession(event, snapshot);
     }) ?? [];
     const hasRtcAsrFinalTranscript = sessionRtcAsrTranscriptEvents.length > 0;
     const transcriptTurns = call?.transcript.length ?? 0;
