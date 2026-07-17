@@ -362,11 +362,6 @@ class AccPipecatFlowManagerAdapter:
                 )
             except Exception as exc:
                 fallback_error = exc
-            if self.manager and self.initialized:
-                try:
-                    await self.activate_node("wrap", reason="flowmanager_runtime_failure")
-                except Exception:
-                    pass
             evidence = {
                 "ok": False,
                 "runtimeAdapter": "pipecat_flows.FlowManager",
@@ -384,6 +379,12 @@ class AccPipecatFlowManagerAdapter:
                 # preview gate and let a later caller turn consult ACC again.
                 self._transition_available.set()
                 raise fallback_error
+            if self.manager and self.initialized:
+                try:
+                    await self.activate_node("wrap", reason="flowmanager_runtime_failure")
+                except Exception:
+                    pass
+                evidence["currentNode"] = getattr(self.manager, "current_node", None)
             self._terminal_result = {**fallback, "flowManagerRuntime": evidence}
             self._transition_available.set()
             return dict(self._terminal_result)

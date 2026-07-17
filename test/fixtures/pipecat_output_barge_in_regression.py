@@ -577,7 +577,7 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
 
     fallback_failure_session = build_session(
         "flowmanager-fallback-failed-before-audio",
-        manager_factory=FailingFlowManager,
+        manager_factory=FailingGreetFlowManager,
     )
     fallback_failure_turn_controls = FakeTurnControls()
     fallback_failure_session.turn_controls = fallback_failure_turn_controls  # type: ignore[assignment]
