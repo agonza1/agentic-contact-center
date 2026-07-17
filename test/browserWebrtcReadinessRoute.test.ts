@@ -105,8 +105,24 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.interrupted.transportOutputFlushed, true);
   assert.equal(payload.resumed.chunks, 3);
   assert.equal(payload.checks.noStalePlaybackAfterInterruption, true);
-  assert.deepEqual(payload.flowManagerActivationFailure.requests, ["commit", "fallback"]);
+  assert.deepEqual(payload.flowManagerActivationFailure.requests, ["fallback"]);
   assert.equal(payload.flowManagerActivationFailure.audioChunks, 0);
+  assert.equal(payload.flowManagerActivationFailure.ttsStarted, 1);
+  assert.equal(payload.flowManagerActivationFailure.ttsStopped, 1);
+  assert.deepEqual(payload.flowManagerActivationFailure.turnControls, {
+    started: 1,
+    stopped: 1,
+    botSpeaking: false,
+  });
+  assert.deepEqual(payload.slowCommitBargeIn, {
+    audioChunksBeforeCancel: 1,
+    commitCalls: 1,
+    cancelled: true,
+    outputChunksAtCancel: 1,
+  });
+  assert.equal(payload.checks.slowCommitStartsOnlyAfterFirstAudio, true);
+  assert.equal(payload.checks.slowCommitBargeInPreservesDeliveredCommit, true);
+  assert.equal(payload.checks.flowManagerActivationFailureClosesTtsLifecycle, true);
   assert.equal(payload.checks.flowManagerActivationFailureRecordsNoCommittedDelivery, true);
   assert.equal(payload.checks.flowManagerActivationFailureRetainsTerminalEvidence, true);
   assert.deepEqual(payload.activeTasks.cancelled.sort(), ["agent", "tts"]);

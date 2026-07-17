@@ -72,6 +72,21 @@ class FailingFlowManager(FakeFlowManager):
         raise RuntimeError(f"fixture set_node_from_config failure for {node['name']}")
 
 
+class FakeTurnControls:
+    def __init__(self) -> None:
+        self.bot_speaking = False
+        self.started = 0
+        self.stopped = 0
+
+    async def bot_started(self) -> None:
+        self.bot_speaking = True
+        self.started += 1
+
+    async def bot_stopped(self) -> None:
+        self.bot_speaking = False
+        self.stopped += 1
+
+
 def build_session(call_id: str, *, manager_factory: type[FakeFlowManager] = FakeFlowManager) -> AccVoicePipelineSession:
     flow_manager = AccPipecatFlowManagerAdapter(
         acc_url="http://127.0.0.1:8026",
@@ -142,6 +157,54 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         pipeline.json_http = original_json_http
     normal_audio = [frame for frame in normal_processor.frames if isinstance(frame, TTSAudioRawFrame)]
 
+    slow_commit_started = threading.Event()
+    release_slow_commit = threading.Event()
+    slow_commit_calls: list[dict[str, Any]] = []
+
+    def fake_slow_delivery_http(method: str, url: str, payload: dict[str, Any] | None = None, timeout: float = 30) -> dict[str, Any]:
+        if method == "POST" and url.endswith("/caller-turn/commit"):
+            slow_commit_started.set()
+            release_slow_commit.wait(1)
+            slow_commit_calls.append(payload or {})
+            return {
+                "flowState": "greet",
+                "transcript": [
+                    {"speaker": "caller", "text": (payload or {}).get("text", ""), "timestamp": "fixture"},
+                    {"speaker": "agent", "text": "First audio was delivered before this slow commit.", "timestamp": "fixture"},
+                ],
+            }
+        return original_json_http(method, url, payload, timeout)
+
+    slow_commit_session = build_session("slow-commit-barge-in-after-audio")
+    install_fake_synthesizer(slow_commit_session, chunks=4)
+    await slow_commit_session.flow_manager_adapter.initialize()
+    slow_commit_session.flow_manager_adapter.stage_transition("greet", reason="caller_turn_preview")
+    slow_commit_session.set_pending_caller_turn_commit(
+        payload={"text": "Cancel after the response starts", "conversationMode": "free_caller"},
+        expected_agent_text="First audio was delivered before this slow commit.",
+        output_generation=slow_commit_session.output_generation,
+    )
+    slow_commit_processor = CapturingTtsProcessor(slow_commit_session)
+    pipeline.json_http = fake_slow_delivery_http
+    try:
+        slow_commit_task = asyncio.create_task(
+            slow_commit_processor.process_frame(
+                TextFrame("First audio was delivered before this slow commit."),
+                FrameDirection.DOWNSTREAM,
+            )
+        )
+        assert await asyncio.to_thread(slow_commit_started.wait, 1)
+        slow_commit_audio_before_cancel = len(
+            [frame for frame in slow_commit_processor.frames if isinstance(frame, TTSAudioRawFrame)]
+        )
+        slow_commit_cancellation = slow_commit_session.cancel_output("fixture_barge_in_during_slow_commit")
+        release_slow_commit.set()
+        slow_commit_result = await asyncio.gather(slow_commit_task, return_exceptions=True)
+    finally:
+        release_slow_commit.set()
+        pipeline.json_http = original_json_http
+    slow_commit_stages = slow_commit_session.stage_events
+
     failed_delivery_requests: list[str] = []
 
     def fake_failed_delivery_http(method: str, url: str, payload: dict[str, Any] | None = None, timeout: float = 30) -> dict[str, Any]:
@@ -166,6 +229,8 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         "flowmanager-activation-failed-after-acc-commit",
         manager_factory=FailingFlowManager,
     )
+    failed_turn_controls = FakeTurnControls()
+    failed_delivery_session.turn_controls = failed_turn_controls  # type: ignore[assignment]
     install_fake_synthesizer(failed_delivery_session, chunks=2)
     await failed_delivery_session.flow_manager_adapter.initialize()
     failed_delivery_session.flow_manager_adapter.stage_transition("greet", reason="caller_turn_preview")
@@ -184,6 +249,8 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
     finally:
         pipeline.json_http = original_json_http
     failed_delivery_audio = [frame for frame in failed_delivery_processor.frames if isinstance(frame, TTSAudioRawFrame)]
+    failed_delivery_started = [frame for frame in failed_delivery_processor.frames if isinstance(frame, TTSStartedFrame)]
+    failed_delivery_stopped = [frame for frame in failed_delivery_processor.frames if isinstance(frame, TTSStoppedFrame)]
     failed_delivery_stages = [event["stage"] for event in failed_delivery_session.stage_events]
 
     interrupted_session = build_session("output-interrupted")
@@ -273,8 +340,25 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         "noStalePlaybackAfterInterruption": interrupted_session.output_stream_audio_bytes == sum(len(frame.audio) for frame in resumed_audio),
         "activeAgentAndTtsTasksCancelled": sorted(task_cancellation.get("cancelledTasks", [])) == ["agent", "tts"] and agent_task.cancelled() and tts_task.cancelled(),
         "callerTurnDeliveryAckCommitsAfterFirstAudio": len(delivery_commit_calls) == 1 and len(normal_audio) >= 1,
-        "flowManagerActivationFailureFailsDeliveryCommit": failed_delivery_requests == ["commit", "fallback"],
+        "slowCommitStartsOnlyAfterFirstAudio": slow_commit_audio_before_cancel == 1 and slow_commit_cancellation.get("outputChunksEnqueued") == 1,
+        "slowCommitBargeInPreservesDeliveredCommit": (
+            len(slow_commit_calls) == 1
+            and isinstance(slow_commit_result[0], asyncio.CancelledError)
+            and any(
+                event["stage"] == "acc.caller_turn_delivery_committed"
+                and event.get("outputInterruptedAfterDelivery") is True
+                for event in slow_commit_stages
+            )
+        ),
+        "flowManagerActivationFailureFailsDeliveryCommit": failed_delivery_requests == ["fallback"],
         "flowManagerActivationFailureEmitsNoPreviewAudio": len(failed_delivery_audio) == 0 and failed_delivery_session.output_stream_audio_bytes == 0,
+        "flowManagerActivationFailureClosesTtsLifecycle": (
+            len(failed_delivery_started) == 1
+            and len(failed_delivery_stopped) == 1
+            and failed_turn_controls.started == 1
+            and failed_turn_controls.stopped == 1
+            and failed_turn_controls.bot_speaking is False
+        ),
         "flowManagerActivationFailureRecordsNoCommittedDelivery": (
             "acc.caller_turn_delivery_failed" in failed_delivery_stages
             and "acc.caller_turn_delivery_committed" not in failed_delivery_stages
@@ -310,8 +394,21 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         "flowManagerActivationFailure": {
             "requests": failed_delivery_requests,
             "audioChunks": len(failed_delivery_audio),
+            "ttsStarted": len(failed_delivery_started),
+            "ttsStopped": len(failed_delivery_stopped),
+            "turnControls": {
+                "started": failed_turn_controls.started,
+                "stopped": failed_turn_controls.stopped,
+                "botSpeaking": failed_turn_controls.bot_speaking,
+            },
             "stages": failed_delivery_stages,
             "evidence": failed_delivery_session.last_evidence.get("flowManager"),
+        },
+        "slowCommitBargeIn": {
+            "audioChunksBeforeCancel": slow_commit_audio_before_cancel,
+            "commitCalls": len(slow_commit_calls),
+            "cancelled": isinstance(slow_commit_result[0], asyncio.CancelledError),
+            "outputChunksAtCancel": slow_commit_cancellation.get("outputChunksEnqueued"),
         },
         "checks": checks,
     }
