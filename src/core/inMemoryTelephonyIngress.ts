@@ -52,8 +52,11 @@ function cloneSnapshot(snapshot: CallSnapshot): CallSnapshot {
 
 interface CallerTurnOptions {
   conversationMode?: "scripted" | "free_caller";
+  voiceSessionId?: string | null;
+  realtimeVoiceSessionId?: string | null;
 }
 
+type VoiceSessionScope = Pick<CallerTurnOptions, "voiceSessionId" | "realtimeVoiceSessionId">;
 
 function buildOpenClawArtifactLinks(callId: string) {
   const basePath = `/api/calls/${callId}`;
@@ -146,6 +149,7 @@ function recordLatencyMark(
   stage: string,
   recordedAt: string,
   budgetStage?: LatencyBudgetStage,
+  scope: VoiceSessionScope = {},
 ): void {
   const startedAt = new Date(snapshot.session.startedAt).getTime();
   const recordedAtMs = new Date(recordedAt).getTime();
@@ -156,6 +160,8 @@ function recordLatencyMark(
     recordedAt,
     elapsedMs,
     budgetMs: budgetStage ? snapshot.latencyBudgetsMs[budgetStage] : null,
+    ...(scope.voiceSessionId ? { voiceSessionId: scope.voiceSessionId } : {}),
+    ...(scope.realtimeVoiceSessionId ? { realtimeVoiceSessionId: scope.realtimeVoiceSessionId } : {}),
   });
 }
 
@@ -335,9 +341,11 @@ export class InMemoryTelephonyIngress {
         speaker: turn.speaker,
         text: turn.text,
         transcriptLength: snapshot.transcript.length,
+        ...(options.voiceSessionId ? { voiceSessionId: options.voiceSessionId } : {}),
+        ...(options.realtimeVoiceSessionId ? { realtimeVoiceSessionId: options.realtimeVoiceSessionId } : {}),
       },
     });
-    recordLatencyMark(snapshot, "caller_turn_received", turn.timestamp, "asrPartial");
+    recordLatencyMark(snapshot, "caller_turn_received", turn.timestamp, "asrPartial", options);
 
     snapshot.events.push({
       type: "pipecat_runtime_turn_processed",
@@ -348,6 +356,8 @@ export class InMemoryTelephonyIngress {
         transport: snapshot.pipecatFlow.transport,
         credentialsMode: snapshot.pipecatFlow.credentialsMode,
         activeTool: snapshot.pipecatFlow.activeTool,
+        ...(options.voiceSessionId ? { voiceSessionId: options.voiceSessionId } : {}),
+        ...(options.realtimeVoiceSessionId ? { realtimeVoiceSessionId: options.realtimeVoiceSessionId } : {}),
       },
     });
 
@@ -358,15 +368,15 @@ export class InMemoryTelephonyIngress {
     }
 
     if (snapshot.flowState === "policy_hold") {
-      recordLatencyMark(snapshot, "policy_hold_entered", turn.timestamp, "policyGate");
+      recordLatencyMark(snapshot, "policy_hold_entered", turn.timestamp, "policyGate", options);
     }
 
     if (snapshot.flowState === "operator_steer" || snapshot.flowState === "steered_response") {
-      recordLatencyMark(snapshot, "operator_notified", turn.timestamp, "operatorNotification");
+      recordLatencyMark(snapshot, "operator_notified", turn.timestamp, "operatorNotification", options);
     }
 
     if (snapshot.transcript.at(-1)?.speaker === "agent") {
-      recordLatencyMark(snapshot, "agent_response_ready", turn.timestamp, "ttsFirstAudio");
+      recordLatencyMark(snapshot, "agent_response_ready", turn.timestamp, "ttsFirstAudio", options);
     }
 
     refreshOpenClawSessionEvidence(snapshot, turn.timestamp);
@@ -438,7 +448,11 @@ export class InMemoryTelephonyIngress {
         ...evidence.detail,
       },
     });
-    recordLatencyMark(snapshot, evidence.eventType, recordedAt);
+    const voiceSessionId = typeof evidence.detail?.voiceSessionId === "string" ? evidence.detail.voiceSessionId : null;
+    const realtimeVoiceSessionId = typeof evidence.detail?.realtimeVoiceSessionId === "string"
+      ? evidence.detail.realtimeVoiceSessionId
+      : null;
+    recordLatencyMark(snapshot, evidence.eventType, recordedAt, undefined, { voiceSessionId, realtimeVoiceSessionId });
 
     refreshOpenClawSessionEvidence(snapshot, recordedAt);
     return cloneSnapshot(snapshot);

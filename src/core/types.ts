@@ -62,6 +62,8 @@ export interface LatencyMark {
   recordedAt: string;
   elapsedMs: number;
   budgetMs: number | null;
+  voiceSessionId?: string | null;
+  realtimeVoiceSessionId?: string | null;
 }
 
 export interface ScriptProgress {
