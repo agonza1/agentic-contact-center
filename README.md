@@ -2,7 +2,32 @@
 
 Agentic Contact Center is a runnable ClueCon 2026 proof of concept for a safer, operator-steerable voice contact-center flow. It demonstrates a cancellation-rescue call where the realtime loop is owned by the application: the agent can pause at risky policy boundaries, accept operator steer, fail closed to a human handoff, and export reviewable evidence.
 
+An open-source project from [WebRTC.ventures](https://webrtc.ventures/).
+
 The active app is the TypeScript service under `src/`.
+
+## WebRTC.ventures voice-agent reliability projects
+
+This project is part of the [WebRTC.ventures](https://webrtc.ventures/) open-source voice-agent reliability initiative. The projects remain independently usable and integrate through explicit adapters and evidence contracts:
+
+- [ConversationAgentEvals](https://github.com/agonza1/ConversationAgentEvals) orchestrates tests, normalizes evidence, and reports regressions.
+- [Agentic Contact Center](https://github.com/agonza1/agentic-contact-center) is the reference voice-agent target and demonstration.
+- [rtc-asr](https://github.com/agonza1/rtc-asr) provides optional local streaming speech-to-text and reproducible ASR benchmarks.
+- [ASSERT](https://github.com/responsibleai/ASSERT) remains the upstream evaluation engine.
+
+```mermaid
+flowchart LR
+  CAE["ConversationAgentEvals<br/>Test orchestration + evidence"]
+  ACC["Agentic Contact Center<br/>Reference target"]
+  ASR["rtc-asr<br/>Optional local STT"]
+  ASSERT["ASSERT<br/>Evaluation engine"]
+
+  CAE -->|"test scenarios"| ACC
+  ACC -->|"proof bundle"| CAE
+  ACC -->|"audio"| ASR
+  ASR -->|"transcripts"| ACC
+  CAE -->|"canonical evaluation"| ASSERT
+```
 
 ## Core Value
 
@@ -197,3 +222,7 @@ Active code lives in `src/`, tests in `test/`, proof/runtime scripts in `scripts
 - The browser voice bridge uses Pipecat `SmallWebRTCTransport` plus the shared `Pipeline`, but live browser proof still requires local rtc-asr, Kokoro, and browser playback evidence.
 - `/api/assert/spec` saves the eval spec in memory for the running process; restart resets it to the default.
 - Local SIP `8600` targets a FreeSWITCH-owned Verto/WebRTC agent leg (`acc-pipecat`) as the preferred #222 route. Use `npm run pipecat:verto:live-proof` to require caller PCM entering Pipecat, a current-call rtc-asr final transcript, Kokoro TTS completion, and non-silent caller-side return audio from that same active call.
+
+## License
+
+Licensed under the [MIT License](LICENSE).
