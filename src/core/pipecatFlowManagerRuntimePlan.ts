@@ -25,6 +25,16 @@ export interface PipecatFlowManagerNodeHandlerPlan {
   guardIds: string[];
 }
 
+export interface PipecatFlowManagerRuntimePlanValidation {
+  ok: boolean;
+  missingRequiredNodes: FlowState[];
+  duplicateNodeHandlers: FlowState[];
+  transitionsToUnknownNodes: Array<{ sourceNode: FlowState; targetNode: FlowState }>;
+  guardIdsOnDuplicateTransitions: string[];
+  guardsOnUnknownTransitions: string[];
+  nonFailClosedGuardIds: string[];
+}
+
 interface PipecatFlowManagerCutoverStep {
   id: string;
   status: "complete" | "pending";
@@ -117,12 +127,73 @@ export function buildPipecatFlowManagerNodeHandlerPlan(
   }));
 }
 
+export function validatePipecatFlowManagerRuntimePlan(input: {
+  requiredNodes: readonly FlowState[];
+  nodeHandlers: readonly PipecatFlowManagerNodeHandlerPlan[];
+  requiredGuards: readonly PipecatFlowManagerGuardSpec[];
+}): PipecatFlowManagerRuntimePlanValidation {
+  const implementedNodes = new Set(input.nodeHandlers.map((handler) => handler.node));
+  const requiredNodeSet = new Set(input.requiredNodes);
+  const missingRequiredNodes = input.requiredNodes.filter((node) => !implementedNodes.has(node));
+  const nodeHandlerCounts = new Map<FlowState, number>();
+  for (const handler of input.nodeHandlers) {
+    nodeHandlerCounts.set(handler.node, (nodeHandlerCounts.get(handler.node) ?? 0) + 1);
+  }
+  const duplicateNodeHandlers = Array.from(nodeHandlerCounts)
+    .filter(([, count]) => count > 1)
+    .map(([node]) => node);
+  const transitionsToUnknownNodes = input.nodeHandlers.flatMap((handler) =>
+    handler.allowedTransitions
+      .filter((targetNode) => !requiredNodeSet.has(targetNode))
+      .map((targetNode) => ({ sourceNode: handler.node, targetNode })),
+  );
+  const guardTransitionKeys = new Set<string>();
+  const guardIdsOnDuplicateTransitions = input.requiredGuards
+    .filter((guard) => {
+      const transitionKey = `${guard.sourceNode}->${guard.targetNode}`;
+      if (guardTransitionKeys.has(transitionKey)) {
+        return true;
+      }
+      guardTransitionKeys.add(transitionKey);
+      return false;
+    })
+    .map((guard) => guard.id);
+  const guardsOnUnknownTransitions = input.requiredGuards
+    .filter((guard) => {
+      const sourceHandler = input.nodeHandlers.find((handler) => handler.node === guard.sourceNode);
+      return !sourceHandler || !sourceHandler.allowedTransitions.includes(guard.targetNode);
+    })
+    .map((guard) => guard.id);
+  const nonFailClosedGuardIds = input.requiredGuards.filter((guard) => !guard.failClosed).map((guard) => guard.id);
+
+  return {
+    ok: missingRequiredNodes.length === 0
+      && duplicateNodeHandlers.length === 0
+      && transitionsToUnknownNodes.length === 0
+      && guardIdsOnDuplicateTransitions.length === 0
+      && guardsOnUnknownTransitions.length === 0
+      && nonFailClosedGuardIds.length === 0,
+    missingRequiredNodes,
+    duplicateNodeHandlers,
+    transitionsToUnknownNodes,
+    guardIdsOnDuplicateTransitions,
+    guardsOnUnknownTransitions,
+    nonFailClosedGuardIds,
+  };
+}
+
 export function buildPipecatFlowManagerRuntimePlan(input: {
   requiredNodes: readonly FlowState[];
   nodeSpecs: readonly PipecatFlowManagerNodeSpec[];
   requiredGuards: readonly PipecatFlowManagerGuardSpec[];
 }) {
   const nodeHandlers = buildPipecatFlowManagerNodeHandlerPlan(input.nodeSpecs, input.requiredGuards);
+  const validation = validatePipecatFlowManagerRuntimePlan({
+    requiredNodes: input.requiredNodes,
+    nodeHandlers,
+    requiredGuards: input.requiredGuards,
+  });
+  const nextPendingCutoverStep = FLOW_MANAGER_CUTOVER_SEQUENCE.find((step) => step.status === "pending") ?? null;
 
   return {
     status: "node_handlers_mirrored_adapter_cutover_pending",
@@ -132,10 +203,10 @@ export function buildPipecatFlowManagerRuntimePlan(input: {
     retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
     nodeHandlers,
     cutoverSequence: FLOW_MANAGER_CUTOVER_SEQUENCE,
+    nextPendingCutoverStep,
     cutoverPreconditions: FLOW_MANAGER_CUTOVER_PRECONDITIONS,
-    missingRequiredNodes: input.requiredNodes.filter(
-      (node) => !nodeHandlers.some((handler) => handler.node === node),
-    ),
+    validation,
+    missingRequiredNodes: validation.missingRequiredNodes,
     guardedTransitions: input.requiredGuards.map((guard) => ({
       id: guard.id,
       sourceNode: guard.sourceNode,

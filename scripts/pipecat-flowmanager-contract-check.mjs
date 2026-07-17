@@ -45,12 +45,22 @@ assert.deepEqual(contract.adapterCutoverPreconditions.map((precondition) => [pre
 ]);
 assert.deepEqual(contract.adapterCutoverPreconditions, contract.runtimePlan.cutoverPreconditions);
 assert.deepEqual(contract.runtimePlan.missingRequiredNodes, []);
+assert.deepEqual(contract.runtimePlan.validation, {
+  ok: true,
+  missingRequiredNodes: [],
+  duplicateNodeHandlers: [],
+  transitionsToUnknownNodes: [],
+  guardIdsOnDuplicateTransitions: [],
+  guardsOnUnknownTransitions: [],
+  nonFailClosedGuardIds: [],
+});
 assert.deepEqual(contract.runtimePlan.nodeHandlers.map((handler) => handler.node), contract.requiredNodes);
 assert.deepEqual(contract.runtimePlan.cutoverSequence.map((step) => [step.id, step.status]), [
   ["mirror_node_handlers", "complete"],
   ["lock_fail_closed_parity", "complete"],
   ["route_caller_turns_through_flowmanager", "pending"],
 ]);
+assert.equal(contract.runtimePlan.nextPendingCutoverStep?.id, "route_caller_turns_through_flowmanager");
 assert.equal(
   contract.runtimePlan.cutoverSequence.at(-1)?.blocker,
   "typescript_deterministic_flow_still_owns_runtime_turns",
