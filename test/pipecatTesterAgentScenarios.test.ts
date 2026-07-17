@@ -35,6 +35,7 @@ test("Pipecat tester-agent scenario runner emits deterministic evidence artifact
     scenarios: Array<{
       id: string;
       ok: boolean;
+      correlationId: string;
       callerTranscript?: string | null;
       expectedTranscript?: string;
       agentResponse?: string | null;
@@ -81,10 +82,12 @@ test("Pipecat tester-agent scenario runner emits deterministic evidence artifact
     "transport_start_failure",
   ]) {
     const scenario = scenarios.get(id);
-    assert.ok(scenario, `${id} scenario exists`);
-    assert.equal(scenario.ok, true, `${id} passed`);
-    assert.ok(existsSync(scenario.artifactPaths.scenario), `${id} artifact exists`);
-  }
+      assert.ok(scenario, `${id} scenario exists`);
+      assert.equal(scenario.ok, true, `${id} passed`);
+      assert.match(scenario.correlationId, /^tester-correlation-qa-tester-/);
+      assert.ok(existsSync(scenario.artifactPaths.scenario), `${id} artifact exists`);
+      assert.equal(scenario.timingEvents.every((event: any) => typeof event.correlationId === "string"), true);
+    }
 
   const happy = scenarios.get("happy_path")!;
   assert.equal(happy.callerTranscript, "I need to reschedule my appointment.");

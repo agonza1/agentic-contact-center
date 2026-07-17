@@ -62,7 +62,7 @@ Persistent evaluator session surface for ConversationAgentEvals and bounded test
 - `GET /api/voice/sessions/:id/events`: poll ordered session events with `afterSequence`, including `output.audio.chunk` and cancellation markers.
 - `POST /api/voice/sessions/:id/control`: send tester/runtime controls such as `barge_in`, `pause`, `resume`, `flush`, `mark`, or `close`; `barge_in` cancels an active output stream and records `output.stream.cancelled`.
 - `POST /api/voice/sessions/:id/close`: close the session.
-- `GET /api/voice/sessions/:id/proof`: inspect ownership, pipeline contract, media counters, rtc-asr evidence status, per-stream and cumulative output counters, and evaluator blockers.
+- `GET /api/voice/sessions/:id/proof`: inspect ownership, pipeline contract, media counters, rtc-asr evidence status, per-stream and cumulative output counters, evaluator blockers, and the `correlation` block. The correlation block carries a session-wide `correlationId`, redacted timeline entries for media ingress, STT final/interim evidence, ACC agent processing, TTS playback chunks, barge-in/cancel/flush events, recording/artifact paths, and computed latency metrics such as end-to-end response and interruption latency. Timeline entries intentionally omit transcript text and audio content; use SHA-256/audio byte counts and artifact paths for QA inspection.
 
 Realtime-audio mode rejects `transcript` and `expectedTranscript` fields on session creation and play requests; CAE must provide audio and let ACC/rtc-asr produce the transcript evidence. The proof route now requires input audio, output audio, and rtc-asr final transcript evidence before reporting `ready_for_evaluator`.
 

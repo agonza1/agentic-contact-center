@@ -9,12 +9,17 @@ export interface RealtimeVoiceSessionEvent {
   sequence: number;
   type: string;
   at: string;
+  correlationId: string;
+  sessionId: string;
+  callId: string;
+  elapsedMs: number;
   detail: Record<string, string | number | boolean | null>;
 }
 
 export interface RealtimeVoiceSession {
   id: string;
   callId: string;
+  correlationId: string;
   status: RealtimeVoiceSessionStatus;
   createdAt: string;
   updatedAt: string;
@@ -66,6 +71,22 @@ export interface RealtimeVoiceSessionSnapshot extends RealtimeVoiceSession {
   call?: CallSnapshot;
 }
 
+type CorrelatedTimelineEntry = {
+  sequence: number;
+  source: "voice_session" | "call_event" | "call_latency";
+  type: string;
+  phase: string;
+  at: string;
+  elapsedMs: number;
+  correlationId: string;
+  sessionId: string;
+  callId: string;
+  streamId?: string | null;
+  bytes?: number | null;
+  status?: string | null;
+  artifactPath?: string | null;
+};
+
 function cloneSession(session: RealtimeVoiceSession): RealtimeVoiceSession {
   return {
     ...session,
@@ -100,6 +121,166 @@ function compareIsoTimestamps(left: string, right: string): number {
   return leftMs - rightMs;
 }
 
+function elapsedFrom(startedAt: string, at: string): number {
+  const startedMs = Date.parse(startedAt);
+  const atMs = Date.parse(at);
+  if (!Number.isFinite(startedMs) || !Number.isFinite(atMs)) return 0;
+  return Math.max(0, atMs - startedMs);
+}
+
+function eventElapsed(session: RealtimeVoiceSession, at: string): number {
+  return elapsedFrom(session.createdAt, at);
+}
+
+function diffMs(later: string | null | undefined, earlier: string | null | undefined): number | null {
+  if (!later || !earlier) return null;
+  const laterMs = Date.parse(later);
+  const earlierMs = Date.parse(earlier);
+  if (!Number.isFinite(laterMs) || !Number.isFinite(earlierMs)) return null;
+  return Math.max(0, laterMs - earlierMs);
+}
+
+function voiceSessionPhase(type: string): string {
+  if (type === "media.input.received") return "media.ingress";
+  if (type === "play.requested") return "transport.playback_request";
+  if (type === "output.stream.started") return "tts.playback_started";
+  if (type === "output.audio.chunk") return "tts.playback_chunk";
+  if (type === "output.stream.completed") return "tts.playback_completed";
+  if (type === "output.stream.cancelled") return "barge_in.cancelled";
+  if (type === "output.audio.chunk.ignored") return "playback.ignored";
+  if (type === "control.received") return "control";
+  if (type === "session.created" || type === "session.closed") return "transport.session";
+  return "voice_session.event";
+}
+
+function callEventPhase(type: string): string {
+  if (type === "rtc_asr_transcript") return "stt.final";
+  if (type === "rtc_asr_interim") return "stt.interim";
+  if (type === "rtc_asr_blocked") return "stt.partial_failure";
+  if (type === "media_capture_attached") return "media.capture_artifact";
+  if (type === "pipecat_rtp_playback_attached") return "playback.artifact";
+  if (type === "caller_turn_appended") return "acc.caller_turn";
+  if (type === "pipecat_runtime_turn_processed") return "acc.agent_processing";
+  return "call.event";
+}
+
+function latencyPhase(stage: string): string {
+  if (stage === "agent_response_ready") return "acc.agent_response_ready";
+  if (stage === "caller_turn_received") return "stt.final_to_acc";
+  if (stage === "rtc_asr_transcript") return "stt.final";
+  if (stage === "policy_hold_entered") return "acc.policy_gate";
+  return "timing.latency_mark";
+}
+
+function artifactPathsFromMetadata(metadata: Record<string, string>): string[] {
+  return [
+    metadata.recordingPath,
+    metadata.callerRecordingPath,
+    metadata.agentRecordingPath,
+    metadata.mixedRecordingPath,
+    metadata.trackRecordingManifestPath,
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+}
+
+function buildCorrelationProof(session: RealtimeVoiceSession, call?: CallSnapshot | null) {
+  const callEvents = call?.events.filter((event) => compareIsoTimestamps(event.at, session.createdAt) >= 0) ?? [];
+  const callLatencyMarks = call?.latencyMarks.filter((mark) => compareIsoTimestamps(mark.recordedAt, session.createdAt) >= 0) ?? [];
+  const recordingPaths = artifactPathsFromMetadata(session.metadata);
+  const voiceTimeline: CorrelatedTimelineEntry[] = session.events.map((event) => ({
+    sequence: event.sequence,
+    source: "voice_session",
+    type: event.type,
+    phase: voiceSessionPhase(event.type),
+    at: event.at,
+    elapsedMs: event.elapsedMs,
+    correlationId: session.correlationId,
+    sessionId: session.id,
+    callId: session.callId,
+    streamId: typeof event.detail.streamId === "string" ? event.detail.streamId : null,
+    bytes: typeof event.detail.bytes === "number" ? event.detail.bytes : null,
+    status: typeof event.detail.reason === "string" ? event.detail.reason : null,
+    artifactPath: typeof event.detail.artifactPath === "string" ? event.detail.artifactPath : null,
+  }));
+  const callEventTimeline: CorrelatedTimelineEntry[] = callEvents.map((event, index) => ({
+    sequence: session.events.length + index + 1,
+    source: "call_event",
+    type: event.type,
+    phase: callEventPhase(event.type),
+    at: event.at,
+    elapsedMs: eventElapsed(session, event.at),
+    correlationId: session.correlationId,
+    sessionId: session.id,
+    callId: session.callId,
+    streamId: typeof event.detail.streamId === "string" ? event.detail.streamId : null,
+    bytes: typeof event.detail.audioBytes === "number" ? event.detail.audioBytes : null,
+    status: typeof event.detail.error === "string" ? event.detail.error : null,
+    artifactPath: typeof event.detail.artifactPath === "string" ? event.detail.artifactPath : null,
+  }));
+  const latencyTimeline: CorrelatedTimelineEntry[] = callLatencyMarks.map((mark, index) => ({
+    sequence: session.events.length + callEvents.length + index + 1,
+    source: "call_latency",
+    type: mark.stage,
+    phase: latencyPhase(mark.stage),
+    at: mark.recordedAt,
+    elapsedMs: eventElapsed(session, mark.recordedAt),
+    correlationId: session.correlationId,
+    sessionId: session.id,
+    callId: session.callId,
+    status: mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs ? "over_budget" : "within_budget",
+  }));
+  const timeline = [...voiceTimeline, ...callEventTimeline, ...latencyTimeline]
+    .sort((left, right) => compareIsoTimestamps(left.at, right.at) || left.sequence - right.sequence)
+    .map((entry, index) => ({ ...entry, sequence: index + 1 }));
+  const firstInputAt = session.events.find((event) => event.type === "media.input.received")?.at ?? null;
+  const firstOutputChunkAt = session.events.find((event) => event.type === "output.audio.chunk")?.at ?? null;
+  const bargeInControlAt = session.events.find((event) => event.type === "control.received" && event.detail.action === "barge_in")?.at ?? null;
+  const streamCancelledAt = session.events.find((event) => event.type === "output.stream.cancelled")?.at ?? null;
+  const sttFinalAt = callEvents.find((event) => event.type === "rtc_asr_transcript")?.at ?? null;
+  const agentResponseAt = callLatencyMarks.find((mark) => mark.stage === "agent_response_ready")?.recordedAt ?? null;
+  const clockWarnings = [
+    ...session.events.filter((event) => compareIsoTimestamps(event.at, session.createdAt) < 0).map((event) => `voice_session_event_before_created:${event.type}`),
+    ...(call?.events ?? []).filter((event) => compareIsoTimestamps(event.at, session.createdAt) < 0).map((event) => `call_event_before_voice_session:${event.type}`),
+  ];
+  const expectedPhases = [
+    "media.ingress",
+    "stt.final",
+    "acc.agent_processing",
+    "tts.playback_chunk",
+    "barge_in.cancelled",
+    "tts.playback_completed",
+  ];
+  return {
+    schemaVersion: 1,
+    correlationId: session.correlationId,
+    sessionId: session.id,
+    callId: session.callId,
+    redaction: {
+      transcriptTextIncluded: false,
+      audioContentIncluded: false,
+      audioSha256Allowed: true,
+    },
+    timeline,
+    coverage: Object.fromEntries(expectedPhases.map((phase) => [phase, timeline.some((event) => event.phase === phase)])),
+    metrics: {
+      endToEndResponseLatencyMs: diffMs(firstOutputChunkAt, firstInputAt),
+      interruptionLatencyMs: diffMs(streamCancelledAt, bargeInControlAt),
+      sttFinalLatencyMs: diffMs(sttFinalAt, firstInputAt),
+      agentResponseLatencyMs: diffMs(agentResponseAt, firstInputAt),
+    },
+    artifactPaths: {
+      sessionEvents: buildRealtimeVoiceSessionEndpoints(session.id).events,
+      callEvents: call?.session.openclawSession.artifactLinks.events ?? null,
+      callLatencyMarks: call?.session.openclawSession.artifactLinks.latencyMarks ?? null,
+      recordings: recordingPaths,
+    },
+    missingArtifactPaths: recordingPaths.length > 0 ? [] : ["recording_paths_not_attached"],
+    clock: {
+      source: "server_iso8601_utc",
+      warnings: clockWarnings,
+    },
+  };
+}
+
 export class RealtimeVoiceSessionStore {
   private readonly sessions = new Map<string, RealtimeVoiceSession>();
 
@@ -110,9 +291,11 @@ export class RealtimeVoiceSessionStore {
   create(input: { requestedId?: string; callId: string; target?: string; metadata?: Record<string, string>; createdAt?: string }): RealtimeVoiceSession {
     const createdAt = input.createdAt ?? new Date().toISOString();
     const id = input.requestedId?.trim() || `voice-session-${randomUUID()}`;
+    const correlationId = input.metadata?.correlationId?.trim() || `voice-correlation-${randomUUID()}`;
     const session: RealtimeVoiceSession = {
       id,
       callId: input.callId,
+      correlationId,
       status: "open",
       createdAt,
       updatedAt: createdAt,
@@ -142,7 +325,7 @@ export class RealtimeVoiceSessionStore {
       controls: { lastAction: null, lastReason: null },
       events: [],
     };
-    this.record(session, "session.created", createdAt, { callId: input.callId, target: session.target, realtimeAudioOnly: true });
+    this.record(session, "session.created", createdAt, { callId: input.callId, target: session.target, correlationId, realtimeAudioOnly: true });
     this.sessions.set(id, session);
     return cloneSession(session);
   }
@@ -378,6 +561,7 @@ export class RealtimeVoiceSessionStore {
         callProofRoute: call?.session.openclawSession.artifactLinks.proof ?? null,
         eventRoute: buildRealtimeVoiceSessionEndpoints(sessionId).events,
       },
+      correlation: buildCorrelationProof(snapshot, call),
       review: {
         status: hasAudioInput && hasOutputAudio && hasRtcAsrFinalTranscript ? "ready_for_evaluator" : "collecting_realtime_evidence",
         ready: hasAudioInput && hasOutputAudio && hasRtcAsrFinalTranscript,
@@ -394,7 +578,21 @@ export class RealtimeVoiceSessionStore {
   }
 
   private record(session: RealtimeVoiceSession, type: string, at: string, detail: Record<string, string | number | boolean | null>): void {
-    session.events.push({ sequence: session.events.length + 1, type, at, detail });
+    session.events.push({
+      sequence: session.events.length + 1,
+      type,
+      at,
+      correlationId: session.correlationId,
+      sessionId: session.id,
+      callId: session.callId,
+      elapsedMs: eventElapsed(session, at),
+      detail: {
+        correlationId: session.correlationId,
+        sessionId: session.id,
+        callId: session.callId,
+        ...detail,
+      },
+    });
     session.updatedAt = at;
   }
 }

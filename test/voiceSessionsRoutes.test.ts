@@ -263,6 +263,126 @@ test("voice sessions expose persistent CAE realtime-audio lifecycle and proof", 
   }
 });
 
+test("voice session proof exposes session-wide correlation timeline and metrics", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      sipCallId: "correlation-proof-call",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+    const callId = started.payload.call.session.callId;
+
+    const oldTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      sipCallId: "correlation-proof-call",
+      timestamp: "2026-01-01T00:00:01.000Z",
+      text: "old transcript before the correlated voice session",
+    });
+    assert.equal(oldTranscript.statusCode, 200);
+
+    const created = await requestJson(address.port, "POST", "/api/voice/sessions", {
+      sessionId: "cae-session-correlation",
+      callId,
+      metadata: {
+        correlationId: "qa-correlation-001",
+        mixedRecordingPath: "artifacts/qa-correlation-001-mixed.wav",
+      },
+    });
+    assert.equal(created.statusCode, 201);
+    assert.equal(created.payload.session.correlationId, "qa-correlation-001");
+    assert.equal(created.payload.session.events[0].correlationId, "qa-correlation-001");
+    assert.equal(created.payload.session.events[0].detail.correlationId, "qa-correlation-001");
+
+    const concurrent = await requestJson(address.port, "POST", "/api/voice/sessions", {
+      sessionId: "cae-session-correlation-other",
+      metadata: { correlationId: "qa-correlation-002" },
+    });
+    assert.equal(concurrent.statusCode, 201);
+    assert.equal(concurrent.payload.session.correlationId, "qa-correlation-002");
+
+    const input = await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-correlation/media/input", Buffer.from([1, 2, 3, 4]), {
+      "content-type": "audio/l16",
+      "x-sample-rate-hz": "16000",
+    });
+    assert.equal(input.statusCode, 202);
+
+    const transcript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      sipCallId: "correlation-proof-call",
+      text: "new transcript for the correlated voice session",
+      voiceSessionId: "cae-session-correlation",
+    });
+    assert.equal(transcript.statusCode, 200);
+
+    const turn = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "I need to change my appointment.",
+      conversationMode: "free_caller",
+    });
+    assert.equal(turn.statusCode, 200);
+
+    const output = await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-correlation/media/output", Buffer.from([10, 11, 12, 13]), {
+      "content-type": "audio/l16",
+      "x-sample-rate-hz": "24000",
+      "x-output-stream-id": "tts-correlation-1",
+    });
+    assert.equal(output.statusCode, 202);
+
+    const cancel = await requestJson(address.port, "POST", "/api/voice/sessions/cae-session-correlation/control", {
+      action: "barge_in",
+      reason: "qa interruption",
+    });
+    assert.equal(cancel.statusCode, 200);
+
+    const followUpOutput = await requestRaw(address.port, "POST", "/api/voice/sessions/cae-session-correlation/media/output", Buffer.from([21, 22, 23]), {
+      "content-type": "audio/l16",
+      "x-sample-rate-hz": "24000",
+      "x-output-stream-id": "tts-correlation-2",
+      "x-output-final": "true",
+    });
+    assert.equal(followUpOutput.statusCode, 202);
+
+    const proof = await requestJson(address.port, "GET", "/api/voice/sessions/cae-session-correlation/proof");
+    assert.equal(proof.statusCode, 200);
+    assert.equal(proof.payload.correlation.schemaVersion, 1);
+    assert.equal(proof.payload.correlation.correlationId, "qa-correlation-001");
+    assert.equal(proof.payload.correlation.redaction.transcriptTextIncluded, false);
+    assert.equal(proof.payload.correlation.redaction.audioContentIncluded, false);
+    assert.equal(proof.payload.correlation.artifactPaths.recordings[0], "artifacts/qa-correlation-001-mixed.wav");
+    assert.deepEqual(proof.payload.correlation.missingArtifactPaths, []);
+    assert.equal(proof.payload.correlation.coverage["media.ingress"], true);
+    assert.equal(proof.payload.correlation.coverage["stt.final"], true);
+    assert.equal(proof.payload.correlation.coverage["acc.agent_processing"], true);
+    assert.equal(proof.payload.correlation.coverage["tts.playback_chunk"], true);
+    assert.equal(proof.payload.correlation.coverage["barge_in.cancelled"], true);
+    assert.equal(proof.payload.correlation.coverage["tts.playback_completed"], true);
+    assert.equal(typeof proof.payload.correlation.metrics.endToEndResponseLatencyMs, "number");
+    assert.equal(typeof proof.payload.correlation.metrics.interruptionLatencyMs, "number");
+    assert.equal(typeof proof.payload.correlation.metrics.sttFinalLatencyMs, "number");
+    assert.equal(typeof proof.payload.correlation.metrics.agentResponseLatencyMs, "number");
+    assert.ok(proof.payload.correlation.clock.warnings.some((warning: string) => warning === "call_event_before_voice_session:rtc_asr_transcript"));
+    assert.equal(proof.payload.correlation.timeline.every((event: any) => event.correlationId === "qa-correlation-001"), true);
+    assert.equal(proof.payload.correlation.timeline.some((event: any) => event.type === "rtc_asr_transcript" && event.phase === "stt.final"), true);
+    assert.equal(proof.payload.correlation.timeline.some((event: any) => event.type === "agent_response_ready" && event.phase === "acc.agent_response_ready"), true);
+    assert.equal(proof.payload.correlation.timeline.some((event: any) => event.phase === "media.ingress" && event.bytes === 4), true);
+    assert.equal(proof.payload.correlation.timeline.some((event: any) => event.phase === "tts.playback_completed" && event.streamId === "tts-correlation-2"), true);
+
+    const otherProof = await requestJson(address.port, "GET", "/api/voice/sessions/cae-session-correlation-other/proof");
+    assert.equal(otherProof.statusCode, 200);
+    assert.equal(otherProof.payload.correlation.correlationId, "qa-correlation-002");
+    assert.deepEqual(otherProof.payload.correlation.missingArtifactPaths, ["recording_paths_not_attached"]);
+    assert.equal(otherProof.payload.correlation.timeline.every((event: any) => event.correlationId === "qa-correlation-002"), true);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("voice sessions reject expected transcript shortcuts in realtime-audio mode", async () => {
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
