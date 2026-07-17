@@ -273,39 +273,56 @@ class AccPipecatFlowManagerAdapter:
         return self.finalize_pending_transition()
 
     async def _restore_prepared_transition(self, pending: dict[str, Any], reason: str) -> None:
-        previous_node = pending["from"]
-        current_node = getattr(self.manager, "current_node", None)
-        if self.manager and self.initialized and current_node != previous_node:
+        async def complete_restore() -> None:
+            previous_node = pending["from"]
+            current_node = getattr(self.manager, "current_node", None)
+            if self.manager and self.initialized and current_node != previous_node:
+                try:
+                    await self.manager.set_node_from_config(flow_manager_node_config(previous_node))
+                except Exception as exc:
+                    await self.fail_closed(
+                        FlowManagerRuntimeError(f"FlowManager delivery rollback failed after {reason}: {exc}")
+                    )
+                    return
+            trace_start = self._prepared_transition_trace_start
+            if isinstance(trace_start, int) and 0 <= trace_start <= len(self.transition_trace):
+                self.transition_trace = self.transition_trace[:trace_start]
+            self._prepared_transition_trace_start = None
+            if self.pending_transition is pending:
+                self.pending_transition = None
+                self._transition_available.set()
+            evidence = {
+                **self.last_evidence,
+                "ok": True,
+                "currentNode": getattr(self.manager, "current_node", previous_node),
+                "pendingNode": None,
+                "pendingTransition": None,
+                "commitPolicy": "preview_discarded",
+                "discardReason": reason,
+                "rolledBackPreparedTransition": current_node != previous_node,
+                "transitionCount": len(self.transition_trace),
+            }
+            if self.transition_trace:
+                evidence["lastTransition"] = dict(self.transition_trace[-1])
+            else:
+                evidence.pop("lastTransition", None)
+            self.last_evidence = evidence
+
+        restore_task = asyncio.create_task(complete_restore())
+        cancellation_requested = False
+        while True:
             try:
-                await self.manager.set_node_from_config(flow_manager_node_config(previous_node))
-            except Exception as exc:
-                await self.fail_closed(
-                    FlowManagerRuntimeError(f"FlowManager delivery rollback failed after {reason}: {exc}")
-                )
-                return
-        trace_start = self._prepared_transition_trace_start
-        if isinstance(trace_start, int) and 0 <= trace_start <= len(self.transition_trace):
-            self.transition_trace = self.transition_trace[:trace_start]
-        self._prepared_transition_trace_start = None
-        if self.pending_transition is pending:
-            self.pending_transition = None
-            self._transition_available.set()
-        evidence = {
-            **self.last_evidence,
-            "ok": True,
-            "currentNode": getattr(self.manager, "current_node", previous_node),
-            "pendingNode": None,
-            "pendingTransition": None,
-            "commitPolicy": "preview_discarded",
-            "discardReason": reason,
-            "rolledBackPreparedTransition": current_node != previous_node,
-            "transitionCount": len(self.transition_trace),
-        }
-        if self.transition_trace:
-            evidence["lastTransition"] = dict(self.transition_trace[-1])
-        else:
-            evidence.pop("lastTransition", None)
-        self.last_evidence = evidence
+                await asyncio.shield(restore_task)
+                break
+            except asyncio.CancelledError:
+                cancellation_requested = True
+                if restore_task.done():
+                    break
+        restore_error = restore_task.exception() if restore_task.done() else None
+        if restore_error is not None:
+            raise restore_error
+        if cancellation_requested:
+            raise asyncio.CancelledError
 
     async def rollback_pending_transition(self, reason: str) -> dict[str, Any]:
         pending = self.pending_transition

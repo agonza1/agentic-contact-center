@@ -712,6 +712,7 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
     )
     rollback_prepare_task.cancel()
     await asyncio.wait_for(rollback_gate_manager.rollback_started.wait(), timeout=1)
+    rollback_prepare_task.cancel()
     pipeline.json_http = fake_rollback_preview_http
     rollback_preview_task = asyncio.create_task(
         rollback_gate_session.flow_manager_adapter.preview_caller_turn(
@@ -1035,6 +1036,7 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             and rollback_gate_session.flow_manager_adapter.pending_transition is not None
             and rollback_gate_session.flow_manager_adapter.pending_transition.get("from") == "call_started"
             and rollback_gate_session.flow_manager_adapter.pending_transition.get("to") == "diagnose"
+            and rollback_gate_session.flow_manager_adapter.transition_trace == []
         ),
         "rolledBackPreparedTransitionIsRemovedFromTraceEvidence": (
             isinstance(prepared_rollback_result[0], asyncio.CancelledError)
@@ -1188,6 +1190,8 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             "currentNode": rollback_gate_manager.current_node,
             "previewFlowState": rollback_preview_result.get("flowState"),
             "pendingTransition": rollback_gate_session.flow_manager_adapter.pending_transition,
+            "transitionTrace": rollback_gate_session.flow_manager_adapter.transition_trace,
+            "secondCancellationDuringRollback": True,
         },
         "preparedTransitionRollback": {
             "cancelled": isinstance(prepared_rollback_result[0], asyncio.CancelledError),

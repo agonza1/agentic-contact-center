@@ -188,6 +188,8 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
       reason: "caller_turn_preview",
       stagedAt: payload.activationRollbackPreviewGate.pendingTransition.stagedAt,
     },
+    transitionTrace: [],
+    secondCancellationDuringRollback: true,
   });
   assert.equal(payload.slowFlowManagerActivationBargeIn.audioChunks, 0);
   assert.equal(payload.slowFlowManagerActivationBargeIn.cancelled, true);
