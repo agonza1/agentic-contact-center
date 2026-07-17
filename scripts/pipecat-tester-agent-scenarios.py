@@ -219,7 +219,7 @@ async def scenario_happy_path(out_dir: Path, call_id_prefix: str) -> dict[str, A
     checks = {
         "noProcessorError": error is None,
         "callerTurnPreviewed": len(fake_acc.preview_calls) == 1,
-        "deliveryAckCommittedAfterAudio": len(fake_acc.commit_calls) == 1 and frame_summary["audioChunks"] >= 1,
+        "deliveryAckCommittedAtFirstAudioBoundary": len(fake_acc.commit_calls) == 1 and frame_summary["audioChunks"] >= 1,
         "agentResponseCaptured": any(isinstance(frame, TextFrame) and frame.text == agent_text for frame in caller.frames),
         "ttsLifecycleCaptured": frame_summary["ttsStarted"] == 1 and frame_summary["ttsStopped"] == 1,
     }
@@ -260,9 +260,11 @@ async def scenario_barge_in(out_dir: Path, call_id_prefix: str) -> dict[str, Any
     try:
         first_task = asyncio.create_task(caller.process_frame(transcription_frame(first_text), FrameDirection.DOWNSTREAM))
         await asyncio.wait_for(tts.first_chunk.wait(), timeout=2)
+        cancellation_started = time.perf_counter()
         cancellation = session.cancel_output("tester_barge_in_after_first_audio")
         flush = session.mark_output_flushed()
-        result = await asyncio.gather(first_task, return_exceptions=True)
+        result = await asyncio.wait_for(asyncio.gather(first_task, return_exceptions=True), timeout=2)
+        cancellation_elapsed_ms = round((time.perf_counter() - cancellation_started) * 1000, 3)
         if isinstance(result[0], BaseException):
             first_error = result[0]
 
@@ -277,7 +279,8 @@ async def scenario_barge_in(out_dir: Path, call_id_prefix: str) -> dict[str, Any
     checks = {
         "interruptedAfterFirstChunk": interrupted_summary["audioChunks"] == 1 and isinstance(first_error, asyncio.CancelledError),
         "bargeInRecorded": cancellation.get("skipped") is False and flush.get("transportOutputFlushed") is True,
-        "interruptedCommitDiscarded": len(fake_acc.commit_calls) == 1 and fake_acc.commit_calls[0].get("text") == "Actually I want a human.",
+        "blockedTransportCancellationIsPrompt": cancellation_elapsed_ms < 2_000,
+        "interruptedTurnRemainsUncommitted": [call.get("text") for call in fake_acc.commit_calls] == ["Actually I want a human."],
         "freshResponseAfterBargeIn": resumed_summary["audioChunks"] >= 1 and any(
             isinstance(frame, TextFrame) and frame.text == "I can transfer you to a human agent now." for frame in resumed_caller.frames
         ),
@@ -291,6 +294,7 @@ async def scenario_barge_in(out_dir: Path, call_id_prefix: str) -> dict[str, Any
         "agentResponse": first_agent,
         "timingEvents": session.stage_events,
         "bargeIn": session.last_barge_in_evidence,
+        "cancellationElapsedMs": cancellation_elapsed_ms,
         "interruptedFrameSummary": interrupted_summary,
         "resumedFrameSummary": resumed_summary,
         "checks": checks,

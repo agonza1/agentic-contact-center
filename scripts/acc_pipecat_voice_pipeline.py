@@ -51,6 +51,10 @@ WEBRTC_SAMPLES_PER_FRAME = WEBRTC_SAMPLE_RATE * WEBRTC_FRAME_MS // 1000
 SAMPLE_WIDTH_BYTES = 2
 
 
+class CallerTurnDeliveryCommitError(RuntimeError):
+    """Raised when ACC and FlowManager cannot complete the output commit boundary."""
+
+
 @dataclass
 class ProbeResult:
     id: str
@@ -470,6 +474,9 @@ class AccVoicePipelineSession:
 
     def begin_output_stream(self, *, stream_id: str) -> None:
         self.output_stream_active = True
+        self.reset_output_delivery_state(stream_id=stream_id)
+
+    def reset_output_delivery_state(self, *, stream_id: str) -> None:
         self.output_stream_id = stream_id
         self.output_stream_started_monotonic = time.monotonic()
         self.output_stream_chunk_count = 0
@@ -528,11 +535,20 @@ class AccVoicePipelineSession:
             outputGeneration=self.output_generation,
         )
 
-    async def commit_pending_caller_turn_delivery(self, *, expected_agent_text: str, output_generation: int) -> dict[str, Any] | None:
+    async def commit_pending_caller_turn_delivery(
+        self,
+        *,
+        expected_agent_text: str,
+        output_generation: int,
+        output_interrupted_after_delivery: bool = False,
+    ) -> dict[str, Any] | None:
         pending = self.pending_caller_turn_commit
         if not pending:
             return None
-        if pending.get("outputGeneration") != output_generation or self.output_generation != output_generation:
+        if (
+            not output_interrupted_after_delivery
+            and (pending.get("outputGeneration") != output_generation or self.output_generation != output_generation)
+        ):
             self.discard_pending_caller_turn_commit("stale_output_generation_before_delivery_ack")
             return None
         payload = pending.get("payload")
@@ -540,10 +556,75 @@ class AccVoicePipelineSession:
         if not isinstance(payload, dict) or not isinstance(url, str):
             self.discard_pending_caller_turn_commit("invalid_pending_delivery_ack")
             return None
+        flow_manager_pending = (
+            self.flow_manager_adapter.pending_transition if self.flow_manager_adapter is not None else None
+        )
+
+        async def run_commit() -> tuple[bool, dict[str, Any] | Exception]:
+            try:
+                return True, await asyncio.to_thread(json_http, "POST", url, payload)
+            except Exception as exc:
+                return False, exc
+
+        commit_task = asyncio.create_task(run_commit())
+        cancelled_after_delivery = output_interrupted_after_delivery
         try:
-            call = await asyncio.to_thread(json_http, "POST", url, payload)
-        except Exception as exc:
+            commit_ok, commit_result = await asyncio.shield(commit_task)
+        except asyncio.CancelledError:
+            # The first PCM frame is already downstream at this boundary. Finish
+            # the in-flight commit so ACC evidence reflects the delivered turn,
+            # even if a second shutdown cancellation arrives before HTTP returns.
+            while True:
+                try:
+                    commit_ok, commit_result = await asyncio.shield(commit_task)
+                    break
+                except asyncio.CancelledError:
+                    if commit_task.done():
+                        commit_ok, commit_result = commit_task.result()
+                        break
+            if not commit_ok:
+                exc = commit_result
+                self.discard_pending_caller_turn_commit("delivery_ack_commit_rejected_after_cancellation")
+                if self.flow_manager_adapter is not None:
+                    await self.flow_manager_adapter.rollback_pending_transition(
+                        "delivery_ack_commit_rejected_after_cancellation"
+                    )
+                self.record_stage(
+                    "acc.caller_turn_delivery_rejected",
+                    ok=False,
+                    error="delivery_ack_commit_rejected_after_cancellation",
+                    detail=str(exc),
+                    callerTranscript=payload.get("text"),
+                    expectedAgentText=expected_agent_text,
+                    outputGeneration=self.output_generation,
+                )
+                raise asyncio.CancelledError from exc
+            cancelled_after_delivery = True
+        pending_still_current = self.pending_caller_turn_commit is pending
+        flow_pending_still_current = (
+            self.flow_manager_adapter is None or self.flow_manager_adapter.pending_transition is flow_manager_pending
+        )
+        if not pending_still_current or not flow_pending_still_current:
+            self.record_stage(
+                "acc.caller_turn_delivery_stale",
+                ok=False,
+                error="stale_pending_delivery_ack_after_commit",
+                callerTranscript=payload.get("text"),
+                expectedAgentText=expected_agent_text,
+                outputGeneration=self.output_generation,
+                pendingStillCurrent=pending_still_current,
+                flowPendingStillCurrent=flow_pending_still_current,
+            )
+            if cancelled_after_delivery:
+                raise asyncio.CancelledError
+            if not commit_ok:
+                raise commit_result
+            return commit_result
+        if not commit_ok:
+            exc = commit_result
             self.discard_pending_caller_turn_commit("delivery_ack_commit_rejected")
+            if self.flow_manager_adapter is not None:
+                await self.flow_manager_adapter.rollback_pending_transition("delivery_ack_commit_rejected")
             self.record_stage(
                 "acc.caller_turn_delivery_rejected",
                 ok=False,
@@ -553,12 +634,13 @@ class AccVoicePipelineSession:
                 expectedAgentText=expected_agent_text,
                 outputGeneration=self.output_generation,
             )
-            raise
+            raise exc
+        call = commit_result
         self.pending_caller_turn_commit = None
-        flow_manager_evidence = None
         if self.flow_manager_adapter is not None and self.flow_manager_adapter.pending_transition is not None:
-            flow_manager_evidence = await self.flow_manager_adapter.commit_pending_transition()
+            flow_manager_evidence = self.flow_manager_adapter.finalize_pending_transition()
             self.last_evidence = {**self.last_evidence, "flowManager": flow_manager_evidence}
+        flow_manager_evidence = self.flow_manager_adapter.last_evidence if self.flow_manager_adapter is not None else None
         committed_agent_text = latest_agent_text(call)
         matches_expected = committed_agent_text == expected_agent_text
         self.record_stage(
@@ -569,9 +651,57 @@ class AccVoicePipelineSession:
             agentText=committed_agent_text,
             expectedAgentText=expected_agent_text,
             outputGeneration=self.output_generation,
+            outputInterruptedAfterDelivery=cancelled_after_delivery,
             flowManager=flow_manager_evidence,
         )
+        if cancelled_after_delivery:
+            raise asyncio.CancelledError
         return call
+
+    async def prepare_pending_caller_turn_delivery(self, *, expected_agent_text: str, output_generation: int) -> None:
+        pending = self.pending_caller_turn_commit
+        if not pending:
+            return
+        if pending.get("outputGeneration") != output_generation or self.output_generation != output_generation:
+            self.discard_pending_caller_turn_commit("stale_output_generation_before_delivery_ack")
+            return
+        payload = pending.get("payload")
+        if not isinstance(payload, dict):
+            self.discard_pending_caller_turn_commit("invalid_pending_delivery_ack")
+            return
+        if self.flow_manager_adapter is not None and self.flow_manager_adapter.pending_transition is not None:
+            flow_manager_evidence = await self.flow_manager_adapter.prepare_pending_transition()
+            self.last_evidence = {**self.last_evidence, "flowManager": flow_manager_evidence}
+            if flow_manager_evidence.get("ok") is not True:
+                self.pending_caller_turn_commit = None
+                self.record_stage(
+                    "acc.caller_turn_delivery_failed",
+                    ok=False,
+                    error="flowmanager_delivery_ack_failed_closed",
+                    detail=flow_manager_evidence.get("detail"),
+                    callerTranscript=payload.get("text"),
+                    expectedAgentText=expected_agent_text,
+                    outputGeneration=self.output_generation,
+                    accCommitSucceeded=False,
+                    deliveryCommitted=False,
+                    flowManager=flow_manager_evidence,
+                )
+                raise CallerTurnDeliveryCommitError("flowmanager_delivery_ack_failed_closed")
+            if (
+                flow_manager_evidence.get("commitPolicy") != "transition_prepared_until_audio_delivery_ack"
+                or output_generation != self.output_generation
+            ):
+                self.discard_pending_caller_turn_commit("flowmanager_transition_cancelled_before_audio")
+                await self.flow_manager_adapter.rollback_pending_transition(
+                    "flowmanager_transition_cancelled_before_audio"
+                )
+                raise asyncio.CancelledError
+
+    async def rollback_pending_caller_turn_delivery(self, reason: str) -> None:
+        if self.flow_manager_adapter is None:
+            return
+        flow_manager_evidence = await self.flow_manager_adapter.rollback_pending_transition(reason)
+        self.last_evidence = {**self.last_evidence, "flowManager": flow_manager_evidence}
 
     def cancel_output(self, reason: str = "barge-in") -> dict[str, Any]:
         if not self.has_active_response():
@@ -586,7 +716,15 @@ class AccVoicePipelineSession:
             return self.last_barge_in_evidence
         requested_at = time.monotonic()
         self.output_generation += 1
-        self.discard_pending_caller_turn_commit("barge_in_cancelled_before_delivery")
+        if self.output_stream_chunk_count == 0:
+            self.discard_pending_caller_turn_commit("barge_in_cancelled_before_delivery")
+        elif self.pending_caller_turn_commit:
+            self.record_stage(
+                "acc.caller_turn_commit_preserved",
+                callerTranscript=self.pending_caller_turn_commit.get("payload", {}).get("text"),
+                reason="barge_in_after_first_audio_delivery",
+                outputGeneration=self.output_generation,
+            )
         cancelled_tasks: list[str] = []
         current_task = asyncio.current_task()
         for kind, task in (("agent", self.active_agent_task), ("tts", self.active_tts_task)):
@@ -866,10 +1004,15 @@ class PipecatTurnControls:
         self.bot_speaking = True
         await self.start_strategy.process_frame(BotStartedSpeakingFrame())
 
+    async def bot_stopped(self) -> None:
+        if not self.bot_speaking:
+            return
+        self.bot_speaking = False
+        await self.start_strategy.process_frame(BotStoppedSpeakingFrame())
+
     async def sync_bot_state(self) -> None:
         if self.bot_speaking and time.monotonic() > self.session.output_active_until:
-            self.bot_speaking = False
-            await self.start_strategy.process_frame(BotStoppedSpeakingFrame())
+            await self.bot_stopped()
 
     def observe_audio(self, pcm: bytes, is_speech: bool) -> None:
         self.smart_turn.append_audio(pcm, is_speech)
@@ -1248,7 +1391,26 @@ class KokoroTtsProcessor(FrameProcessor):
             "chunkMs": chunk_ms,
             "chunkBytes": chunk_bytes,
         }
+
+        async def close_zero_audio_lifecycle(reason: str) -> None:
+            if not stream_started or self.session.output_stream_chunk_count > 0:
+                return
+            with contextlib.suppress(Exception):
+                await self.push_frame(TTSStoppedFrame(context_id=context_id), FrameDirection.DOWNSTREAM)
+            if self.session.turn_controls:
+                with contextlib.suppress(Exception):
+                    await self.session.turn_controls.bot_stopped()
+            self.session.record_stage(
+                "tts.lifecycle_closed",
+                ok=False,
+                error=reason,
+                streamId=context_id,
+                audioBytesEnqueued=0,
+                outputGeneration=self.session.output_generation,
+            )
+
         try:
+            self.session.reset_output_delivery_state(stream_id=context_id)
             async for audio_chunk, sample_rate, chunk_meta in self.session.stream_synthesize(frame, chunk_bytes=chunk_bytes):
                 if turn_output_generation != self.session.output_generation:
                     output_cancelled = True
@@ -1261,15 +1423,25 @@ class KokoroTtsProcessor(FrameProcessor):
                     tts_meta = {**tts_meta, **chunk_meta}
                     self.session.record_stage("tts.stream_started", tts=tts_meta)
                     await self.push_frame(TTSStartedFrame(context_id=context_id), FrameDirection.DOWNSTREAM)
+                if self.session.pending_caller_turn_commit:
+                    # Prepare a reversible FlowManager transition before caller
+                    # audio. It becomes final only after the first PCM frame is
+                    # observable downstream and ACC accepts the delivery ack.
+                    await self.session.prepare_pending_caller_turn_delivery(
+                        expected_agent_text=frame.text,
+                        output_generation=turn_output_generation,
+                    )
                 output_window = self.session.extend_output_window(audio_bytes=len(audio_chunk), sample_rate=sample_rate)
+                audio_frame = TTSAudioRawFrame(audio=audio_chunk,
+                    sample_rate=sample_rate,
+                    num_channels=1,
+                    context_id=context_id,
+                )
+                await self.push_frame(audio_frame, FrameDirection.DOWNSTREAM)
                 self.session.record_agent_track(
                     audio_chunk,
                     sample_rate=sample_rate,
                     event_id=f"agent-frame-{self.session.output_stream_chunk_count + 1}",
-                )
-                await self.push_frame(
-                    TTSAudioRawFrame(audio=audio_chunk, sample_rate=sample_rate, num_channels=1, context_id=context_id),
-                    FrameDirection.DOWNSTREAM,
                 )
                 self.session.record_stage(
                     "tts.audio_chunk",
@@ -1279,12 +1451,12 @@ class KokoroTtsProcessor(FrameProcessor):
                     sampleRate=sample_rate,
                     outputGeneration=turn_output_generation,
                 )
+                self.session.record_output_chunk(len(audio_chunk))
                 if self.session.pending_caller_turn_commit:
                     await self.session.commit_pending_caller_turn_delivery(
                         expected_agent_text=frame.text,
                         output_generation=turn_output_generation,
                     )
-                self.session.record_output_chunk(len(audio_chunk))
                 tts_meta = {**tts_meta, **chunk_meta, "outputWindow": output_window}
                 chunk_yield_ms = max(float(os.environ.get("ACC_TTS_OUTPUT_CHUNK_YIELD_MS", "0")), 0.0)
                 await asyncio.sleep(chunk_yield_ms / 1000)
@@ -1325,6 +1497,8 @@ class KokoroTtsProcessor(FrameProcessor):
                 self.session.last_evidence = {**self.session.last_evidence, "trackRecordings": track_recordings}
             print(json.dumps({"type": "browser_webrtc_turn", **self.session.last_evidence}), flush=True)
         except asyncio.CancelledError:
+            await self.session.rollback_pending_caller_turn_delivery("pipecat_interruption_before_delivery_ack")
+            await close_zero_audio_lifecycle("pipecat_interruption_before_audio")
             self.session.record_stage(
                 "tts.stream_cancelled",
                 ok=False,
@@ -1335,7 +1509,27 @@ class KokoroTtsProcessor(FrameProcessor):
                 outputGeneration=self.session.output_generation,
             )
             raise
+        except CallerTurnDeliveryCommitError as exc:
+            await close_zero_audio_lifecycle("flowmanager_delivery_ack_failed_closed")
+            self.session.last_evidence = {
+                **self.session.last_evidence,
+                "ok": False,
+                "error": "flowmanager_delivery_ack_failed_closed",
+                "detail": str(exc),
+                "outputCancelled": True,
+            }
+            self.session.record_stage(
+                "tts.output_aborted",
+                ok=False,
+                error="flowmanager_delivery_ack_failed_closed",
+                detail=str(exc),
+                agentText=frame.text,
+            )
         except Exception as exc:
+            if self.session.output_stream_chunk_count == 0:
+                self.session.discard_pending_caller_turn_commit("tts_synthesis_failed_before_audio")
+                await self.session.rollback_pending_caller_turn_delivery("tts_synthesis_failed_before_audio")
+            await close_zero_audio_lifecycle("tts_synthesis_failed_before_audio")
             self.session.last_evidence = {
                 **self.session.last_evidence,
                 "ok": False,

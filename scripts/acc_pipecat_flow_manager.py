@@ -108,6 +108,11 @@ class AccPipecatFlowManagerAdapter:
         self.manager: Any | None = None
         self.initialized = False
         self.pending_transition: dict[str, Any] | None = None
+        self._transition_available = asyncio.Event()
+        self._transition_available.set()
+        self._preview_lock = asyncio.Lock()
+        self._prepared_transition_trace_start: int | None = None
+        self._terminal_result: dict[str, Any] | None = None
         self.transition_trace: list[dict[str, Any]] = []
         self.last_evidence: dict[str, Any] = {}
 
@@ -195,12 +200,14 @@ class AccPipecatFlowManagerAdapter:
         if self.pending_transition is not None:
             raise FlowManagerRuntimeError("FlowManager already has a pending delivery-ack transition")
         current_node = self.validate_transition(target_node)
+        self._prepared_transition_trace_start = None
         self.pending_transition = {
             "from": current_node,
             "to": target_node,
             "reason": reason,
             "stagedAt": datetime.now(UTC).isoformat(timespec="milliseconds"),
         }
+        self._transition_available.clear()
         self.last_evidence = {
             **self.last_evidence,
             "ok": True,
@@ -210,15 +217,40 @@ class AccPipecatFlowManagerAdapter:
             "transitionCount": len(self.transition_trace),
         }
 
-    async def commit_pending_transition(self) -> dict[str, Any]:
+    async def prepare_pending_transition(self) -> dict[str, Any]:
         pending = self.pending_transition
         if pending is None:
             raise FlowManagerRuntimeError("FlowManager has no pending delivery-ack transition")
-        self.pending_transition = None
+        self._prepared_transition_trace_start = len(self.transition_trace)
         try:
             await self.activate_node(pending["to"], reason="caller_turn_delivery_ack")
+        except asyncio.CancelledError:
+            await self._restore_prepared_transition(pending, "delivery_ack_activation_cancelled")
+            raise
         except Exception as exc:
             return (await self.fail_closed(exc))["flowManagerRuntime"]
+        if self.pending_transition is not pending or pending.get("discardRequested"):
+            await self._restore_prepared_transition(
+                pending,
+                pending.get("discardReason", "delivery_ack_cancelled_before_audio"),
+            )
+            return self.last_evidence
+        pending["activated"] = True
+        self.last_evidence = {
+            **self.last_evidence,
+            "pendingNode": pending["to"],
+            "pendingTransition": dict(pending),
+            "commitPolicy": "transition_prepared_until_audio_delivery_ack",
+        }
+        return self.last_evidence
+
+    def finalize_pending_transition(self) -> dict[str, Any]:
+        pending = self.pending_transition
+        if pending is None or pending.get("activated") is not True:
+            raise FlowManagerRuntimeError("FlowManager has no prepared delivery-ack transition")
+        self.pending_transition = None
+        self._prepared_transition_trace_start = None
+        self._transition_available.set()
         self.last_evidence = {
             **self.last_evidence,
             "pendingNode": None,
@@ -227,11 +259,100 @@ class AccPipecatFlowManagerAdapter:
         }
         return self.last_evidence
 
+    async def commit_pending_transition(self) -> dict[str, Any]:
+        """Compatibility helper for non-media contract checks.
+
+        The media pipeline uses prepare_pending_transition() and finalizes only
+        after first-audio delivery plus the ACC acknowledgement.
+        """
+        prepared = await self.prepare_pending_transition()
+        if prepared.get("ok") is not True:
+            return prepared
+        if self.pending_transition is None or self.pending_transition.get("activated") is not True:
+            return prepared
+        return self.finalize_pending_transition()
+
+    async def _restore_prepared_transition(self, pending: dict[str, Any], reason: str) -> None:
+        async def complete_restore() -> None:
+            previous_node = pending["from"]
+            current_node = getattr(self.manager, "current_node", None)
+            if self.manager and self.initialized and current_node != previous_node:
+                try:
+                    await self.manager.set_node_from_config(flow_manager_node_config(previous_node))
+                except Exception as exc:
+                    await self.fail_closed(
+                        FlowManagerRuntimeError(f"FlowManager delivery rollback failed after {reason}: {exc}")
+                    )
+                    return
+            trace_start = self._prepared_transition_trace_start
+            if isinstance(trace_start, int) and 0 <= trace_start <= len(self.transition_trace):
+                self.transition_trace = self.transition_trace[:trace_start]
+            self._prepared_transition_trace_start = None
+            if self.pending_transition is pending:
+                self.pending_transition = None
+                self._transition_available.set()
+            evidence = {
+                **self.last_evidence,
+                "ok": True,
+                "currentNode": getattr(self.manager, "current_node", previous_node),
+                "pendingNode": None,
+                "pendingTransition": None,
+                "commitPolicy": "preview_discarded",
+                "discardReason": reason,
+                "rolledBackPreparedTransition": current_node != previous_node,
+                "transitionCount": len(self.transition_trace),
+            }
+            if self.transition_trace:
+                evidence["lastTransition"] = dict(self.transition_trace[-1])
+            else:
+                evidence.pop("lastTransition", None)
+            self.last_evidence = evidence
+
+        restore_task = asyncio.create_task(complete_restore())
+        cancellation_requested = False
+        while True:
+            try:
+                await asyncio.shield(restore_task)
+                break
+            except asyncio.CancelledError:
+                cancellation_requested = True
+                if restore_task.done():
+                    break
+        restore_error = restore_task.exception() if restore_task.done() else None
+        if restore_error is not None:
+            raise restore_error
+        if cancellation_requested:
+            raise asyncio.CancelledError
+
+    async def rollback_pending_transition(self, reason: str) -> dict[str, Any]:
+        pending = self.pending_transition
+        if pending is None:
+            return self.last_evidence
+        await self._restore_prepared_transition(pending, reason)
+        return self.last_evidence
+
     def discard_pending_transition(self, reason: str) -> None:
         pending = self.pending_transition
-        self.pending_transition = None
         if pending is None:
             return
+        preparation_in_flight = self._prepared_transition_trace_start is not None
+        if pending.get("activated") is True or preparation_in_flight:
+            pending["discardRequested"] = True
+            pending["discardReason"] = reason
+            self.last_evidence = {
+                **self.last_evidence,
+                "pendingTransition": dict(pending),
+                "commitPolicy": (
+                    "activation_rollback_pending"
+                    if preparation_in_flight and pending.get("activated") is not True
+                    else "prepared_transition_rollback_pending"
+                ),
+                "discardReason": reason,
+            }
+            return
+        self.pending_transition = None
+        self._prepared_transition_trace_start = None
+        self._transition_available.set()
         self.last_evidence = {
             **self.last_evidence,
             "currentNode": getattr(self.manager, "current_node", None),
@@ -246,54 +367,131 @@ class AccPipecatFlowManagerAdapter:
 
     async def fail_closed(self, error: Exception) -> dict[str, Any]:
         self.pending_transition = None
-        fallback = await self.request(
-            "POST",
-            f"{self.acc_url}/api/calls/{self.call_id}/fallback",
-            {
-                "mode": "runtime_failure",
-                "reason": f"Pipecat FlowManager fail-closed: {error}",
-            },
-        )
-        if self.manager and self.initialized:
+        self._prepared_transition_trace_start = None
+        self._transition_available.clear()
+
+        async def complete_terminal_handoff() -> dict[str, Any]:
+            fallback: dict[str, Any] = {"flowState": "wrap", "transcript": []}
+            fallback_error: Exception | None = None
             try:
-                await self.activate_node("wrap", reason="flowmanager_runtime_failure")
-            except Exception:
-                pass
-        evidence = {
-            "ok": False,
-            "runtimeAdapter": "pipecat_flows.FlowManager",
-            "error": "flowmanager_runtime_failed_closed",
-            "detail": str(error),
-            "currentNode": getattr(self.manager, "current_node", None),
-            "fallbackNode": "wrap",
-            "commitPolicy": "terminal_handoff",
-            "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
-        }
-        self.last_evidence = evidence
-        return {**fallback, "flowManagerRuntime": evidence}
+                fallback = await self.request(
+                    "POST",
+                    f"{self.acc_url}/api/calls/{self.call_id}/fallback",
+                    {
+                        "mode": "runtime_failure",
+                        "reason": f"Pipecat FlowManager fail-closed: {error}",
+                    },
+                )
+            except Exception as exc:
+                fallback_error = exc
+            evidence_base = {
+                "ok": False,
+                "runtimeAdapter": "pipecat_flows.FlowManager",
+                "currentNode": getattr(self.manager, "current_node", None),
+                "fallbackNode": "wrap",
+                "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
+            }
+            if fallback_error is not None:
+                # ACC did not accept the terminal handoff, so do not cache the
+                # synthetic default or publish terminal-handoff evidence as an
+                # authoritative response. Preserve the failed attempt until a
+                # later caller turn consults ACC again.
+                self.last_evidence = {
+                    **evidence_base,
+                    "error": "flowmanager_fallback_failed",
+                    "detail": str(fallback_error),
+                    "triggerError": str(error),
+                    "commitPolicy": "fallback_failed",
+                    "fallbackAccepted": False,
+                }
+                self._transition_available.set()
+                raise fallback_error
+            evidence = {
+                **evidence_base,
+                "error": "flowmanager_runtime_failed_closed",
+                "detail": str(error),
+                "commitPolicy": "terminal_handoff",
+                "fallbackAccepted": True,
+            }
+            if self.manager and self.initialized:
+                try:
+                    await self.activate_node("wrap", reason="flowmanager_runtime_failure")
+                except Exception:
+                    pass
+                evidence["currentNode"] = getattr(self.manager, "current_node", None)
+                evidence["transitionCount"] = len(self.transition_trace)
+                if self.transition_trace:
+                    evidence["lastTransition"] = dict(self.transition_trace[-1])
+            # activate_node() records the terminal transition through the
+            # normal success path. Restore the authoritative fail-closed
+            # evidence after that bookkeeping so later snapshots cannot
+            # misreport this runtime failure as ok.
+            self.last_evidence = evidence
+            self._terminal_result = {**fallback, "flowManagerRuntime": evidence}
+            self._transition_available.set()
+            return dict(self._terminal_result)
+
+        # A peer close or repeated barge-in may cancel the response task while
+        # fail-closed I/O is still running. Finish the terminal handoff under a
+        # shield before propagating cancellation so queued previews cannot wait
+        # forever on a gate that no remaining transition can release.
+        cleanup_task = asyncio.create_task(complete_terminal_handoff())
+        cancellation_requested = False
+        cleanup_result: dict[str, Any] | None = None
+        cleanup_error: Exception | None = None
+        while True:
+            try:
+                cleanup_result = await asyncio.shield(cleanup_task)
+                break
+            except asyncio.CancelledError:
+                cancellation_requested = True
+                if cleanup_task.done():
+                    try:
+                        cleanup_result = cleanup_task.result()
+                    except Exception as exc:
+                        cleanup_error = exc
+                    break
+            except Exception as exc:
+                cleanup_error = exc
+                break
+        if cancellation_requested:
+            raise asyncio.CancelledError from cleanup_error
+        if cleanup_error is not None:
+            raise cleanup_error
+        if cleanup_result is None:
+            raise FlowManagerRuntimeError("FlowManager fail-closed terminal handoff produced no result")
+        return cleanup_result
 
     async def preview_caller_turn(self, *, text: str, conversation_mode: str) -> dict[str, Any]:
         try:
             await self.initialize()
-            preview = await self.request(
-                "POST",
-                f"{self.acc_url}/api/calls/{self.call_id}/caller-turn",
-                {
-                    "text": text,
-                    "conversationMode": conversation_mode,
-                    "commitMode": "delivery_ack",
-                },
-            )
-            target_node = preview.get("flowState")
-            if not isinstance(target_node, str):
-                raise FlowManagerRuntimeError("ACC caller-turn preview did not return flowState")
-            self.stage_transition(target_node, reason="caller_turn_preview")
-            evidence = {
-                **self.last_evidence,
-                "commitPolicy": "preview_until_output_delivery_ack",
-                "callerTranscript": text,
-            }
-            self.last_evidence = evidence
-            return {**preview, "flowManagerRuntime": evidence}
+            async with self._preview_lock:
+                # A delivered response may still be waiting for ACC's slow
+                # acknowledgement. Queue the next preview behind that exact
+                # transition so it is evaluated from the committed node instead
+                # of colliding with the single pending slot and failing closed.
+                await self._transition_available.wait()
+                if self._terminal_result is not None:
+                    return dict(self._terminal_result)
+                preview = await self.request(
+                    "POST",
+                    f"{self.acc_url}/api/calls/{self.call_id}/caller-turn",
+                    {
+                        "text": text,
+                        "conversationMode": conversation_mode,
+                        "commitMode": "delivery_ack",
+                    },
+                )
+                target_node = preview.get("flowState")
+                if not isinstance(target_node, str):
+                    raise FlowManagerRuntimeError("ACC caller-turn preview did not return flowState")
+                self.stage_transition(target_node, reason="caller_turn_preview")
+                evidence = {
+                    **self.last_evidence,
+                    "commitPolicy": "preview_until_output_delivery_ack",
+                    "callerTranscript": text,
+                }
+                self.last_evidence = evidence
+                return {**preview, "flowManagerRuntime": evidence}
         except Exception as exc:
             return await self.fail_closed(exc)

@@ -101,10 +101,128 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
 
   assert.equal(payload.ok, true);
   assert.equal(payload.normal.chunks, 6);
+  assert.equal(payload.normal.flowManager.commitPolicy, "delivery_ack_committed");
+  assert.equal(payload.normal.flowManager.currentNode, "diagnose");
+  assert.equal(payload.normal.flowManager.pendingTransition, null);
   assert.equal(payload.interrupted.chunksBeforeStop, 1);
   assert.equal(payload.interrupted.transportOutputFlushed, true);
   assert.equal(payload.resumed.chunks, 3);
   assert.equal(payload.checks.noStalePlaybackAfterInterruption, true);
+  assert.deepEqual(payload.flowManagerActivationFailure.requests, ["fallback"]);
+  assert.equal(payload.flowManagerActivationFailure.audioChunks, 0);
+  assert.equal(payload.flowManagerActivationFailure.ttsStarted, 1);
+  assert.equal(payload.flowManagerActivationFailure.ttsStopped, 1);
+  assert.deepEqual(payload.flowManagerActivationFailure.turnControls, {
+    started: 1,
+    stopped: 1,
+    botSpeaking: false,
+  });
+  assert.deepEqual(payload.slowCommitBargeIn, {
+    audioChunksBeforeCancel: 1,
+    commitCalls: 1,
+    cancelled: true,
+    outputChunksAtCancel: 1,
+  });
+  assert.equal(payload.followupDuringSlowCommit.waitedForPriorAck, true);
+  assert.equal(payload.followupDuringSlowCommit.commitCalls, 1);
+  assert.equal(payload.followupDuringSlowCommit.previewCalls, 1);
+  assert.equal(payload.followupDuringSlowCommit.fallbackCalls, 0);
+  assert.equal(payload.followupDuringSlowCommit.priorDeliveryCancelled, true);
+  assert.equal(payload.followupDuringSlowCommit.pendingTransition.to, "diagnose");
+  assert.deepEqual(payload.queuedPreviewDuringFailClosed, {
+    waitedForTerminalState: true,
+    cancellationWaitedForCleanup: true,
+    prepareCancelled: true,
+    fallbackCalls: 1,
+    previewCalls: 0,
+    currentNode: "wrap",
+    pendingTransition: null,
+    previewFlowState: "wrap",
+    previewCommitPolicy: "terminal_handoff",
+    adapterEvidenceOk: false,
+    adapterEvidenceError: "flowmanager_runtime_failed_closed",
+    adapterEvidenceCommitPolicy: "terminal_handoff",
+    adapterEvidenceCurrentNode: "wrap",
+    adapterEvidenceTransitionReason: "flowmanager_runtime_failure",
+  });
+  assert.deepEqual(payload.failedCommitAfterCancellation, {
+    commitCalls: 1,
+    cancelled: true,
+    pendingCommit: false,
+    pendingTransition: false,
+    outputChunksAtCancel: 1,
+  });
+  assert.deepEqual(payload.stalePriorAudioPreAudioCancel, {
+    cancelled: true,
+    outputChunksAtCancel: 0,
+    pendingCommit: false,
+  });
+  assert.deepEqual(payload.flowManagerFallbackFailure.requests, ["fallback", "caller-turn"]);
+  assert.equal(payload.flowManagerFallbackFailure.audioChunks, 0);
+  assert.equal(payload.flowManagerFallbackFailure.ttsStarted, 1);
+  assert.equal(payload.flowManagerFallbackFailure.ttsStopped, 1);
+  assert.deepEqual(payload.flowManagerFallbackFailure.turnControls, {
+    started: 1,
+    stopped: 1,
+    botSpeaking: false,
+  });
+  assert.equal(payload.flowManagerFallbackFailure.pendingCommit, false);
+  assert.equal(payload.flowManagerFallbackFailure.pendingTransition, true);
+  assert.equal(payload.flowManagerFallbackFailure.pendingClearedBeforeFollowup, true);
+  assert.equal(payload.flowManagerFallbackFailure.terminalCachedAfterFailure, false);
+  assert.equal(payload.flowManagerFallbackFailure.failedEvidenceError, "flowmanager_fallback_failed");
+  assert.equal(payload.flowManagerFallbackFailure.failedEvidenceCommitPolicy, "fallback_failed");
+  assert.equal(payload.flowManagerFallbackFailure.failedEvidenceFallbackAccepted, false);
+  assert.equal(payload.flowManagerFallbackFailure.followupFlowState, "greet");
+  assert.equal(payload.flowManagerFallbackFailure.followupCommitPolicy, "preview_until_output_delivery_ack");
+  assert.equal(payload.flowManagerFallbackFailure.followupPendingNode, "greet");
+  assert.deepEqual(payload.activationRollbackPreviewGate, {
+    waitedForRollback: true,
+    prepareCancelled: true,
+    previewCalls: 1,
+    currentNode: "call_started",
+    previewFlowState: "diagnose",
+    pendingTransition: {
+      from: "call_started",
+      to: "diagnose",
+      reason: "caller_turn_preview",
+      stagedAt: payload.activationRollbackPreviewGate.pendingTransition.stagedAt,
+    },
+    transitionTrace: [],
+    secondCancellationDuringRollback: true,
+  });
+  assert.equal(payload.slowFlowManagerActivationBargeIn.audioChunks, 0);
+  assert.equal(payload.slowFlowManagerActivationBargeIn.cancelled, true);
+  assert.equal(payload.slowFlowManagerActivationBargeIn.currentNode, "call_started");
+  assert.equal(payload.slowFlowManagerActivationBargeIn.pendingTransition, null);
+  assert.equal(payload.preparedTransitionRollback.cancelled, true);
+  assert.equal(payload.preparedTransitionRollback.outputChunksAtCancel, 0);
+  assert.equal(payload.preparedTransitionRollback.currentNode, "call_started");
+  assert.equal(payload.preparedTransitionRollback.pendingTransition, null);
+  assert.deepEqual(payload.preparedTransitionRollback.transitionTrace, []);
+  assert.equal(payload.preparedTransitionRollback.evidence.transitionCount, 0);
+  assert.equal(payload.preparedTransitionRollback.evidence.lastTransition, undefined);
+  assert.equal(payload.checks.slowFlowManagerActivationBargeInRollsBack, true);
+  assert.equal(payload.checks.slowFlowManagerActivationCancellationIsPrompt, true);
+  assert.equal(payload.checks.slowFlowManagerActivationCommitsNoAudioOrAccTurn, true);
+  assert.equal(payload.checks.slowCommitStartsOnlyAfterFirstAudio, true);
+  assert.equal(payload.checks.slowCommitBargeInPreservesDeliveredCommit, true);
+  assert.equal(payload.checks.followupTurnWaitsForPriorDeliveryAck, true);
+  assert.equal(payload.checks.followupTurnStagesWithoutFallback, true);
+  assert.equal(payload.checks.queuedPreviewWaitsForFailClosedTerminalState, true);
+  assert.equal(payload.checks.failClosedWrapPreservesRuntimeFailureEvidence, true);
+  assert.equal(payload.checks.rolledBackPreparedTransitionIsRemovedFromTraceEvidence, true);
+  assert.equal(payload.checks.successfulTurnPublishesFinalizedFlowManagerEvidence, true);
+  assert.equal(payload.checks.failedCommitAfterCancellationCleansPendingDelivery, true);
+  assert.equal(payload.checks.stalePriorAudioCounterDoesNotPreservePreAudioCommit, true);
+  assert.equal(payload.checks.flowManagerActivationFailureClosesTtsLifecycle, true);
+  assert.equal(payload.checks.flowManagerActivationFailureRecordsNoCommittedDelivery, true);
+  assert.equal(payload.checks.flowManagerActivationFailureRetainsTerminalEvidence, true);
+  assert.equal(payload.checks.flowManagerFallbackFailureClosesZeroAudioLifecycle, true);
+  assert.equal(payload.checks.flowManagerFallbackFailureClearsPendingDelivery, true);
+  assert.equal(payload.checks.flowManagerFallbackFailureDoesNotCacheSyntheticTerminal, true);
+  assert.equal(payload.checks.flowManagerFallbackFailureDoesNotPublishTerminalHandoff, true);
+  assert.equal(payload.checks.queuedPreviewWaitsForActivationRollback, true);
   assert.deepEqual(payload.activeTasks.cancelled.sort(), ["agent", "tts"]);
 });
 
