@@ -197,6 +197,16 @@ npm run proof:bundle -- --proof artifacts/agentic-call-center-demo/source-proof.
 
 The bundle writes `proof-bundle-manifest.json`, `conversation-agent-evals-assert-request.json`, transcript/action/final-state files, a seeded local WAV caller capture, SVG operator-console screenshots, an animated GIF recording, and Local STT v1 framing evidence for the `rtc-asr` boundary. It remains local and mocked: live telephony and provider credentials are not used unless a later live-capture path explicitly provides them.
 
+Generate a shared-pipeline tester-agent handoff for ConversationAgentEvals/ASSERT:
+
+```bash
+npm run cae:assert:handoff -- --out-dir artifacts/cae-assert-handoff
+```
+
+The handoff writes `cae-assert-handoff-manifest.json`, `conversation-agent-evals-assert-request.json`, `acc-cae-prefill-template.json`, requirements, scenario contract, redacted event timeline, transcript, final-state, verdict, audio-summary, and failure-mode artifacts. The request uses the CAE `AssertRunCreateRequest` shape and points at `/api/assert/runs`; it does not submit automatically. The raw audio track is marked `missing` for deterministic tester-agent runs, while the audio summary carries frame counts and hashes. Attach browser, SIP, or track-recording artifacts when a CAE run requires raw `call_media`.
+
+The generic editable YAML/spec UI belongs to ConversationAgentEvals. ACC may deep-link or submit the prefill template, but should not grow separate generic judge configuration, persistence, versioning, or runner UX.
+
 See `docs/demo-proof-runbook.md` for inspection checklists.
 
 ## Common filters and pagination
@@ -260,6 +270,7 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `npm run assert:viewer:install`: clone and install the upstream ASSERT viewer into `.assert-viewer/`.
 - `npm run assert:viewer`: run the upstream ASSERT viewer against this repo's `artifacts/results` at `http://127.0.0.1:5174`.
 - `npm run assert:full`: export artifacts, then start the upstream ASSERT viewer.
+- `npm run cae:assert:handoff`: generate a CAE/ASSERT request from shared-pipeline tester-agent evidence plus ACC prefill/artifact pointers.
 - `npm run proof:pipecat`: run `pipecat:check` before the proof harness.
 - `npm run proof:bundle`: convert a proof JSON file into a ConversationAgentEvals-ready evidence bundle with media artifacts.
 - `npm run health:smoke`: poll `http://127.0.0.1:8026/health`.
