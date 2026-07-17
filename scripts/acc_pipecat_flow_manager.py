@@ -108,6 +108,9 @@ class AccPipecatFlowManagerAdapter:
         self.manager: Any | None = None
         self.initialized = False
         self.pending_transition: dict[str, Any] | None = None
+        self._transition_available = asyncio.Event()
+        self._transition_available.set()
+        self._preview_lock = asyncio.Lock()
         self.transition_trace: list[dict[str, Any]] = []
         self.last_evidence: dict[str, Any] = {}
 
@@ -201,6 +204,7 @@ class AccPipecatFlowManagerAdapter:
             "reason": reason,
             "stagedAt": datetime.now(UTC).isoformat(timespec="milliseconds"),
         }
+        self._transition_available.clear()
         self.last_evidence = {
             **self.last_evidence,
             "ok": True,
@@ -241,6 +245,7 @@ class AccPipecatFlowManagerAdapter:
         if pending is None or pending.get("activated") is not True:
             raise FlowManagerRuntimeError("FlowManager has no prepared delivery-ack transition")
         self.pending_transition = None
+        self._transition_available.set()
         self.last_evidence = {
             **self.last_evidence,
             "pendingNode": None,
@@ -275,6 +280,7 @@ class AccPipecatFlowManagerAdapter:
                 return
         if self.pending_transition is pending:
             self.pending_transition = None
+            self._transition_available.set()
         self.last_evidence = {
             **self.last_evidence,
             "ok": True,
@@ -308,6 +314,7 @@ class AccPipecatFlowManagerAdapter:
             }
             return
         self.pending_transition = None
+        self._transition_available.set()
         self.last_evidence = {
             **self.last_evidence,
             "currentNode": getattr(self.manager, "current_node", None),
@@ -322,6 +329,7 @@ class AccPipecatFlowManagerAdapter:
 
     async def fail_closed(self, error: Exception) -> dict[str, Any]:
         self.pending_transition = None
+        self._transition_available.set()
         fallback = await self.request(
             "POST",
             f"{self.acc_url}/api/calls/{self.call_id}/fallback",
@@ -351,25 +359,31 @@ class AccPipecatFlowManagerAdapter:
     async def preview_caller_turn(self, *, text: str, conversation_mode: str) -> dict[str, Any]:
         try:
             await self.initialize()
-            preview = await self.request(
-                "POST",
-                f"{self.acc_url}/api/calls/{self.call_id}/caller-turn",
-                {
-                    "text": text,
-                    "conversationMode": conversation_mode,
-                    "commitMode": "delivery_ack",
-                },
-            )
-            target_node = preview.get("flowState")
-            if not isinstance(target_node, str):
-                raise FlowManagerRuntimeError("ACC caller-turn preview did not return flowState")
-            self.stage_transition(target_node, reason="caller_turn_preview")
-            evidence = {
-                **self.last_evidence,
-                "commitPolicy": "preview_until_output_delivery_ack",
-                "callerTranscript": text,
-            }
-            self.last_evidence = evidence
-            return {**preview, "flowManagerRuntime": evidence}
+            async with self._preview_lock:
+                # A delivered response may still be waiting for ACC's slow
+                # acknowledgement. Queue the next preview behind that exact
+                # transition so it is evaluated from the committed node instead
+                # of colliding with the single pending slot and failing closed.
+                await self._transition_available.wait()
+                preview = await self.request(
+                    "POST",
+                    f"{self.acc_url}/api/calls/{self.call_id}/caller-turn",
+                    {
+                        "text": text,
+                        "conversationMode": conversation_mode,
+                        "commitMode": "delivery_ack",
+                    },
+                )
+                target_node = preview.get("flowState")
+                if not isinstance(target_node, str):
+                    raise FlowManagerRuntimeError("ACC caller-turn preview did not return flowState")
+                self.stage_transition(target_node, reason="caller_turn_preview")
+                evidence = {
+                    **self.last_evidence,
+                    "commitPolicy": "preview_until_output_delivery_ack",
+                    "callerTranscript": text,
+                }
+                self.last_evidence = evidence
+                return {**preview, "flowManagerRuntime": evidence}
         except Exception as exc:
             return await self.fail_closed(exc)

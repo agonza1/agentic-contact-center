@@ -123,6 +123,12 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
     cancelled: true,
     outputChunksAtCancel: 1,
   });
+  assert.equal(payload.followupDuringSlowCommit.waitedForPriorAck, true);
+  assert.equal(payload.followupDuringSlowCommit.commitCalls, 1);
+  assert.equal(payload.followupDuringSlowCommit.previewCalls, 1);
+  assert.equal(payload.followupDuringSlowCommit.fallbackCalls, 0);
+  assert.equal(payload.followupDuringSlowCommit.priorDeliveryCancelled, true);
+  assert.equal(payload.followupDuringSlowCommit.pendingTransition.to, "diagnose");
   assert.deepEqual(payload.failedCommitAfterCancellation, {
     commitCalls: 1,
     cancelled: true,
@@ -155,6 +161,8 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.checks.slowFlowManagerActivationCommitsNoAudioOrAccTurn, true);
   assert.equal(payload.checks.slowCommitStartsOnlyAfterFirstAudio, true);
   assert.equal(payload.checks.slowCommitBargeInPreservesDeliveredCommit, true);
+  assert.equal(payload.checks.followupTurnWaitsForPriorDeliveryAck, true);
+  assert.equal(payload.checks.followupTurnStagesWithoutFallback, true);
   assert.equal(payload.checks.successfulTurnPublishesFinalizedFlowManagerEvidence, true);
   assert.equal(payload.checks.failedCommitAfterCancellationCleansPendingDelivery, true);
   assert.equal(payload.checks.stalePriorAudioCounterDoesNotPreservePreAudioCommit, true);

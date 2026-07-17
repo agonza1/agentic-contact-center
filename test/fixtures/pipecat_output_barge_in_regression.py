@@ -219,6 +219,84 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         pipeline.json_http = original_json_http
     slow_commit_stages = slow_commit_session.stage_events
 
+    followup_commit_started = threading.Event()
+    release_followup_commit = threading.Event()
+    followup_commit_calls: list[dict[str, Any]] = []
+    followup_preview_calls: list[dict[str, Any]] = []
+    followup_fallback_calls: list[dict[str, Any]] = []
+
+    def fake_followup_during_commit_http(
+        method: str,
+        url: str,
+        payload: dict[str, Any] | None = None,
+        timeout: float = 30,
+    ) -> dict[str, Any]:
+        if method == "POST" and url.endswith("/caller-turn/commit"):
+            followup_commit_started.set()
+            release_followup_commit.wait(1)
+            followup_commit_calls.append(payload or {})
+            return {
+                "flowState": "greet",
+                "transcript": [
+                    {"speaker": "caller", "text": (payload or {}).get("text", ""), "timestamp": "fixture"},
+                    {"speaker": "agent", "text": "The prior delivered turn is committed.", "timestamp": "fixture"},
+                ],
+            }
+        if method == "POST" and url.endswith("/caller-turn"):
+            followup_preview_calls.append(payload or {})
+            return {
+                "flowState": "diagnose",
+                "callerTurnCommit": {"mode": "delivery_ack", "status": "pending", "timestamp": "fixture"},
+                "transcript": [
+                    {"speaker": "caller", "text": (payload or {}).get("text", ""), "timestamp": "fixture"},
+                    {"speaker": "agent", "text": "The follow-up turn staged normally.", "timestamp": "fixture"},
+                ],
+            }
+        if method == "POST" and url.endswith("/fallback"):
+            followup_fallback_calls.append(payload or {})
+            return {"flowState": "wrap", "transcript": []}
+        return original_json_http(method, url, payload, timeout)
+
+    followup_session = build_session("followup-during-slow-delivery-commit")
+    install_fake_synthesizer(followup_session, chunks=3)
+    await followup_session.flow_manager_adapter.initialize()
+    followup_session.flow_manager_adapter.stage_transition("greet", reason="caller_turn_preview")
+    followup_session.set_pending_caller_turn_commit(
+        payload={"text": "Prior caller turn", "conversationMode": "free_caller"},
+        expected_agent_text="The prior delivered turn is committed.",
+        output_generation=followup_session.output_generation,
+    )
+    followup_processor = CapturingTtsProcessor(followup_session)
+    followup_preview_started = asyncio.Event()
+
+    async def preview_followup_turn() -> dict[str, Any]:
+        followup_preview_started.set()
+        return await followup_session.flow_manager_adapter.preview_caller_turn(
+            text="Legitimate follow-up caller turn",
+            conversation_mode="free_caller",
+        )
+
+    pipeline.json_http = fake_followup_during_commit_http
+    try:
+        followup_delivery_task = asyncio.create_task(
+            followup_processor.process_frame(
+                TextFrame("The prior delivered turn is committed."),
+                FrameDirection.DOWNSTREAM,
+            )
+        )
+        assert await asyncio.to_thread(followup_commit_started.wait, 1)
+        followup_barge_in = followup_session.cancel_output("fixture_followup_during_slow_delivery_commit")
+        followup_preview_task = asyncio.create_task(preview_followup_turn())
+        await asyncio.wait_for(followup_preview_started.wait(), timeout=1)
+        await asyncio.sleep(0)
+        followup_waited_for_prior_ack = not followup_preview_task.done() and not followup_preview_calls
+        release_followup_commit.set()
+        followup_delivery_result = await asyncio.gather(followup_delivery_task, return_exceptions=True)
+        followup_preview_result = await asyncio.wait_for(followup_preview_task, timeout=1)
+    finally:
+        release_followup_commit.set()
+        pipeline.json_http = original_json_http
+
     failing_cancel_commit_started = threading.Event()
     release_failing_cancel_commit = threading.Event()
     failing_cancel_commit_calls: list[dict[str, Any]] = []
@@ -612,6 +690,21 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
                 for event in slow_commit_stages
             )
         ),
+        "followupTurnWaitsForPriorDeliveryAck": (
+            followup_waited_for_prior_ack
+            and len(followup_commit_calls) == 1
+            and followup_barge_in.get("outputChunksEnqueued") == 1
+            and isinstance(followup_delivery_result[0], asyncio.CancelledError)
+        ),
+        "followupTurnStagesWithoutFallback": (
+            len(followup_preview_calls) == 1
+            and not followup_fallback_calls
+            and followup_preview_result.get("flowManagerRuntime", {}).get("ok") is True
+            and followup_preview_result.get("flowManagerRuntime", {}).get("currentNode") == "greet"
+            and followup_preview_result.get("flowManagerRuntime", {}).get("pendingNode") == "diagnose"
+            and followup_session.flow_manager_adapter.pending_transition is not None
+            and followup_session.flow_manager_adapter.pending_transition.get("to") == "diagnose"
+        ),
         "failedCommitAfterCancellationCleansPendingDelivery": (
             len(failing_cancel_commit_calls) == 1
             and isinstance(failing_cancel_result[0], asyncio.CancelledError)
@@ -761,6 +854,14 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             "commitCalls": len(slow_commit_calls),
             "cancelled": isinstance(slow_commit_result[0], asyncio.CancelledError),
             "outputChunksAtCancel": slow_commit_cancellation.get("outputChunksEnqueued"),
+        },
+        "followupDuringSlowCommit": {
+            "waitedForPriorAck": followup_waited_for_prior_ack,
+            "commitCalls": len(followup_commit_calls),
+            "previewCalls": len(followup_preview_calls),
+            "fallbackCalls": len(followup_fallback_calls),
+            "priorDeliveryCancelled": isinstance(followup_delivery_result[0], asyncio.CancelledError),
+            "pendingTransition": followup_session.flow_manager_adapter.pending_transition,
         },
         "failedCommitAfterCancellation": {
             "commitCalls": len(failing_cancel_commit_calls),
