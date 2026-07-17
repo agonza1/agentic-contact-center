@@ -318,13 +318,18 @@ class AccPipecatFlowManagerAdapter:
         pending = self.pending_transition
         if pending is None:
             return
-        if pending.get("activated") is True:
+        preparation_in_flight = self._prepared_transition_trace_start is not None
+        if pending.get("activated") is True or preparation_in_flight:
             pending["discardRequested"] = True
             pending["discardReason"] = reason
             self.last_evidence = {
                 **self.last_evidence,
                 "pendingTransition": dict(pending),
-                "commitPolicy": "prepared_transition_rollback_pending",
+                "commitPolicy": (
+                    "activation_rollback_pending"
+                    if preparation_in_flight and pending.get("activated") is not True
+                    else "prepared_transition_rollback_pending"
+                ),
                 "discardReason": reason,
             }
             return

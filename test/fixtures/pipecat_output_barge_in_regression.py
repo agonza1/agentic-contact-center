@@ -100,6 +100,26 @@ class SlowActivatingFlowManager(FakeFlowManager):
             await asyncio.sleep(60)
 
 
+class BlockingActivationRollbackFlowManager(FakeFlowManager):
+    def __init__(self, **kwargs: Any):
+        super().__init__(**kwargs)
+        self.activation_started = asyncio.Event()
+        self.rollback_started = asyncio.Event()
+        self.allow_rollback = asyncio.Event()
+
+    async def set_node_from_config(self, node: dict[str, Any]) -> None:
+        target = node["name"]
+        if target == "greet":
+            self.current_node = target
+            self.activation_started.set()
+            await asyncio.sleep(60)
+            return
+        if target == "call_started" and self.current_node == "greet":
+            self.rollback_started.set()
+            await self.allow_rollback.wait()
+        self.current_node = target
+
+
 class FakeTurnControls:
     def __init__(self) -> None:
         self.bot_speaking = False
@@ -656,6 +676,59 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
     ]
     slow_activation_evidence = slow_activation_session.flow_manager_adapter.last_evidence
 
+    rollback_preview_calls: list[str] = []
+
+    def fake_rollback_preview_http(
+        method: str,
+        url: str,
+        payload: dict[str, Any] | None = None,
+        timeout: float = 30,
+    ) -> dict[str, Any]:
+        if method == "POST" and url.endswith("/caller-turn"):
+            rollback_preview_calls.append("caller-turn")
+            return {
+                "flowState": "diagnose",
+                "transcript": [
+                    {"speaker": "caller", "text": (payload or {}).get("text", ""), "timestamp": "fixture"},
+                    {"speaker": "agent", "text": "Rollback completed before preview.", "timestamp": "fixture"},
+                ],
+                "callerTurnCommit": {"snapshotVersion": 3},
+            }
+        return original_json_http(method, url, payload, timeout)
+
+    rollback_gate_session = build_session(
+        "flowmanager-activation-rollback-preview-gate",
+        manager_factory=BlockingActivationRollbackFlowManager,
+    )
+    await rollback_gate_session.flow_manager_adapter.initialize()
+    rollback_gate_session.flow_manager_adapter.stage_transition("greet", reason="caller_turn_preview")
+    rollback_gate_manager = rollback_gate_session.flow_manager_adapter.manager
+    rollback_prepare_task = asyncio.create_task(
+        rollback_gate_session.flow_manager_adapter.prepare_pending_transition()
+    )
+    await asyncio.wait_for(rollback_gate_manager.activation_started.wait(), timeout=1)
+    rollback_gate_session.flow_manager_adapter.discard_pending_transition(
+        "barge_in_during_flowmanager_activation"
+    )
+    rollback_prepare_task.cancel()
+    await asyncio.wait_for(rollback_gate_manager.rollback_started.wait(), timeout=1)
+    pipeline.json_http = fake_rollback_preview_http
+    rollback_preview_task = asyncio.create_task(
+        rollback_gate_session.flow_manager_adapter.preview_caller_turn(
+            text="Queue this turn until rollback completes",
+            conversation_mode="free_caller",
+        )
+    )
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    rollback_preview_waited = not rollback_preview_task.done() and rollback_preview_calls == []
+    rollback_gate_manager.allow_rollback.set()
+    rollback_prepare_result = await asyncio.gather(rollback_prepare_task, return_exceptions=True)
+    try:
+        rollback_preview_result = await asyncio.wait_for(rollback_preview_task, timeout=1)
+    finally:
+        pipeline.json_http = original_json_http
+
     prepared_rollback_session = build_session("prepared-flowmanager-transition-rolled-back-before-audio")
     install_fake_synthesizer(prepared_rollback_session, chunks=2)
     await prepared_rollback_session.flow_manager_adapter.initialize()
@@ -953,6 +1026,16 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             and slow_activation_session.pending_caller_turn_commit is None
             and slow_activation_cancellation.get("outputChunksEnqueued") == 0
         ),
+        "queuedPreviewWaitsForActivationRollback": (
+            rollback_preview_waited
+            and isinstance(rollback_prepare_result[0], asyncio.CancelledError)
+            and rollback_preview_calls == ["caller-turn"]
+            and rollback_gate_manager.current_node == "call_started"
+            and rollback_preview_result.get("flowState") == "diagnose"
+            and rollback_gate_session.flow_manager_adapter.pending_transition is not None
+            and rollback_gate_session.flow_manager_adapter.pending_transition.get("from") == "call_started"
+            and rollback_gate_session.flow_manager_adapter.pending_transition.get("to") == "diagnose"
+        ),
         "rolledBackPreparedTransitionIsRemovedFromTraceEvidence": (
             isinstance(prepared_rollback_result[0], asyncio.CancelledError)
             and prepared_rollback_cancellation.get("outputChunksEnqueued") == 0
@@ -1097,6 +1180,14 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             "currentNode": slow_activation_manager.current_node,
             "pendingTransition": slow_activation_session.flow_manager_adapter.pending_transition,
             "evidence": slow_activation_evidence,
+        },
+        "activationRollbackPreviewGate": {
+            "waitedForRollback": rollback_preview_waited,
+            "prepareCancelled": isinstance(rollback_prepare_result[0], asyncio.CancelledError),
+            "previewCalls": len(rollback_preview_calls),
+            "currentNode": rollback_gate_manager.current_node,
+            "previewFlowState": rollback_preview_result.get("flowState"),
+            "pendingTransition": rollback_gate_session.flow_manager_adapter.pending_transition,
         },
         "preparedTransitionRollback": {
             "cancelled": isinstance(prepared_rollback_result[0], asyncio.CancelledError),

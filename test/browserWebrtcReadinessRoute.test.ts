@@ -176,6 +176,19 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.flowManagerFallbackFailure.followupFlowState, "greet");
   assert.equal(payload.flowManagerFallbackFailure.followupCommitPolicy, "preview_until_output_delivery_ack");
   assert.equal(payload.flowManagerFallbackFailure.followupPendingNode, "greet");
+  assert.deepEqual(payload.activationRollbackPreviewGate, {
+    waitedForRollback: true,
+    prepareCancelled: true,
+    previewCalls: 1,
+    currentNode: "call_started",
+    previewFlowState: "diagnose",
+    pendingTransition: {
+      from: "call_started",
+      to: "diagnose",
+      reason: "caller_turn_preview",
+      stagedAt: payload.activationRollbackPreviewGate.pendingTransition.stagedAt,
+    },
+  });
   assert.equal(payload.slowFlowManagerActivationBargeIn.audioChunks, 0);
   assert.equal(payload.slowFlowManagerActivationBargeIn.cancelled, true);
   assert.equal(payload.slowFlowManagerActivationBargeIn.currentNode, "call_started");
@@ -207,6 +220,7 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.checks.flowManagerFallbackFailureClearsPendingDelivery, true);
   assert.equal(payload.checks.flowManagerFallbackFailureDoesNotCacheSyntheticTerminal, true);
   assert.equal(payload.checks.flowManagerFallbackFailureDoesNotPublishTerminalHandoff, true);
+  assert.equal(payload.checks.queuedPreviewWaitsForActivationRollback, true);
   assert.deepEqual(payload.activeTasks.cancelled.sort(), ["agent", "tts"]);
 });
 
