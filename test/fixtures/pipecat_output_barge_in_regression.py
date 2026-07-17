@@ -613,6 +613,7 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         and fallback_failure_session.flow_manager_adapter.pending_transition is None
     )
     terminal_cached_after_fallback_failure = fallback_failure_session.flow_manager_adapter._terminal_result is not None
+    fallback_failure_evidence = dict(fallback_failure_session.flow_manager_adapter.last_evidence)
     pipeline.json_http = fake_fallback_failure_http
     try:
         fallback_failure_followup = await fallback_failure_session.flow_manager_adapter.preview_caller_turn(
@@ -932,6 +933,12 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             and fallback_failure_session.flow_manager_adapter.pending_transition is not None
             and fallback_failure_session.flow_manager_adapter.pending_transition.get("to") == "greet"
         ),
+        "flowManagerFallbackFailureDoesNotPublishTerminalHandoff": (
+            fallback_failure_evidence.get("ok") is False
+            and fallback_failure_evidence.get("error") == "flowmanager_fallback_failed"
+            and fallback_failure_evidence.get("commitPolicy") == "fallback_failed"
+            and fallback_failure_evidence.get("fallbackAccepted") is False
+        ),
         "slowFlowManagerActivationBargeInRollsBack": (
             isinstance(slow_activation_result[0], asyncio.CancelledError)
             and slow_activation_manager.current_node == "call_started"
@@ -1015,6 +1022,9 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             "pendingTransition": fallback_failure_session.flow_manager_adapter.pending_transition is not None,
             "pendingClearedBeforeFollowup": fallback_failure_pending_cleared,
             "terminalCachedAfterFailure": terminal_cached_after_fallback_failure,
+            "failedEvidenceError": fallback_failure_evidence.get("error"),
+            "failedEvidenceCommitPolicy": fallback_failure_evidence.get("commitPolicy"),
+            "failedEvidenceFallbackAccepted": fallback_failure_evidence.get("fallbackAccepted"),
             "followupFlowState": fallback_failure_followup.get("flowState"),
             "followupCommitPolicy": fallback_failure_followup.get("flowManagerRuntime", {}).get("commitPolicy"),
             "followupPendingNode": (

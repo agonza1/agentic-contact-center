@@ -170,6 +170,9 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.flowManagerFallbackFailure.pendingTransition, true);
   assert.equal(payload.flowManagerFallbackFailure.pendingClearedBeforeFollowup, true);
   assert.equal(payload.flowManagerFallbackFailure.terminalCachedAfterFailure, false);
+  assert.equal(payload.flowManagerFallbackFailure.failedEvidenceError, "flowmanager_fallback_failed");
+  assert.equal(payload.flowManagerFallbackFailure.failedEvidenceCommitPolicy, "fallback_failed");
+  assert.equal(payload.flowManagerFallbackFailure.failedEvidenceFallbackAccepted, false);
   assert.equal(payload.flowManagerFallbackFailure.followupFlowState, "greet");
   assert.equal(payload.flowManagerFallbackFailure.followupCommitPolicy, "preview_until_output_delivery_ack");
   assert.equal(payload.flowManagerFallbackFailure.followupPendingNode, "greet");
@@ -203,6 +206,7 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.checks.flowManagerFallbackFailureClosesZeroAudioLifecycle, true);
   assert.equal(payload.checks.flowManagerFallbackFailureClearsPendingDelivery, true);
   assert.equal(payload.checks.flowManagerFallbackFailureDoesNotCacheSyntheticTerminal, true);
+  assert.equal(payload.checks.flowManagerFallbackFailureDoesNotPublishTerminalHandoff, true);
   assert.deepEqual(payload.activeTasks.cancelled.sort(), ["agent", "tts"]);
 });
 

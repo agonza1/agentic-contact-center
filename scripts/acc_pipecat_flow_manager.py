@@ -362,23 +362,35 @@ class AccPipecatFlowManagerAdapter:
                 )
             except Exception as exc:
                 fallback_error = exc
-            evidence = {
+            evidence_base = {
                 "ok": False,
                 "runtimeAdapter": "pipecat_flows.FlowManager",
-                "error": "flowmanager_runtime_failed_closed",
-                "detail": str(error),
                 "currentNode": getattr(self.manager, "current_node", None),
                 "fallbackNode": "wrap",
-                "commitPolicy": "terminal_handoff",
                 "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
             }
-            self.last_evidence = evidence
             if fallback_error is not None:
                 # ACC did not accept the terminal handoff, so do not cache the
-                # synthetic default as an authoritative response. Reopen the
-                # preview gate and let a later caller turn consult ACC again.
+                # synthetic default or publish terminal-handoff evidence as an
+                # authoritative response. Preserve the failed attempt until a
+                # later caller turn consults ACC again.
+                self.last_evidence = {
+                    **evidence_base,
+                    "error": "flowmanager_fallback_failed",
+                    "detail": str(fallback_error),
+                    "triggerError": str(error),
+                    "commitPolicy": "fallback_failed",
+                    "fallbackAccepted": False,
+                }
                 self._transition_available.set()
                 raise fallback_error
+            evidence = {
+                **evidence_base,
+                "error": "flowmanager_runtime_failed_closed",
+                "detail": str(error),
+                "commitPolicy": "terminal_handoff",
+                "fallbackAccepted": True,
+            }
             if self.manager and self.initialized:
                 try:
                     await self.activate_node("wrap", reason="flowmanager_runtime_failure")
