@@ -25,6 +25,16 @@ export interface PipecatFlowManagerNodeHandlerPlan {
   guardIds: string[];
 }
 
+export interface PipecatFlowManagerAdapterInvocation {
+  id: string;
+  source: "acc_pipecat_voice_pipeline";
+  target: "pipecat_flows.FlowManager";
+  inputFrame: string;
+  handlerResult: string;
+  commitPolicy: "preview_until_output_delivery_ack" | "terminal_handoff";
+  failClosedFallback: FlowState;
+}
+
 export interface PipecatFlowManagerRuntimePlanValidation {
   ok: boolean;
   missingRequiredNodes: FlowState[];
@@ -99,6 +109,36 @@ const FLOW_MANAGER_TRANSITIONS: Readonly<Record<FlowState, readonly FlowState[]>
   steered_response: ["wrap"],
   wrap: [],
 };
+
+const FLOW_MANAGER_ADAPTER_INVOCATIONS: readonly PipecatFlowManagerAdapterInvocation[] = [
+  {
+    id: "caller_transcript_to_flowmanager_node",
+    source: "acc_pipecat_voice_pipeline",
+    target: "pipecat_flows.FlowManager",
+    inputFrame: "TranscriptionFrame",
+    handlerResult: "ACC caller-turn preview with flowState, agentText, events, and snapshotVersion",
+    commitPolicy: "preview_until_output_delivery_ack",
+    failClosedFallback: "wrap",
+  },
+  {
+    id: "operator_control_to_flowmanager_node",
+    source: "acc_pipecat_voice_pipeline",
+    target: "pipecat_flows.FlowManager",
+    inputFrame: "ACC operator control event",
+    handlerResult: "bounded steer result for steered_response or wrap",
+    commitPolicy: "preview_until_output_delivery_ack",
+    failClosedFallback: "wrap",
+  },
+  {
+    id: "runtime_failure_to_flowmanager_wrap",
+    source: "acc_pipecat_voice_pipeline",
+    target: "pipecat_flows.FlowManager",
+    inputFrame: "Pipeline error or interruption frame",
+    handlerResult: "fail-closed wrap/handoff event set",
+    commitPolicy: "terminal_handoff",
+    failClosedFallback: "wrap",
+  },
+] as const;
 
 function guardIdsForTransition(
   sourceNode: FlowState,
@@ -201,6 +241,7 @@ export function buildPipecatFlowManagerRuntimePlan(input: {
     adapterCutoverPending: true,
     implementationEntryPoint: "scripts/acc_pipecat_voice_pipeline.py",
     retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
+    adapterInvocations: FLOW_MANAGER_ADAPTER_INVOCATIONS,
     nodeHandlers,
     cutoverSequence: FLOW_MANAGER_CUTOVER_SEQUENCE,
     nextPendingCutoverStep,
