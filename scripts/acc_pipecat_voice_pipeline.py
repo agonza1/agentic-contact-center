@@ -569,8 +569,15 @@ class AccVoicePipelineSession:
         except asyncio.CancelledError:
             # The first PCM frame is already downstream at this boundary. Finish
             # the in-flight commit so ACC evidence reflects the delivered turn,
-            # then preserve the caller's cancellation for the TTS task.
-            commit_ok, commit_result = await commit_task
+            # even if a second shutdown cancellation arrives before HTTP returns.
+            while True:
+                try:
+                    commit_ok, commit_result = await asyncio.shield(commit_task)
+                    break
+                except asyncio.CancelledError:
+                    if commit_task.done():
+                        commit_ok, commit_result = commit_task.result()
+                        break
             if not commit_ok:
                 exc = commit_result
                 self.discard_pending_caller_turn_commit("delivery_ack_commit_rejected_after_cancellation")

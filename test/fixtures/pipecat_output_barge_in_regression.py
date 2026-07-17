@@ -256,6 +256,52 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         pipeline.json_http = original_json_http
     failing_cancel_stages = failing_cancel_session.stage_events
 
+    repeated_cancel_commit_started = threading.Event()
+    release_repeated_cancel_commit = threading.Event()
+    repeated_cancel_commit_calls: list[dict[str, Any]] = []
+
+    def fake_repeated_cancel_delivery_http(method: str, url: str, payload: dict[str, Any] | None = None, timeout: float = 30) -> dict[str, Any]:
+        if method == "POST" and url.endswith("/caller-turn/commit"):
+            repeated_cancel_commit_started.set()
+            release_repeated_cancel_commit.wait(1)
+            repeated_cancel_commit_calls.append(payload or {})
+            return {
+                "flowState": "greet",
+                "transcript": [
+                    {"speaker": "caller", "text": (payload or {}).get("text", ""), "timestamp": "fixture"},
+                    {"speaker": "agent", "text": "Repeated cancellation still cleans up.", "timestamp": "fixture"},
+                ],
+            }
+        return original_json_http(method, url, payload, timeout)
+
+    repeated_cancel_session = build_session("repeated-cancel-during-delivery-commit")
+    install_fake_synthesizer(repeated_cancel_session, chunks=3)
+    await repeated_cancel_session.flow_manager_adapter.initialize()
+    repeated_cancel_session.flow_manager_adapter.stage_transition("greet", reason="caller_turn_preview")
+    repeated_cancel_session.set_pending_caller_turn_commit(
+        payload={"text": "Cancel twice while commit finishes", "conversationMode": "free_caller"},
+        expected_agent_text="Repeated cancellation still cleans up.",
+        output_generation=repeated_cancel_session.output_generation,
+    )
+    repeated_cancel_processor = CapturingTtsProcessor(repeated_cancel_session)
+    pipeline.json_http = fake_repeated_cancel_delivery_http
+    try:
+        repeated_cancel_task = asyncio.create_task(
+            repeated_cancel_processor.process_frame(
+                TextFrame("Repeated cancellation still cleans up."),
+                FrameDirection.DOWNSTREAM,
+            )
+        )
+        assert await asyncio.to_thread(repeated_cancel_commit_started.wait, 1)
+        repeated_cancel_barge_in = repeated_cancel_session.cancel_output("fixture_barge_in_during_repeated_cancel_commit")
+        repeated_cancel_task.cancel()
+        release_repeated_cancel_commit.set()
+        repeated_cancel_result = await asyncio.gather(repeated_cancel_task, return_exceptions=True)
+    finally:
+        release_repeated_cancel_commit.set()
+        pipeline.json_http = original_json_http
+    repeated_cancel_stages = repeated_cancel_session.stage_events
+
     failed_delivery_requests: list[str] = []
 
     def fake_failed_delivery_http(method: str, url: str, payload: dict[str, Any] | None = None, timeout: float = 30) -> dict[str, Any]:
@@ -521,6 +567,18 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
                 for event in failing_cancel_stages
             )
         ),
+        "repeatedCancellationWaitsForDeliveryCommitCleanup": (
+            len(repeated_cancel_commit_calls) == 1
+            and isinstance(repeated_cancel_result[0], asyncio.CancelledError)
+            and repeated_cancel_barge_in.get("outputChunksEnqueued") == 1
+            and repeated_cancel_session.pending_caller_turn_commit is None
+            and repeated_cancel_session.flow_manager_adapter.pending_transition is None
+            and any(
+                event["stage"] == "acc.caller_turn_delivery_committed"
+                and event.get("outputInterruptedAfterDelivery") is True
+                for event in repeated_cancel_stages
+            )
+        ),
         "flowManagerActivationFailureFailsDeliveryCommit": failed_delivery_requests == ["fallback"],
         "flowManagerActivationFailureEmitsNoPreviewAudio": len(failed_delivery_audio) == 0 and failed_delivery_session.output_stream_audio_bytes == 0,
         "flowManagerActivationFailureClosesTtsLifecycle": (
@@ -636,6 +694,13 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             "pendingCommit": failing_cancel_session.pending_caller_turn_commit is not None,
             "pendingTransition": failing_cancel_session.flow_manager_adapter.pending_transition is not None,
             "outputChunksAtCancel": failing_cancel_barge_in.get("outputChunksEnqueued"),
+        },
+        "repeatedCancellationDuringCommit": {
+            "commitCalls": len(repeated_cancel_commit_calls),
+            "cancelled": isinstance(repeated_cancel_result[0], asyncio.CancelledError),
+            "pendingCommit": repeated_cancel_session.pending_caller_turn_commit is not None,
+            "pendingTransition": repeated_cancel_session.flow_manager_adapter.pending_transition is not None,
+            "outputChunksAtCancel": repeated_cancel_barge_in.get("outputChunksEnqueued"),
         },
         "stalePriorAudioPreAudioCancel": {
             "cancelled": isinstance(stale_pre_audio_result[0], asyncio.CancelledError),
