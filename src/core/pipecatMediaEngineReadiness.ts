@@ -6,8 +6,6 @@ const issue222 = "agonza1/agentic-contact-center#222";
 const issue222Url = "https://github.com/agonza1/agentic-contact-center/issues/222";
 
 export function buildPipecatMediaEngineReadinessPayload() {
-  const flowManagerBlocker =
-    "Pipecat Flows/FlowManager does not yet own the cancellation-rescue conversation flow; ACC TypeScript still owns policy hold, operator steer, proof artifacts, and queue state.";
   const liveSipProofAcceptance = {
     requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_verto_webrtc", "caller_audible_playback"],
     requiredRuntimeEndpoints: [
@@ -28,12 +26,12 @@ export function buildPipecatMediaEngineReadinessPayload() {
     proofBundleCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
   };
   const nextUnblockedSlice = {
-    id: "flow_manager_conversation_migration",
-    title: "Move cancellation-rescue policy flow into Pipecat Flows/FlowManager",
+    id: "flow_manager_runtime_qa",
+    title: "Validate the Pipecat FlowManager runtime cutover",
     adapter: "pipecat_flows",
-    entryPoint: "scripts/acc_pipecat_voice_pipeline.py",
+    entryPoint: "scripts/acc_pipecat_flow_manager.py",
     targetContract: "FlowManager nodes own cancellation-rescue state transitions while ACC TypeScript retains product state, operator controls, proof artifacts, and queue state.",
-    verification: "Run the sidecar-free FlowManager contract check plus route tests proving policy_hold and operator_steer still fail closed before #222 can be accepted.",
+    verification: "Run the real-package FlowManager runtime check plus deterministic adapter, delivery-ack, barge-in, and route regressions before accepting #222.",
     migrationStages: [
       {
         id: "sidecar_free_contract_lock",
@@ -44,12 +42,13 @@ export function buildPipecatMediaEngineReadinessPayload() {
         id: "flowmanager_node_handlers",
         deliverable: "Mirror call_started, greet, diagnose, policy_hold, operator_steer, steered_response, and wrap as Pipecat FlowManager node handlers.",
         verificationCommand: "npm run pipecat:flows:contract",
-        status: "implemented_contract_only",
+        status: "complete",
       },
       {
         id: "acc_runtime_adapter_cutover",
         deliverable: "Route caller turns through FlowManager while ACC continues to own product state, operator controls, proof artifacts, and queue state.",
-        verificationCommand: "npm test",
+        verificationCommand: "npm run pipecat:flows:runtime",
+        status: "complete",
       },
     ],
     acceptance: {
@@ -69,15 +68,15 @@ export function buildPipecatMediaEngineReadinessPayload() {
     route: "/api/pipecat-media-engine/readiness",
     issue: issue214,
     issueUrl: issue214Url,
-    status: "shared_media_live_proof_complete_flows_pending",
-    reviewReady: false,
+    status: "shared_media_and_flowmanager_runtime_complete",
+    reviewReady: true,
     pipecat14Alignment: {
       issue: issue222,
       issueUrl: issue222Url,
       status: "small_webrtc_pipeline_primary",
-      packageRequirement: "pipecat-ai[webrtc]==1.4.0",
+      packageRequirement: "pipecat-ai[webrtc]==1.4.0 + pipecat-ai-flows==1.4.0",
       primaryTransportTarget: "SmallWebRTCTransport",
-      targetPipeline: ["transport.input", "rtc-asr STT", "ACC caller-turn adapter", "Kokoro TTS", "transport.output"],
+      targetPipeline: ["transport.input", "rtc-asr STT", "Pipecat FlowManager", "ACC product-state adapter", "Kokoro TTS", "transport.output"],
       browserPrimaryBridge: {
         current: "scripts/pipecat-browser-webrtc-bridge.py",
         target: "Pipecat SmallWebRTCTransport offer route backed by a Pipeline",
@@ -99,9 +98,10 @@ export function buildPipecatMediaEngineReadinessPayload() {
         ],
       },
       flowsDecision: {
-        owner: "ACC TypeScript flow for current cancellation-rescue MVP",
+        owner: "Pipecat Flows/FlowManager runtime transition adapter",
         flowManagerRequiredNow: true,
-        rationale: "The shared browser/SIP media Pipeline is now live-proofed; the remaining #222 acceptance gap is moving the cancellation-rescue conversation structure into Pipecat Flows/FlowManager while ACC retains product state and proof ownership.",
+        runtimeImplemented: true,
+        rationale: "AccCallerTurnProcessor now delegates cancellation-rescue transition validation and delivery-ack node activation to the pinned Pipecat 1.4 FlowManager adapter; ACC retains product state, operator controls, response content, proof artifacts, queue state, and snapshot commits.",
       },
       deprecatedBridges: [
         {
@@ -114,7 +114,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
     },
     sharedEngineContract: {
       engine: "pipecat-ai",
-      callTurnEngine: "rtc-asr -> ACC caller-turn -> Kokoro",
+      callTurnEngine: "rtc-asr -> Pipecat FlowManager -> ACC product-state adapter -> Kokoro",
       normalizedAudioFrame: {
         format: "pcm_s16le",
         browserInputSampleRateHz: 16000,
@@ -182,16 +182,15 @@ export function buildPipecatMediaEngineReadinessPayload() {
       "Fixture/tester audio can now be injected through an in-process Pipecat source/sink around build_acc_voice_pipeline(), with sidecar-free contract mode retained for CI.",
       "SignalWire readiness is explicit through local webhook labels and the future SIP trunk-to-FreeSWITCH route.",
       "Operator console payloads label local_sip, signalwire_live, live_capture, generated_media, rtc_asr_live, and rtc_asr_blocked modes.",
+      "The shared caller-turn processor invokes pipecat_flows.FlowManager through scripts/acc_pipecat_flow_manager.py, guards a pending node before agent text reaches Kokoro, and activates that node on first-audio delivery acknowledgement; missing or invalid Flows runtime state fails closed through the ACC runtime-failure handoff.",
     ],
     remainingWork: [
-      "Move the cancellation-rescue conversation graph into Pipecat Flows/FlowManager while preserving ACC-owned product state, operator controls, proof artifacts, and queue state.",
-      "Use the sidecar-free FlowManager contract check to keep policy_hold, operator_steer, fail-closed fallback, and wrap transitions aligned while the conversation graph moves into Pipecat Flows.",
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
     ],
     nextUnblockedSlice,
     flowManagerContract,
     liveSipProofAcceptance,
-    reviewBlockers: [flowManagerBlocker],
+    reviewBlockers: [],
     acceptanceCriteria: [
       {
         name: "browser_webrtc_uses_pipecat_rtc_asr_kokoro",
@@ -241,16 +240,18 @@ export function buildPipecatMediaEngineReadinessPayload() {
       {
         name: "pipecat_14_small_webrtc_migration_recorded",
         passed: true,
-        evidence: "requirements-pipecat-voice.txt requests pipecat-ai[webrtc]==1.4.0, the browser sidecar imports SmallWebRTCTransport/Pipeline, and docs/runtime-reference.md records the ACC-owned Flows decision.",
+        evidence: "requirements-pipecat-voice.txt pins pipecat-ai[webrtc]==1.4.0 and pipecat-ai-flows==1.4.0; the browser sidecar imports SmallWebRTCTransport/Pipeline and the caller-turn processor invokes the matching standalone Flows runtime.",
       },
       {
         name: "pipecat_flows_flowmanager_owns_conversation_flow",
-        passed: false,
-        evidence: "The FlowManager node handler plan is now mirrored and contract-checked, but the caller-turn runtime adapter still runs the ACC TypeScript deterministic flow; #222 acceptance still requires routing these handlers through Pipecat FlowManager.",
+        passed: true,
+        evidence: "scripts/acc_pipecat_flow_manager.py initializes pipecat_flows.FlowManager, guards pending cancellation-rescue nodes during preview, activates them only on delivery acknowledgement, discards them on pre-output barge-in, and fails closed to ACC runtime_failure/wrap when the runtime is missing, incompatible, or rejects a transition. ACC retains product state, operator controls, response content, proof artifacts, queue state, and snapshot-version commits.",
       },
     ],
     validationCommands: [
       "npm run pipecat:flows:contract",
+      "npm run pipecat:flows:runtime",
+      "python3 test/fixtures/pipecat_flowmanager_adapter_regression.py",
       "npm test",
       "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
     ],

@@ -25,6 +25,7 @@ from uuid import uuid4
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PIPELINE_SCRIPT = REPO_ROOT / "scripts" / "acc_pipecat_voice_pipeline.py"
+FLOW_MANAGER_SCRIPT = REPO_ROOT / "scripts" / "acc_pipecat_flow_manager.py"
 LOCAL_RUNTIME_PATH = REPO_ROOT / ".pipecat-runtime"
 
 
@@ -45,6 +46,8 @@ def current_git_head() -> str | None:
 
 def build_contract_payload() -> dict[str, object]:
     pipeline_source = PIPELINE_SCRIPT.read_text(encoding="utf-8")
+    flow_manager_source = FLOW_MANAGER_SCRIPT.read_text(encoding="utf-8")
+    shared_runtime_source = pipeline_source + "\n" + flow_manager_source
     required_contract_checks = {
         "contract_constant": "ACC_VOICE_PIPELINE_CONTRACT",
         "pipeline_builder": "def build_acc_voice_pipeline",
@@ -54,6 +57,8 @@ def build_contract_payload() -> dict[str, object]:
         "rtc_asr_interim_events": "stt.transcript_interim",
         "rtc_asr_connection_reuse": "persistentSession",
         "acc_turn_processor": "AccCallerTurnProcessor(session)",
+        "flow_manager_adapter": "AccPipecatFlowManagerAdapter",
+        "flow_manager_runtime": "pipecat_flows.FlowManager",
         "kokoro_tts_processor": "KokoroTtsProcessor(session)",
         "transport_input_boundary": "transport_input",
         "transport_output_boundary": "transport_output",
@@ -65,7 +70,7 @@ def build_contract_payload() -> dict[str, object]:
         "interruption_latency": "transportFlushLatencyMs",
     }
     contract_checks = {
-        name: {"token": token, "present": token in pipeline_source}
+        name: {"token": token, "present": token in shared_runtime_source}
         for name, token in required_contract_checks.items()
     }
     missing = [check["token"] for check in contract_checks.values() if not check["present"]]
@@ -79,7 +84,8 @@ def build_contract_payload() -> dict[str, object]:
         "entryPoint": "scripts/pipecat-fixture-pipeline-smoke.py",
         "targetPipelineBuilder": "scripts/acc_pipecat_voice_pipeline.py:build_acc_voice_pipeline",
         "targetPipelineSha256": hashlib.sha256(pipeline_source.encode("utf-8")).hexdigest(),
-        "targetContract": "fixture PCM/WAV -> InputAudioRawFrame -> rtc-asr -> ACC caller-turn -> Kokoro -> captured OutputAudioRawFrame proof",
+        "targetFlowManagerSha256": hashlib.sha256(flow_manager_source.encode("utf-8")).hexdigest(),
+        "targetContract": "fixture PCM/WAV -> InputAudioRawFrame -> rtc-asr -> Pipecat FlowManager -> ACC product-state adapter -> Kokoro -> captured OutputAudioRawFrame proof",
         "sidecarsRequired": False,
         "normalOperationSidecars": ["ACC", "rtc-asr", "Kokoro"],
         "fixtureInput": {

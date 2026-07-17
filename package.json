@@ -47,6 +47,7 @@
     "pipecat:tracks:proof": "python3 scripts/pipecat-track-recording-proof.py",
     "pipecat:tester:scenarios": "python3 scripts/pipecat-tester-agent-scenarios.py",
     "pipecat:flows:contract": "npm run build && node scripts/pipecat-flowmanager-contract-check.mjs",
+    "pipecat:flows:runtime": "python3 scripts/pipecat-flowmanager-runtime-check.py",
     "pages:cluecon": "npm run build && node scripts/cluecon-pages-export.mjs"
   },
   "engines": {

@@ -1,4 +1,5 @@
 pipecat-ai[webrtc]==1.4.0
+pipecat-ai-flows==1.4.0
 websockets==15.0.1
 aiortc==1.14.0
 fastapi==0.124.4

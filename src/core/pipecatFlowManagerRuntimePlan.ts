@@ -71,11 +71,10 @@ const FLOW_MANAGER_CUTOVER_SEQUENCE: readonly PipecatFlowManagerCutoverStep[] = 
   },
   {
     id: "route_caller_turns_through_flowmanager",
-    status: "pending",
+    status: "complete",
     owner: "Pipecat FlowManager adapter",
-    evidence: "Caller-turn runtime must invoke pipecat_flows.FlowManager node handlers before #222 can be accepted.",
-    verificationCommand: "npm test",
-    blocker: "typescript_deterministic_flow_still_owns_runtime_turns",
+    evidence: "AccCallerTurnProcessor delegates delivery-ack previews to AccPipecatFlowManagerAdapter, which guards a pending real pipecat_flows.FlowManager node before TTS and activates it only on output delivery acknowledgement.",
+    verificationCommand: "npm run pipecat:flows:runtime",
   },
 ] as const;
 
@@ -95,19 +94,19 @@ const FLOW_MANAGER_CUTOVER_PRECONDITIONS = [
   {
     id: "caller_turn_adapter_cutover",
     evidence: "ACC caller turns are routed through pipecat_flows.FlowManager while ACC retains product state, operator controls, proof artifacts, and queue state.",
-    verificationCommand: "npm test",
-    satisfied: false,
+    verificationCommand: "npm run pipecat:flows:runtime",
+    satisfied: true,
   },
 ] as const;
 
 const FLOW_MANAGER_TRANSITIONS: Readonly<Record<FlowState, readonly FlowState[]>> = {
-  call_started: ["greet", "diagnose", "wrap"],
-  greet: ["diagnose", "wrap"],
-  diagnose: ["policy_hold", "wrap"],
-  policy_hold: ["operator_steer", "wrap"],
-  operator_steer: ["steered_response", "wrap"],
-  steered_response: ["wrap"],
-  wrap: [],
+  call_started: ["call_started", "greet", "diagnose", "wrap"],
+  greet: ["greet", "diagnose", "wrap"],
+  diagnose: ["diagnose", "policy_hold", "wrap"],
+  policy_hold: ["policy_hold", "operator_steer", "wrap"],
+  operator_steer: ["operator_steer", "steered_response", "wrap"],
+  steered_response: ["steered_response", "wrap"],
+  wrap: ["wrap"],
 };
 
 const FLOW_MANAGER_ADAPTER_INVOCATIONS: readonly PipecatFlowManagerAdapterInvocation[] = [
@@ -121,20 +120,11 @@ const FLOW_MANAGER_ADAPTER_INVOCATIONS: readonly PipecatFlowManagerAdapterInvoca
     failClosedFallback: "wrap",
   },
   {
-    id: "operator_control_to_flowmanager_node",
-    source: "acc_pipecat_voice_pipeline",
-    target: "pipecat_flows.FlowManager",
-    inputFrame: "ACC operator control event",
-    handlerResult: "bounded steer result for steered_response or wrap",
-    commitPolicy: "preview_until_output_delivery_ack",
-    failClosedFallback: "wrap",
-  },
-  {
     id: "runtime_failure_to_flowmanager_wrap",
     source: "acc_pipecat_voice_pipeline",
     target: "pipecat_flows.FlowManager",
-    inputFrame: "Pipeline error or interruption frame",
-    handlerResult: "fail-closed wrap/handoff event set",
+    inputFrame: "FlowManager initialization or transition failure",
+    handlerResult: "ACC runtime_failure fallback with terminal wrap/handoff evidence",
     commitPolicy: "terminal_handoff",
     failClosedFallback: "wrap",
   },
@@ -236,10 +226,12 @@ export function buildPipecatFlowManagerRuntimePlan(input: {
   const nextPendingCutoverStep = FLOW_MANAGER_CUTOVER_SEQUENCE.find((step) => step.status === "pending") ?? null;
 
   return {
-    status: "node_handlers_mirrored_adapter_cutover_pending",
+    status: "runtime_adapter_wired",
     runtimeAdapter: "pipecat_flows.FlowManager",
-    adapterCutoverPending: true,
-    implementationEntryPoint: "scripts/acc_pipecat_voice_pipeline.py",
+    adapterCutoverPending: false,
+    implementationEntryPoint: "scripts/acc_pipecat_flow_manager.py",
+    runtimePackageRequirement: "pipecat-ai-flows==1.4.0",
+    runtimeVerificationCommand: "npm run pipecat:flows:runtime",
     retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
     adapterInvocations: FLOW_MANAGER_ADAPTER_INVOCATIONS,
     nodeHandlers,

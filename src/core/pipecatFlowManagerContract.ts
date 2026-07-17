@@ -147,10 +147,12 @@ export function buildPipecatFlowManagerContractPayload() {
   return {
     status: runtimePlan.status,
     sidecarFree: true,
-    implementationEntryPoint: "scripts/acc_pipecat_voice_pipeline.py",
+    implementationEntryPoint: "scripts/acc_pipecat_flow_manager.py",
     parityHarnessCommand: "npm run pipecat:flows:contract",
-    currentOwner: "ACC TypeScript flow",
-    targetOwner: "Pipecat Flows/FlowManager",
+    runtimeHarnessCommand: "npm run pipecat:flows:runtime",
+    currentOwner: "Pipecat Flows/FlowManager transition adapter",
+    targetOwner: "Pipecat Flows/FlowManager transition adapter",
+    runtimePackages: ["pipecat-ai[webrtc]==1.4.0", "pipecat-ai-flows==1.4.0"],
     requiredNodes: PIPECAT_FLOW_MANAGER_REQUIRED_NODES,
     nodeSpecs: PIPECAT_FLOW_MANAGER_NODE_SPECS,
     requiredGuards: PIPECAT_FLOW_MANAGER_REQUIRED_GUARDS,
@@ -190,6 +192,6 @@ export function buildPipecatFlowManagerContractPayload() {
       },
     ],
     parityFixtures: PIPECAT_FLOW_MANAGER_PARITY_FIXTURES,
-    acceptanceBlockedUntil: "The ACC caller-turn runtime adapter routes these node handlers through Pipecat FlowManager instead of the TypeScript deterministic flow.",
+    acceptanceBlockedUntil: null,
   };
 }

@@ -25,6 +25,7 @@ from pipecat.frames.frames import TextFrame, TranscriptionFrame, TTSAudioRawFram
 from pipecat.processors.frame_processor import FrameDirection
 
 import acc_pipecat_voice_pipeline as pipeline
+from acc_pipecat_flow_manager import AccPipecatFlowManagerAdapter
 from acc_pipecat_voice_pipeline import AccCallerTurnProcessor, AccVoicePipelineSession, KokoroTtsProcessor
 
 
@@ -55,11 +56,30 @@ class CapturingCallerTurnProcessor(AccCallerTurnProcessor):
         self.frames.append(frame)
 
 
+class FakeFlowManager:
+    def __init__(self, **_kwargs: Any):
+        self.current_node: str | None = None
+
+    async def initialize(self, initial_node: dict[str, Any]) -> None:
+        self.current_node = initial_node["name"]
+
+    async def set_node_from_config(self, node: dict[str, Any]) -> None:
+        self.current_node = node["name"]
+
+
 def build_session(call_id: str) -> AccVoicePipelineSession:
+    flow_manager = AccPipecatFlowManagerAdapter(
+        acc_url="http://127.0.0.1:8026",
+        call_id=call_id,
+        request_json=lambda method, url, payload: pipeline.json_http(method, url, payload),
+        manager_factory=FakeFlowManager,
+        version_provider=lambda _package: "1.4.0",
+    )
     return AccVoicePipelineSession(
         acc_url="http://127.0.0.1:8026",
         call_id=call_id,
         readiness=SimpleNamespace(stt_model="fixture", stt_backend="fixture"),
+        flow_manager_adapter=flow_manager,
     )
 
 

@@ -28,11 +28,11 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
 
     assert.match(stdout, /Saved Pipecat media engine readiness artifact/);
     assert.match(stdout, /Updated latest Pipecat media engine readiness artifact/);
-    assert.match(stdout, /Review ready: no/);
-    assert.match(stdout, /Review blockers: 1/);
-    assert.match(stdout, /Acceptance criteria: 10\/11/);
-    assert.match(stdout, /Failing criteria: pipecat_flows_flowmanager_owns_conversation_flow/);
-    assert.match(stdout, /Next slice: flow_manager_conversation_migration/);
+    assert.match(stdout, /Review ready: yes/);
+    assert.match(stdout, /Review blockers: 0/);
+    assert.match(stdout, /Acceptance criteria: 11\/11/);
+    assert.match(stdout, /Failing criteria: none/);
+    assert.match(stdout, /Next slice: flow_manager_runtime_qa/);
     assert.match(stdout, /Runtime prerequisites: acc_http, freeswitch_sip, freeswitch_esl, freeswitch_verto, pipecat_verto_bridge, rtc_asr_ws, kokoro_http/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
@@ -75,26 +75,24 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.equal(artifact.issue, "agonza1/agentic-contact-center#214");
     assert.doesNotThrow(() => new Date(artifact.generatedAt).toISOString());
     assert.deepEqual(artifact.artifactSummary, {
-      readinessStatus: "shared_media_live_proof_complete_flows_pending",
-      reviewReady: false,
-      reviewBlockers: [
-        "Pipecat Flows/FlowManager does not yet own the cancellation-rescue conversation flow; ACC TypeScript still owns policy hold, operator steer, proof artifacts, and queue state.",
-      ],
-      reviewBlockerCount: 1,
-      acceptanceCriteriaPassed: 10,
+      readinessStatus: "shared_media_and_flowmanager_runtime_complete",
+      reviewReady: true,
+      reviewBlockers: [],
+      reviewBlockerCount: 0,
+      acceptanceCriteriaPassed: 11,
       acceptanceCriteriaTotal: 11,
-      failingAcceptanceCriteria: ["pipecat_flows_flowmanager_owns_conversation_flow"],
+      failingAcceptanceCriteria: [],
       implementedAdapters: ["browser_webrtc", "sip_freeswitch_verto", "sip_freeswitch_rtp_legacy", "fixture_audio_injection"],
       blockedAdapters: ["signalwire_sip_trunk"],
       nextUnblockedSlice: {
-        id: "flow_manager_conversation_migration",
-        title: "Move cancellation-rescue policy flow into Pipecat Flows/FlowManager",
+        id: "flow_manager_runtime_qa",
+        title: "Validate the Pipecat FlowManager runtime cutover",
         adapter: "pipecat_flows",
-        entryPoint: "scripts/acc_pipecat_voice_pipeline.py",
+        entryPoint: "scripts/acc_pipecat_flow_manager.py",
         migrationStages: [
           { id: "sidecar_free_contract_lock", verificationCommand: "npm run pipecat:flows:contract" },
           { id: "flowmanager_node_handlers", verificationCommand: "npm run pipecat:flows:contract" },
-          { id: "acc_runtime_adapter_cutover", verificationCommand: "npm test" },
+          { id: "acc_runtime_adapter_cutover", verificationCommand: "npm run pipecat:flows:runtime" },
         ],
       },
       liveSipProofAcceptance: {
@@ -116,9 +114,11 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         ],
         proofBundleCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
       },
-      remainingWorkCount: 3,
+      remainingWorkCount: 1,
       validationCommands: [
         "npm run pipecat:flows:contract",
+        "npm run pipecat:flows:runtime",
+        "python3 test/fixtures/pipecat_flowmanager_adapter_regression.py",
         "npm test",
         "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
       ],
@@ -135,11 +135,11 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     });
     assert.equal(artifact.readiness.ok, true);
     assert.equal(artifact.readiness.route, "/api/pipecat-media-engine/readiness");
-    assert.equal(artifact.readiness.status, "shared_media_live_proof_complete_flows_pending");
-    assert.equal(artifact.readiness.acceptanceCriteria.filter((criterion) => criterion.passed).length, 10);
+    assert.equal(artifact.readiness.status, "shared_media_and_flowmanager_runtime_complete");
+    assert.equal(artifact.readiness.acceptanceCriteria.filter((criterion) => criterion.passed).length, 11);
     assert.equal(artifact.readiness.acceptanceCriteria.length, 11);
     assert.equal(artifact.readiness.acceptanceCriteria.find((criterion) => criterion.name === "pipecat_14_small_webrtc_migration_recorded")?.passed, true);
-    assert.equal(artifact.readiness.acceptanceCriteria.find((criterion) => criterion.name === "pipecat_flows_flowmanager_owns_conversation_flow")?.passed, false);
+    assert.equal(artifact.readiness.acceptanceCriteria.find((criterion) => criterion.name === "pipecat_flows_flowmanager_owns_conversation_flow")?.passed, true);
     assert.deepEqual(latestArtifact, artifact);
   } finally {
     await rm(tempDir, { recursive: true, force: true });

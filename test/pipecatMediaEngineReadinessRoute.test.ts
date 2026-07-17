@@ -26,7 +26,7 @@ function requestJson(port: number, route: string): Promise<{ statusCode: number;
   });
 }
 
-test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP contract and honest SIP blocker", async () => {
+test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP and FlowManager contract", async () => {
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const address = server.address();
@@ -40,15 +40,16 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.equal(payload.ok, true);
     assert.equal(payload.route, "/api/pipecat-media-engine/readiness");
     assert.equal(payload.issue, "agonza1/agentic-contact-center#214");
-    assert.equal(payload.status, "shared_media_live_proof_complete_flows_pending");
-    assert.equal(payload.reviewReady, false);
+    assert.equal(payload.status, "shared_media_and_flowmanager_runtime_complete");
+    assert.equal(payload.reviewReady, true);
     assert.equal(payload.pipecat14Alignment.issue, "agonza1/agentic-contact-center#222");
-    assert.equal(payload.pipecat14Alignment.packageRequirement, "pipecat-ai[webrtc]==1.4.0");
+    assert.equal(payload.pipecat14Alignment.packageRequirement, "pipecat-ai[webrtc]==1.4.0 + pipecat-ai-flows==1.4.0");
     assert.equal(payload.pipecat14Alignment.primaryTransportTarget, "SmallWebRTCTransport");
     assert.deepEqual(payload.pipecat14Alignment.targetPipeline, [
       "transport.input",
       "rtc-asr STT",
-      "ACC caller-turn adapter",
+      "Pipecat FlowManager",
+      "ACC product-state adapter",
       "Kokoro TTS",
       "transport.output",
     ]);
@@ -65,16 +66,19 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       "Reuse the same RtcAsrTurnProcessor, AccCallerTurnProcessor, and KokoroTtsProcessor stage-event contract as the browser SmallWebRTC path.",
       "Keep SIP/RTP and WebRTC DTLS-SRTP/Opus ownership inside FreeSWITCH; Pipecat should only see decoded PCM frames.",
     ]);
-    assert.equal(payload.pipecat14Alignment.flowsDecision.owner, "ACC TypeScript flow for current cancellation-rescue MVP");
+    assert.equal(payload.pipecat14Alignment.flowsDecision.owner, "Pipecat Flows/FlowManager runtime transition adapter");
     assert.equal(payload.pipecat14Alignment.flowsDecision.flowManagerRequiredNow, true);
+    assert.equal(payload.pipecat14Alignment.flowsDecision.runtimeImplemented, true);
     assert.deepEqual(payload.validationCommands, [
       "npm run pipecat:flows:contract",
+      "npm run pipecat:flows:runtime",
+      "python3 test/fixtures/pipecat_flowmanager_adapter_regression.py",
       "npm test",
       "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
     ]);
 
     assert.equal(payload.sharedEngineContract.engine, "pipecat-ai");
-    assert.equal(payload.sharedEngineContract.callTurnEngine, "rtc-asr -> ACC caller-turn -> Kokoro");
+    assert.equal(payload.sharedEngineContract.callTurnEngine, "rtc-asr -> Pipecat FlowManager -> ACC product-state adapter -> Kokoro");
     assert.equal(payload.sharedEngineContract.normalizedAudioFrame.format, "pcm_s16le");
     assert.equal(payload.sharedEngineContract.normalizedAudioFrame.sipCodecBoundary.includes("PCMU/8000 RTP"), true);
 
@@ -106,9 +110,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     assert.match(fixtureAdapter.blocker, /sidecars/);
     assert.match(adapters.find((adapter: any) => adapter.id === "signalwire_sip_trunk").blocker, /past-call import remains out of scope/);
 
-    assert.deepEqual(payload.reviewBlockers, [
-      "Pipecat Flows/FlowManager does not yet own the cancellation-rescue conversation flow; ACC TypeScript still owns policy hold, operator steer, proof artifacts, and queue state.",
-    ]);
+    assert.deepEqual(payload.reviewBlockers, []);
     assert.equal(
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "browser_webrtc_uses_pipecat_rtc_asr_kokoro").passed,
       true,
@@ -139,11 +141,11 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
     );
     assert.equal(
       payload.acceptanceCriteria.find((criterion: any) => criterion.name === "pipecat_flows_flowmanager_owns_conversation_flow").passed,
-      false,
+      true,
     );
     assert.equal(payload.remainingWork.some((item: string) => item.includes("Implement the Verto incoming-call media answer")), false);
     assert.equal(payload.remainingWork.some((item: string) => item.includes("Capture live softphone evidence")), false);
-    assert.equal(payload.remainingWork.some((item: string) => item.includes("FlowManager")), true);
+    assert.equal(payload.remainingWork.some((item: string) => item.includes("FlowManager")), false);
     assert.deepEqual(payload.liveSipProofAcceptance, {
       requiredManifestFlags: ["live_capture", "rtc_asr_live", "pipecat_verto_webrtc", "caller_audible_playback"],
       requiredRuntimeEndpoints: [
@@ -164,12 +166,12 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       proofBundleCommand: "node scripts/live-sip-proof-bundle.mjs --require-live-capture --require-rtc-asr-live --require-caller-playback",
     });
     assert.deepEqual(payload.nextUnblockedSlice, {
-      id: "flow_manager_conversation_migration",
-      title: "Move cancellation-rescue policy flow into Pipecat Flows/FlowManager",
+      id: "flow_manager_runtime_qa",
+      title: "Validate the Pipecat FlowManager runtime cutover",
       adapter: "pipecat_flows",
-      entryPoint: "scripts/acc_pipecat_voice_pipeline.py",
+      entryPoint: "scripts/acc_pipecat_flow_manager.py",
       targetContract: "FlowManager nodes own cancellation-rescue state transitions while ACC TypeScript retains product state, operator controls, proof artifacts, and queue state.",
-      verification: "Run the sidecar-free FlowManager contract check plus route tests proving policy_hold and operator_steer still fail closed before #222 can be accepted.",
+      verification: "Run the real-package FlowManager runtime check plus deterministic adapter, delivery-ack, barge-in, and route regressions before accepting #222.",
       migrationStages: [
         {
           id: "sidecar_free_contract_lock",
@@ -180,12 +182,13 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
           id: "flowmanager_node_handlers",
           deliverable: "Mirror call_started, greet, diagnose, policy_hold, operator_steer, steered_response, and wrap as Pipecat FlowManager node handlers.",
           verificationCommand: "npm run pipecat:flows:contract",
-          status: "implemented_contract_only",
+          status: "complete",
         },
         {
           id: "acc_runtime_adapter_cutover",
           deliverable: "Route caller turns through FlowManager while ACC continues to own product state, operator controls, proof artifacts, and queue state.",
-          verificationCommand: "npm test",
+          verificationCommand: "npm run pipecat:flows:runtime",
+          status: "complete",
         },
       ],
       acceptance: {
@@ -208,7 +211,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP con
       "wrap",
     ]);
     assert.equal(payload.flowManagerContract.sidecarFree, true);
-    assert.equal(payload.flowManagerContract.status, "node_handlers_mirrored_adapter_cutover_pending");
+    assert.equal(payload.flowManagerContract.status, "runtime_adapter_wired");
     assert.equal(payload.flowManagerContract.runtimePlan.runtimeAdapter, "pipecat_flows.FlowManager");
     assert.deepEqual(payload.flowManagerContract.runtimePlan.missingRequiredNodes, []);
     assert.equal(payload.flowManagerContract.requiredGuards.every((guard: any) => guard.failClosed), true);
@@ -238,14 +241,14 @@ test("GET /api/pipecat-flowmanager/contract exposes the sidecar-free migration c
     assert.equal(response.statusCode, 200);
 
     const payload = response.payload;
-    assert.equal(payload.status, "node_handlers_mirrored_adapter_cutover_pending");
+    assert.equal(payload.status, "runtime_adapter_wired");
     assert.equal(payload.sidecarFree, true);
     assert.equal(payload.parityHarnessCommand, "npm run pipecat:flows:contract");
     assert.equal(payload.runtimePlan.runtimeAdapter, "pipecat_flows.FlowManager");
     assert.deepEqual(payload.runtimePlan.cutoverSequence.map((step: any) => [step.id, step.status]), [
       ["mirror_node_handlers", "complete"],
       ["lock_fail_closed_parity", "complete"],
-      ["route_caller_turns_through_flowmanager", "pending"],
+      ["route_caller_turns_through_flowmanager", "complete"],
     ]);
     assert.deepEqual(payload.requiredNodes, [
       "call_started",
@@ -259,7 +262,7 @@ test("GET /api/pipecat-flowmanager/contract exposes the sidecar-free migration c
     assert.equal(payload.requiredGuards.every((guard: any) => guard.failClosed), true);
     assert.equal(
       payload.adapterCutoverPreconditions.find((precondition: any) => precondition.id === "caller_turn_adapter_cutover")?.satisfied,
-      false,
+      true,
     );
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
