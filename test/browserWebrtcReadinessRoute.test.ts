@@ -101,6 +101,9 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
 
   assert.equal(payload.ok, true);
   assert.equal(payload.normal.chunks, 6);
+  assert.equal(payload.normal.flowManager.commitPolicy, "delivery_ack_committed");
+  assert.equal(payload.normal.flowManager.currentNode, "diagnose");
+  assert.equal(payload.normal.flowManager.pendingTransition, null);
   assert.equal(payload.interrupted.chunksBeforeStop, 1);
   assert.equal(payload.interrupted.transportOutputFlushed, true);
   assert.equal(payload.resumed.chunks, 3);
@@ -152,6 +155,7 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.checks.slowFlowManagerActivationCommitsNoAudioOrAccTurn, true);
   assert.equal(payload.checks.slowCommitStartsOnlyAfterFirstAudio, true);
   assert.equal(payload.checks.slowCommitBargeInPreservesDeliveredCommit, true);
+  assert.equal(payload.checks.successfulTurnPublishesFinalizedFlowManagerEvidence, true);
   assert.equal(payload.checks.failedCommitAfterCancellationCleansPendingDelivery, true);
   assert.equal(payload.checks.stalePriorAudioCounterDoesNotPreservePreAudioCommit, true);
   assert.equal(payload.checks.flowManagerActivationFailureClosesTtsLifecycle, true);

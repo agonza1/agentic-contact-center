@@ -153,6 +153,8 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
     normal_session = build_session("output-normal")
     if not live_kokoro:
         install_fake_synthesizer(normal_session, chunks=6)
+    await normal_session.flow_manager_adapter.initialize()
+    normal_session.flow_manager_adapter.stage_transition("diagnose", reason="caller_turn_preview")
     normal_session.set_pending_caller_turn_commit(
         payload={"text": "Normal caller turn", "conversationMode": "free_caller"},
         expected_agent_text="Delivered response after acknowledgement.",
@@ -545,6 +547,11 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         "noStalePlaybackAfterInterruption": interrupted_session.output_stream_audio_bytes == sum(len(frame.audio) for frame in resumed_audio),
         "activeAgentAndTtsTasksCancelled": sorted(task_cancellation.get("cancelledTasks", [])) == ["agent", "tts"] and agent_task.cancelled() and tts_task.cancelled(),
         "callerTurnDeliveryAckCommitsAfterFirstAudio": len(delivery_commit_calls) == 1 and len(normal_audio) >= 1,
+        "successfulTurnPublishesFinalizedFlowManagerEvidence": (
+            normal_session.last_evidence.get("flowManager", {}).get("commitPolicy") == "delivery_ack_committed"
+            and normal_session.last_evidence.get("flowManager", {}).get("currentNode") == "diagnose"
+            and normal_session.last_evidence.get("flowManager", {}).get("pendingTransition") is None
+        ),
         "slowCommitStartsOnlyAfterFirstAudio": slow_commit_audio_before_cancel == 1 and slow_commit_cancellation.get("outputChunksEnqueued") == 1,
         "slowCommitBargeInPreservesDeliveredCommit": (
             len(slow_commit_calls) == 1
@@ -640,7 +647,11 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         "contract": "Kokoro PCM -> TTSStartedFrame -> paced TTSAudioRawFrame chunks -> TTSStoppedFrame; InterruptionFrame flush",
         "chunkMs": CHUNK_MS,
         "chunkBytes": CHUNK_BYTES,
-        "normal": {"chunks": len(normal_audio), "audioBytes": sum(len(frame.audio) for frame in normal_audio)},
+        "normal": {
+            "chunks": len(normal_audio),
+            "audioBytes": sum(len(frame.audio) for frame in normal_audio),
+            "flowManager": normal_session.last_evidence.get("flowManager"),
+        },
         "interrupted": {
             "chunksBeforeStop": len(interrupted_audio),
             "audioBytesBeforeStop": sum(len(frame.audio) for frame in interrupted_audio),

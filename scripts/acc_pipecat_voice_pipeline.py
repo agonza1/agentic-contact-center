@@ -614,7 +614,8 @@ class AccVoicePipelineSession:
         call = commit_result
         self.pending_caller_turn_commit = None
         if self.flow_manager_adapter is not None and self.flow_manager_adapter.pending_transition is not None:
-            self.flow_manager_adapter.finalize_pending_transition()
+            flow_manager_evidence = self.flow_manager_adapter.finalize_pending_transition()
+            self.last_evidence = {**self.last_evidence, "flowManager": flow_manager_evidence}
         flow_manager_evidence = self.flow_manager_adapter.last_evidence if self.flow_manager_adapter is not None else None
         committed_agent_text = latest_agent_text(call)
         matches_expected = committed_agent_text == expected_agent_text
