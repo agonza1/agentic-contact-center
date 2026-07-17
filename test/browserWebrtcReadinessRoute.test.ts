@@ -120,6 +120,29 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
     cancelled: true,
     outputChunksAtCancel: 1,
   });
+  assert.deepEqual(payload.failedCommitAfterCancellation, {
+    commitCalls: 1,
+    cancelled: true,
+    pendingCommit: false,
+    pendingTransition: false,
+    outputChunksAtCancel: 1,
+  });
+  assert.deepEqual(payload.stalePriorAudioPreAudioCancel, {
+    cancelled: true,
+    outputChunksAtCancel: 0,
+    pendingCommit: false,
+  });
+  assert.deepEqual(payload.flowManagerFallbackFailure.requests, ["fallback"]);
+  assert.equal(payload.flowManagerFallbackFailure.audioChunks, 0);
+  assert.equal(payload.flowManagerFallbackFailure.ttsStarted, 1);
+  assert.equal(payload.flowManagerFallbackFailure.ttsStopped, 1);
+  assert.deepEqual(payload.flowManagerFallbackFailure.turnControls, {
+    started: 1,
+    stopped: 1,
+    botSpeaking: false,
+  });
+  assert.equal(payload.flowManagerFallbackFailure.pendingCommit, false);
+  assert.equal(payload.flowManagerFallbackFailure.pendingTransition, false);
   assert.equal(payload.slowFlowManagerActivationBargeIn.audioChunks, 0);
   assert.equal(payload.slowFlowManagerActivationBargeIn.cancelled, true);
   assert.equal(payload.slowFlowManagerActivationBargeIn.currentNode, "call_started");
@@ -129,9 +152,13 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.checks.slowFlowManagerActivationCommitsNoAudioOrAccTurn, true);
   assert.equal(payload.checks.slowCommitStartsOnlyAfterFirstAudio, true);
   assert.equal(payload.checks.slowCommitBargeInPreservesDeliveredCommit, true);
+  assert.equal(payload.checks.failedCommitAfterCancellationCleansPendingDelivery, true);
+  assert.equal(payload.checks.stalePriorAudioCounterDoesNotPreservePreAudioCommit, true);
   assert.equal(payload.checks.flowManagerActivationFailureClosesTtsLifecycle, true);
   assert.equal(payload.checks.flowManagerActivationFailureRecordsNoCommittedDelivery, true);
   assert.equal(payload.checks.flowManagerActivationFailureRetainsTerminalEvidence, true);
+  assert.equal(payload.checks.flowManagerFallbackFailureClosesZeroAudioLifecycle, true);
+  assert.equal(payload.checks.flowManagerFallbackFailureClearsPendingDelivery, true);
   assert.deepEqual(payload.activeTasks.cancelled.sort(), ["agent", "tts"]);
 });
 

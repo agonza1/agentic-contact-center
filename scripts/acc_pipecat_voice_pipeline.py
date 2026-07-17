@@ -1494,6 +1494,10 @@ class KokoroTtsProcessor(FrameProcessor):
                 agentText=frame.text,
             )
         except Exception as exc:
+            if self.session.output_stream_chunk_count == 0:
+                self.session.discard_pending_caller_turn_commit("tts_synthesis_failed_before_audio")
+                await self.session.rollback_pending_caller_turn_delivery("tts_synthesis_failed_before_audio")
+            await close_zero_audio_lifecycle("tts_synthesis_failed_before_audio")
             self.session.last_evidence = {
                 **self.session.last_evidence,
                 "ok": False,

@@ -304,6 +304,48 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
     failed_delivery_stopped = [frame for frame in failed_delivery_processor.frames if isinstance(frame, TTSStoppedFrame)]
     failed_delivery_stages = [event["stage"] for event in failed_delivery_session.stage_events]
 
+    fallback_failure_requests: list[str] = []
+
+    def fake_fallback_failure_http(method: str, url: str, payload: dict[str, Any] | None = None, timeout: float = 30) -> dict[str, Any]:
+        if method == "POST" and url.endswith("/fallback"):
+            fallback_failure_requests.append("fallback")
+            raise RuntimeError("fixture FlowManager fallback request failed")
+        return original_json_http(method, url, payload, timeout)
+
+    fallback_failure_session = build_session(
+        "flowmanager-fallback-failed-before-audio",
+        manager_factory=FailingFlowManager,
+    )
+    fallback_failure_turn_controls = FakeTurnControls()
+    fallback_failure_session.turn_controls = fallback_failure_turn_controls  # type: ignore[assignment]
+    install_fake_synthesizer(fallback_failure_session, chunks=2)
+    await fallback_failure_session.flow_manager_adapter.initialize()
+    fallback_failure_session.flow_manager_adapter.stage_transition("greet", reason="caller_turn_preview")
+    fallback_failure_session.set_pending_caller_turn_commit(
+        payload={"text": "Fallback must fail closed", "conversationMode": "free_caller"},
+        expected_agent_text="This preview must not reach the caller.",
+        output_generation=fallback_failure_session.output_generation,
+    )
+    fallback_failure_processor = CapturingTtsProcessor(fallback_failure_session)
+    pipeline.json_http = fake_fallback_failure_http
+    try:
+        await fallback_failure_processor.process_frame(
+            TextFrame("This preview must not reach the caller."),
+            FrameDirection.DOWNSTREAM,
+        )
+    finally:
+        pipeline.json_http = original_json_http
+    fallback_failure_audio = [
+        frame for frame in fallback_failure_processor.frames if isinstance(frame, TTSAudioRawFrame)
+    ]
+    fallback_failure_started = [
+        frame for frame in fallback_failure_processor.frames if isinstance(frame, TTSStartedFrame)
+    ]
+    fallback_failure_stopped = [
+        frame for frame in fallback_failure_processor.frames if isinstance(frame, TTSStoppedFrame)
+    ]
+    fallback_failure_stages = [event["stage"] for event in fallback_failure_session.stage_events]
+
     slow_activation_session = build_session(
         "flowmanager-slow-activation-barge-in",
         manager_factory=SlowActivatingFlowManager,
@@ -497,6 +539,22 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             failed_delivery_session.last_evidence.get("flowManager", {}).get("ok") is False
             and failed_delivery_session.last_evidence.get("flowManager", {}).get("commitPolicy") == "terminal_handoff"
         ),
+        "flowManagerFallbackFailureClosesZeroAudioLifecycle": (
+            fallback_failure_requests == ["fallback"]
+            and len(fallback_failure_audio) == 0
+            and len(fallback_failure_started) == 1
+            and len(fallback_failure_stopped) == 1
+            and fallback_failure_turn_controls.started == 1
+            and fallback_failure_turn_controls.stopped == 1
+            and fallback_failure_turn_controls.bot_speaking is False
+        ),
+        "flowManagerFallbackFailureClearsPendingDelivery": (
+            fallback_failure_session.pending_caller_turn_commit is None
+            and fallback_failure_session.flow_manager_adapter.pending_transition is None
+            and "tts.lifecycle_closed" in fallback_failure_stages
+            and "tts.failed" in fallback_failure_stages
+            and "acc.caller_turn_delivery_committed" not in fallback_failure_stages
+        ),
         "slowFlowManagerActivationBargeInRollsBack": (
             isinstance(slow_activation_result[0], asyncio.CancelledError)
             and slow_activation_manager.current_node == "call_started"
@@ -551,6 +609,20 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             },
             "stages": failed_delivery_stages,
             "evidence": failed_delivery_session.last_evidence.get("flowManager"),
+        },
+        "flowManagerFallbackFailure": {
+            "requests": fallback_failure_requests,
+            "audioChunks": len(fallback_failure_audio),
+            "ttsStarted": len(fallback_failure_started),
+            "ttsStopped": len(fallback_failure_stopped),
+            "turnControls": {
+                "started": fallback_failure_turn_controls.started,
+                "stopped": fallback_failure_turn_controls.stopped,
+                "botSpeaking": fallback_failure_turn_controls.bot_speaking,
+            },
+            "pendingCommit": fallback_failure_session.pending_caller_turn_commit is not None,
+            "pendingTransition": fallback_failure_session.flow_manager_adapter.pending_transition is not None,
+            "stages": fallback_failure_stages,
         },
         "slowCommitBargeIn": {
             "audioChunksBeforeCancel": slow_commit_audio_before_cancel,
