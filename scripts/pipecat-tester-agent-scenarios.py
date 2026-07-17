@@ -65,6 +65,7 @@ def build_session(call_id: str) -> AccVoicePipelineSession:
     return AccVoicePipelineSession(
         acc_url="http://127.0.0.1:8026",
         call_id=call_id,
+        correlation_id=f"tester-correlation-{call_id}",
         readiness=SimpleNamespace(stt_model="tester-final-transcript", stt_backend="deterministic-fixture"),
     )
 
@@ -226,6 +227,7 @@ async def scenario_happy_path(out_dir: Path, call_id_prefix: str) -> dict[str, A
         "id": "happy_path",
         "ok": all(checks.values()),
         "description": "Tester transport injects a final caller transcript and captures the normal ACC -> Kokoro response.",
+        "correlationId": session.correlation_id,
         "callerTranscript": caller_text,
         "agentResponse": agent_text,
         "timingEvents": session.stage_events,
@@ -284,6 +286,7 @@ async def scenario_barge_in(out_dir: Path, call_id_prefix: str) -> dict[str, Any
         "id": "barge_in",
         "ok": all(checks.values()),
         "description": "Tester transport interrupts active output and proves the next caller turn uses a fresh generation.",
+        "correlationId": session.correlation_id,
         "callerTranscript": first_text,
         "agentResponse": first_agent,
         "timingEvents": session.stage_events,
@@ -319,6 +322,7 @@ async def scenario_no_speech_timeout(out_dir: Path, call_id_prefix: str) -> dict
         "id": "no_speech_timeout",
         "ok": all(checks.values()),
         "description": "Tester transport emits a no-speech timeout without mutating ACC caller-turn state.",
+        "correlationId": session.correlation_id,
         "callerTranscript": None,
         "agentResponse": None,
         "timingEvents": session.stage_events,
@@ -353,6 +357,7 @@ async def scenario_expected_transcript_mismatch(out_dir: Path, call_id_prefix: s
         "ok": all(checks.values()),
         "expectedFailureHandled": True,
         "description": "Tester transport rejects a scenario when the observed final transcript does not match the expected script.",
+        "correlationId": session.correlation_id,
         "callerTranscript": actual,
         "expectedTranscript": expected,
         "agentResponse": None,
@@ -387,6 +392,7 @@ async def scenario_transport_start_failure(out_dir: Path, call_id_prefix: str) -
         "ok": all(checks.values()),
         "expectedFailureHandled": True,
         "description": "Tester runner records transport start failure before invoking shared processors.",
+        "correlationId": session.correlation_id,
         "callerTranscript": None,
         "agentResponse": None,
         "timingEvents": session.stage_events,

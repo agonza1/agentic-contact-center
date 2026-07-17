@@ -317,9 +317,11 @@ class AccVoicePipelineSession:
         readiness: BridgeReadiness,
         evidence_callback: Callable[[dict[str, Any]], None] | None = None,
         track_recording_dir: str | Path | None = None,
+        correlation_id: str | None = None,
     ):
         self.acc_url = acc_url.rstrip("/")
         self.call_id = call_id
+        self.correlation_id = correlation_id or f"acc-pipecat-{call_id}"
         self.readiness = readiness
         self.turn_count = 0
         self.output_generation = 0
@@ -360,6 +362,7 @@ class AccVoicePipelineSession:
     def evidence_snapshot(self) -> dict[str, Any]:
         return {
             "callId": self.call_id,
+            "correlationId": self.correlation_id,
             "turnCount": self.turn_count,
             "lastEvidence": self.last_evidence,
             "lastAudioEvidence": self.last_audio_evidence,
@@ -393,6 +396,7 @@ class AccVoicePipelineSession:
             "stage": stage,
             "ok": ok,
             "callId": self.call_id,
+            "correlationId": self.correlation_id,
             "timestamp": datetime.now(UTC).isoformat(timespec="milliseconds"),
             **detail,
         }
@@ -1212,6 +1216,14 @@ class KokoroTtsProcessor(FrameProcessor):
                 await self.push_frame(
                     TTSAudioRawFrame(audio=audio_chunk, sample_rate=sample_rate, num_channels=1, context_id=context_id),
                     FrameDirection.DOWNSTREAM,
+                )
+                self.session.record_stage(
+                    "tts.audio_chunk",
+                    streamId=context_id,
+                    chunkIndex=self.session.output_stream_chunk_count + 1,
+                    audioBytes=len(audio_chunk),
+                    sampleRate=sample_rate,
+                    outputGeneration=turn_output_generation,
                 )
                 if self.session.pending_caller_turn_commit:
                     await self.session.commit_pending_caller_turn_delivery(
