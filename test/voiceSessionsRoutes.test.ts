@@ -334,6 +334,14 @@ test("voice session proof exposes session-wide correlation timeline and metrics"
       eventType: "media.playback",
       sipCallId: "correlation-proof-call",
       voiceSessionId: "cae-session-correlation",
+      outboundRtpReady: true,
+      rtpSocketSendReady: true,
+      packetCount: 4,
+      sentPacketCount: 4,
+      remoteHost: "127.0.0.1",
+      remotePort: 4000,
+      evidencePath: "artifacts/qa-correlation-001-playback-manifest.json",
+      callerPlaybackConfirmed: true,
       callerPlaybackEvidencePath: "artifacts/qa-correlation-001-playback.json",
     });
     assert.equal(playback.statusCode, 200);

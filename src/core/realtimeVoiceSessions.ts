@@ -202,6 +202,12 @@ function latencyMarkBelongsToSession(mark: LatencyMark, session: RealtimeVoiceSe
 }
 
 function normalizedArtifactPath(detail: Record<string, string | number | boolean | null>): string | null {
+  if (detail.callerPlaybackConfirmed === true) {
+    return detailString(detail, "artifactPath")
+      ?? detailString(detail, "callerPlaybackEvidencePath")
+      ?? detailString(detail, "evidencePath")
+      ?? detailString(detail, "audioWavPath");
+  }
   return detailString(detail, "artifactPath")
     ?? detailString(detail, "evidencePath")
     ?? detailString(detail, "audioWavPath")
