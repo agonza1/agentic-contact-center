@@ -219,7 +219,7 @@ async def scenario_happy_path(out_dir: Path, call_id_prefix: str) -> dict[str, A
     checks = {
         "noProcessorError": error is None,
         "callerTurnPreviewed": len(fake_acc.preview_calls) == 1,
-        "deliveryAckCommittedAfterAudio": len(fake_acc.commit_calls) == 1 and frame_summary["audioChunks"] >= 1,
+        "deliveryAckCommittedAtFirstAudioBoundary": len(fake_acc.commit_calls) == 1 and frame_summary["audioChunks"] >= 1,
         "agentResponseCaptured": any(isinstance(frame, TextFrame) and frame.text == agent_text for frame in caller.frames),
         "ttsLifecycleCaptured": frame_summary["ttsStarted"] == 1 and frame_summary["ttsStopped"] == 1,
     }
@@ -277,7 +277,10 @@ async def scenario_barge_in(out_dir: Path, call_id_prefix: str) -> dict[str, Any
     checks = {
         "interruptedAfterFirstChunk": interrupted_summary["audioChunks"] == 1 and isinstance(first_error, asyncio.CancelledError),
         "bargeInRecorded": cancellation.get("skipped") is False and flush.get("transportOutputFlushed") is True,
-        "interruptedCommitDiscarded": len(fake_acc.commit_calls) == 1 and fake_acc.commit_calls[0].get("text") == "Actually I want a human.",
+        "deliveredTurnsCommitted": (
+            [call.get("text") for call in fake_acc.commit_calls]
+            == [first_text, "Actually I want a human."]
+        ),
         "freshResponseAfterBargeIn": resumed_summary["audioChunks"] >= 1 and any(
             isinstance(frame, TextFrame) and frame.text == "I can transfer you to a human agent now." for frame in resumed_caller.frames
         ),

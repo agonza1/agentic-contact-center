@@ -67,12 +67,17 @@ class FakeFlowManager:
         self.current_node = node["name"]
 
 
-def build_session(call_id: str) -> AccVoicePipelineSession:
+class FailingFlowManager(FakeFlowManager):
+    async def set_node_from_config(self, node: dict[str, Any]) -> None:
+        raise RuntimeError(f"fixture set_node_from_config failure for {node['name']}")
+
+
+def build_session(call_id: str, *, manager_factory: type[FakeFlowManager] = FakeFlowManager) -> AccVoicePipelineSession:
     flow_manager = AccPipecatFlowManagerAdapter(
         acc_url="http://127.0.0.1:8026",
         call_id=call_id,
         request_json=lambda method, url, payload: pipeline.json_http(method, url, payload),
-        manager_factory=FakeFlowManager,
+        manager_factory=manager_factory,
         version_provider=lambda _package: "1.4.0",
     )
     return AccVoicePipelineSession(
@@ -136,6 +141,50 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
     finally:
         pipeline.json_http = original_json_http
     normal_audio = [frame for frame in normal_processor.frames if isinstance(frame, TTSAudioRawFrame)]
+
+    failed_delivery_requests: list[str] = []
+
+    def fake_failed_delivery_http(method: str, url: str, payload: dict[str, Any] | None = None, timeout: float = 30) -> dict[str, Any]:
+        if method == "POST" and url.endswith("/caller-turn/commit"):
+            failed_delivery_requests.append("commit")
+            return {
+                "flowState": "greet",
+                "transcript": [
+                    {"speaker": "caller", "text": (payload or {}).get("text", ""), "timestamp": "fixture"},
+                    {"speaker": "agent", "text": "Original preview must not reach the caller.", "timestamp": "fixture"},
+                ],
+            }
+        if method == "POST" and url.endswith("/fallback"):
+            failed_delivery_requests.append("fallback")
+            return {
+                "flowState": "wrap",
+                "transcript": [{"speaker": "agent", "text": "Human handoff started.", "timestamp": "fixture"}],
+            }
+        return original_json_http(method, url, payload, timeout)
+
+    failed_delivery_session = build_session(
+        "flowmanager-activation-failed-after-acc-commit",
+        manager_factory=FailingFlowManager,
+    )
+    install_fake_synthesizer(failed_delivery_session, chunks=2)
+    await failed_delivery_session.flow_manager_adapter.initialize()
+    failed_delivery_session.flow_manager_adapter.stage_transition("greet", reason="caller_turn_preview")
+    failed_delivery_session.set_pending_caller_turn_commit(
+        payload={"text": "Cancel my account", "conversationMode": "free_caller"},
+        expected_agent_text="Original preview must not reach the caller.",
+        output_generation=failed_delivery_session.output_generation,
+    )
+    failed_delivery_processor = CapturingTtsProcessor(failed_delivery_session)
+    pipeline.json_http = fake_failed_delivery_http
+    try:
+        await failed_delivery_processor.process_frame(
+            TextFrame("Original preview must not reach the caller."),
+            FrameDirection.DOWNSTREAM,
+        )
+    finally:
+        pipeline.json_http = original_json_http
+    failed_delivery_audio = [frame for frame in failed_delivery_processor.frames if isinstance(frame, TTSAudioRawFrame)]
+    failed_delivery_stages = [event["stage"] for event in failed_delivery_session.stage_events]
 
     interrupted_session = build_session("output-interrupted")
     if not live_kokoro:
@@ -224,6 +273,17 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         "noStalePlaybackAfterInterruption": interrupted_session.output_stream_audio_bytes == sum(len(frame.audio) for frame in resumed_audio),
         "activeAgentAndTtsTasksCancelled": sorted(task_cancellation.get("cancelledTasks", [])) == ["agent", "tts"] and agent_task.cancelled() and tts_task.cancelled(),
         "callerTurnDeliveryAckCommitsAfterFirstAudio": len(delivery_commit_calls) == 1 and len(normal_audio) >= 1,
+        "flowManagerActivationFailureFailsDeliveryCommit": failed_delivery_requests == ["commit", "fallback"],
+        "flowManagerActivationFailureEmitsNoPreviewAudio": len(failed_delivery_audio) == 0 and failed_delivery_session.output_stream_audio_bytes == 0,
+        "flowManagerActivationFailureRecordsNoCommittedDelivery": (
+            "acc.caller_turn_delivery_failed" in failed_delivery_stages
+            and "acc.caller_turn_delivery_committed" not in failed_delivery_stages
+            and failed_delivery_session.pending_caller_turn_commit is None
+        ),
+        "flowManagerActivationFailureRetainsTerminalEvidence": (
+            failed_delivery_session.last_evidence.get("flowManager", {}).get("ok") is False
+            and failed_delivery_session.last_evidence.get("flowManager", {}).get("commitPolicy") == "terminal_handoff"
+        ),
         "cancelledCallerTurnDoesNotCommitUnheardAgent": len(cancelled_commit_calls) == 0 and not caller_turn_processor.frames and cancellation_before_delivery.get("cancelledTasks") == ["agent"],
     }
     return {
@@ -246,6 +306,12 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             "deliveryAckCommits": len(delivery_commit_calls),
             "cancelledDeliveryAckCommits": len(cancelled_commit_calls),
             "cancelledTasks": cancellation_before_delivery.get("cancelledTasks"),
+        },
+        "flowManagerActivationFailure": {
+            "requests": failed_delivery_requests,
+            "audioChunks": len(failed_delivery_audio),
+            "stages": failed_delivery_stages,
+            "evidence": failed_delivery_session.last_evidence.get("flowManager"),
         },
         "checks": checks,
     }

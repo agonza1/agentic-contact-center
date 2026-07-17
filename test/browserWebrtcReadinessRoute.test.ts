@@ -105,6 +105,10 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.interrupted.transportOutputFlushed, true);
   assert.equal(payload.resumed.chunks, 3);
   assert.equal(payload.checks.noStalePlaybackAfterInterruption, true);
+  assert.deepEqual(payload.flowManagerActivationFailure.requests, ["commit", "fallback"]);
+  assert.equal(payload.flowManagerActivationFailure.audioChunks, 0);
+  assert.equal(payload.checks.flowManagerActivationFailureRecordsNoCommittedDelivery, true);
+  assert.equal(payload.checks.flowManagerActivationFailureRetainsTerminalEvidence, true);
   assert.deepEqual(payload.activeTasks.cancelled.sort(), ["agent", "tts"]);
 });
 

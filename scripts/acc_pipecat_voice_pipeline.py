@@ -51,6 +51,10 @@ WEBRTC_SAMPLES_PER_FRAME = WEBRTC_SAMPLE_RATE * WEBRTC_FRAME_MS // 1000
 SAMPLE_WIDTH_BYTES = 2
 
 
+class CallerTurnDeliveryCommitError(RuntimeError):
+    """Raised when ACC and FlowManager cannot complete the output commit boundary."""
+
+
 @dataclass
 class ProbeResult:
     id: str
@@ -559,6 +563,20 @@ class AccVoicePipelineSession:
         if self.flow_manager_adapter is not None and self.flow_manager_adapter.pending_transition is not None:
             flow_manager_evidence = await self.flow_manager_adapter.commit_pending_transition()
             self.last_evidence = {**self.last_evidence, "flowManager": flow_manager_evidence}
+            if flow_manager_evidence.get("ok") is not True:
+                self.record_stage(
+                    "acc.caller_turn_delivery_failed",
+                    ok=False,
+                    error="flowmanager_delivery_ack_failed_closed",
+                    detail=flow_manager_evidence.get("detail"),
+                    callerTranscript=payload.get("text"),
+                    expectedAgentText=expected_agent_text,
+                    outputGeneration=self.output_generation,
+                    accCommitSucceeded=True,
+                    deliveryCommitted=False,
+                    flowManager=flow_manager_evidence,
+                )
+                raise CallerTurnDeliveryCommitError("flowmanager_delivery_ack_failed_closed")
         committed_agent_text = latest_agent_text(call)
         matches_expected = committed_agent_text == expected_agent_text
         self.record_stage(
@@ -1261,6 +1279,14 @@ class KokoroTtsProcessor(FrameProcessor):
                     tts_meta = {**tts_meta, **chunk_meta}
                     self.session.record_stage("tts.stream_started", tts=tts_meta)
                     await self.push_frame(TTSStartedFrame(context_id=context_id), FrameDirection.DOWNSTREAM)
+                if self.session.pending_caller_turn_commit:
+                    # Hold the first PCM chunk until ACC and FlowManager both accept
+                    # the delivery boundary; a fail-closed transition must not leak
+                    # the superseded preview to the caller or the recorded agent track.
+                    await self.session.commit_pending_caller_turn_delivery(
+                        expected_agent_text=frame.text,
+                        output_generation=turn_output_generation,
+                    )
                 output_window = self.session.extend_output_window(audio_bytes=len(audio_chunk), sample_rate=sample_rate)
                 self.session.record_agent_track(
                     audio_chunk,
@@ -1279,11 +1305,6 @@ class KokoroTtsProcessor(FrameProcessor):
                     sampleRate=sample_rate,
                     outputGeneration=turn_output_generation,
                 )
-                if self.session.pending_caller_turn_commit:
-                    await self.session.commit_pending_caller_turn_delivery(
-                        expected_agent_text=frame.text,
-                        output_generation=turn_output_generation,
-                    )
                 self.session.record_output_chunk(len(audio_chunk))
                 tts_meta = {**tts_meta, **chunk_meta, "outputWindow": output_window}
                 chunk_yield_ms = max(float(os.environ.get("ACC_TTS_OUTPUT_CHUNK_YIELD_MS", "0")), 0.0)
@@ -1335,6 +1356,21 @@ class KokoroTtsProcessor(FrameProcessor):
                 outputGeneration=self.session.output_generation,
             )
             raise
+        except CallerTurnDeliveryCommitError as exc:
+            self.session.last_evidence = {
+                **self.session.last_evidence,
+                "ok": False,
+                "error": "flowmanager_delivery_ack_failed_closed",
+                "detail": str(exc),
+                "outputCancelled": True,
+            }
+            self.session.record_stage(
+                "tts.output_aborted",
+                ok=False,
+                error="flowmanager_delivery_ack_failed_closed",
+                detail=str(exc),
+                agentText=frame.text,
+            )
         except Exception as exc:
             self.session.last_evidence = {
                 **self.session.last_evidence,
