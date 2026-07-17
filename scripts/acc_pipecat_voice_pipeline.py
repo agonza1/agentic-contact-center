@@ -17,6 +17,7 @@ import time
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -28,6 +29,8 @@ from pipecat.frames.frames import BotStartedSpeakingFrame, BotStoppedSpeakingFra
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.turns.user_start import MinWordsUserTurnStartStrategy
+
+from acc_track_recorder import SeparateTrackRecorder
 
 DEFAULT_ACC_URL = os.environ.get("ACC_URL", "http://127.0.0.1:8026")
 DEFAULT_RTC_ASR_BASE_URL = os.environ.get("RTC_ASR_BASE_URL", "http://127.0.0.1:8080")
@@ -313,6 +316,7 @@ class AccVoicePipelineSession:
         call_id: str,
         readiness: BridgeReadiness,
         evidence_callback: Callable[[dict[str, Any]], None] | None = None,
+        track_recording_dir: str | Path | None = None,
     ):
         self.acc_url = acc_url.rstrip("/")
         self.call_id = call_id
@@ -349,6 +353,9 @@ class AccVoicePipelineSession:
         self.turn_controls: PipecatTurnControls | None = None
         self.evidence_callback = evidence_callback
         self.pending_caller_turn_commit: dict[str, Any] | None = None
+        recording_dir = track_recording_dir or os.environ.get("ACC_TRACK_RECORDINGS_DIR")
+        self.track_recorder = SeparateTrackRecorder(artifact_dir=recording_dir, call_id=call_id) if recording_dir else None
+        self.last_track_recording_manifest: dict[str, Any] | None = None
 
     def evidence_snapshot(self) -> dict[str, Any]:
         return {
@@ -378,6 +385,7 @@ class AccVoicePipelineSession:
             },
             "bargeIn": self.last_barge_in_evidence,
             "pendingCallerTurnCommit": bool(self.pending_caller_turn_commit),
+            "trackRecordings": self.last_track_recording_manifest,
         }
 
     def record_stage(self, stage: str, *, ok: bool = True, **detail: Any) -> dict[str, Any]:
@@ -404,6 +412,22 @@ class AccVoicePipelineSession:
         if self.evidence_callback:
             self.evidence_callback(self.evidence_snapshot())
         return event
+
+    def record_caller_track(self, pcm: bytes, *, sample_rate: int, event_id: str | None = None) -> None:
+        if self.track_recorder:
+            self.track_recorder.record_caller_audio(pcm, sample_rate_hz=sample_rate, event_id=event_id)
+
+    def record_agent_track(self, pcm: bytes, *, sample_rate: int, event_id: str | None = None) -> None:
+        if self.track_recorder:
+            self.track_recorder.record_agent_audio(pcm, sample_rate_hz=sample_rate, event_id=event_id)
+
+    def write_track_recording_manifest(self, reason: str) -> dict[str, Any] | None:
+        if not self.track_recorder:
+            return None
+        self.last_track_recording_manifest = self.track_recorder.write_manifest(reason=reason, stage_events=self.stage_events)
+        if self.evidence_callback:
+            self.evidence_callback(self.evidence_snapshot())
+        return self.last_track_recording_manifest
 
     def has_active_response(self) -> bool:
         return bool(
@@ -950,6 +974,11 @@ class RtcAsrTurnProcessor(FrameProcessor):
         pcm = frame.audio
         if not pcm:
             return
+        self.session.record_caller_track(
+            pcm,
+            sample_rate=getattr(frame, "sample_rate", INPUT_SAMPLE_RATE),
+            event_id=f"caller-frame-{len(self.session.stage_events) + 1}",
+        )
         rms = audioop.rms(pcm, SAMPLE_WIDTH_BYTES)
         now = time.monotonic()
         frame_ms = round(len(pcm) / (INPUT_SAMPLE_RATE * SAMPLE_WIDTH_BYTES) * 1000)
@@ -1175,6 +1204,11 @@ class KokoroTtsProcessor(FrameProcessor):
                     self.session.record_stage("tts.stream_started", tts=tts_meta)
                     await self.push_frame(TTSStartedFrame(context_id=context_id), FrameDirection.DOWNSTREAM)
                 output_window = self.session.extend_output_window(audio_bytes=len(audio_chunk), sample_rate=sample_rate)
+                self.session.record_agent_track(
+                    audio_chunk,
+                    sample_rate=sample_rate,
+                    event_id=f"agent-frame-{self.session.output_stream_chunk_count + 1}",
+                )
                 await self.push_frame(
                     TTSAudioRawFrame(audio=audio_chunk, sample_rate=sample_rate, num_channels=1, context_id=context_id),
                     FrameDirection.DOWNSTREAM,
@@ -1220,6 +1254,9 @@ class KokoroTtsProcessor(FrameProcessor):
                 },
                 "outputCancelled": False,
             }
+            track_recordings = self.session.write_track_recording_manifest("tts.stream_completed")
+            if track_recordings:
+                self.session.last_evidence = {**self.session.last_evidence, "trackRecordings": track_recordings}
             print(json.dumps({"type": "browser_webrtc_turn", **self.session.last_evidence}), flush=True)
         except asyncio.CancelledError:
             self.session.record_stage(

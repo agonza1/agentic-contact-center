@@ -43,6 +43,7 @@
     "pipecat:verto": "python3 scripts/pipecat-verto-agent-bridge.py",
     "pipecat:verto:live-proof": "node scripts/verto-sip-live-proof.mjs",
     "pipecat:fixture:check": "python3 scripts/pipecat-fixture-pipeline-smoke.py --contract-only",
+    "pipecat:tracks:proof": "python3 scripts/pipecat-track-recording-proof.py",
     "pipecat:flows:contract": "npm run build && node scripts/pipecat-flowmanager-contract-check.mjs",
     "pages:cluecon": "npm run build && node scripts/cluecon-pages-export.mjs"
   },
