@@ -139,6 +139,11 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
     pendingTransition: null,
     previewFlowState: "wrap",
     previewCommitPolicy: "terminal_handoff",
+    adapterEvidenceOk: false,
+    adapterEvidenceError: "flowmanager_runtime_failed_closed",
+    adapterEvidenceCommitPolicy: "terminal_handoff",
+    adapterEvidenceCurrentNode: "wrap",
+    adapterEvidenceTransitionReason: "flowmanager_runtime_failure",
   });
   assert.deepEqual(payload.failedCommitAfterCancellation, {
     commitCalls: 1,
@@ -187,6 +192,7 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.checks.followupTurnWaitsForPriorDeliveryAck, true);
   assert.equal(payload.checks.followupTurnStagesWithoutFallback, true);
   assert.equal(payload.checks.queuedPreviewWaitsForFailClosedTerminalState, true);
+  assert.equal(payload.checks.failClosedWrapPreservesRuntimeFailureEvidence, true);
   assert.equal(payload.checks.rolledBackPreparedTransitionIsRemovedFromTraceEvidence, true);
   assert.equal(payload.checks.successfulTurnPublishesFinalizedFlowManagerEvidence, true);
   assert.equal(payload.checks.failedCommitAfterCancellationCleansPendingDelivery, true);

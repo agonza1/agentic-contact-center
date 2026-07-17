@@ -385,6 +385,14 @@ class AccPipecatFlowManagerAdapter:
                 except Exception:
                     pass
                 evidence["currentNode"] = getattr(self.manager, "current_node", None)
+                evidence["transitionCount"] = len(self.transition_trace)
+                if self.transition_trace:
+                    evidence["lastTransition"] = dict(self.transition_trace[-1])
+            # activate_node() records the terminal transition through the
+            # normal success path. Restore the authoritative fail-closed
+            # evidence after that bookkeeping so later snapshots cannot
+            # misreport this runtime failure as ok.
+            self.last_evidence = evidence
             self._terminal_result = {**fallback, "flowManagerRuntime": evidence}
             self._transition_available.set()
             return dict(self._terminal_result)

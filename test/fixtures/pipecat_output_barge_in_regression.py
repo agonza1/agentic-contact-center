@@ -843,6 +843,15 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             and fail_closed_session.flow_manager_adapter.manager.current_node == "wrap"
             and fail_closed_session.flow_manager_adapter.pending_transition is None
         ),
+        "failClosedWrapPreservesRuntimeFailureEvidence": (
+            fail_closed_session.flow_manager_adapter.last_evidence.get("ok") is False
+            and fail_closed_session.flow_manager_adapter.last_evidence.get("error")
+            == "flowmanager_runtime_failed_closed"
+            and fail_closed_session.flow_manager_adapter.last_evidence.get("commitPolicy") == "terminal_handoff"
+            and fail_closed_session.flow_manager_adapter.last_evidence.get("currentNode") == "wrap"
+            and fail_closed_session.flow_manager_adapter.last_evidence.get("lastTransition", {}).get("reason")
+            == "flowmanager_runtime_failure"
+        ),
         "failedCommitAfterCancellationCleansPendingDelivery": (
             len(failing_cancel_commit_calls) == 1
             and isinstance(failing_cancel_result[0], asyncio.CancelledError)
@@ -1037,6 +1046,13 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             "pendingTransition": fail_closed_session.flow_manager_adapter.pending_transition,
             "previewFlowState": fail_closed_preview_result.get("flowState"),
             "previewCommitPolicy": fail_closed_preview_result.get("flowManagerRuntime", {}).get("commitPolicy"),
+            "adapterEvidenceOk": fail_closed_session.flow_manager_adapter.last_evidence.get("ok"),
+            "adapterEvidenceError": fail_closed_session.flow_manager_adapter.last_evidence.get("error"),
+            "adapterEvidenceCommitPolicy": fail_closed_session.flow_manager_adapter.last_evidence.get("commitPolicy"),
+            "adapterEvidenceCurrentNode": fail_closed_session.flow_manager_adapter.last_evidence.get("currentNode"),
+            "adapterEvidenceTransitionReason": fail_closed_session.flow_manager_adapter.last_evidence.get(
+                "lastTransition", {}
+            ).get("reason"),
         },
         "failedCommitAfterCancellation": {
             "commitCalls": len(failing_cancel_commit_calls),
