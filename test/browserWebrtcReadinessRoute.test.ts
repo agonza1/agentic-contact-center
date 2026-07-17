@@ -131,6 +131,8 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.followupDuringSlowCommit.pendingTransition.to, "diagnose");
   assert.deepEqual(payload.queuedPreviewDuringFailClosed, {
     waitedForTerminalState: true,
+    cancellationWaitedForCleanup: true,
+    prepareCancelled: true,
     fallbackCalls: 1,
     previewCalls: 0,
     currentNode: "wrap",

@@ -361,8 +361,14 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         )
         await asyncio.sleep(0)
         fail_closed_preview_waited = not fail_closed_preview_task.done() and not fail_closed_preview_calls
+        fail_closed_prepare_task.cancel()
+        await asyncio.sleep(0)
+        fail_closed_cancellation_waited_for_cleanup = not fail_closed_prepare_task.done()
         release_fail_closed.set()
-        fail_closed_prepare_result = await asyncio.wait_for(fail_closed_prepare_task, timeout=1)
+        fail_closed_prepare_result = await asyncio.wait_for(
+            asyncio.gather(fail_closed_prepare_task, return_exceptions=True),
+            timeout=1,
+        )
         fail_closed_preview_result = await asyncio.wait_for(fail_closed_preview_task, timeout=1)
     finally:
         release_fail_closed.set()
@@ -805,9 +811,10 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         ),
         "queuedPreviewWaitsForFailClosedTerminalState": (
             fail_closed_preview_waited
+            and fail_closed_cancellation_waited_for_cleanup
+            and isinstance(fail_closed_prepare_result[0], asyncio.CancelledError)
             and len(fail_closed_fallback_calls) == 1
             and not fail_closed_preview_calls
-            and fail_closed_prepare_result.get("commitPolicy") == "terminal_handoff"
             and fail_closed_preview_result.get("flowManagerRuntime", {}).get("commitPolicy") == "terminal_handoff"
             and fail_closed_preview_result.get("flowState") == "wrap"
             and fail_closed_session.flow_manager_adapter.manager.current_node == "wrap"
@@ -983,6 +990,8 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
         },
         "queuedPreviewDuringFailClosed": {
             "waitedForTerminalState": fail_closed_preview_waited,
+            "cancellationWaitedForCleanup": fail_closed_cancellation_waited_for_cleanup,
+            "prepareCancelled": isinstance(fail_closed_prepare_result[0], asyncio.CancelledError),
             "fallbackCalls": len(fail_closed_fallback_calls),
             "previewCalls": len(fail_closed_preview_calls),
             "currentNode": fail_closed_session.flow_manager_adapter.manager.current_node,

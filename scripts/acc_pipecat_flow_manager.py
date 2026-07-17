@@ -347,40 +347,73 @@ class AccPipecatFlowManagerAdapter:
         self.pending_transition = None
         self._prepared_transition_trace_start = None
         self._transition_available.clear()
-        fallback: dict[str, Any] = {"flowState": "wrap", "transcript": []}
-        fallback_error: Exception | None = None
-        try:
-            fallback = await self.request(
-                "POST",
-                f"{self.acc_url}/api/calls/{self.call_id}/fallback",
-                {
-                    "mode": "runtime_failure",
-                    "reason": f"Pipecat FlowManager fail-closed: {error}",
-                },
-            )
-        except Exception as exc:
-            fallback_error = exc
-        if self.manager and self.initialized:
+
+        async def complete_terminal_handoff() -> dict[str, Any]:
+            fallback: dict[str, Any] = {"flowState": "wrap", "transcript": []}
+            fallback_error: Exception | None = None
             try:
-                await self.activate_node("wrap", reason="flowmanager_runtime_failure")
-            except Exception:
-                pass
-        evidence = {
-            "ok": False,
-            "runtimeAdapter": "pipecat_flows.FlowManager",
-            "error": "flowmanager_runtime_failed_closed",
-            "detail": str(error),
-            "currentNode": getattr(self.manager, "current_node", None),
-            "fallbackNode": "wrap",
-            "commitPolicy": "terminal_handoff",
-            "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
-        }
-        self.last_evidence = evidence
-        self._terminal_result = {**fallback, "flowManagerRuntime": evidence}
-        self._transition_available.set()
-        if fallback_error is not None:
-            raise fallback_error
-        return dict(self._terminal_result)
+                fallback = await self.request(
+                    "POST",
+                    f"{self.acc_url}/api/calls/{self.call_id}/fallback",
+                    {
+                        "mode": "runtime_failure",
+                        "reason": f"Pipecat FlowManager fail-closed: {error}",
+                    },
+                )
+            except Exception as exc:
+                fallback_error = exc
+            if self.manager and self.initialized:
+                try:
+                    await self.activate_node("wrap", reason="flowmanager_runtime_failure")
+                except Exception:
+                    pass
+            evidence = {
+                "ok": False,
+                "runtimeAdapter": "pipecat_flows.FlowManager",
+                "error": "flowmanager_runtime_failed_closed",
+                "detail": str(error),
+                "currentNode": getattr(self.manager, "current_node", None),
+                "fallbackNode": "wrap",
+                "commitPolicy": "terminal_handoff",
+                "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
+            }
+            self.last_evidence = evidence
+            self._terminal_result = {**fallback, "flowManagerRuntime": evidence}
+            self._transition_available.set()
+            if fallback_error is not None:
+                raise fallback_error
+            return dict(self._terminal_result)
+
+        # A peer close or repeated barge-in may cancel the response task while
+        # fail-closed I/O is still running. Finish the terminal handoff under a
+        # shield before propagating cancellation so queued previews cannot wait
+        # forever on a gate that no remaining transition can release.
+        cleanup_task = asyncio.create_task(complete_terminal_handoff())
+        cancellation_requested = False
+        cleanup_result: dict[str, Any] | None = None
+        cleanup_error: Exception | None = None
+        while True:
+            try:
+                cleanup_result = await asyncio.shield(cleanup_task)
+                break
+            except asyncio.CancelledError:
+                cancellation_requested = True
+                if cleanup_task.done():
+                    try:
+                        cleanup_result = cleanup_task.result()
+                    except Exception as exc:
+                        cleanup_error = exc
+                    break
+            except Exception as exc:
+                cleanup_error = exc
+                break
+        if cancellation_requested:
+            raise asyncio.CancelledError from cleanup_error
+        if cleanup_error is not None:
+            raise cleanup_error
+        if cleanup_result is None:
+            raise FlowManagerRuntimeError("FlowManager fail-closed terminal handoff produced no result")
+        return cleanup_result
 
     async def preview_caller_turn(self, *, text: str, conversation_mode: str) -> dict[str, Any]:
         try:
