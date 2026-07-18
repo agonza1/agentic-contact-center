@@ -6,12 +6,27 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = join(__dirname, "..", "..");
+const liveEndpointEnvVars = [
+  "RTC_ASR_BASE_URL",
+  "KOKORO_BASE_URL",
+  "BROWSER_WEBRTC_BRIDGE_URL",
+  "FREESWITCH_VERTO_URL",
+  "ASSERT_VIEWER_URL",
+];
+
+function withClearedLiveEndpointEnv() {
+  const env = { ...process.env };
+  for (const name of liveEndpointEnvVars) {
+    delete env[name];
+  }
+  return env;
+}
 
 test("reliability lab status reports explicit blockers without starting sidecars", async () => {
   const result = await execFileAsync(process.execPath, ["scripts/reliability-lab-status.mjs"], {
     cwd: repoRoot,
     env: {
-      ...process.env,
+      ...withClearedLiveEndpointEnv(),
       CAE_API_URL: "",
       CAE_WEB_URL: "",
     },
@@ -39,6 +54,10 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.ok(payload.repositoryContracts.packageScripts.includes("proof"));
   assert.ok(payload.repositoryContracts.composeProfiles.includes("browser-webrtc"));
   assert.ok(payload.repositoryContracts.reliabilityDocExists);
+  assert.equal(
+    payload.componentReadiness.find((component: { component: string }) => component.component === "Pipecat browser bridge").envVar,
+    "BROWSER_WEBRTC_BRIDGE_URL",
+  );
 });
 
 test("reliability lab status becomes configured when CAE endpoints are supplied", async () => {
@@ -86,6 +105,10 @@ test("reliability lab status reports explicitly configured live media endpoints"
   assert.equal(statuses["Pipecat browser bridge"], "configured");
   assert.equal(statuses["FreeSWITCH/Verto"], "configured");
   assert.equal(statuses["ASSERT viewer"], "configured");
+  assert.equal(
+    payload.componentReadiness.find((component: { component: string }) => component.component === "Pipecat browser bridge").envVar,
+    "BROWSER_WEBRTC_BRIDGE_URL",
+  );
   assert.equal(payload.optionalEndpoints.rtcAsr, "http://127.0.0.1:18080");
   assert.equal(payload.optionalEndpoints.kokoro, "http://127.0.0.1:18880");
   assert.equal(payload.optionalEndpoints.browserWebRtcBridge, "http://127.0.0.1:18766");
