@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { resolve } from "node:path";
 
 import {
   buildClueConBrainPreview,
@@ -59,6 +61,7 @@ const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
 const defaultBrowserWebrtcBridgeTimeoutMs = 5000;
 const maxVoiceSessionPlayAudioBytes = 2 * 1024 * 1024;
 const supportedVoiceSessionPlayMimeTypes = new Set(["audio/l16", "audio/pcm", "audio/wav", "audio/wave", "audio/x-wav"]);
+const clueConSystemUnavailableAudio = readFileSync(resolve(process.cwd(), "assets/cluecon/system-unavailable.mp3"));
 
 interface BrowserWebrtcBridgeRuntimeProbe {
   ok: boolean;
@@ -3078,6 +3081,8 @@ type ClueConOperatorDrillKind =
   | "scripted_approve"
   | "tool_timeout"
   | "runtime_failure"
+  | "rtc_asr_unavailable"
+  | "tts_unavailable"
   | "transfer"
   | "takeover"
   | "end_call";
@@ -3087,6 +3092,8 @@ function isClueConOperatorDrillKind(value: unknown): value is ClueConOperatorDri
     value === "scripted_approve" ||
     value === "tool_timeout" ||
     value === "runtime_failure" ||
+    value === "rtc_asr_unavailable" ||
+    value === "tts_unavailable" ||
     value === "transfer" ||
     value === "takeover" ||
     value === "end_call"
@@ -3132,6 +3139,35 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
         "Keep the existing SIP/RTP session stable while automated responses stop.",
         "Send the handoff JSON to the FreeSWITCH/media-server adapter, which creates or bridges the human leg.",
         "If the handoff cannot be completed, preserve the call and emit explicit failure evidence instead of improvising an AI response.",
+      ],
+    };
+  }
+
+  if (kind === "rtc_asr_unavailable" || kind === "tts_unavailable") {
+    const handoff = {
+      type: "telephony.handoff.requested",
+      callId,
+      reason: kind,
+      target: { type: "queue", id: "human-support" },
+    };
+    return {
+      ...common,
+      controlMessage: handoff,
+      controlSequence: [
+        {
+          type: "telephony.playback.requested",
+          callId,
+          source: "prerecorded_media",
+          asset: "/cluecon/system-unavailable.mp3",
+          message: "We are sorry. The automated service is temporarily unavailable. Please hold while we connect you with a human agent.",
+        },
+        handoff,
+      ],
+      executionPatterns: [
+        "Stop ASR, LLM, and synthesized output so the failed AI path cannot continue producing responses.",
+        "Play a prerecorded media-server asset that does not depend on ASR, the LLM, or TTS.",
+        "Keep the SIP/RTP session stable and bridge the caller to the human-support queue.",
+        "If the queue handoff also fails, preserve the call and emit explicit failure evidence.",
       ],
     };
   }
@@ -3191,10 +3227,20 @@ async function runClueConOperatorDrill(
     });
   }
 
-  if (kind === "tool_timeout" || kind === "runtime_failure") {
-    latest = await ingress.triggerFallback(callId, kind, timestampAfter(14_000), `${kind} ClueCon operator drill`);
+  if (kind === "tool_timeout" || kind === "runtime_failure" || kind === "rtc_asr_unavailable" || kind === "tts_unavailable") {
+    const fallbackMode = kind === "tool_timeout" ? "tool_timeout" : "runtime_failure";
+    latest = await ingress.triggerFallback(callId, fallbackMode, timestampAfter(14_000), `${kind} ClueCon operator drill`);
+    if (kind === "rtc_asr_unavailable" || kind === "tts_unavailable") {
+      steps.push({
+        step: "prerecorded_error_prompt",
+        ok: true,
+        flowState: latest.flowState,
+        callId,
+        detail: "A prerecorded system-unavailable prompt plays without using the failed ASR/TTS path.",
+      });
+    }
     steps.push({
-      step: "call_error_fail_closed",
+      step: kind === "rtc_asr_unavailable" || kind === "tts_unavailable" ? "human_handoff_requested" : "call_error_fail_closed",
       ok: true,
       flowState: latest.flowState,
       callId,
@@ -3203,7 +3249,9 @@ async function runClueConOperatorDrill(
     return {
       latest,
       steps,
-      summary: `${kind} -> fail-closed human handoff; no improvised offer.`,
+      summary: kind === "rtc_asr_unavailable" || kind === "tts_unavailable"
+        ? `${kind} -> prerecorded error prompt -> fail-closed human handoff.`
+        : `${kind} -> fail-closed human handoff; no improvised offer.`,
       outcome: "fail_closed_handoff",
       integration: buildClueConOperatorDrillIntegration(kind, callId),
     };
@@ -4795,6 +4843,16 @@ async function routeRequest(
         operatorConsole: `/api/operator/console?openclawSessionLabel=${encodeURIComponent(drill.latest.session.openclawSession.label)}`,
       },
     });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/cluecon/system-unavailable.mp3") {
+    response.writeHead(200, {
+      "content-type": "audio/mpeg",
+      "content-length": clueConSystemUnavailableAudio.byteLength,
+      "cache-control": "public, max-age=86400",
+    });
+    response.end(clueConSystemUnavailableAudio);
     return;
   }
 
