@@ -21,6 +21,7 @@ const readme = readText("README.md");
 const packageJson = JSON.parse(readText("package.json"));
 const compose = readText("docker-compose.yml");
 const server = readText("src/http/createServer.ts");
+const cluecon = readText("src/http/cluecon.ts");
 const scripts = packageJson.scripts ?? {};
 
 for (const scriptName of unique([...readme.matchAll(/\bnpm run ([A-Za-z0-9:_-]+)/g)].map((match) => match[1]))) {
@@ -70,6 +71,57 @@ for (const route of documentedRoutes) {
   }
 }
 
+const mermaidDiagramCount = [...readme.matchAll(/```mermaid/g)].length;
+if (mermaidDiagramCount > 3) {
+  fail(`README contains ${mermaidDiagramCount} primary Mermaid diagrams; #307 allows at most 3`);
+}
+
+const requiredReadmePhrases = [
+  "A Voice Agent Reliability Reference Stack by",
+  "reference implementation and demo-ready lab, not production-ready",
+  "ACC Reliability Lab",
+  "ConversationAgentEvals",
+  "rtc-asr",
+  "ASSERT",
+  "Reliability lab status",
+  "legacy ACC-local eval spec surface; CAE owns generic spec editing",
+];
+for (const phrase of requiredReadmePhrases) {
+  if (!readme.includes(phrase)) {
+    fail(`README is missing required #307 phrase: ${phrase}`);
+  }
+}
+
+const staleOrOverclaimingReadmePhrases = [
+  "runnable ClueCon 2026 proof of concept",
+  "SIP caller-audible playback proof is not complete",
+  "FlowManager should own",
+  "current demo proves contracts, not the finished shared-media architecture",
+];
+for (const phrase of staleOrOverclaimingReadmePhrases) {
+  if (readme.includes(phrase)) {
+    fail(`README still contains stale or overclaiming wording: ${phrase}`);
+  }
+}
+
+const requiredClueConPhrases = [
+  "Voice Agent Reliability Reference Stack",
+  "ACC integrates the demo and proof surface without owning ConversationAgentEvals, rtc-asr, or ASSERT",
+  "strict local SIP/Verto proof is accepted",
+];
+for (const phrase of requiredClueConPhrases) {
+  if (!cluecon.includes(phrase)) {
+    fail(`ClueCon payload is missing current ecosystem wording: ${phrase}`);
+  }
+}
+
+const readmePorts = unique([...readme.matchAll(/\b(?:127\.0\.0\.1|localhost):(\d{2,5})\b/g)].map((match) => match[1]));
+for (const port of readmePorts) {
+  if (!compose.includes(`:${port}`) && !server.includes(port) && !readme.includes(`port ${port}`) && !readme.includes(`on \`${port}\``)) {
+    fail(`README documents port ${port} without matching Compose/server/reference evidence`);
+  }
+}
+
 if (failures.length > 0) {
   console.error("Documentation validation failed:");
   for (const failure of failures) console.error(`- ${failure}`);
@@ -77,5 +129,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${composeProfiles.size} Compose profiles, ${localLinks.length} local links, ${documentedRoutes.length} useful routes.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${composeProfiles.size} Compose profiles, ${localLinks.length} local links, ${documentedRoutes.length} useful routes, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports.`,
 );

@@ -199,13 +199,14 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.activeWorkboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
   assert.equal(payload.sourceRepos.agenticContactCenter, "https://github.com/agonza1/agentic-contact-center");
   assert.equal(payload.sourceRepos.rtcAsr, "https://github.com/agonza1/rtc-asr");
-  assert.equal(payload.architectureCenter.issue, "agonza1/agentic-contact-center#222");
+  assert.equal(payload.architectureCenter.issue, "agonza1/agentic-contact-center#307");
   assert.match(payload.architectureCenter.target, /transport\.input -> rtc-asr STT/);
   assert.match(payload.architectureCenter.adapterRule, /Browser, fixture\/tester, and SIP/);
-  assert.ok(payload.architectureCenter.currentGaps.some((gap) => /turn-buffered/.test(gap)));
-  assert.equal(payload.demoGoal.issue, "agonza1/agentic-contact-center#222");
+  assert.ok(payload.architectureCenter.currentGaps.some((gap) => /reliability-lab profile/.test(gap)));
+  assert.ok(payload.architectureCenter.currentGaps.some((gap) => /strict local SIP\/Verto proof is accepted/.test(gap)));
+  assert.equal(payload.demoGoal.issue, "agonza1/agentic-contact-center#307");
   assert.deepEqual(payload.demoGoal.chain, ["adapter", "pipecat_pipeline_target", "rtc_asr", "acc_policy_tools", "kokoro_tts", "evidence"]);
-  assert.match(payload.demoGoal.successSignal, /#222 gaps/);
+  assert.match(payload.demoGoal.successSignal, /Phase 2 reliability-lab blockers/);
   assert.equal(payload.turnTiming.speechStartHoldMs, 80);
   assert.equal(payload.turnTiming.acousticStopHoldMs, 350);
   assert.equal(payload.turnTiming.endOfTurnSilenceMs, 2000);
@@ -571,7 +572,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   const narrative = await get("/cluecon");
   assert.equal(narrative.statusCode, 200);
   assert.match(narrative.contentType, /text\/html/);
-  assert.match(narrative.body, /Shared Realtime Pipeline/);
+  assert.match(narrative.body, /Voice Agent Reliability Reference Stack/);
   assert.match(narrative.body, /ClueCon 2026 presentation/);
   assert.doesNotMatch(narrative.body, /ClueCon vertical slice/i);
   assert.doesNotMatch(narrative.body, /class="talk-time"/);
@@ -590,7 +591,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /xform-carrier/);
   assert.match(narrative.body, /media-wave/);
   assert.match(narrative.body, /media-tokens/);
-  assert.equal((narrative.body.match(/data-slide="\d+"/g) ?? []).length, 9);
+  assert.equal((narrative.body.match(/data-slide="\d+"/g) ?? []).length, 10);
   assert.match(narrative.body, /Deterministic telephony meets probabilistic inference/);
   assert.match(narrative.body, /One runs on clocks\. One runs on confidence/);
   assert.match(narrative.body, /id="vad-interruption"/);
@@ -622,7 +623,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /vadPendingStream/);
   assert.match(narrative.body, /Starting microphone…/);
   assert.match(narrative.body, /MIC_START_CANCELLED/);
-  assert.match(narrative.body, /slideCount: 9/);
+  assert.match(narrative.body, /slideCount: 10/);
   assert.match(narrative.body, /Run scripted demo/);
   assert.match(narrative.body, /ACC emits auditable JSON; FreeSWITCH or another SIP\/media server executes transfer/);
   assert.match(narrative.body, /Control plane → media plane/);
@@ -652,7 +653,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /renderAsrPanel/);
   assert.match(narrative.body, /runEvalProof/);
   assert.match(narrative.body, /goToSlide/);
-  assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 9'));
+  assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 10'));
   assert.match(narrative.body, /aria-label="Previous slide"/);
   assert.ok(narrative.body.includes('status.textContent = String(state.slide + 1) + " / " + String(state.slideCount)'));
   assert.match(narrative.body, /@media \(max-width: 1100px\) \{ #demo \.two/);
@@ -712,7 +713,7 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.doesNotMatch(html, /15 min system story/);
   assert.doesNotMatch(html, /10 min live demo/);
   assert.doesNotMatch(html, /5 min proof \+ close/);
-  assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 9);
+  assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 10);
   assert.match(html, /href="\.\/present\/"/);
   assert.doesNotMatch(html, /href="\/cluecon"/);
   for (const [, script] of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {

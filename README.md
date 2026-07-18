@@ -1,228 +1,220 @@
 # Agentic Contact Center
 
-Agentic Contact Center is a runnable ClueCon 2026 proof of concept for a safer, operator-steerable voice contact-center flow. It demonstrates a cancellation-rescue call where the realtime loop is owned by the application: the agent can pause at risky policy boundaries, accept operator steer, fail closed to a human handoff, and export reviewable evidence.
+**A Voice Agent Reliability Reference Stack by [WebRTC.ventures](https://webrtc.ventures/).**
 
-An open-source project from [WebRTC.ventures](https://webrtc.ventures/).
+Agentic Contact Center (ACC) is a local, open-source reference stack for testing voice-agent reliability. It demonstrates the cancellation-rescue path end to end: run a target voice-agent flow, pause at risky policy boundaries, steer or fail closed through an operator, capture evidence, and hand that evidence to ConversationAgentEvals/ASSERT for review.
 
-The active app is the TypeScript service under `src/`.
+Status: **reference implementation and demo-ready lab, not production-ready contact-center software.** State is local/in-memory, credentials are mocked, and live media sidecars are optional unless a mode explicitly requires them.
 
-## WebRTC.ventures voice-agent reliability projects
+Primary actions:
 
-This project is part of the [WebRTC.ventures](https://webrtc.ventures/) open-source voice-agent reliability initiative. The projects remain independently usable and integrate through explicit adapters and evidence contracts:
+- Run the default deterministic proof: `npm install && npm test && npm run proof`
+- Start the local app: `npm start`
+- Inspect the ClueCon walkthrough: `http://127.0.0.1:8026/cluecon`
+- Check the reliability-lab integration status: `npm run reliability:lab`
 
-- [ConversationAgentEvals](https://github.com/agonza1/ConversationAgentEvals) orchestrates tests, normalizes evidence, and reports regressions.
-- [Agentic Contact Center](https://github.com/agonza1/agentic-contact-center) is the reference voice-agent target and demonstration.
-- [rtc-asr](https://github.com/agonza1/rtc-asr) provides optional local streaming speech-to-text and reproducible ASR benchmarks.
-- [ASSERT](https://github.com/responsibleai/ASSERT) remains the upstream evaluation engine.
+## What can I run?
+
+| Mode | Command | Media | External services | Evidence level |
+| --- | --- | --- | --- | --- |
+| Scripted fixture demo | `npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json` | Seeded fixture turns | None | Deterministic proof bundle |
+| Browser voice | `npm run docker:browser-webrtc` | Browser WebRTC | rtc-asr + Kokoro + Pipecat bridge | Live local media proof when `browser-webrtc:live-proof` passes |
+| SIP/Verto | `npm run docker:sip-verto` | SIP/RTP caller + Verto/WebRTC agent leg | FreeSWITCH + rtc-asr + Kokoro + Pipecat Verto bridge | Caller-audible live proof when `pipecat:verto:live-proof` passes |
+| Reliability lab status | `npm run reliability:lab` | Selected target mode | Optional CAE/ASSERT endpoints | Honest ready/blocked/not-required report for Phase 2 lab wiring |
+
+The default scripted fixture demo does not require ConversationAgentEvals, rtc-asr, Kokoro, FreeSWITCH, ASSERT, production credentials, or live telephony.
+
+## How the projects fit together
 
 ```mermaid
 flowchart LR
+  ACC["ACC Reliability Lab<br/>Demo + integration entry point"]
+  ASR["rtc-asr<br/>Streaming speech"]
   CAE["ConversationAgentEvals<br/>Test orchestration + evidence"]
-  ACC["Agentic Contact Center<br/>Reference target"]
-  ASR["rtc-asr<br/>Optional local STT"]
   ASSERT["ASSERT<br/>Evaluation engine"]
 
-  CAE -->|"test scenarios"| ACC
-  ACC -->|"proof bundle"| CAE
   ACC -->|"audio"| ASR
   ASR -->|"transcripts"| ACC
-  CAE -->|"canonical evaluation"| ASSERT
+  CAE -->|"test scenarios"| ACC
+  ACC -->|"proof bundle"| CAE
+  CAE -->|"evaluation"| ASSERT
 ```
 
-## Core Value
+| Project | Owns | Does not own |
+| --- | --- | --- |
+| ACC | Reference target, local demo modes, Pipecat media adapters, operator control, evidence/proof bundle production | Generic eval/spec UI, ASSERT judging, rtc-asr model/backend code |
+| [ConversationAgentEvals](https://github.com/agonza1/ConversationAgentEvals) | Test orchestration, target/tester configuration, evidence normalization, reports, baselines, comparisons, ASSERT run UX | ACC call/session/media runtime |
+| [rtc-asr](https://github.com/agonza1/rtc-asr) | Local STT v1 protocol, speech backends, ASR benchmark artifacts, Pipecat STT behavior | ACC policy/call state or evaluator UI |
+| [ASSERT](https://github.com/responsibleai/ASSERT) | Requirement-driven evaluation semantics, scoring, failure taxonomy, canonical artifacts | ACC runtime or CAE persistence |
 
-- Voice-agent demo that keeps control of call state, policy holds, operator decisions, fallback, and evidence.
-- Local Pipecat voice work centered on Issue #222: one shared realtime Pipeline, with browser, fixture/tester, and SIP entering as adapters.
-- Browser WebRTC and local SIP/Verto now enter through Pipecat `SmallWebRTCTransport` and the shared rtc-asr -> ACC -> Kokoro Pipeline. The local SIP proof harness captures both the live rtc-asr transcript and non-silent return audio at the caller.
-- Operator console for pause/resume, safe-offer approval, takeover, transfer, end-call, fallback drills, notes, queue filters, and proof links.
-- QA evidence through transcripts, event trails, latency marks, call snapshots, proof bundles, ASSERT exports, and ConversationAgentEvals-ready handoff artifacts.
-
-## How It Works
+## The golden reliability loop
 
 ```mermaid
 flowchart LR
-    caller[Caller or demo script] --> api[ACC TypeScript HTTP server]
-    api --> state[(In-memory call state)]
-    state --> policy{Risky response?}
-    policy -->|Yes| operator[Operator steer]
-    policy -->|No| agent[Safe agent response]
-    operator --> agent
-    operator --> handoff[Human handoff]
-    state --> evidence[Proof, transcript, events, latency]
-    evidence --> evals[ASSERT and ConversationAgentEvals handoff]
+  define["Define<br/>cancellation-rescue requirements"]
+  execute["Execute<br/>fixture, browser, or SIP run"]
+  capture["Capture<br/>transcript, events, latency, final state, media"]
+  evaluate["Evaluate<br/>deterministic checks + ASSERT semantics"]
+  compare["Compare<br/>unsafe baseline vs controlled candidate"]
+
+  define --> execute --> capture --> evaluate --> compare
 ```
 
-The TypeScript service in `src/` owns the HTTP routes, in-memory call state, local Pipecat flow contract, operator steer, fallback, and evidence. The runtime is intentionally local and in-memory; restarting the server clears calls.
+Cancellation-rescue is the golden scenario. The controlled candidate must detect cancellation intent, avoid unauthorized billing promises, enter policy hold when needed, preserve operator steer/handoff, and emit reviewable evidence. Intentionally unsafe baseline behavior is only a labeled demo fixture/profile.
 
-## Prerequisites
+## Runtime architecture
 
-- Node.js 20 or newer and npm.
-- Python 3.11+ for optional Pipecat checks or the local voice bridge.
-- Running rtc-asr and Kokoro sidecars for the live browser voice path.
-- Docker and Docker Compose only for containerized commands.
+All realtime modes should enter the same shared media processor contract:
 
-No production credentials are required for the mocked POC. SignalWire, CRM, billing, auth, account access, live telephony, and Slack posting are mocked or represented as deterministic contracts.
+```mermaid
+flowchart LR
+  browser["Browser WebRTC"]
+  fixture["Fixture/tester audio"]
+  sip["SIP/RTP + Verto"]
+  input["transport.input"]
+  stt["rtc-asr STT"]
+  acc["ACC policy/tools + FlowManager adapter"]
+  tts["Kokoro TTS"]
+  output["transport.output"]
+  evidence["ACC proof bundle"]
 
-## Quick Start
+  browser --> input
+  fixture --> input
+  sip --> input
+  input --> stt --> acc --> tts --> output
+  acc --> evidence
+```
+
+Browser WebRTC, fixture/tester, and SIP/Verto are adapters into the same rtc-asr -> ACC caller-turn/FlowManager -> Kokoro pipeline. The strict local SIP/Verto proof lane is accepted and closed; do not reopen it for normal documentation work. Future #307 slices should focus on the reliability-lab integration surface and guided workflow.
+
+## Quick starts
+
+### Scripted fixture demo
 
 ```bash
 npm install
 npm test
-npm run docs:validate
+npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json
 npm start
 ```
 
-The server listens at `http://localhost:8026` by default. In another terminal, verify health. The health payload separates `demoReady` from `productionReady`; the default POC is demo-ready but production-blocked because telephony, credentials, and state persistence are still local/mocked.
+Open `http://127.0.0.1:8026/` or `http://127.0.0.1:8026/operator/console`, then click **Run Demo Flow**. The app listens on `8026` by default.
+
+### Browser voice
 
 ```bash
-npm run health:smoke
-```
-
-Open `http://localhost:8026/` or `http://localhost:8026/operator/console`, then click **Run Demo Flow** to run the complete mocked call: start call, send seeded caller turns, enter policy hold, approve a safe offer, wrap the call, record disposition, and expose the proof bundle.
-
-Generate reviewable JSON evidence with `npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json`.
-
-## Shared Media Pipeline Direction
-
-Issue #222 is the architectural center for realtime voice work. The target is one shared Pipecat Pipeline:
-
-```text
-transport.input -> rtc-asr STT -> ACC caller-turn adapter -> Kokoro TTS -> transport.output
-```
-
-Browser WebRTC, fixture/tester injection, and SIP/FreeSWITCH are adapters into that same Pipeline. Do not add new standalone demo media paths. The browser and Verto bridges use Pipecat `SmallWebRTCTransport` and `build_acc_voice_pipeline()` to run the shared `Pipeline([transport.input(), RtcAsrTurnProcessor, AccCallerTurnProcessor, KokoroTtsProcessor, transport.output()])`. The fixture/tester lane keeps the sidecar-free contract check at `npm run pipecat:fixture:check` and has a live in-process fixture path via `python3 scripts/pipecat-fixture-pipeline-smoke.py --input-wav <mono-pcm16.wav>` when ACC, rtc-asr, and Kokoro are running; omit `--call-id` to have the smoke script start an ACC demo call automatically. The SIP harness at `npm run pipecat:verto:live-proof` sends a real caller WAV through extension `8600` and requires current-call rtc-asr plus non-silent caller-side return audio before reporting `reviewReady: true`.
-
-The remaining #222 acceptance gap is Pipecat Flows/`FlowManager`: cancellation-rescue transitions still live in ACC TypeScript. FlowManager should own the conversation nodes (`call_started`, `greet`, `diagnose`, `policy_hold`, `operator_steer`, `steered_response`, `wrap`) while ACC keeps product state, operator controls, proof artifacts, and queue state.
-
-## Browser WebRTC Voice Readiness
-
-The current non-SIP browser adapter path is:
-
-```text
-browser mic -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC/browser playback
-```
-
-Issue #213 exposes ACC readiness plus a WebRTC offer/answer proxy into the local Pipecat `SmallWebRTCTransport` bridge; #222 owns keeping this adapter and the SIP/fixture adapters on the same shared processor contract. Check readiness with:
-
-```bash
-curl -fsS http://127.0.0.1:8026/api/browser-webrtc/readiness
+npm run docker:browser-webrtc
 npm run browser-webrtc:check -- --url http://127.0.0.1:8026/health
 npm run browser-webrtc:live-proof -- --write-template artifacts/browser-webrtc-live-proof/proof.template.json
-npm run browser-webrtc:live-proof -- --evidence artifacts/browser-webrtc-live-proof/proof.json --require-review-ready
 ```
 
-The readiness payload distinguishes ACC contract readiness from live media verification and reports the Pipecat WebRTC bridge, rtc-asr, and Kokoro separately. The ACC server proxies browser SDP offers from `POST /api/browser-webrtc/session` to `BROWSER_WEBRTC_BRIDGE_URL` (default `http://127.0.0.1:8766`). Until a local browser proof is attached, `liveMedia.verified=false` and the blocker is `live_webrtc_media_turn_evidence_missing`. Passing this route means the executable browser contract is present; full #222 acceptance still requires the FlowManager migration called out above. The optional `--write-template` command creates the exact JSON event shape reviewers can fill from a real local browser turn before running the review gate, including the current git head so proof is tied to the PR commit under review.
+This path requires reachable rtc-asr, Kokoro, and Pipecat browser WebRTC bridge sidecars. Contract readiness is not the same as live browser media proof.
 
-Run the normal browser WebRTC bridge and sidecars in separate terminals:
+### SIP/Verto
 
 ```bash
-cd ../rtc-asr
-make mlx-venv
-env PYTHONPATH=. \
-  ASR_BACKEND=parakeet-mlx \
-  ASR_DEVICE=apple-silicon \
-  ASR_PRELOAD_MODEL=true \
-  ASR_PARAKEET_MODEL=mlx-community/parakeet-tdt_ctc-110m \
-  ASR_PARAKEET_DTYPE=auto \
-  ASR_VAD_FILTER=false \
-  .venv-mlx/bin/python -m uvicorn src.main:app --host 127.0.0.1 --port 8080
-
-cd ../agentic-contact-center
-export RTC_ASR_BASE_URL=http://127.0.0.1:8080
-export RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream
-export RTC_ASR_MODEL=mlx-community/parakeet-tdt_ctc-110m
-export KOKORO_BASE_URL=http://127.0.0.1:8880
-export BROWSER_WEBRTC_BRIDGE_URL=http://127.0.0.1:8766
-npm run pipecat:webrtc:install
-npm start
-npm run pipecat:webrtc:check
-npm run pipecat:webrtc
+npm run docker:sip-verto
+npm run pipecat:verto:live-proof
 ```
 
-Then open `http://127.0.0.1:8026/operator/console`, click **Connect Voice**, allow browser microphone access, speak one caller turn, wait for the streamed agent audio, click **Copy Proof**, save that JSON under `artifacts/browser-webrtc-live-proof/proof.json`, and run:
+This path requires FreeSWITCH, rtc-asr, Kokoro, and the Pipecat Verto/WebRTC bridge. Review-ready proof requires current-call rtc-asr transcript evidence and non-silent caller-side return audio.
+
+### Reliability lab status
 
 ```bash
-npm run browser-webrtc:live-proof -- --evidence artifacts/browser-webrtc-live-proof/proof.json --require-review-ready
+npm run reliability:lab
 ```
 
-## ConversationAgentEvals Integration
+Phase 1 exposes the honest status surface for the future reliability lab. It reports configured, ready, blocked, and not-required states without starting CAE, rtc-asr, FreeSWITCH, or ASSERT implicitly. See [docs/reliability-lab.md](docs/reliability-lab.md).
 
-ACC integrates with [ConversationAgentEvals](https://github.com/agonza1/ConversationAgentEvals) through generated evidence, not an in-process dependency. Normal local demos do not call a ConversationAgentEvals API.
+## Evidence and evaluation
 
-The main handoff file is:
+ACC produces evidence; ConversationAgentEvals owns generic orchestration and ASSERT run/report UX.
 
-```text
-artifacts/agentic-call-center-demo/conversation-agent-evals-assert-request.json
-```
+Important artifacts:
 
-It is shaped as an `AssertRunCreateRequest` and includes transcript, conversation, media, action trace, final state, proof bundle, and Local STT evidence pointers.
+- `artifacts/demo-proof-latest.json`: deterministic local proof snapshot.
+- `artifacts/agentic-call-center-demo/conversation-agent-evals-assert-request.json`: CAE-compatible `AssertRunCreateRequest`.
+- `artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json`: tester-agent handoff bundle.
 
-Generate the handoff bundle:
+Generate a CAE/ASSERT handoff:
 
 ```bash
 npm run proof:pipecat -- --out artifacts/agentic-call-center-demo/source-proof.json --latest-out artifacts/demo-proof-latest.json
 npm run proof:bundle -- --proof artifacts/agentic-call-center-demo/source-proof.json --out-dir artifacts/agentic-call-center-demo
-```
-
-Generate a shared-pipeline tester-agent handoff for CAE/ASSERT:
-
-```bash
 npm run cae:assert:handoff -- --out-dir artifacts/cae-assert-handoff
 ```
 
-That writes `conversation-agent-evals-assert-request.json`, a CAE prefill template, requirements/scenario/timeline/final-state/verdict artifacts, and explicit failure-mode notes. ConversationAgentEvals owns the generic editable spec UI and ASSERT run UX; ACC only supplies domain defaults and evidence pointers.
+ACC can also export local ASSERT viewer artifacts with `npm run assert:export` and serve the local viewer with `npm run assert:viewer`. That local viewer is separate from importing a run into ConversationAgentEvals.
 
-See `docs/demo-proof-runbook.md` for the proof inspection checklist, local ASSERT workflow, expected artifact set, and ConversationAgentEvals handoff details.
+## Current readiness and limitations
+
+| Capability | Current state | Notes |
+| --- | --- | --- |
+| Scripted cancellation-rescue proof | Ready | Runs without external services. |
+| Browser WebRTC route/contract | Ready, live proof optional | Requires local rtc-asr/Kokoro/Pipecat sidecars for real media. |
+| SIP/Verto live proof | Accepted strict local proof | Keep this lane closed unless a new issue explicitly changes it. |
+| ConversationAgentEvals handoff | Ready as generated request artifact | CAE remains external and owns generic eval UX. |
+| Reliability lab | Phase 1 status/docs only | Phase 2 should wire explicit CAE/ASSERT endpoints/profiles. |
+| Production telephony/security/persistence | Blocked/not implemented | Mocked credentials, in-memory state, no production hardening. |
 
 ## Useful Routes
 
 - `/`: local demo console.
 - `/operator/console`: operator-focused console for queue review, steer, fallback, and proof links.
 - `/health`: service/config/runtime readiness.
+- `/cluecon`: WebRTC.ventures presentation/walkthrough.
 - `/assert`: ACC local artifact viewer.
 - `/assert/full`: wrapper for the upstream ASSERT local viewer.
-- `/assert/spec`: editable local eval spec surface.
+- `/assert/spec`: legacy ACC-local eval spec surface; CAE owns generic spec editing.
 - `/api/demo/run-end-to-end`: complete seeded demo flow.
 - `/api/calls/:callId/proof`: per-call QA proof bundle.
+- `/api/browser-webrtc/readiness`: browser voice contract and sidecar readiness.
+- `/api/pipecat-media-engine/readiness`: shared media adapter readiness.
 
-For detailed API route, script, Docker, and local SIP notes, see `docs/runtime-reference.md`.
+## Docker profiles
 
-## Docker
+Useful Docker commands:
 
 ```bash
 npm run docker:app
 npm run docker:smoke
+npm run health:smoke
 npm run docker:proof
 npm run docker:voice
 npm run docker:browser-webrtc
-npm run docker:freeswitch:only
 npm run docker:sip-verto
 npm run docker:sip
 npm run docker:assert
 npm run docker:full
+npm run docker:freeswitch:only
 ```
-
-Docker exposes the app on port `8026` and includes `/health` checks in both `Dockerfile` and `docker-compose.yml`. The default app/proof commands stay small. Optional Compose profiles add the local contact-center sidecars:
 
 - `voice`: rtc-asr on `8080` and Kokoro on `8880`.
 - `browser-webrtc`: voice sidecars plus the Pipecat browser WebRTC bridge on `8766`.
 - `sip-verto`: FreeSWITCH, rtc-asr, Kokoro, and the preferred Pipecat Verto/WebRTC agent-leg bridge for extension `8600`.
 - `sip`: legacy FreeSWITCH-to-ACC ESL proof/debug bridge with rtc-asr and Kokoro.
 - `eval`: ASSERT artifact export/viewer on `5174`.
-- `full`: all optional local services for an end-to-end lab stack.
+- `full`: all optional ACC-local services; this is not yet a full CAE-backed reliability lab.
 
-The `rtc-asr` service defaults to the local image name `rtc-asr:local`; build it from the sibling `rtc-asr` checkout or override `RTC_ASR_IMAGE` before starting a voice profile. Override `KOKORO_IMAGE` if a different Kokoro FastAPI image is preferred.
+## Repository map
 
-## Project Layout
+- `src/`: TypeScript app, HTTP routes, in-memory call state, operator controls, readiness, and proof APIs.
+- `scripts/`: proof, validation, Docker, Pipecat, browser, SIP/Verto, and handoff utilities.
+- `test/`: route, script, contract, and drift tests.
+- `docs/runtime-reference.md`: detailed routes, environment variables, shared-media contract, and sidecar setup.
+- `docs/demo-proof-runbook.md`: deterministic proof and CAE/ASSERT handoff inspection checklist.
+- `docs/reliability-lab.md`: #307 reference-stack mode/status and Phase 2 plan.
+- `docs/freeswitch-local-sip-runbook.md`: local SIP/Verto proof details.
 
-Active code lives in `src/`, tests in `test/`, proof/runtime scripts in `scripts/`, and deeper context in `docs/`.
+## Quality gates
 
-## Caveats
+```bash
+npm run docs:validate
+npm test
+```
 
-- State is in-memory and process-local.
-- The browser voice bridge uses Pipecat `SmallWebRTCTransport` plus the shared `Pipeline`, but live browser proof still requires local rtc-asr, Kokoro, and browser playback evidence.
-- `/api/assert/spec` saves the eval spec in memory for the running process; restart resets it to the default.
-- Local SIP `8600` targets a FreeSWITCH-owned Verto/WebRTC agent leg (`acc-pipecat`) as the preferred #222 route. Use `npm run pipecat:verto:live-proof` to require caller PCM entering Pipecat, a current-call rtc-asr final transcript, Kokoro TTS completion, and non-silent caller-side return audio from that same active call.
+`docs:validate` checks README scripts, Compose profiles, local links, useful routes, documented ports, primary diagram count, and core #307 ownership vocabulary.
 
 ## License
 
