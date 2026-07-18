@@ -15,4 +15,6 @@ test("documentation validation catches README drift against package scripts, Com
   assert.match(result.stdout, /Compose profiles/);
   assert.match(result.stdout, /local links/);
   assert.match(result.stdout, /useful routes/);
+  assert.match(result.stdout, /README diagrams/);
+  assert.match(result.stdout, /documented ports/);
 });
