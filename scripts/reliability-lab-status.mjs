@@ -60,6 +60,7 @@ const liveEndpointConfigured = {
   assertViewer: envConfigured("ASSERT_VIEWER_URL"),
   rtcAsr: envConfigured("RTC_ASR_BASE_URL"),
   kokoro: envConfigured("KOKORO_BASE_URL"),
+  browserWebRtcBridge: envConfigured("BROWSER_WEBRTC_BRIDGE_URL"),
   freeswitchVerto: envConfigured("FREESWITCH_VERTO_URL"),
 };
 
@@ -105,6 +106,13 @@ const componentReadiness = [
     endpoint: optionalEndpoints.kokoro,
     configuredDetail: "Configured for selected live media modes.",
     defaultDetail: "Required only for selected live media modes.",
+  }),
+  optionalComponent({
+    component: "Pipecat browser bridge",
+    configured: liveEndpointConfigured.browserWebRtcBridge,
+    endpoint: optionalEndpoints.browserWebRtcBridge,
+    configuredDetail: "Configured for Browser voice proof modes.",
+    defaultDetail: "Required only for Browser voice proof modes.",
   }),
   optionalComponent({
     component: "FreeSWITCH/Verto",

@@ -31,6 +31,7 @@ test("reliability lab status reports explicit blockers without starting sidecars
       ["ConversationAgentEvals", "not_configured"],
       ["rtc-asr", "not_required"],
       ["Kokoro", "not_required"],
+      ["Pipecat browser bridge", "not_required"],
       ["FreeSWITCH/Verto", "not_required"],
       ["ASSERT viewer", "not_required"],
     ],
@@ -70,6 +71,7 @@ test("reliability lab status reports explicitly configured live media endpoints"
       CAE_WEB_URL: "http://127.0.0.1:3010",
       RTC_ASR_BASE_URL: "http://127.0.0.1:18080",
       KOKORO_BASE_URL: "http://127.0.0.1:18880",
+      BROWSER_WEBRTC_BRIDGE_URL: "http://127.0.0.1:18766",
       FREESWITCH_VERTO_URL: "ws://127.0.0.1:18081",
       ASSERT_VIEWER_URL: "http://127.0.0.1:15174",
     },
@@ -81,10 +83,12 @@ test("reliability lab status reports explicitly configured live media endpoints"
 
   assert.equal(statuses["rtc-asr"], "configured");
   assert.equal(statuses.Kokoro, "configured");
+  assert.equal(statuses["Pipecat browser bridge"], "configured");
   assert.equal(statuses["FreeSWITCH/Verto"], "configured");
   assert.equal(statuses["ASSERT viewer"], "configured");
   assert.equal(payload.optionalEndpoints.rtcAsr, "http://127.0.0.1:18080");
   assert.equal(payload.optionalEndpoints.kokoro, "http://127.0.0.1:18880");
+  assert.equal(payload.optionalEndpoints.browserWebRtcBridge, "http://127.0.0.1:18766");
   assert.equal(payload.optionalEndpoints.freeswitchVerto, "ws://127.0.0.1:18081");
   assert.equal(payload.optionalEndpoints.assertViewer, "http://127.0.0.1:15174");
 });
