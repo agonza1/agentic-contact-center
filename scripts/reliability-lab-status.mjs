@@ -51,7 +51,28 @@ const optionalEndpoints = {
   freeswitchVerto: process.env.FREESWITCH_VERTO_URL ?? "ws://127.0.0.1:8081",
 };
 
+function envConfigured(name) {
+  return Boolean(process.env[name]?.trim());
+}
+
 const caeConfigured = Boolean(optionalEndpoints.caeApi && optionalEndpoints.caeWeb);
+const liveEndpointConfigured = {
+  assertViewer: envConfigured("ASSERT_VIEWER_URL"),
+  rtcAsr: envConfigured("RTC_ASR_BASE_URL"),
+  kokoro: envConfigured("KOKORO_BASE_URL"),
+  freeswitchVerto: envConfigured("FREESWITCH_VERTO_URL"),
+};
+
+function optionalComponent({ component, configured, endpoint, configuredDetail, defaultDetail }) {
+  return {
+    component,
+    status: configured ? "configured" : "not_required",
+    requiredForDefaultDemo: false,
+    endpoint,
+    detail: configured ? configuredDetail : defaultDetail,
+  };
+}
+
 const componentReadiness = [
   {
     component: "default-scripted-demo",
@@ -71,34 +92,34 @@ const componentReadiness = [
       ? "CAE endpoints are configured for Phase 2 lab handoff."
       : "Set CAE_API_URL and CAE_WEB_URL to enable Phase 2 lab handoff.",
   },
-  {
+  optionalComponent({
     component: "rtc-asr",
-    status: "not_required",
-    requiredForDefaultDemo: false,
+    configured: liveEndpointConfigured.rtcAsr,
     endpoint: optionalEndpoints.rtcAsr,
-    detail: "Required only for selected live media modes.",
-  },
-  {
+    configuredDetail: "Configured for selected live media modes.",
+    defaultDetail: "Required only for selected live media modes.",
+  }),
+  optionalComponent({
     component: "Kokoro",
-    status: "not_required",
-    requiredForDefaultDemo: false,
+    configured: liveEndpointConfigured.kokoro,
     endpoint: optionalEndpoints.kokoro,
-    detail: "Required only for selected live media modes.",
-  },
-  {
+    configuredDetail: "Configured for selected live media modes.",
+    defaultDetail: "Required only for selected live media modes.",
+  }),
+  optionalComponent({
     component: "FreeSWITCH/Verto",
-    status: "not_required",
-    requiredForDefaultDemo: false,
+    configured: liveEndpointConfigured.freeswitchVerto,
     endpoint: optionalEndpoints.freeswitchVerto,
-    detail: "Required only for SIP/Verto proof modes.",
-  },
-  {
+    configuredDetail: "Configured for SIP/Verto proof modes.",
+    defaultDetail: "Required only for SIP/Verto proof modes.",
+  }),
+  optionalComponent({
     component: "ASSERT viewer",
-    status: "not_required",
-    requiredForDefaultDemo: false,
+    configured: liveEndpointConfigured.assertViewer,
     endpoint: optionalEndpoints.assertViewer,
-    detail: "Used through CAE/ASSERT handoff or local viewer workflows.",
-  },
+    configuredDetail: "Configured for CAE/ASSERT handoff or local viewer workflows.",
+    defaultDetail: "Used through CAE/ASSERT handoff or local viewer workflows.",
+  }),
 ];
 
 const blockers = [];
