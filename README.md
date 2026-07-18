@@ -43,6 +43,7 @@ No production credentials are required for the mocked POC. SignalWire, CRM, bill
 ```bash
 npm install
 npm test
+npm run docs:validate
 npm start
 ```
 
