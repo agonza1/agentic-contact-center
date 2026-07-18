@@ -51,10 +51,60 @@ const optionalEndpoints = {
   freeswitchVerto: process.env.FREESWITCH_VERTO_URL ?? "ws://127.0.0.1:8081",
 };
 
+const caeConfigured = Boolean(optionalEndpoints.caeApi && optionalEndpoints.caeWeb);
+const componentReadiness = [
+  {
+    component: "default-scripted-demo",
+    status: "ready",
+    requiredForDefaultDemo: true,
+    detail: "Sidecar-free proof command is available.",
+  },
+  {
+    component: "ConversationAgentEvals",
+    status: caeConfigured ? "configured" : "not_configured",
+    requiredForDefaultDemo: false,
+    endpoints: {
+      api: optionalEndpoints.caeApi,
+      web: optionalEndpoints.caeWeb,
+    },
+    detail: caeConfigured
+      ? "CAE endpoints are configured for Phase 2 lab handoff."
+      : "Set CAE_API_URL and CAE_WEB_URL to enable Phase 2 lab handoff.",
+  },
+  {
+    component: "rtc-asr",
+    status: "not_required",
+    requiredForDefaultDemo: false,
+    endpoint: optionalEndpoints.rtcAsr,
+    detail: "Required only for selected live media modes.",
+  },
+  {
+    component: "Kokoro",
+    status: "not_required",
+    requiredForDefaultDemo: false,
+    endpoint: optionalEndpoints.kokoro,
+    detail: "Required only for selected live media modes.",
+  },
+  {
+    component: "FreeSWITCH/Verto",
+    status: "not_required",
+    requiredForDefaultDemo: false,
+    endpoint: optionalEndpoints.freeswitchVerto,
+    detail: "Required only for SIP/Verto proof modes.",
+  },
+  {
+    component: "ASSERT viewer",
+    status: "not_required",
+    requiredForDefaultDemo: false,
+    endpoint: optionalEndpoints.assertViewer,
+    detail: "Used through CAE/ASSERT handoff or local viewer workflows.",
+  },
+];
+
 const blockers = [];
 if (missingScripts.length > 0) blockers.push(`missing package scripts: ${missingScripts.join(", ")}`);
 if (missingProfiles.length > 0) blockers.push(`missing Compose profiles: ${missingProfiles.join(", ")}`);
-if (!optionalEndpoints.caeApi || !optionalEndpoints.caeWeb) {
+if (!caeConfigured) {
   blockers.push("ConversationAgentEvals API/web endpoints are not configured; set CAE_API_URL and CAE_WEB_URL for Phase 2 lab runs.");
 }
 
@@ -68,6 +118,7 @@ const report = {
     proofCommand: "npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json",
   },
   optionalEndpoints,
+  componentReadiness,
   repositoryContracts: {
     packageScripts: Object.keys(scripts).sort(),
     composeProfiles: profiles,

@@ -24,6 +24,17 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.ok(payload.defaultDemo.notRequired.includes("ConversationAgentEvals"));
   assert.ok(payload.defaultDemo.notRequired.includes("rtc-asr"));
   assert.ok(payload.blockers.some((blocker: string) => blocker.includes("ConversationAgentEvals API/web endpoints")));
+  assert.deepEqual(
+    payload.componentReadiness.map((component: { component: string; status: string }) => [component.component, component.status]),
+    [
+      ["default-scripted-demo", "ready"],
+      ["ConversationAgentEvals", "not_configured"],
+      ["rtc-asr", "not_required"],
+      ["Kokoro", "not_required"],
+      ["FreeSWITCH/Verto", "not_required"],
+      ["ASSERT viewer", "not_required"],
+    ],
+  );
   assert.ok(payload.repositoryContracts.packageScripts.includes("proof"));
   assert.ok(payload.repositoryContracts.composeProfiles.includes("browser-webrtc"));
   assert.ok(payload.repositoryContracts.reliabilityDocExists);
@@ -44,4 +55,8 @@ test("reliability lab status becomes configured when CAE endpoints are supplied"
   assert.deepEqual(payload.blockers, []);
   assert.equal(payload.optionalEndpoints.caeApi, "http://127.0.0.1:8010");
   assert.equal(payload.optionalEndpoints.caeWeb, "http://127.0.0.1:3010");
+  assert.equal(
+    payload.componentReadiness.find((component: { component: string }) => component.component === "ConversationAgentEvals").status,
+    "configured",
+  );
 });
