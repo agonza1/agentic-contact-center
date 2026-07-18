@@ -699,6 +699,9 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   const html = readFileSync(indexPath, "utf8");
   assert.match(html, /Agentic Contact Center/);
   assert.match(html, /Static GitHub Pages snapshot/);
+  assert.match(html, /--bg: #f5f7f8/);
+  assert.doesNotMatch(html, /color-scheme: dark/);
+  assert.doesNotMatch(html, /pages-notice|repo-strip|talk-progress|section-index/);
   assert.match(html, /window\.__CLUECON__/);
   assert.match(html, /Browser microphone VAD/);
   assert.match(html, /Simulate barge-in/);
