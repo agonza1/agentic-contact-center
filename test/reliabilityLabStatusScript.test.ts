@@ -31,6 +31,7 @@ test("reliability lab status reports explicit blockers without starting sidecars
       ["ConversationAgentEvals", "not_configured"],
       ["rtc-asr", "not_required"],
       ["Kokoro", "not_required"],
+      ["Pipecat browser bridge", "not_required"],
       ["FreeSWITCH/Verto", "not_required"],
       ["ASSERT viewer", "not_required"],
     ],
@@ -59,4 +60,35 @@ test("reliability lab status becomes configured when CAE endpoints are supplied"
     payload.componentReadiness.find((component: { component: string }) => component.component === "ConversationAgentEvals").status,
     "configured",
   );
+});
+
+test("reliability lab status reports explicitly configured live media endpoints", async () => {
+  const result = await execFileAsync(process.execPath, ["scripts/reliability-lab-status.mjs"], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      CAE_API_URL: "http://127.0.0.1:8010",
+      CAE_WEB_URL: "http://127.0.0.1:3010",
+      RTC_ASR_BASE_URL: "http://127.0.0.1:18080",
+      KOKORO_BASE_URL: "http://127.0.0.1:18880",
+      BROWSER_WEBRTC_BRIDGE_URL: "http://127.0.0.1:18766",
+      FREESWITCH_VERTO_URL: "ws://127.0.0.1:18081",
+      ASSERT_VIEWER_URL: "http://127.0.0.1:15174",
+    },
+  });
+  const payload = JSON.parse(result.stdout);
+  const statuses = Object.fromEntries(
+    payload.componentReadiness.map((component: { component: string; status: string }) => [component.component, component.status]),
+  );
+
+  assert.equal(statuses["rtc-asr"], "configured");
+  assert.equal(statuses.Kokoro, "configured");
+  assert.equal(statuses["Pipecat browser bridge"], "configured");
+  assert.equal(statuses["FreeSWITCH/Verto"], "configured");
+  assert.equal(statuses["ASSERT viewer"], "configured");
+  assert.equal(payload.optionalEndpoints.rtcAsr, "http://127.0.0.1:18080");
+  assert.equal(payload.optionalEndpoints.kokoro, "http://127.0.0.1:18880");
+  assert.equal(payload.optionalEndpoints.browserWebRtcBridge, "http://127.0.0.1:18766");
+  assert.equal(payload.optionalEndpoints.freeswitchVerto, "ws://127.0.0.1:18081");
+  assert.equal(payload.optionalEndpoints.assertViewer, "http://127.0.0.1:15174");
 });
