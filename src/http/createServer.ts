@@ -3144,6 +3144,12 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
   }
 
   if (kind === "rtc_asr_unavailable" || kind === "tts_unavailable") {
+    const stopAiPath = {
+      type: "telephony.ai_path.stop_requested",
+      callId,
+      reason: kind,
+      components: ["asr", "llm", "tts"],
+    };
     const handoff = {
       type: "telephony.handoff.requested",
       callId,
@@ -3154,6 +3160,7 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
       ...common,
       controlMessage: handoff,
       controlSequence: [
+        stopAiPath,
         {
           type: "telephony.playback.requested",
           callId,
@@ -3231,6 +3238,13 @@ async function runClueConOperatorDrill(
     const fallbackMode = kind === "tool_timeout" ? "tool_timeout" : "runtime_failure";
     latest = await ingress.triggerFallback(callId, fallbackMode, timestampAfter(14_000), `${kind} ClueCon operator drill`);
     if (kind === "rtc_asr_unavailable" || kind === "tts_unavailable") {
+      steps.push({
+        step: "failed_ai_path_stopped",
+        ok: true,
+        flowState: latest.flowState,
+        callId,
+        detail: "ASR, LLM, and synthesized output are stopped before any fallback media plays.",
+      });
       steps.push({
         step: "prerecorded_error_prompt",
         ok: true,

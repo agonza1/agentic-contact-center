@@ -395,19 +395,21 @@ test("POST /api/cluecon/operator/drill runs fail-closed and operator action dril
     summary: string;
     simulatedEvents: string[];
     integration: {
-      controlSequence: Array<{ type: string; source?: string; asset?: string; target?: { type: string; id: string } }>;
+      controlSequence: Array<{ type: string; source?: string; asset?: string; components?: string[]; target?: { type: string; id: string } }>;
       executionPatterns: string[];
     };
     call: { flowState: string; demoFallback: { mode: string | null; reason: string | null } };
   };
   assert.equal(mediaFailure.outcome, "fail_closed_handoff");
   assert.match(mediaFailure.summary, /prerecorded error prompt -> fail-closed human handoff/);
-  assert.deepEqual(mediaFailure.simulatedEvents.slice(-2), ["prerecorded_error_prompt", "human_handoff_requested"]);
-  assert.equal(mediaFailure.integration.controlSequence[0]?.type, "telephony.playback.requested");
-  assert.equal(mediaFailure.integration.controlSequence[0]?.source, "prerecorded_media");
-  assert.equal(mediaFailure.integration.controlSequence[0]?.asset, "/cluecon/system-unavailable.mp3");
-  assert.equal(mediaFailure.integration.controlSequence[1]?.type, "telephony.handoff.requested");
-  assert.equal(mediaFailure.integration.controlSequence[1]?.target?.id, "human-support");
+  assert.deepEqual(mediaFailure.simulatedEvents.slice(-3), ["failed_ai_path_stopped", "prerecorded_error_prompt", "human_handoff_requested"]);
+  assert.equal(mediaFailure.integration.controlSequence[0]?.type, "telephony.ai_path.stop_requested");
+  assert.deepEqual(mediaFailure.integration.controlSequence[0]?.components, ["asr", "llm", "tts"]);
+  assert.equal(mediaFailure.integration.controlSequence[1]?.type, "telephony.playback.requested");
+  assert.equal(mediaFailure.integration.controlSequence[1]?.source, "prerecorded_media");
+  assert.equal(mediaFailure.integration.controlSequence[1]?.asset, "/cluecon/system-unavailable.mp3");
+  assert.equal(mediaFailure.integration.controlSequence[2]?.type, "telephony.handoff.requested");
+  assert.equal(mediaFailure.integration.controlSequence[2]?.target?.id, "human-support");
   assert.ok(mediaFailure.integration.executionPatterns.some((pattern) => /does not depend on ASR, the LLM, or TTS/.test(pattern)));
   assert.equal(mediaFailure.call.flowState, "wrap");
   assert.equal(mediaFailure.call.demoFallback.mode, "runtime_failure");
