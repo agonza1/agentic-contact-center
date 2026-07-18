@@ -38,6 +38,7 @@ The command prints a JSON status report and does not start long-running services
 - package scripts required by #307 Phase 1;
 - Compose profiles used by the documented modes;
 - default ACC app route/port assumptions;
+- component readiness states for default-demo, CAE, rtc-asr, Kokoro, FreeSWITCH/Verto, and ASSERT viewer wiring;
 - whether optional CAE/ASSERT endpoint environment variables are configured;
 - the current Phase 2 blockers.
 
