@@ -64,12 +64,13 @@ const liveEndpointConfigured = {
   freeswitchVerto: envConfigured("FREESWITCH_VERTO_URL"),
 };
 
-function optionalComponent({ component, configured, endpoint, configuredDetail, defaultDetail }) {
+function optionalComponent({ component, configured, endpoint, envVar, configuredDetail, defaultDetail }) {
   return {
     component,
     status: configured ? "configured" : "not_required",
     requiredForDefaultDemo: false,
     endpoint,
+    envVar,
     detail: configured ? configuredDetail : defaultDetail,
   };
 }
@@ -97,6 +98,7 @@ const componentReadiness = [
     component: "rtc-asr",
     configured: liveEndpointConfigured.rtcAsr,
     endpoint: optionalEndpoints.rtcAsr,
+    envVar: "RTC_ASR_BASE_URL",
     configuredDetail: "Configured for selected live media modes.",
     defaultDetail: "Required only for selected live media modes.",
   }),
@@ -104,6 +106,7 @@ const componentReadiness = [
     component: "Kokoro",
     configured: liveEndpointConfigured.kokoro,
     endpoint: optionalEndpoints.kokoro,
+    envVar: "KOKORO_BASE_URL",
     configuredDetail: "Configured for selected live media modes.",
     defaultDetail: "Required only for selected live media modes.",
   }),
@@ -111,6 +114,7 @@ const componentReadiness = [
     component: "Pipecat browser bridge",
     configured: liveEndpointConfigured.browserWebRtcBridge,
     endpoint: optionalEndpoints.browserWebRtcBridge,
+    envVar: "BROWSER_WEBRTC_BRIDGE_URL",
     configuredDetail: "Configured for Browser voice proof modes.",
     defaultDetail: "Required only for Browser voice proof modes.",
   }),
@@ -118,6 +122,7 @@ const componentReadiness = [
     component: "FreeSWITCH/Verto",
     configured: liveEndpointConfigured.freeswitchVerto,
     endpoint: optionalEndpoints.freeswitchVerto,
+    envVar: "FREESWITCH_VERTO_URL",
     configuredDetail: "Configured for SIP/Verto proof modes.",
     defaultDetail: "Required only for SIP/Verto proof modes.",
   }),
@@ -125,6 +130,7 @@ const componentReadiness = [
     component: "ASSERT viewer",
     configured: liveEndpointConfigured.assertViewer,
     endpoint: optionalEndpoints.assertViewer,
+    envVar: "ASSERT_VIEWER_URL",
     configuredDetail: "Configured for CAE/ASSERT handoff or local viewer workflows.",
     defaultDetail: "Used through CAE/ASSERT handoff or local viewer workflows.",
   }),
