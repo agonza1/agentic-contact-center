@@ -10,6 +10,8 @@ This repo now carries a runnable local proof of concept for the `cluecon-present
 4. A per-call agent evidence envelope is attached during `POST /api/demo/start` so transcript, tool, and artifact references stay correlated.
 5. Slack-style human steer enters through `POST /api/calls/:callId/operator-steer` and can pause, resume, jump slides, ask for guidance, approve a safe response, escalate to a human, take over, or end the call.
 6. Demo fallback enters through `POST /api/calls/:callId/fallback` and triggers a fail-closed human handoff for `tool_timeout` or `runtime_failure`, while `operator-steer` can also arm or disarm manual fallback visibility.
+7. The ClueCon operator drill maps `rtc_asr_unavailable` and `tts_unavailable` to a two-command media recovery sequence: play the prerecorded `system-unavailable.mp3` asset, then request a bridge to the `human-support` queue. The prompt does not depend on ASR, the LLM, or TTS.
+8. The presentation security panel is an explicit architecture fixture based on the separate `realtime-voice-ai-guardrails` reference implementation. It demonstrates local allow/redact/block decisions before third-party LLM handoff; it is not represented as a production guardrail integrated into the ACC runtime.
 
 ## Live session envelope
 
@@ -28,6 +30,8 @@ The API keeps all POC subsystem visibility in one top-level call snapshot:
 - `POST /api/calls/:callId/caller-turn`
 - `POST /api/calls/:callId/operator-steer`
 - `POST /api/calls/:callId/fallback`
+- `POST /api/cluecon/operator/drill`
+- `GET /cluecon/system-unavailable.mp3`
 - `GET /api/calls/:callId`
 - `GET /health`
 - `GET /api/calls/:callId/artifacts`

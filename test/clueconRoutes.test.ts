@@ -162,7 +162,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     ok: boolean;
     workboardCard: string;
     activeWorkboardCard: string;
-    sourceRepos: { agenticContactCenter: string; rtcAsr: string };
+    sourceRepos: { agenticContactCenter: string; rtcAsr: string; realtimeVoiceAiGuardrails: string };
     routes: { scrollable: string; present: string; scriptedDemo: string; operatorDrill: string; evalPreview: string; evalRun: string };
     readiness: Array<{ id: string; status: string; caveat: string; repoUrl?: string }>;
     liveProbes: Array<{ id: string; configured: boolean; status: string; ok: boolean; metadata: Record<string, unknown> }>;
@@ -183,6 +183,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     };
     brainBlocks: Array<{ file: string; affects: string[] }>;
     brainPanel: { previewRoute: string; applyRoute: string; resetRoute: string; safeMutation: string; activeFiles: string[] };
+    securityPanel: { articleUrl: string; referenceRepoUrl: string; trustBoundary: string; controls: string[]; scenarios: Array<{ id: string; action: string; llmInput: string | null }> };
     operatorCockpit: {
       workboardCard: string;
       drillRoute: string;
@@ -199,6 +200,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.activeWorkboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
   assert.equal(payload.sourceRepos.agenticContactCenter, "https://github.com/agonza1/agentic-contact-center");
   assert.equal(payload.sourceRepos.rtcAsr, "https://github.com/agonza1/rtc-asr");
+  assert.equal(payload.sourceRepos.realtimeVoiceAiGuardrails, "https://github.com/WebRTCventures/realtime-voice-ai-guardrails");
   assert.equal(payload.architectureCenter.issue, "agonza1/agentic-contact-center#307");
   assert.match(payload.architectureCenter.target, /transport\.input -> rtc-asr STT/);
   assert.match(payload.architectureCenter.adapterRule, /Browser, fixture\/tester, and SIP/);
@@ -251,11 +253,17 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.brainPanel.resetRoute, "/api/cluecon/brain/reset");
   assert.equal(payload.brainPanel.safeMutation, "session_scoped_in_memory");
   assert.ok(payload.brainPanel.activeFiles.includes("policy.md"));
+  assert.match(payload.securityPanel.trustBoundary, /before any third-party LLM handoff/);
+  assert.equal(payload.securityPanel.scenarios.find((scenario) => scenario.id === "pii")?.action, "redact");
+  assert.equal(payload.securityPanel.scenarios.find((scenario) => scenario.id === "pci")?.llmInput, null);
+  assert.match(payload.securityPanel.referenceRepoUrl, /realtime-voice-ai-guardrails/);
   assert.equal(payload.operatorCockpit.workboardCard, "3ea982b1-627a-4698-8b02-0c270b688237");
   assert.equal(payload.operatorCockpit.drillRoute, "/api/cluecon/operator/drill");
   assert.ok(payload.operatorCockpit.modes.includes("operator_click_simulation"));
   assert.ok(payload.operatorCockpit.drillKinds.includes("transfer"));
   assert.ok(payload.operatorCockpit.actions.includes("takeover"));
+  assert.ok(payload.operatorCockpit.drillKinds.includes("rtc_asr_unavailable"));
+  assert.ok(payload.operatorCockpit.drillKinds.includes("tts_unavailable"));
   assert.equal(payload.operatorCockpit.telephonyControlBoundary.command, "structured JSON from ACC");
   assert.ok(payload.operatorCockpit.telephonyControlBoundary.adapters.includes("FreeSWITCH ESL"));
   assert.ok(payload.operatorCockpit.telephonyControlBoundary.standardPatterns.includes("SIP REFER"));
@@ -275,6 +283,13 @@ test("GET /cluecon renders each transcript turn as a separate block", async () =
   assert.match(response.body, /class="transcript-turn transcript-turn--/);
   assert.match(response.body, /renderDemoTranscript\(payload\.call\.transcript\)/);
   assert.match(response.body, /const VAD_END_OF_TURN_MS = Number\(data\.turnTiming\?\.endOfTurnSilenceMs\) \|\| 2000;/);
+});
+
+test("GET /cluecon/system-unavailable.mp3 serves the prerecorded failover prompt", async () => {
+  const response = await get("/cluecon/system-unavailable.mp3");
+  assert.equal(response.statusCode, 200);
+  assert.match(response.contentType, /audio\/mpeg/);
+  assert.ok(response.body.length > 1_000);
 });
 
 test("POST /api/cluecon/brain preview, apply, and reset keep edits session-scoped", async () => {
@@ -372,6 +387,33 @@ test("POST /api/cluecon/operator/drill runs fail-closed and operator action dril
   assert.match(fallback.call.demoFallback.reason ?? "", /runtime_failure ClueCon operator drill/);
   assert.match(fallback.proofLinks.proof, /\/api\/calls\/demo-call-\d+\/proof/);
   assert.match(fallback.proofLinks.operatorConsole, /openclawSessionLabel=cluecon%2Foperator-runtime_failure/);
+
+  const mediaFailureResponse = await post("/api/cluecon/operator/drill", { kind: "rtc_asr_unavailable" });
+  assert.equal(mediaFailureResponse.statusCode, 201);
+  const mediaFailure = JSON.parse(mediaFailureResponse.body) as {
+    outcome: string;
+    summary: string;
+    simulatedEvents: string[];
+    integration: {
+      controlSequence: Array<{ type: string; source?: string; asset?: string; components?: string[]; target?: { type: string; id: string } }>;
+      executionPatterns: string[];
+    };
+    call: { flowState: string; demoFallback: { mode: string | null; reason: string | null } };
+  };
+  assert.equal(mediaFailure.outcome, "fail_closed_handoff");
+  assert.match(mediaFailure.summary, /prerecorded error prompt -> fail-closed human handoff/);
+  assert.deepEqual(mediaFailure.simulatedEvents.slice(-3), ["failed_ai_path_stopped", "prerecorded_error_prompt", "human_handoff_requested"]);
+  assert.equal(mediaFailure.integration.controlSequence[0]?.type, "telephony.ai_path.stop_requested");
+  assert.deepEqual(mediaFailure.integration.controlSequence[0]?.components, ["asr", "llm", "tts"]);
+  assert.equal(mediaFailure.integration.controlSequence[1]?.type, "telephony.playback.requested");
+  assert.equal(mediaFailure.integration.controlSequence[1]?.source, "prerecorded_media");
+  assert.equal(mediaFailure.integration.controlSequence[1]?.asset, "/cluecon/system-unavailable.mp3");
+  assert.equal(mediaFailure.integration.controlSequence[2]?.type, "telephony.handoff.requested");
+  assert.equal(mediaFailure.integration.controlSequence[2]?.target?.id, "human-support");
+  assert.ok(mediaFailure.integration.executionPatterns.some((pattern) => /does not depend on ASR, the LLM, or TTS/.test(pattern)));
+  assert.equal(mediaFailure.call.flowState, "wrap");
+  assert.equal(mediaFailure.call.demoFallback.mode, "runtime_failure");
+  assert.match(mediaFailure.call.demoFallback.reason ?? "", /rtc_asr_unavailable/);
 
   const transferResponse = await post("/api/cluecon/operator/drill", { kind: "transfer" });
   assert.equal(transferResponse.statusCode, 201);
@@ -591,7 +633,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /xform-carrier/);
   assert.match(narrative.body, /media-wave/);
   assert.match(narrative.body, /media-tokens/);
-  assert.equal((narrative.body.match(/data-slide="\d+"/g) ?? []).length, 10);
+  assert.equal((narrative.body.match(/data-slide="\d+"/g) ?? []).length, 11);
   assert.match(narrative.body, /Deterministic telephony meets probabilistic inference/);
   assert.match(narrative.body, /One runs on clocks\. One runs on confidence/);
   assert.match(narrative.body, /id="vad-interruption"/);
@@ -623,12 +665,15 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /vadPendingStream/);
   assert.match(narrative.body, /Starting microphone…/);
   assert.match(narrative.body, /MIC_START_CANCELLED/);
-  assert.match(narrative.body, /slideCount: 10/);
+  assert.match(narrative.body, /slideCount: slideOrder\.length/);
+  assert.match(narrative.body, /\["flow", "realtime-problem", "two-machines", "vad-interruption", "asr", "map", "demo"/);
   assert.match(narrative.body, /Run scripted demo/);
   assert.match(narrative.body, /ACC emits auditable JSON; FreeSWITCH or another SIP\/media server executes transfer/);
   assert.match(narrative.body, /Control plane → media plane/);
   assert.match(narrative.body, /renderOperatorDrill\(payload\)/);
-  assert.match(narrative.body, /JSON\.stringify\(integration\.controlMessage, null, 2\)/);
+  assert.match(narrative.body, /integration\.controlSequence \|\| integration\.controlMessage/);
+  assert.match(narrative.body, /system-unavailable\.mp3/);
+  assert.match(narrative.body, /runMediaFailureDrill\("rtc_asr_unavailable"\)/);
   assert.match(narrative.body, /Run proof/);
   assert.match(narrative.body, /Run eval/);
   assert.match(narrative.body, /window\.__CLUECON__/);
@@ -651,9 +696,17 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /0\.066x/);
   assert.match(narrative.body, /https:\/\/github\.com\/agonza1\/rtc-asr/);
   assert.match(narrative.body, /renderAsrPanel/);
+  assert.match(narrative.body, /PII should not reach the third-party LLM/);
+  assert.match(narrative.body, /id="security"/);
+  assert.match(narrative.body, /PII \/ PHI \/ PCI guardrail/);
+  assert.match(narrative.body, /\[REDACTED_EMAIL\]/);
+  assert.match(narrative.body, /NOT SENT TO LLM/);
+  assert.match(narrative.body, /realtime-voice-ai-guardrails/);
+  assert.match(narrative.body, /slug-voice-ai-security-webrtc-livekit-guardrails/);
+  assert.match(narrative.body, /renderSecurityPanel/);
   assert.match(narrative.body, /runEvalProof/);
   assert.match(narrative.body, /goToSlide/);
-  assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 10'));
+  assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 11'));
   assert.match(narrative.body, /aria-label="Previous slide"/);
   assert.ok(narrative.body.includes('status.textContent = String(state.slide + 1) + " / " + String(state.slideCount)'));
   assert.match(narrative.body, /@media \(max-width: 1100px\) \{ #demo \.two/);
@@ -716,7 +769,9 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.doesNotMatch(html, /15 min system story/);
   assert.doesNotMatch(html, /10 min live demo/);
   assert.doesNotMatch(html, /5 min proof \+ close/);
-  assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 10);
+  assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 11);
+  assert.match(html, /prerecorded system-unavailable prompt/i);
+  assert.match(html, /human-support/);
   assert.match(html, /href="\.\/present\/"/);
   assert.doesNotMatch(html, /href="\/cluecon"/);
   for (const [, script] of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
@@ -727,6 +782,7 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(presentHtml, /href="\.\/"/);
   assert.match(presentHtml, /href="\.\.\/"/);
   assert.doesNotMatch(presentHtml, /href="\.\/present\/"/);
+  assert.equal(existsSync("site/cluecon-pages/system-unavailable.mp3"), true);
 
   const fallbackHtml = readFileSync(fallbackPath, "utf8");
   assert.match(fallbackHtml, /Static GitHub Pages snapshot/);
