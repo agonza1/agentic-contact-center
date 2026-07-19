@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 const repoRoot = process.cwd();
@@ -15,6 +15,23 @@ function fail(message) {
 
 function unique(values) {
   return [...new Set(values)].sort();
+}
+
+function markdownSources() {
+  const docsDir = path.join(repoRoot, "docs");
+  const docs = existsSync(docsDir)
+    ? readdirSync(docsDir)
+        .filter((entry) => entry.endsWith(".md"))
+        .map((entry) => path.join("docs", entry))
+    : [];
+  return ["README.md", ...docs];
+}
+
+function localMarkdownLinks(sourcePath, text) {
+  return [...text.matchAll(/\[[^\]]+\]\((?!https?:\/\/|#)([^)#]+)(?:#[^)]+)?\)/g)].map((match) => ({
+    sourcePath,
+    href: match[1].trim(),
+  }));
 }
 
 const readme = readText("README.md");
@@ -55,10 +72,13 @@ for (const [scriptName, command] of Object.entries(scripts)) {
   }
 }
 
-const localLinks = unique([...readme.matchAll(/\[[^\]]+\]\((?!https?:\/\/|#)([^)#]+)(?:#[^)]+)?\)/g)].map((match) => match[1].trim()));
+const localLinks = markdownSources().flatMap((sourcePath) => localMarkdownLinks(sourcePath, readText(sourcePath)));
+const checkedLocalLinks = unique(localLinks.map((link) => `${link.sourcePath}:${link.href}`));
 for (const link of localLinks) {
-  if (!existsSync(path.join(repoRoot, link))) {
-    fail(`README links to missing local path: ${link}`);
+  const target = path.normalize(path.join(repoRoot, path.dirname(link.sourcePath), link.href));
+  const relativeTarget = path.relative(repoRoot, target);
+  if (relativeTarget.startsWith("..") || path.isAbsolute(relativeTarget) || !existsSync(target)) {
+    fail(`${link.sourcePath} links to missing local path: ${link.href}`);
   }
 }
 
@@ -129,5 +149,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${composeProfiles.size} Compose profiles, ${localLinks.length} local links, ${documentedRoutes.length} useful routes, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${composeProfiles.size} Compose profiles, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports.`,
 );
