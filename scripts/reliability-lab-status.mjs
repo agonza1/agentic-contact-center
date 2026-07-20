@@ -40,6 +40,15 @@ const requiredScripts = [
 const requiredProfiles = ["voice", "browser-webrtc", "sip-verto", "eval", "full"];
 const missingScripts = requiredScripts.filter((script) => !scripts[script]);
 const missingProfiles = requiredProfiles.filter((profile) => !profiles.includes(profile));
+const optionalEndpointEnvVars = [
+  "CAE_API_URL",
+  "CAE_WEB_URL",
+  "ASSERT_VIEWER_URL",
+  "RTC_ASR_BASE_URL",
+  "KOKORO_BASE_URL",
+  "BROWSER_WEBRTC_BRIDGE_URL",
+  "FREESWITCH_VERTO_URL",
+];
 
 const optionalEndpoints = {
   caeApi: process.env.CAE_API_URL ?? null,
@@ -157,6 +166,7 @@ const report = {
   repositoryContracts: {
     packageScripts: Object.keys(scripts).sort(),
     composeProfiles: profiles,
+    optionalEndpointEnvVars,
     readmeExists: existsSync(path.join(repoRoot, "README.md")),
     reliabilityDocExists: existsSync(path.join(repoRoot, "docs/reliability-lab.md")),
   },

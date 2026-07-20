@@ -41,6 +41,7 @@ The command prints a JSON status report and does not start long-running services
 - component readiness states for default-demo, CAE, rtc-asr, Kokoro, FreeSWITCH/Verto, and ASSERT viewer wiring;
 - whether optional CAE/ASSERT endpoint environment variables are configured;
 - the current Phase 2 blockers.
+- the endpoint environment contract in `repositoryContracts.optionalEndpointEnvVars`.
 
 Environment variables recognized by the status command:
 

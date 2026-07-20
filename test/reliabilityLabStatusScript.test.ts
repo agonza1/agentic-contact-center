@@ -13,6 +13,15 @@ const liveEndpointEnvVars = [
   "FREESWITCH_VERTO_URL",
   "ASSERT_VIEWER_URL",
 ];
+const expectedEndpointEnvVars = [
+  "CAE_API_URL",
+  "CAE_WEB_URL",
+  "ASSERT_VIEWER_URL",
+  "RTC_ASR_BASE_URL",
+  "KOKORO_BASE_URL",
+  "BROWSER_WEBRTC_BRIDGE_URL",
+  "FREESWITCH_VERTO_URL",
+];
 
 function withClearedLiveEndpointEnv() {
   const env = { ...process.env };
@@ -53,6 +62,7 @@ test("reliability lab status reports explicit blockers without starting sidecars
   );
   assert.ok(payload.repositoryContracts.packageScripts.includes("proof"));
   assert.ok(payload.repositoryContracts.composeProfiles.includes("browser-webrtc"));
+  assert.deepEqual(payload.repositoryContracts.optionalEndpointEnvVars, expectedEndpointEnvVars);
   assert.ok(payload.repositoryContracts.reliabilityDocExists);
   assert.equal(
     payload.componentReadiness.find((component: { component: string }) => component.component === "Pipecat browser bridge").envVar,
