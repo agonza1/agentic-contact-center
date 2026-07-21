@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const repoRoot = join(__dirname, "..", "..");
 
-test("documentation validation catches Markdown drift against package scripts, Compose profiles, links, and routes", async () => {
+test("documentation validation catches Markdown drift against documented package scripts, Compose profiles, links, and routes", async () => {
   const result = await execFileAsync(process.execPath, ["scripts/validate-docs.mjs"], { cwd: repoRoot });
 
   assert.match(result.stdout, /Documentation validation passed:/);

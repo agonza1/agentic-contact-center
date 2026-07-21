@@ -41,9 +41,12 @@ const server = readText("src/http/createServer.ts");
 const cluecon = readText("src/http/cluecon.ts");
 const scripts = packageJson.scripts ?? {};
 
-for (const scriptName of unique([...readme.matchAll(/\bnpm run ([A-Za-z0-9:_-]+)/g)].map((match) => match[1]))) {
-  if (!scripts[scriptName]) {
-    fail(`README documents missing npm script: ${scriptName}`);
+for (const sourcePath of markdownSources()) {
+  const source = readText(sourcePath);
+  for (const scriptName of unique([...source.matchAll(/\bnpm run ([A-Za-z0-9:_-]+)/g)].map((match) => match[1]))) {
+    if (!scripts[scriptName]) {
+      fail(`${sourcePath} documents missing npm script: ${scriptName}`);
+    }
   }
 }
 
