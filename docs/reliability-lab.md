@@ -75,7 +75,7 @@ Rules for Phase 2:
 
 ## Phase 3 guided workflow plan
 
-A future `/reliability` route should guide the user through:
+The `/reliability` route now provides the first guided surface for:
 
 1. Component readiness.
 2. Baseline/candidate selection.

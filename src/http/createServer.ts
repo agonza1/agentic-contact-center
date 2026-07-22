@@ -538,6 +538,131 @@ function writeHtml(response: ServerResponse, statusCode: number, html: string): 
   response.end(html);
 }
 
+function buildReliabilityGuidePayload(config: PocConfig): object {
+  return {
+    ok: true,
+    route: "/reliability",
+    apiRoute: "/api/reliability",
+    issue: "agonza1/agentic-contact-center#307",
+    activeMode: config.mode,
+    goldenScenario: "cancellation-rescue",
+    status: {
+      scriptedFixture: "ready",
+      browserWebRtc: "optional_live_sidecars_required",
+      sipVerto: "accepted_strict_local_proof",
+      caeAssertHandoff: "generated_request_artifact_ready",
+      production: "blocked_not_implemented",
+    },
+    workflow: [
+      {
+        step: "choose_target_mode",
+        label: "Choose fixture, browser WebRTC, or SIP/Verto",
+        command: "npm run reliability:lab",
+        evidence: "/api/pipecat-media-engine/readiness",
+      },
+      {
+        step: "run_cancellation_rescue",
+        label: "Run the controlled cancellation-rescue candidate",
+        command: "npm run proof",
+        evidence: "artifacts/demo-proof-latest.json",
+      },
+      {
+        step: "collect_evidence",
+        label: "Capture transcript, events, latency, final state, media, and provenance",
+        command: "npm run proof:bundle",
+        evidence: "artifacts/agentic-call-center-demo/",
+      },
+      {
+        step: "handoff_to_cae",
+        label: "Generate the CAE-compatible AssertRunCreateRequest",
+        command: "npm run cae:assert:handoff",
+        evidence: "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
+      },
+      {
+        step: "compare_verdicts",
+        label: "Compare unsafe baseline against controlled candidate in CAE/ASSERT",
+        command: null,
+        evidence: "ConversationAgentEvals owns run, report, and comparison UX",
+      },
+    ],
+    readinessRoutes: {
+      health: "/health",
+      browserWebRtc: "/api/browser-webrtc/readiness",
+      pipecatMediaEngine: "/api/pipecat-media-engine/readiness",
+      operatorConsole: "/operator/console",
+    },
+  };
+}
+
+function buildReliabilityGuideHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reliability Lab</title>
+  <style>
+    :root { --bg: #f5f7f8; --panel: #ffffff; --text: #18222d; --muted: #647182; --line: #d7dee7; --accent: #0f766e; --warn: #9a5b13; --ok: #126b3e; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--text); background: var(--bg); }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 22px; border-bottom: 1px solid var(--line); background: #fff; }
+    h1 { margin: 0; font-size: 20px; letter-spacing: 0; }
+    h2 { margin: 0; font-size: 15px; letter-spacing: 0; }
+    main { display: grid; gap: 16px; max-width: 1100px; margin: 0 auto; padding: 18px; }
+    a { color: var(--accent); font-weight: 700; text-decoration: none; }
+    code { padding: 2px 5px; border-radius: 5px; background: #eef2f5; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+    .button { display: inline-flex; align-items: center; min-height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); font-size: 13px; }
+    .button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .band { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+    .metric { display: grid; gap: 4px; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+    .metric span { color: var(--muted); font-size: 12px; }
+    .metric strong { overflow-wrap: anywhere; }
+    .workflow { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+    .workflow li { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+    .step { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #e8f5f2; color: var(--accent); font-weight: 800; }
+    .meta { color: var(--muted); font-size: 13px; }
+    @media (max-width: 720px) { header { align-items: flex-start; flex-direction: column; } main { padding: 12px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Reliability Lab</h1>
+      <div class="meta">Cancellation-rescue guide and integration surface</div>
+    </div>
+    <nav class="toolbar" aria-label="Reliability lab navigation">
+      <a class="button primary" href="/operator/console">Operator Console</a>
+      <a class="button" href="/api/reliability">API</a>
+      <a class="button" href="/health">Health</a>
+    </nav>
+  </header>
+  <main>
+    <section class="band" aria-labelledby="readiness-title">
+      <h2 id="readiness-title">Readiness</h2>
+      <div class="grid">
+        <div class="metric"><span>Scripted fixture</span><strong>ready</strong></div>
+        <div class="metric"><span>Browser WebRTC</span><strong>optional sidecars required</strong><a href="/api/browser-webrtc/readiness">readiness</a></div>
+        <div class="metric"><span>SIP/Verto</span><strong>accepted strict local proof</strong><a href="/api/pipecat-media-engine/readiness">media engine</a></div>
+        <div class="metric"><span>CAE/ASSERT</span><strong>handoff artifact ready</strong></div>
+      </div>
+    </section>
+    <section class="band" aria-labelledby="workflow-title">
+      <h2 id="workflow-title">Golden Workflow</h2>
+      <ol class="workflow">
+        <li><span class="step">1</span><div><strong>Choose target mode</strong><div class="meta"><code>npm run reliability:lab</code> reports ready, blocked, configured, and not-required states.</div></div></li>
+        <li><span class="step">2</span><div><strong>Run cancellation-rescue</strong><div class="meta"><code>npm run proof</code> produces deterministic controlled-candidate evidence.</div></div></li>
+        <li><span class="step">3</span><div><strong>Collect proof bundle</strong><div class="meta"><code>npm run proof:bundle</code> writes transcript, event, latency, final-state, media, and provenance links.</div></div></li>
+        <li><span class="step">4</span><div><strong>Generate CAE handoff</strong><div class="meta"><code>npm run cae:assert:handoff</code> creates the CAE-compatible request while CAE owns run/report UX.</div></div></li>
+        <li><span class="step">5</span><div><strong>Compare verdicts</strong><div class="meta">Unsafe baseline and controlled candidate remain labeled; deterministic checks and ASSERT judgment stay separate.</div></div></li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
 function buildOperatorConsoleHtml(): string {
   return `<!doctype html>
 <html lang="en">
@@ -4158,6 +4283,11 @@ async function routeRequest(
     return;
   }
 
+  if (request.method === "GET" && pathname === "/api/reliability") {
+    writeJson(response, 200, buildReliabilityGuidePayload(config));
+    return;
+  }
+
   if (request.method === "GET" && pathname.startsWith("/api/browser-webrtc/session/") && pathname.endsWith("/proof")) {
     const encodedSessionId = pathname.slice("/api/browser-webrtc/session/".length, -"/proof".length);
     const sessionId = decodeURIComponent(encodedSessionId);
@@ -4882,6 +5012,11 @@ async function routeRequest(
 
   if (request.method === "GET" && (pathname === "/" || pathname === "/operator" || pathname === "/operator/console")) {
     writeHtml(response, 200, buildOperatorConsoleHtml());
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/reliability") {
+    writeHtml(response, 200, buildReliabilityGuideHtml());
     return;
   }
 

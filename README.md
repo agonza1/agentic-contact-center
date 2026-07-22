@@ -10,6 +10,7 @@ Primary actions:
 
 - Run the default deterministic proof: `npm install && npm test && npm run proof`
 - Start the local app: `npm start`
+- Open the reliability guide: `http://127.0.0.1:8026/reliability`
 - Inspect the ClueCon walkthrough: `http://127.0.0.1:8026/cluecon`
 - Check the reliability-lab integration status: `npm run reliability:lab`
 
@@ -162,7 +163,9 @@ ACC can also export local ASSERT viewer artifacts with `npm run assert:export` a
 
 - `/`: local demo console.
 - `/operator/console`: operator-focused console for queue review, steer, fallback, and proof links.
+- `/reliability`: guided cancellation-rescue reliability-lab workflow.
 - `/health`: service/config/runtime readiness.
+- `/api/reliability`: machine-readable reliability-lab workflow and handoff routes.
 - `/cluecon`: WebRTC.ventures presentation/walkthrough.
 - `/assert`: ACC local artifact viewer.
 - `/assert/full`: wrapper for the upstream ASSERT local viewer.
