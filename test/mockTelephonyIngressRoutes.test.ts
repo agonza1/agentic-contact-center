@@ -1961,6 +1961,45 @@ test("GET /assert/full embeds the upstream ASSERT local viewer with local naviga
   });
 });
 
+test("GET /reliability serves the guided reliability-lab workflow", async () => {
+  await withServer(async (port) => {
+    const html = await requestText(port, "GET", "/reliability");
+    assert.equal(html.statusCode, 200);
+    assert.equal(html.contentType, "text/html; charset=utf-8");
+    assert.match(html.body, /<title>Reliability Lab<\/title>/);
+    assert.match(html.body, /Cancellation-rescue guide/);
+    assert.match(html.body, /npm run reliability:lab/);
+    assert.match(html.body, /npm run cae:assert:handoff/);
+    assert.match(html.body, /href="\/api\/reliability"/);
+    assert.match(html.body, /href="\/api\/browser-webrtc\/readiness"/);
+
+    const api = await requestJson(port, "GET", "/api/reliability");
+    assert.equal(api.statusCode, 200);
+    const payload = api.payload as {
+      ok: boolean;
+      route: string;
+      apiRoute: string;
+      goldenScenario: string;
+      status: Record<string, string>;
+      workflow: Array<{ step: string; command: string | null; evidence: string }>;
+      readinessRoutes: Record<string, string>;
+    };
+    assert.equal(payload.ok, true);
+    assert.equal(payload.route, "/reliability");
+    assert.equal(payload.apiRoute, "/api/reliability");
+    assert.equal(payload.goldenScenario, "cancellation-rescue");
+    assert.equal(payload.status.scriptedFixture, "ready");
+    assert.equal(payload.status.caeAssertHandoff, "generated_request_artifact_ready");
+    assert.deepEqual(
+      payload.workflow.map((step) => step.step),
+      ["choose_target_mode", "run_cancellation_rescue", "collect_evidence", "handoff_to_cae", "compare_verdicts"],
+    );
+    assert.equal(payload.workflow[0]?.command, "npm run reliability:lab");
+    assert.equal(payload.workflow[3]?.evidence, "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json");
+    assert.equal(payload.readinessRoutes.pipecatMediaEngine, "/api/pipecat-media-engine/readiness");
+  });
+});
+
 test("GET /assert serves an ACC local artifact viewer", async () => {
   await withServer(async (port) => {
     const response = await requestText(port, "GET", "/assert");
