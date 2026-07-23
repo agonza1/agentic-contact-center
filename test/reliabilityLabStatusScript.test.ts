@@ -63,6 +63,10 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.ok(payload.repositoryContracts.packageScripts.includes("proof"));
   assert.ok(payload.repositoryContracts.composeProfiles.includes("browser-webrtc"));
   assert.deepEqual(payload.repositoryContracts.optionalEndpointEnvVars, expectedEndpointEnvVars);
+  assert.equal(payload.repositoryContracts.stackManifest.path, "stack/versions.env");
+  assert.equal(payload.repositoryContracts.stackManifest.exists, true);
+  assert.equal(payload.repositoryContracts.stackManifest.values.ACC_APP_URL, "http://127.0.0.1:8026");
+  assert.ok(payload.repositoryContracts.requiredStackManifestKeys.includes("CAE_API_URL"));
   assert.ok(payload.repositoryContracts.reliabilityDocExists);
   assert.equal(
     payload.componentReadiness.find((component: { component: string }) => component.component === "Pipecat browser bridge").envVar,
