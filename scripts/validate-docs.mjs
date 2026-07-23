@@ -39,6 +39,7 @@ const packageJson = JSON.parse(readText("package.json"));
 const compose = readText("docker-compose.yml");
 const server = readText("src/http/createServer.ts");
 const cluecon = readText("src/http/cluecon.ts");
+const stackManifest = readText("stack/versions.env");
 const scripts = packageJson.scripts ?? {};
 
 for (const sourcePath of markdownSources()) {
@@ -107,6 +108,7 @@ const requiredReadmePhrases = [
   "rtc-asr",
   "ASSERT",
   "Reliability lab status",
+  "stack/versions.env",
   "legacy ACC-local eval spec surface; CAE owns generic spec editing",
 ];
 for (const phrase of requiredReadmePhrases) {
@@ -135,6 +137,26 @@ const requiredClueConPhrases = [
 for (const phrase of requiredClueConPhrases) {
   if (!cluecon.includes(phrase)) {
     fail(`ClueCon payload is missing current ecosystem wording: ${phrase}`);
+  }
+}
+
+const requiredStackManifestKeys = [
+  "ACC_APP_IMAGE",
+  "ACC_APP_URL",
+  "RTC_ASR_IMAGE",
+  "RTC_ASR_BASE_URL",
+  "KOKORO_IMAGE",
+  "KOKORO_BASE_URL",
+  "PIPECAT_BROWSER_BRIDGE_URL",
+  "FREESWITCH_IMAGE",
+  "FREESWITCH_VERTO_URL",
+  "CAE_API_URL",
+  "CAE_WEB_URL",
+  "ASSERT_VIEWER_URL",
+];
+for (const key of requiredStackManifestKeys) {
+  if (!stackManifest.match(new RegExp(`^${key}=`, "m"))) {
+    fail(`stack/versions.env is missing required key: ${key}`);
   }
 }
 

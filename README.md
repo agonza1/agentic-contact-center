@@ -156,7 +156,7 @@ ACC can also export local ASSERT viewer artifacts with `npm run assert:export` a
 | Browser WebRTC route/contract | Ready, live proof optional | Requires local rtc-asr/Kokoro/Pipecat sidecars for real media. |
 | SIP/Verto live proof | Accepted strict local proof | Keep this lane closed unless a new issue explicitly changes it. |
 | ConversationAgentEvals handoff | Ready as generated request artifact | CAE remains external and owns generic eval UX. |
-| Reliability lab | Phase 1 status/docs only | Phase 2 should wire explicit CAE/ASSERT endpoints/profiles. |
+| Reliability lab | Phase 1 status/docs plus `stack/versions.env` manifest | Phase 2 should wire explicit CAE/ASSERT endpoints/profiles. |
 | Production telephony/security/persistence | Blocked/not implemented | Mocked credentials, in-memory state, no production hardening. |
 
 ## Useful Routes
@@ -209,6 +209,7 @@ npm run docker:freeswitch:only
 - `docs/demo-proof-runbook.md`: deterministic proof and CAE/ASSERT handoff inspection checklist.
 - `docs/reliability-lab.md`: #307 reference-stack mode/status and Phase 2 plan.
 - `docs/freeswitch-local-sip-runbook.md`: local SIP/Verto proof details.
+- `stack/versions.env`: pinned local reference-stack images, URLs, and external endpoint placeholders.
 
 ## Quality gates
 

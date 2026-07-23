@@ -12,6 +12,21 @@ function readText(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
+function readEnvManifest(relativePath) {
+  const manifestPath = path.join(repoRoot, relativePath);
+  if (!existsSync(manifestPath)) return { exists: false, path: relativePath, values: {} };
+
+  const values = {};
+  for (const line of readText(relativePath).split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const separator = trimmed.indexOf("=");
+    if (separator === -1) continue;
+    values[trimmed.slice(0, separator)] = trimmed.slice(separator + 1);
+  }
+  return { exists: true, path: relativePath, values };
+}
+
 function composeProfiles(composeText) {
   const profiles = new Set();
   for (const match of composeText.matchAll(/profiles:\s*\[([^\]]+)\]/g)) {
@@ -27,6 +42,7 @@ const packageJson = readJson("package.json");
 const compose = readText("docker-compose.yml");
 const scripts = packageJson.scripts ?? {};
 const profiles = composeProfiles(compose);
+const stackManifest = readEnvManifest("stack/versions.env");
 
 const requiredScripts = [
   "proof",
@@ -40,6 +56,21 @@ const requiredScripts = [
 const requiredProfiles = ["voice", "browser-webrtc", "sip-verto", "eval", "full"];
 const missingScripts = requiredScripts.filter((script) => !scripts[script]);
 const missingProfiles = requiredProfiles.filter((profile) => !profiles.includes(profile));
+const requiredStackManifestKeys = [
+  "ACC_APP_IMAGE",
+  "ACC_APP_URL",
+  "RTC_ASR_IMAGE",
+  "RTC_ASR_BASE_URL",
+  "KOKORO_IMAGE",
+  "KOKORO_BASE_URL",
+  "PIPECAT_BROWSER_BRIDGE_URL",
+  "FREESWITCH_IMAGE",
+  "FREESWITCH_VERTO_URL",
+  "CAE_API_URL",
+  "CAE_WEB_URL",
+  "ASSERT_VIEWER_URL",
+];
+const missingStackManifestKeys = requiredStackManifestKeys.filter((key) => !(key in stackManifest.values));
 const optionalEndpointEnvVars = [
   "CAE_API_URL",
   "CAE_WEB_URL",
@@ -148,6 +179,8 @@ const componentReadiness = [
 const blockers = [];
 if (missingScripts.length > 0) blockers.push(`missing package scripts: ${missingScripts.join(", ")}`);
 if (missingProfiles.length > 0) blockers.push(`missing Compose profiles: ${missingProfiles.join(", ")}`);
+if (!stackManifest.exists) blockers.push("missing stack/versions.env reference-stack manifest.");
+if (missingStackManifestKeys.length > 0) blockers.push(`stack/versions.env is missing keys: ${missingStackManifestKeys.join(", ")}`);
 if (!caeConfigured) {
   blockers.push("ConversationAgentEvals API/web endpoints are not configured; set CAE_API_URL and CAE_WEB_URL for Phase 2 lab runs.");
 }
@@ -167,6 +200,8 @@ const report = {
     packageScripts: Object.keys(scripts).sort(),
     composeProfiles: profiles,
     optionalEndpointEnvVars,
+    stackManifest,
+    requiredStackManifestKeys,
     readmeExists: existsSync(path.join(repoRoot, "README.md")),
     reliabilityDocExists: existsSync(path.join(repoRoot, "docs/reliability-lab.md")),
   },
