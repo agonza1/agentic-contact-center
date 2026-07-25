@@ -51,6 +51,22 @@ for (const sourcePath of markdownSources()) {
   }
 }
 
+const runtimeCommandSources = [
+  ["src/http/createServer.ts", server],
+  ["src/http/cluecon.ts", cluecon],
+];
+const runtimeScriptCommands = unique(
+  runtimeCommandSources.flatMap(([sourcePath, source]) =>
+    [...source.matchAll(/\bnpm run ([A-Za-z0-9:_-]+)/g)].map((match) => `${sourcePath}\0${match[1]}`),
+  ),
+);
+for (const command of runtimeScriptCommands) {
+  const [sourcePath, scriptName] = command.split("\0");
+  if (!scripts[scriptName]) {
+    fail(`${sourcePath} exposes missing npm script: ${scriptName}`);
+  }
+}
+
 const composeProfiles = new Set();
 for (const match of compose.matchAll(/profiles:\s*\[([^\]]+)\]/g)) {
   for (const profile of match[1].split(",")) {
@@ -174,5 +190,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${composeProfiles.size} Compose profiles, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${composeProfiles.size} Compose profiles, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports.`,
 );
