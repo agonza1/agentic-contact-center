@@ -500,28 +500,38 @@ function buildBasePayload(
       synthesizeRoute: "/api/cluecon/tts/synthesize",
       status: kokoroProbe?.ok ? "live_ready" : "local_sidecar_required",
       liveProbe: kokoroProbe ?? null,
-      metricDefinition: "TTFB is measured from the browser request start until the first playable audio response chunk arrives.",
+      metricDefinition: "HTTP TTFB stops at first response bytes; playback latency stops only when the browser emits the playing event.",
       candidates: [
         {
-          name: "VoXtream",
-          latency: "102 ms first packet",
-          condition: "GPU with torch.compile; 80 ms output chunks",
-          sourceUrl: "https://arxiv.org/abs/2509.15969",
+          name: "Kokoro 82M",
+          latency: "~300 ms first chunk",
+          condition: "Kokoro-FastAPI GPU serving benchmark; chunk size 400",
+          sourceLabel: "Serving benchmark",
+          sourceUrl: "https://github.com/remsky/Kokoro-FastAPI#streaming-support",
         },
         {
           name: "Pocket TTS",
           latency: "~200 ms first chunk",
           condition: "MacBook Air M4 CPU; 2 CPU cores",
+          sourceLabel: "Project benchmark",
           sourceUrl: "https://github.com/kyutai-labs/pocket-tts",
         },
         {
-          name: "FlashTTS",
-          latency: "325 ms first packet",
-          condition: "Published streaming experiment; model-specific test hardware",
-          sourceUrl: "https://github.com/ASLP-lab/FlashTTS",
+          name: "VoXtream2",
+          latency: "63 ms first packet",
+          condition: "RTX 3090 with compiled model; RTF 0.173",
+          sourceLabel: "Reproducible benchmark",
+          sourceUrl: "https://github.com/herimor/voxtream#benchmark",
+        },
+        {
+          name: "Qwen3-TTS 0.6B",
+          latency: "97 ms first packet",
+          condition: "12 Hz model; concurrency 1; paper runtime, hardware undisclosed",
+          sourceLabel: "Technical report",
+          sourceUrl: "https://arxiv.org/html/2601.15621v1#S3.SS4",
         },
       ],
-      comparisonCaveat: "Published figures use different hardware, voices, chunk sizes, and test harnesses. Treat them as candidates to benchmark under one workload—not a universal leaderboard.",
+      comparisonCaveat: "These are main self-hosted starting points, not a universal ranking. Hardware, serving stack, voices, chunk sizes, and benchmark definitions differ; rerun one warmed workload before choosing.",
       harness: {
         title: "Harness TTS: context-aware expressive speech",
         sourceUrl: "https://arxiv.org/abs/2607.17900",
@@ -1059,18 +1069,20 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .tts-lab .actions { align-items: center; }
     .tts-lab .actions .muted { flex: 1; color: #9dbab4; }
     .tts-lab audio { width: 100%; height: 34px; }
-    .tts-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+    .tts-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
     .tts-metrics .plain { min-height: 72px; padding: 10px; background: rgba(2,8,20,.62); border-color: rgba(110,231,183,.18); }
     .tts-metrics strong { color: #6ee7b7; }
-    .tts-candidates { display: grid; align-content: start; gap: 8px; }
-    .tts-candidates-head { display: flex; align-items: end; justify-content: space-between; gap: 10px; }
+    .tts-candidates { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-content: start; gap: 8px; }
+    .tts-candidates-head { grid-column: 1 / -1; display: flex; align-items: end; justify-content: space-between; gap: 10px; }
     .tts-candidates-head strong { font-size: 16px; }
     .tts-candidates-head span, .tts-candidates > p { margin: 0; color: var(--muted); font-size: 10.5px; line-height: 1.35; }
-    .tts-candidate { display: grid; gap: 5px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); }
+    .tts-candidates > p { grid-column: 1 / -1; }
+    .tts-candidate { display: grid; align-content: start; gap: 5px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); }
     .tts-candidate > span { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .tts-candidate strong { color: var(--ink); font-size: 14px; }
     .tts-candidate b { color: var(--teal); font: 800 13px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
     .tts-candidate small { color: var(--muted); font-size: 10.5px; }
+    .tts-candidate a { width: fit-content; font-size: 10.5px; }
     .tts-harness { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(240px,.6fr); gap: 16px; padding: 12px 14px; border: 1px solid rgba(168,85,247,.28); border-radius: 11px; background: rgba(168,85,247,.06); }
     .tts-harness > div { display: grid; align-content: center; gap: 4px; }
     .tts-harness strong { font-size: 15px; }
@@ -1124,7 +1136,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     @media (max-width: 920px) { .ecosystem-diagram { grid-template-columns: minmax(0, 1fr); } .ecosystem-handoff { min-height: auto; grid-template-columns: 1fr 1fr; } .ecosystem-card { min-height: 132px; } .two, .machine-grid, .vad-layout { grid-template-columns: 1fr; } .contrast-grid { grid-template-columns: 1fr; } .versus { width: auto; height: 34px; border-radius: 999px; } .contrast-card { min-height: 0; } .boundary-strip { grid-template-columns: 1fr; } .boundary-gate { justify-self: center; } .pipecat-flow { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 8px; } .pipecat-node { flex: 0 0 min(70vw,220px); scroll-snap-align: start; } .pipeline-truths, .turn-references { grid-template-columns: 1fr; } .present .topbar { position: static; width: auto; } .present main { padding-top: 0; } .present .slide, .present .hero { min-height: calc(100vh - 62px); } .present #demo { height: auto; min-height: calc(100vh - 62px); overflow: visible; } .topbar { align-items: stretch; flex-direction: column; } .toolbar { justify-content: flex-start; } .hero, .slide, .section-band { padding: 28px 14px; } h1 { font-size: 38px; } .event, #demo .event { grid-template-columns: minmax(0, 1fr); } #demo .actions { grid-template-columns: repeat(2, minmax(0, 1fr)); } #demo .screen, #demo .timeline, .present #demo .screen, .present #demo .timeline { max-height: min(48vh, 380px); } .asr-live-controls { grid-template-columns: minmax(0, 1fr); } .voice-pipeline__chrome { padding: 16px 14px 10px; } .voice-pipeline__canvas { padding: 8px 8px 14px; } .xform-rail { display: none; } .voice-pipeline__stages { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 12px 4px 4px; -webkit-overflow-scrolling: touch; } .voice-pipeline__stage { flex: 0 0 min(82vw, 300px); scroll-snap-align: start; min-height: 260px; } }
     @media (max-width: 920px) { .tts-layout, .tts-harness, .asr-noise-guidance { grid-template-columns: minmax(0,1fr); } .asr-noise-guidance ul { grid-template-columns: minmax(0,1fr); } .asr-noise-foot { grid-column: auto; align-items: flex-start; flex-direction: column; } }
     @media (max-width: 520px) { #demo .actions { grid-template-columns: minmax(0, 1fr); } #demo .screen { min-height: 240px; } .transcript-turn { grid-template-columns: minmax(0, 1fr); gap: 4px; } #asr-benchmarks { grid-template-columns: minmax(0, 1fr); } .asr-benchmark-source { grid-column: auto; align-items: flex-start; flex-direction: column; } }
-    @media (max-width: 520px) { .tts-metrics { grid-template-columns: minmax(0,1fr); } .tts-candidate > span, .tts-candidates-head { align-items: flex-start; flex-direction: column; } }
+    @media (max-width: 520px) { .tts-metrics, .tts-candidates { grid-template-columns: minmax(0,1fr); } .tts-candidate > span, .tts-candidates-head { align-items: flex-start; flex-direction: column; } }
     @media (min-width: 921px) and (max-height: 820px) {
       .present .hero, .present .slide { padding-block: 22px; gap: 8px; }
       .present h2 { font-size: clamp(28px, 3.25vw, 42px); }
@@ -1155,7 +1167,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     <section class="section-band slide" data-slide="4" id="map"><span class="kicker">System map</span><h2>Open Source Self-Hosted Agentic Call Center Architecture.</h2><p class="subhead">FreeSWITCH owns SIP and RTP. Pipecat coordinates decoded audio through rtc-asr, explicit agent policy, and Kokoro.</p><svg class="arch" viewBox="0 0 1120 420" role="img" aria-label="Open source self-hosted agentic call center architecture"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#2457a6"/></marker></defs><rect class="nodeAccent" x="24" y="82" width="126" height="76" rx="8"/><text class="label" x="87" y="113" text-anchor="middle">Caller</text><text class="small" x="87" y="135" text-anchor="middle">SIP + RTP</text><rect class="node" x="190" y="72" width="154" height="96" rx="8"/><text class="label" x="267" y="106" text-anchor="middle">FreeSWITCH</text><text class="small" x="267" y="128" text-anchor="middle">dialog + codec</text><text class="small" x="267" y="147" text-anchor="middle">media clock</text><rect class="nodeAccent" x="384" y="72" width="150" height="96" rx="8"/><text class="label" x="459" y="106" text-anchor="middle">Pipecat</text><text class="small" x="459" y="128" text-anchor="middle">Pipeline + turns</text><text class="small" x="459" y="147" text-anchor="middle">decoded PCM</text><rect class="nodeWarn" x="574" y="82" width="130" height="76" rx="8"/><text class="label" x="639" y="113" text-anchor="middle">rtc-asr</text><text class="small" x="639" y="135" text-anchor="middle">streaming STT</text><rect class="nodeAccent" x="744" y="72" width="152" height="96" rx="8"/><text class="label" x="820" y="106" text-anchor="middle">ACC Agent</text><text class="small" x="820" y="128" text-anchor="middle">policy + tools</text><text class="small" x="820" y="147" text-anchor="middle">FlowManager</text><rect class="nodeWarn" x="936" y="82" width="132" height="76" rx="8"/><text class="label" x="1002" y="113" text-anchor="middle">Kokoro</text><text class="small" x="1002" y="135" text-anchor="middle">streaming TTS</text><rect class="node" x="572" y="274" width="154" height="82" rx="8"/><text class="label" x="649" y="307" text-anchor="middle">Operator</text><text class="small" x="649" y="330" text-anchor="middle">approve / handoff</text><rect class="nodeAccent" x="770" y="274" width="154" height="82" rx="8"/><text class="label" x="847" y="307" text-anchor="middle">Proof bundle</text><text class="small" x="847" y="330" text-anchor="middle">events + latency</text><rect class="nodeAccent" x="968" y="274" width="128" height="82" rx="8"/><text class="label" x="1032" y="307" text-anchor="middle">ASSERT</text><text class="small" x="1032" y="330" text-anchor="middle">evaluation</text><path class="line" d="M150 120 H190"/><path class="line" d="M344 120 H384"/><path class="line" d="M534 120 H574"/><path class="line" d="M704 120 H744"/><path class="line" d="M896 120 H936"/><path class="line" d="M1002 158 C1002 214 338 214 267 168"/><path class="line" d="M649 274 C670 222 742 194 782 168"/><path class="line" d="M820 168 V274"/><path class="line" d="M924 315 H968"/></svg><div class="architecture-note"><strong>Failure boundary:</strong> ASR, agent, or TTS can fail while FreeSWITCH keeps the call alive for prerecorded playback, transfer, or a controlled BYE.</div></section>
     <section class="section-band slide" data-slide="5" id="demo"><span class="kicker">Failure-control demo</span><h2>Cancellation rescue, end to end.</h2><p class="subhead">Policy hold → operator approval → wrap → evidence.</p><div class="two"><div class="demo-shell"><div class="actions"><button class="primary" id="run-demo" type="button">Run cancellation scenario</button><button id="drill-tool" type="button" class="danger">Tool timeout</button><button id="drill-runtime" type="button" class="danger">Runtime failure</button><button id="drill-transfer" type="button">Transfer</button><button id="drill-takeover" type="button">Takeover</button><button id="drill-end" type="button">End call</button><button id="drill-asr" type="button">ASR unavailable</button><button id="drill-tts" type="button">TTS unavailable</button></div><p class="drill-hint">This panel exercises deterministic control and evidence. The conference media demo uses the local FreeSWITCH SIP/Verto path; ACC emits auditable JSON and FreeSWITCH executes playback, transfer, bridge, takeover, or BYE.</p><div class="screen" id="demo-screen">Ready. The live SIP path stays separate from this repeatable control scenario.</div></div><div class="timeline" id="timeline"></div></div></section>
     <section class="section-band slide" data-slide="6" id="asr"><span class="kicker">Live ASR lab</span><div class="asr-heading"><h2>rtc-asr is measurable and swappable.</h2><div class="actions"><a class="mode-link" href="${payload.asrPanel.pipecatDemoUrl}" target="_blank" rel="noreferrer">Source ↗</a><a class="mode-link" href="${payload.asrPanel.benchmarkUrl}" target="_blank" rel="noreferrer">Benchmarks ↗</a></div></div><p class="subhead">Watch partials evolve or record a six-second batch.</p><p class="asr-rtf-note muted">RTF = processing time ÷ audio duration. Lower is better; &lt;1× is faster than realtime.</p><div class="two"><div><div class="asr-live-lab"><div class="asr-live-head"><strong>Mic → Local STT → transcript</strong><span class="badge fixture" id="asr-live-badge">checking sidecar</span></div><div class="asr-live-controls"><label><span class="muted">Model</span><select id="asr-model-select" aria-label="rtc-asr model target" disabled><option>Loading models…</option></select></label><button class="primary" id="asr-realtime" type="button" disabled>Start realtime</button><button id="asr-record" type="button" disabled>Batch 6 seconds</button></div><div class="asr-live-wave" id="asr-live-wave" aria-hidden="true"><span style="--wave-i:0;height:12px"></span><span style="--wave-i:1;height:28px"></span><span style="--wave-i:2;height:18px"></span><span style="--wave-i:3;height:42px"></span><span style="--wave-i:4;height:22px"></span><span style="--wave-i:5;height:34px"></span><span style="--wave-i:6;height:16px"></span><span style="--wave-i:7;height:38px"></span><span style="--wave-i:8;height:24px"></span><span style="--wave-i:9;height:46px"></span><span style="--wave-i:10;height:20px"></span><span style="--wave-i:11;height:32px"></span><span style="--wave-i:12;height:14px"></span><span style="--wave-i:13;height:36px"></span><span style="--wave-i:14;height:26px"></span><span style="--wave-i:15;height:40px"></span></div><span class="asr-live-status" id="asr-live-status" aria-live="polite">Waiting for rtc-asr.</span><pre class="asr-live-result" id="asr-live-result">Partial and final transcripts appear here.</pre></div><div class="asr-events" id="asr-events"></div></div><div class="grid" id="asr-benchmarks"></div></div><aside class="asr-noise-guidance"><div><strong>Noise changes more than WER.</strong><span>Test recognition, false interruption, backchannels, and end-of-turn together.</span></div><ul>${payload.asrPanel.noiseGuidance.findings.map((finding) => `<li>${escapeHtml(finding)}</li>`).join("")}</ul><div class="asr-noise-foot"><span>${escapeHtml(payload.asrPanel.noiseGuidance.caveat)}</span><a href="${payload.asrPanel.noiseGuidance.sourceUrl}" target="_blank" rel="noreferrer">${escapeHtml(payload.asrPanel.noiseGuidance.sourceLabel)} ↗</a></div></aside></section>
-    <section class="section-band slide" data-slide="7" id="tts"><span class="kicker">Live TTS latency lab</span><h2>Measure first playable audio—not request completion.</h2><p class="subhead">Run the local Kokoro stream and capture browser-observed TTFB, total response time, and audio bytes.</p><div class="tts-layout"><div class="tts-lab"><div class="tts-lab-head"><div><strong>${escapeHtml(payload.ttsPanel.provider)}</strong><span>${escapeHtml(payload.ttsPanel.model)} · ${escapeHtml(payload.ttsPanel.voice)}</span></div><span class="badge ${payload.ttsPanel.status === "live_ready" ? "ready" : "fixture"}" id="tts-badge">${payload.ttsPanel.status === "live_ready" ? "sidecar ready" : "local sidecar required"}</span></div><label for="tts-text">Text to synthesize</label><textarea id="tts-text" rows="4">AI may be probabilistic, but the system around it does not have to be.</textarea><div class="actions"><button class="primary" id="tts-run" type="button">Run Kokoro</button><span class="muted" id="tts-status">${escapeHtml(payload.ttsPanel.metricDefinition)}</span></div><audio id="tts-audio" controls hidden></audio><div class="tts-metrics"><div class="plain metric"><span class="kicker">Browser TTFB</span><strong id="tts-ttfb">—</strong></div><div class="plain metric"><span class="kicker">Total</span><strong id="tts-total">—</strong></div><div class="plain metric"><span class="kicker">Audio</span><strong id="tts-bytes">—</strong></div></div></div><div class="tts-candidates"><div class="tts-candidates-head"><strong>Low-latency OSS candidates</strong><span>Published conditions—not a universal ranking</span></div>${payload.ttsPanel.candidates.map((candidate) => `<a class="tts-candidate" href="${candidate.sourceUrl}" target="_blank" rel="noreferrer"><span><strong>${escapeHtml(candidate.name)}</strong><b>${escapeHtml(candidate.latency)}</b></span><small>${escapeHtml(candidate.condition)}</small></a>`).join("")}<p>${escapeHtml(payload.ttsPanel.comparisonCaveat)}</p></div></div><aside class="tts-harness"><div><span class="kicker">Expression as a governed layer</span><strong>${escapeHtml(payload.ttsPanel.harness.title)}</strong><p>${escapeHtml(payload.ttsPanel.harness.summary)}</p></div><div><span>${escapeHtml(payload.ttsPanel.harness.latency)}</span><a href="${payload.ttsPanel.harness.sourceUrl}" target="_blank" rel="noreferrer">Paper ↗</a></div></aside></section>
+    <section class="section-band slide" data-slide="7" id="tts"><span class="kicker">Live TTS latency lab</span><h2>Measure playback start—not request completion.</h2><p class="subhead">Stream local Kokoro into the browser and separate HTTP first-byte latency from the moment audio actually starts playing.</p><div class="tts-layout"><div class="tts-lab"><div class="tts-lab-head"><div><strong>${escapeHtml(payload.ttsPanel.provider)}</strong><span>${escapeHtml(payload.ttsPanel.model)} · ${escapeHtml(payload.ttsPanel.voice)}</span></div><span class="badge ${payload.ttsPanel.status === "live_ready" ? "ready" : "fixture"}" id="tts-badge">${payload.ttsPanel.status === "live_ready" ? "sidecar ready" : "local sidecar required"}</span></div><label for="tts-text">Text to synthesize</label><textarea id="tts-text" rows="4">AI may be probabilistic, but the system around it does not have to be.</textarea><div class="actions"><button class="primary" id="tts-run" type="button">Run Kokoro</button><span class="muted" id="tts-status">${escapeHtml(payload.ttsPanel.metricDefinition)}</span></div><audio id="tts-audio" controls hidden></audio><div class="tts-metrics"><div class="plain metric"><span class="kicker">HTTP TTFB</span><strong id="tts-ttfb">—</strong></div><div class="plain metric"><span class="kicker">Playback</span><strong id="tts-playback">—</strong></div><div class="plain metric"><span class="kicker">Total stream</span><strong id="tts-total">—</strong></div><div class="plain metric"><span class="kicker">Audio</span><strong id="tts-bytes">—</strong></div></div></div><div class="tts-candidates"><div class="tts-candidates-head"><strong>Main OSS recommendations</strong><span>Published conditions—not a universal ranking</span></div>${payload.ttsPanel.candidates.map((candidate) => `<article class="tts-candidate"><span><strong>${escapeHtml(candidate.name)}</strong><b>${escapeHtml(candidate.latency)}</b></span><small>${escapeHtml(candidate.condition)}</small><a href="${candidate.sourceUrl}" target="_blank" rel="noreferrer">${escapeHtml(candidate.sourceLabel)} ↗</a></article>`).join("")}<p>${escapeHtml(payload.ttsPanel.comparisonCaveat)}</p></div></div><aside class="tts-harness"><div><span class="kicker">Expression as a governed layer</span><strong>${escapeHtml(payload.ttsPanel.harness.title)}</strong><p>${escapeHtml(payload.ttsPanel.harness.summary)}</p></div><div><span>${escapeHtml(payload.ttsPanel.harness.latency)}</span><a href="${payload.ttsPanel.harness.sourceUrl}" target="_blank" rel="noreferrer">Paper ↗</a></div></aside></section>
     <section class="section-band slide" data-slide="7" id="agent"><span class="kicker">Agent harness</span><h2>Policy stays inspectable.</h2><p class="subhead">Mission, tools, fallback, and eval rules remain explicit.</p><div class="plain" id="brain-state"></div><div class="brain" id="brain"></div><div class="actions"><button id="preview-brain" type="button">Preview</button><button id="apply-brain" type="button" class="primary">Apply</button><button id="reset-brain" type="button">Reset</button></div></section>
         <section class="section-band slide" data-slide="8" id="ecosystem"><span class="kicker">WebRTC.ventures open source</span><h2>Three projects. One reliability loop.</h2><p class="subhead">Keep execution, speech, evidence, and evaluation independently useful.</p><div class="ecosystem-diagram"><div class="ecosystem-lane"><article class="ecosystem-card ecosystem-card--primary"><small>Orchestration + evidence</small><strong>ConversationAgentEvals</strong><span>Runs scenarios, normalizes proof, and compares regressions.</span></article><div class="ecosystem-arrow-down"><span>canonical evaluation</span><b>↓</b></div><article class="ecosystem-card"><small>Upstream engine</small><strong>ASSERT</strong><span>Generates and judges requirement-driven evaluations.</span></article></div><div class="ecosystem-handoff" aria-label="Bidirectional test and evidence handoff"><span>test scenarios →</span><span>← proof bundle</span></div><div class="ecosystem-lane"><article class="ecosystem-card ecosystem-card--target"><small>Reference target</small><strong>Agentic Contact Center</strong><span>Demonstrates the realtime voice-agent path and failure controls.</span></article><div class="ecosystem-arrow-down"><span>optional local STT</span><b>↓</b></div><article class="ecosystem-card"><small>Speech sidecar</small><strong>rtc-asr</strong><span>Streams transcripts and publishes reproducible ASR benchmarks.</span></article></div></div><div class="ecosystem-foot">Open components connected by explicit adapters and reviewable evidence.</div></section>
     <section class="section-band slide" data-slide="9" id="proof"><span class="kicker">Close</span><h2>The talk ends at proof.</h2><p class="subhead">Transcript + actions + latency + fallback + final state.</p><div class="actions"><button id="run-eval" type="button" class="primary">Run eval</button><a class="mode-link" href="/assert">ASSERT viewer ↗</a></div><div class="two"><div><div class="grid" id="proof-cards"></div><div class="timeline" id="eval-scorecard"></div></div><pre class="proof-pre" id="proof-json">Run the demo to generate proof.</pre></div></section>
@@ -1174,7 +1186,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     const ecosystemSlide = document.getElementById("ecosystem");
     if (securitySlide && ecosystemSlide) ecosystemSlide.before(securitySlide);
     slideOrder.forEach((id, index) => { const slide = document.getElementById(id); if (slide) slide.dataset.slide = String(index); });
-    const state = { slide: 0, slideCount: slideOrder.length, isPresent: document.body.classList.contains("present"), proof: null, brain: JSON.parse(JSON.stringify(data.brainBlocks)), brainSession: null, asrCapture: null, asrStopping: false, asrModels: [], asrLive: null, ttsAudioUrl: null, failureAudio: null, vad: null, vadStarting: false, vadStartToken: 0, vadPendingStream: null, vadBotSpeaking: false, vadBotTimer: null, vadTurnTimer: null, vadOutputTimer: null, vadOutputCleanupTimer: null, vadSimulationTimers: [] };
+    const state = { slide: 0, slideCount: slideOrder.length, isPresent: document.body.classList.contains("present"), proof: null, brain: JSON.parse(JSON.stringify(data.brainBlocks)), brainSession: null, asrCapture: null, asrStopping: false, asrModels: [], asrLive: null, ttsAudioUrl: null, ttsPlayingHandler: null, failureAudio: null, vad: null, vadStarting: false, vadStartToken: 0, vadPendingStream: null, vadBotSpeaking: false, vadBotTimer: null, vadTurnTimer: null, vadOutputTimer: null, vadOutputCleanupTimer: null, vadSimulationTimers: [] };
     const VAD_END_OF_TURN_MS = Number(data.turnTiming?.endOfTurnSilenceMs) || 2000;
     function esc(value) { return String(value).replace(/[&<>\"]/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;"); }
     function renderSecurityScenario(id) { const scenario = data.securityPanel.scenarios.find(item => item.id === id) || data.securityPanel.scenarios[0]; const action = document.getElementById("security-action"); document.getElementById("security-input").textContent = scenario.input; document.getElementById("security-output").textContent = scenario.llmInput || "NOT SENT TO LLM\\nRoute the caller to an authorized application or human workflow."; document.getElementById("security-note").textContent = scenario.note; action.textContent = scenario.action; action.className = "badge " + (scenario.action === "allow" ? "ready" : scenario.action === "redact" ? "fixture" : "blocked"); document.querySelectorAll("[data-security-scenario]").forEach(button => button.classList.toggle("primary", button.dataset.securityScenario === scenario.id)); }
@@ -1217,6 +1229,37 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     async function startAsrRealtime() { if (state.asrLive) return; const model = selectedAsrModel(); if (!model || !model.websocketUrl) throw new Error("The selected model does not expose a Local STT websocket."); if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("Microphone capture requires localhost or HTTPS."); const AudioContextClass = window.AudioContext || window.webkitAudioContext; if (!AudioContextClass) throw new Error("Web Audio is unavailable in this browser."); const socket = new WebSocket(model.websocketUrl); const live = { socket, model, pending: [], stream: null, context: null, source: null, processor: null, mute: null, timer: null, readyResolve: null, readyReject: null, finalResolve: null, finalReject: null, intentionalClose: false }; state.asrLive = live; const ready = new Promise((resolve, reject) => { live.readyResolve = resolve; live.readyReject = reject; }); socket.addEventListener("open", () => socket.send(JSON.stringify({ type: "start", version: "local-stt.v1", audio: { sample_rate: 16000, channels: 1, format: "pcm_s16le", frame_ms: 20, bytes_per_frame: 640 }, language: "en", interim_results: true, partial_interval_ms: 200, partial_window_seconds: 2, max_buffer_seconds: 12, client_stream_id: "cluecon-live-" + Date.now(), metadata: { presentation: "cluecon-2026", model_target: model.targetId } }))); socket.addEventListener("message", handleAsrRealtimeMessage); socket.addEventListener("error", () => { if (live.readyReject) live.readyReject(new Error("Could not connect to the rtc-asr websocket.")); }); socket.addEventListener("close", () => { if (!live.intentionalClose && state.asrLive === live) { document.getElementById("asr-live-result").textContent = "rtc-asr realtime stream closed unexpectedly."; setAsrLiveStatus("Realtime websocket closed.", "error"); closeAsrRealtime(); } }); setAsrRealtimeControls(true); document.getElementById("asr-live-result").textContent = "Connecting to " + model.backend + " / " + model.model + "…"; setAsrLiveStatus("Opening Local STT v1 websocket…", "connecting"); await Promise.race([ready, new Promise((_, reject) => setTimeout(() => reject(new Error("rtc-asr websocket readiness timed out.")), 5000))]); live.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false }); live.context = new AudioContextClass(); live.source = live.context.createMediaStreamSource(live.stream); live.processor = live.context.createScriptProcessor(4096, 1, 1); live.mute = live.context.createGain(); live.mute.gain.value = 0; live.processor.onaudioprocess = event => { if (socket.readyState !== WebSocket.OPEN) return; const pcm = resampleAsrPcm16(event.inputBuffer.getChannelData(0), live.context.sampleRate); for (const sample of pcm) live.pending.push(sample); while (live.pending.length >= 1600) socket.send(new Int16Array(live.pending.splice(0, 1600)).buffer); }; live.source.connect(live.processor); live.processor.connect(live.mute); live.mute.connect(live.context.destination); live.timer = setTimeout(() => stopAsrRealtime().catch(error => { setAsrLiveStatus(String(error.message || error), "error"); closeAsrRealtime(); }), 10000); document.getElementById("asr-live-wave").classList.add("recording"); document.getElementById("asr-live-result").classList.add("partial"); document.getElementById("asr-live-result").textContent = "PARTIAL\\nListening…"; setAsrLiveStatus("Streaming 16 kHz PCM16 to " + model.targetLabel + " for up to 10 seconds.", "streaming"); }
     async function stopAsrRealtime() { const live = state.asrLive; if (!live) return; clearTimeout(live.timer); if (live.processor) live.processor.onaudioprocess = null; if (live.source) live.source.disconnect(); if (live.processor) live.processor.disconnect(); if (live.mute) live.mute.disconnect(); if (live.stream) live.stream.getTracks().forEach(track => track.stop()); if (live.context) await live.context.close(); if (live.pending.length && live.socket.readyState === WebSocket.OPEN) live.socket.send(new Int16Array(live.pending.splice(0)).buffer); setAsrLiveStatus("Finalizing the live rtc-asr stream…", "transcribing"); const finalized = new Promise((resolve, reject) => { live.finalResolve = resolve; live.finalReject = reject; }); live.socket.send(JSON.stringify({ type: "finalize" })); await Promise.race([finalized, new Promise((_, reject) => setTimeout(() => reject(new Error("rtc-asr final transcript timed out.")), 12000))]); closeAsrRealtime(); }
     async function toggleAsrRealtime() { try { if (state.asrLive && state.asrLive.processor) await stopAsrRealtime(); else if (state.asrLive) closeAsrRealtime(); else await startAsrRealtime(); } catch (error) { document.getElementById("asr-live-result").textContent = "Realtime transcription failed: " + String(error.message || error); document.getElementById("asr-live-result").classList.remove("partial"); setAsrLiveStatus(String(error.message || error), "error"); closeAsrRealtime(); } }
+    function waitForTtsMediaSource(mediaSource) {
+      if (mediaSource.readyState === "open") return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const opened = () => { cleanup(); resolve(); };
+        const failed = () => { cleanup(); reject(new Error("The browser could not open the streaming audio source.")); };
+        const cleanup = () => {
+          mediaSource.removeEventListener("sourceopen", opened);
+          mediaSource.removeEventListener("sourceclose", failed);
+        };
+        mediaSource.addEventListener("sourceopen", opened);
+        mediaSource.addEventListener("sourceclose", failed);
+      });
+    }
+    function appendTtsMediaChunk(sourceBuffer, chunk) {
+      return new Promise((resolve, reject) => {
+        const appended = () => { cleanup(); resolve(); };
+        const failed = () => { cleanup(); reject(new Error("The browser rejected a streaming audio chunk.")); };
+        const cleanup = () => {
+          sourceBuffer.removeEventListener("updateend", appended);
+          sourceBuffer.removeEventListener("error", failed);
+        };
+        sourceBuffer.addEventListener("updateend", appended);
+        sourceBuffer.addEventListener("error", failed);
+        try {
+          sourceBuffer.appendBuffer(chunk);
+        } catch (error) {
+          cleanup();
+          reject(error);
+        }
+      });
+    }
     async function runTtsLab() {
       const button = document.getElementById("tts-run");
       const badge = document.getElementById("tts-badge");
@@ -1224,11 +1267,24 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
       const audio = document.getElementById("tts-audio");
       const text = document.getElementById("tts-text").value.trim();
       if (!text) { status.textContent = "Enter text before running Kokoro."; return; }
+      if (typeof MediaSource === "undefined") { status.textContent = "This browser does not support Media Source streaming."; return; }
+      if (state.ttsPlayingHandler) {
+        audio.removeEventListener("playing", state.ttsPlayingHandler);
+        state.ttsPlayingHandler = null;
+      }
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      if (state.ttsAudioUrl) {
+        URL.revokeObjectURL(state.ttsAudioUrl);
+        state.ttsAudioUrl = null;
+      }
       button.disabled = true;
       badge.textContent = "streaming";
       badge.className = "badge fixture";
-      status.textContent = "Waiting for the first playable audio chunk…";
+      status.textContent = "Waiting for first audio bytes and actual playback…";
       document.getElementById("tts-ttfb").textContent = "—";
+      document.getElementById("tts-playback").textContent = "—";
       document.getElementById("tts-total").textContent = "—";
       document.getElementById("tts-bytes").textContent = "—";
       const started = performance.now();
@@ -1243,36 +1299,64 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
           throw new Error(failure.detail || failure.nextStep || failure.error || "Kokoro synthesis failed.");
         }
         if (!response.body) throw new Error("The browser did not expose the streaming response body.");
+        const contentType = response.headers.get("content-type") || "audio/mpeg";
+        if (!MediaSource.isTypeSupported(contentType)) {
+          throw new Error("This browser cannot progressively play " + contentType + " with Media Source.");
+        }
+        const mediaSource = new MediaSource();
+        state.ttsAudioUrl = URL.createObjectURL(mediaSource);
+        audio.src = state.ttsAudioUrl;
+        audio.hidden = false;
+        await waitForTtsMediaSource(mediaSource);
+        const sourceBuffer = mediaSource.addSourceBuffer(contentType);
         const reader = response.body.getReader();
-        const chunks = [];
         let bytes = 0;
-        let firstAudioMs = null;
+        let firstByteMs = null;
+        let playbackMs = null;
+        let playPending = false;
+        const upstreamTtfb = response.headers.get("x-acc-upstream-ttfb-ms");
+        state.ttsPlayingHandler = () => {
+          playbackMs = performance.now() - started;
+          document.getElementById("tts-playback").textContent = Math.round(playbackMs) + " ms";
+          badge.textContent = "playing";
+          badge.className = "badge ready";
+          status.textContent = "Playback event measured after " + Math.round(playbackMs) + " ms" + (firstByteMs === null ? "." : "; HTTP first bytes arrived after " + Math.round(firstByteMs) + " ms.");
+          state.ttsPlayingHandler = null;
+        };
+        audio.addEventListener("playing", state.ttsPlayingHandler, { once: true });
         while (true) {
           const chunk = await reader.read();
           if (chunk.done) break;
           if (!chunk.value?.byteLength) continue;
-          if (firstAudioMs === null) {
-            firstAudioMs = performance.now() - started;
-            document.getElementById("tts-ttfb").textContent = Math.round(firstAudioMs) + " ms";
+          if (firstByteMs === null) {
+            firstByteMs = performance.now() - started;
+            document.getElementById("tts-ttfb").textContent = Math.round(firstByteMs) + " ms";
           }
-          chunks.push(chunk.value);
           bytes += chunk.value.byteLength;
+          await appendTtsMediaChunk(sourceBuffer, chunk.value);
+          if (playbackMs === null && !playPending) {
+            playPending = true;
+            audio.play().catch(() => {
+              playPending = false;
+              status.textContent = "Audio is streaming, but autoplay was blocked. Press play to record the actual playback-start event.";
+            });
+          }
         }
-        if (!bytes || firstAudioMs === null) throw new Error("Kokoro returned no playable audio.");
+        if (!bytes || firstByteMs === null) throw new Error("Kokoro returned no audio bytes.");
+        if (mediaSource.readyState === "open" && !sourceBuffer.updating) mediaSource.endOfStream();
         const totalMs = performance.now() - started;
-        if (state.ttsAudioUrl) URL.revokeObjectURL(state.ttsAudioUrl);
-        const blob = new Blob(chunks, { type: response.headers.get("content-type") || "audio/mpeg" });
-        state.ttsAudioUrl = URL.createObjectURL(blob);
-        audio.src = state.ttsAudioUrl;
-        audio.hidden = false;
         document.getElementById("tts-total").textContent = Math.round(totalMs) + " ms";
         document.getElementById("tts-bytes").textContent = new Intl.NumberFormat().format(bytes) + " B";
-        const upstreamTtfb = response.headers.get("x-acc-upstream-ttfb-ms");
-        status.textContent = "Browser TTFB includes ACC proxy overhead" + (upstreamTtfb ? "; Kokoro-side first audio was " + upstreamTtfb + " ms." : ".");
-        badge.textContent = "audio ready";
-        badge.className = "badge ready";
-        await audio.play().catch(() => {});
+        if (playbackMs === null) {
+          status.textContent = "HTTP first-byte includes ACC proxy overhead" + (upstreamTtfb ? "; Kokoro-side first bytes took " + upstreamTtfb + " ms." : ".") + " Waiting for the browser playing event.";
+          badge.textContent = "audio ready";
+          badge.className = "badge ready";
+        }
       } catch (error) {
+        if (state.ttsPlayingHandler) {
+          audio.removeEventListener("playing", state.ttsPlayingHandler);
+          state.ttsPlayingHandler = null;
+        }
         badge.textContent = "blocked";
         badge.className = "badge blocked";
         status.textContent = String(error.message || error);
