@@ -884,6 +884,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Have fun with them\. Make them better/);
   assert.match(narrative.body, /alberto@webrtc\.ventures/);
   assert.match(narrative.body, /logo-main-light\.svg/);
+  assert.match(narrative.body, /class="flow-brand"[^>]*aria-label="Visit WebRTC\.ventures"/);
+  assert.match(narrative.body, /\.flow-brand img \{[^}]*width: min\(250px, 62vw\)/);
   assert.match(narrative.body, /runEvalProof/);
   assert.match(narrative.body, /goToSlide/);
   assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 14'));
