@@ -752,6 +752,9 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.doesNotMatch(narrative.body, />Live browser demo</);
   assert.match(narrative.body, /Alberto Gonzalez CTO @ WebRTC\.ventures/);
   assert.match(narrative.body, /Realtime call flow visualization/);
+  assert.doesNotMatch(narrative.body, /1s demo beat/);
+  assert.doesNotMatch(narrative.body, /live sip freeswitch path/);
+  assert.doesNotMatch(narrative.body, /local stack/);
   assert.match(narrative.body, /Caller → SIP\/RTP/);
   assert.match(narrative.body, /Live SIP caller/);
   assert.doesNotMatch(narrative.body, /Browser \/ fixture adapter/);
