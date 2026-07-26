@@ -863,6 +863,9 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /function runTtsLab\(\)/);
   assert.match(narrative.body, /Minimize sensitive data crossing the LLM boundary/);
   assert.match(narrative.body, /id="security"/);
+  assert.match(narrative.body, /\.security-boundary \{[^}]*color: #e8f4ff/);
+  assert.match(narrative.body, /\.security-node small \{ color: #a5f3fc/);
+  assert.match(narrative.body, /\.security-node strong, \.security-pane > strong \{ color: #f8fafc/);
   assert.match(narrative.body, /PII \/ PHI \/ PCI guardrail/);
   assert.match(narrative.body, /\[REDACTED_EMAIL\]/);
   assert.match(narrative.body, /NOT SENT TO LLM/);
