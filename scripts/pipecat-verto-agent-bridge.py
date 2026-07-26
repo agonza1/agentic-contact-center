@@ -21,6 +21,7 @@ import os
 import re
 import sys
 import time
+import wave
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,8 @@ from uuid import uuid4
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_RUNTIME_PATH = REPO_ROOT / ".pipecat-runtime"
+DEFAULT_INTRO_AUDIO_PATH = REPO_ROOT / "assets/audio/agilityfeat-intro.wav"
+DEFAULT_INTRO_TEXT = "Hello, you are calling AgilityFeat."
 if LOCAL_RUNTIME_PATH.exists():
     sys.path.insert(0, str(LOCAL_RUNTIME_PATH))
 
@@ -41,6 +44,7 @@ try:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import rsa
     from aiohttp import web
+    from pipecat.frames.frames import TTSAudioRawFrame, TTSStartedFrame, TTSStoppedFrame
     from pipecat.pipeline.runner import PipelineRunner
     from pipecat.pipeline.task import PipelineParams, PipelineTask
     from pipecat.transports.base_transport import TransportParams
@@ -54,6 +58,7 @@ try:
         AccVoicePipelineSession,
         build_acc_voice_pipeline,
         check_readiness,
+        json_http,
         normalize_browser_answer_sdp,
     )
 except Exception as exc:  # pragma: no cover - local setup guard
@@ -385,6 +390,42 @@ class VertoAgentBridge:
         await self.answer_invite(call_id=call_id, offer_sdp=offer_sdp, params=params)
 
     async def answer_invite(self, *, call_id: str, offer_sdp: str, params: dict[str, Any]) -> None:
+        try:
+            started_call = await asyncio.to_thread(
+                json_http,
+                "POST",
+                f"{self.acc_url.rstrip('/')}/api/live-sip/events",
+                {
+                    "eventType": "call.started",
+                    "timestamp": now_iso(),
+                    "sipCallId": call_id,
+                    "telephonyMode": "local_sip",
+                },
+            )
+            acc_call_id = str(started_call["call"]["session"]["callId"])
+            await asyncio.to_thread(
+                json_http,
+                "POST",
+                f"{self.acc_url.rstrip('/')}/api/live-sip/events",
+                {
+                    "eventType": "agent.greeting",
+                    "timestamp": now_iso(),
+                    "sipCallId": call_id,
+                    "text": os.environ.get("ACC_SIP_PRERECORDED_INTRO_TEXT", DEFAULT_INTRO_TEXT),
+                },
+            )
+        except Exception as exc:
+            self.last_answer = {
+                "type": "verto.answer.blocked",
+                "at": now_iso(),
+                "callId": call_id,
+                "reviewReady": False,
+                "blocker": f"ACC live SIP call creation failed: {exc}",
+            }
+            print(json.dumps(self.last_answer), flush=True)
+            self.write_proof_artifact("verto.answer.blocked")
+            return
+
         readiness = await asyncio.to_thread(check_readiness, self.acc_url)
         if not readiness.ok:
             self.last_answer = {
@@ -420,7 +461,13 @@ class VertoAgentBridge:
         )
 
         async def on_connection(connection: Any) -> None:
-            await self.start_pipeline(connection=connection, session_id=session_id, call_id=call_id, readiness=readiness)
+            await self.start_pipeline(
+                connection=connection,
+                session_id=session_id,
+                call_id=call_id,
+                acc_call_id=acc_call_id,
+                readiness=readiness,
+            )
 
         answer = await self.request_handler.handle_web_request(small_request, on_connection)
         if not answer or not isinstance(answer.get("sdp"), str):
@@ -442,6 +489,7 @@ class VertoAgentBridge:
             "type": "verto.answer.sent",
             "at": now_iso(),
             "callId": call_id,
+            "accCallId": acc_call_id,
             "sessionId": session_id,
             "pcId": str(answer.get("pc_id") or call_id),
             "answerSdpBytes": len(answer_sdp.encode("utf-8")),
@@ -454,14 +502,23 @@ class VertoAgentBridge:
         print(json.dumps(self.last_answer), flush=True)
         self.write_proof_artifact("verto.answer.sent")
 
-    async def start_pipeline(self, *, connection: Any, session_id: str, call_id: str, readiness: Any) -> None:
+    async def start_pipeline(
+        self,
+        *,
+        connection: Any,
+        session_id: str,
+        call_id: str,
+        acc_call_id: str,
+        readiness: Any,
+    ) -> None:
         def record_pipeline_evidence(snapshot: dict[str, Any]) -> None:
             self.pipeline_evidence[call_id] = snapshot
             self.write_proof_artifact("verto.pipeline.stage")
 
         session = AccVoicePipelineSession(
             acc_url=self.acc_url,
-            call_id=call_id,
+            call_id=acc_call_id,
+            correlation_id=f"acc-pipecat-{call_id}",
             readiness=readiness,
             evidence_callback=record_pipeline_evidence,
         )
@@ -491,6 +548,39 @@ class VertoAgentBridge:
         )
         runner = PipelineRunner()
         runner_task = asyncio.create_task(runner.run(task, auto_end=False))
+        async def queue_prerecorded_intro() -> None:
+            intro_path = Path(os.environ.get("ACC_SIP_PRERECORDED_INTRO_PATH", str(DEFAULT_INTRO_AUDIO_PATH)))
+            with wave.open(str(intro_path), "rb") as intro:
+                if intro.getnchannels() != 1 or intro.getsampwidth() != 2:
+                    raise RuntimeError("Prerecorded SIP intro must be mono 16-bit PCM WAV")
+                intro_sample_rate = intro.getframerate()
+                intro_pcm = intro.readframes(intro.getnframes())
+            intro_context_id = f"prerecorded-intro-{call_id}"
+            intro_chunk_bytes = intro_sample_rate * 2 * 20 // 1000
+            intro_frames = [TTSStartedFrame(context_id=intro_context_id)]
+            intro_frames.extend(
+                TTSAudioRawFrame(
+                    audio=intro_pcm[offset:offset + intro_chunk_bytes],
+                    sample_rate=intro_sample_rate,
+                    num_channels=1,
+                    context_id=intro_context_id,
+                )
+                for offset in range(0, len(intro_pcm), intro_chunk_bytes)
+            )
+            intro_frames.append(TTSStoppedFrame(context_id=intro_context_id))
+            await task.queue_frames(intro_frames)
+            session.record_stage(
+                "tts.prerecorded_intro_queued",
+                text=os.environ.get("ACC_SIP_PRERECORDED_INTRO_TEXT", DEFAULT_INTRO_TEXT),
+                audioPath=str(intro_path),
+                audioBytes=len(intro_pcm),
+                sampleRate=intro_sample_rate,
+                durationMs=round(len(intro_pcm) / (intro_sample_rate * 2) * 1000),
+            )
+
+        @connection.event_handler("connected")
+        async def queue_intro_for_connected_peer(_connection: Any) -> None:
+            await queue_prerecorded_intro()
         session_record = {
             "connection": connection,
             "transport": transport,
@@ -499,6 +589,7 @@ class VertoAgentBridge:
             "pipelineTask": task,
             "turnSession": session,
             "callId": call_id,
+            "accCallId": acc_call_id,
             "sessionId": session_id,
             "startedAt": now_iso(),
             "closedAt": None,

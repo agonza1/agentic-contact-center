@@ -415,6 +415,30 @@ export class InMemoryTelephonyIngress {
     return cloneSnapshot(snapshot);
   }
 
+  async recordInitialAgentGreeting(callId: string, text: string, timestamp: string): Promise<CallSnapshot> {
+    const snapshot = this.calls.get(callId);
+    if (!snapshot) {
+      throw new Error(`Unknown call id: ${callId}`);
+    }
+    if (snapshot.transcript.some((turn) => turn.speaker === "agent")) {
+      return cloneSnapshot(snapshot);
+    }
+    snapshot.transcript.push({ speaker: "agent", text, timestamp });
+    snapshot.flowState = "greet";
+    snapshot.events.push({
+      type: "agent_turn_appended",
+      at: timestamp,
+      detail: { speaker: "agent", text, transcriptLength: snapshot.transcript.length, source: "pipecat_prerecorded_intro", prerecorded: true },
+    });
+    snapshot.events.push({
+      type: "flow_state_transition",
+      at: timestamp,
+      detail: { from: "call_started", to: "greet", reason: "prerecorded_intro_delivered" },
+    });
+    refreshOpenClawSessionEvidence(snapshot, timestamp);
+    return cloneSnapshot(snapshot);
+  }
+
   async recordLiveTelephonyEvidence(
     callId: string,
     evidence: {

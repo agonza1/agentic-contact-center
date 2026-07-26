@@ -394,6 +394,40 @@ test("live SIP proof stays review-blocked until caller playback is confirmed", a
   }
 });
 
+test("live SIP prerecorded greeting advances context before the first caller turn", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-26T21:30:00.000Z",
+      sipCallId: "sip-prerecorded-greeting",
+      telephonyMode: "local_sip",
+    });
+    assert.equal(started.statusCode, 201);
+
+    const greeting = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "agent.greeting",
+      timestamp: "2026-07-26T21:30:00.100Z",
+      sipCallId: "sip-prerecorded-greeting",
+      text: "Hello, you are calling AgilityFeat.",
+    });
+    assert.equal(greeting.statusCode, 200);
+    assert.equal(greeting.payload.call.flowState, "greet");
+    assert.deepEqual(greeting.payload.call.transcript, [{
+      speaker: "agent",
+      text: "Hello, you are calling AgilityFeat.",
+      timestamp: "2026-07-26T21:30:00.100Z",
+    }]);
+    assert.equal(greeting.payload.call.events.at(-1).detail.reason, "prerecorded_intro_delivered");
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("SignalWire webhook can be labeled signalwire_live without credentials in config", async () => {
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));

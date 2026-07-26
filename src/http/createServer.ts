@@ -5239,7 +5239,7 @@ async function routeRequest(
     }
 
     const eventType = getOptionalTrimmedString(body.eventType);
-    if (!eventType || !["call.started", "media.capture", "media.playback", "media.transcript", "rtc_asr.blocked", "call.ended", "call.error"].includes(eventType)) {
+    if (!eventType || !["call.started", "agent.greeting", "media.capture", "media.playback", "media.transcript", "rtc_asr.blocked", "call.ended", "call.error"].includes(eventType)) {
       writeBadRequest(response, "live_sip_event_type_invalid");
       return;
     }
@@ -5290,6 +5290,17 @@ async function routeRequest(
     };
 
     try {
+      if (eventType === "agent.greeting") {
+        const text = getOptionalTrimmedString(body.text);
+        if (!text) {
+          writeBadRequest(response, "live_sip_agent_greeting_text_required");
+          return;
+        }
+        const snapshot = await ingress.recordInitialAgentGreeting(callId, text, timestamp);
+        writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+        return;
+      }
+
       if (eventType === "media.transcript") {
         const text = getOptionalTrimmedString(body.text) ?? getOptionalTrimmedString(body.transcript);
         if (!text) {
