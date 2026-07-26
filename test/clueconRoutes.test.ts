@@ -141,7 +141,9 @@ async function startRtcAsrServer(): Promise<{ server: Server; baseUrl: string }>
   return { server, baseUrl: `http://127.0.0.1:${address.port}` };
 }
 
-async function startKokoroServer(): Promise<{
+async function startKokoroServer(
+  chunks: Array<{ delayMs: number; value: string }> = [{ delayMs: 5, value: "audio" }],
+): Promise<{
   server: Server;
   baseUrl: string;
   requests: Array<Record<string, unknown>>;
@@ -159,7 +161,11 @@ async function startKokoroServer(): Promise<{
       requests.push(JSON.parse(rawBody) as Record<string, unknown>);
       response.writeHead(200, { "content-type": "audio/mpeg" });
       response.write("ID3");
-      setTimeout(() => response.end("audio"), 5);
+      for (const chunk of chunks) {
+        await new Promise<void>((resolve) => setTimeout(resolve, chunk.delayMs));
+        response.write(chunk.value);
+      }
+      response.end();
       return;
     }
     response.writeHead(404, { "content-type": "application/json" });
@@ -212,7 +218,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
       benchmarkProfiles: Record<string, { firstPartial: string; finalization: string; rtf: string; detailUrl: string }>;
       noiseGuidance: { sourceUrl: string; findings: string[]; caveat: string };
     };
-    ttsPanel: { provider: string; model: string; voice: string; synthesizeRoute: string; candidates: Array<{ name: string; latency: string; sourceUrl: string }>; comparisonCaveat: string; harness: { sourceUrl: string; latency: string } };
+    ttsPanel: { provider: string; model: string; voice: string; synthesizeRoute: string; candidates: Array<{ name: string; latency: string; sourceLabel: string; sourceUrl: string }>; comparisonCaveat: string; harness: { sourceUrl: string; latency: string } };
     brainBlocks: Array<{ file: string; affects: string[] }>;
     brainPanel: { previewRoute: string; applyRoute: string; resetRoute: string; safeMutation: string; activeFiles: string[] };
     securityPanel: { articleUrl: string; referenceRepoUrl: string; trustBoundary: string; controls: string[]; scenarios: Array<{ id: string; action: string; llmInput: string | null }> };
@@ -285,8 +291,10 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.match(payload.asrPanel.noiseGuidance.caveat, /not rtc-asr settings/);
   assert.equal(payload.ttsPanel.provider, "Kokoro-82M");
   assert.equal(payload.ttsPanel.synthesizeRoute, "/api/cluecon/tts/synthesize");
-  assert.deepEqual(payload.ttsPanel.candidates.map((candidate) => candidate.name), ["VoXtream", "Pocket TTS", "FlashTTS"]);
-  assert.match(payload.ttsPanel.comparisonCaveat, /not a universal leaderboard/);
+  assert.deepEqual(payload.ttsPanel.candidates.map((candidate) => candidate.name), ["Kokoro 82M", "Pocket TTS", "VoXtream2", "Qwen3-TTS 0.6B"]);
+  assert.deepEqual(payload.ttsPanel.candidates.map((candidate) => candidate.latency), ["~300 ms first chunk", "~200 ms first chunk", "63 ms first packet", "97 ms first packet"]);
+  assert.ok(payload.ttsPanel.candidates.every((candidate) => candidate.sourceLabel && /^https:/.test(candidate.sourceUrl)));
+  assert.match(payload.ttsPanel.comparisonCaveat, /not a universal ranking/);
   assert.match(payload.ttsPanel.harness.sourceUrl, /2607\.17900/);
   assert.match(payload.ttsPanel.harness.latency, /planner overhead, not total TTS TTFB/);
   assert.ok(payload.brainBlocks.some((block) => block.file === "policy.md" && block.affects.includes("policy hold")));
@@ -639,6 +647,28 @@ test("ClueCon TTS route streams Kokoro audio using the configured local model an
   }
 });
 
+test("ClueCon TTS route refreshes its idle timeout while audio keeps arriving", async () => {
+  const kokoro = await startKokoroServer([
+    { delayMs: 60, value: "audio-1" },
+    { delayMs: 60, value: "audio-2" },
+  ]);
+  try {
+    await withEnv(
+      {
+        KOKORO_BASE_URL: kokoro.baseUrl,
+        KOKORO_TTS_IDLE_TIMEOUT_MS: "100",
+      },
+      async () => {
+        const response = await post("/api/cluecon/tts/synthesize", { text: "Keep an active stream alive." });
+        assert.equal(response.statusCode, 200);
+        assert.equal(response.body, "ID3audio-1audio-2");
+      },
+    );
+  } finally {
+    await closeServer(kokoro.server);
+  }
+});
+
 test("ClueCon TTS route fails clearly when Kokoro is not configured", async () => {
   await withEnv({ KOKORO_BASE_URL: undefined }, async () => {
     const response = await post("/api/cluecon/tts/synthesize", { text: "Test the local voice." });
@@ -793,9 +823,18 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /id="tts"/);
   assert.match(narrative.body, /Run Kokoro/);
   assert.match(narrative.body, /id="tts-ttfb"/);
-  assert.match(narrative.body, /VoXtream/);
+  assert.match(narrative.body, /id=\"tts-playback\"/);
+  assert.match(narrative.body, /Main OSS recommendations/);
+  assert.match(narrative.body, /Kokoro 82M/);
   assert.match(narrative.body, /Pocket TTS/);
-  assert.match(narrative.body, /FlashTTS/);
+  assert.match(narrative.body, /VoXtream2/);
+  assert.match(narrative.body, /Qwen3-TTS 0\.6B/);
+  assert.doesNotMatch(narrative.body, /FlashTTS/);
+  assert.match(narrative.body, /63 ms first packet/);
+  assert.match(narrative.body, /97 ms first packet/);
+  assert.match(narrative.body, /MediaSource\.isTypeSupported/);
+  assert.match(narrative.body, /addEventListener\(\"playing\"/);
+  assert.doesNotMatch(narrative.body, /new Blob\(chunks/);
   assert.match(narrative.body, /2607\.17900/);
   assert.match(narrative.body, /function runTtsLab\(\)/);
   assert.match(narrative.body, /Minimize sensitive data crossing the LLM boundary/);
