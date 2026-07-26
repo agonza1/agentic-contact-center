@@ -712,11 +712,6 @@ function buildCallFlowMarkup(callFlow: {
       <span class="voice-pipeline__eyebrow">Media transformation path</span>
       <strong>SIP/RTP → FreeSWITCH → Pipecat → tokens → speech back</strong>
     </div>
-    <div class="voice-pipeline__meta">
-      <span>${callFlow.cadenceMs / 1000}s demo beat</span>
-      <span>${escapeHtml(callFlow.mode.replace(/_/g, " "))}</span>
-      <span>${escapeHtml(callFlow.credentialRequirement)} stack</span>
-    </div>
   </div>
   <div class="voice-pipeline__canvas">
     <div class="xform-rail" aria-hidden="true">
@@ -861,8 +856,6 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .voice-pipeline__title { display: grid; gap: 4px; max-width: 820px; }
     .voice-pipeline__eyebrow { color: #67e8f9; font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
     .voice-pipeline__title strong { font-size: clamp(17px, 2.1vw, 23px); line-height: 1.2; letter-spacing: -0.02em; }
-    .voice-pipeline__meta { display: flex; flex-wrap: wrap; gap: 8px; }
-    .voice-pipeline__meta span { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border: 1px solid rgba(125, 211, 252, 0.22); border-radius: 999px; background: rgba(8, 31, 53, 0.72); color: #bfdbfe; font-size: 12px; font-weight: 760; }
     .voice-pipeline__canvas { position: relative; z-index: 1; padding: 10px 14px 18px; }
     .xform-rail { position: absolute; left: 18px; right: 18px; top: 18px; height: 42px; border-radius: 999px; background: linear-gradient(90deg, rgba(34, 211, 238, 0.12), rgba(129, 140, 248, 0.16), rgba(251, 191, 36, 0.14), rgba(52, 211, 153, 0.16)); border: 1px solid rgba(148, 163, 184, 0.14); overflow: hidden; pointer-events: none; }
     .xform-carrier { position: absolute; top: 5px; left: 10px; width: 118px; height: 30px; display: grid; place-items: center; animation: carrierTravel 7.5s cubic-bezier(.45,.05,.55,.95) infinite; }
