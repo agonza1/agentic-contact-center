@@ -59,6 +59,7 @@ const operatorConsoleRefreshIntervalMs = 5000;
 const operatorConsoleWorkboardCard = "82771d3a-de4d-4b6e-869c-328e8264d01e";
 const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
 const defaultBrowserWebrtcBridgeTimeoutMs = 5000;
+const defaultKokoroTtsIdleTimeoutMs = 30_000;
 const maxVoiceSessionPlayAudioBytes = 2 * 1024 * 1024;
 const supportedVoiceSessionPlayMimeTypes = new Set(["audio/l16", "audio/pcm", "audio/wav", "audio/wave", "audio/x-wav"]);
 const clueConSystemUnavailableAudio = readFileSync(resolve(process.cwd(), "assets/cluecon/system-unavailable.mp3"));
@@ -136,6 +137,12 @@ function getKokoroSpeechTarget(): { url: string; model: string; voice: string } 
     model: process.env.KOKORO_MODEL?.trim() || "kokoro",
     voice: process.env.KOKORO_VOICE?.trim() || "af_heart",
   };
+}
+
+function getKokoroTtsIdleTimeoutMs(): number {
+  const parsed = Number(process.env.KOKORO_TTS_IDLE_TIMEOUT_MS ?? "");
+  if (!Number.isFinite(parsed) || parsed <= 0) return defaultKokoroTtsIdleTimeoutMs;
+  return Math.min(Math.max(Math.trunc(parsed), 50), 300_000);
 }
 
 function getBrowserWebrtcBridgeBaseUrl(): string {
@@ -4865,6 +4872,13 @@ async function routeRequest(
     const requestedVoice = getOptionalTrimmedString(body.voice);
     const voice = requestedVoice && /^[a-z0-9_-]{1,64}$/i.test(requestedVoice) ? requestedVoice : target.voice;
     const startedAt = performance.now();
+    const idleTimeoutMs = getKokoroTtsIdleTimeoutMs();
+    const controller = new AbortController();
+    let idleTimeout = setTimeout(() => controller.abort(), idleTimeoutMs);
+    const refreshIdleTimeout = () => {
+      clearTimeout(idleTimeout);
+      idleTimeout = setTimeout(() => controller.abort(), idleTimeoutMs);
+    };
     try {
       const upstream = await fetch(target.url, {
         method: "POST",
@@ -4879,8 +4893,9 @@ async function routeRequest(
           response_format: "mp3",
           stream: true,
         }),
-        signal: AbortSignal.timeout(30_000),
+        signal: controller.signal,
       });
+      refreshIdleTimeout();
       if (!upstream.ok || !upstream.body) {
         const detail = await upstream.text().catch(() => "");
         writeJson(response, 502, {
@@ -4901,6 +4916,7 @@ async function routeRequest(
         });
         return;
       }
+      refreshIdleTimeout();
       const upstreamTtfbMs = Math.round((performance.now() - startedAt) * 10) / 10;
       const upstreamContentType = upstream.headers.get("content-type");
       response.writeHead(200, {
@@ -4909,12 +4925,16 @@ async function routeRequest(
         "x-acc-tts-model": target.model,
         "x-acc-tts-voice": voice,
         "x-acc-upstream-ttfb-ms": String(upstreamTtfbMs),
+        "x-acc-tts-idle-timeout-ms": String(idleTimeoutMs),
       });
       response.write(first.value);
       while (true) {
         const chunk = await reader.read();
         if (chunk.done) break;
-        if (chunk.value?.byteLength) response.write(chunk.value);
+        if (chunk.value?.byteLength) {
+          refreshIdleTimeout();
+          response.write(chunk.value);
+        }
       }
       response.end();
     } catch (error) {
@@ -4928,6 +4948,8 @@ async function routeRequest(
       } else {
         response.destroy(error instanceof Error ? error : new Error(String(error)));
       }
+    } finally {
+      clearTimeout(idleTimeout);
     }
     return;
   }
