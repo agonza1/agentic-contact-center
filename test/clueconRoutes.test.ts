@@ -141,6 +141,36 @@ async function startRtcAsrServer(): Promise<{ server: Server; baseUrl: string }>
   return { server, baseUrl: `http://127.0.0.1:${address.port}` };
 }
 
+async function startKokoroServer(): Promise<{
+  server: Server;
+  baseUrl: string;
+  requests: Array<Record<string, unknown>>;
+}> {
+  const requests: Array<Record<string, unknown>> = [];
+  const server = createServer(async (request, response) => {
+    if (request.method === "GET" && request.url === "/health") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true, status: "ready", service: "kokoro", voices: ["af_heart"] }));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/v1/audio/speech") {
+      let rawBody = "";
+      for await (const chunk of request) rawBody += chunk.toString();
+      requests.push(JSON.parse(rawBody) as Record<string, unknown>);
+      response.writeHead(200, { "content-type": "audio/mpeg" });
+      response.write("ID3");
+      setTimeout(() => response.end("audio"), 5);
+      return;
+    }
+    response.writeHead(404, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: false }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Expected fake Kokoro server to listen on TCP");
+  return { server, baseUrl: `http://127.0.0.1:${address.port}`, requests };
+}
+
 async function closeServer(server: Server): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {
@@ -163,7 +193,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     workboardCard: string;
     activeWorkboardCard: string;
     sourceRepos: { agenticContactCenter: string; rtcAsr: string; realtimeVoiceAiGuardrails: string };
-    routes: { scrollable: string; present: string; scriptedDemo: string; operatorDrill: string; evalPreview: string; evalRun: string };
+    routes: { scrollable: string; present: string; scriptedDemo: string; ttsSynthesize: string; operatorDrill: string; evalPreview: string; evalRun: string };
     readiness: Array<{ id: string; status: string; caveat: string; repoUrl?: string }>;
     liveProbes: Array<{ id: string; configured: boolean; status: string; ok: boolean; metadata: Record<string, unknown> }>;
     architectureCenter: { issue: string; target: string; adapterRule: string; currentGaps: string[] };
@@ -180,7 +210,9 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
       fixtureEvents: Array<{ state: string }>;
       benchmarks: Array<{ label: string }>;
       benchmarkProfiles: Record<string, { firstPartial: string; finalization: string; rtf: string; detailUrl: string }>;
+      noiseGuidance: { sourceUrl: string; findings: string[]; caveat: string };
     };
+    ttsPanel: { provider: string; model: string; voice: string; synthesizeRoute: string; candidates: Array<{ name: string; latency: string; sourceUrl: string }>; comparisonCaveat: string; harness: { sourceUrl: string; latency: string } };
     brainBlocks: Array<{ file: string; affects: string[] }>;
     brainPanel: { previewRoute: string; applyRoute: string; resetRoute: string; safeMutation: string; activeFiles: string[] };
     securityPanel: { articleUrl: string; referenceRepoUrl: string; trustBoundary: string; controls: string[]; scenarios: Array<{ id: string; action: string; llmInput: string | null }> };
@@ -203,11 +235,11 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.sourceRepos.realtimeVoiceAiGuardrails, "https://github.com/WebRTCventures/realtime-voice-ai-guardrails");
   assert.equal(payload.architectureCenter.issue, "agonza1/agentic-contact-center#307");
   assert.match(payload.architectureCenter.target, /transport\.input -> rtc-asr STT/);
-  assert.match(payload.architectureCenter.adapterRule, /Browser, fixture\/tester, and SIP/);
+  assert.match(payload.architectureCenter.adapterRule, /FreeSWITCH owns the SIP\/RTP boundary/);
   assert.ok(payload.architectureCenter.currentGaps.some((gap) => /reliability-lab profile/.test(gap)));
   assert.ok(payload.architectureCenter.currentGaps.some((gap) => /strict local SIP\/Verto proof is accepted/.test(gap)));
   assert.equal(payload.demoGoal.issue, "agonza1/agentic-contact-center#307");
-  assert.deepEqual(payload.demoGoal.chain, ["adapter", "pipecat_pipeline_target", "rtc_asr", "acc_policy_tools", "kokoro_tts", "evidence"]);
+  assert.deepEqual(payload.demoGoal.chain, ["caller", "freeswitch", "pipecat_pipeline", "rtc_asr", "acc_policy_tools", "kokoro_tts", "evidence"]);
   assert.match(payload.demoGoal.successSignal, /Phase 2 reliability-lab blockers/);
   assert.equal(payload.turnTiming.speechStartHoldMs, 80);
   assert.equal(payload.turnTiming.acousticStopHoldMs, 350);
@@ -216,17 +248,18 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.match(payload.turnTiming.rule, /acoustic stop is only an end-of-turn candidate/);
   assert.equal(payload.callFlow.issue, "agonza1/agentic-contact-center#217");
   assert.equal(payload.callFlow.cadenceMs, 1000);
-  assert.equal(payload.callFlow.credentialRequirement, "none");
+  assert.equal(payload.callFlow.credentialRequirement, "local");
   assert.deepEqual(payload.callFlow.stages.map((stage) => stage.id), ["audio_in", "transport", "stt", "agent", "tts"]);
-  assert.ok(payload.callFlow.stages.some((stage) => stage.label === "Caller audio in"));
-  assert.ok(payload.callFlow.stages.some((stage) => stage.label === "Transport + codec normalize"));
-  assert.ok(payload.callFlow.stages.some((stage) => stage.label === "Text → audio out"));
+  assert.ok(payload.callFlow.stages.some((stage) => stage.label === "Caller → SIP/RTP"));
+  assert.ok(payload.callFlow.stages.some((stage) => stage.label === "FreeSWITCH boundary"));
+  assert.ok(payload.callFlow.stages.some((stage) => stage.label === "Speech → caller"));
   assert.ok(payload.callFlow.stages.some((stage) => /PCM16/.test(stage.packet)));
-  assert.ok(payload.callFlow.stages.some((stage) => /fixture\/tester/.test(stage.detail)));
-  assert.ok(payload.callFlow.stages.some((stage) => /Pipeline frames/.test(stage.detail)));
+  assert.ok(payload.callFlow.stages.some((stage) => /SIP dialog/.test(stage.detail)));
+  assert.ok(payload.callFlow.stages.some((stage) => /media clock/.test(stage.detail)));
   assert.equal(payload.routes.scrollable, "/cluecon");
   assert.equal(payload.routes.present, "/cluecon/present");
   assert.equal(payload.routes.scriptedDemo, "/api/demo/run-end-to-end");
+  assert.equal(payload.routes.ttsSynthesize, "/api/cluecon/tts/synthesize");
   assert.equal(payload.routes.operatorDrill, "/api/cluecon/operator/drill");
   assert.equal(payload.routes.evalPreview, "/api/cluecon/eval/preview");
   assert.equal(payload.routes.evalRun, "/api/cluecon/eval/run");
@@ -247,13 +280,22 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.asrPanel.benchmarkProfiles["parakeet-mlx|mlx-community/parakeet-tdt_ctc-110m"].firstPartial, "250.7 ms");
   assert.equal(payload.asrPanel.benchmarkProfiles["parakeet-mlx|mlx-community/parakeet-tdt_ctc-110m"].finalization, "251.8 ms");
   assert.equal(payload.asrPanel.benchmarkProfiles["faster-whisper|base.en"].rtf, "0.066x");
+  assert.match(payload.asrPanel.noiseGuidance.sourceUrl, /handle-background-noise/);
+  assert.ok(payload.asrPanel.noiseGuidance.findings.some((finding) => /interruptSensitivity=low/.test(finding)));
+  assert.match(payload.asrPanel.noiseGuidance.caveat, /not rtc-asr settings/);
+  assert.equal(payload.ttsPanel.provider, "Kokoro-82M");
+  assert.equal(payload.ttsPanel.synthesizeRoute, "/api/cluecon/tts/synthesize");
+  assert.deepEqual(payload.ttsPanel.candidates.map((candidate) => candidate.name), ["VoXtream", "Pocket TTS", "FlashTTS"]);
+  assert.match(payload.ttsPanel.comparisonCaveat, /not a universal leaderboard/);
+  assert.match(payload.ttsPanel.harness.sourceUrl, /2607\.17900/);
+  assert.match(payload.ttsPanel.harness.latency, /planner overhead, not total TTS TTFB/);
   assert.ok(payload.brainBlocks.some((block) => block.file === "policy.md" && block.affects.includes("policy hold")));
   assert.equal(payload.brainPanel.previewRoute, "/api/cluecon/brain/preview");
   assert.equal(payload.brainPanel.applyRoute, "/api/cluecon/brain/apply");
   assert.equal(payload.brainPanel.resetRoute, "/api/cluecon/brain/reset");
   assert.equal(payload.brainPanel.safeMutation, "session_scoped_in_memory");
   assert.ok(payload.brainPanel.activeFiles.includes("policy.md"));
-  assert.match(payload.securityPanel.trustBoundary, /before any third-party LLM handoff/);
+  assert.match(payload.securityPanel.trustBoundary, /Minimize sensitive data crossing the LLM boundary/);
   assert.equal(payload.securityPanel.scenarios.find((scenario) => scenario.id === "pii")?.action, "redact");
   assert.equal(payload.securityPanel.scenarios.find((scenario) => scenario.id === "pci")?.llmInput, null);
   assert.match(payload.securityPanel.referenceRepoUrl, /realtime-voice-ai-guardrails/);
@@ -565,6 +607,46 @@ test("ClueCon ASR routes fail clearly when rtc-asr is not configured", async () 
   });
 });
 
+test("ClueCon TTS route streams Kokoro audio using the configured local model and voice", async () => {
+  const kokoro = await startKokoroServer();
+  try {
+    await withEnv(
+      {
+        KOKORO_BASE_URL: kokoro.baseUrl,
+        KOKORO_MODEL: "kokoro",
+        KOKORO_VOICE: "af_heart",
+      },
+      async () => {
+        const response = await post("/api/cluecon/tts/synthesize", {
+          text: "AI may be probabilistic, but the system around it does not have to be.",
+          voice: "af_heart",
+        });
+        assert.equal(response.statusCode, 200);
+        assert.match(response.contentType, /audio\/mpeg/);
+        assert.equal(response.body, "ID3audio");
+        assert.equal(kokoro.requests.length, 1);
+        assert.deepEqual(kokoro.requests[0], {
+          model: "kokoro",
+          voice: "af_heart",
+          input: "AI may be probabilistic, but the system around it does not have to be.",
+          response_format: "mp3",
+          stream: true,
+        });
+      },
+    );
+  } finally {
+    await closeServer(kokoro.server);
+  }
+});
+
+test("ClueCon TTS route fails clearly when Kokoro is not configured", async () => {
+  await withEnv({ KOKORO_BASE_URL: undefined }, async () => {
+    const response = await post("/api/cluecon/tts/synthesize", { text: "Test the local voice." });
+    assert.equal(response.statusCode, 503);
+    assert.match(response.body, /kokoro_not_configured/);
+  });
+});
+
 
 test("GET/POST /api/cluecon/eval expose ASSERT handoff preview and scorecard", async () => {
   const previewResponse = await get("/api/cluecon/eval/preview");
@@ -614,7 +696,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   const narrative = await get("/cluecon");
   assert.equal(narrative.statusCode, 200);
   assert.match(narrative.contentType, /text\/html/);
-  assert.match(narrative.body, /Voice Agent Reliability Reference Stack/);
+  assert.match(narrative.body, /From SIP to Tokens: Deterministic Telephony Meets Real-Time Voice AI/);
   assert.match(narrative.body, /ClueCon 2026 presentation/);
   assert.doesNotMatch(narrative.body, /ClueCon vertical slice/i);
   assert.doesNotMatch(narrative.body, /class="talk-time"/);
@@ -623,18 +705,25 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.doesNotMatch(narrative.body, />Live browser demo</);
   assert.match(narrative.body, /Alberto Gonzalez CTO @ WebRTC\.ventures/);
   assert.match(narrative.body, /Realtime call flow visualization/);
-  assert.match(narrative.body, /Caller audio in/);
-  assert.match(narrative.body, /SIP adapter/);
-  assert.match(narrative.body, /Browser \/ fixture adapter/);
-  assert.match(narrative.body, /Transport \+ codec normalize/);
+  assert.match(narrative.body, /Caller → SIP\/RTP/);
+  assert.match(narrative.body, /Live SIP caller/);
+  assert.doesNotMatch(narrative.body, /Browser \/ fixture adapter/);
+  assert.match(narrative.body, /<strong>Speech activity<\/strong>/);
+  assert.match(narrative.body, /<strong>Turn completion<\/strong>/);
+  assert.doesNotMatch(narrative.body, /<strong>VAD alternatives<\/strong>/);
+  assert.match(narrative.body, /FreeSWITCH boundary/);
   assert.match(narrative.body, /Audio → text \/ tokens/);
-  assert.match(narrative.body, /Text → audio out/);
+  assert.match(narrative.body, /Speech → caller/);
   assert.match(narrative.body, /voice-pipeline/);
   assert.match(narrative.body, /xform-carrier/);
   assert.match(narrative.body, /media-wave/);
   assert.match(narrative.body, /media-tokens/);
-  assert.equal((narrative.body.match(/data-slide="\d+"/g) ?? []).length, 11);
+  assert.equal((narrative.body.match(/data-slide="\d+"/g) ?? []).length, 12);
   assert.match(narrative.body, /Deterministic telephony meets probabilistic inference/);
+  assert.match(narrative.body, /INVITE → 18x → 200 → ACK … BYE → 200/);
+  assert.match(narrative.body, /Sequence-numbered RTP on a media deadline/);
+  assert.match(narrative.body, /conceal loss · reroute · end/);
+  assert.match(narrative.body, /Illustrative local latency targets/);
   assert.match(narrative.body, /One runs on clocks\. One runs on confidence/);
   assert.match(narrative.body, /id="vad-interruption"/);
   assert.match(narrative.body, /id="vad-mic"/);
@@ -666,15 +755,16 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Starting microphone…/);
   assert.match(narrative.body, /MIC_START_CANCELLED/);
   assert.match(narrative.body, /slideCount: slideOrder\.length/);
-  assert.match(narrative.body, /\["flow", "realtime-problem", "two-machines", "vad-interruption", "asr", "map", "demo"/);
-  assert.match(narrative.body, /Run scripted demo/);
-  assert.match(narrative.body, /ACC emits auditable JSON; FreeSWITCH or another SIP\/media server executes transfer/);
+  assert.match(narrative.body, /\["flow", "realtime-problem", "two-machines", "vad-interruption", "asr", "tts", "map", "demo"/);
+  assert.doesNotMatch(narrative.body, /Run scripted demo/);
+  assert.match(narrative.body, /Run cancellation scenario/);
+  assert.match(narrative.body, /ACC emits auditable JSON and FreeSWITCH executes playback, transfer/);
   assert.match(narrative.body, /Control plane → media plane/);
   assert.match(narrative.body, /renderOperatorDrill\(payload\)/);
   assert.match(narrative.body, /integration\.controlSequence \|\| integration\.controlMessage/);
   assert.match(narrative.body, /system-unavailable\.mp3/);
   assert.match(narrative.body, /runMediaFailureDrill\("rtc_asr_unavailable"\)/);
-  assert.match(narrative.body, /Run proof/);
+  assert.doesNotMatch(narrative.body, /id="run-demo-top"/);
   assert.match(narrative.body, /Run eval/);
   assert.match(narrative.body, /window\.__CLUECON__/);
   assert.match(narrative.body, /rtc-asr is measurable and swappable/);
@@ -696,7 +786,19 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /0\.066x/);
   assert.match(narrative.body, /https:\/\/github\.com\/agonza1\/rtc-asr/);
   assert.match(narrative.body, /renderAsrPanel/);
-  assert.match(narrative.body, /PII should not reach the third-party LLM/);
+  assert.match(narrative.body, /Noise changes more than WER/);
+  assert.match(narrative.body, /interruptSensitivity=low/);
+  assert.match(narrative.body, /eotThreshold=0\.75/);
+  assert.match(narrative.body, /handle-background-noise-when-using-conversation-relay-nodejs/);
+  assert.match(narrative.body, /id="tts"/);
+  assert.match(narrative.body, /Run Kokoro/);
+  assert.match(narrative.body, /id="tts-ttfb"/);
+  assert.match(narrative.body, /VoXtream/);
+  assert.match(narrative.body, /Pocket TTS/);
+  assert.match(narrative.body, /FlashTTS/);
+  assert.match(narrative.body, /2607\.17900/);
+  assert.match(narrative.body, /function runTtsLab\(\)/);
+  assert.match(narrative.body, /Minimize sensitive data crossing the LLM boundary/);
   assert.match(narrative.body, /id="security"/);
   assert.match(narrative.body, /PII \/ PHI \/ PCI guardrail/);
   assert.match(narrative.body, /\[REDACTED_EMAIL\]/);
@@ -706,7 +808,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /renderSecurityPanel/);
   assert.match(narrative.body, /runEvalProof/);
   assert.match(narrative.body, /goToSlide/);
-  assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 11'));
+  assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 12'));
   assert.match(narrative.body, /aria-label="Previous slide"/);
   assert.ok(narrative.body.includes('status.textContent = String(state.slide + 1) + " / " + String(state.slideCount)'));
   assert.match(narrative.body, /@media \(max-width: 1100px\) \{ #demo \.two/);
@@ -725,7 +827,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   const present = await get("/cluecon/present");
   assert.equal(present.statusCode, 200);
   assert.match(present.body, /class="present"/);
-  assert.match(present.body, /One realtime pipeline/);
+  assert.match(present.body, /From SIP to Tokens/);
   assert.match(present.body, /Alberto Gonzalez CTO @ WebRTC\.ventures/);
   assert.match(present.body, /ArrowRight/);
   assert.match(present.body, /Run eval/);
@@ -769,7 +871,8 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.doesNotMatch(html, /15 min system story/);
   assert.doesNotMatch(html, /10 min live demo/);
   assert.doesNotMatch(html, /5 min proof \+ close/);
-  assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 11);
+  assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 12);
+  assert.match(html, /Live Kokoro TTFB requires the local ACC \+ Kokoro stack/);
   assert.match(html, /prerecorded system-unavailable prompt/i);
   assert.match(html, /human-support/);
   assert.match(html, /href="\.\/present\/"/);

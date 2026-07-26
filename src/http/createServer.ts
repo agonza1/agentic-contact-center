@@ -126,6 +126,18 @@ async function fetchRtcAsrJson(target: RtcAsrModelTarget, path: string, init?: R
   }
 }
 
+function getKokoroSpeechTarget(): { url: string; model: string; voice: string } | null {
+  const baseUrl = process.env.KOKORO_BASE_URL?.trim().replace(/\/+$/, "");
+  if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) return null;
+  const speechPath = (process.env.KOKORO_SPEECH_PATH ?? process.env.KOKORO_TTS_PATH ?? "/v1/audio/speech").trim();
+  const normalizedPath = speechPath.startsWith("/") ? speechPath : `/${speechPath}`;
+  return {
+    url: `${baseUrl}${normalizedPath}`,
+    model: process.env.KOKORO_MODEL?.trim() || "kokoro",
+    voice: process.env.KOKORO_VOICE?.trim() || "af_heart",
+  };
+}
+
 function getBrowserWebrtcBridgeBaseUrl(): string {
   return process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766";
 }
@@ -4826,6 +4838,96 @@ async function routeRequest(
         error: error instanceof Error ? error.message : String(error),
         nextStep: "Confirm the selected rtc-asr model endpoint is running and ready.",
       });
+    }
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/cluecon/tts/synthesize") {
+    const body = await readJsonBody<unknown>(request);
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+    const text = getOptionalTrimmedString(body.text);
+    if (!text || text.length > 500) {
+      writeBadRequest(response, "kokoro_text_invalid");
+      return;
+    }
+    const target = getKokoroSpeechTarget();
+    if (!target) {
+      writeJson(response, 503, {
+        ok: false,
+        error: "kokoro_not_configured",
+        nextStep: "Set KOKORO_BASE_URL, start the local Kokoro sidecar, and retry.",
+      });
+      return;
+    }
+    const requestedVoice = getOptionalTrimmedString(body.voice);
+    const voice = requestedVoice && /^[a-z0-9_-]{1,64}$/i.test(requestedVoice) ? requestedVoice : target.voice;
+    const startedAt = performance.now();
+    try {
+      const upstream = await fetch(target.url, {
+        method: "POST",
+        headers: {
+          accept: "audio/mpeg",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: target.model,
+          voice,
+          input: text,
+          response_format: "mp3",
+          stream: true,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!upstream.ok || !upstream.body) {
+        const detail = await upstream.text().catch(() => "");
+        writeJson(response, 502, {
+          ok: false,
+          error: "kokoro_synthesis_failed",
+          upstreamStatus: upstream.status,
+          detail: detail.slice(0, 500),
+        });
+        return;
+      }
+
+      const reader = upstream.body.getReader();
+      const first = await reader.read();
+      if (first.done || !first.value?.byteLength) {
+        writeJson(response, 502, {
+          ok: false,
+          error: "kokoro_returned_no_audio",
+        });
+        return;
+      }
+      const upstreamTtfbMs = Math.round((performance.now() - startedAt) * 10) / 10;
+      const upstreamContentType = upstream.headers.get("content-type");
+      response.writeHead(200, {
+        "cache-control": "no-store",
+        "content-type": upstreamContentType?.startsWith("audio/") ? upstreamContentType : "audio/mpeg",
+        "x-acc-tts-model": target.model,
+        "x-acc-tts-voice": voice,
+        "x-acc-upstream-ttfb-ms": String(upstreamTtfbMs),
+      });
+      response.write(first.value);
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        if (chunk.value?.byteLength) response.write(chunk.value);
+      }
+      response.end();
+    } catch (error) {
+      if (!response.headersSent) {
+        writeJson(response, 502, {
+          ok: false,
+          error: "kokoro_unreachable",
+          detail: error instanceof Error ? error.message : String(error),
+          nextStep: "Confirm KOKORO_BASE_URL points to a warmed Kokoro OpenAI-compatible speech endpoint.",
+        });
+      } else {
+        response.destroy(error instanceof Error ? error : new Error(String(error)));
+      }
     }
     return;
   }
