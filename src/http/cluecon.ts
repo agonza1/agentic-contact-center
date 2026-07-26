@@ -1145,11 +1145,12 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .present .section-band:not(.active), .present .hero:not(.active) { display: none; }
 
     .security-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); gap: 16px; align-items: stretch; }
-    .security-boundary { display: grid; gap: 12px; padding: 18px; border: 1px solid rgba(45,212,191,.34); border-radius: 16px; background: linear-gradient(145deg,rgba(6,78,59,.18),rgba(8,20,40,.92)); box-shadow: var(--shadow); }
+    .security-boundary { display: grid; gap: 12px; padding: 18px; border: 1px solid rgba(45,212,191,.34); border-radius: 16px; background: linear-gradient(145deg,rgba(6,78,59,.18),rgba(8,20,40,.92)); color: #e8f4ff; box-shadow: var(--shadow); }
     .security-flow { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 7px; align-items: stretch; }
     .security-node { position: relative; display: grid; align-content: center; gap: 5px; min-height: 112px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(2,8,20,.7); text-align: center; }
-    .security-node:not(:last-child)::after { content: "→"; position: absolute; z-index: 2; right: -11px; top: 50%; transform: translateY(-50%); color: var(--blue); font-weight: 900; }
-    .security-node small { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+    .security-node:not(:last-child)::after { content: "→"; position: absolute; z-index: 2; right: -11px; top: 50%; transform: translateY(-50%); color: #7dd3fc; font-weight: 900; }
+    .security-node small { color: #a5f3fc; font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+    .security-node strong, .security-pane > strong { color: #f8fafc; }
     .security-node strong { font-size: 12px; line-height: 1.3; }
     .security-node--guard { border-color: rgba(52,211,153,.55); background: rgba(6,78,59,.25); }
     .security-node--provider { border-color: rgba(168,85,247,.48); background: rgba(88,28,135,.17); }
