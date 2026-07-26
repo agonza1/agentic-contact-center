@@ -146,8 +146,8 @@ for (const phrase of staleOrOverclaimingReadmePhrases) {
 }
 
 const requiredClueConPhrases = [
-  "Voice Agent Reliability Reference Stack",
-  "ACC integrates the demo and proof surface without owning ConversationAgentEvals, rtc-asr, or ASSERT",
+  "From SIP to Tokens: Deterministic Telephony Meets Real-Time Voice AI",
+  "FreeSWITCH keeps SIP dialogs and RTP media bounded",
   "strict local SIP/Verto proof is accepted",
 ];
 for (const phrase of requiredClueConPhrases) {
