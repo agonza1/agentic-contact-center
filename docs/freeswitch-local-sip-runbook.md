@@ -68,6 +68,32 @@ FREESWITCH_VERTO_URL=ws://127.0.0.1:8081 FREESWITCH_VERTO_LOGIN=acc-pipecat@127.
 
 The sidecar updates `PIPECAT_VERTO_PROOF_OUT` after login, invite, and pipeline stage events. It includes the call-scoped rtc-asr final transcript and Kokoro TTS evidence needed by the strict caller harness.
 
+The Verto originate leg must negotiate PCMU directly. Applying a codec
+preference only to the inbound Linphone leg is insufficient; extension `8600`
+uses `absolute_codec_string=PCMU` on the `verto_contact(...)` bridge target so
+FreeSWITCH and aiortc exchange payload `0` in both directions.
+
+Immediately after the Verto media connection is ready, the sidecar sends the
+prerecorded `assets/audio/agilityfeat-intro.wav` greeting:
+
+```text
+Hello, you are calling AgilityFeat.
+```
+
+This avoids waiting for the first Kokoro synthesis. The sidecar also posts an
+`agent.greeting` live-SIP event before accepting caller turns, so ACC records
+the greeting in the transcript and starts the agent from the `greet` state
+instead of repeating hello. Override the defaults with
+`ACC_SIP_PRERECORDED_INTRO_PATH` and `ACC_SIP_PRERECORDED_INTRO_TEXT`.
+
+rtc-asr can occasionally emit a useful live interim transcript and then an
+empty final event for a short utterance such as “hello.” The shared Pipecat
+processor retains the latest interim from the current utterance only and uses
+it when that utterance's final is empty. Evidence records
+`stt.transcript_recovered_from_interim` and
+`finalTranscriptSource=rtc_asr_interim_fallback`; a prior turn's interim is
+cleared on every new `start` and cannot leak into the next turn.
+
 To run the deterministic two-way proof, create or supply a PCM16 WAV containing a spoken caller utterance, then run:
 
 ```sh

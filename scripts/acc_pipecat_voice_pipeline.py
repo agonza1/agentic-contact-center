@@ -358,6 +358,7 @@ class AccVoicePipelineSession:
         self.rtc_asr_session_audio_bytes = 0
         self.rtc_asr_session_event_count = 0
         self.rtc_asr_interim_events: list[dict[str, Any]] = []
+        self.rtc_asr_current_interim_text = ""
         self.turn_controls: PipecatTurnControls | None = None
         self.evidence_callback = evidence_callback
         self.pending_caller_turn_commit: dict[str, Any] | None = None
@@ -800,6 +801,10 @@ class AccVoicePipelineSession:
                 # local-stt.v1 finalize ends the current utterance, not the socket.
                 # The next audio turn must send a new start event on this connection.
                 self.rtc_asr_started = False
+            final_transcript_source = "rtc_asr_final"
+            if not final_text.strip() and self.rtc_asr_current_interim_text.strip():
+                final_text = self.rtc_asr_current_interim_text
+                final_transcript_source = "rtc_asr_interim_fallback"
         elapsed_ms = round((time.perf_counter() - started) * 1000)
         audio_bytes = self.rtc_asr_current_audio_bytes or len(frame.audio)
         meta = {
@@ -815,8 +820,10 @@ class AccVoicePipelineSession:
             "sessionEventCount": self.rtc_asr_session_event_count,
             "interimEventCount": len([event for event in events if not is_final_stt_event(event) and transcript_text_from_event(event)]),
             "eventCount": len(events),
+            "finalTranscriptSource": final_transcript_source,
         }
         self.rtc_asr_current_audio_bytes = 0
+        self.rtc_asr_current_interim_text = ""
         result_frame = TranscriptionFrame(final_text.strip(), user_id="browser", timestamp=str(time.time()), result={"events": events}, finalized=True)
         return result_frame.text.strip(), meta, result_frame
 
@@ -866,6 +873,7 @@ class AccVoicePipelineSession:
             raise RuntimeError("rtc-asr session is closing")
         self.rtc_asr_utterance_id += 1
         self.rtc_asr_started = True
+        self.rtc_asr_current_interim_text = ""
         self.record_stage(
             "stt.utterance_started",
             connectionId=self.rtc_asr_connection_id,
@@ -889,6 +897,7 @@ class AccVoicePipelineSession:
         self.rtc_asr_session_event_count += 1
         transcript = transcript_text_from_event(event)
         if transcript and not is_final_stt_event(event):
+            self.rtc_asr_current_interim_text = transcript
             interim = self.record_stage(
                 "stt.transcript_interim",
                 transcript=transcript,
@@ -1138,6 +1147,12 @@ class RtcAsrTurnProcessor(FrameProcessor):
             }
             self.session.record_stage("stt.empty_transcript", ok=False, error="empty_transcript", stt=stt_meta)
             return
+        if stt_meta.get("finalTranscriptSource") == "rtc_asr_interim_fallback":
+            self.session.record_stage(
+                "stt.transcript_recovered_from_interim",
+                transcript=transcript,
+                stt=stt_meta,
+            )
         self.session.record_stage("stt.transcript_final", transcript=transcript, stt=stt_meta)
         transcription_frame.result = {**(transcription_frame.result or {}), "stt": stt_meta}
         await self.turn_controls.observe_transcription(transcription_frame)

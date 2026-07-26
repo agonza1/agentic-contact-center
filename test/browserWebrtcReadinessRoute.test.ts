@@ -92,6 +92,7 @@ test("persistent rtc-asr session repeats utterance lifecycle and closes promptly
   assert.equal(payload.ok, true);
   assert.equal(payload.twoTurnLifecycle, "one_connection_two_starts_two_finalizes_two_transcripts");
   assert.equal(payload.promptClose, true);
+  assert.equal(payload.emptyFinalFallback, "current_utterance_interim");
 });
 
 test("Pipecat transport output streams chunks and flushes on barge-in", { skip: !hasOptionalPipecatRuntime }, () => {

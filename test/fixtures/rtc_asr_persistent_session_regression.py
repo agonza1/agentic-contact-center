@@ -23,8 +23,17 @@ from pipecat.frames.frames import InputAudioRawFrame  # noqa: E402
 
 
 class FakeRtcAsrWebSocket:
-    def __init__(self, *, emit_finals: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        emit_finals: bool = True,
+        interim_on_audio: str | None = None,
+        empty_final: bool = False,
+    ) -> None:
         self.emit_finals = emit_finals
+        self.interim_on_audio = interim_on_audio
+        self.empty_final = empty_final
+        self.interim_emitted = False
         self.sent: list[bytes | dict[str, object]] = []
         self.events: asyncio.Queue[dict[str, object] | Exception] = asyncio.Queue()
         self.closed = False
@@ -35,6 +44,15 @@ class FakeRtcAsrWebSocket:
     async def send(self, payload: bytes | str) -> None:
         if isinstance(payload, bytes):
             self.sent.append(payload)
+            if self.interim_on_audio and not self.interim_emitted:
+                self.interim_emitted = True
+                await self.events.put(
+                    {
+                        "type": "transcript.interim",
+                        "final": False,
+                        "transcript": self.interim_on_audio,
+                    }
+                )
             return
         event = json.loads(payload)
         self.sent.append(event)
@@ -47,7 +65,7 @@ class FakeRtcAsrWebSocket:
                     {
                         "type": "transcript.final",
                         "final": True,
-                        "transcript": f"completed turn {self.finalize_count}",
+                        "transcript": "" if self.empty_final else f"completed turn {self.finalize_count}",
                     }
                 )
 
@@ -122,10 +140,38 @@ async def verify_close_interrupts_final_wait() -> None:
     assert session.rtc_asr_ws is None
 
 
+async def verify_empty_final_uses_current_interim() -> None:
+    websocket = FakeRtcAsrWebSocket(interim_on_audio="hello", empty_final=True)
+
+    async def connect(*_args: object, **_kwargs: object) -> FakeRtcAsrWebSocket:
+        return websocket
+
+    session = make_session()
+    with patch("acc_pipecat_voice_pipeline.websockets.connect", connect):
+        await session.stream_rtc_asr_audio(b"\x01\x00" * 320)
+        transcript, meta, _frame = await session.transcribe(
+            InputAudioRawFrame(audio=b"", sample_rate=INPUT_SAMPLE_RATE, num_channels=1)
+        )
+
+    assert transcript == "hello", transcript
+    assert meta["finalTranscriptSource"] == "rtc_asr_interim_fallback", meta
+    assert session.rtc_asr_current_interim_text == ""
+
+
 async def main() -> None:
     await verify_two_turn_lifecycle()
     await verify_close_interrupts_final_wait()
-    print(json.dumps({"ok": True, "twoTurnLifecycle": "one_connection_two_starts_two_finalizes_two_transcripts", "promptClose": True}))
+    await verify_empty_final_uses_current_interim()
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "twoTurnLifecycle": "one_connection_two_starts_two_finalizes_two_transcripts",
+                "promptClose": True,
+                "emptyFinalFallback": "current_utterance_interim",
+            }
+        )
+    )
 
 
 if __name__ == "__main__":
