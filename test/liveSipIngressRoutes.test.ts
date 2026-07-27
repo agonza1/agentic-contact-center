@@ -412,6 +412,58 @@ test("live SIP call.started and call.ended are idempotent for shared Verto and F
     assert.equal(duplicateEnded.payload.idempotent, true);
     assert.equal(duplicateEnded.payload.call.session.callId, vertoStarted.payload.call.session.callId);
     assert.equal(duplicateEnded.payload.call.events.filter((event: any) => event.type === "sip_call_ended").length, 1);
+
+    const [concurrentVertoStarted, concurrentFreeSwitchStarted] = await Promise.all([
+      requestJson(address.port, "POST", "/api/live-sip/events", {
+        eventType: "call.started",
+        timestamp: "2026-07-26T22:01:00.000Z",
+        sipCallId: "sip-verto-concurrent-start",
+        source: "freeswitch_verto",
+        telephonyMode: "local_sip",
+        rtcAsrMode: "rtc_asr_live",
+      }),
+      requestJson(address.port, "POST", "/api/live-sip/events", {
+        eventType: "call.started",
+        timestamp: "2026-07-26T22:01:00.001Z",
+        sipCallId: "sip-verto-concurrent-start",
+        source: "freeswitch_esl",
+        telephonyMode: "local_sip",
+      }),
+    ]);
+    assert.ok([200, 201].includes(concurrentVertoStarted.statusCode));
+    assert.ok([200, 201].includes(concurrentFreeSwitchStarted.statusCode));
+    assert.equal(concurrentVertoStarted.payload.call.session.callId, concurrentFreeSwitchStarted.payload.call.session.callId);
+    assert.equal(concurrentVertoStarted.payload.call.session.runtimeModeLabels.rtcAsr, "rtc_asr_live");
+
+    const concurrentEndedStart = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-26T22:02:00.000Z",
+      sipCallId: "sip-verto-concurrent-end",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(concurrentEndedStart.statusCode, 201);
+    const [concurrentVertoEnded, concurrentFreeSwitchEnded] = await Promise.all([
+      requestJson(address.port, "POST", "/api/live-sip/events", {
+        eventType: "call.ended",
+        timestamp: "2026-07-26T22:02:02.000Z",
+        sipCallId: "sip-verto-concurrent-end",
+        hangupCause: "verto_peer_closed",
+      }),
+      requestJson(address.port, "POST", "/api/live-sip/events", {
+        eventType: "call.ended",
+        timestamp: "2026-07-26T22:02:02.001Z",
+        sipCallId: "sip-verto-concurrent-end",
+        hangupCause: "freeswitch_channel_hangup",
+      }),
+    ]);
+    assert.equal(concurrentVertoEnded.statusCode, 200);
+    assert.equal(concurrentFreeSwitchEnded.statusCode, 200);
+    assert.equal(concurrentVertoEnded.payload.call.session.callId, concurrentEndedStart.payload.call.session.callId);
+    assert.equal(concurrentFreeSwitchEnded.payload.call.session.callId, concurrentEndedStart.payload.call.session.callId);
+    assert.equal(concurrentVertoEnded.payload.call.events.filter((event: any) => event.type === "sip_call_ended").length, 1);
+    assert.equal(concurrentFreeSwitchEnded.payload.call.events.filter((event: any) => event.type === "sip_call_ended").length, 1);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

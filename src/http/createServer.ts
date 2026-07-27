@@ -4253,6 +4253,29 @@ function buildProductionReadiness(
   };
 }
 
+async function withLiveSipCallLock<T>(
+  locks: Map<string, Promise<void>>,
+  sipCallId: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const previous = locks.get(sipCallId) ?? Promise.resolve();
+  let releaseCurrent!: () => void;
+  const current = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+  const queued = previous.catch(() => undefined).then(() => current);
+  locks.set(sipCallId, queued);
+  await previous.catch(() => undefined);
+  try {
+    return await run();
+  } finally {
+    releaseCurrent();
+    if (locks.get(sipCallId) === queued) {
+      locks.delete(sipCallId);
+    }
+  }
+}
+
 async function routeRequest(
   request: IncomingMessage,
   response: ServerResponse,
@@ -4260,6 +4283,7 @@ async function routeRequest(
   ingress: InMemoryTelephonyIngress,
   signalWireCallMap: Map<string, string>,
   liveSipCallMap: Map<string, string>,
+  liveSipCallLocks: Map<string, Promise<void>>,
   voiceSessions: RealtimeVoiceSessionStore,
 ): Promise<void> {
   const url = request.url ?? "/";
@@ -5256,6 +5280,7 @@ async function routeRequest(
       return;
     }
 
+    await withLiveSipCallLock(liveSipCallLocks, sipCallId, async () => {
     if (eventType === "call.started") {
       const existingCallId = liveSipCallMap.get(sipCallId);
       if (existingCallId) {
@@ -5517,6 +5542,7 @@ async function routeRequest(
     } catch {
       writeNotFound(response);
     }
+    });
     return;
   }
 
@@ -6578,10 +6604,11 @@ export function buildHttpServer(config: PocConfig) {
   const ingress = new InMemoryTelephonyIngress();
   const signalWireCallMap = new Map<string, string>();
   const liveSipCallMap = new Map<string, string>();
+  const liveSipCallLocks = new Map<string, Promise<void>>();
   const voiceSessions = new RealtimeVoiceSessionStore();
 
   const server = createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, voiceSessions).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipCallLocks, voiceSessions).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;
