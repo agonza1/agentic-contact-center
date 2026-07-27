@@ -110,6 +110,7 @@ class AccPipecatFlowManagerAdapter:
         self.pending_transition: dict[str, Any] | None = None
         self._transition_available = asyncio.Event()
         self._transition_available.set()
+        self._initialize_lock = asyncio.Lock()
         self._preview_lock = asyncio.Lock()
         self._prepared_transition_trace_start: int | None = None
         self._terminal_result: dict[str, Any] | None = None
@@ -149,23 +150,26 @@ class AccPipecatFlowManagerAdapter:
     async def initialize(self) -> None:
         if self.initialized:
             return
-        versions = self.runtime_versions()
-        factory = self.resolve_manager_factory()
-        self.manager = factory(
-            llm=object(),
-            context_aggregator=None,
-            worker=self.frame_sink,
-        )
-        await self.manager.initialize(flow_manager_node_config("call_started"))
-        self.initialized = True
-        self.last_evidence = {
-            "ok": True,
-            "runtimeAdapter": "pipecat_flows.FlowManager",
-            "runtimeVersions": versions,
-            "currentNode": self.manager.current_node,
-            "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
-            "queuedFrameTypes": list(self.frame_sink.queued_frame_types),
-        }
+        async with self._initialize_lock:
+            if self.initialized:
+                return
+            versions = self.runtime_versions()
+            factory = self.resolve_manager_factory()
+            self.manager = factory(
+                llm=object(),
+                context_aggregator=None,
+                worker=self.frame_sink,
+            )
+            await self.manager.initialize(flow_manager_node_config("call_started"))
+            self.initialized = True
+            self.last_evidence = {
+                "ok": True,
+                "runtimeAdapter": "pipecat_flows.FlowManager",
+                "runtimeVersions": versions,
+                "currentNode": self.manager.current_node,
+                "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
+                "queuedFrameTypes": list(self.frame_sink.queued_frame_types),
+            }
 
     def validate_transition(self, target_node: str) -> str:
         if not self.manager or not self.initialized:

@@ -51,6 +51,8 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(sharedPipeline, /TTSStoppedFrame/);
   assert.match(sharedPipeline, /ACC_TTS_OUTPUT_CHUNK_MS/);
   assert.match(sharedPipeline, /ACC_TTS_OUTPUT_CHUNK_YIELD_MS/);
+  assert.match(sharedPipeline, /ACC_TTS_EVIDENCE_EVERY_N_CHUNKS/);
+  assert.match(sharedPipeline, /pacing_deadline = pacing_started_monotonic \+ paced_audio_seconds/);
   assert.match(sharedPipeline, /ACC_TTS_CACHE_DIR/);
   assert.match(sharedPipeline, /cacheHit/);
   assert.match(sharedPipeline, /async def prewarm_tts_cache/);

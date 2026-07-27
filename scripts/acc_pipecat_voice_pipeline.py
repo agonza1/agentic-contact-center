@@ -1512,6 +1512,9 @@ class KokoroTtsProcessor(FrameProcessor):
         chunk_bytes = max(sample_rate * SAMPLE_WIDTH_BYTES * chunk_ms // 1000, SAMPLE_WIDTH_BYTES)
         output_cancelled = False
         stream_started = False
+        pacing_started_monotonic = 0.0
+        paced_audio_seconds = 0.0
+        evidence_every_n_chunks = max(int(os.environ.get("ACC_TTS_EVIDENCE_EVERY_N_CHUNKS", "50")), 1)
         tts_meta: dict[str, Any] = {
             "engine": "kokoro",
             "voice": DEFAULT_KOKORO_VOICE,
@@ -1548,6 +1551,7 @@ class KokoroTtsProcessor(FrameProcessor):
                     break
                 if not stream_started:
                     stream_started = True
+                    pacing_started_monotonic = time.monotonic()
                     self.session.begin_output_stream(stream_id=context_id)
                     if self.session.turn_controls:
                         await self.session.turn_controls.bot_started()
@@ -1574,14 +1578,17 @@ class KokoroTtsProcessor(FrameProcessor):
                     sample_rate=sample_rate,
                     event_id=f"agent-frame-{self.session.output_stream_chunk_count + 1}",
                 )
-                self.session.record_stage(
-                    "tts.audio_chunk",
-                    streamId=context_id,
-                    chunkIndex=self.session.output_stream_chunk_count + 1,
-                    audioBytes=len(audio_chunk),
-                    sampleRate=sample_rate,
-                    outputGeneration=turn_output_generation,
-                )
+                chunk_index = self.session.output_stream_chunk_count + 1
+                if chunk_index == 1 or chunk_index % evidence_every_n_chunks == 0:
+                    self.session.record_stage(
+                        "tts.audio_chunk",
+                        streamId=context_id,
+                        chunkIndex=chunk_index,
+                        audioBytes=len(audio_chunk),
+                        sampleRate=sample_rate,
+                        outputGeneration=turn_output_generation,
+                        evidenceIntervalChunks=evidence_every_n_chunks,
+                    )
                 self.session.record_output_chunk(len(audio_chunk))
                 if self.session.pending_caller_turn_commit:
                     await self.session.commit_pending_caller_turn_delivery(
@@ -1589,8 +1596,11 @@ class KokoroTtsProcessor(FrameProcessor):
                         output_generation=turn_output_generation,
                     )
                 tts_meta = {**tts_meta, **chunk_meta, "outputWindow": output_window}
-                chunk_yield_ms = max(float(os.environ.get("ACC_TTS_OUTPUT_CHUNK_YIELD_MS", "0")), 0.0)
-                await asyncio.sleep(chunk_yield_ms / 1000)
+                paced_audio_seconds += len(audio_chunk) / max(sample_rate * SAMPLE_WIDTH_BYTES, 1)
+                configured_yield_ms = max(float(os.environ.get("ACC_TTS_OUTPUT_CHUNK_YIELD_MS", "20")), 0.0)
+                if configured_yield_ms > 0:
+                    pacing_deadline = pacing_started_monotonic + paced_audio_seconds
+                    await asyncio.sleep(max(pacing_deadline - time.monotonic(), 0.0))
             if output_cancelled:
                 self.session.record_stage(
                     "tts.stream_cancelled",
@@ -1611,6 +1621,8 @@ class KokoroTtsProcessor(FrameProcessor):
                 chunkCount=self.session.output_stream_chunk_count,
                 audioBytesEnqueued=self.session.output_stream_audio_bytes,
                 outputGeneration=self.session.output_generation,
+                pacedAudioMs=round(paced_audio_seconds * 1000),
+                wallClockMs=round((time.monotonic() - pacing_started_monotonic) * 1000),
             )
             self.session.last_evidence = {
                 **self.session.last_evidence,

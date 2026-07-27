@@ -57,6 +57,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_SIP_GREETING_PREROLL_MS: \${ACC_SIP_GREETING_PREROLL_MS:-300}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_TTS_CACHE_DIR: \${ACC_TTS_CACHE_DIR:-\/app\/artifacts\/tts-cache}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_TTS_OUTPUT_CHUNK_YIELD_MS: \${ACC_TTS_OUTPUT_CHUNK_YIELD_MS:-20}/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_TTS_EVIDENCE_EVERY_N_CHUNKS: \${ACC_TTS_EVIDENCE_EVERY_N_CHUNKS:-50}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*PIPECAT_VERTO_PROOF_OUT: \/app\/artifacts\/freeswitch-live\/pipecat-verto-proof\.json/);
   assert.match(compose, /assert-viewer:\n[\s\S]*target: assert-runtime/);
   assert.match(compose, /assert-viewer:\n[\s\S]*scripts\/assert-viewer\.mjs/);

@@ -91,6 +91,18 @@ the output media clock to stabilize. The FreeSWITCH Verto leg retains a
 bounded 60 ms jitter buffer while bridged. The SIP/Verto Compose profile also
 defaults to a 600 ms end-of-turn silence gate and real-time 20 ms TTS chunk
 pacing; all remain environment-overridable for measured tuning.
+Conversational PCM is paced against a monotonic media deadline, so processor
+and evidence overhead do not accumulate on top of each 20 ms frame. Chunk
+evidence is sampled every 50 frames by default instead of forcing a proof-file
+write for every frame.
+
+For a native/Homebrew FreeSWITCH used only on the local LAN, its internal SIP
+profile must advertise the LAN address in both `ext-sip-ip` and `ext-rtp-ip`.
+If it advertises a discovered public address instead, Linphone sends the dialog
+ACK to the wrong address and FreeSWITCH ends an otherwise working call after
+32 seconds with `SIP 408: ACK Timeout`. Set both profile values to
+`$${local_ip_v4}`, restart FreeSWITCH, and verify `sofia status profile
+internal` reports the LAN address in `URL`.
 
 rtc-asr can occasionally emit a useful live interim transcript and then an
 empty final event for a short utterance such as “hello.” The shared Pipecat
