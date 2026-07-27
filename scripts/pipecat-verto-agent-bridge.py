@@ -707,6 +707,14 @@ class VertoAgentBridge:
         runner = PipelineRunner()
         runner_task = asyncio.create_task(runner.run(task, auto_end=False))
         async def queue_prerecorded_intro() -> None:
+            greeting_preroll_ms = max(int(os.environ.get("ACC_SIP_GREETING_PREROLL_MS", "300")), 0)
+            if greeting_preroll_ms:
+                await asyncio.sleep(greeting_preroll_ms / 1000)
+            session.record_stage(
+                "greeting.media_preroll_completed",
+                prerollMs=greeting_preroll_ms,
+                reason="allow_ice_dtls_srtp_and_output_clock_to_stabilize",
+            )
             intro_path = Path(os.environ.get("ACC_SIP_PRERECORDED_INTRO_PATH", str(DEFAULT_INTRO_AUDIO_PATH)))
             with wave.open(str(intro_path), "rb") as intro:
                 if intro.getnchannels() != 1 or intro.getsampwidth() != 2:

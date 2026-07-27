@@ -85,6 +85,12 @@ This avoids waiting for the first Kokoro synthesis. The sidecar also posts an
 the greeting in the transcript and starts the agent from the `greet` state
 instead of repeating hello. Override the defaults with
 `ACC_SIP_PRERECORDED_INTRO_PATH` and `ACC_SIP_PRERECORDED_INTRO_TEXT`.
+The sidecar waits `ACC_SIP_GREETING_PREROLL_MS` (300 ms by default) after the
+WebRTC connected event before queuing the intro, allowing ICE, DTLS/SRTP, and
+the output media clock to stabilize. The FreeSWITCH Verto leg retains a
+bounded 60 ms jitter buffer while bridged. The SIP/Verto Compose profile also
+defaults to a 600 ms end-of-turn silence gate and real-time 20 ms TTS chunk
+pacing; all remain environment-overridable for measured tuning.
 
 rtc-asr can occasionally emit a useful live interim transcript and then an
 empty final event for a short utterance such as “hello.” The shared Pipecat

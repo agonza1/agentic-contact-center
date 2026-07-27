@@ -46,13 +46,16 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /freeswitch:\n[\s\S]*acc-pipecat\.xml/);
   assert.match(compose, /freeswitch:\n[\s\S]*verto\.conf\.xml/);
   assert.match(freeswitchDialplan, /acc_linked_sip_call_id=\$\{uuid\}/);
-  assert.match(freeswitchDialplan, /bridge" data="\{absolute_codec_string=PCMU,acc_linked_sip_call_id=\$\{uuid\}\}\$\{verto_contact\(acc-pipecat@\$\$\{domain\}\)\}"/);
+  assert.match(freeswitchDialplan, /rtp_jitter_buffer_during_bridge=true/);
+  assert.match(freeswitchDialplan, /bridge" data="\{absolute_codec_string=PCMU,jitterbuffer_msec=60:200:20,rtp_jitter_buffer_during_bridge=true,acc_linked_sip_call_id=\$\{uuid\}\}\$\{verto_contact\(acc-pipecat@\$\$\{domain\}\)\}"/);
   assert.match(compose, /freeswitch-bridge:\n[\s\S]*scripts\/freeswitch-acc-bridge\.mjs/);
   assert.match(compose, /freeswitch-bridge:\n[\s\S]*ACC_VERTO_OWNS_GREETING: \${ACC_VERTO_OWNS_GREETING:-false}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*target: voice-runtime/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*scripts\/pipecat-verto-agent-bridge\.py/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*\.\/artifacts:\/app\/artifacts/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_VERTO_OWNS_GREETING: \${ACC_VERTO_OWNS_GREETING:-true}/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_SIP_GREETING_PREROLL_MS: \${ACC_SIP_GREETING_PREROLL_MS:-300}/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_TTS_OUTPUT_CHUNK_YIELD_MS: \${ACC_TTS_OUTPUT_CHUNK_YIELD_MS:-20}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*PIPECAT_VERTO_PROOF_OUT: \/app\/artifacts\/freeswitch-live\/pipecat-verto-proof\.json/);
   assert.match(compose, /assert-viewer:\n[\s\S]*target: assert-runtime/);
   assert.match(compose, /assert-viewer:\n[\s\S]*scripts\/assert-viewer\.mjs/);
