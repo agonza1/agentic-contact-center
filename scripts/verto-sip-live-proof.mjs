@@ -254,8 +254,23 @@ async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds }
       if (!evidenceCallId || baselineCallIds.has(evidenceCallId)) continue;
       const stages = Array.isArray(snapshot?.stageEvents) ? snapshot.stageEvents : [];
       const isCurrentCallEvent = (event) => Number.isFinite(Date.parse(event?.timestamp)) && Date.parse(event.timestamp) >= startedAtMs;
-      const finalTranscript = [...stages].reverse().find((event) => isCurrentCallEvent(event) && event?.stage === "stt.transcript_final" && event?.ok !== false && String(event?.transcript || "").trim());
-      const ttsReadyEvent = stages.find((event) => isCurrentCallEvent(event) && event?.stage === "tts.audio_ready" && event?.ok !== false);
+      const finalTranscript = [...stages].reverse().find((event) => isCurrentCallEvent(event) && event?.stage === "stt.transcript_final" && event?.ok !== false && String(event?.transcript || "").trim())
+        || (String(snapshot?.lastEvidence?.callerTranscript || "").trim()
+          && snapshot?.lastEvidence?.stt?.engine === "rtc-asr"
+          && snapshot?.lastEvidence?.stt?.finalTranscriptSource === "rtc_asr_final"
+          && isCurrentCallEvent(snapshot?.lastEvidence?.acc)
+          ? {
+              transcript: String(snapshot.lastEvidence.callerTranscript).trim(),
+              timestamp: snapshot.lastEvidence.acc.timestamp,
+            }
+          : null);
+      const ttsReadyEvent = stages.find((event) => isCurrentCallEvent(event) && (event?.stage === "tts.audio_ready" || event?.stage === "tts.stream_completed") && event?.ok !== false)
+        || (isCurrentCallEvent(snapshot?.lastTtsEvidence)
+          && snapshot?.lastTtsEvidence?.stage === "tts.stream_completed"
+          && snapshot?.lastTtsEvidence?.ok !== false
+          && Number(snapshot?.lastTtsEvidence?.audioBytesEnqueued || 0) > 0
+          ? snapshot.lastTtsEvidence
+          : null);
       if (finalTranscript && ttsReadyEvent) {
         return {
           ready: true,
