@@ -369,6 +369,10 @@ test("live SIP call.started and call.ended are idempotent for shared Verto and F
     });
     assert.equal(vertoStarted.statusCode, 201);
     assert.equal(vertoStarted.payload.call.session.runtimeModeLabels.rtcAsr, "rtc_asr_live");
+    assert.equal(
+      vertoStarted.payload.call.events.some((event: any) => event.type === "call_bootstrapped" && event.detail.ingressSource === "freeswitch_verto"),
+      true,
+    );
 
     const freeswitchStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "call.started",
@@ -464,6 +468,7 @@ test("live SIP call.started and call.ended are idempotent for shared Verto and F
     assert.equal(concurrentFreeSwitchEnded.payload.call.session.callId, concurrentEndedStart.payload.call.session.callId);
     assert.equal(concurrentVertoEnded.payload.call.events.filter((event: any) => event.type === "sip_call_ended").length, 1);
     assert.equal(concurrentFreeSwitchEnded.payload.call.events.filter((event: any) => event.type === "sip_call_ended").length, 1);
+    assert.equal(concurrentVertoEnded.payload.idempotent || concurrentFreeSwitchEnded.payload.idempotent, true);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

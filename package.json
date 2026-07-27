@@ -17,7 +17,7 @@
     "docker:voice": "docker compose --profile voice up --build app rtc-asr kokoro",
     "docker:browser-webrtc": "docker compose --profile browser-webrtc up --build app rtc-asr kokoro browser-webrtc-bridge",
     "docker:sip-verto": "docker compose --profile sip-verto up --build app freeswitch rtc-asr kokoro pipecat-verto-bridge",
-    "docker:full": "docker compose --profile full up --build",
+    "docker:full": "ACC_VERTO_OWNS_GREETING=true docker compose --profile full up --build",
     "pipecat:check": "python3 scripts/pipecat-local-runtime.py --self-test",
     "assert:export": "npm run build && node scripts/assert-export.mjs",
     "assert:viewer:install": "node scripts/assert-viewer.mjs --install-only",

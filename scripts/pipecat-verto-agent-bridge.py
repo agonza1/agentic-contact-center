@@ -411,6 +411,7 @@ class VertoAgentBridge:
         await self.answer_invite(call_id=call_id, offer_sdp=offer_sdp, params=params)
 
     async def answer_invite(self, *, call_id: str, offer_sdp: str, params: dict[str, Any]) -> None:
+        readiness = await asyncio.to_thread(check_readiness, self.acc_url)
         try:
             started_call = await asyncio.to_thread(
                 json_http,
@@ -422,7 +423,7 @@ class VertoAgentBridge:
                     "sipCallId": call_id,
                     "telephonyMode": "local_sip",
                     "source": "freeswitch_verto",
-                    "rtcAsrMode": "rtc_asr_live",
+                    "rtcAsrMode": "rtc_asr_live" if readiness.ok else "rtc_asr_blocked",
                 },
             )
             acc_call_id = str(started_call["call"]["session"]["callId"])
@@ -438,8 +439,19 @@ class VertoAgentBridge:
             self.write_proof_artifact("verto.answer.blocked")
             return
 
-        readiness = await asyncio.to_thread(check_readiness, self.acc_url)
         if not readiness.ok:
+            await asyncio.to_thread(
+                json_http,
+                "POST",
+                f"{self.acc_url.rstrip('/')}/api/live-sip/events",
+                {
+                    "eventType": "rtc_asr.blocked",
+                    "timestamp": now_iso(),
+                    "sipCallId": call_id,
+                    "blocker": readiness.detail,
+                    "nextAction": "Restore ACC, rtc-asr, Kokoro, and Pipecat readiness before rerunning the Verto live SIP proof.",
+                },
+            )
             self.last_answer = {
                 "type": "verto.answer.blocked",
                 "at": now_iso(),
@@ -667,7 +679,8 @@ class VertoAgentBridge:
 
         @connection.event_handler("connected")
         async def queue_intro_for_connected_peer(_connection: Any) -> None:
-            await queue_prerecorded_intro()
+            if os.environ.get("ACC_VERTO_OWNS_GREETING", "true").strip().lower() != "false":
+                await queue_prerecorded_intro()
         session_record = {
             "connection": connection,
             "transport": transport,

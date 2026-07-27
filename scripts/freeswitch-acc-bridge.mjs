@@ -1458,9 +1458,11 @@ export class EslBridge {
     this.currentRtpCallUuid = uuid;
     this.send(`api uuid_record ${uuid} start ${freeswitchPath}`);
     await this.playPipecatOutputFixture(uuid);
-    const greetingPlayback = await this.playLiveKokoroTts(latestAgentText(response.body) || this.options.initialGreetingText, uuid);
+    const greetingPlayback = this.options.vertoOwnsGreeting
+      ? null
+      : await this.playLiveKokoroTts(latestAgentText(response.body) || this.options.initialGreetingText, uuid);
     const call = this.callMap.get(uuid);
-    if (call) {
+    if (call && greetingPlayback) {
       const greetingWasRecordedInCallerWav = playbackHasCompleteFreeswitchBroadcastEvidence(greetingPlayback);
       call.initialGreetingPlaybackDurationMs = greetingWasRecordedInCallerWav ? greetingPlayback.ttsFrameDurationMs : 0;
     }
@@ -1609,6 +1611,7 @@ async function main() {
     kokoroVoice: argValue("--kokoro-voice", process.env.KOKORO_VOICE || "af_heart"),
     kokoroModel: argValue("--kokoro-model", process.env.KOKORO_MODEL || "kokoro"),
     initialGreetingText: argValue("--initial-greeting", process.env.ACC_SIP_INITIAL_GREETING || "Hello, this is the agentic contact center. I can hear you now."),
+    vertoOwnsGreeting: process.env.ACC_VERTO_OWNS_GREETING === "true",
   });
   await bridge.start();
   console.log(`FreeSWITCH ACC bridge connected target ${bridge.options.eslHost}:${bridge.options.eslPort}; ACC ${bridge.options.accBaseUrl}`);

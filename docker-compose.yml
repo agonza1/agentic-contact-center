@@ -194,6 +194,7 @@ services:
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
       KOKORO_BASE_URL: http://kokoro:8880
       KOKORO_VOICE: ${KOKORO_VOICE:-af_heart}
+      ACC_VERTO_OWNS_GREETING: ${ACC_VERTO_OWNS_GREETING:-false}
 
   pipecat-verto-bridge:
     build:

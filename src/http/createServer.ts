@@ -4276,6 +4276,12 @@ async function withLiveSipCallLock<T>(
   }
 }
 
+function normalizeLiveSipIngressSource(value: unknown): "freeswitch_esl" | "freeswitch_verto" | "local_sip_harness" {
+  const source = getOptionalTrimmedString(value);
+  if (source === "freeswitch_esl" || source === "freeswitch_verto") return source;
+  return "local_sip_harness";
+}
+
 async function routeRequest(
   request: IncomingMessage,
   response: ServerResponse,
@@ -5304,7 +5310,7 @@ async function routeRequest(
         providerCallId: sipCallId,
         openclawSessionId: `live-sip-${sipCallId}`,
         openclawSessionLabel: `${telephonyMode}/${sipCallId}`,
-        source: getOptionalTrimmedString(body.source) === "freeswitch_esl" ? "freeswitch_esl" : "local_sip_harness",
+        source: normalizeLiveSipIngressSource(body.source),
         runtimeModeLabels: {
           telephony: telephonyMode,
           media: "live_capture",
@@ -5332,6 +5338,14 @@ async function routeRequest(
     if (!callId) {
       writeBadRequest(response, "live_sip_call_not_started");
       return;
+    }
+    if (eventType === "call.ended") {
+      const existingSnapshot = await ingress.getSnapshot(callId);
+      if (existingSnapshot?.events.some((event) => event.type === "sip_call_ended")) {
+        liveSipCallMap.delete(sipCallId);
+        writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(existingSnapshot), idempotent: true });
+        return;
+      }
     }
 
     const voiceSessionId = getOptionalTrimmedString(body.voiceSessionId);

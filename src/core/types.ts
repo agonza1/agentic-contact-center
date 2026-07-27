@@ -115,7 +115,7 @@ export interface StartCallOptions {
   openclawSessionLabel?: string;
   simulateOpenClawAttachFailure?: boolean;
   runtimeModeLabels?: Partial<RuntimeModeLabels>;
-  source?: "mock_http_route" | "signalwire_webhook" | "freeswitch_esl" | "local_sip_harness";
+  source?: "mock_http_route" | "signalwire_webhook" | "freeswitch_esl" | "freeswitch_verto" | "local_sip_harness";
 }
 
 export interface OpenClawSessionEnvelope {

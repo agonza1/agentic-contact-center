@@ -45,6 +45,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /freeswitch:\n[\s\S]*acc-pipecat\.xml/);
   assert.match(compose, /freeswitch:\n[\s\S]*verto\.conf\.xml/);
   assert.match(compose, /freeswitch-bridge:\n[\s\S]*scripts\/freeswitch-acc-bridge\.mjs/);
+  assert.match(compose, /freeswitch-bridge:\n[\s\S]*ACC_VERTO_OWNS_GREETING: \${ACC_VERTO_OWNS_GREETING:-false}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*target: voice-runtime/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*scripts\/pipecat-verto-agent-bridge\.py/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*\.\/artifacts:\/app\/artifacts/);
@@ -74,7 +75,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.equal(packageJson.scripts?.["pipecat:verto:live-proof"], "node scripts/verto-sip-live-proof.mjs");
   assert.equal(packageJson.scripts?.["docker:sip"], "docker compose --profile sip up --build app freeswitch rtc-asr kokoro freeswitch-bridge");
   assert.equal(packageJson.scripts?.["docker:assert"], "docker compose --profile eval up --build assert-viewer");
-  assert.equal(packageJson.scripts?.["docker:full"], "docker compose --profile full up --build");
+  assert.equal(packageJson.scripts?.["docker:full"], "ACC_VERTO_OWNS_GREETING=true docker compose --profile full up --build");
   assert.equal(packageJson.scripts?.["docker:freeswitch:only"], "docker compose --profile freeswitch up -d freeswitch --no-deps");
   assert.match(readme, /npm run docker:app/);
   assert.match(readme, /npm run docker:smoke/);
