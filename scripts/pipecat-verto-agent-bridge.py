@@ -707,6 +707,7 @@ class VertoAgentBridge:
         runner = PipelineRunner()
         runner_task = asyncio.create_task(runner.run(task, auto_end=False))
         async def queue_prerecorded_intro() -> None:
+            prewarm_task = asyncio.create_task(session.prewarm_tts_cache())
             greeting_preroll_ms = max(int(os.environ.get("ACC_SIP_GREETING_PREROLL_MS", "300")), 0)
             if greeting_preroll_ms:
                 await asyncio.sleep(greeting_preroll_ms / 1000)
@@ -785,6 +786,9 @@ class VertoAgentBridge:
                 sampleRate=intro_sample_rate,
                 durationMs=round(len(intro_pcm) / (intro_sample_rate * 2) * 1000),
             )
+            # Keep cache generation off the greeting's media clock. It normally
+            # completes under the prerecorded intro or while the caller speaks.
+            prewarm_task.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
 
         @connection.event_handler("connected")
         async def queue_intro_for_connected_peer(_connection: Any) -> None:

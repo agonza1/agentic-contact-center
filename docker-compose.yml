@@ -229,6 +229,7 @@ services:
       RTC_ASR_BASE_URL: http://rtc-asr:8080
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
       KOKORO_BASE_URL: http://kokoro:8880
+      ACC_TTS_CACHE_DIR: ${ACC_TTS_CACHE_DIR:-/app/artifacts/tts-cache}
       FREESWITCH_VERTO_URL: ws://freeswitch:8081
       FREESWITCH_VERTO_LOGIN: acc-pipecat@127.0.0.1
       FREESWITCH_VERTO_PASSWORD: local-verto-pass

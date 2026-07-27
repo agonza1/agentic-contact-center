@@ -51,6 +51,10 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(sharedPipeline, /TTSStoppedFrame/);
   assert.match(sharedPipeline, /ACC_TTS_OUTPUT_CHUNK_MS/);
   assert.match(sharedPipeline, /ACC_TTS_OUTPUT_CHUNK_YIELD_MS/);
+  assert.match(sharedPipeline, /ACC_TTS_CACHE_DIR/);
+  assert.match(sharedPipeline, /cacheHit/);
+  assert.match(sharedPipeline, /async def prewarm_tts_cache/);
+  assert.match(sharedPipeline, /temporary_path\.replace/);
   assert.match(sharedPipeline, /speech_started_barge_in/);
   assert.match(sharedPipeline, /output\.transport_flushed/);
   assert.match(sharedPipeline, /transportFlushLatencyMs/);
@@ -93,6 +97,18 @@ test("persistent rtc-asr session repeats utterance lifecycle and closes promptly
   assert.equal(payload.twoTurnLifecycle, "one_connection_two_starts_two_finalizes_two_transcripts");
   assert.equal(payload.promptClose, true);
   assert.equal(payload.emptyFinalFallback, "current_utterance_interim");
+});
+
+test("deterministic Kokoro responses persist PCM and bypass repeat synthesis", { skip: !hasOptionalPipecatRuntime }, () => {
+  const payload = JSON.parse(execFileSync("python3", [
+    "test/fixtures/tts_cache_regression.py",
+  ], { encoding: "utf8" }).trim().split("\n").at(-1) ?? "{}");
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.providerCalls, 1);
+  assert.equal(payload.firstCacheHit, false);
+  assert.equal(payload.secondCacheHit, true);
+  assert.equal(payload.cacheFiles, 1);
 });
 
 test("Pipecat transport output streams chunks and flushes on barge-in", { skip: !hasOptionalPipecatRuntime }, () => {

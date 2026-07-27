@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import importlib.metadata
 import json
 import os
@@ -49,6 +50,10 @@ WEBRTC_SAMPLE_RATE = 48000
 WEBRTC_FRAME_MS = 20
 WEBRTC_SAMPLES_PER_FRAME = WEBRTC_SAMPLE_RATE * WEBRTC_FRAME_MS // 1000
 SAMPLE_WIDTH_BYTES = 2
+DEFAULT_TTS_PREWARM_TEXT = (
+    "Hi, I can help with billing, cancellation, account updates, or a human handoff. "
+    "What do you need today?"
+)
 
 
 class CallerTurnDeliveryCommitError(RuntimeError):
@@ -98,6 +103,25 @@ def open_http_stream(method: str, url: str, payload: dict[str, Any] | None = Non
     body = None if payload is None else json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(url, data=body, method=method, headers={"content-type": "application/json"})
     return urllib.request.urlopen(request, timeout=timeout)
+
+
+def tts_cache_path(text: str, sample_rate: int) -> Path | None:
+    cache_dir = os.environ.get("ACC_TTS_CACHE_DIR", "").strip()
+    if not cache_dir:
+        return None
+    cache_key = json.dumps(
+        {
+            "engine": "kokoro",
+            "model": DEFAULT_KOKORO_MODEL,
+            "voice": DEFAULT_KOKORO_VOICE,
+            "sampleRate": sample_rate,
+            "format": "pcm_s16le",
+            "text": text,
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return Path(cache_dir) / f"{hashlib.sha256(cache_key).hexdigest()}.pcm"
 
 
 def probe_json(url: str, service_id: str, timeout: float = 1.5) -> ProbeResult:
@@ -366,6 +390,7 @@ class AccVoicePipelineSession:
         self.track_recorder = SeparateTrackRecorder(artifact_dir=recording_dir, call_id=call_id) if recording_dir else None
         self.last_track_recording_manifest: dict[str, Any] | None = None
         self.flow_manager_adapter = flow_manager_adapter
+        self.tts_cache_locks: dict[Path, asyncio.Lock] = {}
 
     def evidence_snapshot(self) -> dict[str, Any]:
         return {
@@ -946,8 +971,52 @@ class AccVoicePipelineSession:
         self.record_stage("stt.session_closed", connectionId=self.rtc_asr_connection_id, reason=reason, persistentSession=True)
 
     async def stream_synthesize(self, frame: TextFrame, *, chunk_bytes: int) -> Any:
-        """Yield raw Kokoro PCM chunks as the HTTP streaming response produces them."""
+        """Yield raw Kokoro PCM chunks, reusing persistent deterministic audio."""
         started = time.perf_counter()
+        sample_rate = int(os.environ.get("KOKORO_OUTPUT_SAMPLE_RATE", "24000"))
+        cache_path = tts_cache_path(frame.text, sample_rate)
+        cache_lock = self.tts_cache_locks.setdefault(cache_path, asyncio.Lock()) if cache_path else None
+
+        if cache_lock:
+            await cache_lock.acquire()
+        try:
+            if cache_path and cache_path.is_file():
+                cached_audio = await asyncio.to_thread(cache_path.read_bytes)
+                first_audio_ms = round((time.perf_counter() - started) * 1000)
+                for offset in range(0, len(cached_audio), chunk_bytes):
+                    yield cached_audio[offset : offset + chunk_bytes], sample_rate, {
+                        "engine": "kokoro",
+                        "voice": DEFAULT_KOKORO_VOICE,
+                        "model": DEFAULT_KOKORO_MODEL,
+                        "format": "pcm_s16le",
+                        "providerStream": False,
+                        "cacheHit": True,
+                        "firstAudioMs": first_audio_ms,
+                        "elapsedMs": round((time.perf_counter() - started) * 1000),
+                    }
+                return
+
+            async for item in self._stream_synthesize_uncached(
+                frame,
+                chunk_bytes=chunk_bytes,
+                sample_rate=sample_rate,
+                cache_path=cache_path,
+                started=started,
+            ):
+                yield item
+        finally:
+            if cache_lock and cache_lock.locked():
+                cache_lock.release()
+
+    async def _stream_synthesize_uncached(
+        self,
+        frame: TextFrame,
+        *,
+        chunk_bytes: int,
+        sample_rate: int,
+        cache_path: Path | None,
+        started: float,
+    ) -> Any:
         payload = {
             "model": DEFAULT_KOKORO_MODEL,
             "voice": DEFAULT_KOKORO_VOICE,
@@ -962,14 +1031,16 @@ class AccVoicePipelineSession:
             payload,
             30,
         )
-        sample_rate = int(os.environ.get("KOKORO_OUTPUT_SAMPLE_RATE", "24000"))
         read_size = max(chunk_bytes - (chunk_bytes % SAMPLE_WIDTH_BYTES), SAMPLE_WIDTH_BYTES)
         pending = b""
+        complete_audio = bytearray()
         first_audio_ms: int | None = None
+        completed = False
         try:
             while True:
                 raw = await asyncio.to_thread(response.read, read_size)
                 if not raw:
+                    completed = True
                     break
                 pending += raw
                 aligned_bytes = len(pending) - (len(pending) % SAMPLE_WIDTH_BYTES)
@@ -977,6 +1048,7 @@ class AccVoicePipelineSession:
                     continue
                 chunk = pending[:aligned_bytes]
                 pending = pending[aligned_bytes:]
+                complete_audio.extend(chunk)
                 elapsed_ms = round((time.perf_counter() - started) * 1000)
                 if first_audio_ms is None:
                     first_audio_ms = elapsed_ms
@@ -986,12 +1058,52 @@ class AccVoicePipelineSession:
                     "model": DEFAULT_KOKORO_MODEL,
                     "format": "pcm_s16le",
                     "providerStream": True,
+                    "cacheHit": False,
                     "firstAudioMs": first_audio_ms,
                     "elapsedMs": elapsed_ms,
                 }
         finally:
             with contextlib.suppress(Exception):
                 await asyncio.to_thread(response.close)
+        if completed and cache_path and complete_audio:
+            await asyncio.to_thread(cache_path.parent.mkdir, parents=True, exist_ok=True)
+            temporary_path = cache_path.with_suffix(f".{uuid4().hex}.tmp")
+            try:
+                await asyncio.to_thread(temporary_path.write_bytes, bytes(complete_audio))
+                await asyncio.to_thread(temporary_path.replace, cache_path)
+            finally:
+                with contextlib.suppress(FileNotFoundError):
+                    temporary_path.unlink()
+
+    async def prewarm_tts_cache(self, text: str = DEFAULT_TTS_PREWARM_TEXT) -> None:
+        sample_rate = int(os.environ.get("KOKORO_OUTPUT_SAMPLE_RATE", "24000"))
+        cache_path = tts_cache_path(text, sample_rate)
+        if not cache_path or cache_path.is_file():
+            return
+        started = time.perf_counter()
+        audio_bytes = 0
+        try:
+            async for chunk, _sample_rate, metadata in self.stream_synthesize(
+                TextFrame(text),
+                chunk_bytes=max(sample_rate * SAMPLE_WIDTH_BYTES // 50, SAMPLE_WIDTH_BYTES),
+            ):
+                audio_bytes += len(chunk)
+            self.record_stage(
+                "tts.cache_prewarmed",
+                text=text,
+                audioBytes=audio_bytes,
+                cachePath=str(cache_path),
+                elapsedMs=round((time.perf_counter() - started) * 1000),
+                cacheHit=metadata.get("cacheHit", False) if audio_bytes else False,
+            )
+        except Exception as exc:
+            self.record_stage(
+                "tts.cache_prewarm_failed",
+                ok=False,
+                error="tts_cache_prewarm_failed",
+                detail=str(exc),
+                text=text,
+            )
 
 
 class PipecatTurnControls:
