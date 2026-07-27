@@ -28,11 +28,17 @@ import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { buildPipecatFlowManagerContractPayload } from "../core/pipecatFlowManagerContract";
 import { buildPipecatMediaEngineReadinessPayload } from "../core/pipecatMediaEngineReadiness";
 import { RealtimeVoiceSessionStore, buildRealtimeVoiceSessionEndpoints } from "../core/realtimeVoiceSessions";
-import { getPipecatPrototypeHealth, SCRIPTED_CALLER_TURNS } from "../core/pipecatFlowPrototype";
+import {
+  getPipecatPrototypeHealth,
+  isConversationMode,
+  SCRIPTED_CALLER_TURNS,
+  type OpenAiLlmTurnResult,
+} from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
 import type {
   AttentionSource,
   CallSnapshot,
+  ConversationMode,
   FallbackMode,
   FlowState,
   OperatorSteerAction,
@@ -4282,6 +4288,145 @@ function normalizeLiveSipIngressSource(value: unknown): "freeswitch_esl" | "free
   return "local_sip_harness";
 }
 
+function normalizeLiveSipDestination(value: unknown): string | null {
+  const destination = getOptionalTrimmedString(value);
+  if (!destination) return null;
+  const normalized = destination.toLowerCase() === "acc" ? "8600" : destination;
+  return /^(8600|8611)$/.test(normalized) ? normalized : destination;
+}
+
+function conversationModeForLiveSipDestination(destination: string | null): ConversationMode {
+  if (destination === "8600") return "openai_llm";
+  return "scripted";
+}
+
+function normalizeLiveSipConversationMode(value: unknown, destination: string | null): ConversationMode {
+  if (isConversationMode(value)) return value;
+  return conversationModeForLiveSipDestination(destination);
+}
+
+function openAiConversationModel(env: NodeJS.ProcessEnv = process.env): string {
+  return env.ACC_OPENAI_CONVERSATION_MODEL?.trim() || "GPT-5.4-mini";
+}
+
+function redactOpenAiError(value: unknown): string {
+  const text = value instanceof Error ? value.message : String(value ?? "openai_request_failed");
+  return text
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/g, "Bearer [redacted]")
+    .replace(/sk-[A-Za-z0-9._-]+/g, "sk-[redacted]");
+}
+
+function extractOpenAiResponseText(payload: unknown): string {
+  if (!isRecord(payload)) return "";
+  const outputText = getOptionalTrimmedString(payload.output_text);
+  if (outputText) return outputText;
+  const output = Array.isArray(payload.output) ? payload.output : [];
+  const chunks: string[] = [];
+  for (const item of output) {
+    if (!isRecord(item)) continue;
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const part of content) {
+      if (!isRecord(part)) continue;
+      const text = getOptionalTrimmedString(part.text);
+      if (text) chunks.push(text);
+    }
+  }
+  return chunks.join(" ").trim();
+}
+
+function validateOpenAiAgentText(text: string): string | null {
+  if (!text.trim()) return "openai_response_empty";
+  if (text.length > 700) return "openai_response_too_long";
+  if (/\b(guarantee|guaranteed|approved\s+(credit|discount|refund)|i can offer you|i can give you)\b/i.test(text)) {
+    return "openai_response_guardrail_violation";
+  }
+  return null;
+}
+
+async function generateOpenAiLiveSipResponse(
+  snapshot: CallSnapshot,
+  callerText: string,
+  timestamp: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<OpenAiLlmTurnResult> {
+  const model = openAiConversationModel(env);
+  const apiKey = env.ACC_OPENAI_API_KEY?.trim() || env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    return { ok: false, model, error: "openai_api_key_missing", status: null };
+  }
+  const baseUrl = (env.ACC_OPENAI_BASE_URL?.trim() || env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1").replace(/\/+$/, "");
+  const transcript = snapshot.transcript
+    .slice(-8)
+    .map((turn) => `${turn.speaker}: ${turn.text}`)
+    .join("\n");
+  const body = {
+    model,
+    store: false,
+    max_output_tokens: 160,
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text: [
+              "You are the live OpenAI-backed conversation path for ACC SIP extension 8600.",
+              "Answer in one or two short sentences suitable for TTS.",
+              "Do not promise discounts, refunds, cancellation completion, policy changes, or regulated advice.",
+              "When a request requires approval, account access, or a human decision, say you will prepare a safe handoff.",
+              "Ask at most one focused follow-up question.",
+            ].join(" "),
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: [
+              `Timestamp: ${timestamp}`,
+              `Flow state: ${snapshot.flowState}`,
+              `Recent transcript:\n${transcript || "(none)"}`,
+              `Latest caller turn: ${callerText}`,
+            ].join("\n"),
+          },
+        ],
+      },
+    ],
+  };
+
+  try {
+    const response = await fetch(`${baseUrl}/responses`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const errorMessage = isRecord(payload) && isRecord(payload.error) ? getOptionalTrimmedString(payload.error.message) : null;
+      return { ok: false, model, error: redactOpenAiError(errorMessage ?? response.statusText), status: response.status };
+    }
+    const text = extractOpenAiResponseText(payload);
+    const validationError = validateOpenAiAgentText(text);
+    if (validationError) {
+      return { ok: false, model, error: validationError, status: response.status };
+    }
+    return {
+      ok: true,
+      model,
+      text,
+      responseId: isRecord(payload) ? getOptionalTrimmedString(payload.id) ?? null : null,
+      status: response.status,
+    };
+  } catch (error) {
+    return { ok: false, model, error: redactOpenAiError(error), status: null };
+  }
+}
+
 function uniqueLiveSipCallIds(...values: Array<string | null | undefined>): string[] {
   return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))));
 }
@@ -4308,8 +4453,24 @@ function deleteLiveSipCallAliasesForCall(liveSipCallMap: Map<string, string>, ca
   }
 }
 
+function liveSipCallAliasesForCall(liveSipCallMap: Map<string, string>, callId: string): string[] {
+  return [...liveSipCallMap.entries()].filter(([, mappedCallId]) => mappedCallId === callId).map(([id]) => id);
+}
+
 function isLiveSipCallEnded(snapshot: CallSnapshot): boolean {
   return snapshot.events.some((event) => event.type === "sip_call_ended");
+}
+
+async function listLiveSipSnapshotsByProviderIds(
+  ingress: InMemoryTelephonyIngress,
+  ids: string[],
+): Promise<CallSnapshot[]> {
+  const snapshots = (await Promise.all(ids.map((id) => ingress.listSnapshots({ providerCallId: id })))).flat();
+  const uniqueSnapshots = new Map<string, CallSnapshot>();
+  for (const snapshot of snapshots) {
+    uniqueSnapshots.set(snapshot.session.callId, snapshot);
+  }
+  return [...uniqueSnapshots.values()];
 }
 
 async function routeRequest(
@@ -4319,6 +4480,7 @@ async function routeRequest(
   ingress: InMemoryTelephonyIngress,
   signalWireCallMap: Map<string, string>,
   liveSipCallMap: Map<string, string>,
+  liveSipEndedCallMap: Map<string, string>,
   liveSipCallLocks: Map<string, Promise<void>>,
   voiceSessions: RealtimeVoiceSessionStore,
 ): Promise<void> {
@@ -5321,17 +5483,31 @@ async function routeRequest(
       ?? getOptionalTrimmedString(body.alegUuid);
     const vertoCallId = getOptionalTrimmedString(body.vertoCallId);
     const fsUuid = getOptionalTrimmedString(body.fsUuid);
+    const destinationNumber = normalizeLiveSipDestination(
+      body.destinationNumber ?? body.destination ?? body.extension ?? body.calledNumber,
+    );
+    if (body.conversationMode !== undefined && !isConversationMode(body.conversationMode)) {
+      writeBadRequest(response, "live_sip_conversation_mode_invalid");
+      return;
+    }
+    const liveSipConversationMode = normalizeLiveSipConversationMode(body.conversationMode, destinationNumber);
     const canonicalSipCallId = linkedSipCallId ?? sipCallId;
     const liveSipCorrelationIds = uniqueLiveSipCallIds(canonicalSipCallId, sipCallId, linkedSipCallId, vertoCallId, fsUuid);
 
-    await withLiveSipCallLock(liveSipCallLocks, canonicalSipCallId, async () => {
+    const prelockCallId =
+      getMappedLiveSipCallId(liveSipCallMap, liveSipCorrelationIds)
+      ?? getMappedLiveSipCallId(liveSipEndedCallMap, liveSipCorrelationIds);
+    const prelockSnapshots = prelockCallId ? [] : await listLiveSipSnapshotsByProviderIds(ingress, liveSipCorrelationIds);
+    const prelockActiveSnapshot = prelockSnapshots.find((snapshot) => !isLiveSipCallEnded(snapshot));
+    const liveSipCallLockKey = prelockCallId ?? prelockActiveSnapshot?.session.callId ?? canonicalSipCallId;
+
+    await withLiveSipCallLock(liveSipCallLocks, liveSipCallLockKey, async () => {
       if (eventType === "call.started") {
         const existingCallId = getMappedLiveSipCallId(liveSipCallMap, liveSipCorrelationIds);
         if (existingCallId) {
           const existingSnapshot = await ingress.getSnapshot(existingCallId);
           if (existingSnapshot) {
             if (isLiveSipCallEnded(existingSnapshot)) {
-              deleteLiveSipCallAliasesForCall(liveSipCallMap, existingSnapshot.session.callId);
               writeBadRequest(response, "live_sip_call_already_ended");
               return;
             }
@@ -5341,16 +5517,26 @@ async function routeRequest(
           }
           deleteLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds);
         }
-        const matchingSnapshot = (await Promise.all(liveSipCorrelationIds.map((id) => ingress.listSnapshots({ providerCallId: id }))))
-          .flat()[0];
-        if (matchingSnapshot) {
-          if (isLiveSipCallEnded(matchingSnapshot)) {
-            deleteLiveSipCallAliasesForCall(liveSipCallMap, matchingSnapshot.session.callId);
+        const endedCallId = getMappedLiveSipCallId(liveSipEndedCallMap, liveSipCorrelationIds);
+        if (endedCallId) {
+          const endedSnapshot = await ingress.getSnapshot(endedCallId);
+          if (endedSnapshot && isLiveSipCallEnded(endedSnapshot)) {
             writeBadRequest(response, "live_sip_call_already_ended");
             return;
           }
+          deleteLiveSipCallAliases(liveSipEndedCallMap, liveSipCorrelationIds);
+        }
+        const matchingSnapshots = await listLiveSipSnapshotsByProviderIds(ingress, liveSipCorrelationIds);
+        const matchingSnapshot = matchingSnapshots.find((snapshot) => !isLiveSipCallEnded(snapshot));
+        if (matchingSnapshot) {
           setLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds, matchingSnapshot.session.callId);
           writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(matchingSnapshot), idempotent: true });
+          return;
+        }
+        const endedMatchingSnapshot = matchingSnapshots.find((snapshot) => isLiveSipCallEnded(snapshot));
+        if (endedMatchingSnapshot) {
+          setLiveSipCallAliases(liveSipEndedCallMap, liveSipCorrelationIds, endedMatchingSnapshot.session.callId);
+          writeBadRequest(response, "live_sip_call_already_ended");
           return;
         }
         const telephonyMode = body.telephonyMode === "signalwire_live" ? "signalwire_live" : "local_sip";
@@ -5358,8 +5544,10 @@ async function routeRequest(
           providerName: telephonyMode === "signalwire_live" ? "signalwire" : "freeswitch-local-sip",
           providerCallId: canonicalSipCallId,
           openclawSessionId: `live-sip-${canonicalSipCallId}`,
-          openclawSessionLabel: `${telephonyMode}/${canonicalSipCallId}`,
+          openclawSessionLabel: `${telephonyMode}/${destinationNumber ?? "unknown"}/${canonicalSipCallId}`,
           source: normalizeLiveSipIngressSource(body.source),
+          conversationMode: liveSipConversationMode,
+          sipExtension: destinationNumber,
           runtimeModeLabels: {
             telephony: telephonyMode,
             media: "live_capture",
@@ -5373,9 +5561,21 @@ async function routeRequest(
       }
 
       let callId = getMappedLiveSipCallId(liveSipCallMap, liveSipCorrelationIds);
+      const endedCallId = getMappedLiveSipCallId(liveSipEndedCallMap, liveSipCorrelationIds);
+      if (!callId && endedCallId) {
+        const endedSnapshot = await ingress.getSnapshot(endedCallId);
+        if (endedSnapshot && isLiveSipCallEnded(endedSnapshot)) {
+          if (eventType === "call.ended") {
+            writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(endedSnapshot), idempotent: true });
+          } else {
+            writeBadRequest(response, "live_sip_call_not_started");
+          }
+          return;
+        }
+        deleteLiveSipCallAliases(liveSipEndedCallMap, liveSipCorrelationIds);
+      }
       if (!callId && eventType === "call.ended") {
-        const matchingSnapshot = (await Promise.all(liveSipCorrelationIds.map((id) => ingress.listSnapshots({ providerCallId: id }))))
-          .flat()[0];
+        const matchingSnapshot = (await listLiveSipSnapshotsByProviderIds(ingress, liveSipCorrelationIds))[0];
         if (matchingSnapshot) {
           callId = matchingSnapshot.session.callId;
           const alreadyEnded = matchingSnapshot.events.some((event) => event.type === "sip_call_ended");
@@ -5392,8 +5592,13 @@ async function routeRequest(
       if (eventType === "call.ended") {
         const existingSnapshot = await ingress.getSnapshot(callId);
         if (existingSnapshot?.events.some((event) => event.type === "sip_call_ended")) {
-          deleteLiveSipCallAliasesForCall(liveSipCallMap, existingSnapshot.session.callId);
           writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(existingSnapshot), idempotent: true });
+          return;
+        }
+      } else {
+        const existingSnapshot = await ingress.getSnapshot(callId);
+        if (existingSnapshot && isLiveSipCallEnded(existingSnapshot)) {
+          writeBadRequest(response, "live_sip_call_not_started");
           return;
         }
       }
@@ -5423,7 +5628,20 @@ async function routeRequest(
           writeBadRequest(response, "live_sip_transcript_text_required");
           return;
         }
-        await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config, voiceSessionScope);
+        const currentSnapshot = await ingress.getSnapshot(callId);
+        if (!currentSnapshot || isLiveSipCallEnded(currentSnapshot)) {
+          writeBadRequest(response, "live_sip_call_not_started");
+          return;
+        }
+        const conversationMode = currentSnapshot.scenario.conversationMode;
+        const openAiLlm = conversationMode === "openai_llm"
+          ? await generateOpenAiLiveSipResponse(currentSnapshot, text, timestamp)
+          : undefined;
+        await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config, {
+          ...voiceSessionScope,
+          conversationMode,
+          openAiLlm,
+        });
         const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
           eventType: "rtc_asr_transcript",
           timestamp,
@@ -5601,7 +5819,12 @@ async function routeRequest(
           durationSeconds,
         },
       });
+      const endedAliases = uniqueLiveSipCallIds(
+        ...liveSipCallAliasesForCall(liveSipCallMap, snapshot.session.callId),
+        ...liveSipCorrelationIds,
+      );
       deleteLiveSipCallAliasesForCall(liveSipCallMap, snapshot.session.callId);
+      setLiveSipCallAliases(liveSipEndedCallMap, endedAliases, snapshot.session.callId);
       writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(snapshot) });
     } catch {
       writeNotFound(response);
@@ -6039,11 +6262,7 @@ async function routeRequest(
     }
 
     const conversationMode = body.conversationMode;
-    if (
-      conversationMode !== undefined &&
-      conversationMode !== "scripted" &&
-      conversationMode !== "free_caller"
-    ) {
+    if (conversationMode !== undefined && !isConversationMode(conversationMode)) {
       writeBadRequest(response, "caller_turn_conversation_mode_invalid");
       return;
     }
@@ -6067,15 +6286,19 @@ async function routeRequest(
     };
 
     try {
+      const currentSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
+      if (!currentSnapshot) {
+        writeNotFound(response);
+        return;
+      }
+      const openAiLlm = conversationMode === "openai_llm"
+        ? await generateOpenAiLiveSipResponse(currentSnapshot, text, timestamp)
+        : undefined;
       if (commitMode === "delivery_ack") {
-        const currentSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
-        if (!currentSnapshot) {
-          writeNotFound(response);
-          return;
-        }
         const snapshotVersion = buildDeliveryAckSnapshotVersion(currentSnapshot);
         const snapshot = await ingress.previewCallerTurn(callerTurnMatch[1], turn, config, {
           conversationMode,
+          openAiLlm,
         });
         writeJson(response, 200, {
           ...buildCallPayload(snapshot),
@@ -6093,6 +6316,7 @@ async function routeRequest(
       }
       const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config, {
         conversationMode,
+        openAiLlm,
       });
       writeJson(response, 200, buildCallPayload(snapshot));
     } catch {
@@ -6118,11 +6342,7 @@ async function routeRequest(
     }
 
     const conversationMode = body.conversationMode;
-    if (
-      conversationMode !== undefined &&
-      conversationMode !== "scripted" &&
-      conversationMode !== "free_caller"
-    ) {
+    if (conversationMode !== undefined && !isConversationMode(conversationMode)) {
       writeBadRequest(response, "caller_turn_conversation_mode_invalid");
       return;
     }
@@ -6161,8 +6381,18 @@ async function routeRequest(
         writeBadRequest(response, "caller_turn_commit_stale");
         return;
       }
+      const openAiLlm = conversationMode === "openai_llm"
+        ? {
+            ok: true,
+            model: openAiConversationModel(),
+            text: expectedAgentText,
+            responseId: getOptionalTrimmedString(body.openAiResponseId) ?? null,
+            status: 200,
+          } satisfies OpenAiLlmTurnResult
+        : undefined;
       const preview = await ingress.previewCallerTurn(callerTurnCommitMatch[1], turn, config, {
         conversationMode,
+        openAiLlm,
       });
       const previewAgentText = preview.transcript.at(-1)?.speaker === "agent" ? preview.transcript.at(-1)?.text : undefined;
       if (previewAgentText !== expectedAgentText) {
@@ -6171,6 +6401,7 @@ async function routeRequest(
       }
       const snapshot = await ingress.appendCallerTurn(callerTurnCommitMatch[1], turn, config, {
         conversationMode,
+        openAiLlm,
       });
       writeJson(response, 200, {
         ...buildCallPayload(snapshot),
@@ -6668,11 +6899,12 @@ export function buildHttpServer(config: PocConfig) {
   const ingress = new InMemoryTelephonyIngress();
   const signalWireCallMap = new Map<string, string>();
   const liveSipCallMap = new Map<string, string>();
+  const liveSipEndedCallMap = new Map<string, string>();
   const liveSipCallLocks = new Map<string, Promise<void>>();
   const voiceSessions = new RealtimeVoiceSessionStore();
 
   const server = createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipCallLocks, voiceSessions).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, voiceSessions).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;

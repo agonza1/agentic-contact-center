@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { request } from "node:http";
+import { createServer as createTestServer, request } from "node:http";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildHttpServer } from "../src/http/createServer";
@@ -635,6 +635,157 @@ test("live SIP prerecorded greeting advances context before the first caller tur
     }]);
     assert.equal(greeting.payload.call.events.at(-1).detail.reason, "prerecorded_intro_delivered");
   } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("live SIP separates 8611 scripted flow from 8600 OpenAI flow", async () => {
+  const originalEnv = {
+    ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    ACC_OPENAI_CONVERSATION_MODEL: process.env.ACC_OPENAI_CONVERSATION_MODEL,
+  };
+  const openAiRequests: any[] = [];
+  const openAiServer = createTestServer((req, res) => {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => {
+      openAiRequests.push({ url: req.url, authorization: req.headers.authorization, body: JSON.parse(body) });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ id: "resp-live-8600", output_text: "I can help review that safely. What account detail should I check first?" }));
+    });
+  });
+  await new Promise<void>((resolve) => openAiServer.listen(0, "127.0.0.1", resolve));
+  const openAiAddress = openAiServer.address();
+  assert.ok(openAiAddress && typeof openAiAddress !== "string");
+
+  process.env.ACC_OPENAI_API_KEY = "test-openai-key";
+  delete process.env.OPENAI_API_KEY;
+  process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${openAiAddress.port}/v1`;
+  delete process.env.OPENAI_BASE_URL;
+  delete process.env.ACC_OPENAI_CONVERSATION_MODEL;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const scriptedStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T22:30:00.000Z",
+      sipCallId: "sip-scripted-8611",
+      destination: "8611",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(scriptedStarted.statusCode, 201);
+    assert.equal(scriptedStarted.payload.call.scenario.conversationMode, "scripted");
+    assert.equal(scriptedStarted.payload.call.scenario.sipExtension, "8611");
+
+    const scriptedTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-27T22:30:01.000Z",
+      sipCallId: "sip-scripted-8611",
+      text: "I'm thinking about canceling my policy.",
+    });
+    assert.equal(scriptedTranscript.statusCode, 200);
+    assert.equal(
+      scriptedTranscript.payload.call.transcript.at(-1).text,
+      "I can help with that. Before I review options, what is pushing you to cancel today?",
+    );
+    assert.equal(openAiRequests.length, 0);
+
+    const llmStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T22:31:00.000Z",
+      sipCallId: "sip-openai-8600",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(llmStarted.statusCode, 201);
+    assert.equal(llmStarted.payload.call.scenario.conversationMode, "openai_llm");
+    assert.equal(llmStarted.payload.call.scenario.sipExtension, "8600");
+
+    const llmTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-27T22:31:01.000Z",
+      sipCallId: "sip-openai-8600",
+      text: "I need help changing my account address.",
+    });
+    assert.equal(llmTranscript.statusCode, 200);
+    assert.equal(
+      llmTranscript.payload.call.transcript.at(-1).text,
+      "I can help review that safely. What account detail should I check first?",
+    );
+    assert.equal(openAiRequests.length, 1);
+    assert.equal(openAiRequests[0].url, "/v1/responses");
+    assert.equal(openAiRequests[0].authorization, "Bearer test-openai-key");
+    assert.equal(openAiRequests[0].body.model, "GPT-5.4-mini");
+    assert.equal(
+      llmTranscript.payload.call.events.some((event: any) => event.type === "openai_conversation_turn_processed" && event.detail.model === "GPT-5.4-mini"),
+      true,
+    );
+  } finally {
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => openAiServer.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("live SIP 8600 fails closed when OpenAI credentials are missing", async () => {
+  const originalApiKey = process.env.ACC_OPENAI_API_KEY;
+  const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
+  delete process.env.ACC_OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T22:40:00.000Z",
+      sipCallId: "sip-openai-missing-key",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+
+    const transcript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-27T22:40:01.000Z",
+      sipCallId: "sip-openai-missing-key",
+      text: "Can you cancel my policy?",
+    });
+    assert.equal(transcript.statusCode, 200);
+    assert.equal(transcript.payload.call.flowState, "wrap");
+    assert.equal(
+      transcript.payload.call.events.some((event: any) => event.type === "openai_conversation_generation_failed" && event.detail.error === "openai_api_key_missing"),
+      true,
+    );
+    assert.equal(
+      transcript.payload.call.transcript.some((turn: any) => turn.speaker === "agent" && /Before I review options/.test(turn.text)),
+      false,
+    );
+  } finally {
+    if (originalApiKey === undefined) delete process.env.ACC_OPENAI_API_KEY;
+    else process.env.ACC_OPENAI_API_KEY = originalApiKey;
+    if (originalOpenAiApiKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalOpenAiApiKey;
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });

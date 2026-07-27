@@ -61,6 +61,7 @@ DEFAULT_TTS_PREWARM_TEXTS = (
     "I can help with cancellation. What is the main reason you want to cancel?",
     "I’ll prepare a handoff summary for a human operator. What is the one thing you want them to solve first?",
 )
+TTS_CACHE_LOCKS: dict[Path, asyncio.Lock] = {}
 
 
 class CallerTurnDeliveryCommitError(RuntimeError):
@@ -355,10 +356,12 @@ class AccVoicePipelineSession:
         track_recording_dir: str | Path | None = None,
         correlation_id: str | None = None,
         flow_manager_adapter: AccPipecatFlowManagerAdapter | None = None,
+        conversation_mode: str | None = None,
     ):
         self.acc_url = acc_url.rstrip("/")
         self.call_id = call_id
         self.correlation_id = correlation_id or f"acc-pipecat-{call_id}"
+        self.conversation_mode = conversation_mode if conversation_mode in {"free_caller", "scripted", "openai_llm"} else None
         self.readiness = readiness
         self.turn_count = 0
         self.output_generation = 0
@@ -397,7 +400,10 @@ class AccVoicePipelineSession:
         self.track_recorder = SeparateTrackRecorder(artifact_dir=recording_dir, call_id=call_id) if recording_dir else None
         self.last_track_recording_manifest: dict[str, Any] | None = None
         self.flow_manager_adapter = flow_manager_adapter
-        self.tts_cache_locks: dict[Path, asyncio.Lock] = {}
+        self.tts_cache_locks = TTS_CACHE_LOCKS
+        self.caller_turn_gate = asyncio.Event()
+        self.caller_turn_gate.set()
+        self.caller_turn_gate_reason: str | None = None
 
     def evidence_snapshot(self) -> dict[str, Any]:
         return {
@@ -440,6 +446,15 @@ class AccVoicePipelineSession:
                 request_json=lambda method, url, payload: json_http(method, url, payload),
             )
         return self.flow_manager_adapter
+
+    def hold_caller_turns(self, reason: str) -> None:
+        self.caller_turn_gate_reason = reason
+        self.caller_turn_gate.clear()
+
+    def release_caller_turns(self, reason: str) -> None:
+        self.caller_turn_gate_reason = None
+        self.caller_turn_gate.set()
+        self.record_stage("acc.caller_turn_gate_released", reason=reason)
 
     def record_stage(self, stage: str, *, ok: bool = True, **detail: Any) -> dict[str, Any]:
         event = {
@@ -1073,11 +1088,20 @@ class AccVoicePipelineSession:
             with contextlib.suppress(Exception):
                 await asyncio.to_thread(response.close)
         if completed and cache_path and complete_audio:
-            await asyncio.to_thread(cache_path.parent.mkdir, parents=True, exist_ok=True)
             temporary_path = cache_path.with_suffix(f".{uuid4().hex}.tmp")
             try:
+                await asyncio.to_thread(cache_path.parent.mkdir, parents=True, exist_ok=True)
                 await asyncio.to_thread(temporary_path.write_bytes, bytes(complete_audio))
                 await asyncio.to_thread(temporary_path.replace, cache_path)
+            except Exception as exc:
+                self.record_stage(
+                    "tts.cache_persist_failed",
+                    ok=False,
+                    error=str(exc),
+                    cachePath=str(cache_path),
+                    audioBytes=len(complete_audio),
+                    bestEffort=True,
+                )
             finally:
                 with contextlib.suppress(FileNotFoundError):
                     temporary_path.unlink()
@@ -1358,6 +1382,13 @@ class AccCallerTurnProcessor(FrameProcessor):
         if direction != FrameDirection.DOWNSTREAM or not isinstance(frame, TranscriptionFrame):
             await self.push_frame(frame, direction)
             return
+        if not self.session.caller_turn_gate.is_set():
+            self.session.record_stage(
+                "acc.caller_turn_waiting",
+                callerTranscript=frame.text,
+                reason=self.session.caller_turn_gate_reason or "caller_turn_gate_held",
+            )
+            await self.session.caller_turn_gate.wait()
         deterministic_agent_text = os.environ.get("ACC_PIPECAT_AGENT_TEXT_OVERRIDE", "").strip()
         if deterministic_agent_text:
             self.session.turn_count += 1
@@ -1390,8 +1421,8 @@ class AccCallerTurnProcessor(FrameProcessor):
             await self.push_frame(TextFrame(deterministic_agent_text), FrameDirection.DOWNSTREAM)
             return
         turn_output_generation = self.session.output_generation
-        conversation_mode = os.environ.get("ACC_PIPECAT_CONVERSATION_MODE", "free_caller").strip() or "free_caller"
-        if conversation_mode not in {"free_caller", "scripted"}:
+        conversation_mode = self.session.conversation_mode or os.environ.get("ACC_PIPECAT_CONVERSATION_MODE", "free_caller").strip() or "free_caller"
+        if conversation_mode not in {"free_caller", "scripted", "openai_llm"}:
             conversation_mode = "free_caller"
         flow_manager = self.session.get_flow_manager_adapter()
         agent_task = asyncio.create_task(flow_manager.preview_caller_turn(
@@ -1526,6 +1557,7 @@ class KokoroTtsProcessor(FrameProcessor):
         stream_started = False
         pacing_started_monotonic = 0.0
         paced_audio_seconds = 0.0
+        paced_chunk_count = 0
         evidence_every_n_chunks = max(int(os.environ.get("ACC_TTS_EVIDENCE_EVERY_N_CHUNKS", "50")), 1)
         tts_meta: dict[str, Any] = {
             "engine": "kokoro",
@@ -1609,9 +1641,10 @@ class KokoroTtsProcessor(FrameProcessor):
                     )
                 tts_meta = {**tts_meta, **chunk_meta, "outputWindow": output_window}
                 paced_audio_seconds += len(audio_chunk) / max(sample_rate * SAMPLE_WIDTH_BYTES, 1)
+                paced_chunk_count += 1
                 configured_yield_ms = max(float(os.environ.get("ACC_TTS_OUTPUT_CHUNK_YIELD_MS", "20")), 0.0)
                 if configured_yield_ms > 0:
-                    pacing_deadline = pacing_started_monotonic + paced_audio_seconds
+                    pacing_deadline = pacing_started_monotonic + (configured_yield_ms / 1000.0 * paced_chunk_count)
                     await asyncio.sleep(max(pacing_deadline - time.monotonic(), 0.0))
             if output_cancelled:
                 self.session.record_stage(

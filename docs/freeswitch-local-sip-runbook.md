@@ -17,7 +17,7 @@ That route is the Issue #214/#222 review surface for browser WebRTC, local SIP/F
 - FreeSWITCH ESL: `127.0.0.1:8021`, password `ClueCon`
 - FreeSWITCH Verto: `ws://127.0.0.1:8081`, WSS on `127.0.0.1:8082`
 - Local SIP account: extension `1000`, password `local-sip-pass`, domain `127.0.0.1`
-- ACC destination: dial `8600`
+- ACC destinations: dial `8600` for the OpenAI-backed live LLM flow, or `8611` for the existing deterministic scripted flow
 - Preferred Verto agent: `acc-pipecat@127.0.0.1`, password `local-verto-pass`
 - RTP range in compose: `16384-16484/UDP`
 
@@ -54,7 +54,7 @@ npm run docker:freeswitch:only
 
 Use `npm run docker:freeswitch` instead when you want compose to build and start both ACC and FreeSWITCH together.
 
-Use `npm run docker:sip-verto` when you want Compose to start the preferred #222 local SIP lab stack: ACC, FreeSWITCH, rtc-asr, Kokoro, and the Pipecat Verto/WebRTC sidecar. That path expects a compatible `rtc-asr` image, defaulting to `rtc-asr:local`, exposes FreeSWITCH Verto on `127.0.0.1:8081`/`8082`, and keeps extension `8600` bridged to `acc-pipecat`.
+Use `npm run docker:sip-verto` when you want Compose to start the preferred #222 local SIP lab stack: ACC, FreeSWITCH, rtc-asr, Kokoro, and the Pipecat Verto/WebRTC sidecar. That path expects a compatible `rtc-asr` image, defaulting to `rtc-asr:local`, exposes FreeSWITCH Verto on `127.0.0.1:8081`/`8082`, and keeps extensions `8600` and `8611` bridged to `acc-pipecat` with separate conversation-mode headers.
 
 The Compose sidecar mounts `./artifacts`, keeps the latest bridge proof at `artifacts/freeswitch-live/pipecat-verto-proof.json`, and also preserves per-call snapshots under `artifacts/freeswitch-live/calls/<call-id>/pipecat-verto-proof.json`.
 
@@ -69,9 +69,20 @@ FREESWITCH_VERTO_URL=ws://127.0.0.1:8081 FREESWITCH_VERTO_LOGIN=acc-pipecat@127.
 The sidecar updates `PIPECAT_VERTO_PROOF_OUT` after login, invite, and pipeline stage events. It includes the call-scoped rtc-asr final transcript and Kokoro TTS evidence needed by the strict caller harness.
 
 The Verto originate leg must negotiate PCMU directly. Applying a codec
-preference only to the inbound Linphone leg is insufficient; extension `8600`
-uses `absolute_codec_string=PCMU` on the `verto_contact(...)` bridge target so
+preference only to the inbound Linphone leg is insufficient; extensions `8600`
+and `8611` use `absolute_codec_string=PCMU` on the `verto_contact(...)` bridge target so
 FreeSWITCH and aiortc exchange payload `0` in both directions.
+
+Extension `8600` posts `conversationMode=openai_llm` to ACC and requires a real
+OpenAI Responses API call before ACC emits conversational agent text. Configure
+`OPENAI_API_KEY` or `ACC_OPENAI_API_KEY`; optionally set
+`ACC_OPENAI_BASE_URL` and `ACC_OPENAI_CONVERSATION_MODEL`. The default model is
+the requested literal `GPT-5.4-mini`. If credentials, model access, or the API
+request fails, ACC records `openai_conversation_generation_failed`, fails closed
+to the human-handoff path, and does not substitute scripted responses.
+
+Extension `8611` posts `conversationMode=scripted` and keeps the deterministic
+cancellation-rescue script for repeatable proof and regression work.
 
 Immediately after the Verto media connection is ready, the sidecar sends the
 prerecorded `assets/audio/agilityfeat-intro.wav` greeting:

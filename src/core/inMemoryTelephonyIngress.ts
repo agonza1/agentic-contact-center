@@ -1,4 +1,6 @@
 import {
+  type OpenAiLlmTurnResult,
+  applyOpenAiLlmPipecatFlow,
   applyFreeCallerPipecatFlow,
   applyDeterministicPipecatFlow,
   applyOperatorSteer,
@@ -9,6 +11,7 @@ import { compareTimestamps, getAttentionMetadata } from "./attention";
 import type {
   AttentionSource,
   CallSnapshot,
+  ConversationMode,
   FlowState,
   LatencyMark,
   LatencyBudgetStage,
@@ -51,9 +54,10 @@ function cloneSnapshot(snapshot: CallSnapshot): CallSnapshot {
 }
 
 interface CallerTurnOptions {
-  conversationMode?: "scripted" | "free_caller";
+  conversationMode?: ConversationMode;
   voiceSessionId?: string | null;
   realtimeVoiceSessionId?: string | null;
+  openAiLlm?: OpenAiLlmTurnResult;
 }
 
 type VoiceSessionScope = Pick<CallerTurnOptions, "voiceSessionId" | "realtimeVoiceSessionId">;
@@ -211,6 +215,9 @@ export class InMemoryTelephonyIngress {
     const openclawAttachStatus = openclawAttachFailed ? "degraded" : "attached";
     const openclawArtifactLinks = buildOpenClawArtifactLinks(callId);
     const openclawSessionRef = buildOpenClawSessionRef(openclawSessionId);
+    const conversationMode =
+      options.conversationMode
+      ?? (openclawSessionLabel === "pipecat-local-voice" ? "free_caller" : "scripted");
 
     const snapshot: CallSnapshot = {
       session: {
@@ -254,6 +261,8 @@ export class InMemoryTelephonyIngress {
         defaultSupervisorSteer: config.policy.defaultSupervisorSteer,
         fallbackMode: config.policy.fallbackMode,
         operatorChannel: config.operator.channel,
+        conversationMode,
+        sipExtension: options.sipExtension ?? null,
       },
       demoFallback: {
         armed: false,
@@ -286,6 +295,8 @@ export class InMemoryTelephonyIngress {
             pipecatRuntimeMode: "pipecat_local_runtime",
             credentialsMode: runtimeModeLabels.credentialsMode,
             ingressSource: options.source ?? "mock_http_route",
+            conversationMode,
+            sipExtension: options.sipExtension ?? null,
           },
         },
         {
@@ -331,7 +342,9 @@ export class InMemoryTelephonyIngress {
 
   private applyCallerTurn(snapshot: CallSnapshot, turn: TranscriptTurn, config: PocConfig, options: CallerTurnOptions): void {
     const conversationMode =
-      options.conversationMode ?? (snapshot.session.openclawSession.label === "pipecat-local-voice" ? "free_caller" : "scripted");
+      options.conversationMode
+      ?? snapshot.scenario.conversationMode
+      ?? (snapshot.session.openclawSession.label === "pipecat-local-voice" ? "free_caller" : "scripted");
 
     snapshot.transcript.push({ ...turn });
     snapshot.events.push({
@@ -361,7 +374,9 @@ export class InMemoryTelephonyIngress {
       },
     });
 
-    if (conversationMode === "free_caller") {
+    if (conversationMode === "openai_llm") {
+      applyOpenAiLlmPipecatFlow(snapshot, turn, options.openAiLlm);
+    } else if (conversationMode === "free_caller") {
       applyFreeCallerPipecatFlow(snapshot, turn);
     } else {
       applyDeterministicPipecatFlow(snapshot, config, turn);

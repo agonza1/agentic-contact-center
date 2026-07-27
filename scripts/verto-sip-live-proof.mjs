@@ -273,35 +273,45 @@ function extractVertoCallId(snapshot) {
   return String(snapshot?.callId || "").trim();
 }
 
+function evidenceCorrelationIds(snapshot) {
+  return new Set([
+    extractVertoCallId(snapshot),
+    snapshot?.vertoCallId,
+    snapshot?.sipCallId,
+    snapshot?.linkedSipCallId,
+    snapshot?.proofSipCallId,
+    snapshot?.harnessSipCallId,
+    snapshot?.accCallId,
+    snapshot?.callId,
+  ].map((value) => String(value || "").trim()).filter(Boolean));
+}
+
 async function readEvidenceCallIds(evidencePath) {
   if (!evidencePath) return new Set();
   try {
     const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
     const snapshots = Array.isArray(evidence.pipelineEvidence) ? evidence.pipelineEvidence : [evidence];
-    return new Set(snapshots.flatMap((snapshot) => [
-      extractVertoCallId(snapshot),
-      snapshot?.vertoCallId,
-      snapshot?.sipCallId,
-      snapshot?.linkedSipCallId,
-      snapshot?.accCallId,
-      snapshot?.callId,
-    ]).map((value) => String(value || "")).filter(Boolean));
+    return new Set(snapshots.flatMap((snapshot) => [...evidenceCorrelationIds(snapshot)]));
   } catch {
     return new Set();
   }
 }
 
-async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds }) {
+async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds, expectedSipCallId }) {
   if (!evidencePath) return { ready: false, transcript: "", ttsReady: false, evidence: null };
   try {
     const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
     const snapshots = Array.isArray(evidence.pipelineEvidence) ? evidence.pipelineEvidence : [evidence];
+    const expectedCorrelationId = String(expectedSipCallId || "").trim();
     for (const snapshot of snapshots) {
       const evidenceCallId = extractVertoCallId(snapshot);
       if (!evidenceCallId || baselineCallIds.has(evidenceCallId)) continue;
+      const correlationIds = evidenceCorrelationIds(snapshot);
+      if (expectedCorrelationId && !correlationIds.has(expectedCorrelationId)) continue;
       const accCallId = String(snapshot?.accCallId || snapshot?.callId || "");
       const sipCallId = String(snapshot?.sipCallId || evidenceCallId);
       const linkedSipCallId = String(snapshot?.linkedSipCallId || "");
+      const proofSipCallId = String(snapshot?.proofSipCallId || snapshot?.harnessSipCallId || "");
       const stages = Array.isArray(snapshot?.stageEvents) ? snapshot.stageEvents : [];
       const isCurrentCallEvent = (event) => Number.isFinite(Date.parse(event?.timestamp)) && Date.parse(event.timestamp) >= startedAtMs;
       const finalTranscriptSource = String(snapshot?.lastEvidence?.stt?.finalTranscriptSource || "");
@@ -346,6 +356,7 @@ async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds }
           accCallId,
           sipCallId,
           linkedSipCallId,
+          proofSipCallId,
           evidence,
         };
       }
@@ -458,6 +469,7 @@ class SipProofCall {
       `Call-ID: ${this.callId}`,
       `CSeq: ${cseq} INVITE`,
       `Contact: <sip:${this.options.username}@${this.options.localHost}:${this.options.localSipPort}>`,
+      `X-ACC-Proof-Call-ID: ${this.callId}`,
       ...(authorization ? [`Proxy-Authorization: ${authorization}`] : []),
       "Content-Type: application/sdp",
       `Content-Length: ${Buffer.byteLength(sdp)}`,
@@ -611,6 +623,7 @@ class SipProofCall {
     const rtcAsrEvidence = await loadRtcAsrEvidence(rtcAsrEvidencePath, {
       startedAtMs: this.startedAtMs,
       baselineCallIds: this.rtcAsrBaselineCallIds,
+      expectedSipCallId: this.callId,
     });
     const rtcAsrReady = rtcAsrEvidence.ready;
     const playbackRms = pcm16Rms(playbackPcm);
@@ -658,6 +671,7 @@ class SipProofCall {
         vertoCallId: rtcAsrEvidence.evidenceCallId || null,
         accCallId: rtcAsrEvidence.accCallId || null,
         evidenceSipCallId: rtcAsrEvidence.sipCallId || null,
+        proofSipCallId: rtcAsrEvidence.proofSipCallId || null,
         linkedSipCallId: rtcAsrEvidence.linkedSipCallId || null,
         transcript: rtcAsrEvidence.transcript,
         transcriptAt: rtcAsrEvidence.transcriptAt || null,
@@ -758,6 +772,7 @@ class SipProofCall {
         vertoCallId: rtcAsrEvidence.evidenceCallId || null,
         accCallId: rtcAsrEvidence.accCallId || null,
         sipCallId: rtcAsrEvidence.sipCallId || null,
+        proofSipCallId: rtcAsrEvidence.proofSipCallId || null,
         linkedSipCallId: rtcAsrEvidence.linkedSipCallId || null,
         currentCallWindowStartedAt: new Date(this.startedAtMs).toISOString(),
       },

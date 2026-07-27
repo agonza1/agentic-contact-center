@@ -13,6 +13,10 @@ services:
       RTC_ASR_MODEL: ${RTC_ASR_MODEL:-mlx-community/parakeet-tdt_ctc-110m}
       KOKORO_BASE_URL: http://kokoro:8880
       BROWSER_WEBRTC_BRIDGE_URL: http://browser-webrtc-bridge:8766
+      ACC_OPENAI_CONVERSATION_MODEL: ${ACC_OPENAI_CONVERSATION_MODEL:-GPT-5.4-mini}
+      ACC_OPENAI_BASE_URL: ${ACC_OPENAI_BASE_URL:-https://api.openai.com/v1}
+      ACC_OPENAI_API_KEY: ${ACC_OPENAI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     healthcheck:
       test:
         - CMD

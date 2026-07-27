@@ -35,6 +35,8 @@ export type RtcAsrMode = "rtc_asr_replay" | "rtc_asr_live" | "rtc_asr_blocked";
 
 export type CredentialsMode = "mocked" | "signalwire_live";
 
+export type ConversationMode = "scripted" | "free_caller" | "openai_llm";
+
 export interface RuntimeModeLabels {
   telephony: TelephonyMode;
   media: MediaCaptureMode;
@@ -116,6 +118,8 @@ export interface StartCallOptions {
   simulateOpenClawAttachFailure?: boolean;
   runtimeModeLabels?: Partial<RuntimeModeLabels>;
   source?: "mock_http_route" | "signalwire_webhook" | "freeswitch_esl" | "freeswitch_verto" | "local_sip_harness";
+  conversationMode?: ConversationMode;
+  sipExtension?: string | null;
 }
 
 export interface OpenClawSessionEnvelope {
@@ -174,6 +178,8 @@ export interface ScenarioMetadata {
   defaultSupervisorSteer: OperatorSteerAction;
   fallbackMode: FallbackMode;
   operatorChannel: string;
+  conversationMode: ConversationMode;
+  sipExtension: string | null;
 }
 
 export interface DemoFallbackState {
