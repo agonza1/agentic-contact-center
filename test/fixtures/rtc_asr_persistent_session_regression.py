@@ -158,10 +158,33 @@ async def verify_empty_final_uses_current_interim() -> None:
     assert session.rtc_asr_current_interim_text == ""
 
 
+async def verify_interim_without_final_is_not_promoted() -> None:
+    websocket = FakeRtcAsrWebSocket(emit_finals=False, interim_on_audio="partial request")
+
+    async def connect(*_args: object, **_kwargs: object) -> FakeRtcAsrWebSocket:
+        return websocket
+
+    session = make_session()
+    with (
+        patch("acc_pipecat_voice_pipeline.websockets.connect", connect),
+        patch.dict(os.environ, {"RTC_ASR_FINAL_TIMEOUT_SEC": "0.05"}),
+    ):
+        await session.stream_rtc_asr_audio(b"\x01\x00" * 320)
+        transcript, meta, _frame = await session.transcribe(
+            InputAudioRawFrame(audio=b"", sample_rate=INPUT_SAMPLE_RATE, num_channels=1)
+        )
+
+    assert transcript == "", transcript
+    assert meta["finalEventObserved"] is False, meta
+    assert meta["finalTranscriptSource"] == "rtc_asr_final", meta
+    assert session.rtc_asr_current_interim_text == ""
+
+
 async def main() -> None:
     await verify_two_turn_lifecycle()
     await verify_close_interrupts_final_wait()
     await verify_empty_final_uses_current_interim()
+    await verify_interim_without_final_is_not_promoted()
     print(
         json.dumps(
             {
@@ -169,6 +192,7 @@ async def main() -> None:
                 "twoTurnLifecycle": "one_connection_two_starts_two_finalizes_two_transcripts",
                 "promptClose": True,
                 "emptyFinalFallback": "current_utterance_interim",
+                "stalledInterim": "not_promoted_without_final_event",
             }
         )
     )

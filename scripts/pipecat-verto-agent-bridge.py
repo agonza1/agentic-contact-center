@@ -317,7 +317,7 @@ class VertoAgentBridge:
         path.write_text(sdp, encoding="utf8")
         return str(path)
 
-    async def end_acc_call(self, call_id: str, *, reason: str, timestamp: str | None = None) -> bool:
+    async def end_acc_call(self, call_id: str, *, reason: str, timestamp: str | None = None, timeout: float = 2.0) -> bool:
         try:
             await asyncio.to_thread(
                 json_http,
@@ -329,6 +329,7 @@ class VertoAgentBridge:
                     "sipCallId": call_id,
                     "hangupCause": reason,
                 },
+                timeout,
             )
             return True
         except Exception as exc:
@@ -604,6 +605,7 @@ class VertoAgentBridge:
             intro_context_id = f"prerecorded-intro-{call_id}"
             intro_chunk_bytes = intro_sample_rate * 2 * 20 // 1000
             session.begin_output_stream(stream_id=intro_context_id)
+            intro_output_generation = session.output_generation
             intro_frames = [TTSStartedFrame(context_id=intro_context_id)]
             intro_chunk_count = 0
             for offset in range(0, len(intro_pcm), intro_chunk_bytes):
@@ -624,6 +626,23 @@ class VertoAgentBridge:
                 ))
             intro_frames.append(TTSStoppedFrame(context_id=intro_context_id))
             await task.queue_frames(intro_frames)
+            intro_duration_s = len(intro_pcm) / max(intro_sample_rate * 2, 1)
+
+            async def finish_intro_output_stream() -> None:
+                await asyncio.sleep(intro_duration_s)
+                if (
+                    session.output_stream_id == intro_context_id
+                    and session.output_generation == intro_output_generation
+                ):
+                    session.finish_output_stream()
+                    session.record_stage(
+                        "tts.prerecorded_intro_completed",
+                        streamId=intro_context_id,
+                        outputGeneration=session.output_generation,
+                        durationMs=round(intro_duration_s * 1000),
+                    )
+
+            asyncio.create_task(finish_intro_output_stream())
             await asyncio.to_thread(
                 json_http,
                 "POST",
@@ -672,12 +691,12 @@ class VertoAgentBridge:
 
     async def close_session(self, session_id: str, *, reason: str = "verto session closed") -> None:
         session = self.sessions.get(session_id) or {}
+        call_id = session.get("callId")
+        closed_at = now_iso()
         if session:
-            session["closedAt"] = session.get("closedAt") or now_iso()
+            session["closedAt"] = session.get("closedAt") or closed_at
             session["closeReason"] = session.get("closeReason") or reason
-            call_id = session.get("callId")
-            if isinstance(call_id, str) and call_id:
-                await self.end_acc_call(call_id, reason=reason, timestamp=session["closedAt"])
+            closed_at = session["closedAt"]
         for key, value in list(self.sessions.items()):
             if value is session:
                 self.sessions.pop(key, None)
@@ -693,6 +712,8 @@ class VertoAgentBridge:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        if isinstance(call_id, str) and call_id:
+            await self.end_acc_call(call_id, reason=reason, timestamp=closed_at)
 
     def readiness_payload(self) -> dict[str, Any]:
         logged_in = bool(self.last_login.get("ok"))

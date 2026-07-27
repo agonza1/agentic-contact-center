@@ -70,6 +70,7 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.match(bridge, /session\.begin_output_stream\(stream_id=intro_context_id\)/);
   assert.match(bridge, /session\.extend_output_window\(audio_bytes=len\(audio_chunk\), sample_rate=intro_sample_rate\)/);
   assert.match(bridge, /session\.record_output_chunk\(len\(audio_chunk\)\)/);
+  assert.match(bridge, /session\.finish_output_stream\(\)/);
   assert.match(bridge, /session\.record_agent_track\(/);
   assert.match(bridge, /async def end_acc_call/);
   assert.match(bridge, /"eventType": "call\.ended"/);
@@ -77,6 +78,12 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.match(bridge, /await self\.end_acc_call\(call_id, reason="verto_sdp_answer_failed"\)/);
   assert.match(bridge, /await self\.end_acc_call\(call_id, reason="verto_answer_send_failed"\)/);
   assert.match(bridge, /await self\.end_acc_call\(call_id, reason="verto_pipeline_start_failed"\)/);
+  const closeSessionIndex = bridge.indexOf("async def close_session");
+  const closeRtcAsrIndex = bridge.indexOf("await turn_session.close_rtc_asr_stream(reason)", closeSessionIndex);
+  const closeEndCallIndex = bridge.indexOf("await self.end_acc_call(call_id, reason=reason", closeSessionIndex);
+  assert.ok(closeSessionIndex >= 0);
+  assert.ok(closeRtcAsrIndex > closeSessionIndex);
+  assert.ok(closeEndCallIndex > closeRtcAsrIndex);
 });
 
 test("Verto bridge normalizes FreeSWITCH ICE, DTLS, and G.711 RTP", { skip: !existsSync(".pipecat-runtime") }, async () => {

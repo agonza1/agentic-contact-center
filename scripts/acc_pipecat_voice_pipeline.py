@@ -788,23 +788,24 @@ class AccVoicePipelineSession:
             try:
                 deadline = time.monotonic() + float(os.environ.get("RTC_ASR_FINAL_TIMEOUT_SEC", "12"))
                 final_event_text = ""
+                final_event_observed = False
                 while time.monotonic() < deadline:
                     event = await self.recv_rtc_asr_event_locked(timeout=max(0.1, deadline - time.monotonic()))
                     if event is None:
                         continue
                     events.append(event)
                     candidate = transcript_text_from_event(event)
-                    if candidate:
-                        final_text = candidate
                     if is_final_stt_event(event):
+                        final_event_observed = True
                         final_event_text = candidate
+                        final_text = candidate
                         break
             finally:
                 # local-stt.v1 finalize ends the current utterance, not the socket.
                 # The next audio turn must send a new start event on this connection.
                 self.rtc_asr_started = False
             final_transcript_source = "rtc_asr_final"
-            if not final_event_text.strip() and self.rtc_asr_current_interim_text.strip():
+            if final_event_observed and not final_event_text.strip() and self.rtc_asr_current_interim_text.strip():
                 final_text = self.rtc_asr_current_interim_text
                 final_transcript_source = "rtc_asr_interim_fallback"
         elapsed_ms = round((time.perf_counter() - started) * 1000)
@@ -822,6 +823,7 @@ class AccVoicePipelineSession:
             "sessionEventCount": self.rtc_asr_session_event_count,
             "interimEventCount": len([event for event in events if not is_final_stt_event(event) and transcript_text_from_event(event)]),
             "eventCount": len(events),
+            "finalEventObserved": final_event_observed,
             "finalTranscriptSource": final_transcript_source,
         }
         self.rtc_asr_current_audio_bytes = 0
