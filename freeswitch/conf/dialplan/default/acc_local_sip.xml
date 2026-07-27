@@ -7,7 +7,9 @@
       <action application="set" data="hangup_after_bridge=false"/>
       <action application="set" data="acc_return_audio=pipecat_verto_webrtc"/>
       <action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/>
-      <action application="bridge" data="{absolute_codec_string=PCMU}${verto_contact(acc-pipecat@$${domain})}"/>
+      <action application="set" data="acc_linked_sip_call_id=${uuid}"/>
+      <action application="export" data="nolocal:acc_linked_sip_call_id=${uuid}"/>
+      <action application="bridge" data="{absolute_codec_string=PCMU,acc_linked_sip_call_id=${uuid}}${verto_contact(acc-pipecat@$${domain})}"/>
     </condition>
   </extension>
 </include>

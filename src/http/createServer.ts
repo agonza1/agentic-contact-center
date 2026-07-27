@@ -4282,6 +4282,26 @@ function normalizeLiveSipIngressSource(value: unknown): "freeswitch_esl" | "free
   return "local_sip_harness";
 }
 
+function uniqueLiveSipCallIds(...values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))));
+}
+
+function getMappedLiveSipCallId(liveSipCallMap: Map<string, string>, ids: string[]): string | undefined {
+  for (const id of ids) {
+    const callId = liveSipCallMap.get(id);
+    if (callId) return callId;
+  }
+  return undefined;
+}
+
+function setLiveSipCallAliases(liveSipCallMap: Map<string, string>, ids: string[], callId: string): void {
+  for (const id of ids) liveSipCallMap.set(id, callId);
+}
+
+function deleteLiveSipCallAliases(liveSipCallMap: Map<string, string>, ids: string[]): void {
+  for (const id of ids) liveSipCallMap.delete(id);
+}
+
 async function routeRequest(
   request: IncomingMessage,
   response: ServerResponse,
@@ -5285,31 +5305,40 @@ async function routeRequest(
       writeBadRequest(response, "live_sip_call_id_required");
       return;
     }
+    const linkedSipCallId = getOptionalTrimmedString(body.linkedSipCallId)
+      ?? getOptionalTrimmedString(body.linkedFsUuid)
+      ?? getOptionalTrimmedString(body.parentSipCallId)
+      ?? getOptionalTrimmedString(body.alegUuid);
+    const vertoCallId = getOptionalTrimmedString(body.vertoCallId);
+    const fsUuid = getOptionalTrimmedString(body.fsUuid);
+    const canonicalSipCallId = linkedSipCallId ?? sipCallId;
+    const liveSipCorrelationIds = uniqueLiveSipCallIds(canonicalSipCallId, sipCallId, linkedSipCallId, vertoCallId, fsUuid);
 
-    await withLiveSipCallLock(liveSipCallLocks, sipCallId, async () => {
+    await withLiveSipCallLock(liveSipCallLocks, canonicalSipCallId, async () => {
       if (eventType === "call.started") {
-        const existingCallId = liveSipCallMap.get(sipCallId);
+        const existingCallId = getMappedLiveSipCallId(liveSipCallMap, liveSipCorrelationIds);
         if (existingCallId) {
           const existingSnapshot = await ingress.getSnapshot(existingCallId);
           if (existingSnapshot) {
-            writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(existingSnapshot), idempotent: true });
+            setLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds, existingSnapshot.session.callId);
+            writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(existingSnapshot), idempotent: true });
             return;
           }
-          liveSipCallMap.delete(sipCallId);
+          deleteLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds);
         }
-        const matchingSnapshots = await ingress.listSnapshots({ providerCallId: sipCallId });
-        const matchingSnapshot = matchingSnapshots[0];
+        const matchingSnapshot = (await Promise.all(liveSipCorrelationIds.map((id) => ingress.listSnapshots({ providerCallId: id }))))
+          .flat()[0];
         if (matchingSnapshot) {
-          liveSipCallMap.set(sipCallId, matchingSnapshot.session.callId);
-          writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(matchingSnapshot), idempotent: true });
+          setLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds, matchingSnapshot.session.callId);
+          writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(matchingSnapshot), idempotent: true });
           return;
         }
         const telephonyMode = body.telephonyMode === "signalwire_live" ? "signalwire_live" : "local_sip";
         const snapshot = await ingress.startCall(config, {
           providerName: telephonyMode === "signalwire_live" ? "signalwire" : "freeswitch-local-sip",
-          providerCallId: sipCallId,
-          openclawSessionId: `live-sip-${sipCallId}`,
-          openclawSessionLabel: `${telephonyMode}/${sipCallId}`,
+          providerCallId: canonicalSipCallId,
+          openclawSessionId: `live-sip-${canonicalSipCallId}`,
+          openclawSessionLabel: `${telephonyMode}/${canonicalSipCallId}`,
           source: normalizeLiveSipIngressSource(body.source),
           runtimeModeLabels: {
             telephony: telephonyMode,
@@ -5318,19 +5347,20 @@ async function routeRequest(
             credentialsMode: telephonyMode === "signalwire_live" ? "signalwire_live" : "mocked",
           },
         });
-        liveSipCallMap.set(sipCallId, snapshot.session.callId);
-        writeJson(response, 201, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+        setLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds, snapshot.session.callId);
+        writeJson(response, 201, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(snapshot) });
         return;
       }
 
-      let callId = liveSipCallMap.get(sipCallId);
+      let callId = getMappedLiveSipCallId(liveSipCallMap, liveSipCorrelationIds);
       if (!callId && eventType === "call.ended") {
-        const matchingSnapshot = (await ingress.listSnapshots({ providerCallId: sipCallId }))[0];
+        const matchingSnapshot = (await Promise.all(liveSipCorrelationIds.map((id) => ingress.listSnapshots({ providerCallId: id }))))
+          .flat()[0];
         if (matchingSnapshot) {
           callId = matchingSnapshot.session.callId;
           const alreadyEnded = matchingSnapshot.events.some((event) => event.type === "sip_call_ended");
           if (alreadyEnded) {
-            writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(matchingSnapshot), idempotent: true });
+            writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(matchingSnapshot), idempotent: true });
             return;
           }
         }
@@ -5342,8 +5372,8 @@ async function routeRequest(
       if (eventType === "call.ended") {
         const existingSnapshot = await ingress.getSnapshot(callId);
         if (existingSnapshot?.events.some((event) => event.type === "sip_call_ended")) {
-          liveSipCallMap.delete(sipCallId);
-          writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(existingSnapshot), idempotent: true });
+          deleteLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds);
+          writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(existingSnapshot), idempotent: true });
           return;
         }
       }
@@ -5551,8 +5581,8 @@ async function routeRequest(
           durationSeconds,
         },
       });
-      liveSipCallMap.delete(sipCallId);
-      writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+      deleteLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds);
+      writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(snapshot) });
     } catch {
       writeNotFound(response);
     }

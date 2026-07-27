@@ -386,6 +386,73 @@ test("live SIP call.started and call.ended are idempotent for shared Verto and F
     assert.equal(freeswitchStarted.payload.call.session.callId, vertoStarted.payload.call.session.callId);
     assert.equal(freeswitchStarted.payload.call.session.runtimeModeLabels.rtcAsr, "rtc_asr_live");
 
+    const freeswitchALegStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-26T22:00:00.200Z",
+      sipCallId: "fs-a-leg-uuid",
+      source: "freeswitch_esl",
+      telephonyMode: "local_sip",
+    });
+    assert.equal(freeswitchALegStarted.statusCode, 201);
+    assert.equal(freeswitchALegStarted.payload.call.session.providerCallId, "fs-a-leg-uuid");
+
+    const vertoBLegStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-26T22:00:00.300Z",
+      sipCallId: "verto-b-leg-uuid",
+      linkedSipCallId: "fs-a-leg-uuid",
+      vertoCallId: "verto-b-leg-uuid",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(vertoBLegStarted.statusCode, 200);
+    assert.equal(vertoBLegStarted.payload.idempotent, true);
+    assert.equal(vertoBLegStarted.payload.call.session.callId, freeswitchALegStarted.payload.call.session.callId);
+    assert.equal(vertoBLegStarted.payload.call.session.providerCallId, "fs-a-leg-uuid");
+    assert.deepEqual(vertoBLegStarted.payload.correlationIds, ["fs-a-leg-uuid", "verto-b-leg-uuid"]);
+
+    const vertoTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-26T22:00:00.400Z",
+      sipCallId: "verto-b-leg-uuid",
+      text: "Transcript posted from the Verto leg.",
+      rtcAsrEvidencePath: "artifacts/freeswitch-live/verto-rtc-asr-evidence.json",
+    });
+    assert.equal(vertoTranscript.statusCode, 200);
+    assert.equal(vertoTranscript.payload.call.session.callId, freeswitchALegStarted.payload.call.session.callId);
+
+    const vertoEnded = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.ended",
+      timestamp: "2026-07-26T22:00:00.500Z",
+      sipCallId: "verto-b-leg-uuid",
+      linkedSipCallId: "fs-a-leg-uuid",
+      vertoCallId: "verto-b-leg-uuid",
+      hangupCause: "verto_peer_closed",
+    });
+    assert.equal(vertoEnded.statusCode, 200);
+    assert.equal(vertoEnded.payload.call.session.callId, freeswitchALegStarted.payload.call.session.callId);
+    assert.equal(vertoEnded.payload.call.events.filter((event: any) => event.type === "sip_call_ended").length, 1);
+
+    const freeswitchDuplicateEnded = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.ended",
+      timestamp: "2026-07-26T22:00:00.600Z",
+      sipCallId: "fs-a-leg-uuid",
+      hangupCause: "normal_clearing",
+    });
+    assert.equal(freeswitchDuplicateEnded.statusCode, 200);
+    assert.equal(freeswitchDuplicateEnded.payload.idempotent, true);
+    assert.equal(freeswitchDuplicateEnded.payload.call.events.filter((event: any) => event.type === "sip_call_ended").length, 1);
+
+    const staleVertoTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-26T22:00:00.700Z",
+      sipCallId: "verto-b-leg-uuid",
+      text: "This should not attach to an already-ended call.",
+    });
+    assert.equal(staleVertoTranscript.statusCode, 400);
+    assert.equal(staleVertoTranscript.payload.error, "live_sip_call_not_started");
+
     const transcript = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.transcript",
       timestamp: "2026-07-26T22:00:01.000Z",

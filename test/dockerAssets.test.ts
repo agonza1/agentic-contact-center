@@ -8,6 +8,7 @@ const repoRoot = join(__dirname, "..", "..");
 test("Docker runtime assets keep the documented health and proof contract", () => {
   const dockerfile = readFileSync(join(repoRoot, "Dockerfile"), "utf8");
   const compose = readFileSync(join(repoRoot, "docker-compose.yml"), "utf8");
+  const freeswitchDialplan = readFileSync(join(repoRoot, "freeswitch", "conf", "dialplan", "default", "acc_local_sip.xml"), "utf8");
   const readme = readFileSync(join(repoRoot, "README.md"), "utf8");
   const packageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as {
     scripts?: Record<string, string>;
@@ -44,11 +45,14 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /freeswitch:\n[\s\S]*"127\.0\.0\.1:8081:8081\/tcp"/);
   assert.match(compose, /freeswitch:\n[\s\S]*acc-pipecat\.xml/);
   assert.match(compose, /freeswitch:\n[\s\S]*verto\.conf\.xml/);
+  assert.match(freeswitchDialplan, /acc_linked_sip_call_id=\$\{uuid\}/);
+  assert.match(freeswitchDialplan, /bridge" data="\{absolute_codec_string=PCMU,acc_linked_sip_call_id=\$\{uuid\}\}\$\{verto_contact\(acc-pipecat@\$\$\{domain\}\)\}"/);
   assert.match(compose, /freeswitch-bridge:\n[\s\S]*scripts\/freeswitch-acc-bridge\.mjs/);
   assert.match(compose, /freeswitch-bridge:\n[\s\S]*ACC_VERTO_OWNS_GREETING: \${ACC_VERTO_OWNS_GREETING:-false}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*target: voice-runtime/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*scripts\/pipecat-verto-agent-bridge\.py/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*\.\/artifacts:\/app\/artifacts/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_VERTO_OWNS_GREETING: \${ACC_VERTO_OWNS_GREETING:-true}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*PIPECAT_VERTO_PROOF_OUT: \/app\/artifacts\/freeswitch-live\/pipecat-verto-proof\.json/);
   assert.match(compose, /assert-viewer:\n[\s\S]*target: assert-runtime/);
   assert.match(compose, /assert-viewer:\n[\s\S]*scripts\/assert-viewer\.mjs/);

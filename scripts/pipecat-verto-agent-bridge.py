@@ -284,29 +284,37 @@ class VertoAgentBridge:
     def write_proof_artifact(self, event_type: str) -> None:
         if self.proof_out is None:
             return
-
-        payload = {
-            "schemaVersion": 1,
-            "generatedAt": now_iso(),
-            "eventType": event_type,
-            "status": "registered_media_answer_ready" if self.last_login.get("ok") else "blocked",
-            "reviewReady": False,
-            "vertoUrl": self.verto_url,
-            "login": self.login,
-            "transport": "freeswitch_verto_webrtc",
-            "inviteCount": self.invite_count,
-            "lastLogin": self.last_login,
-            "lastInvite": self.last_invite,
-            "lastAnswer": self.last_answer,
-            "lastError": self.last_error,
-            "pipelineEvidence": list(self.pipeline_evidence.values()),
-            "remainingMediaBlocker": "Verto signaling is configured and the sidecar can attempt a Pipecat-backed WebRTC answer, but caller-audible acceptance still requires a live 8600 proof showing rtc-asr final transcript and Kokoro/Pipecat playback heard by the caller.",
-            "nextAction": "Place a local 8600 call with the Verto bridge running, then attach this artifact with the strict live SIP bundle once caller playback proof is captured.",
-        }
-        self.proof_out.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = self.proof_out.with_suffix(f"{self.proof_out.suffix}.tmp")
-        tmp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf8")
-        tmp_path.replace(self.proof_out)
+        try:
+            payload = {
+                "schemaVersion": 1,
+                "generatedAt": now_iso(),
+                "eventType": event_type,
+                "status": "registered_media_answer_ready" if self.last_login.get("ok") else "blocked",
+                "reviewReady": False,
+                "vertoUrl": self.verto_url,
+                "login": self.login,
+                "transport": "freeswitch_verto_webrtc",
+                "inviteCount": self.invite_count,
+                "lastLogin": self.last_login,
+                "lastInvite": self.last_invite,
+                "lastAnswer": self.last_answer,
+                "lastError": self.last_error,
+                "pipelineEvidence": list(self.pipeline_evidence.values()),
+                "remainingMediaBlocker": "Verto signaling is configured and the sidecar can attempt a Pipecat-backed WebRTC answer, but caller-audible acceptance still requires a live 8600 proof showing rtc-asr final transcript and Kokoro/Pipecat playback heard by the caller.",
+                "nextAction": "Place a local 8600 call with the Verto bridge running, then attach this artifact with the strict live SIP bundle once caller playback proof is captured.",
+            }
+            self.proof_out.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = self.proof_out.with_suffix(f"{self.proof_out.suffix}.tmp")
+            tmp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf8")
+            tmp_path.replace(self.proof_out)
+        except Exception as exc:
+            print(json.dumps({
+                "type": "verto.proof_artifact.error",
+                "at": now_iso(),
+                "eventType": event_type,
+                "proofArtifactPath": str(self.proof_out),
+                "error": str(exc),
+            }), flush=True)
 
     def write_sdp_artifact(self, call_id: str, kind: str, sdp: str) -> str | None:
         if self.proof_out is None:
@@ -317,18 +325,36 @@ class VertoAgentBridge:
         path.write_text(sdp, encoding="utf8")
         return str(path)
 
-    async def end_acc_call(self, call_id: str, *, reason: str, timestamp: str | None = None, timeout: float = 2.0) -> bool:
+    def linked_sip_call_id(self, params: dict[str, Any]) -> str | None:
+        for key in (
+            "acc_linked_sip_call_id",
+            "variable_acc_linked_sip_call_id",
+            "linkedSipCallId",
+            "linked_sip_call_id",
+            "aleg_uuid",
+            "variable_originating_leg_uuid",
+        ):
+            value = params.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    async def end_acc_call(self, call_id: str, *, reason: str, timestamp: str | None = None, timeout: float = 2.0, linked_sip_call_id: str | None = None) -> bool:
         try:
+            payload = {
+                "eventType": "call.ended",
+                "timestamp": timestamp or now_iso(),
+                "sipCallId": linked_sip_call_id or call_id,
+                "vertoCallId": call_id,
+                "hangupCause": reason,
+            }
+            if linked_sip_call_id:
+                payload["linkedSipCallId"] = linked_sip_call_id
             await asyncio.to_thread(
                 json_http,
                 "POST",
                 f"{self.acc_url.rstrip('/')}/api/live-sip/events",
-                {
-                    "eventType": "call.ended",
-                    "timestamp": timestamp or now_iso(),
-                    "sipCallId": call_id,
-                    "hangupCause": reason,
-                },
+                payload,
                 timeout,
             )
             return True
@@ -381,12 +407,16 @@ class VertoAgentBridge:
     async def handle_invite(self, event: dict[str, Any]) -> None:
         params = event.get("params") if isinstance(event.get("params"), dict) else {}
         call_id = params.get("callID") or params.get("callId") or str(uuid4())
+        linked_sip_call_id = self.linked_sip_call_id(params)
         offer_sdp = params.get("sdp") if isinstance(params.get("sdp"), str) else ""
         if not offer_sdp.strip():
             proof = {
                 "type": "verto.invite.blocked",
                 "at": now_iso(),
                 "callId": call_id,
+                "vertoCallId": call_id,
+                "sipCallId": linked_sip_call_id or call_id,
+                "linkedSipCallId": linked_sip_call_id,
                 "mediaTarget": "pipecat_verto_webrtc_agent_leg",
                 "reviewReady": False,
                 "blocker": "Incoming FreeSWITCH Verto invite did not include SDP, so the Pipecat sidecar cannot create a WebRTC answer.",
@@ -399,6 +429,9 @@ class VertoAgentBridge:
             "type": "verto.invite.received",
             "at": now_iso(),
             "callId": call_id,
+            "vertoCallId": call_id,
+            "sipCallId": linked_sip_call_id or call_id,
+            "linkedSipCallId": linked_sip_call_id,
             "mediaTarget": "pipecat_verto_webrtc_agent_leg",
             "reviewReady": False,
             "offerSdpBytes": len(offer_sdp.encode("utf-8")),
@@ -408,10 +441,11 @@ class VertoAgentBridge:
         self.last_invite = proof
         print(json.dumps(proof), flush=True)
         self.write_proof_artifact("verto.invite.received")
-        await self.answer_invite(call_id=call_id, offer_sdp=offer_sdp, params=params)
+        await self.answer_invite(call_id=call_id, linked_sip_call_id=linked_sip_call_id, offer_sdp=offer_sdp, params=params)
 
-    async def answer_invite(self, *, call_id: str, offer_sdp: str, params: dict[str, Any]) -> None:
+    async def answer_invite(self, *, call_id: str, linked_sip_call_id: str | None, offer_sdp: str, params: dict[str, Any]) -> None:
         readiness = await asyncio.to_thread(check_readiness, self.acc_url)
+        sip_call_id = linked_sip_call_id or call_id
         try:
             started_call = await asyncio.to_thread(
                 json_http,
@@ -420,7 +454,9 @@ class VertoAgentBridge:
                 {
                     "eventType": "call.started",
                     "timestamp": now_iso(),
-                    "sipCallId": call_id,
+                    "sipCallId": sip_call_id,
+                    "vertoCallId": call_id,
+                    **({"linkedSipCallId": linked_sip_call_id} if linked_sip_call_id else {}),
                     "telephonyMode": "local_sip",
                     "source": "freeswitch_verto",
                     "rtcAsrMode": "rtc_asr_live" if readiness.ok else "rtc_asr_blocked",
@@ -432,6 +468,9 @@ class VertoAgentBridge:
                 "type": "verto.answer.blocked",
                 "at": now_iso(),
                 "callId": call_id,
+                "vertoCallId": call_id,
+                "sipCallId": sip_call_id,
+                "linkedSipCallId": linked_sip_call_id,
                 "reviewReady": False,
                 "blocker": f"ACC live SIP call creation failed: {exc}",
             }
@@ -440,33 +479,57 @@ class VertoAgentBridge:
             return
 
         if not readiness.ok:
-            await asyncio.to_thread(
-                json_http,
-                "POST",
-                f"{self.acc_url.rstrip('/')}/api/live-sip/events",
-                {
-                    "eventType": "rtc_asr.blocked",
-                    "timestamp": now_iso(),
-                    "sipCallId": call_id,
-                    "blocker": readiness.detail,
-                    "nextAction": "Restore ACC, rtc-asr, Kokoro, and Pipecat readiness before rerunning the Verto live SIP proof.",
-                },
-            )
-            self.last_answer = {
-                "type": "verto.answer.blocked",
-                "at": now_iso(),
-                "callId": call_id,
-                "reviewReady": False,
-                "blocker": "ACC, rtc-asr, Kokoro, or Pipecat runtime readiness failed before answering Verto media.",
-                "readiness": {
-                    "status": readiness.status,
-                    "detail": readiness.detail,
-                    "blockers": readiness.blockers,
-                },
-            }
-            print(json.dumps(self.last_answer), flush=True)
-            self.write_proof_artifact("verto.answer.blocked")
-            await self.end_acc_call(call_id, reason="verto_readiness_blocked")
+            blocked_evidence_posted = False
+            blocked_evidence_error = None
+            try:
+                await asyncio.to_thread(
+                    json_http,
+                    "POST",
+                    f"{self.acc_url.rstrip('/')}/api/live-sip/events",
+                    {
+                        "eventType": "rtc_asr.blocked",
+                        "timestamp": now_iso(),
+                        "sipCallId": sip_call_id,
+                        "vertoCallId": call_id,
+                        **({"linkedSipCallId": linked_sip_call_id} if linked_sip_call_id else {}),
+                        "blocker": readiness.detail,
+                        "nextAction": "Restore ACC, rtc-asr, Kokoro, and Pipecat readiness before rerunning the Verto live SIP proof.",
+                    },
+                )
+                blocked_evidence_posted = True
+            except Exception as exc:
+                blocked_evidence_error = str(exc)
+                self.last_error = {
+                    "at": now_iso(),
+                    "error": f"ACC rtc_asr.blocked evidence post failed: {exc}",
+                    "callId": call_id,
+                    "vertoCallId": call_id,
+                    "sipCallId": sip_call_id,
+                    "linkedSipCallId": linked_sip_call_id,
+                }
+                print(json.dumps({"type": "verto.rtc_asr_blocked.post_error", **self.last_error}), flush=True)
+                self.write_proof_artifact("verto.rtc_asr_blocked.post_error")
+            finally:
+                self.last_answer = {
+                    "type": "verto.answer.blocked",
+                    "at": now_iso(),
+                    "callId": call_id,
+                    "vertoCallId": call_id,
+                    "sipCallId": sip_call_id,
+                    "linkedSipCallId": linked_sip_call_id,
+                    "reviewReady": False,
+                    "blocker": "ACC, rtc-asr, Kokoro, or Pipecat runtime readiness failed before answering Verto media.",
+                    "blockedEvidencePosted": blocked_evidence_posted,
+                    "blockedEvidenceError": blocked_evidence_error,
+                    "readiness": {
+                        "status": readiness.status,
+                        "detail": readiness.detail,
+                        "blockers": readiness.blockers,
+                    },
+                }
+                print(json.dumps(self.last_answer), flush=True)
+                self.write_proof_artifact("verto.answer.blocked")
+                await self.end_acc_call(call_id, reason="verto_readiness_blocked", linked_sip_call_id=linked_sip_call_id)
             return
 
         session_id = f"verto-{call_id}"
@@ -480,6 +543,9 @@ class VertoAgentBridge:
                     "source": "freeswitch_verto",
                     "sessionId": session_id,
                     "callId": call_id,
+                    "sipCallId": sip_call_id,
+                    "linkedSipCallId": linked_sip_call_id,
+                    "vertoCallId": call_id,
                     "vertoParams": {key: value for key, value in params.items() if key != "sdp"},
                 },
             }
@@ -491,14 +557,15 @@ class VertoAgentBridge:
                     connection=connection,
                     session_id=session_id,
                     call_id=call_id,
+                    linked_sip_call_id=linked_sip_call_id,
                     acc_call_id=acc_call_id,
                     readiness=readiness,
                 )
             except Exception as exc:
-                self.last_error = {"at": now_iso(), "error": f"Verto pipeline start failed: {exc}", "callId": call_id}
+                self.last_error = {"at": now_iso(), "error": f"Verto pipeline start failed: {exc}", "callId": call_id, "vertoCallId": call_id, "sipCallId": sip_call_id, "linkedSipCallId": linked_sip_call_id}
                 print(json.dumps({"type": "verto.pipeline_start.error", **self.last_error}), flush=True)
                 self.write_proof_artifact("verto.pipeline_start.error")
-                await self.end_acc_call(call_id, reason="verto_pipeline_start_failed")
+                await self.end_acc_call(call_id, reason="verto_pipeline_start_failed", linked_sip_call_id=linked_sip_call_id)
                 raise
 
         try:
@@ -508,51 +575,76 @@ class VertoAgentBridge:
                 "type": "verto.answer.failed",
                 "at": now_iso(),
                 "callId": call_id,
+                "vertoCallId": call_id,
+                "sipCallId": sip_call_id,
+                "linkedSipCallId": linked_sip_call_id,
                 "reviewReady": False,
                 "blocker": f"Pipecat SmallWebRTCRequestHandler failed before returning an SDP answer: {exc}",
             }
             print(json.dumps(self.last_answer), flush=True)
             self.write_proof_artifact("verto.answer.failed")
-            await self.end_acc_call(call_id, reason="verto_sdp_answer_failed")
+            await self.end_acc_call(call_id, reason="verto_sdp_answer_failed", linked_sip_call_id=linked_sip_call_id)
             return
         if not answer or not isinstance(answer.get("sdp"), str):
             self.last_answer = {
                 "type": "verto.answer.failed",
                 "at": now_iso(),
                 "callId": call_id,
+                "vertoCallId": call_id,
+                "sipCallId": sip_call_id,
+                "linkedSipCallId": linked_sip_call_id,
                 "reviewReady": False,
                 "blocker": "Pipecat SmallWebRTCRequestHandler did not return an SDP answer for the Verto offer.",
             }
             print(json.dumps(self.last_answer), flush=True)
             self.write_proof_artifact("verto.answer.failed")
-            await self.end_acc_call(call_id, reason="verto_sdp_answer_failed")
+            await self.end_acc_call(call_id, reason="verto_sdp_answer_failed", linked_sip_call_id=linked_sip_call_id)
             return
 
+        answer_sdp = normalize_verto_answer_sdp(normalize_browser_answer_sdp(str(answer["sdp"])))
         try:
-            answer_sdp = normalize_verto_answer_sdp(normalize_browser_answer_sdp(str(answer["sdp"])))
             await self.send_rpc("verto.answer", {"dialogParams": {"callID": call_id}, "sdp": answer_sdp})
-            answer_sdp_path = self.write_sdp_artifact(call_id, "answer", answer_sdp)
         except Exception as exc:
             self.last_answer = {
                 "type": "verto.answer.failed",
                 "at": now_iso(),
                 "callId": call_id,
+                "vertoCallId": call_id,
+                "sipCallId": sip_call_id,
+                "linkedSipCallId": linked_sip_call_id,
                 "reviewReady": False,
                 "blocker": f"Verto answer send failed after ACC call creation: {exc}",
             }
             print(json.dumps(self.last_answer), flush=True)
             self.write_proof_artifact("verto.answer.failed")
-            await self.end_acc_call(call_id, reason="verto_answer_send_failed")
+            await self.close_session(session_id, reason="verto_answer_send_failed")
             return
+        answer_sdp_path = None
+        answer_artifact_error = None
+        try:
+            answer_sdp_path = self.write_sdp_artifact(call_id, "answer", answer_sdp)
+        except Exception as exc:
+            answer_artifact_error = str(exc)
+            self.last_error = {
+                "at": now_iso(),
+                "error": f"Verto answer SDP artifact write failed after successful answer delivery: {exc}",
+                "callId": call_id,
+            }
+            print(json.dumps({"type": "verto.answer.artifact_error", **self.last_error}), flush=True)
         self.last_answer = {
             "type": "verto.answer.sent",
             "at": now_iso(),
             "callId": call_id,
+            "vertoCallId": call_id,
+            "sipCallId": sip_call_id,
+            "linkedSipCallId": linked_sip_call_id,
             "accCallId": acc_call_id,
             "sessionId": session_id,
             "pcId": str(answer.get("pc_id") or call_id),
             "answerSdpBytes": len(answer_sdp.encode("utf-8")),
             "answerSdpPath": answer_sdp_path,
+            "answerSdpArtifactPersisted": answer_sdp_path is not None,
+            "answerSdpArtifactError": answer_artifact_error,
             "transport": "SmallWebRTCTransport",
             "pipeline": ACC_VOICE_PIPELINE_CONTRACT,
             "reviewReady": False,
@@ -567,11 +659,18 @@ class VertoAgentBridge:
         connection: Any,
         session_id: str,
         call_id: str,
+        linked_sip_call_id: str | None,
         acc_call_id: str,
         readiness: Any,
     ) -> None:
         def record_pipeline_evidence(snapshot: dict[str, Any]) -> None:
-            self.pipeline_evidence[call_id] = snapshot
+            self.pipeline_evidence[call_id] = {
+                **snapshot,
+                "accCallId": acc_call_id,
+                "vertoCallId": call_id,
+                "sipCallId": linked_sip_call_id or call_id,
+                "linkedSipCallId": linked_sip_call_id,
+            }
             self.write_proof_artifact("verto.pipeline.stage")
 
         session = AccVoicePipelineSession(
@@ -662,7 +761,9 @@ class VertoAgentBridge:
                 {
                     "eventType": "agent.greeting",
                     "timestamp": now_iso(),
-                    "sipCallId": call_id,
+                    "sipCallId": linked_sip_call_id or call_id,
+                    "vertoCallId": call_id,
+                    **({"linkedSipCallId": linked_sip_call_id} if linked_sip_call_id else {}),
                     "text": os.environ.get("ACC_SIP_PRERECORDED_INTRO_TEXT", DEFAULT_INTRO_TEXT),
                 },
             )
@@ -679,7 +780,13 @@ class VertoAgentBridge:
 
         @connection.event_handler("connected")
         async def queue_intro_for_connected_peer(_connection: Any) -> None:
-            if os.environ.get("ACC_VERTO_OWNS_GREETING", "true").strip().lower() != "false":
+            verto_owns_greeting = os.environ.get("ACC_VERTO_OWNS_GREETING", "true").strip().lower() != "false"
+            session.record_stage(
+                "greeting.owner_selected",
+                owner="pipecat_verto_bridge" if verto_owns_greeting else "freeswitch_esl_bridge",
+                vertoOwnsGreeting=verto_owns_greeting,
+            )
+            if verto_owns_greeting:
                 await queue_prerecorded_intro()
         session_record = {
             "connection": connection,
@@ -689,6 +796,9 @@ class VertoAgentBridge:
             "pipelineTask": task,
             "turnSession": session,
             "callId": call_id,
+            "vertoCallId": call_id,
+            "sipCallId": linked_sip_call_id or call_id,
+            "linkedSipCallId": linked_sip_call_id,
             "accCallId": acc_call_id,
             "sessionId": session_id,
             "startedAt": now_iso(),
@@ -705,6 +815,7 @@ class VertoAgentBridge:
     async def close_session(self, session_id: str, *, reason: str = "verto session closed") -> None:
         session = self.sessions.get(session_id) or {}
         call_id = session.get("callId")
+        linked_sip_call_id = session.get("linkedSipCallId")
         closed_at = now_iso()
         if session:
             session["closedAt"] = session.get("closedAt") or closed_at
@@ -726,7 +837,12 @@ class VertoAgentBridge:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
         if isinstance(call_id, str) and call_id:
-            await self.end_acc_call(call_id, reason=reason, timestamp=closed_at)
+            await self.end_acc_call(
+                call_id,
+                reason=reason,
+                timestamp=closed_at,
+                linked_sip_call_id=linked_sip_call_id if isinstance(linked_sip_call_id, str) else None,
+            )
 
     def readiness_payload(self) -> dict[str, Any]:
         logged_in = bool(self.last_login.get("ok"))
