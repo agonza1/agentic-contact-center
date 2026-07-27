@@ -4309,6 +4309,11 @@ function openAiConversationModel(env: NodeJS.ProcessEnv = process.env): string {
   return env.ACC_OPENAI_CONVERSATION_MODEL?.trim() || "GPT-5.4-mini";
 }
 
+function openAiConversationTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const parsed = Number.parseInt(env.ACC_OPENAI_REQUEST_TIMEOUT_MS?.trim() || "12000", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 12000;
+}
+
 function redactOpenAiError(value: unknown): string {
   const text = value instanceof Error ? value.message : String(value ?? "openai_request_failed");
   return text
@@ -4396,6 +4401,8 @@ async function generateOpenAiLiveSipResponse(
     ],
   };
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), openAiConversationTimeoutMs(env));
   try {
     const response = await fetch(`${baseUrl}/responses`, {
       method: "POST",
@@ -4403,6 +4410,7 @@ async function generateOpenAiLiveSipResponse(
         authorization: `Bearer ${apiKey}`,
         "content-type": "application/json",
       },
+      signal: controller.signal,
       body: JSON.stringify(body),
     });
     const payload = await response.json().catch(() => ({}));
@@ -4423,8 +4431,27 @@ async function generateOpenAiLiveSipResponse(
       status: response.status,
     };
   } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return { ok: false, model, error: "openai_request_timeout", status: null };
+    }
     return { ok: false, model, error: redactOpenAiError(error), status: null };
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+type CallerTurnDeliveryAckPreview = {
+  callId: string;
+  snapshotVersion: string;
+  callerTranscript: string;
+  timestamp: string;
+  conversationMode?: ConversationMode;
+  expectedAgentText: string;
+  openAiLlm?: OpenAiLlmTurnResult;
+};
+
+function buildCallerTurnDeliveryAckKey(callId: string, snapshotVersion: string): string {
+  return `${callId}:${snapshotVersion}`;
 }
 
 function uniqueLiveSipCallIds(...values: Array<string | null | undefined>): string[] {
@@ -4482,6 +4509,7 @@ async function routeRequest(
   liveSipCallMap: Map<string, string>,
   liveSipEndedCallMap: Map<string, string>,
   liveSipCallLocks: Map<string, Promise<void>>,
+  callerTurnDeliveryAckPreviews: Map<string, CallerTurnDeliveryAckPreview>,
   voiceSessions: RealtimeVoiceSessionStore,
 ): Promise<void> {
   const url = request.url ?? "/";
@@ -6300,6 +6328,20 @@ async function routeRequest(
           conversationMode,
           openAiLlm,
         });
+        const expectedAgentText = snapshot.transcript.at(-1)?.speaker === "agent" ? snapshot.transcript.at(-1)?.text : undefined;
+        if (!expectedAgentText) {
+          writeBadRequest(response, "caller_turn_preview_agent_text_missing");
+          return;
+        }
+        callerTurnDeliveryAckPreviews.set(buildCallerTurnDeliveryAckKey(callerTurnMatch[1], snapshotVersion), {
+          callId: callerTurnMatch[1],
+          snapshotVersion,
+          callerTranscript: text,
+          timestamp,
+          conversationMode,
+          expectedAgentText,
+          openAiLlm,
+        });
         writeJson(response, 200, {
           ...buildCallPayload(snapshot),
           callerTurnCommit: {
@@ -6307,9 +6349,11 @@ async function routeRequest(
             status: "pending",
             callId: callerTurnMatch[1],
             callerTranscript: text,
+            expectedAgentText,
             snapshotVersion,
             timestamp,
             conversationMode: conversationMode ?? null,
+            openAiResponseId: openAiLlm?.ok ? openAiLlm.responseId : null,
           },
         });
         return;
@@ -6381,15 +6425,19 @@ async function routeRequest(
         writeBadRequest(response, "caller_turn_commit_stale");
         return;
       }
-      const openAiLlm = conversationMode === "openai_llm"
-        ? {
-            ok: true,
-            model: openAiConversationModel(),
-            text: expectedAgentText,
-            responseId: getOptionalTrimmedString(body.openAiResponseId) ?? null,
-            status: 200,
-          } satisfies OpenAiLlmTurnResult
-        : undefined;
+      const previewKey = buildCallerTurnDeliveryAckKey(callerTurnCommitMatch[1], expectedSnapshotVersion);
+      const pendingPreview = callerTurnDeliveryAckPreviews.get(previewKey);
+      if (
+        !pendingPreview
+        || pendingPreview.callerTranscript !== text
+        || pendingPreview.timestamp !== timestamp
+        || pendingPreview.conversationMode !== conversationMode
+        || pendingPreview.expectedAgentText !== expectedAgentText
+      ) {
+        writeBadRequest(response, "caller_turn_commit_stale");
+        return;
+      }
+      const openAiLlm = pendingPreview.openAiLlm;
       const preview = await ingress.previewCallerTurn(callerTurnCommitMatch[1], turn, config, {
         conversationMode,
         openAiLlm,
@@ -6403,6 +6451,7 @@ async function routeRequest(
         conversationMode,
         openAiLlm,
       });
+      callerTurnDeliveryAckPreviews.delete(previewKey);
       writeJson(response, 200, {
         ...buildCallPayload(snapshot),
         callerTurnCommit: {
@@ -6901,10 +6950,11 @@ export function buildHttpServer(config: PocConfig) {
   const liveSipCallMap = new Map<string, string>();
   const liveSipEndedCallMap = new Map<string, string>();
   const liveSipCallLocks = new Map<string, Promise<void>>();
+  const callerTurnDeliveryAckPreviews = new Map<string, CallerTurnDeliveryAckPreview>();
   const voiceSessions = new RealtimeVoiceSessionStore();
 
   const server = createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, voiceSessions).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, callerTurnDeliveryAckPreviews, voiceSessions).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;
