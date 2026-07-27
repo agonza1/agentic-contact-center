@@ -56,6 +56,8 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(sharedPipeline, /ACC_TTS_CACHE_DIR/);
   assert.match(sharedPipeline, /cacheHit/);
   assert.match(sharedPipeline, /async def prewarm_tts_cache/);
+  assert.match(sharedPipeline, /async def prewarm_conversation_tts_cache/);
+  assert.match(sharedPipeline, /Is this billing, cancellation, an account update, or a human handoff\?/);
   assert.match(sharedPipeline, /temporary_path\.replace/);
   assert.match(sharedPipeline, /speech_started_barge_in/);
   assert.match(sharedPipeline, /output\.transport_flushed/);

@@ -707,7 +707,7 @@ class VertoAgentBridge:
         runner = PipelineRunner()
         runner_task = asyncio.create_task(runner.run(task, auto_end=False))
         async def queue_prerecorded_intro() -> None:
-            prewarm_task = asyncio.create_task(session.prewarm_tts_cache())
+            prewarm_task = asyncio.create_task(session.prewarm_conversation_tts_cache())
             flow_manager_task = asyncio.create_task(session.get_flow_manager_adapter().initialize())
             greeting_preroll_ms = max(int(os.environ.get("ACC_SIP_GREETING_PREROLL_MS", "300")), 0)
             if greeting_preroll_ms:

@@ -101,7 +101,7 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.match(bridge, /"sipCallId": linked_sip_call_id or call_id/);
   assert.match(bridge, /"accCallId": acc_call_id/);
   assert.match(bridge, /greeting\.owner_selected/);
-  assert.match(bridge, /asyncio\.create_task\(session\.prewarm_tts_cache\(\)\)/);
+  assert.match(bridge, /asyncio\.create_task\(session\.prewarm_conversation_tts_cache\(\)\)/);
   assert.match(bridge, /asyncio\.create_task\(session\.get_flow_manager_adapter\(\)\.initialize\(\)\)/);
   assert.match(bridge, /owner="pipecat_verto_bridge" if verto_owns_greeting else "freeswitch_esl_bridge"/);
   assert.match(bridge, /async def end_acc_call/);

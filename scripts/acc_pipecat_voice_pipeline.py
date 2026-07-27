@@ -54,6 +54,13 @@ DEFAULT_TTS_PREWARM_TEXT = (
     "Hi, I can help with billing, cancellation, account updates, or a human handoff. "
     "What do you need today?"
 )
+DEFAULT_TTS_PREWARM_TEXTS = (
+    DEFAULT_TTS_PREWARM_TEXT,
+    "Is this billing, cancellation, an account update, or a human handoff?",
+    "I can help. Is it a charge, renewal increase, refund, or payment issue?",
+    "I can help with cancellation. What is the main reason you want to cancel?",
+    "I’ll prepare a handoff summary for a human operator. What is the one thing you want them to solve first?",
+)
 
 
 class CallerTurnDeliveryCommitError(RuntimeError):
@@ -1104,6 +1111,11 @@ class AccVoicePipelineSession:
                 detail=str(exc),
                 text=text,
             )
+
+    async def prewarm_conversation_tts_cache(self) -> None:
+        """Warm common deterministic branches in conversational priority order."""
+        for text in DEFAULT_TTS_PREWARM_TEXTS:
+            await self.prewarm_tts_cache(text)
 
 
 class PipecatTurnControls:
