@@ -4302,6 +4302,16 @@ function deleteLiveSipCallAliases(liveSipCallMap: Map<string, string>, ids: stri
   for (const id of ids) liveSipCallMap.delete(id);
 }
 
+function deleteLiveSipCallAliasesForCall(liveSipCallMap: Map<string, string>, callId: string): void {
+  for (const [id, mappedCallId] of liveSipCallMap) {
+    if (mappedCallId === callId) liveSipCallMap.delete(id);
+  }
+}
+
+function isLiveSipCallEnded(snapshot: CallSnapshot): boolean {
+  return snapshot.events.some((event) => event.type === "sip_call_ended");
+}
+
 async function routeRequest(
   request: IncomingMessage,
   response: ServerResponse,
@@ -5320,6 +5330,11 @@ async function routeRequest(
         if (existingCallId) {
           const existingSnapshot = await ingress.getSnapshot(existingCallId);
           if (existingSnapshot) {
+            if (isLiveSipCallEnded(existingSnapshot)) {
+              deleteLiveSipCallAliasesForCall(liveSipCallMap, existingSnapshot.session.callId);
+              writeBadRequest(response, "live_sip_call_already_ended");
+              return;
+            }
             setLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds, existingSnapshot.session.callId);
             writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(existingSnapshot), idempotent: true });
             return;
@@ -5329,6 +5344,11 @@ async function routeRequest(
         const matchingSnapshot = (await Promise.all(liveSipCorrelationIds.map((id) => ingress.listSnapshots({ providerCallId: id }))))
           .flat()[0];
         if (matchingSnapshot) {
+          if (isLiveSipCallEnded(matchingSnapshot)) {
+            deleteLiveSipCallAliasesForCall(liveSipCallMap, matchingSnapshot.session.callId);
+            writeBadRequest(response, "live_sip_call_already_ended");
+            return;
+          }
           setLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds, matchingSnapshot.session.callId);
           writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(matchingSnapshot), idempotent: true });
           return;
@@ -5372,7 +5392,7 @@ async function routeRequest(
       if (eventType === "call.ended") {
         const existingSnapshot = await ingress.getSnapshot(callId);
         if (existingSnapshot?.events.some((event) => event.type === "sip_call_ended")) {
-          deleteLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds);
+          deleteLiveSipCallAliasesForCall(liveSipCallMap, existingSnapshot.session.callId);
           writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(existingSnapshot), idempotent: true });
           return;
         }
@@ -5581,7 +5601,7 @@ async function routeRequest(
           durationSeconds,
         },
       });
-      deleteLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds);
+      deleteLiveSipCallAliasesForCall(liveSipCallMap, snapshot.session.callId);
       writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(snapshot) });
     } catch {
       writeNotFound(response);

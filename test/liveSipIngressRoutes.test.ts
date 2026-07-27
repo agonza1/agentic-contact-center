@@ -453,6 +453,28 @@ test("live SIP call.started and call.ended are idempotent for shared Verto and F
     assert.equal(staleVertoTranscript.statusCode, 400);
     assert.equal(staleVertoTranscript.payload.error, "live_sip_call_not_started");
 
+    const staleALegTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-26T22:00:00.750Z",
+      sipCallId: "fs-a-leg-uuid",
+      text: "This should not attach through the original A-leg alias either.",
+    });
+    assert.equal(staleALegTranscript.statusCode, 400);
+    assert.equal(staleALegTranscript.payload.error, "live_sip_call_not_started");
+
+    const delayedVertoStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-26T22:00:00.800Z",
+      sipCallId: "verto-b-leg-uuid",
+      linkedSipCallId: "fs-a-leg-uuid",
+      vertoCallId: "verto-b-leg-uuid",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(delayedVertoStarted.statusCode, 400);
+    assert.equal(delayedVertoStarted.payload.error, "live_sip_call_already_ended");
+
     const transcript = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.transcript",
       timestamp: "2026-07-26T22:00:01.000Z",
