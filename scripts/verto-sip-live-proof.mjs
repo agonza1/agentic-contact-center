@@ -184,6 +184,23 @@ function pcm16Rms(pcm) {
   return Math.round(Math.sqrt(sumSquares / Math.max(sampleCount, 1)));
 }
 
+function playbackAfterTimestamp(chunks, timestamp) {
+  const thresholdMs = Date.parse(timestamp || "");
+  const matchedChunks = Number.isFinite(thresholdMs)
+    ? chunks.filter((chunk) => chunk.receivedAtMs >= thresholdMs)
+    : [];
+  const pcm = Buffer.concat(matchedChunks.map((chunk) => chunk.pcm));
+  const packetCount = matchedChunks.length;
+  const rms = pcm16Rms(pcm);
+  return {
+    timestamp: Number.isFinite(thresholdMs) ? new Date(thresholdMs).toISOString() : null,
+    packetCount,
+    rms,
+    audioBytes: pcm.length,
+    confirmed: packetCount >= 10 && rms >= 50,
+  };
+}
+
 function pcm16MonoFromWav(wav, targetSampleRate = 8000) {
   if (wav.toString("ascii", 0, 4) !== "RIFF" || wav.toString("ascii", 8, 12) !== "WAVE") {
     throw new Error("caller audio must be a RIFF/WAVE file");
@@ -320,6 +337,7 @@ class SipProofCall {
     this.options = options;
     this.events = [];
     this.returnPcmChunks = [];
+    this.returnRtpChunks = [];
     this.returnPacketCount = 0;
     this.callId = `acc-proof-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     this.fromTag = `acc${Date.now()}`;
@@ -516,10 +534,12 @@ class SipProofCall {
     if (msg.length < 12) return;
     const payloadType = msg[1] & 0x7f;
     if (payloadType !== 0) return;
+    const receivedAtMs = Date.now();
     const payload = msg.subarray(12);
     const pcm = Buffer.alloc(payload.length * 2);
     for (let index = 0; index < payload.length; index += 1) pcm.writeInt16LE(ulawToPcm16(payload[index]), index * 2);
     this.returnPcmChunks.push(pcm);
+    this.returnRtpChunks.push({ pcm, receivedAtMs, receivedAt: new Date(receivedAtMs).toISOString() });
     this.returnPacketCount += 1;
     if (this.returnPacketCount === 1) this.record("rtp.return_audio_started", { remote: `${rinfo.address}:${rinfo.port}` });
   }
@@ -538,8 +558,14 @@ class SipProofCall {
     await writeFile(callerWavPath, callerWav);
     await writeFile(playbackWavPath, playbackWav);
     await writeFile(sipLogPath, `${JSON.stringify(this.events, null, 2)}\n`, "utf8");
+    const rtcAsrEvidence = await loadRtcAsrEvidence(rtcAsrEvidencePath, {
+      startedAtMs: this.startedAtMs,
+      baselineCallIds: this.rtcAsrBaselineCallIds,
+    });
+    const rtcAsrReady = rtcAsrEvidence.ready;
     const playbackRms = pcm16Rms(playbackPcm);
-    const callerPlaybackConfirmed = this.returnPacketCount >= 10 && playbackRms >= 50;
+    const responsePlayback = playbackAfterTimestamp(this.returnRtpChunks, rtcAsrEvidence.ttsReadyAt);
+    const callerPlaybackConfirmed = this.returnPacketCount >= 10 && playbackRms >= 50 && responsePlayback.confirmed;
     await writeFile(
       playbackEvidencePath,
       `${JSON.stringify({
@@ -551,15 +577,15 @@ class SipProofCall {
         playbackRms,
         playbackWavPath,
         playbackAudioBytes: playbackPcm.length,
+        responseTtsReadyAt: responsePlayback.timestamp,
+        responsePlaybackConfirmed: responsePlayback.confirmed,
+        responsePlaybackPacketCount: responsePlayback.packetCount,
+        responsePlaybackRms: responsePlayback.rms,
+        responsePlaybackAudioBytes: responsePlayback.audioBytes,
         generatedAt: nowIso(),
       }, null, 2)}\n`,
       "utf8",
     );
-    const rtcAsrEvidence = await loadRtcAsrEvidence(rtcAsrEvidencePath, {
-      startedAtMs: this.startedAtMs,
-      baselineCallIds: this.rtcAsrBaselineCallIds,
-    });
-    const rtcAsrReady = rtcAsrEvidence.ready;
     await writeFile(
       normalizedRtcAsrEvidencePath,
       `${JSON.stringify({
@@ -583,6 +609,7 @@ class SipProofCall {
     const blockers = [];
     if (!this.remoteRtp) blockers.push("FreeSWITCH did not return an RTP target in the accepted INVITE SDP.");
     if (!callerPlaybackConfirmed) blockers.push("No caller-side return RTP audio was captured.");
+    if (rtcAsrReady && !responsePlayback.confirmed) blockers.push("No caller-side return RTP audio was captured after the response TTS event.");
     if (!rtcAsrReady) blockers.push("rtc-asr transcript evidence path was not attached or is empty.");
     const manifest = {
       schemaVersion: 1,
@@ -608,6 +635,8 @@ class SipProofCall {
         callerInputPacketCount: Math.ceil(this.callerPcm.length / 320),
         callerPlaybackPacketCount: this.returnPacketCount,
         callerPlaybackRms: playbackRms,
+        responsePlaybackPacketCount: responsePlayback.packetCount,
+        responsePlaybackRms: responsePlayback.rms,
       },
       artifacts: {
         audioWav: callerWavPath,
@@ -642,6 +671,10 @@ class SipProofCall {
         packetCount: this.returnPacketCount,
         playbackRms,
         playbackWavPath,
+        responseTtsReadyAt: responsePlayback.timestamp,
+        responsePlaybackConfirmed: responsePlayback.confirmed,
+        responsePlaybackPacketCount: responsePlayback.packetCount,
+        responsePlaybackRms: responsePlayback.rms,
       },
       rtcAsrEvidence: {
         transcriptCaptured: rtcAsrReady,
@@ -670,6 +703,13 @@ function runSelfTest() {
   const sdpTarget = parseRtpTargetFromSdp("v=0\r\nc=IN IP4 127.0.0.1\r\nm=audio 29790 RTP/AVP 0\r\n", "fallback");
   const pcm = tonePcm16({ durationMs: 40 });
   const packets = ulawPacketsFromPcm(pcm, { ssrc: 1 });
+  const responsePlayback = playbackAfterTimestamp([
+    { receivedAtMs: Date.parse("2026-07-27T10:00:00.000Z"), pcm: Buffer.alloc(160 * 2) },
+    ...Array.from({ length: 10 }, (_, index) => ({
+      receivedAtMs: Date.parse("2026-07-27T10:00:01.000Z") + index * 20,
+      pcm,
+    })),
+  ], "2026-07-27T10:00:00.500Z");
   const inferredLocalHost = resolveLocalHost({
     interfaces: {
       lo0: [{ address: "127.0.0.1", family: "IPv4", internal: true }],
@@ -688,6 +728,8 @@ function runSelfTest() {
     && authorizationUriReady
     && sdpTarget?.port === 29790
     && packets.length > 0
+    && responsePlayback.packetCount === 10
+    && responsePlayback.confirmed === true
     && inferredLocalHost.host === "192.168.86.28"
     && loopbackRejected;
   console.log(JSON.stringify({
@@ -696,6 +738,7 @@ function runSelfTest() {
     authorizationUriReady,
     sdpTarget,
     packetCount: packets.length,
+    responsePlayback,
     inferredLocalHost,
     loopbackRejected,
   }, null, 2));

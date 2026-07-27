@@ -22,6 +22,7 @@ test("Verto SIP live proof self-test validates digest, SDP, and RTP packet helpe
     authorizationUriReady: boolean;
     sdpTarget: { host: string; port: number };
     packetCount: number;
+    responsePlayback: { packetCount: number; confirmed: boolean };
     inferredLocalHost: { host: string; source: string };
     loopbackRejected: boolean;
   };
@@ -31,6 +32,8 @@ test("Verto SIP live proof self-test validates digest, SDP, and RTP packet helpe
   assert.equal(summary.authorizationUriReady, true);
   assert.deepEqual(summary.sdpTarget, { host: "127.0.0.1", port: 29790 });
   assert.ok(summary.packetCount > 0);
+  assert.equal(summary.responsePlayback.packetCount, 10);
+  assert.equal(summary.responsePlayback.confirmed, true);
   assert.deepEqual(summary.inferredLocalHost, { host: "192.168.86.28", source: "network_interface" });
   assert.equal(summary.loopbackRejected, true);
 });
@@ -51,6 +54,9 @@ test("Verto SIP proof requires transcript-backed non-silent caller playback", ()
   assert.match(script, /type: rtcAsrReady \? "transcript\.final"/);
   assert.match(script, /this\.returnPacketCount >= 10/);
   assert.match(script, /playbackRms >= 50/);
+  assert.match(script, /playbackAfterTimestamp\(this\.returnRtpChunks, rtcAsrEvidence\.ttsReadyAt\)/);
+  assert.match(script, /responsePlaybackConfirmed/);
+  assert.match(script, /No caller-side return RTP audio was captured after the response TTS event/);
   assert.match(script, /--local-host must be a non-loopback IPv4 address reachable from FreeSWITCH/);
   assert.match(script, /networkInterfaces\(\)/);
   assert.match(script, /localBindHost: argValue\("--local-bind-host"/);
