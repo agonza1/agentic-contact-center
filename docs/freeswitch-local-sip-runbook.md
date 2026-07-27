@@ -56,7 +56,7 @@ Use `npm run docker:freeswitch` instead when you want compose to build and start
 
 Use `npm run docker:sip-verto` when you want Compose to start the preferred #222 local SIP lab stack: ACC, FreeSWITCH, rtc-asr, Kokoro, and the Pipecat Verto/WebRTC sidecar. That path expects a compatible `rtc-asr` image, defaulting to `rtc-asr:local`, exposes FreeSWITCH Verto on `127.0.0.1:8081`/`8082`, and keeps extension `8600` bridged to `acc-pipecat`.
 
-The Compose sidecar mounts `./artifacts` and writes its call-scoped proof to `artifacts/freeswitch-live/pipecat-verto-proof.json`.
+The Compose sidecar mounts `./artifacts`, keeps the latest bridge proof at `artifacts/freeswitch-live/pipecat-verto-proof.json`, and also preserves per-call snapshots under `artifacts/freeswitch-live/calls/<call-id>/pipecat-verto-proof.json`.
 
 Use `npm run docker:sip` only for the legacy ESL/RTP proof-debug lane. That bridge can still write bundle-compatible artifacts, but it is not the accepted #222 route.
 

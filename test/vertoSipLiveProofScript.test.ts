@@ -96,6 +96,9 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.match(bridge, /finally:\n\s+self\.last_answer = \{/);
   assert.match(bridge, /answerSdpArtifactPersisted/);
   assert.match(bridge, /verto\.answer\.artifact_error/);
+  assert.match(bridge, /def call_scoped_proof_paths/);
+  assert.match(bridge, /"callScopedProofArtifactPaths"/);
+  assert.match(bridge, /self\.proof_out\.parent \/ "calls" \/ artifact_id \/ self\.proof_out\.name/);
   assert.match(bridge, /linked_sip_call_id = self\.linked_sip_call_id\(params\)/);
   assert.match(bridge, /"vertoCallId": call_id/);
   assert.match(bridge, /"sipCallId": linked_sip_call_id or call_id/);

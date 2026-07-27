@@ -80,6 +80,13 @@ def now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds")
 
 
+def safe_artifact_id(value: Any) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    safe_value = "".join(character if character.isalnum() or character in "._-" else "_" for character in value.strip())
+    return safe_value[:160] or None
+
+
 def normalize_verto_answer_sdp(sdp: str) -> str:
     """Trim browser-oriented aiortc SDP details that native FreeSWITCH Verto rejects."""
     lines = sdp.replace("\r\n", "\n").strip().split("\n")
@@ -285,6 +292,7 @@ class VertoAgentBridge:
         if self.proof_out is None:
             return
         try:
+            pipeline_evidence = list(self.pipeline_evidence.values())
             payload = {
                 "schemaVersion": 1,
                 "generatedAt": now_iso(),
@@ -299,14 +307,17 @@ class VertoAgentBridge:
                 "lastInvite": self.last_invite,
                 "lastAnswer": self.last_answer,
                 "lastError": self.last_error,
-                "pipelineEvidence": list(self.pipeline_evidence.values()),
+                "pipelineEvidence": pipeline_evidence,
                 "remainingMediaBlocker": "Verto signaling is configured and the sidecar can attempt a Pipecat-backed WebRTC answer, but caller-audible acceptance still requires a live 8600 proof showing rtc-asr final transcript and Kokoro/Pipecat playback heard by the caller.",
                 "nextAction": "Place a local 8600 call with the Verto bridge running, then attach this artifact with the strict live SIP bundle once caller playback proof is captured.",
             }
+            scoped_paths = self.call_scoped_proof_paths(payload)
+            if scoped_paths:
+                payload["callScopedProofArtifactPaths"] = [str(path) for path in scoped_paths]
             self.proof_out.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path = self.proof_out.with_suffix(f"{self.proof_out.suffix}.tmp")
-            tmp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf8")
-            tmp_path.replace(self.proof_out)
+            self.write_json_atomic(self.proof_out, payload)
+            for path in scoped_paths:
+                self.write_json_atomic(path, payload)
         except Exception as exc:
             print(json.dumps({
                 "type": "verto.proof_artifact.error",
@@ -316,10 +327,33 @@ class VertoAgentBridge:
                 "error": str(exc),
             }), flush=True)
 
+    def write_json_atomic(self, path: Path, payload: dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_suffix(f"{path.suffix}.tmp")
+        tmp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf8")
+        tmp_path.replace(path)
+
+    def call_scoped_proof_paths(self, payload: dict[str, Any]) -> list[Path]:
+        if self.proof_out is None:
+            return []
+        ids: list[str] = []
+        for source in [
+            payload.get("lastInvite"),
+            payload.get("lastAnswer"),
+            *payload.get("pipelineEvidence", []),
+        ]:
+            if not isinstance(source, dict):
+                continue
+            for key in ("callId", "vertoCallId", "sipCallId", "linkedSipCallId", "accCallId"):
+                safe_id = safe_artifact_id(source.get(key))
+                if safe_id and safe_id not in ids:
+                    ids.append(safe_id)
+        return [self.proof_out.parent / "calls" / artifact_id / self.proof_out.name for artifact_id in ids]
+
     def write_sdp_artifact(self, call_id: str, kind: str, sdp: str) -> str | None:
         if self.proof_out is None:
             return None
-        safe_call_id = "".join(character if character.isalnum() or character in "._-" else "_" for character in call_id)
+        safe_call_id = safe_artifact_id(call_id) or "unknown-call"
         path = self.proof_out.parent / f"{safe_call_id}-{kind}.sdp"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(sdp, encoding="utf8")
