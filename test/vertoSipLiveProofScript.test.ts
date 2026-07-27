@@ -55,6 +55,28 @@ test("Verto SIP proof requires transcript-backed non-silent caller playback", ()
   assert.match(script, /this\.rtpSocket\.bind\(this\.options\.localRtpPort, this\.options\.localBindHost/);
 });
 
+test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and call cleanup evidence", () => {
+  const bridge = readFileSync("scripts/pipecat-verto-agent-bridge.py", "utf8");
+  const callStartedIndex = bridge.indexOf("\"eventType\": \"call.started\"");
+  const queueFramesIndex = bridge.indexOf("await task.queue_frames(intro_frames)");
+  const greetingIndex = bridge.indexOf("\"eventType\": \"agent.greeting\"");
+
+  assert.ok(callStartedIndex >= 0);
+  assert.ok(bridge.indexOf("\"rtcAsrMode\": \"rtc_asr_live\"", callStartedIndex) > callStartedIndex);
+  assert.ok(queueFramesIndex >= 0);
+  assert.ok(greetingIndex > queueFramesIndex);
+  assert.match(bridge, /session\.begin_output_stream\(stream_id=intro_context_id\)/);
+  assert.match(bridge, /session\.extend_output_window\(audio_bytes=len\(audio_chunk\), sample_rate=intro_sample_rate\)/);
+  assert.match(bridge, /session\.record_output_chunk\(len\(audio_chunk\)\)/);
+  assert.match(bridge, /session\.record_agent_track\(/);
+  assert.match(bridge, /async def end_acc_call/);
+  assert.match(bridge, /"eventType": "call\.ended"/);
+  assert.match(bridge, /await self\.end_acc_call\(call_id, reason="verto_readiness_blocked"\)/);
+  assert.match(bridge, /await self\.end_acc_call\(call_id, reason="verto_sdp_answer_failed"\)/);
+  assert.match(bridge, /await self\.end_acc_call\(call_id, reason="verto_answer_send_failed"\)/);
+  assert.match(bridge, /await self\.end_acc_call\(call_id, reason="verto_pipeline_start_failed"\)/);
+});
+
 test("Verto bridge normalizes FreeSWITCH ICE, DTLS, and G.711 RTP", { skip: !existsSync(".pipecat-runtime") }, async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const { stdout } = await execFileAsync(

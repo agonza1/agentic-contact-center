@@ -352,6 +352,71 @@ test("live SIP proof reports FreeSWITCH broadcast playback as confirmed", async 
   }
 });
 
+test("live SIP call.started and call.ended are idempotent for shared Verto and FreeSWITCH call ids", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const vertoStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-26T22:00:00.000Z",
+      sipCallId: "sip-verto-duplicate",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(vertoStarted.statusCode, 201);
+    assert.equal(vertoStarted.payload.call.session.runtimeModeLabels.rtcAsr, "rtc_asr_live");
+
+    const freeswitchStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-26T22:00:00.100Z",
+      sipCallId: "sip-verto-duplicate",
+      source: "freeswitch_esl",
+      telephonyMode: "local_sip",
+    });
+    assert.equal(freeswitchStarted.statusCode, 200);
+    assert.equal(freeswitchStarted.payload.idempotent, true);
+    assert.equal(freeswitchStarted.payload.call.session.callId, vertoStarted.payload.call.session.callId);
+    assert.equal(freeswitchStarted.payload.call.session.runtimeModeLabels.rtcAsr, "rtc_asr_live");
+
+    const transcript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-26T22:00:01.000Z",
+      sipCallId: "sip-verto-duplicate",
+      text: "Hello from the same current call.",
+      rtcAsrEvidencePath: "artifacts/freeswitch-live/rtc-asr-evidence.json",
+    });
+    assert.equal(transcript.statusCode, 200);
+    assert.equal(transcript.payload.call.session.callId, vertoStarted.payload.call.session.callId);
+    assert.equal(transcript.payload.call.events.some((event: any) => event.type === "rtc_asr_transcript"), true);
+
+    const ended = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.ended",
+      timestamp: "2026-07-26T22:00:02.000Z",
+      sipCallId: "sip-verto-duplicate",
+      hangupCause: "verto_peer_closed",
+    });
+    assert.equal(ended.statusCode, 200);
+    assert.equal(ended.payload.call.events.some((event: any) => event.type === "sip_call_ended" && event.detail.hangupCause === "verto_peer_closed"), true);
+
+    const duplicateEnded = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.ended",
+      timestamp: "2026-07-26T22:00:02.100Z",
+      sipCallId: "sip-verto-duplicate",
+      hangupCause: "freeswitch_channel_hangup",
+    });
+    assert.equal(duplicateEnded.statusCode, 200);
+    assert.equal(duplicateEnded.payload.idempotent, true);
+    assert.equal(duplicateEnded.payload.call.session.callId, vertoStarted.payload.call.session.callId);
+    assert.equal(duplicateEnded.payload.call.events.filter((event: any) => event.type === "sip_call_ended").length, 1);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("live SIP proof stays review-blocked until caller playback is confirmed", async () => {
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));

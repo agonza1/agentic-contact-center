@@ -787,6 +787,7 @@ class AccVoicePipelineSession:
             await ws.send(json.dumps({"type": "finalize"}))
             try:
                 deadline = time.monotonic() + float(os.environ.get("RTC_ASR_FINAL_TIMEOUT_SEC", "12"))
+                final_event_text = ""
                 while time.monotonic() < deadline:
                     event = await self.recv_rtc_asr_event_locked(timeout=max(0.1, deadline - time.monotonic()))
                     if event is None:
@@ -796,13 +797,14 @@ class AccVoicePipelineSession:
                     if candidate:
                         final_text = candidate
                     if is_final_stt_event(event):
+                        final_event_text = candidate
                         break
             finally:
                 # local-stt.v1 finalize ends the current utterance, not the socket.
                 # The next audio turn must send a new start event on this connection.
                 self.rtc_asr_started = False
             final_transcript_source = "rtc_asr_final"
-            if not final_text.strip() and self.rtc_asr_current_interim_text.strip():
+            if not final_event_text.strip() and self.rtc_asr_current_interim_text.strip():
                 final_text = self.rtc_asr_current_interim_text
                 final_transcript_source = "rtc_asr_interim_fallback"
         elapsed_ms = round((time.perf_counter() - started) * 1000)

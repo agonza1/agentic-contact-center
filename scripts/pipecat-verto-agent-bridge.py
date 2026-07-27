@@ -317,6 +317,26 @@ class VertoAgentBridge:
         path.write_text(sdp, encoding="utf8")
         return str(path)
 
+    async def end_acc_call(self, call_id: str, *, reason: str, timestamp: str | None = None) -> bool:
+        try:
+            await asyncio.to_thread(
+                json_http,
+                "POST",
+                f"{self.acc_url.rstrip('/')}/api/live-sip/events",
+                {
+                    "eventType": "call.ended",
+                    "timestamp": timestamp or now_iso(),
+                    "sipCallId": call_id,
+                    "hangupCause": reason,
+                },
+            )
+            return True
+        except Exception as exc:
+            self.last_error = {"at": now_iso(), "error": f"ACC live SIP call end failed: {exc}", "callId": call_id, "reason": reason}
+            print(json.dumps({"type": "verto.call_end.error", **self.last_error}), flush=True)
+            self.write_proof_artifact("verto.call_end.error")
+            return False
+
     def next_id(self) -> str:
         self._rpc_id += 1
         return f"acc-verto-{self._rpc_id}"
@@ -400,20 +420,11 @@ class VertoAgentBridge:
                     "timestamp": now_iso(),
                     "sipCallId": call_id,
                     "telephonyMode": "local_sip",
+                    "source": "freeswitch_verto",
+                    "rtcAsrMode": "rtc_asr_live",
                 },
             )
             acc_call_id = str(started_call["call"]["session"]["callId"])
-            await asyncio.to_thread(
-                json_http,
-                "POST",
-                f"{self.acc_url.rstrip('/')}/api/live-sip/events",
-                {
-                    "eventType": "agent.greeting",
-                    "timestamp": now_iso(),
-                    "sipCallId": call_id,
-                    "text": os.environ.get("ACC_SIP_PRERECORDED_INTRO_TEXT", DEFAULT_INTRO_TEXT),
-                },
-            )
         except Exception as exc:
             self.last_answer = {
                 "type": "verto.answer.blocked",
@@ -442,6 +453,7 @@ class VertoAgentBridge:
             }
             print(json.dumps(self.last_answer), flush=True)
             self.write_proof_artifact("verto.answer.blocked")
+            await self.end_acc_call(call_id, reason="verto_readiness_blocked")
             return
 
         session_id = f"verto-{call_id}"
@@ -461,15 +473,35 @@ class VertoAgentBridge:
         )
 
         async def on_connection(connection: Any) -> None:
-            await self.start_pipeline(
-                connection=connection,
-                session_id=session_id,
-                call_id=call_id,
-                acc_call_id=acc_call_id,
-                readiness=readiness,
-            )
+            try:
+                await self.start_pipeline(
+                    connection=connection,
+                    session_id=session_id,
+                    call_id=call_id,
+                    acc_call_id=acc_call_id,
+                    readiness=readiness,
+                )
+            except Exception as exc:
+                self.last_error = {"at": now_iso(), "error": f"Verto pipeline start failed: {exc}", "callId": call_id}
+                print(json.dumps({"type": "verto.pipeline_start.error", **self.last_error}), flush=True)
+                self.write_proof_artifact("verto.pipeline_start.error")
+                await self.end_acc_call(call_id, reason="verto_pipeline_start_failed")
+                raise
 
-        answer = await self.request_handler.handle_web_request(small_request, on_connection)
+        try:
+            answer = await self.request_handler.handle_web_request(small_request, on_connection)
+        except Exception as exc:
+            self.last_answer = {
+                "type": "verto.answer.failed",
+                "at": now_iso(),
+                "callId": call_id,
+                "reviewReady": False,
+                "blocker": f"Pipecat SmallWebRTCRequestHandler failed before returning an SDP answer: {exc}",
+            }
+            print(json.dumps(self.last_answer), flush=True)
+            self.write_proof_artifact("verto.answer.failed")
+            await self.end_acc_call(call_id, reason="verto_sdp_answer_failed")
+            return
         if not answer or not isinstance(answer.get("sdp"), str):
             self.last_answer = {
                 "type": "verto.answer.failed",
@@ -480,11 +512,25 @@ class VertoAgentBridge:
             }
             print(json.dumps(self.last_answer), flush=True)
             self.write_proof_artifact("verto.answer.failed")
+            await self.end_acc_call(call_id, reason="verto_sdp_answer_failed")
             return
 
-        answer_sdp = normalize_verto_answer_sdp(normalize_browser_answer_sdp(str(answer["sdp"])))
-        await self.send_rpc("verto.answer", {"dialogParams": {"callID": call_id}, "sdp": answer_sdp})
-        answer_sdp_path = self.write_sdp_artifact(call_id, "answer", answer_sdp)
+        try:
+            answer_sdp = normalize_verto_answer_sdp(normalize_browser_answer_sdp(str(answer["sdp"])))
+            await self.send_rpc("verto.answer", {"dialogParams": {"callID": call_id}, "sdp": answer_sdp})
+            answer_sdp_path = self.write_sdp_artifact(call_id, "answer", answer_sdp)
+        except Exception as exc:
+            self.last_answer = {
+                "type": "verto.answer.failed",
+                "at": now_iso(),
+                "callId": call_id,
+                "reviewReady": False,
+                "blocker": f"Verto answer send failed after ACC call creation: {exc}",
+            }
+            print(json.dumps(self.last_answer), flush=True)
+            self.write_proof_artifact("verto.answer.failed")
+            await self.end_acc_call(call_id, reason="verto_answer_send_failed")
+            return
         self.last_answer = {
             "type": "verto.answer.sent",
             "at": now_iso(),
@@ -557,23 +603,45 @@ class VertoAgentBridge:
                 intro_pcm = intro.readframes(intro.getnframes())
             intro_context_id = f"prerecorded-intro-{call_id}"
             intro_chunk_bytes = intro_sample_rate * 2 * 20 // 1000
+            session.begin_output_stream(stream_id=intro_context_id)
             intro_frames = [TTSStartedFrame(context_id=intro_context_id)]
-            intro_frames.extend(
-                TTSAudioRawFrame(
-                    audio=intro_pcm[offset:offset + intro_chunk_bytes],
+            intro_chunk_count = 0
+            for offset in range(0, len(intro_pcm), intro_chunk_bytes):
+                audio_chunk = intro_pcm[offset:offset + intro_chunk_bytes]
+                intro_chunk_count += 1
+                session.extend_output_window(audio_bytes=len(audio_chunk), sample_rate=intro_sample_rate)
+                session.record_agent_track(
+                    audio_chunk,
+                    sample_rate=intro_sample_rate,
+                    event_id=f"prerecorded-intro-frame-{intro_chunk_count}",
+                )
+                session.record_output_chunk(len(audio_chunk))
+                intro_frames.append(TTSAudioRawFrame(
+                    audio=audio_chunk,
                     sample_rate=intro_sample_rate,
                     num_channels=1,
                     context_id=intro_context_id,
-                )
-                for offset in range(0, len(intro_pcm), intro_chunk_bytes)
-            )
+                ))
             intro_frames.append(TTSStoppedFrame(context_id=intro_context_id))
             await task.queue_frames(intro_frames)
+            await asyncio.to_thread(
+                json_http,
+                "POST",
+                f"{self.acc_url.rstrip('/')}/api/live-sip/events",
+                {
+                    "eventType": "agent.greeting",
+                    "timestamp": now_iso(),
+                    "sipCallId": call_id,
+                    "text": os.environ.get("ACC_SIP_PRERECORDED_INTRO_TEXT", DEFAULT_INTRO_TEXT),
+                },
+            )
             session.record_stage(
                 "tts.prerecorded_intro_queued",
                 text=os.environ.get("ACC_SIP_PRERECORDED_INTRO_TEXT", DEFAULT_INTRO_TEXT),
                 audioPath=str(intro_path),
                 audioBytes=len(intro_pcm),
+                chunkCount=intro_chunk_count,
+                streamId=intro_context_id,
                 sampleRate=intro_sample_rate,
                 durationMs=round(len(intro_pcm) / (intro_sample_rate * 2) * 1000),
             )
@@ -607,6 +675,9 @@ class VertoAgentBridge:
         if session:
             session["closedAt"] = session.get("closedAt") or now_iso()
             session["closeReason"] = session.get("closeReason") or reason
+            call_id = session.get("callId")
+            if isinstance(call_id, str) and call_id:
+                await self.end_acc_call(call_id, reason=reason, timestamp=session["closedAt"])
         for key, value in list(self.sessions.items()):
             if value is session:
                 self.sessions.pop(key, None)

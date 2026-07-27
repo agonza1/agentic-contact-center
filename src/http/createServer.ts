@@ -5257,6 +5257,22 @@ async function routeRequest(
     }
 
     if (eventType === "call.started") {
+      const existingCallId = liveSipCallMap.get(sipCallId);
+      if (existingCallId) {
+        const existingSnapshot = await ingress.getSnapshot(existingCallId);
+        if (existingSnapshot) {
+          writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(existingSnapshot), idempotent: true });
+          return;
+        }
+        liveSipCallMap.delete(sipCallId);
+      }
+      const matchingSnapshots = await ingress.listSnapshots({ providerCallId: sipCallId });
+      const matchingSnapshot = matchingSnapshots[0];
+      if (matchingSnapshot) {
+        liveSipCallMap.set(sipCallId, matchingSnapshot.session.callId);
+        writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(matchingSnapshot), idempotent: true });
+        return;
+      }
       const telephonyMode = body.telephonyMode === "signalwire_live" ? "signalwire_live" : "local_sip";
       const snapshot = await ingress.startCall(config, {
         providerName: telephonyMode === "signalwire_live" ? "signalwire" : "freeswitch-local-sip",
@@ -5276,7 +5292,18 @@ async function routeRequest(
       return;
     }
 
-    const callId = liveSipCallMap.get(sipCallId);
+    let callId = liveSipCallMap.get(sipCallId);
+    if (!callId && eventType === "call.ended") {
+      const matchingSnapshot = (await ingress.listSnapshots({ providerCallId: sipCallId }))[0];
+      if (matchingSnapshot) {
+        callId = matchingSnapshot.session.callId;
+        const alreadyEnded = matchingSnapshot.events.some((event) => event.type === "sip_call_ended");
+        if (alreadyEnded) {
+          writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(matchingSnapshot), idempotent: true });
+          return;
+        }
+      }
+    }
     if (!callId) {
       writeBadRequest(response, "live_sip_call_not_started");
       return;
