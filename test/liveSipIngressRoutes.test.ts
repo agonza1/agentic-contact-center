@@ -834,16 +834,15 @@ test("delivery-ack commits must match the server-side OpenAI preview", async () 
     const preview = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
       text: "Can you help with my account?",
       timestamp: "2026-07-27T22:50:01.000Z",
-      conversationMode: "openai_llm",
       commitMode: "delivery_ack",
     });
     assert.equal(preview.statusCode, 200);
+    assert.equal(preview.payload.callerTurnCommit.conversationMode, "openai_llm");
     assert.equal(preview.payload.callerTurnCommit.expectedAgentText, "I can help with that safely. What should I review first?");
 
     const tampered = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn/commit`, {
       text: "Can you help with my account?",
       timestamp: "2026-07-27T22:50:01.000Z",
-      conversationMode: "openai_llm",
       expectedSnapshotVersion: preview.payload.callerTurnCommit.snapshotVersion,
       expectedAgentText: "I guarantee I can give you a refund.",
     });
@@ -853,7 +852,6 @@ test("delivery-ack commits must match the server-side OpenAI preview", async () 
     const committed = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn/commit`, {
       text: "Can you help with my account?",
       timestamp: "2026-07-27T22:50:01.000Z",
-      conversationMode: "openai_llm",
       expectedSnapshotVersion: preview.payload.callerTurnCommit.snapshotVersion,
       expectedAgentText: preview.payload.callerTurnCommit.expectedAgentText,
     });

@@ -1004,6 +1004,8 @@ class AccVoicePipelineSession:
         try:
             if cache_path and cache_path.is_file():
                 cached_audio = await asyncio.to_thread(cache_path.read_bytes)
+                if cache_lock and cache_lock.locked():
+                    cache_lock.release()
                 first_audio_ms = round((time.perf_counter() - started) * 1000)
                 for offset in range(0, len(cached_audio), chunk_bytes):
                     yield cached_audio[offset : offset + chunk_bytes], sample_rate, {

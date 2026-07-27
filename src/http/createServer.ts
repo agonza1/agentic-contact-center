@@ -6319,13 +6319,14 @@ async function routeRequest(
         writeNotFound(response);
         return;
       }
-      const openAiLlm = conversationMode === "openai_llm"
+      const effectiveConversationMode = conversationMode ?? currentSnapshot.scenario.conversationMode;
+      const openAiLlm = effectiveConversationMode === "openai_llm"
         ? await generateOpenAiLiveSipResponse(currentSnapshot, text, timestamp)
         : undefined;
       if (commitMode === "delivery_ack") {
         const snapshotVersion = buildDeliveryAckSnapshotVersion(currentSnapshot);
         const snapshot = await ingress.previewCallerTurn(callerTurnMatch[1], turn, config, {
-          conversationMode,
+          conversationMode: effectiveConversationMode,
           openAiLlm,
         });
         const expectedAgentText = snapshot.transcript.at(-1)?.speaker === "agent" ? snapshot.transcript.at(-1)?.text : undefined;
@@ -6338,7 +6339,7 @@ async function routeRequest(
           snapshotVersion,
           callerTranscript: text,
           timestamp,
-          conversationMode,
+          conversationMode: effectiveConversationMode,
           expectedAgentText,
           openAiLlm,
         });
@@ -6352,14 +6353,14 @@ async function routeRequest(
             expectedAgentText,
             snapshotVersion,
             timestamp,
-            conversationMode: conversationMode ?? null,
+            conversationMode: effectiveConversationMode,
             openAiResponseId: openAiLlm?.ok ? openAiLlm.responseId : null,
           },
         });
         return;
       }
       const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config, {
-        conversationMode,
+        conversationMode: effectiveConversationMode,
         openAiLlm,
       });
       writeJson(response, 200, buildCallPayload(snapshot));
@@ -6425,13 +6426,14 @@ async function routeRequest(
         writeBadRequest(response, "caller_turn_commit_stale");
         return;
       }
+      const effectiveConversationMode = conversationMode ?? currentSnapshot.scenario.conversationMode;
       const previewKey = buildCallerTurnDeliveryAckKey(callerTurnCommitMatch[1], expectedSnapshotVersion);
       const pendingPreview = callerTurnDeliveryAckPreviews.get(previewKey);
       if (
         !pendingPreview
         || pendingPreview.callerTranscript !== text
         || pendingPreview.timestamp !== timestamp
-        || pendingPreview.conversationMode !== conversationMode
+        || pendingPreview.conversationMode !== effectiveConversationMode
         || pendingPreview.expectedAgentText !== expectedAgentText
       ) {
         writeBadRequest(response, "caller_turn_commit_stale");
@@ -6439,7 +6441,7 @@ async function routeRequest(
       }
       const openAiLlm = pendingPreview.openAiLlm;
       const preview = await ingress.previewCallerTurn(callerTurnCommitMatch[1], turn, config, {
-        conversationMode,
+        conversationMode: effectiveConversationMode,
         openAiLlm,
       });
       const previewAgentText = preview.transcript.at(-1)?.speaker === "agent" ? preview.transcript.at(-1)?.text : undefined;
@@ -6448,7 +6450,7 @@ async function routeRequest(
         return;
       }
       const snapshot = await ingress.appendCallerTurn(callerTurnCommitMatch[1], turn, config, {
-        conversationMode,
+        conversationMode: effectiveConversationMode,
         openAiLlm,
       });
       callerTurnDeliveryAckPreviews.delete(previewKey);
@@ -6462,7 +6464,7 @@ async function routeRequest(
           expectedAgentText,
           expectedSnapshotVersion,
           timestamp,
-          conversationMode: conversationMode ?? null,
+          conversationMode: effectiveConversationMode,
         },
       });
     } catch {
