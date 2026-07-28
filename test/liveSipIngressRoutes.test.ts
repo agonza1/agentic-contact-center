@@ -956,6 +956,126 @@ test("live SIP 8600 fails closed when OpenAI stalls", async () => {
       directHeldTranscript.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "Can automation resume?"),
       false,
     );
+
+    const overrideHeldTranscript = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      timestamp: "2026-07-27T22:55:05.000Z",
+      text: "Can a scripted response resume?",
+      conversationMode: "scripted",
+    });
+    assert.equal(overrideHeldTranscript.statusCode, 409);
+    assert.equal(overrideHeldTranscript.payload.error, "live_sip_openai_automation_stopped");
+    assert.equal(openAiRequestCount, 1);
+    assert.equal(
+      overrideHeldTranscript.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "Can a scripted response resume?"),
+      false,
+    );
+
+    const ended = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.ended",
+      timestamp: "2026-07-27T22:55:06.000Z",
+      sipCallId: "sip-openai-timeout",
+      reason: "caller_hangup",
+    });
+    assert.equal(ended.statusCode, 200);
+
+    const postEndTurn = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      timestamp: "2026-07-27T22:55:07.000Z",
+      text: "Can anyone still hear me?",
+      conversationMode: "openai_llm",
+    });
+    assert.equal(postEndTurn.statusCode, 409);
+    assert.equal(postEndTurn.payload.error, "live_sip_call_ended");
+    assert.equal(openAiRequestCount, 1);
+    assert.equal(
+      postEndTurn.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "Can anyone still hear me?"),
+      false,
+    );
+  } finally {
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => openAiServer.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("direct OpenAI caller turns recheck SIP termination after async generation", async () => {
+  const originalEnv = {
+    ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    ACC_OPENAI_REQUEST_TIMEOUT_MS: process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS,
+  };
+
+  let releaseOpenAiResponse: () => void = () => {
+    throw new Error("OpenAI response release requested before request was received");
+  };
+  let openAiRequestCount = 0;
+  let markOpenAiRequestSeen: (() => void) | null = null;
+  const openAiRequestSeen = new Promise<void>((resolve) => { markOpenAiRequestSeen = resolve; });
+  const openAiServer = createTestServer((req, res) => {
+    openAiRequestCount += 1;
+    req.resume();
+    releaseOpenAiResponse = () => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ id: "resp-ended-call", output_text: "I can help safely after checking the account." }));
+    };
+    markOpenAiRequestSeen?.();
+  });
+  await new Promise<void>((resolve) => openAiServer.listen(0, "127.0.0.1", resolve));
+  const openAiAddress = openAiServer.address();
+  assert.ok(openAiAddress && typeof openAiAddress !== "string");
+
+  process.env.ACC_OPENAI_API_KEY = "test-openai-key";
+  delete process.env.OPENAI_API_KEY;
+  process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${openAiAddress.port}/v1`;
+  delete process.env.OPENAI_BASE_URL;
+  process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS = "5000";
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T22:58:00.000Z",
+      sipCallId: "sip-openai-ended-midflight",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+    const callId = started.payload.call.session.callId;
+
+    const turnRequest = requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      timestamp: "2026-07-27T22:58:01.000Z",
+      text: "Can you keep helping me?",
+      conversationMode: "openai_llm",
+    });
+    await openAiRequestSeen;
+
+    const ended = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.ended",
+      timestamp: "2026-07-27T22:58:02.000Z",
+      sipCallId: "sip-openai-ended-midflight",
+      reason: "caller_hangup",
+    });
+    assert.equal(ended.statusCode, 200);
+
+    releaseOpenAiResponse();
+    const rejectedTurn = await turnRequest;
+    assert.equal(rejectedTurn.statusCode, 409);
+    assert.equal(rejectedTurn.payload.error, "live_sip_call_ended");
+    assert.equal(openAiRequestCount, 1);
+    assert.equal(
+      rejectedTurn.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "Can you keep helping me?"),
+      false,
+    );
   } finally {
     Object.assign(process.env, originalEnv);
     for (const [key, value] of Object.entries(originalEnv)) {

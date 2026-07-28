@@ -364,7 +364,7 @@ async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds, 
         fallbackReadyEvidence ??= readyEvidence;
       }
     }
-    if (fallbackReadyEvidence) return fallbackReadyEvidence;
+    if (!expectedCorrelationId && fallbackReadyEvidence) return fallbackReadyEvidence;
     return { ready: false, transcript: "", ttsReady: false, evidence };
   } catch {
     return { ready: false, transcript: "", ttsReady: false, evidence: null };

@@ -538,6 +538,22 @@ class VertoAgentBridge:
             print(json.dumps(proof), flush=True)
             self.write_proof_artifact("verto.invite.blocked")
             return
+        offer_sdp_path = None
+        offer_artifact_error = None
+        try:
+            offer_sdp_path = self.write_sdp_artifact(call_id, "offer", offer_sdp)
+        except Exception as exc:
+            offer_artifact_error = str(exc)
+            self.last_error = {
+                "at": now_iso(),
+                "error": f"Verto offer SDP artifact write failed before answer delivery: {exc}",
+                "callId": call_id,
+                "vertoCallId": call_id,
+                "sipCallId": linked_sip_call_id or call_id,
+                "linkedSipCallId": linked_sip_call_id,
+                "proofSipCallId": proof_sip_call_id,
+            }
+            print(json.dumps({"type": "verto.invite.artifact_error", **self.last_error}), flush=True)
         proof = {
             "type": "verto.invite.received",
             "at": now_iso(),
@@ -551,7 +567,9 @@ class VertoAgentBridge:
             "mediaTarget": "pipecat_verto_webrtc_agent_leg",
             "reviewReady": False,
             "offerSdpBytes": len(offer_sdp.encode("utf-8")),
-            "offerSdpPath": self.write_sdp_artifact(call_id, "offer", offer_sdp),
+            "offerSdpPath": offer_sdp_path,
+            "offerSdpArtifactPersisted": offer_sdp_path is not None,
+            "offerSdpArtifactError": offer_artifact_error,
             "nextAction": "Answer the Verto WebRTC dialog with the shared Pipecat pipeline and then rerun the strict live SIP bundle for caller-audible proof.",
         }
         self.last_invite = proof

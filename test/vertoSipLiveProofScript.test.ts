@@ -59,6 +59,8 @@ test("Verto SIP proof requires transcript-backed non-silent caller playback", ()
   assert.match(script, /baselineCallIds\.has\(evidenceCallId\)/);
   assert.match(script, /fallbackReadyEvidence/);
   assert.match(script, /if \(matchesExpectedCall\) return readyEvidence/);
+  assert.match(script, /if \(!expectedCorrelationId && fallbackReadyEvidence\) return fallbackReadyEvidence/);
+  assert.doesNotMatch(script, /if \(fallbackReadyEvidence\) return fallbackReadyEvidence/);
   assert.match(script, /waitForRtcAsrEvidence/);
   assert.match(script, /Date\.parse\(event\.timestamp\) >= startedAtMs/);
   assert.match(script, /rtc-asr-transcript-evidence\.json/);
@@ -97,6 +99,8 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.match(bridge, /"rtcAsrMode": "rtc_asr_live" if readiness\.ok else "rtc_asr_blocked"/);
   assert.match(bridge, /blockedEvidencePosted/);
   assert.match(bridge, /finally:\n\s+self\.last_answer = \{/);
+  assert.match(bridge, /offerSdpArtifactPersisted/);
+  assert.match(bridge, /verto\.invite\.artifact_error/);
   assert.match(bridge, /answerSdpArtifactPersisted/);
   assert.match(bridge, /verto\.answer\.artifact_error/);
   assert.match(bridge, /def call_scoped_proof_paths/);

@@ -6362,8 +6362,17 @@ async function routeRequest(
         writeNotFound(response);
         return;
       }
+      if (isLiveSipCallEnded(currentSnapshot)) {
+        writeJson(response, 409, {
+          ok: false,
+          route: "/api/calls/:callId/caller-turn",
+          error: "live_sip_call_ended",
+          call: buildCallPayload(currentSnapshot),
+        });
+        return;
+      }
       const effectiveConversationMode = conversationMode ?? currentSnapshot.scenario.conversationMode;
-      if (effectiveConversationMode === "openai_llm" && isOpenAiLiveSipAutomationStopped(currentSnapshot)) {
+      if (isOpenAiLiveSipAutomationStopped(currentSnapshot)) {
         const snapshot = await ingress.recordLiveTelephonyEvidence(callerTurnMatch[1], {
           eventType: "rtc_asr_transcript",
           timestamp,
@@ -6386,8 +6395,42 @@ async function routeRequest(
       const openAiLlm = effectiveConversationMode === "openai_llm"
         ? await generateOpenAiLiveSipResponse(currentSnapshot, text, timestamp)
         : undefined;
+      const latestSnapshot = openAiLlm ? await ingress.getSnapshot(callerTurnMatch[1]) : currentSnapshot;
+      if (!latestSnapshot) {
+        writeNotFound(response);
+        return;
+      }
+      if (isLiveSipCallEnded(latestSnapshot)) {
+        writeJson(response, 409, {
+          ok: false,
+          route: "/api/calls/:callId/caller-turn",
+          error: "live_sip_call_ended",
+          call: buildCallPayload(latestSnapshot),
+        });
+        return;
+      }
+      if (isOpenAiLiveSipAutomationStopped(latestSnapshot)) {
+        const snapshot = await ingress.recordLiveTelephonyEvidence(callerTurnMatch[1], {
+          eventType: "rtc_asr_transcript",
+          timestamp,
+          detail: {
+            provider: "rtc-asr",
+            transcriptText: text,
+            evidencePath: getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+            held: true,
+            holdReason: "openai_fail_closed_handoff_active",
+          },
+        });
+        writeJson(response, 409, {
+          ok: false,
+          route: "/api/calls/:callId/caller-turn",
+          error: "live_sip_openai_automation_stopped",
+          call: buildCallPayload(snapshot),
+        });
+        return;
+      }
       if (commitMode === "delivery_ack") {
-        const snapshotVersion = buildDeliveryAckSnapshotVersion(currentSnapshot);
+        const snapshotVersion = buildDeliveryAckSnapshotVersion(latestSnapshot);
         const snapshot = await ingress.previewCallerTurn(callerTurnMatch[1], turn, config, {
           conversationMode: effectiveConversationMode,
           openAiLlm,
@@ -6483,6 +6526,15 @@ async function routeRequest(
       const currentSnapshot = await ingress.getSnapshot(callerTurnCommitMatch[1]);
       if (!currentSnapshot) {
         writeNotFound(response);
+        return;
+      }
+      if (isLiveSipCallEnded(currentSnapshot)) {
+        writeJson(response, 409, {
+          ok: false,
+          route: "/api/calls/:callId/caller-turn/commit",
+          error: "live_sip_call_ended",
+          call: buildCallPayload(currentSnapshot),
+        });
         return;
       }
       if (buildDeliveryAckSnapshotVersion(currentSnapshot) !== expectedSnapshotVersion) {
