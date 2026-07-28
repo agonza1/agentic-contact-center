@@ -81,6 +81,25 @@ the requested literal `GPT-5.4-mini`. If credentials, model access, or the API
 request fails, ACC records `openai_conversation_generation_failed`, fails closed
 to the human-handoff path, and does not substitute scripted responses.
 
+For a local lab run that should use the signed-in OpenClaw OpenAI OAuth profile
+instead of an OpenAI API key, enable OpenClaw's Responses gateway and run 8600
+through the restricted `acc-voice` agent:
+
+```bash
+ACC_OPENAI_AUTH_MODE=openclaw_oauth \
+ACC_OPENAI_AUTH_TOKEN="$OPENCLAW_GATEWAY_TOKEN" \
+ACC_OPENCLAW_AGENT_ID=acc-voice \
+ACC_OPENAI_BASE_URL=http://host.docker.internal:18789/v1 \
+ACC_OPENAI_CONVERSATION_MODEL=GPT-5.4-mini \
+npm run docker:sip-verto
+```
+
+`ACC_OPENAI_AUTH_TOKEN` is the local OpenClaw gateway bearer token, not the raw
+provider OAuth credential. Keep this path bound to the local lab host; the
+gateway token has broader operator authority than a narrow production API key.
+For a native, non-Docker ACC process on the host, use
+`ACC_OPENAI_BASE_URL=http://127.0.0.1:18789/v1`.
+
 Extension `8611` posts `conversationMode=scripted` and keeps the deterministic
 cancellation-rescue script for repeatable proof and regression work.
 

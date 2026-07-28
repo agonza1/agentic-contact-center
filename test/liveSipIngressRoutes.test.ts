@@ -646,6 +646,10 @@ test("live SIP separates 8611 scripted flow from 8600 OpenAI flow", async () => 
     ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
     OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
     ACC_OPENAI_CONVERSATION_MODEL: process.env.ACC_OPENAI_CONVERSATION_MODEL,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
   };
   const openAiRequests: any[] = [];
   const openAiServer = createTestServer((req, res) => {
@@ -667,6 +671,10 @@ test("live SIP separates 8611 scripted flow from 8600 OpenAI flow", async () => 
   process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${openAiAddress.port}/v1`;
   delete process.env.OPENAI_BASE_URL;
   delete process.env.ACC_OPENAI_CONVERSATION_MODEL;
+  delete process.env.ACC_OPENAI_AUTH_MODE;
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENCLAW_AGENT_ID;
 
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -742,11 +750,115 @@ test("live SIP separates 8611 scripted flow from 8600 OpenAI flow", async () => 
   }
 });
 
-test("live SIP 8600 fails closed when OpenAI credentials are missing", async () => {
-  const originalApiKey = process.env.ACC_OPENAI_API_KEY;
-  const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
+test("live SIP 8600 can use the OpenClaw OAuth Responses gateway", async () => {
+  const originalEnv = {
+    ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    ACC_OPENAI_CONVERSATION_MODEL: process.env.ACC_OPENAI_CONVERSATION_MODEL,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
+  };
+  const gatewayRequests: any[] = [];
+  const gatewayServer = createTestServer((req, res) => {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => {
+      gatewayRequests.push({
+        url: req.url,
+        authorization: req.headers.authorization,
+        agentId: req.headers["x-openclaw-agent-id"],
+        backendModel: req.headers["x-openclaw-model"],
+        body: JSON.parse(body),
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ id: "resp-openclaw-oauth", output_text: "I can help safely through the live path. What should I verify first?" }));
+    });
+  });
+  await new Promise<void>((resolve) => gatewayServer.listen(0, "127.0.0.1", resolve));
+  const gatewayAddress = gatewayServer.address();
+  assert.ok(gatewayAddress && typeof gatewayAddress !== "string");
+
+  process.env.ACC_OPENAI_AUTH_MODE = "openclaw_oauth";
+  process.env.ACC_OPENAI_AUTH_TOKEN = "test-openclaw-gateway-token";
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  process.env.ACC_OPENCLAW_AGENT_ID = "acc-voice";
+  process.env.ACC_OPENAI_CONVERSATION_MODEL = "GPT-5.4-mini";
+  process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${gatewayAddress.port}/v1`;
+  delete process.env.OPENAI_BASE_URL;
   delete process.env.ACC_OPENAI_API_KEY;
   delete process.env.OPENAI_API_KEY;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T22:35:00.000Z",
+      sipCallId: "sip-openclaw-oauth-8600",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+    assert.equal(started.payload.call.scenario.conversationMode, "openai_llm");
+
+    const transcript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-27T22:35:01.000Z",
+      sipCallId: "sip-openclaw-oauth-8600",
+      text: "Can you check my policy address?",
+    });
+    assert.equal(transcript.statusCode, 200);
+    assert.equal(
+      transcript.payload.call.transcript.at(-1).text,
+      "I can help safely through the live path. What should I verify first?",
+    );
+    assert.equal(gatewayRequests.length, 1);
+    assert.equal(gatewayRequests[0].url, "/v1/responses");
+    assert.equal(gatewayRequests[0].authorization, "Bearer test-openclaw-gateway-token");
+    assert.equal(gatewayRequests[0].agentId, "acc-voice");
+    assert.equal(gatewayRequests[0].backendModel, "openai/gpt-5.4-mini");
+    assert.equal(gatewayRequests[0].body.model, "openclaw/acc-voice");
+    assert.equal(typeof gatewayRequests[0].body.input, "string");
+    assert.match(gatewayRequests[0].body.input, /Latest caller turn: Can you check my policy address\?/);
+    assert.equal(
+      transcript.payload.call.events.some((event: any) => event.type === "openai_conversation_turn_processed" && event.detail.model === "GPT-5.4-mini"),
+      true,
+    );
+  } finally {
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => gatewayServer.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("live SIP 8600 fails closed when OpenAI credentials are missing", async () => {
+  const originalEnv = {
+    ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
+  };
+  delete process.env.ACC_OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.ACC_OPENAI_AUTH_MODE;
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENCLAW_AGENT_ID;
 
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -782,10 +894,68 @@ test("live SIP 8600 fails closed when OpenAI credentials are missing", async () 
       false,
     );
   } finally {
-    if (originalApiKey === undefined) delete process.env.ACC_OPENAI_API_KEY;
-    else process.env.ACC_OPENAI_API_KEY = originalApiKey;
-    if (originalOpenAiApiKey === undefined) delete process.env.OPENAI_API_KEY;
-    else process.env.OPENAI_API_KEY = originalOpenAiApiKey;
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("live SIP 8600 fails closed when OpenClaw OAuth gateway token is missing", async () => {
+  const originalEnv = {
+    ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
+  };
+  process.env.ACC_OPENAI_AUTH_MODE = "openclaw_oauth";
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  process.env.ACC_OPENCLAW_AGENT_ID = "acc-voice";
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T22:42:00.000Z",
+      sipCallId: "sip-openclaw-missing-token",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+
+    const transcript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-27T22:42:01.000Z",
+      sipCallId: "sip-openclaw-missing-token",
+      text: "Can you cancel my policy?",
+    });
+    assert.equal(transcript.statusCode, 200);
+    assert.equal(transcript.payload.call.flowState, "wrap");
+    assert.equal(
+      transcript.payload.call.events.some((event: any) => event.type === "openai_conversation_generation_failed" && event.detail.error === "openclaw_gateway_token_missing"),
+      true,
+    );
+    assert.equal(
+      transcript.payload.call.transcript.some((turn: any) => turn.speaker === "agent" && /Before I review options/.test(turn.text)),
+      false,
+    );
+  } finally {
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
@@ -796,6 +966,10 @@ test("delivery-ack commits must match the server-side OpenAI preview", async () 
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
     OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
   };
   const openAiServer = createTestServer((req, res) => {
     req.resume();
@@ -812,6 +986,10 @@ test("delivery-ack commits must match the server-side OpenAI preview", async () 
   delete process.env.OPENAI_API_KEY;
   process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${openAiAddress.port}/v1`;
   delete process.env.OPENAI_BASE_URL;
+  delete process.env.ACC_OPENAI_AUTH_MODE;
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENCLAW_AGENT_ID;
 
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -874,6 +1052,10 @@ test("live SIP 8600 fails closed when OpenAI stalls", async () => {
     ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
     OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
     ACC_OPENAI_REQUEST_TIMEOUT_MS: process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
   };
   let openAiRequestCount = 0;
   const openAiServer = createTestServer((req) => {
@@ -889,6 +1071,10 @@ test("live SIP 8600 fails closed when OpenAI stalls", async () => {
   process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${openAiAddress.port}/v1`;
   delete process.env.OPENAI_BASE_URL;
   process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS = "25";
+  delete process.env.ACC_OPENAI_AUTH_MODE;
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENCLAW_AGENT_ID;
 
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -1007,6 +1193,10 @@ test("direct OpenAI caller turns recheck SIP termination after async generation"
     ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
     OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
     ACC_OPENAI_REQUEST_TIMEOUT_MS: process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
   };
 
   let releaseOpenAiResponse: () => void = () => {
@@ -1033,6 +1223,10 @@ test("direct OpenAI caller turns recheck SIP termination after async generation"
   process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${openAiAddress.port}/v1`;
   delete process.env.OPENAI_BASE_URL;
   process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS = "5000";
+  delete process.env.ACC_OPENAI_AUTH_MODE;
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENCLAW_AGENT_ID;
 
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));

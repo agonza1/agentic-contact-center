@@ -4334,6 +4334,59 @@ function openAiConversationTimeoutMs(env: NodeJS.ProcessEnv = process.env): numb
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 12000;
 }
 
+type OpenAiConversationAuthMode = "api_key" | "openclaw_oauth";
+
+type OpenAiConversationRequestConfig = {
+  model: string;
+  requestModel: string;
+  baseUrl: string;
+  bearerToken: string | null;
+  missingCredentialError: string;
+  useStringInput: boolean;
+  headers: Record<string, string>;
+};
+
+function openAiConversationAuthMode(env: NodeJS.ProcessEnv = process.env): OpenAiConversationAuthMode {
+  return env.ACC_OPENAI_AUTH_MODE?.trim().toLowerCase() === "openclaw_oauth" ? "openclaw_oauth" : "api_key";
+}
+
+function openAiConversationGatewayAgentId(env: NodeJS.ProcessEnv = process.env): string {
+  return env.ACC_OPENCLAW_AGENT_ID?.trim() || "acc-voice";
+}
+
+function openAiConversationGatewayBackendModel(model: string): string {
+  return model.includes("/") ? model : `openai/${model.toLowerCase()}`;
+}
+
+function buildOpenAiConversationRequestConfig(model: string, env: NodeJS.ProcessEnv = process.env): OpenAiConversationRequestConfig {
+  if (openAiConversationAuthMode(env) === "openclaw_oauth") {
+    const agentId = openAiConversationGatewayAgentId(env);
+    const backendModel = openAiConversationGatewayBackendModel(model);
+    return {
+      model,
+      requestModel: `openclaw/${agentId}`,
+      baseUrl: (env.ACC_OPENAI_BASE_URL?.trim() || env.OPENAI_BASE_URL?.trim() || "http://127.0.0.1:18789/v1").replace(/\/+$/, ""),
+      bearerToken: env.ACC_OPENAI_AUTH_TOKEN?.trim() || env.OPENCLAW_GATEWAY_TOKEN?.trim() || null,
+      missingCredentialError: "openclaw_gateway_token_missing",
+      useStringInput: true,
+      headers: {
+        "x-openclaw-agent-id": agentId,
+        "x-openclaw-model": backendModel,
+      },
+    };
+  }
+
+  return {
+    model,
+    requestModel: model,
+    baseUrl: (env.ACC_OPENAI_BASE_URL?.trim() || env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1").replace(/\/+$/, ""),
+    bearerToken: env.ACC_OPENAI_API_KEY?.trim() || env.OPENAI_API_KEY?.trim() || null,
+    missingCredentialError: "openai_api_key_missing",
+    useStringInput: false,
+    headers: {},
+  };
+}
+
 function redactOpenAiError(value: unknown): string {
   const text = value instanceof Error ? value.message : String(value ?? "openai_request_failed");
   return text
@@ -4375,60 +4428,65 @@ async function generateOpenAiLiveSipResponse(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<OpenAiLlmTurnResult> {
   const model = openAiConversationModel(env);
-  const apiKey = env.ACC_OPENAI_API_KEY?.trim() || env.OPENAI_API_KEY?.trim();
-  if (!apiKey) {
-    return { ok: false, model, error: "openai_api_key_missing", status: null };
+  const requestConfig = buildOpenAiConversationRequestConfig(model, env);
+  if (!requestConfig.bearerToken) {
+    return { ok: false, model, error: requestConfig.missingCredentialError, status: null };
   }
-  const baseUrl = (env.ACC_OPENAI_BASE_URL?.trim() || env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1").replace(/\/+$/, "");
   const transcript = snapshot.transcript
     .slice(-8)
     .map((turn) => `${turn.speaker}: ${turn.text}`)
     .join("\n");
+  const systemPromptText = [
+    "You are the live OpenAI-backed conversation path for ACC SIP extension 8600.",
+    "Answer in one or two short sentences suitable for TTS.",
+    "Do not promise discounts, refunds, cancellation completion, policy changes, or regulated advice.",
+    "When a request requires approval, account access, or a human decision, say you will prepare a safe handoff.",
+    "Ask at most one focused follow-up question.",
+  ].join(" ");
+  const userPromptText = [
+    `Timestamp: ${timestamp}`,
+    `Flow state: ${snapshot.flowState}`,
+    `Recent transcript:\n${transcript || "(none)"}`,
+    `Latest caller turn: ${callerText}`,
+  ].join("\n");
+  const input = requestConfig.useStringInput
+    ? `${systemPromptText}\n\n${userPromptText}`
+    : [
+        {
+          role: "system",
+          content: [
+            {
+              type: "input_text",
+              text: systemPromptText,
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: userPromptText,
+            },
+          ],
+        },
+      ];
   const body = {
-    model,
+    model: requestConfig.requestModel,
     store: false,
     max_output_tokens: 160,
-    input: [
-      {
-        role: "system",
-        content: [
-          {
-            type: "input_text",
-            text: [
-              "You are the live OpenAI-backed conversation path for ACC SIP extension 8600.",
-              "Answer in one or two short sentences suitable for TTS.",
-              "Do not promise discounts, refunds, cancellation completion, policy changes, or regulated advice.",
-              "When a request requires approval, account access, or a human decision, say you will prepare a safe handoff.",
-              "Ask at most one focused follow-up question.",
-            ].join(" "),
-          },
-        ],
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: [
-              `Timestamp: ${timestamp}`,
-              `Flow state: ${snapshot.flowState}`,
-              `Recent transcript:\n${transcript || "(none)"}`,
-              `Latest caller turn: ${callerText}`,
-            ].join("\n"),
-          },
-        ],
-      },
-    ],
+    input,
   };
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), openAiConversationTimeoutMs(env));
   try {
-    const response = await fetch(`${baseUrl}/responses`, {
+    const response = await fetch(`${requestConfig.baseUrl}/responses`, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${apiKey}`,
+        authorization: `Bearer ${requestConfig.bearerToken}`,
         "content-type": "application/json",
+        ...requestConfig.headers,
       },
       signal: controller.signal,
       body: JSON.stringify(body),
