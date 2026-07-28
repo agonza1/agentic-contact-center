@@ -1482,6 +1482,34 @@ class AccCallerTurnProcessor(FrameProcessor):
             if isinstance(flow_manager_evidence, dict)
             else None
         )
+        if flow_manager_commit_policy in {"caller_turn_held", "caller_turn_stopped"}:
+            self.session.discard_pending_caller_turn_commit(str(flow_manager_commit_policy))
+            self.session.record_stage(
+                "acc.caller_turn_held",
+                callerTranscript=frame.text,
+                flowState=call.get("flowState") if isinstance(call, dict) else None,
+                flowManager=flow_manager_evidence,
+            )
+            self.session.last_evidence = {
+                "ok": True,
+                "callerTranscript": frame.text,
+                "agentText": "",
+                "audio": self.session.last_audio_evidence,
+                "stt": (frame.result or {}).get("stt", {}),
+                "acc": self.session.last_acc_evidence,
+                "tts": {"engine": "kokoro", "skipped": True, "audioBytes": 0, "reason": flow_manager_commit_policy},
+                "bargeIn": self.session.last_barge_in_evidence,
+                "outputCancelled": False,
+                "pipecatFrames": {
+                    "input": "InputAudioRawFrame",
+                    "transcription": "TranscriptionFrame",
+                    "agentText": None,
+                    "output": None,
+                },
+                "callId": self.session.call_id,
+                "flowManager": flow_manager_evidence,
+            }
+            return
         self.session.turn_count += 1
         self.session.record_stage(
             "acc.caller_turn_completed",

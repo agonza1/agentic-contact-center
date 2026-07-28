@@ -6,9 +6,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import io
 import importlib.metadata
 import json
 import sys
+import urllib.error
 from pathlib import Path
 from typing import Any
 
@@ -139,6 +141,45 @@ async def run_regression() -> dict[str, Any]:
     )
     missing_result = await missing_adapter.preview_caller_turn(text="cancel", conversation_mode="free_caller")
 
+    held_requests: list[dict[str, Any]] = []
+
+    def held_http(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        held_requests.append({"method": method, "url": url, "payload": payload})
+        if url.endswith("/fallback"):
+            return {
+                "flowState": "wrap",
+                "transcript": [{"speaker": "agent", "text": "This should not be reached for operator holds."}],
+            }
+        body = json.dumps(
+            {
+                "ok": False,
+                "error": "live_sip_operator_hold_active",
+                "call": {
+                    "flowState": "policy_hold",
+                    "transcript": [],
+                    "events": [
+                        {
+                            "type": "rtc_asr_transcript",
+                            "detail": {
+                                "held": True,
+                                "holdReason": "operator_policy_hold_active",
+                            },
+                        }
+                    ],
+                },
+            }
+        ).encode("utf-8")
+        raise urllib.error.HTTPError(url, 409, "Conflict", {}, io.BytesIO(body))
+
+    held_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-held",
+        request_json=held_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    held_result = await held_adapter.preview_caller_turn(text="pause race", conversation_mode="openai_llm")
+
     checks = {
         "actualFlowManagerFactoryOwnsNodes": adapter.manager is not None and adapter.manager.current_node == "wrap",
         "normalCancellationTransitionsGuarded": [step["to"] for step in adapter.transition_trace] == ["greet", "diagnose", "diagnose", "wrap"],
@@ -153,6 +194,13 @@ async def run_regression() -> dict[str, Any]:
         "unsafePreviewNeverBecomesDeliveryAckCommit": not any(item["url"].endswith("/caller-turn/commit") for item in unsafe_requests),
         "missingRuntimeFailsClosed": missing_result["flowState"] == "wrap" and "pipecat-ai-flows is missing" in missing_result["flowManagerRuntime"]["detail"],
         "missingRuntimeSkipsCallerTurnPreview": len(missing_requests) == 1 and missing_requests[0]["url"].endswith("/fallback"),
+        "operatorHoldRemainsNonterminal": (
+            held_result["flowState"] == "policy_hold"
+            and held_result["flowManagerRuntime"]["commitPolicy"] == "caller_turn_held"
+            and held_adapter.manager.current_node == "call_started"
+            and held_adapter.pending_transition is None
+            and not any(item["url"].endswith("/fallback") for item in held_requests)
+        ),
         "requiredVersionsRecorded": normal_results[0]["flowManagerRuntime"]["runtimeVersions"] == {"pipecat-ai": "1.4.0", "pipecat-ai-flows": "1.4.0"},
     }
     return {
@@ -163,6 +211,7 @@ async def run_regression() -> dict[str, Any]:
         "normalPreviewRequests": len(requests),
         "unsafeEvidence": unsafe_result["flowManagerRuntime"],
         "missingRuntimeEvidence": missing_result["flowManagerRuntime"],
+        "heldEvidence": held_result["flowManagerRuntime"],
         "checks": checks,
     }
 

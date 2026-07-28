@@ -11,6 +11,8 @@ from __future__ import annotations
 import asyncio
 import importlib
 import importlib.metadata
+import json
+import urllib.error
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Callable
@@ -39,6 +41,11 @@ FLOW_MANAGER_NODE_INTENTS = {
     "operator_steer": "Wait for ACC-owned bounded operator approval or denial.",
     "steered_response": "Deliver only the bounded response approved by ACC operator controls.",
     "wrap": "Stop automated retention handling and preserve handoff or close proof.",
+}
+
+HELD_CALLER_TURN_ERRORS = {
+    "live_sip_operator_hold_active": "caller_turn_held",
+    "live_sip_openai_automation_stopped": "caller_turn_stopped",
 }
 
 
@@ -369,6 +376,47 @@ class AccPipecatFlowManagerAdapter:
     async def request(self, method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
         return await asyncio.to_thread(self.request_json, method, url, payload)
 
+    def held_caller_turn_result(self, error: urllib.error.HTTPError, *, text: str) -> dict[str, Any] | None:
+        if error.code != 409:
+            return None
+        try:
+            raw = error.read().decode("utf-8")
+            payload = json.loads(raw) if raw else {}
+        except Exception:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        error_code = payload.get("error")
+        if not isinstance(error_code, str) or error_code not in HELD_CALLER_TURN_ERRORS:
+            return None
+
+        call = payload.get("call") if isinstance(payload.get("call"), dict) else {}
+        flow_state = call.get("flowState") if isinstance(call.get("flowState"), str) else getattr(self.manager, "current_node", None)
+        transcript = call.get("transcript") if isinstance(call.get("transcript"), list) else []
+        commit_policy = HELD_CALLER_TURN_ERRORS[error_code]
+        evidence = {
+            **self.last_evidence,
+            "ok": True,
+            "currentNode": getattr(self.manager, "current_node", None),
+            "pendingNode": None,
+            "pendingTransition": None,
+            "commitPolicy": commit_policy,
+            "callerTranscript": text,
+            "held": True,
+            "error": error_code,
+            "httpStatus": error.code,
+            "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
+        }
+        self.last_evidence = evidence
+        return {
+            **call,
+            "ok": False,
+            "flowState": flow_state,
+            "transcript": transcript,
+            "callerTurnCommit": {"mode": "none", "status": commit_policy},
+            "flowManagerRuntime": evidence,
+        }
+
     async def fail_closed(self, error: Exception) -> dict[str, Any]:
         self.pending_transition = None
         self._prepared_transition_trace_start = None
@@ -477,15 +525,21 @@ class AccPipecatFlowManagerAdapter:
                 await self._transition_available.wait()
                 if self._terminal_result is not None:
                     return dict(self._terminal_result)
-                preview = await self.request(
-                    "POST",
-                    f"{self.acc_url}/api/calls/{self.call_id}/caller-turn",
-                    {
-                        "text": text,
-                        "conversationMode": conversation_mode,
-                        "commitMode": "delivery_ack",
-                    },
-                )
+                try:
+                    preview = await self.request(
+                        "POST",
+                        f"{self.acc_url}/api/calls/{self.call_id}/caller-turn",
+                        {
+                            "text": text,
+                            "conversationMode": conversation_mode,
+                            "commitMode": "delivery_ack",
+                        },
+                    )
+                except urllib.error.HTTPError as exc:
+                    held_result = self.held_caller_turn_result(exc, text=text)
+                    if held_result is not None:
+                        return held_result
+                    raise
                 target_node = preview.get("flowState")
                 if not isinstance(target_node, str):
                     raise FlowManagerRuntimeError("ACC caller-turn preview did not return flowState")
