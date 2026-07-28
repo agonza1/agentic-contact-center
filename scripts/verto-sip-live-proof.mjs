@@ -303,11 +303,12 @@ async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds, 
     const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
     const snapshots = Array.isArray(evidence.pipelineEvidence) ? evidence.pipelineEvidence : [evidence];
     const expectedCorrelationId = String(expectedSipCallId || "").trim();
+    let fallbackReadyEvidence = null;
     for (const snapshot of snapshots) {
       const evidenceCallId = extractVertoCallId(snapshot);
       if (!evidenceCallId || baselineCallIds.has(evidenceCallId)) continue;
       const correlationIds = evidenceCorrelationIds(snapshot);
-      if (expectedCorrelationId && !correlationIds.has(expectedCorrelationId)) continue;
+      const matchesExpectedCall = !expectedCorrelationId || correlationIds.has(expectedCorrelationId);
       const accCallId = String(snapshot?.accCallId || snapshot?.callId || "");
       const sipCallId = String(snapshot?.sipCallId || evidenceCallId);
       const linkedSipCallId = String(snapshot?.linkedSipCallId || "");
@@ -344,7 +345,7 @@ async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds, 
           ? snapshot.lastTtsEvidence
           : null);
       if (finalTranscript && ttsReadyEvent) {
-        return {
+        const readyEvidence = {
           ready: true,
           transcript: String(finalTranscript.transcript).trim(),
           transcriptAt: finalTranscript.timestamp,
@@ -359,12 +360,25 @@ async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds, 
           proofSipCallId,
           evidence,
         };
+        if (matchesExpectedCall) return readyEvidence;
+        fallbackReadyEvidence ??= readyEvidence;
       }
     }
+    if (fallbackReadyEvidence) return fallbackReadyEvidence;
     return { ready: false, transcript: "", ttsReady: false, evidence };
   } catch {
     return { ready: false, transcript: "", ttsReady: false, evidence: null };
   }
+}
+
+async function waitForRtcAsrEvidence(evidencePath, options, { timeoutMs = 8_000, intervalMs = 500 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let latest = await loadRtcAsrEvidence(evidencePath, options);
+  while (!latest.ready && evidencePath && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    latest = await loadRtcAsrEvidence(evidencePath, options);
+  }
+  return latest;
 }
 
 function ulawPacketsFromPcm(pcm, { payloadSamples = 160, ssrc = 0xacc222 }) {
@@ -620,7 +634,7 @@ class SipProofCall {
     await writeFile(callerWavPath, callerWav);
     await writeFile(playbackWavPath, playbackWav);
     await writeFile(sipLogPath, `${JSON.stringify(this.events, null, 2)}\n`, "utf8");
-    const rtcAsrEvidence = await loadRtcAsrEvidence(rtcAsrEvidencePath, {
+    const rtcAsrEvidence = await waitForRtcAsrEvidence(rtcAsrEvidencePath, {
       startedAtMs: this.startedAtMs,
       baselineCallIds: this.rtcAsrBaselineCallIds,
       expectedSipCallId: this.callId,

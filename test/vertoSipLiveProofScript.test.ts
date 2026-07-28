@@ -57,6 +57,9 @@ test("Verto SIP proof requires transcript-backed non-silent caller playback", ()
   assert.match(script, /tts\.audio_chunk/);
   assert.match(script, /tts\.stream_completed/);
   assert.match(script, /baselineCallIds\.has\(evidenceCallId\)/);
+  assert.match(script, /fallbackReadyEvidence/);
+  assert.match(script, /if \(matchesExpectedCall\) return readyEvidence/);
+  assert.match(script, /waitForRtcAsrEvidence/);
   assert.match(script, /Date\.parse\(event\.timestamp\) >= startedAtMs/);
   assert.match(script, /rtc-asr-transcript-evidence\.json/);
   assert.match(script, /callId: this\.callId/);
