@@ -1010,30 +1010,63 @@ class VertoAgentBridge:
         for key, value in list(self.sessions.items()):
             if value is session:
                 self.sessions.pop(key, None)
-        turn_session = session.get("turnSession")
-        if isinstance(turn_session, AccVoicePipelineSession):
-            turn_session.cancel_output("verto_peer_closed")
-            await turn_session.close_rtc_asr_stream(reason)
-        runner = session.get("runner")
-        if isinstance(runner, PipelineRunner):
-            await runner.cancel(reason)
-        task = session.get("runnerTask")
-        if isinstance(task, asyncio.Task):
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-        prewarm_task = session.get("prewarmTask")
-        if isinstance(prewarm_task, asyncio.Task):
-            prewarm_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await prewarm_task
-        if isinstance(call_id, str) and call_id:
-            await self.end_acc_call(
-                call_id,
-                reason=reason,
-                timestamp=closed_at,
-                linked_sip_call_id=linked_sip_call_id if isinstance(linked_sip_call_id, str) else None,
-            )
+        teardown_errors: list[dict[str, Any]] = []
+
+        def record_teardown_error(stage: str, exc: BaseException) -> None:
+            detail = {
+                "at": now_iso(),
+                "error": f"Verto session teardown failed during {stage}: {exc}",
+                "callId": call_id,
+                "sessionId": session_id,
+                "reason": reason,
+                "stage": stage,
+            }
+            teardown_errors.append(detail)
+            self.last_error = detail
+            print(json.dumps({"type": "verto.session_teardown.error", **detail}), flush=True)
+
+        try:
+            turn_session = session.get("turnSession")
+            if isinstance(turn_session, AccVoicePipelineSession):
+                try:
+                    turn_session.cancel_output("verto_peer_closed")
+                    await turn_session.close_rtc_asr_stream(reason)
+                except Exception as exc:
+                    record_teardown_error("rtc_asr_close", exc)
+            runner = session.get("runner")
+            if isinstance(runner, PipelineRunner):
+                try:
+                    await runner.cancel(reason)
+                except Exception as exc:
+                    record_teardown_error("runner_cancel", exc)
+            task = session.get("runnerTask")
+            if isinstance(task, asyncio.Task):
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    record_teardown_error("runner_task", exc)
+            prewarm_task = session.get("prewarmTask")
+            if isinstance(prewarm_task, asyncio.Task):
+                prewarm_task.cancel()
+                try:
+                    await prewarm_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    record_teardown_error("prewarm_task", exc)
+        finally:
+            if teardown_errors:
+                self.write_proof_artifact("verto.session_teardown.error")
+            if isinstance(call_id, str) and call_id:
+                await self.end_acc_call(
+                    call_id,
+                    reason=reason,
+                    timestamp=closed_at,
+                    linked_sip_call_id=linked_sip_call_id if isinstance(linked_sip_call_id, str) else None,
+                )
 
     def readiness_payload(self) -> dict[str, Any]:
         logged_in = bool(self.last_login.get("ok"))

@@ -6363,6 +6363,26 @@ async function routeRequest(
         return;
       }
       const effectiveConversationMode = conversationMode ?? currentSnapshot.scenario.conversationMode;
+      if (effectiveConversationMode === "openai_llm" && isOpenAiLiveSipAutomationStopped(currentSnapshot)) {
+        const snapshot = await ingress.recordLiveTelephonyEvidence(callerTurnMatch[1], {
+          eventType: "rtc_asr_transcript",
+          timestamp,
+          detail: {
+            provider: "rtc-asr",
+            transcriptText: text,
+            evidencePath: getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+            held: true,
+            holdReason: "openai_fail_closed_handoff_active",
+          },
+        });
+        writeJson(response, 409, {
+          ok: false,
+          route: "/api/calls/:callId/caller-turn",
+          error: "live_sip_openai_automation_stopped",
+          call: buildCallPayload(snapshot),
+        });
+        return;
+      }
       const openAiLlm = effectiveConversationMode === "openai_llm"
         ? await generateOpenAiLiveSipResponse(currentSnapshot, text, timestamp)
         : undefined;

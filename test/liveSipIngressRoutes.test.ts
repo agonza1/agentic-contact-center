@@ -906,6 +906,7 @@ test("live SIP 8600 fails closed when OpenAI stalls", async () => {
       rtcAsrMode: "rtc_asr_live",
     });
     assert.equal(started.statusCode, 201);
+    const callId = started.payload.call.session.callId;
 
     const transcript = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.transcript",
@@ -936,6 +937,23 @@ test("live SIP 8600 fails closed when OpenAI stalls", async () => {
     );
     assert.equal(
       heldTranscript.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "Are you still there?"),
+      false,
+    );
+
+    const directHeldTranscript = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      timestamp: "2026-07-27T22:55:04.000Z",
+      text: "Can automation resume?",
+      conversationMode: "openai_llm",
+    });
+    assert.equal(directHeldTranscript.statusCode, 409);
+    assert.equal(directHeldTranscript.payload.error, "live_sip_openai_automation_stopped");
+    assert.equal(openAiRequestCount, 1);
+    assert.equal(
+      directHeldTranscript.payload.call.events.some((event: any) => event.type === "rtc_asr_transcript" && event.detail.held === true),
+      true,
+    );
+    assert.equal(
+      directHeldTranscript.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "Can automation resume?"),
       false,
     );
   } finally {

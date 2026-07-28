@@ -120,10 +120,12 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   const closeSessionIndex = bridge.indexOf("async def close_session");
   const closeRtcAsrIndex = bridge.indexOf("await turn_session.close_rtc_asr_stream(reason)", closeSessionIndex);
   const closeEndCallIndex = bridge.indexOf("await self.end_acc_call(", closeRtcAsrIndex);
-  const closeEndCallBlock = bridge.slice(closeEndCallIndex, closeEndCallIndex + 260);
+  const closeEndCallBlock = bridge.slice(closeEndCallIndex, closeEndCallIndex + 360);
   assert.ok(closeSessionIndex >= 0);
   assert.ok(closeRtcAsrIndex > closeSessionIndex);
   assert.ok(closeEndCallIndex > closeRtcAsrIndex);
+  assert.match(bridge.slice(closeSessionIndex, closeEndCallIndex), /record_teardown_error\("runner_task", exc\)/);
+  assert.match(bridge.slice(closeSessionIndex, closeEndCallIndex), /finally:\n\s+if teardown_errors:/);
   assert.match(closeEndCallBlock, /linked_sip_call_id=linked_sip_call_id/);
   const closePrewarmIndex = bridge.indexOf('prewarm_task = session.get("prewarmTask")', closeSessionIndex);
   const closePrewarmCancelBlock = bridge.slice(closePrewarmIndex, closePrewarmIndex + 320);
