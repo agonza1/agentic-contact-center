@@ -199,6 +199,7 @@ services:
       KOKORO_BASE_URL: http://kokoro:8880
       KOKORO_VOICE: ${KOKORO_VOICE:-af_heart}
       ACC_VERTO_OWNS_GREETING: ${ACC_VERTO_OWNS_GREETING:-false}
+      ACC_VERTO_OWNS_MEDIA: ${ACC_VERTO_OWNS_MEDIA:-false}
 
   pipecat-verto-bridge:
     build:

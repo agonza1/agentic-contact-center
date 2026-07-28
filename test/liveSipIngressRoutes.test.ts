@@ -875,7 +875,9 @@ test("live SIP 8600 fails closed when OpenAI stalls", async () => {
     OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
     ACC_OPENAI_REQUEST_TIMEOUT_MS: process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS,
   };
+  let openAiRequestCount = 0;
   const openAiServer = createTestServer((req) => {
+    openAiRequestCount += 1;
     req.resume();
   });
   await new Promise<void>((resolve) => openAiServer.listen(0, "127.0.0.1", resolve));
@@ -917,6 +919,25 @@ test("live SIP 8600 fails closed when OpenAI stalls", async () => {
       true,
     );
     assert.equal(transcript.payload.call.flowState, "wrap");
+    assert.equal(openAiRequestCount, 1);
+
+    const heldTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-27T22:55:03.000Z",
+      sipCallId: "sip-openai-timeout",
+      text: "Are you still there?",
+    });
+    assert.equal(heldTranscript.statusCode, 409);
+    assert.equal(heldTranscript.payload.error, "live_sip_openai_automation_stopped");
+    assert.equal(openAiRequestCount, 1);
+    assert.equal(
+      heldTranscript.payload.call.events.some((event: any) => event.type === "rtc_asr_transcript" && event.detail.held === true),
+      true,
+    );
+    assert.equal(
+      heldTranscript.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "Are you still there?"),
+      false,
+    );
   } finally {
     Object.assign(process.env, originalEnv);
     for (const [key, value] of Object.entries(originalEnv)) {

@@ -2112,6 +2112,26 @@ function getLatestEvent(snapshot: CallSnapshot, eventType: string) {
   return [...snapshot.events].reverse().find((event) => event.type === eventType) ?? null;
 }
 
+function isOpenAiLiveSipAutomationStopped(snapshot: CallSnapshot): boolean {
+  if (snapshot.scenario.conversationMode !== "openai_llm") return false;
+
+  const stopIndex = snapshot.events.reduce((latest, event, index) => {
+    const failClosedHandoff = event.type === "human_handoff_started"
+      && typeof event.detail.source === "string"
+      && event.detail.source.includes("fail_closed");
+    return event.type === "demo_fallback_triggered" || failClosedHandoff ? index : latest;
+  }, -1);
+  const releaseIndex = snapshot.events.reduce((latest, event, index) => {
+    if (event.type === "demo_fallback_disarmed") return index;
+    if (event.type === "operator_steer_applied" && (event.detail.action === "resume" || event.detail.action === "disarm_fallback")) {
+      return index;
+    }
+    return latest;
+  }, -1);
+
+  return (snapshot.demoFallback.armed || stopIndex >= 0) && releaseIndex <= stopIndex;
+}
+
 function getOptionalEventString(value: string | number | boolean | null | undefined): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
@@ -5662,6 +5682,29 @@ async function routeRequest(
           return;
         }
         const conversationMode = currentSnapshot.scenario.conversationMode;
+        if (isOpenAiLiveSipAutomationStopped(currentSnapshot)) {
+          const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+            eventType: "rtc_asr_transcript",
+            timestamp,
+            detail: {
+              provider: "rtc-asr",
+              transcriptText: text,
+              evidencePath: getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+              held: true,
+              holdReason: "openai_fail_closed_handoff_active",
+              ...voiceSessionScope,
+            },
+          });
+          writeJson(response, 409, {
+            ok: false,
+            route: "/api/live-sip/events",
+            eventType,
+            sipCallId,
+            error: "live_sip_openai_automation_stopped",
+            call: buildCallPayload(snapshot),
+          });
+          return;
+        }
         const openAiLlm = conversationMode === "openai_llm"
           ? await generateOpenAiLiveSipResponse(currentSnapshot, text, timestamp)
           : undefined;

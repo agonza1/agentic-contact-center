@@ -1218,6 +1218,10 @@ export class EslBridge {
     return new PipecatRtpFrameCollector({ maxFrames: this.options.rtpMaxFrames ?? 200 });
   }
 
+  vertoOwnsMedia() {
+    return this.options.vertoOwnsMedia === true || this.options.vertoOwnsGreeting === true;
+  }
+
   activeRtpCollector() {
     if (!this.currentRtpCallUuid) return this.rtpCollector;
     return this.callMap.get(this.currentRtpCallUuid)?.rtpCollector ?? this.rtpCollector;
@@ -1474,6 +1478,18 @@ export class EslBridge {
   async onRecordStop(uuid) {
     const call = this.callMap.get(uuid);
     if (!call) return;
+    if (this.vertoOwnsMedia()) {
+      this.events.push({
+        at: nowIso(),
+        legacyRecordStopIgnored: {
+          uuid,
+          reason: "verto_owns_media",
+          accCallId: call.accCallId ?? null,
+        },
+      });
+      await this.flushLog();
+      return;
+    }
     await this.playPipecatOutputFixture(uuid);
     let pipecatRtpFrameBatch = (call.rtpCollector ?? this.rtpCollector).summary();
     if (pipecatRtpFrameBatch.frames.length === 0) {
@@ -1614,6 +1630,7 @@ async function main() {
     kokoroModel: argValue("--kokoro-model", process.env.KOKORO_MODEL || "kokoro"),
     initialGreetingText: argValue("--initial-greeting", process.env.ACC_SIP_INITIAL_GREETING || "Hello, this is the agentic contact center. I can hear you now."),
     vertoOwnsGreeting: process.env.ACC_VERTO_OWNS_GREETING === "true",
+    vertoOwnsMedia: process.env.ACC_VERTO_OWNS_MEDIA === "true" || process.env.ACC_VERTO_OWNS_GREETING === "true",
   });
   await bridge.start();
   console.log(`FreeSWITCH ACC bridge connected target ${bridge.options.eslHost}:${bridge.options.eslPort}; ACC ${bridge.options.accBaseUrl}`);
