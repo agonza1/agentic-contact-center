@@ -1002,14 +1002,17 @@ class AccVoicePipelineSession:
         # finite scripted phrase set only.
         cache_path = None if self.conversation_mode == "openai_llm" else tts_cache_path(frame.text, sample_rate)
         cache_lock = self.tts_cache_locks.setdefault(cache_path, asyncio.Lock()) if cache_path else None
+        cache_lock_owned = False
 
         if cache_lock:
             await cache_lock.acquire()
+            cache_lock_owned = True
         try:
             if cache_path and cache_path.is_file():
                 cached_audio = await asyncio.to_thread(cache_path.read_bytes)
-                if cache_lock and cache_lock.locked():
+                if cache_lock_owned and cache_lock:
                     cache_lock.release()
+                    cache_lock_owned = False
                 first_audio_ms = round((time.perf_counter() - started) * 1000)
                 for offset in range(0, len(cached_audio), chunk_bytes):
                     yield cached_audio[offset : offset + chunk_bytes], sample_rate, {
@@ -1033,7 +1036,7 @@ class AccVoicePipelineSession:
             ):
                 yield item
         finally:
-            if cache_lock and cache_lock.locked():
+            if cache_lock_owned and cache_lock:
                 cache_lock.release()
 
     async def _stream_synthesize_uncached(

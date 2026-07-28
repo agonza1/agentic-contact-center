@@ -109,6 +109,26 @@ async def main() -> None:
                     text="A different generated response number two.",
                 )
                 await openai_session.prewarm_conversation_tts_cache()
+                lock_probe_text = "Cache lock ownership probe."
+                lock_probe_path = pipeline.tts_cache_path(lock_probe_text, 24000)
+                if lock_probe_path is None:
+                    raise AssertionError("expected deterministic TTS cache path")
+                lock_probe_path.write_bytes(source_audio)
+                lock_probe_session = AccVoicePipelineSession(
+                    acc_url="http://acc.invalid",
+                    call_id="tts-cache-lock-probe",
+                    readiness=None,
+                )
+                lock_probe_generator = lock_probe_session.stream_synthesize(
+                    TextFrame(lock_probe_text),
+                    chunk_bytes=960,
+                )
+                await lock_probe_generator.__anext__()
+                lock_probe_lock = pipeline.TTS_CACHE_LOCKS[lock_probe_path]
+                await lock_probe_lock.acquire()
+                await lock_probe_generator.aclose()
+                lock_still_owned_by_probe = lock_probe_lock.locked()
+                lock_probe_lock.release()
                 cache_files = list(Path(cache_dir).glob("*.pcm"))
 
     concurrent_first_delta = abs((concurrent_first_a or 0) - (concurrent_first_b or 0))
@@ -129,10 +149,11 @@ async def main() -> None:
             and openai_metadata_a.get("cacheHit") is False
             and openai_metadata_b.get("cacheHit") is False
             and provider_calls == 3
-            and len(cache_files) == 1
-            and len(pipeline.TTS_CACHE_LOCKS) == cached_lock_count
+            and len(cache_files) == 2
+            and len(pipeline.TTS_CACHE_LOCKS) == cached_lock_count + 1
             and concurrent_first_delta < 0.05
             and concurrent_first_wait < 0.05
+            and lock_still_owned_by_probe
         ),
         "providerCalls": provider_calls,
         "firstCacheHit": first_metadata.get("cacheHit"),
@@ -143,6 +164,7 @@ async def main() -> None:
         "audioBytes": len(second_audio),
         "cacheFiles": len(cache_files),
         "cacheLocks": len(pipeline.TTS_CACHE_LOCKS),
+        "lockStillOwnedByProbe": lock_still_owned_by_probe,
     }
     print(json.dumps(result))
 

@@ -113,8 +113,9 @@ test("deterministic Kokoro responses persist PCM while OpenAI responses bypass t
   assert.equal(payload.firstCacheHit, false);
   assert.equal(payload.secondCacheHit, true);
   assert.deepEqual(payload.openAiCacheHits, [false, false]);
-  assert.equal(payload.cacheFiles, 1);
-  assert.equal(payload.cacheLocks, 1);
+  assert.equal(payload.cacheFiles, 2);
+  assert.equal(payload.cacheLocks, 2);
+  assert.equal(payload.lockStillOwnedByProbe, true);
 });
 
 test("Pipecat transport output streams chunks and flushes on barge-in", { skip: !hasOptionalPipecatRuntime }, () => {
