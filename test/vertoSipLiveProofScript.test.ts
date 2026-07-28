@@ -105,6 +105,7 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.match(bridge, /"accCallId": acc_call_id/);
   assert.match(bridge, /greeting\.owner_selected/);
   assert.match(bridge, /asyncio\.create_task\(session\.prewarm_conversation_tts_cache\(\)\)/);
+  assert.match(bridge, /session_record\["prewarmTask"\] = prewarm_task/);
   assert.match(bridge, /asyncio\.create_task\(session\.get_flow_manager_adapter\(\)\.initialize\(\)\)/);
   assert.match(bridge, /owner="pipecat_verto_bridge" if verto_owns_greeting else "freeswitch_esl_bridge"/);
   assert.match(bridge, /async def end_acc_call/);
@@ -121,6 +122,11 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.ok(closeRtcAsrIndex > closeSessionIndex);
   assert.ok(closeEndCallIndex > closeRtcAsrIndex);
   assert.match(closeEndCallBlock, /linked_sip_call_id=linked_sip_call_id/);
+  const closePrewarmIndex = bridge.indexOf('prewarm_task = session.get("prewarmTask")', closeSessionIndex);
+  const closePrewarmCancelBlock = bridge.slice(closePrewarmIndex, closePrewarmIndex + 320);
+  assert.ok(closePrewarmIndex > closeSessionIndex);
+  assert.match(closePrewarmCancelBlock, /prewarm_task\.cancel\(\)/);
+  assert.match(closePrewarmCancelBlock, /await prewarm_task/);
 });
 
 test("Verto bridge normalizes FreeSWITCH ICE, DTLS, and G.711 RTP", { skip: !existsSync(".pipecat-runtime") }, async () => {

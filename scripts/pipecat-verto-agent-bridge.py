@@ -862,9 +862,11 @@ class VertoAgentBridge:
             idle_timeout_secs=None,
         )
         runner = PipelineRunner()
+        session_record: dict[str, Any] = {}
         runner_task = asyncio.create_task(runner.run(task, auto_end=False))
         async def queue_prerecorded_intro() -> None:
             prewarm_task = asyncio.create_task(session.prewarm_conversation_tts_cache())
+            session_record["prewarmTask"] = prewarm_task
             flow_manager_task = asyncio.create_task(session.get_flow_manager_adapter().initialize())
             greeting_preroll_ms = max(int(os.environ.get("ACC_SIP_GREETING_PREROLL_MS", "300")), 0)
             if greeting_preroll_ms:
@@ -970,23 +972,25 @@ class VertoAgentBridge:
                     raise
             else:
                 session.release_caller_turns("freeswitch_esl_bridge_owns_greeting")
-        session_record = {
-            "connection": connection,
-            "transport": transport,
-            "runner": runner,
-            "runnerTask": runner_task,
-            "pipelineTask": task,
-            "turnSession": session,
-            "callId": call_id,
-            "vertoCallId": call_id,
-            "sipCallId": linked_sip_call_id or call_id,
-            "linkedSipCallId": linked_sip_call_id,
-            "accCallId": acc_call_id,
-            "sessionId": session_id,
-            "startedAt": now_iso(),
-            "closedAt": None,
-            "closeReason": None,
-        }
+        session_record.update(
+            {
+                "connection": connection,
+                "transport": transport,
+                "runner": runner,
+                "runnerTask": runner_task,
+                "pipelineTask": task,
+                "turnSession": session,
+                "callId": call_id,
+                "vertoCallId": call_id,
+                "sipCallId": linked_sip_call_id or call_id,
+                "linkedSipCallId": linked_sip_call_id,
+                "accCallId": acc_call_id,
+                "sessionId": session_id,
+                "startedAt": now_iso(),
+                "closedAt": None,
+                "closeReason": None,
+            }
+        )
         self.sessions[session_id] = session_record
         self.sessions[call_id] = session_record
 
@@ -1018,6 +1022,11 @@ class VertoAgentBridge:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        prewarm_task = session.get("prewarmTask")
+        if isinstance(prewarm_task, asyncio.Task):
+            prewarm_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await prewarm_task
         if isinstance(call_id, str) and call_id:
             await self.end_acc_call(
                 call_id,
