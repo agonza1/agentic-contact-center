@@ -103,16 +103,18 @@ test("persistent rtc-asr session repeats utterance lifecycle and closes promptly
   assert.equal(payload.emptyFinalFallback, "current_utterance_interim");
 });
 
-test("deterministic Kokoro responses persist PCM and bypass repeat synthesis", { skip: !hasOptionalPipecatRuntime }, () => {
+test("deterministic Kokoro responses persist PCM while OpenAI responses bypass the cache", { skip: !hasOptionalPipecatRuntime }, () => {
   const payload = JSON.parse(execFileSync("python3", [
     "test/fixtures/tts_cache_regression.py",
   ], { encoding: "utf8" }).trim().split("\n").at(-1) ?? "{}");
 
   assert.equal(payload.ok, true);
-  assert.equal(payload.providerCalls, 1);
+  assert.equal(payload.providerCalls, 3);
   assert.equal(payload.firstCacheHit, false);
   assert.equal(payload.secondCacheHit, true);
+  assert.deepEqual(payload.openAiCacheHits, [false, false]);
   assert.equal(payload.cacheFiles, 1);
+  assert.equal(payload.cacheLocks, 1);
 });
 
 test("Pipecat transport output streams chunks and flushes on barge-in", { skip: !hasOptionalPipecatRuntime }, () => {

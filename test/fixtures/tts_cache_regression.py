@@ -43,12 +43,17 @@ async def main() -> None:
         provider_calls += 1
         return FakeResponse(source_audio)
 
-    async def synthesize(session: AccVoicePipelineSession, *, chunk_delay: float = 0) -> tuple[bytes, dict[str, object], float | None]:
+    async def synthesize(
+        session: AccVoicePipelineSession,
+        *,
+        text: str = "Cache this deterministic response.",
+        chunk_delay: float = 0,
+    ) -> tuple[bytes, dict[str, object], float | None]:
         chunks: list[bytes] = []
         last_metadata: dict[str, object] = {}
         first_chunk_at: float | None = None
         async for chunk, _sample_rate, metadata in session.stream_synthesize(
-            TextFrame("Cache this deterministic response."),
+            TextFrame(text),
             chunk_bytes=960,
         ):
             if first_chunk_at is None:
@@ -88,6 +93,22 @@ async def main() -> None:
                     synthesize(concurrent_a, chunk_delay=0.01),
                     synthesize(concurrent_b, chunk_delay=0.01),
                 )
+                cached_lock_count = len(pipeline.TTS_CACHE_LOCKS)
+                openai_session = AccVoicePipelineSession(
+                    acc_url="http://acc.invalid",
+                    call_id="tts-cache-openai",
+                    readiness=None,
+                    conversation_mode="openai_llm",
+                )
+                openai_audio_a, openai_metadata_a, _ = await synthesize(
+                    openai_session,
+                    text="A unique generated response number one.",
+                )
+                openai_audio_b, openai_metadata_b, _ = await synthesize(
+                    openai_session,
+                    text="A different generated response number two.",
+                )
+                await openai_session.prewarm_conversation_tts_cache()
                 cache_files = list(Path(cache_dir).glob("*.pcm"))
 
     concurrent_first_delta = abs((concurrent_first_a or 0) - (concurrent_first_b or 0))
@@ -103,8 +124,13 @@ async def main() -> None:
             and second_metadata.get("cacheHit") is True
             and concurrent_metadata_a.get("cacheHit") is True
             and concurrent_metadata_b.get("cacheHit") is True
-            and provider_calls == 1
+            and openai_audio_a == source_audio
+            and openai_audio_b == source_audio
+            and openai_metadata_a.get("cacheHit") is False
+            and openai_metadata_b.get("cacheHit") is False
+            and provider_calls == 3
             and len(cache_files) == 1
+            and len(pipeline.TTS_CACHE_LOCKS) == cached_lock_count
             and concurrent_first_delta < 0.05
             and concurrent_first_wait < 0.05
         ),
@@ -113,8 +139,10 @@ async def main() -> None:
         "secondCacheHit": second_metadata.get("cacheHit"),
         "concurrentFirstDeltaMs": round(concurrent_first_delta * 1000),
         "concurrentFirstWaitMs": round(concurrent_first_wait * 1000),
+        "openAiCacheHits": [openai_metadata_a.get("cacheHit"), openai_metadata_b.get("cacheHit")],
         "audioBytes": len(second_audio),
         "cacheFiles": len(cache_files),
+        "cacheLocks": len(pipeline.TTS_CACHE_LOCKS),
     }
     print(json.dumps(result))
 

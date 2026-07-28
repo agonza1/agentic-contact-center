@@ -996,7 +996,11 @@ class AccVoicePipelineSession:
         """Yield raw Kokoro PCM chunks, reusing persistent deterministic audio."""
         started = time.perf_counter()
         sample_rate = int(os.environ.get("KOKORO_OUTPUT_SAMPLE_RATE", "24000"))
-        cache_path = tts_cache_path(frame.text, sample_rate)
+        # OpenAI responses are effectively unbounded and usually unique. Caching
+        # them would grow both the on-disk PCM artifact set and the process-wide
+        # lock map for the lifetime of the bridge. Keep persistence for the
+        # finite scripted phrase set only.
+        cache_path = None if self.conversation_mode == "openai_llm" else tts_cache_path(frame.text, sample_rate)
         cache_lock = self.tts_cache_locks.setdefault(cache_path, asyncio.Lock()) if cache_path else None
 
         if cache_lock:
@@ -1140,6 +1144,8 @@ class AccVoicePipelineSession:
 
     async def prewarm_conversation_tts_cache(self) -> None:
         """Warm common deterministic branches in conversational priority order."""
+        if self.conversation_mode == "openai_llm":
+            return
         for text in DEFAULT_TTS_PREWARM_TEXTS:
             await self.prewarm_tts_cache(text)
 
