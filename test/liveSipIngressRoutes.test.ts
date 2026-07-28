@@ -1045,6 +1045,98 @@ test("delivery-ack commits must match the server-side OpenAI preview", async () 
   }
 });
 
+test("delivery-ack OpenAI failures persist fail-closed state before audible commit", async () => {
+  const originalEnv = {
+    ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
+  };
+  delete process.env.ACC_OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.ACC_OPENAI_AUTH_MODE;
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENCLAW_AGENT_ID;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T22:52:00.000Z",
+      sipCallId: "sip-openai-delivery-fail-closed",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+    const callId = started.payload.call.session.callId;
+
+    const preview = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help with my account?",
+      timestamp: "2026-07-27T22:52:01.000Z",
+      commitMode: "delivery_ack",
+    });
+    assert.equal(preview.statusCode, 200);
+    assert.equal(preview.payload.callerTurnCommit.status, "pending");
+    assert.match(preview.payload.callerTurnCommit.expectedAgentText, /live AI path/);
+    assert.match(preview.payload.transcript.at(-1).text, /live AI path/);
+
+    const fetchedBeforeCommit = await requestJson(address.port, "GET", `/api/calls/${callId}`);
+    assert.equal(fetchedBeforeCommit.statusCode, 200);
+    assert.equal(fetchedBeforeCommit.payload.flowState, "wrap");
+    assert.equal(fetchedBeforeCommit.payload.demoFallback.armed, true);
+    assert.deepEqual(fetchedBeforeCommit.payload.transcript, []);
+    assert.equal(
+      fetchedBeforeCommit.payload.events.some((event: any) => event.type === "openai_conversation_generation_failed" && event.detail.error === "openai_api_key_missing"),
+      true,
+    );
+    assert.equal(
+      fetchedBeforeCommit.payload.events.some((event: any) => event.type === "human_handoff_started" && event.detail.source === "openai_llm_fail_closed"),
+      true,
+    );
+
+    const committed = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn/commit`, {
+      text: "Can you help with my account?",
+      timestamp: "2026-07-27T22:52:01.000Z",
+      expectedSnapshotVersion: preview.payload.callerTurnCommit.snapshotVersion,
+      expectedAgentText: preview.payload.callerTurnCommit.expectedAgentText,
+    });
+    assert.equal(committed.statusCode, 200);
+    assert.equal(committed.payload.transcript.length, 2);
+    assert.equal(committed.payload.transcript[0].text, "Can you help with my account?");
+    assert.match(committed.payload.transcript[1].text, /live AI path/);
+    assert.equal(
+      committed.payload.events.filter((event: any) => event.type === "openai_conversation_generation_failed").length,
+      1,
+    );
+
+    const heldTurn = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Are you still automating?",
+      timestamp: "2026-07-27T22:52:02.000Z",
+    });
+    assert.equal(heldTurn.statusCode, 409);
+    assert.equal(heldTurn.payload.error, "live_sip_openai_automation_stopped");
+    assert.equal(
+      heldTurn.payload.call.transcript.some((turn: any) => turn.text === "Are you still automating?"),
+      false,
+    );
+  } finally {
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("live SIP 8600 fails closed when OpenAI stalls", async () => {
   const originalEnv = {
     ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
@@ -1268,6 +1360,205 @@ test("direct OpenAI caller turns recheck SIP termination after async generation"
     assert.equal(openAiRequestCount, 1);
     assert.equal(
       rejectedTurn.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "Can you keep helping me?"),
+      false,
+    );
+  } finally {
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => openAiServer.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("direct OpenAI caller turns preserve operator holds after async generation", async () => {
+  const originalEnv = {
+    ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    ACC_OPENAI_REQUEST_TIMEOUT_MS: process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
+  };
+
+  let releaseOpenAiResponse: () => void = () => {
+    throw new Error("OpenAI response release requested before request was received");
+  };
+  let markOpenAiRequestSeen: (() => void) | null = null;
+  const openAiRequestSeen = new Promise<void>((resolve) => { markOpenAiRequestSeen = resolve; });
+  const openAiServer = createTestServer((req, res) => {
+    req.resume();
+    releaseOpenAiResponse = () => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ id: "resp-operator-hold", output_text: "I can keep helping safely." }));
+    };
+    markOpenAiRequestSeen?.();
+  });
+  await new Promise<void>((resolve) => openAiServer.listen(0, "127.0.0.1", resolve));
+  const openAiAddress = openAiServer.address();
+  assert.ok(openAiAddress && typeof openAiAddress !== "string");
+
+  process.env.ACC_OPENAI_API_KEY = "test-openai-key";
+  delete process.env.OPENAI_API_KEY;
+  process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${openAiAddress.port}/v1`;
+  delete process.env.OPENAI_BASE_URL;
+  process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS = "5000";
+  delete process.env.ACC_OPENAI_AUTH_MODE;
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENCLAW_AGENT_ID;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T23:00:00.000Z",
+      sipCallId: "sip-openai-operator-hold",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+    const callId = started.payload.call.session.callId;
+
+    const turnRequest = requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      timestamp: "2026-07-27T23:00:01.000Z",
+      text: "Can you keep helping me?",
+      conversationMode: "openai_llm",
+    });
+    await openAiRequestSeen;
+
+    const paused = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "pause",
+      timestamp: "2026-07-27T23:00:02.000Z",
+      reason: "operator needs to review before automation continues",
+    });
+    assert.equal(paused.statusCode, 200);
+    assert.equal(paused.payload.flowState, "policy_hold");
+
+    releaseOpenAiResponse();
+    const rejectedTurn = await turnRequest;
+    assert.equal(rejectedTurn.statusCode, 409);
+    assert.equal(rejectedTurn.payload.error, "live_sip_operator_hold_active");
+    assert.equal(
+      rejectedTurn.payload.call.events.some((event: any) => event.type === "rtc_asr_transcript" && event.detail.held === true && event.detail.holdReason === "operator_policy_hold_active"),
+      true,
+    );
+    assert.equal(
+      rejectedTurn.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "Can you keep helping me?"),
+      false,
+    );
+    assert.equal(
+      rejectedTurn.payload.call.transcript.some((turn: any) => turn.speaker === "agent" && turn.text === "I can keep helping safely."),
+      false,
+    );
+  } finally {
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => openAiServer.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("live SIP media transcripts preserve operator holds after async OpenAI generation", async () => {
+  const originalEnv = {
+    ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    ACC_OPENAI_REQUEST_TIMEOUT_MS: process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
+  };
+
+  let releaseOpenAiResponse: () => void = () => {
+    throw new Error("OpenAI response release requested before request was received");
+  };
+  let markOpenAiRequestSeen: (() => void) | null = null;
+  const openAiRequestSeen = new Promise<void>((resolve) => { markOpenAiRequestSeen = resolve; });
+  const openAiServer = createTestServer((req, res) => {
+    req.resume();
+    releaseOpenAiResponse = () => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ id: "resp-media-operator-hold", output_text: "I can continue the live call safely." }));
+    };
+    markOpenAiRequestSeen?.();
+  });
+  await new Promise<void>((resolve) => openAiServer.listen(0, "127.0.0.1", resolve));
+  const openAiAddress = openAiServer.address();
+  assert.ok(openAiAddress && typeof openAiAddress !== "string");
+
+  process.env.ACC_OPENAI_API_KEY = "test-openai-key";
+  delete process.env.OPENAI_API_KEY;
+  process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${openAiAddress.port}/v1`;
+  delete process.env.OPENAI_BASE_URL;
+  process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS = "5000";
+  delete process.env.ACC_OPENAI_AUTH_MODE;
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENCLAW_AGENT_ID;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T23:02:00.000Z",
+      sipCallId: "sip-openai-media-operator-hold",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+    const callId = started.payload.call.session.callId;
+
+    const transcriptRequest = requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-27T23:02:01.000Z",
+      sipCallId: "sip-openai-media-operator-hold",
+      text: "Can you keep helping me on this call?",
+    });
+    await openAiRequestSeen;
+
+    const paused = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "pause",
+      timestamp: "2026-07-27T23:02:02.000Z",
+      reason: "operator needs to review before media automation continues",
+    });
+    assert.equal(paused.statusCode, 200);
+    assert.equal(paused.payload.flowState, "policy_hold");
+
+    releaseOpenAiResponse();
+    const rejectedTranscript = await transcriptRequest;
+    assert.equal(rejectedTranscript.statusCode, 409);
+    assert.equal(rejectedTranscript.payload.error, "live_sip_operator_hold_active");
+    assert.equal(
+      rejectedTranscript.payload.call.events.some((event: any) => event.type === "rtc_asr_transcript" && event.detail.held === true && event.detail.holdReason === "operator_policy_hold_active"),
+      true,
+    );
+    assert.equal(
+      rejectedTranscript.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "Can you keep helping me on this call?"),
+      false,
+    );
+    assert.equal(
+      rejectedTranscript.payload.call.transcript.some((turn: any) => turn.speaker === "agent" && turn.text === "I can continue the live call safely."),
       false,
     );
   } finally {

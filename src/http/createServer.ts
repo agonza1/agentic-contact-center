@@ -2132,6 +2132,48 @@ function isOpenAiLiveSipAutomationStopped(snapshot: CallSnapshot): boolean {
   return (snapshot.demoFallback.armed || stopIndex >= 0) && releaseIndex <= stopIndex;
 }
 
+function getLiveSipOperatorHoldReason(snapshot: CallSnapshot): string | null {
+  if (snapshot.operatorSteer.pending || snapshot.flowState === "operator_steer") return "operator_steer_active";
+  if (snapshot.flowState === "policy_hold") return "operator_policy_hold_active";
+  if (snapshot.demoFallback.armed) return "demo_fallback_active";
+  return null;
+}
+
+async function rejectHeldLiveSipCallerTurn(
+  response: ServerResponse,
+  ingress: InMemoryTelephonyIngress,
+  callId: string,
+  text: string,
+  timestamp: string,
+  evidencePath: string | null,
+  route: "/api/live-sip/events" | "/api/calls/:callId/caller-turn",
+  reason: string,
+  context: { eventType?: string; sipCallId?: string } = {},
+  extraDetail: Record<string, string | number | boolean | null> = {},
+): Promise<void> {
+  const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+    eventType: "rtc_asr_transcript",
+    timestamp,
+    detail: {
+      provider: "rtc-asr",
+      transcriptText: text,
+      evidencePath,
+      held: true,
+      holdReason: reason,
+      ...extraDetail,
+    },
+  });
+  writeJson(response, 409, {
+    ok: false,
+    route,
+    ...context,
+    error: reason === "openai_fail_closed_handoff_active"
+      ? "live_sip_openai_automation_stopped"
+      : "live_sip_operator_hold_active",
+    call: buildCallPayload(snapshot),
+  });
+}
+
 function getOptionalEventString(value: string | number | boolean | null | undefined): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
@@ -4526,6 +4568,7 @@ type CallerTurnDeliveryAckPreview = {
   conversationMode?: ConversationMode;
   expectedAgentText: string;
   openAiLlm?: OpenAiLlmTurnResult;
+  openAiFailClosedAlreadyPersisted?: boolean;
 };
 
 function buildCallerTurnDeliveryAckKey(callId: string, snapshotVersion: string): string {
@@ -5741,31 +5784,75 @@ async function routeRequest(
         }
         const conversationMode = currentSnapshot.scenario.conversationMode;
         if (isOpenAiLiveSipAutomationStopped(currentSnapshot)) {
-          const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
-            eventType: "rtc_asr_transcript",
+          await rejectHeldLiveSipCallerTurn(
+            response,
+            ingress,
+            callId,
+            text,
             timestamp,
-            detail: {
-              provider: "rtc-asr",
-              transcriptText: text,
-              evidencePath: getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
-              held: true,
-              holdReason: "openai_fail_closed_handoff_active",
-              ...voiceSessionScope,
-            },
-          });
-          writeJson(response, 409, {
-            ok: false,
-            route: "/api/live-sip/events",
-            eventType,
-            sipCallId,
-            error: "live_sip_openai_automation_stopped",
-            call: buildCallPayload(snapshot),
-          });
+            getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+            "/api/live-sip/events",
+            "openai_fail_closed_handoff_active",
+            { eventType, sipCallId },
+            voiceSessionScope,
+          );
+          return;
+        }
+        const currentOperatorHoldReason = conversationMode === "openai_llm" ? getLiveSipOperatorHoldReason(currentSnapshot) : null;
+        if (currentOperatorHoldReason) {
+          await rejectHeldLiveSipCallerTurn(
+            response,
+            ingress,
+            callId,
+            text,
+            timestamp,
+            getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+            "/api/live-sip/events",
+            currentOperatorHoldReason,
+            { eventType, sipCallId },
+            voiceSessionScope,
+          );
           return;
         }
         const openAiLlm = conversationMode === "openai_llm"
           ? await generateOpenAiLiveSipResponse(currentSnapshot, text, timestamp)
           : undefined;
+        const latestSnapshot = openAiLlm ? await ingress.getSnapshot(callId) : currentSnapshot;
+        if (!latestSnapshot || isLiveSipCallEnded(latestSnapshot)) {
+          writeBadRequest(response, "live_sip_call_not_started");
+          return;
+        }
+        if (isOpenAiLiveSipAutomationStopped(latestSnapshot)) {
+          await rejectHeldLiveSipCallerTurn(
+            response,
+            ingress,
+            callId,
+            text,
+            timestamp,
+            getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+            "/api/live-sip/events",
+            "openai_fail_closed_handoff_active",
+            { eventType, sipCallId },
+            voiceSessionScope,
+          );
+          return;
+        }
+        const latestOperatorHoldReason = conversationMode === "openai_llm" ? getLiveSipOperatorHoldReason(latestSnapshot) : null;
+        if (latestOperatorHoldReason) {
+          await rejectHeldLiveSipCallerTurn(
+            response,
+            ingress,
+            callId,
+            text,
+            timestamp,
+            getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+            "/api/live-sip/events",
+            latestOperatorHoldReason,
+            { eventType, sipCallId },
+            voiceSessionScope,
+          );
+          return;
+        }
         await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config, {
           ...voiceSessionScope,
           conversationMode,
@@ -6431,29 +6518,36 @@ async function routeRequest(
       }
       const effectiveConversationMode = conversationMode ?? currentSnapshot.scenario.conversationMode;
       if (isOpenAiLiveSipAutomationStopped(currentSnapshot)) {
-        const snapshot = await ingress.recordLiveTelephonyEvidence(callerTurnMatch[1], {
-          eventType: "rtc_asr_transcript",
+        await rejectHeldLiveSipCallerTurn(
+          response,
+          ingress,
+          callerTurnMatch[1],
+          text,
           timestamp,
-          detail: {
-            provider: "rtc-asr",
-            transcriptText: text,
-            evidencePath: getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
-            held: true,
-            holdReason: "openai_fail_closed_handoff_active",
-          },
-        });
-        writeJson(response, 409, {
-          ok: false,
-          route: "/api/calls/:callId/caller-turn",
-          error: "live_sip_openai_automation_stopped",
-          call: buildCallPayload(snapshot),
-        });
+          getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+          "/api/calls/:callId/caller-turn",
+          "openai_fail_closed_handoff_active",
+        );
+        return;
+      }
+      const currentOperatorHoldReason = effectiveConversationMode === "openai_llm" ? getLiveSipOperatorHoldReason(currentSnapshot) : null;
+      if (currentOperatorHoldReason) {
+        await rejectHeldLiveSipCallerTurn(
+          response,
+          ingress,
+          callerTurnMatch[1],
+          text,
+          timestamp,
+          getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+          "/api/calls/:callId/caller-turn",
+          currentOperatorHoldReason,
+        );
         return;
       }
       const openAiLlm = effectiveConversationMode === "openai_llm"
         ? await generateOpenAiLiveSipResponse(currentSnapshot, text, timestamp)
         : undefined;
-      const latestSnapshot = openAiLlm ? await ingress.getSnapshot(callerTurnMatch[1]) : currentSnapshot;
+      let latestSnapshot = openAiLlm ? await ingress.getSnapshot(callerTurnMatch[1]) : currentSnapshot;
       if (!latestSnapshot) {
         writeNotFound(response);
         return;
@@ -6468,30 +6562,43 @@ async function routeRequest(
         return;
       }
       if (isOpenAiLiveSipAutomationStopped(latestSnapshot)) {
-        const snapshot = await ingress.recordLiveTelephonyEvidence(callerTurnMatch[1], {
-          eventType: "rtc_asr_transcript",
+        await rejectHeldLiveSipCallerTurn(
+          response,
+          ingress,
+          callerTurnMatch[1],
+          text,
           timestamp,
-          detail: {
-            provider: "rtc-asr",
-            transcriptText: text,
-            evidencePath: getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
-            held: true,
-            holdReason: "openai_fail_closed_handoff_active",
-          },
-        });
-        writeJson(response, 409, {
-          ok: false,
-          route: "/api/calls/:callId/caller-turn",
-          error: "live_sip_openai_automation_stopped",
-          call: buildCallPayload(snapshot),
-        });
+          getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+          "/api/calls/:callId/caller-turn",
+          "openai_fail_closed_handoff_active",
+        );
         return;
+      }
+      const latestOperatorHoldReason = effectiveConversationMode === "openai_llm" ? getLiveSipOperatorHoldReason(latestSnapshot) : null;
+      if (latestOperatorHoldReason) {
+        await rejectHeldLiveSipCallerTurn(
+          response,
+          ingress,
+          callerTurnMatch[1],
+          text,
+          timestamp,
+          getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+          "/api/calls/:callId/caller-turn",
+          latestOperatorHoldReason,
+        );
+        return;
+      }
+      let openAiFailClosedAlreadyPersisted = false;
+      if (commitMode === "delivery_ack" && openAiLlm && !openAiLlm.ok) {
+        latestSnapshot = await ingress.recordOpenAiLlmFailClosedState(callerTurnMatch[1], turn, openAiLlm);
+        openAiFailClosedAlreadyPersisted = true;
       }
       if (commitMode === "delivery_ack") {
         const snapshotVersion = buildDeliveryAckSnapshotVersion(latestSnapshot);
         const snapshot = await ingress.previewCallerTurn(callerTurnMatch[1], turn, config, {
           conversationMode: effectiveConversationMode,
           openAiLlm,
+          openAiFailClosedAlreadyPersisted,
         });
         const expectedAgentText = snapshot.transcript.at(-1)?.speaker === "agent" ? snapshot.transcript.at(-1)?.text : undefined;
         if (!expectedAgentText) {
@@ -6506,6 +6613,7 @@ async function routeRequest(
           conversationMode: effectiveConversationMode,
           expectedAgentText,
           openAiLlm,
+          openAiFailClosedAlreadyPersisted,
         });
         writeJson(response, 200, {
           ...buildCallPayload(snapshot),
@@ -6613,9 +6721,11 @@ async function routeRequest(
         return;
       }
       const openAiLlm = pendingPreview.openAiLlm;
+      const openAiFailClosedAlreadyPersisted = pendingPreview.openAiFailClosedAlreadyPersisted;
       const preview = await ingress.previewCallerTurn(callerTurnCommitMatch[1], turn, config, {
         conversationMode: effectiveConversationMode,
         openAiLlm,
+        openAiFailClosedAlreadyPersisted,
       });
       const previewAgentText = preview.transcript.at(-1)?.speaker === "agent" ? preview.transcript.at(-1)?.text : undefined;
       if (previewAgentText !== expectedAgentText) {
@@ -6625,6 +6735,7 @@ async function routeRequest(
       const snapshot = await ingress.appendCallerTurn(callerTurnCommitMatch[1], turn, config, {
         conversationMode: effectiveConversationMode,
         openAiLlm,
+        openAiFailClosedAlreadyPersisted,
       });
       callerTurnDeliveryAckPreviews.delete(previewKey);
       writeJson(response, 200, {

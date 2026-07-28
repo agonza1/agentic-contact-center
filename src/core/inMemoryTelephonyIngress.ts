@@ -1,5 +1,6 @@
 import {
   type OpenAiLlmTurnResult,
+  applyOpenAiLlmFailClosedState,
   applyOpenAiLlmPipecatFlow,
   applyFreeCallerPipecatFlow,
   applyDeterministicPipecatFlow,
@@ -58,6 +59,7 @@ interface CallerTurnOptions {
   voiceSessionId?: string | null;
   realtimeVoiceSessionId?: string | null;
   openAiLlm?: OpenAiLlmTurnResult;
+  openAiFailClosedAlreadyPersisted?: boolean;
 }
 
 type VoiceSessionScope = Pick<CallerTurnOptions, "voiceSessionId" | "realtimeVoiceSessionId">;
@@ -375,7 +377,9 @@ export class InMemoryTelephonyIngress {
     });
 
     if (conversationMode === "openai_llm") {
-      applyOpenAiLlmPipecatFlow(snapshot, turn, options.openAiLlm);
+      applyOpenAiLlmPipecatFlow(snapshot, turn, options.openAiLlm, {
+        failClosedAlreadyPersisted: options.openAiFailClosedAlreadyPersisted,
+      });
     } else if (conversationMode === "free_caller") {
       applyFreeCallerPipecatFlow(snapshot, turn);
     } else {
@@ -427,6 +431,23 @@ export class InMemoryTelephonyIngress {
     }
 
     this.applyCallerTurn(snapshot, turn, config, options);
+    return cloneSnapshot(snapshot);
+  }
+
+  async recordOpenAiLlmFailClosedState(
+    callId: string,
+    turn: TranscriptTurn,
+    llm: OpenAiLlmTurnResult | undefined,
+  ): Promise<CallSnapshot> {
+    const snapshot = this.calls.get(callId);
+
+    if (!snapshot) {
+      throw new Error(`Unknown call id: ${callId}`);
+    }
+
+    applyOpenAiLlmFailClosedState(snapshot, turn, llm);
+    recordLatencyMark(snapshot, "operator_notified", turn.timestamp, "operatorNotification");
+    refreshOpenClawSessionEvidence(snapshot, turn.timestamp);
     return cloneSnapshot(snapshot);
   }
 

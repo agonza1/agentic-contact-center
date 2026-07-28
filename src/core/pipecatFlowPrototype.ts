@@ -21,6 +21,9 @@ export interface OpenAiLlmTurnResult {
   status?: number | null;
 }
 
+export const OPENAI_LIVE_SIP_FAIL_CLOSED_AGENT_TEXT =
+  "I am having trouble with the live AI path, so I am stopping automated responses and connecting you to a licensed specialist.";
+
 export const SCRIPTED_CALLER_TURNS = [
   "I'm thinking about canceling my policy.",
   "My renewal went up a lot, and I can't afford it.",
@@ -581,34 +584,16 @@ export function applyOpenAiLlmPipecatFlow(
   snapshot: CallSnapshot,
   turn: TranscriptTurn,
   llm: OpenAiLlmTurnResult | undefined,
+  options: { failClosedAlreadyPersisted?: boolean } = {},
 ): void {
   const callerTurnCount = snapshot.transcript.filter((entry) => entry.speaker === "caller").length;
   snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
 
   if (!llm?.ok || !llm.text?.trim()) {
-    const reason = llm?.error ?? "openai_llm_response_missing";
-    snapshot.pipecatFlow.activeTool = "pause_presentation";
-    setDemoFallback(snapshot, true, turn.timestamp, reason, "runtime_failure");
-    setOperatorSteerState(snapshot, false, turn.timestamp, "escalate_to_human", "openai_llm_fail_closed");
-    recordEvent(snapshot, "openai_conversation_generation_failed", turn.timestamp, {
-      conversationMode: "openai_llm",
-      model: llm?.model ?? "unknown",
-      error: reason,
-      status: llm?.status ?? null,
-      noScriptedFallback: true,
-    });
-    recordEvent(snapshot, "human_handoff_started", turn.timestamp, {
-      operatorChannel: snapshot.scenario.operatorChannel,
-      reason,
-      mode: "runtime_failure",
-      source: "openai_llm_fail_closed",
-    });
-    transitionFlowState(snapshot, "wrap", turn.timestamp, "openai_llm_failed_closed");
-    appendAgentTurn(
-      snapshot,
-      "I am having trouble with the live AI path, so I am stopping automated responses and connecting you to a licensed specialist.",
-      turn.timestamp,
-    );
+    if (!options.failClosedAlreadyPersisted) {
+      applyOpenAiLlmFailClosedState(snapshot, turn, llm);
+    }
+    appendAgentTurn(snapshot, OPENAI_LIVE_SIP_FAIL_CLOSED_AGENT_TEXT, turn.timestamp);
     return;
   }
 
@@ -628,6 +613,31 @@ export function applyOpenAiLlmPipecatFlow(
   }
 
   appendAgentTurn(snapshot, llm.text.trim(), turn.timestamp);
+}
+
+export function applyOpenAiLlmFailClosedState(
+  snapshot: CallSnapshot,
+  turn: TranscriptTurn,
+  llm: OpenAiLlmTurnResult | undefined,
+): void {
+  const reason = llm?.error ?? "openai_llm_response_missing";
+  snapshot.pipecatFlow.activeTool = "pause_presentation";
+  setDemoFallback(snapshot, true, turn.timestamp, reason, "runtime_failure");
+  setOperatorSteerState(snapshot, false, turn.timestamp, "escalate_to_human", "openai_llm_fail_closed");
+  recordEvent(snapshot, "openai_conversation_generation_failed", turn.timestamp, {
+    conversationMode: "openai_llm",
+    model: llm?.model ?? "unknown",
+    error: reason,
+    status: llm?.status ?? null,
+    noScriptedFallback: true,
+  });
+  recordEvent(snapshot, "human_handoff_started", turn.timestamp, {
+    operatorChannel: snapshot.scenario.operatorChannel,
+    reason,
+    mode: "runtime_failure",
+    source: "openai_llm_fail_closed",
+  });
+  transitionFlowState(snapshot, "wrap", turn.timestamp, "openai_llm_failed_closed");
 }
 
 export function isConversationMode(value: unknown): value is ConversationMode {
