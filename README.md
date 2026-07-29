@@ -4,7 +4,7 @@
 
 Agentic Contact Center (ACC) is a local, open-source reference stack for testing voice-agent reliability. It demonstrates the cancellation-rescue path end to end: run a target voice-agent flow, pause at risky policy boundaries, steer or fail closed through an operator, capture evidence, and hand that evidence to ConversationAgentEvals/ASSERT for review.
 
-Status: **reference implementation and demo-ready lab, not production-ready contact-center software.** State is local/in-memory, credentials are mocked, and live media sidecars are optional unless a mode explicitly requires them.
+Status: **reference implementation and demo-ready lab, not production-ready contact-center software.** State is local/in-memory and live media sidecars are optional unless a mode explicitly requires them. Running front end only demo here: https://agonza1.github.io/agentic-contact-center/
 
 Primary actions:
 
