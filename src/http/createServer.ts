@@ -4604,11 +4604,32 @@ function getCallerTurnDeliveryAckPreview(
   return previews.get(buildCallerTurnDeliveryAckKey(callId, snapshotVersion));
 }
 
+function deleteCallerTurnDeliveryAckPreview(
+  previews: Map<string, CallerTurnDeliveryAckPreview>,
+  callId: string,
+  snapshotVersion: string,
+): void {
+  previews.delete(buildCallerTurnDeliveryAckKey(callId, snapshotVersion));
+}
+
+function isCallerTurnDeliveryAckPreviewForTurn(
+  preview: CallerTurnDeliveryAckPreview,
+  callerTranscript: string,
+  timestamp: string,
+  conversationMode: ConversationMode,
+): boolean {
+  return (
+    preview.callerTranscript === callerTranscript
+    && preview.timestamp === timestamp
+    && preview.conversationMode === conversationMode
+  );
+}
+
 function writeCallerTurnDeliveryAckPreviewPending(
   response: ServerResponse,
   callId: string,
   snapshotVersion: string,
-  preview: CallerTurnDeliveryAckPreview,
+  createdAtMs: number,
 ): void {
   writeJson(response, 409, {
     ok: false,
@@ -4619,7 +4640,7 @@ function writeCallerTurnDeliveryAckPreviewPending(
       status: "pending",
       callId,
       snapshotVersion,
-      createdAtMs: preview.createdAtMs,
+      createdAtMs,
     },
   });
 }
@@ -4680,6 +4701,7 @@ async function routeRequest(
   liveSipEndedCallMap: Map<string, string>,
   liveSipCallLocks: Map<string, Promise<void>>,
   callerTurnDeliveryAckPreviews: Map<string, CallerTurnDeliveryAckPreview>,
+  callerTurnDeliveryAckPreviewReservations: Set<string>,
   voiceSessions: RealtimeVoiceSessionStore,
 ): Promise<void> {
   const url = request.url ?? "/";
@@ -6556,6 +6578,7 @@ async function routeRequest(
       timestamp,
     };
 
+    let deliveryAckPreviewReservationKey: string | undefined;
     try {
       const currentSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
       if (!currentSnapshot) {
@@ -6598,6 +6621,23 @@ async function routeRequest(
           currentOperatorHoldReason,
         );
         return;
+      }
+      if (commitMode === "delivery_ack") {
+        const snapshotVersion = buildDeliveryAckSnapshotVersion(currentSnapshot);
+        deliveryAckPreviewReservationKey = buildCallerTurnDeliveryAckKey(callerTurnMatch[1], snapshotVersion);
+        const pendingPreview = getCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
+        if (pendingPreview) {
+          if (isCallerTurnDeliveryAckPreviewForTurn(pendingPreview, text, timestamp, effectiveConversationMode)) {
+            writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, pendingPreview.createdAtMs);
+            return;
+          }
+          deleteCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
+        }
+        if (callerTurnDeliveryAckPreviewReservations.has(deliveryAckPreviewReservationKey)) {
+          writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, Date.now());
+          return;
+        }
+        callerTurnDeliveryAckPreviewReservations.add(deliveryAckPreviewReservationKey);
       }
       const openAiLlm = effectiveConversationMode === "openai_llm"
         ? await generateOpenAiLiveSipResponse(currentSnapshot, text, timestamp)
@@ -6650,52 +6690,65 @@ async function routeRequest(
       }
       if (commitMode === "delivery_ack") {
         const snapshotVersion = buildDeliveryAckSnapshotVersion(latestSnapshot);
+        const previewKey = buildCallerTurnDeliveryAckKey(callerTurnMatch[1], snapshotVersion);
         const pendingPreview = getCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
         if (pendingPreview) {
-          writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, pendingPreview);
+          if (isCallerTurnDeliveryAckPreviewForTurn(pendingPreview, text, timestamp, effectiveConversationMode)) {
+            writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, pendingPreview.createdAtMs);
+            return;
+          }
+          deleteCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
+        }
+        if (callerTurnDeliveryAckPreviewReservations.has(previewKey) && previewKey !== deliveryAckPreviewReservationKey) {
+          writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, Date.now());
           return;
         }
-        const snapshot = await ingress.previewCallerTurn(callerTurnMatch[1], turn, config, {
-          conversationMode: effectiveConversationMode,
-          openAiLlm,
-          openAiFailClosedAlreadyPersisted,
-        });
-        const expectedAgentText = snapshot.transcript.at(-1)?.speaker === "agent" ? snapshot.transcript.at(-1)?.text : undefined;
-        if (!expectedAgentText) {
-          writeBadRequest(response, "caller_turn_preview_agent_text_missing");
-          return;
-        }
-        const concurrentPendingPreview = getCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
-        if (concurrentPendingPreview) {
-          writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, concurrentPendingPreview);
-          return;
-        }
-        callerTurnDeliveryAckPreviews.set(buildCallerTurnDeliveryAckKey(callerTurnMatch[1], snapshotVersion), {
-          callId: callerTurnMatch[1],
-          snapshotVersion,
-          callerTranscript: text,
-          timestamp,
-          createdAtMs: Date.now(),
-          conversationMode: effectiveConversationMode,
-          expectedAgentText,
-          openAiLlm,
-          openAiFailClosedAlreadyPersisted,
-        });
-        writeJson(response, 200, {
-          ...buildCallPayload(snapshot),
-          callerTurnCommit: {
-            mode: "delivery_ack",
-            status: "pending",
-            callId: callerTurnMatch[1],
-            callerTranscript: text,
-            expectedAgentText,
-            snapshotVersion,
-            timestamp,
+        if (previewKey !== deliveryAckPreviewReservationKey) callerTurnDeliveryAckPreviewReservations.add(previewKey);
+        try {
+          const snapshot = await ingress.previewCallerTurn(callerTurnMatch[1], turn, config, {
             conversationMode: effectiveConversationMode,
-            openAiResponseId: openAiLlm?.ok ? openAiLlm.responseId : null,
-          },
-        });
-        return;
+            openAiLlm,
+            openAiFailClosedAlreadyPersisted,
+          });
+          const expectedAgentText = snapshot.transcript.at(-1)?.speaker === "agent" ? snapshot.transcript.at(-1)?.text : undefined;
+          if (!expectedAgentText) {
+            writeBadRequest(response, "caller_turn_preview_agent_text_missing");
+            return;
+          }
+          const concurrentPendingPreview = getCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
+          if (concurrentPendingPreview) {
+            writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, concurrentPendingPreview.createdAtMs);
+            return;
+          }
+          callerTurnDeliveryAckPreviews.set(previewKey, {
+            callId: callerTurnMatch[1],
+            snapshotVersion,
+            callerTranscript: text,
+            timestamp,
+            createdAtMs: Date.now(),
+            conversationMode: effectiveConversationMode,
+            expectedAgentText,
+            openAiLlm,
+            openAiFailClosedAlreadyPersisted,
+          });
+          writeJson(response, 200, {
+            ...buildCallPayload(snapshot),
+            callerTurnCommit: {
+              mode: "delivery_ack",
+              status: "pending",
+              callId: callerTurnMatch[1],
+              callerTranscript: text,
+              expectedAgentText,
+              snapshotVersion,
+              timestamp,
+              conversationMode: effectiveConversationMode,
+              openAiResponseId: openAiLlm?.ok ? openAiLlm.responseId : null,
+            },
+          });
+          return;
+        } finally {
+          if (previewKey !== deliveryAckPreviewReservationKey) callerTurnDeliveryAckPreviewReservations.delete(previewKey);
+        }
       }
       const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config, {
         conversationMode: effectiveConversationMode,
@@ -6704,6 +6757,10 @@ async function routeRequest(
       writeJson(response, 200, buildCallPayload(snapshot));
     } catch {
       writeNotFound(response);
+    } finally {
+      if (deliveryAckPreviewReservationKey) {
+        callerTurnDeliveryAckPreviewReservations.delete(deliveryAckPreviewReservationKey);
+      }
     }
     return;
   }
@@ -7312,10 +7369,11 @@ export function buildHttpServer(config: PocConfig) {
   const liveSipEndedCallMap = new Map<string, string>();
   const liveSipCallLocks = new Map<string, Promise<void>>();
   const callerTurnDeliveryAckPreviews = new Map<string, CallerTurnDeliveryAckPreview>();
+  const callerTurnDeliveryAckPreviewReservations = new Set<string>();
   const voiceSessions = new RealtimeVoiceSessionStore();
 
   const server = createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, callerTurnDeliveryAckPreviews, voiceSessions).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;

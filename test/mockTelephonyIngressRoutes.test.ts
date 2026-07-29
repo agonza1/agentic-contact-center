@@ -4361,7 +4361,7 @@ test("delivery-ack caller turns preview without mutating until commit", async ()
   });
 });
 
-test("delivery-ack caller turns reject concurrent previews for the same snapshot", async () => {
+test("delivery-ack caller turns reject duplicate previews for the same pending turn", async () => {
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start", {
       openclawSessionLabel: "pipecat-local-voice",
@@ -4380,10 +4380,10 @@ test("delivery-ack caller turns reject concurrent previews for the same snapshot
     assert.equal(preview.statusCode, 200);
 
     const concurrentPreview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "Can you also update my address?",
+      text: "Can you help with billing?",
       conversationMode: "free_caller",
       commitMode: "delivery_ack",
-      timestamp: "2026-06-10T14:00:01.000Z",
+      timestamp: "2026-06-10T14:00:00.000Z",
     });
     assert.equal(concurrentPreview.statusCode, 409);
     assert.equal((concurrentPreview.payload as { error: string }).error, "caller_turn_delivery_ack_preview_pending");
@@ -4407,7 +4407,60 @@ test("delivery-ack caller turns reject concurrent previews for the same snapshot
     const committedPayload = committed.payload as SnapshotPayload;
     assert.equal(committed.statusCode, 200);
     assert.equal(committedPayload.transcript.at(0)?.text, "Can you help with billing?");
-    assert.equal(committedPayload.transcript.some((turn) => turn.text === "Can you also update my address?"), false);
+  });
+});
+
+test("delivery-ack caller turns release abandoned previews before the next turn", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const abandonedPreview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      commitMode: "delivery_ack",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const abandonedPayload = abandonedPreview.payload as SnapshotPayload & {
+      callerTurnCommit: { expectedAgentText: string; snapshotVersion: string };
+    };
+    assert.equal(abandonedPreview.statusCode, 200);
+
+    const nextPreview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you also update my address?",
+      conversationMode: "free_caller",
+      commitMode: "delivery_ack",
+      timestamp: "2026-06-10T14:00:01.000Z",
+    });
+    const nextPreviewPayload = nextPreview.payload as SnapshotPayload & {
+      callerTurnCommit: { expectedAgentText: string; snapshotVersion: string };
+    };
+    assert.equal(nextPreview.statusCode, 200);
+    assert.equal(nextPreviewPayload.callerTurnCommit.snapshotVersion, abandonedPayload.callerTurnCommit.snapshotVersion);
+
+    const abandonedCommit = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn/commit`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      expectedAgentText: abandonedPayload.callerTurnCommit.expectedAgentText,
+      expectedSnapshotVersion: abandonedPayload.callerTurnCommit.snapshotVersion,
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    assert.equal(abandonedCommit.statusCode, 400);
+    assert.equal((abandonedCommit.payload as { error: string }).error, "caller_turn_commit_stale");
+
+    const committed = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn/commit`, {
+      text: "Can you also update my address?",
+      conversationMode: "free_caller",
+      expectedAgentText: nextPreviewPayload.callerTurnCommit.expectedAgentText,
+      expectedSnapshotVersion: nextPreviewPayload.callerTurnCommit.snapshotVersion,
+      timestamp: "2026-06-10T14:00:01.000Z",
+    });
+    const committedPayload = committed.payload as SnapshotPayload;
+    assert.equal(committed.statusCode, 200);
+    assert.equal(committedPayload.transcript.at(0)?.text, "Can you also update my address?");
+    assert.equal(committedPayload.transcript.some((turn) => turn.text === "Can you help with billing?"), false);
   });
 });
 
