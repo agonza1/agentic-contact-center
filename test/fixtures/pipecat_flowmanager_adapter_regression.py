@@ -361,6 +361,60 @@ async def run_regression() -> dict[str, Any]:
     )
     await terminal_revalidation_adapter.commit_pending_transition()
 
+    terminal_release_from_hold_requests: list[dict[str, Any]] = []
+
+    def terminal_release_from_hold_http(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        terminal_release_from_hold_requests.append({"method": method, "url": url, "payload": payload})
+        return {
+            "flowState": "diagnose",
+            "callerTurnCommit": {"mode": "delivery_ack", "status": "pending"},
+            "events": [
+                {
+                    "type": "operator_steer_applied",
+                    "detail": {"action": "transfer"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "policy_hold", "to": "wrap", "reason": "operator_transfer"},
+                },
+                {
+                    "type": "operator_steer_applied",
+                    "detail": {"action": "resume"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "wrap", "to": "steered_response", "reason": "operator_resumed"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "steered_response", "to": "diagnose", "reason": "openai_llm_conversation"},
+                },
+            ],
+            "transcript": [
+                {"speaker": "operator", "text": "operator steer: transfer"},
+                {"speaker": "operator", "text": "operator steer: resume"},
+                {"speaker": "caller", "text": payload["text"]},
+                {"speaker": "agent", "text": "Recovered after operator terminal release."},
+            ],
+        }
+
+    terminal_release_from_hold_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-terminal-release-from-hold",
+        request_json=terminal_release_from_hold_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    await terminal_release_from_hold_adapter.initialize()
+    await terminal_release_from_hold_adapter.activate_node("greet", reason="fixture")
+    await terminal_release_from_hold_adapter.activate_node("diagnose", reason="fixture")
+    await terminal_release_from_hold_adapter.activate_node("policy_hold", reason="fixture")
+    terminal_release_from_hold_preview = await terminal_release_from_hold_adapter.preview_caller_turn(
+        text="operator resumed after transfer",
+        conversation_mode="openai_llm",
+    )
+    await terminal_release_from_hold_adapter.commit_pending_transition()
+
     checks = {
         "actualFlowManagerFactoryOwnsNodes": adapter.manager is not None and adapter.manager.current_node == "wrap",
         "normalCancellationTransitionsGuarded": [step["to"] for step in adapter.transition_trace] == ["greet", "diagnose", "diagnose", "wrap"],
@@ -408,6 +462,15 @@ async def run_regression() -> dict[str, Any]:
             and [step["to"] for step in terminal_revalidation_adapter.transition_trace] == ["wrap", "steered_response", "diagnose"]
             and len([item for item in terminal_revalidation_requests if item["url"].endswith("/fallback")]) == 1
         ),
+        "terminalOperatorReleaseResynchronizesFromHeldNode": (
+            terminal_release_from_hold_preview["flowState"] == "diagnose"
+            and terminal_release_from_hold_preview["flowManagerRuntime"]["resynchronizedFrom"] == "policy_hold"
+            and terminal_release_from_hold_preview["flowManagerRuntime"]["resynchronizedTo"] == "steered_response"
+            and terminal_release_from_hold_adapter.manager.current_node == "diagnose"
+            and [step["to"] for step in terminal_release_from_hold_adapter.transition_trace]
+            == ["greet", "diagnose", "policy_hold", "steered_response", "diagnose"]
+            and not any(item["url"].endswith("/fallback") for item in terminal_release_from_hold_requests)
+        ),
         "requiredVersionsRecorded": normal_results[0]["flowManagerRuntime"]["runtimeVersions"] == {"pipecat-ai": "1.4.0", "pipecat-ai-flows": "1.4.0"},
     }
     return {
@@ -422,6 +485,7 @@ async def run_regression() -> dict[str, Any]:
         "deliveryAckPendingEvidence": delivery_ack_pending_result["flowManagerRuntime"],
         "recoveredEvidence": recovered_preview["flowManagerRuntime"],
         "terminalRevalidatedEvidence": terminal_revalidated["flowManagerRuntime"],
+        "terminalReleaseFromHeldNodeEvidence": terminal_release_from_hold_preview["flowManagerRuntime"],
         "checks": checks,
     }
 

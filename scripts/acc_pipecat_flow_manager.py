@@ -48,6 +48,9 @@ HELD_CALLER_TURN_ERRORS = {
     "live_sip_openai_automation_stopped": "caller_turn_stopped",
     "caller_turn_delivery_ack_preview_pending": "caller_turn_held",
 }
+FLOW_MANAGER_TERMINAL_OPERATOR_ACTIONS = {"escalate_to_human", "transfer", "end_call"}
+FLOW_MANAGER_OPERATOR_RELEASE_ACTIONS = {"resume", "disarm_fallback"}
+FLOW_MANAGER_RESYNCABLE_STOP_NODES = {"policy_hold", "operator_steer", "wrap"}
 
 
 class FlowManagerRuntimeError(RuntimeError):
@@ -233,11 +236,25 @@ class AccPipecatFlowManagerAdapter:
                 and isinstance(detail.get("source"), str)
                 and "fail_closed" in detail["source"]
             )
-            if event_type == "demo_fallback_triggered" or fail_closed_handoff:
+            terminal_operator_action = (
+                event_type == "operator_steer_applied"
+                and isinstance(detail.get("action"), str)
+                and detail["action"] in FLOW_MANAGER_TERMINAL_OPERATOR_ACTIONS
+            )
+            if (
+                event_type == "demo_fallback_triggered"
+                or fail_closed_handoff
+                or terminal_operator_action
+                or event_type in {"operator_transfer_started", "operator_call_ended"}
+            ):
                 stop_index = index
             if event_type == "demo_fallback_disarmed":
                 release_index = index
-            if event_type == "operator_steer_applied" and detail.get("action") in {"resume", "disarm_fallback"}:
+            if (
+                event_type == "operator_steer_applied"
+                and isinstance(detail.get("action"), str)
+                and detail["action"] in FLOW_MANAGER_OPERATOR_RELEASE_ACTIONS
+            ):
                 release_index = index
         return stop_index >= 0 and release_index > stop_index
 
@@ -259,7 +276,10 @@ class AccPipecatFlowManagerAdapter:
         if not self.manager or not self.initialized:
             return
         current_node = getattr(self.manager, "current_node", None)
-        if current_node != "wrap" or target_node in FLOW_MANAGER_ALLOWED_TRANSITIONS.get("wrap", set()):
+        if (
+            current_node not in FLOW_MANAGER_RESYNCABLE_STOP_NODES
+            or target_node in FLOW_MANAGER_ALLOWED_TRANSITIONS.get(current_node, set())
+        ):
             return
         if not self._released_fail_closed_after_stop(preview):
             return
