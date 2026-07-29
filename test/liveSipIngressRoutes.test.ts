@@ -1920,6 +1920,74 @@ test("live SIP scripted caller turns honor explicit operator pause holds", async
   }
 });
 
+test("live SIP scripted caller turns stay held after terminal operator stops", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    for (const action of ["takeover", "escalate_to_human", "transfer", "end_call"]) {
+      const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+        eventType: "call.started",
+        timestamp: "2026-07-27T23:07:00.000Z",
+        sipCallId: `sip-scripted-terminal-${action}`,
+        destination: "8611",
+        source: "freeswitch_verto",
+        telephonyMode: "local_sip",
+        rtcAsrMode: "rtc_asr_live",
+      });
+      assert.equal(started.statusCode, 201);
+      assert.equal(started.payload.call.scenario.conversationMode, "scripted");
+      const callId = started.payload.call.session.callId;
+
+      if (action === "escalate_to_human") {
+        const pending = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+          action: "ask_operator",
+          timestamp: "2026-07-27T23:07:00.500Z",
+          reason: "operator is taking over scripted automation",
+        });
+        assert.equal(pending.statusCode, 200);
+      }
+
+      const stopped = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+        action,
+        timestamp: "2026-07-27T23:07:01.000Z",
+        reason: `${action} stops scripted automation`,
+      });
+      assert.equal(stopped.statusCode, 200);
+      assert.equal(stopped.payload.flowState, "wrap");
+
+      const heldDirectTurn = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+        timestamp: "2026-07-27T23:07:02.000Z",
+        text: `Do not continue scripted automation after ${action}.`,
+        conversationMode: "scripted",
+      });
+      assert.equal(heldDirectTurn.statusCode, 409);
+      assert.equal(heldDirectTurn.payload.error, "live_sip_operator_hold_active");
+      assert.equal(
+        heldDirectTurn.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === `Do not continue scripted automation after ${action}.`),
+        false,
+      );
+
+      const heldMediaTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+        eventType: "media.transcript",
+        timestamp: "2026-07-27T23:07:03.000Z",
+        sipCallId: `sip-scripted-terminal-${action}`,
+        text: `Media must not continue after ${action}.`,
+      });
+      assert.equal(heldMediaTranscript.statusCode, 409);
+      assert.equal(heldMediaTranscript.payload.error, "live_sip_operator_hold_active");
+      assert.equal(
+        heldMediaTranscript.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === `Media must not continue after ${action}.`),
+        false,
+      );
+    }
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("SignalWire webhook can be labeled signalwire_live without credentials in config", async () => {
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));

@@ -2119,6 +2119,10 @@ const liveSipExplicitOperatorHoldReasons = new Map([
   ["goto_slide", "operator_steer_active"],
   ["ask_operator", "operator_steer_active"],
   ["arm_fallback", "demo_fallback_active"],
+  ["takeover", "demo_fallback_active"],
+  ["escalate_to_human", "operator_terminal_stop_active"],
+  ["transfer", "operator_terminal_stop_active"],
+  ["end_call", "operator_terminal_stop_active"],
 ]);
 
 function getOperatorSteerAction(event: CallSnapshot["events"][number]): string | null {
