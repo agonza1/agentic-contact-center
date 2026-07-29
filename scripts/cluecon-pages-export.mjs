@@ -12,13 +12,7 @@ const outDir = path.resolve(repoRoot, "site", "cluecon-pages");
 const staticFixtureStyles = String.raw`
     .static-status { position: fixed; z-index: 30; right: 18px; bottom: 18px; max-width: min(420px, calc(100vw - 36px)); padding: 11px 14px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.97); color: var(--ink); box-shadow: var(--shadow); font-size: 13px; opacity: 0; transform: translateY(8px); pointer-events: none; transition: .16s; }
     .static-status.visible { opacity: 1; transform: none; }
-    .shared-stage code { color: var(--blue); font-size: 10.5px; line-height: 1.45; overflow-wrap: anywhere; }
-    .shared-stage a { color: inherit; text-decoration: none; }
-    .shared-stage a:hover { color: var(--blue); }
 `;
-
-const integrationSection = String.raw`
-<section class="section-band slide" data-slide="5" id="integration"><span class="kicker">Voice AI integration</span><h2>Two realtime ingress paths. One streaming Pipecat runtime.</h2><p class="subhead">Browser and telephony audio converge on direct WebRTC peers, then share streaming STT, structured flow control, bounded actions, and incremental TTS.</p><div class="transport-integration"><div class="transport-paths"><article class="transport-path transport-path--webrtc"><div class="transport-node"><small>Browser or app</small><strong>WebRTC P2P</strong><code>Opus · DTLS-SRTP</code></div><div class="transport-arrow">→</div><div class="transport-node"><small>Pipecat media peer</small><strong>SmallWebRTC / aiortc</strong><code>decoded audio → AudioRawFrame</code></div></article><article class="transport-path transport-path--sip"><div class="transport-node"><small>Phone network</small><strong>SIP/RTP → FreeSWITCH</strong><code>dialog · codec · transfer · BYE</code></div><div class="transport-arrow">→</div><div class="transport-node"><small>Agent media leg</small><strong>Verto + WebRTC P2P</strong><code>FreeSWITCH ↔ Pipecat / aiortc</code></div></article></div><div class="shared-pipeline" aria-label="Shared streaming Pipecat voice-agent pipeline"><div class="shared-stage"><small>Stream in</small><strong>rtc-asr socket stream</strong><code>persistent WebSocket · 16 kHz PCM16<br>20 ms / 640 B · interim events</code></div><div class="shared-stage"><small>Structure</small><strong><a href="https://docs.pipecat.ai/overview/flows" target="_blank" rel="noreferrer">Pipecat Flows / FlowManager ↗</a></strong><code>open-source node graph<br>scoped prompts + tools · explicit transitions</code></div><div class="shared-stage"><small>Bound actions</small><strong>ACC reference application</strong><code>business state · policy gates<br>human approval · fallback · proof</code></div><div class="shared-stage"><small>Stream out</small><strong>Incremental TTS audio</strong><code>first playable chunk → transport<br>synthesis and playback overlap</code></div></div><div class="integration-truths"><div class="integration-truth"><strong>Transcribe while speech arrives</strong>rtc-asr keeps one socket session open and emits evolving partials before turn finalization.</div><div class="integration-truth"><strong>Keep authority outside the model</strong>FlowManager validates node transitions; ACC demonstrates bounded state and human approval.</div><div class="integration-truth"><strong>Commit after delivery</strong>Forward the first playable TTS chunk immediately; interruption before delivery rolls state back.</div></div></div></section>`;
 
 const staticFixtureRuntime = String.raw`
 <script>
@@ -44,7 +38,6 @@ function pagesHtml(mode) {
   const narrativeHref = mode === "present" ? "../" : "./";
   const presentHref = mode === "present" ? "./" : "./present/";
   return html
-    .replace(/<section class="section-band slide" data-slide="5" id="integration">[\s\S]*?<\/section>/, integrationSection)
     .replaceAll('join("\n")', 'join("\\n")')
     .replace("</style>", `${staticFixtureStyles}\n  </style>`)
     .replace("</body>", `${staticFixtureRuntime}\n</body>`)

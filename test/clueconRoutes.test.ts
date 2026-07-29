@@ -62,6 +62,12 @@ async function post(path: string, body?: unknown): Promise<{ statusCode: number;
   return requestPath(path, "POST", body);
 }
 
+function extractIntegrationSection(html: string): string {
+  const match = html.match(/<section class="section-band slide" data-slide="5" id="integration">[\s\S]*?<\/section>/);
+  assert.ok(match, "expected the shared ClueCon integration section");
+  return match[0];
+}
+
 async function withEnv<T>(values: Record<string, string | undefined>, run: () => Promise<T>): Promise<T> {
   const previous = new Map<string, string | undefined>();
   for (const [key, value] of Object.entries(values)) {
@@ -806,10 +812,15 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /MIC_START_CANCELLED/);
   assert.match(narrative.body, /slideCount: slideOrder\.length/);
   assert.match(narrative.body, /\["flow", "realtime-problem", "two-machines", "map", "integration", "vad-interruption", "asr", "security", "agent", "demo", "tts", "ecosystem", "proof", "finale"\]/);
-  assert.match(narrative.body, /One Pipecat pipeline\. Two realtime transports/);
-  assert.match(narrative.body, /WebRTC audio track/);
+  assert.match(narrative.body, /Two realtime ingress paths\. One streaming Pipecat runtime/);
+  assert.match(narrative.body, /SmallWebRTC \/ aiortc/);
   assert.match(narrative.body, /FreeSWITCH ↔ Pipecat/);
-  assert.match(narrative.body, /Transport is an adapter/);
+  assert.match(narrative.body, /SIP\/RTP \u2192 FreeSWITCH/);
+  assert.match(narrative.body, /persistent WebSocket \u00b7 16 kHz PCM16/);
+  assert.match(narrative.body, /20 ms \/ 640 B \u00b7 interim events/);
+  assert.match(narrative.body, /Pipecat Flows \/ FlowManager \u2197/);
+  assert.match(narrative.body, /ACC reference application/);
+  assert.match(narrative.body, /Commit after delivery/);
   assert.doesNotMatch(narrative.body, /Run scripted demo/);
   assert.match(narrative.body, /Run cancellation scenario/);
   assert.match(narrative.body, /ACC emits auditable JSON and FreeSWITCH executes playback, transfer/);
@@ -933,6 +944,13 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.equal(existsSync(fallbackPath), true);
 
   const html = readFileSync(indexPath, "utf8");
+  const localNarrative = await get("/cluecon");
+  assert.equal(localNarrative.statusCode, 200);
+  assert.equal(
+    extractIntegrationSection(html),
+    extractIntegrationSection(localNarrative.body),
+    "the Pages export must use the exact integration section rendered by the local ClueCon route",
+  );
   assert.match(html, /Agentic Contact Center/);
   assert.match(html, /Static GitHub Pages snapshot/);
   assert.match(html, /--bg: #f5f7f8/);
