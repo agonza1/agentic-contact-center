@@ -288,7 +288,7 @@ class VertoAgentBridge:
         self.sessions: dict[str, dict[str, Any]] = {}
         self.pipeline_evidence: dict[str, dict[str, Any]] = {}
 
-    def write_proof_artifact(self, event_type: str) -> None:
+    def write_proof_artifact(self, event_type: str, *, affected_artifact_ids: list[str | None] | None = None) -> None:
         if self.proof_out is None:
             return
         try:
@@ -312,11 +312,16 @@ class VertoAgentBridge:
                 "nextAction": "Place a local 8600 call with the Verto bridge running, then attach this artifact with the strict live SIP bundle once caller playback proof is captured.",
             }
             scoped_paths = self.call_scoped_proof_paths(payload)
+            paths_to_write = (
+                self.call_scoped_proof_paths(payload, artifact_ids=affected_artifact_ids)
+                if affected_artifact_ids is not None
+                else scoped_paths
+            )
             if scoped_paths:
                 payload["callScopedProofArtifactPaths"] = [str(path) for path in scoped_paths]
             self.proof_out.parent.mkdir(parents=True, exist_ok=True)
             self.write_json_atomic(self.proof_out, payload)
-            for path in scoped_paths:
+            for path in paths_to_write:
                 scoped_payload = self.call_scoped_payload(payload, path.parent.name)
                 scoped_payload["callScopedProofArtifactPaths"] = [str(path)]
                 self.write_json_atomic(path, scoped_payload)
@@ -335,13 +340,21 @@ class VertoAgentBridge:
         tmp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf8")
         tmp_path.replace(path)
 
-    def call_scoped_proof_paths(self, payload: dict[str, Any]) -> list[Path]:
+    def call_scoped_proof_paths(self, payload: dict[str, Any], *, artifact_ids: list[str | None] | None = None) -> list[Path]:
         if self.proof_out is None:
             return []
+        if artifact_ids is not None:
+            ids: list[str] = []
+            for artifact_id in artifact_ids:
+                safe_id = safe_artifact_id(artifact_id)
+                if safe_id and safe_id not in ids:
+                    ids.append(safe_id)
+            return [self.proof_out.parent / "calls" / artifact_id / self.proof_out.name for artifact_id in ids]
         ids: list[str] = []
         for source in [
             payload.get("lastInvite"),
             payload.get("lastAnswer"),
+            payload.get("lastError"),
             *payload.get("pipelineEvidence", []),
         ]:
             if not isinstance(source, dict):
@@ -365,7 +378,7 @@ class VertoAgentBridge:
         ]
         scoped_payload = dict(payload)
         scoped_payload["pipelineEvidence"] = scoped_pipeline_evidence
-        for key in ("lastInvite", "lastAnswer"):
+        for key in ("lastInvite", "lastAnswer", "lastError"):
             value = payload.get(key)
             scoped_payload[key] = value if isinstance(value, dict) and self.payload_matches_artifact_id(value, artifact_id) else {}
         scoped_payload["inviteCount"] = len(scoped_pipeline_evidence)
@@ -844,7 +857,10 @@ class VertoAgentBridge:
                 "proofSipCallId": proof_sip_call_id,
                 "conversationMode": conversation_mode,
             }
-            self.write_proof_artifact("verto.pipeline.stage")
+            self.write_proof_artifact(
+                "verto.pipeline.stage",
+                affected_artifact_ids=[call_id, acc_call_id, linked_sip_call_id, proof_sip_call_id],
+            )
 
         session = AccVoicePipelineSession(
             acc_url=self.acc_url,

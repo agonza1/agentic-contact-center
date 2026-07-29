@@ -110,6 +110,8 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.match(bridge, /def call_scoped_proof_paths/);
   assert.match(bridge, /"callScopedProofArtifactPaths"/);
   assert.match(bridge, /self\.proof_out\.parent \/ "calls" \/ artifact_id \/ self\.proof_out\.name/);
+  assert.match(bridge, /affected_artifact_ids=\[call_id, acc_call_id, linked_sip_call_id, proof_sip_call_id\]/);
+  assert.match(bridge, /for key in \("lastInvite", "lastAnswer", "lastError"\):/);
   assert.match(bridge, /linked_sip_call_id = self\.linked_sip_call_id\(params\)/);
   assert.match(bridge, /"vertoCallId": call_id/);
   assert.match(bridge, /"sipCallId": linked_sip_call_id or call_id/);
@@ -140,6 +142,24 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.ok(closePrewarmIndex > closeSessionIndex);
   assert.match(closePrewarmCancelBlock, /prewarm_task\.cancel\(\)/);
   assert.match(closePrewarmCancelBlock, /await prewarm_task/);
+});
+
+test("Verto bridge scopes call artifact rewrites and lastError", { skip: !existsSync(".pipecat-runtime") }, async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const { stdout } = await execFileAsync(
+    "python3",
+    ["test/fixtures/verto_bridge_artifact_regression.py"],
+    { cwd: repoRoot, timeout: 20_000, encoding: "utf8" },
+  );
+  const summary = JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}") as {
+    ok: boolean;
+    callARewritten: boolean;
+    callBStage: string;
+  };
+
+  assert.equal(summary.ok, true);
+  assert.equal(summary.callARewritten, false);
+  assert.equal(summary.callBStage, "updated");
 });
 
 test("Verto bridge normalizes FreeSWITCH ICE, DTLS, and G.711 RTP", { skip: !existsSync(".pipecat-runtime") }, async () => {

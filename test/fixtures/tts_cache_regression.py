@@ -109,6 +109,29 @@ async def main() -> None:
                     text="A different generated response number two.",
                 )
                 await openai_session.prewarm_conversation_tts_cache()
+                miss_lock_text = "Cache miss releases before paced playback."
+                miss_lock_path = pipeline.tts_cache_path(miss_lock_text, 24000)
+                if miss_lock_path is None:
+                    raise AssertionError("expected deterministic miss TTS cache path")
+                miss_lock_session = AccVoicePipelineSession(
+                    acc_url="http://acc.invalid",
+                    call_id="tts-cache-miss-lock-probe",
+                    readiness=None,
+                )
+                miss_lock_generator = miss_lock_session.stream_synthesize(
+                    TextFrame(miss_lock_text),
+                    chunk_bytes=960,
+                )
+                await miss_lock_generator.__anext__()
+                miss_lock = pipeline.TTS_CACHE_LOCKS[miss_lock_path]
+                miss_lock_released_before_playback = False
+                try:
+                    await asyncio.wait_for(miss_lock.acquire(), timeout=0.05)
+                    miss_lock_released_before_playback = True
+                finally:
+                    if miss_lock_released_before_playback:
+                        miss_lock.release()
+                    await miss_lock_generator.aclose()
                 lock_probe_text = "Cache lock ownership probe."
                 lock_probe_path = pipeline.tts_cache_path(lock_probe_text, 24000)
                 if lock_probe_path is None:
@@ -148,11 +171,12 @@ async def main() -> None:
             and openai_audio_b == source_audio
             and openai_metadata_a.get("cacheHit") is False
             and openai_metadata_b.get("cacheHit") is False
-            and provider_calls == 3
-            and len(cache_files) == 2
-            and len(pipeline.TTS_CACHE_LOCKS) == cached_lock_count + 1
+            and provider_calls == 4
+            and len(cache_files) == 3
+            and len(pipeline.TTS_CACHE_LOCKS) == cached_lock_count + 2
             and concurrent_first_delta < 0.05
             and concurrent_first_wait < 0.05
+            and miss_lock_released_before_playback
             and lock_still_owned_by_probe
         ),
         "providerCalls": provider_calls,
@@ -164,6 +188,7 @@ async def main() -> None:
         "audioBytes": len(second_audio),
         "cacheFiles": len(cache_files),
         "cacheLocks": len(pipeline.TTS_CACHE_LOCKS),
+        "missLockReleasedBeforePlayback": miss_lock_released_before_playback,
         "lockStillOwnedByProbe": lock_still_owned_by_probe,
     }
     print(json.dumps(result))

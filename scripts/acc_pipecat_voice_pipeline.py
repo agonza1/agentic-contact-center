@@ -1027,6 +1027,23 @@ class AccVoicePipelineSession:
                     }
                 return
 
+            if cache_path and cache_lock:
+                uncached_items = [
+                    item async for item in self._stream_synthesize_uncached(
+                        frame,
+                        chunk_bytes=chunk_bytes,
+                        sample_rate=sample_rate,
+                        cache_path=cache_path,
+                        started=started,
+                    )
+                ]
+                if cache_lock_owned:
+                    cache_lock.release()
+                    cache_lock_owned = False
+                for item in uncached_items:
+                    yield item
+                return
+
             async for item in self._stream_synthesize_uncached(
                 frame,
                 chunk_bytes=chunk_bytes,

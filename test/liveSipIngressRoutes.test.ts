@@ -1982,6 +1982,25 @@ test("live SIP scripted caller turns stay held after terminal operator stops", a
         heldMediaTranscript.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === `Media must not continue after ${action}.`),
         false,
       );
+
+      const released = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+        action: "resume",
+        timestamp: "2026-07-27T23:07:04.000Z",
+        reason: `operator explicitly released scripted automation after ${action}`,
+      });
+      assert.equal(released.statusCode, 200);
+
+      const acceptedAfterRelease = await requestJson(address.port, "POST", "/api/live-sip/events", {
+        eventType: "media.transcript",
+        timestamp: "2026-07-27T23:07:05.000Z",
+        sipCallId: `sip-scripted-terminal-${action}`,
+        text: `Scripted automation can continue after explicit release from ${action}.`,
+      });
+      assert.equal(acceptedAfterRelease.statusCode, 200);
+      assert.equal(
+        acceptedAfterRelease.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === `Scripted automation can continue after explicit release from ${action}.`),
+        true,
+      );
     }
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
