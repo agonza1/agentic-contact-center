@@ -4,6 +4,7 @@ import { request } from "node:http";
 import { Script } from "node:vm";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
+import { InMemoryTelephonyIngress } from "../src/core/inMemoryTelephonyIngress";
 import { buildHttpServer } from "../src/http/createServer";
 
 interface SnapshotPayload {
@@ -4407,6 +4408,91 @@ test("delivery-ack caller turns reject duplicate previews for the same pending t
     const committedPayload = committed.payload as SnapshotPayload;
     assert.equal(committed.statusCode, 200);
     assert.equal(committedPayload.transcript.at(0)?.text, "Can you help with billing?");
+  });
+});
+
+test("delivery-ack commits serialize overlapping identical delivery acknowledgements", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const preview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      commitMode: "delivery_ack",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const previewPayload = preview.payload as SnapshotPayload & {
+      callerTurnCommit: { expectedAgentText: string; snapshotVersion: string };
+    };
+    assert.equal(preview.statusCode, 200);
+
+    const originalPreviewCallerTurn = InMemoryTelephonyIngress.prototype.previewCallerTurn;
+    let commitPreviewEntries = 0;
+    let releaseFirstCommitPreview: (() => void) | null = null;
+    let firstCommitPreviewEntered: (() => void) | null = null;
+    const firstCommitPreviewEnteredPromise = new Promise<void>((resolve) => {
+      firstCommitPreviewEntered = resolve;
+    });
+
+    InMemoryTelephonyIngress.prototype.previewCallerTurn = async function (...args: Parameters<typeof originalPreviewCallerTurn>) {
+      const [previewCallId, turn] = args;
+      if (previewCallId === callId && turn.text === "Can you help with billing?") {
+        commitPreviewEntries += 1;
+        if (commitPreviewEntries === 1) {
+          firstCommitPreviewEntered?.();
+          await new Promise<void>((resolve) => {
+            releaseFirstCommitPreview = resolve;
+          });
+        }
+      }
+      return originalPreviewCallerTurn.apply(this, args);
+    };
+
+    try {
+      const commitBody = {
+        text: "Can you help with billing?",
+        conversationMode: "free_caller",
+        expectedAgentText: previewPayload.callerTurnCommit.expectedAgentText,
+        expectedSnapshotVersion: previewPayload.callerTurnCommit.snapshotVersion,
+        timestamp: "2026-06-10T14:00:00.000Z",
+      };
+      const firstCommitPromise = requestJson(port, "POST", `/api/calls/${callId}/caller-turn/commit`, commitBody);
+      await firstCommitPreviewEnteredPromise;
+      const secondCommitPromise = requestJson(port, "POST", `/api/calls/${callId}/caller-turn/commit`, commitBody);
+      const secondCommit = await secondCommitPromise;
+      (releaseFirstCommitPreview as (() => void) | null)?.();
+      const firstCommit = await firstCommitPromise;
+      const results = [firstCommit, secondCommit];
+      const accepted = results.find((result) => result.statusCode === 200);
+      const rejected = results.find((result) => result.statusCode === 409);
+      assert.ok(accepted);
+      assert.ok(rejected);
+      assert.equal((rejected.payload as { error: string }).error, "caller_turn_delivery_ack_preview_pending");
+      assert.equal(
+        (rejected.payload as { callerTurnCommit: { snapshotVersion: string } }).callerTurnCommit.snapshotVersion,
+        previewPayload.callerTurnCommit.snapshotVersion,
+      );
+      assert.equal(commitPreviewEntries, 1);
+
+      const fetchedAfterCommit = await requestJson(port, "GET", `/api/calls/${callId}`);
+      const afterPayload = fetchedAfterCommit.payload as SnapshotPayload;
+      assert.equal(fetchedAfterCommit.statusCode, 200);
+      assert.deepEqual(
+        afterPayload.transcript.map((turn) => turn.speaker),
+        ["caller", "agent"],
+      );
+      assert.equal(
+        afterPayload.transcript.filter((turn) => turn.speaker === "caller" && turn.text === "Can you help with billing?").length,
+        1,
+      );
+      assert.equal(afterPayload.events.filter((event) => event.type === "caller_turn_appended").length, 1);
+    } finally {
+      InMemoryTelephonyIngress.prototype.previewCallerTurn = originalPreviewCallerTurn;
+      (releaseFirstCommitPreview as (() => void) | null)?.();
+    }
   });
 });
 

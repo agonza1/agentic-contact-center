@@ -4630,10 +4630,11 @@ function writeCallerTurnDeliveryAckPreviewPending(
   callId: string,
   snapshotVersion: string,
   createdAtMs: number,
+  route = "/api/calls/:callId/caller-turn",
 ): void {
   writeJson(response, 409, {
     ok: false,
-    route: "/api/calls/:callId/caller-turn",
+    route,
     error: "caller_turn_delivery_ack_preview_pending",
     callerTurnCommit: {
       mode: "delivery_ack",
@@ -6631,6 +6632,10 @@ async function routeRequest(
             writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, pendingPreview.createdAtMs);
             return;
           }
+          if (callerTurnDeliveryAckPreviewReservations.has(deliveryAckPreviewReservationKey)) {
+            writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, pendingPreview.createdAtMs);
+            return;
+          }
           deleteCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
         }
         if (callerTurnDeliveryAckPreviewReservations.has(deliveryAckPreviewReservationKey)) {
@@ -6694,6 +6699,10 @@ async function routeRequest(
         const pendingPreview = getCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
         if (pendingPreview) {
           if (isCallerTurnDeliveryAckPreviewForTurn(pendingPreview, text, timestamp, effectiveConversationMode)) {
+            writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, pendingPreview.createdAtMs);
+            return;
+          }
+          if (callerTurnDeliveryAckPreviewReservations.has(previewKey)) {
             writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, pendingPreview.createdAtMs);
             return;
           }
@@ -6849,37 +6858,52 @@ async function routeRequest(
         writeBadRequest(response, "caller_turn_commit_stale");
         return;
       }
-      const openAiLlm = pendingPreview.openAiLlm;
-      const openAiFailClosedAlreadyPersisted = pendingPreview.openAiFailClosedAlreadyPersisted;
-      const preview = await ingress.previewCallerTurn(callerTurnCommitMatch[1], turn, config, {
-        conversationMode: effectiveConversationMode,
-        openAiLlm,
-        openAiFailClosedAlreadyPersisted,
-      });
-      const previewAgentText = preview.transcript.at(-1)?.speaker === "agent" ? preview.transcript.at(-1)?.text : undefined;
-      if (previewAgentText !== expectedAgentText) {
-        writeBadRequest(response, "caller_turn_commit_stale");
+      if (callerTurnDeliveryAckPreviewReservations.has(previewKey)) {
+        writeCallerTurnDeliveryAckPreviewPending(
+          response,
+          callerTurnCommitMatch[1],
+          expectedSnapshotVersion,
+          pendingPreview.createdAtMs,
+          "/api/calls/:callId/caller-turn/commit",
+        );
         return;
       }
-      const snapshot = await ingress.appendCallerTurn(callerTurnCommitMatch[1], turn, config, {
-        conversationMode: effectiveConversationMode,
-        openAiLlm,
-        openAiFailClosedAlreadyPersisted,
-      });
-      callerTurnDeliveryAckPreviews.delete(previewKey);
-      writeJson(response, 200, {
-        ...buildCallPayload(snapshot),
-        callerTurnCommit: {
-          mode: "delivery_ack",
-          status: "committed",
-          callId: callerTurnCommitMatch[1],
-          callerTranscript: text,
-          expectedAgentText,
-          expectedSnapshotVersion,
-          timestamp,
+      callerTurnDeliveryAckPreviewReservations.add(previewKey);
+      try {
+        const openAiLlm = pendingPreview.openAiLlm;
+        const openAiFailClosedAlreadyPersisted = pendingPreview.openAiFailClosedAlreadyPersisted;
+        const preview = await ingress.previewCallerTurn(callerTurnCommitMatch[1], turn, config, {
           conversationMode: effectiveConversationMode,
-        },
-      });
+          openAiLlm,
+          openAiFailClosedAlreadyPersisted,
+        });
+        const previewAgentText = preview.transcript.at(-1)?.speaker === "agent" ? preview.transcript.at(-1)?.text : undefined;
+        if (previewAgentText !== expectedAgentText) {
+          writeBadRequest(response, "caller_turn_commit_stale");
+          return;
+        }
+        const snapshot = await ingress.appendCallerTurn(callerTurnCommitMatch[1], turn, config, {
+          conversationMode: effectiveConversationMode,
+          openAiLlm,
+          openAiFailClosedAlreadyPersisted,
+        });
+        callerTurnDeliveryAckPreviews.delete(previewKey);
+        writeJson(response, 200, {
+          ...buildCallPayload(snapshot),
+          callerTurnCommit: {
+            mode: "delivery_ack",
+            status: "committed",
+            callId: callerTurnCommitMatch[1],
+            callerTranscript: text,
+            expectedAgentText,
+            expectedSnapshotVersion,
+            timestamp,
+            conversationMode: effectiveConversationMode,
+          },
+        });
+      } finally {
+        callerTurnDeliveryAckPreviewReservations.delete(previewKey);
+      }
     } catch {
       writeNotFound(response);
     }
