@@ -39,6 +39,16 @@ function normalizeSpaceHost(value) {
   }
 }
 
+function signalwireSipHostFromSpaceUrl(value) {
+  const host = normalizeSpaceHost(value).toLowerCase();
+  if (!host) return "";
+  if (host.endsWith(".sip.signalwire.com")) return host;
+  if (host.endsWith(".signalwire.com")) {
+    return `${host.slice(0, -".signalwire.com".length)}.sip.signalwire.com`;
+  }
+  return host;
+}
+
 function redact(value) {
   const text = clean(value);
   if (!text) return "";
@@ -104,12 +114,15 @@ async function runFsCli(command, redactor) {
 
 const env = Object.fromEntries(REQUIRED_ENV.map((name) => [name, clean(process.env[name])]));
 const missing = REQUIRED_ENV.filter((name) => !env[name]);
-const signalwireRealm = clean(process.env.SIGNALWIRE_SIP_REALM) || normalizeSpaceHost(env.SIGNALWIRE_SPACE_URL);
+const trunkMode = clean(process.env.SIGNALWIRE_TRUNK_MODE || "registration").toLowerCase().replace(/-/g, "_");
+const signalwireRealm = clean(process.env.SIGNALWIRE_SIP_REALM) || signalwireSipHostFromSpaceUrl(env.SIGNALWIRE_SPACE_URL);
 const signalwireProxy = clean(process.env.SIGNALWIRE_SIP_PROXY) || signalwireRealm;
 const outputDir = path.resolve(repoRoot, argValue("--out-dir", "artifacts/freeswitch-signalwire/conf"));
 const manifestPath = path.resolve(repoRoot, argValue("--manifest", "artifacts/freeswitch-signalwire/readiness.json"));
 const redactor = buildRedactor([
   ...Object.values(env),
+  signalwireRealm,
+  signalwireProxy,
   process.env.SIGNALWIRE_PROJECT_ID,
   process.env.SIGNALWIRE_TOKEN,
   process.env.SIGNALWIRE_SIP_REALM,
@@ -121,6 +134,7 @@ const summary = {
   status: "blocked",
   manualCallReady: false,
   telephonyMode: "signalwire_live",
+  trunkMode,
   requiredEnv: REQUIRED_ENV,
   missingEnv: missing,
   endpoint: {
@@ -137,6 +151,8 @@ const summary = {
 
 if (missing.length) {
   summary.blockers.push("missing_signalwire_or_freeswitch_env");
+} else if (!["registration", "ip_auth"].includes(trunkMode)) {
+  summary.blockers.push("invalid_signalwire_trunk_mode");
 } else if (!signalwireRealm || !signalwireProxy) {
   summary.missingEnv.push("SIGNALWIRE_SIP_REALM_OR_PROXY");
   summary.blockers.push("missing_signalwire_sip_realm_or_proxy");
@@ -172,11 +188,18 @@ if (hasFlag("--render") && summary.blockers.length === 0) {
 const fsCliSkipped = hasFlag("--skip-fs-cli");
 
 if (summary.blockers.length === 0 && !fsCliSkipped) {
-  for (const command of ["sofia status profile external", "sofia status gateway signalwire", "show registrations"]) {
+  const commands = trunkMode === "ip_auth"
+    ? ["sofia status profile external", "show registrations"]
+    : ["sofia status profile external", "sofia status gateway signalwire", "show registrations"];
+  for (const command of commands) {
     try {
       summary.freeswitchCli.push(await runFsCli(command, redactor));
     } catch (error) {
-      summary.blockers.push("freeswitch_cli_unavailable_or_gateway_unregistered");
+      summary.blockers.push(
+        trunkMode === "ip_auth"
+          ? "freeswitch_cli_unavailable_or_external_profile_unready"
+          : "freeswitch_cli_unavailable_or_gateway_unregistered",
+      );
       summary.freeswitchCli.push({
         command: `fs_cli -x '${command}'`,
         error: redactor(error instanceof Error ? error.message : String(error)),
@@ -188,7 +211,7 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
 
 if (summary.blockers.length === 0 && !fsCliSkipped) {
   const gateway = summary.freeswitchCli.find((entry) => entry.command.includes("gateway signalwire"));
-  if (gateway && !/\bREGED\b/i.test(`${gateway.stdout}\n${gateway.stderr}`)) {
+  if (trunkMode === "registration" && gateway && !/\bREGED\b/i.test(`${gateway.stdout}\n${gateway.stderr}`)) {
     summary.blockers.push("signalwire_gateway_status_not_proven");
   }
 }
