@@ -143,12 +143,20 @@ const env = Object.fromEntries(ALL_ENV.map((name) => [name, clean(process.env[na
 const missing = requiredEnv.filter((name) => !env[name]);
 const signalwireRealm = clean(process.env.SIGNALWIRE_SIP_REALM) || signalwireSipHostFromSpaceUrl(env.SIGNALWIRE_SPACE_URL);
 const signalwireProxy = clean(process.env.SIGNALWIRE_SIP_PROXY) || signalwireRealm;
+const signalwireDidDigits = env.SIGNALWIRE_FROM_NUMBER.replace(/\D/g, "");
+const signalwireDidNational = signalwireDidDigits.length === 11 && signalwireDidDigits.startsWith("1")
+  ? signalwireDidDigits.slice(1)
+  : "";
+const signalwireDidPattern = didPattern(env.SIGNALWIRE_FROM_NUMBER);
 const outputDir = path.resolve(repoRoot, argValue("--out-dir", "artifacts/freeswitch-signalwire/conf"));
 const manifestPath = path.resolve(repoRoot, argValue("--manifest", "artifacts/freeswitch-signalwire/readiness.json"));
 const redactor = buildRedactor([
   ...Object.values(env),
   signalwireRealm,
   signalwireProxy,
+  signalwireDidPattern,
+  signalwireDidDigits,
+  signalwireDidNational,
   process.env.SIGNALWIRE_PROJECT_ID,
   process.env.SIGNALWIRE_TOKEN,
   process.env.SIGNALWIRE_SIP_REALM,
@@ -190,7 +198,7 @@ if (hasFlag("--render") && summary.blockers.length === 0) {
     SIGNALWIRE_SIP_PASSWORD: xmlEscape(env.SIGNALWIRE_SIP_PASSWORD),
     SIGNALWIRE_SIP_REALM: xmlEscape(signalwireRealm),
     SIGNALWIRE_SIP_PROXY: xmlEscape(signalwireProxy),
-    SIGNALWIRE_TO_NUMBER_PATTERN: didPattern(env.SIGNALWIRE_FROM_NUMBER),
+    SIGNALWIRE_TO_NUMBER_PATTERN: signalwireDidPattern,
     SIGNALWIRE_FROM_NUMBER_SAFE: xmlEscape(env.SIGNALWIRE_FROM_NUMBER),
     FREESWITCH_PUBLIC_SIP_HOST_SAFE: xmlEscape(env.FREESWITCH_PUBLIC_SIP_HOST),
   };

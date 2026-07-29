@@ -95,7 +95,7 @@ test("SignalWire FreeSWITCH readiness redacts normalized SIP hosts from fs_cli p
 case "$2" in
   "sofia status profile external") printf '%s\\n' "external profile RUNNING" "SIP-IP 192.168.50.4" "RTP-IP 10.0.0.8" "Ext-SIP-IP fd00::1234" ;;
   "sofia status gateway signalwire") printf '%s\\n' "gateway signalwire REGED example.sip.signalwire.com" ;;
-  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><action application="set" data="acc_route=signalwire_live"/></extension>' ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><action application="set" data="acc_route=signalwire_live"/></condition></extension>' ;;
   *) printf '%s\\n' "0 total registrations" ;;
 esac
 `,
@@ -127,6 +127,7 @@ esac
     assert.equal(payload.status, "ready_for_manual_pstn_call");
     assert.doesNotMatch(stdout, /example\.sip\.signalwire\.com/);
     assert.doesNotMatch(stdout, /192\.168\.50\.4|10\.0\.0\.8|fd00::1234/);
+    assert.doesNotMatch(stdout, /12029687351|2029687351/);
     assert.match(stdout, /\[redacted-address\]/);
     assert.match(stdout, /gateway signalwire REGED \[redacted\]/);
   } finally {
