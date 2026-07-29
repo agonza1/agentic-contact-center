@@ -1715,6 +1715,211 @@ test("live SIP media transcripts preserve operator holds after async OpenAI gene
   }
 });
 
+test("live SIP terminal operator actions stop OpenAI automation until operator resume", async () => {
+  const originalEnv = {
+    ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    ACC_OPENAI_REQUEST_TIMEOUT_MS: process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
+  };
+  const openAiRequests: any[] = [];
+  const openAiServer = createTestServer((req, res) => {
+    req.resume();
+    openAiRequests.push({ url: req.url });
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ id: "resp-terminal-release", output_text: "Automation is explicitly released." }));
+  });
+  await new Promise<void>((resolve) => openAiServer.listen(0, "127.0.0.1", resolve));
+  const openAiAddress = openAiServer.address();
+  assert.ok(openAiAddress && typeof openAiAddress !== "string");
+
+  process.env.ACC_OPENAI_API_KEY = "test-openai-key";
+  delete process.env.OPENAI_API_KEY;
+  process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${openAiAddress.port}/v1`;
+  delete process.env.OPENAI_BASE_URL;
+  process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS = "5000";
+  delete process.env.ACC_OPENAI_AUTH_MODE;
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENCLAW_AGENT_ID;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    for (const action of ["escalate_to_human", "transfer", "end_call"]) {
+      const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+        eventType: "call.started",
+        timestamp: "2026-07-27T23:04:00.000Z",
+        sipCallId: `sip-openai-terminal-${action}`,
+        destination: "8600",
+        source: "freeswitch_verto",
+        telephonyMode: "local_sip",
+        rtcAsrMode: "rtc_asr_live",
+      });
+      assert.equal(started.statusCode, 201);
+      const callId = started.payload.call.session.callId;
+
+      if (action === "escalate_to_human") {
+        const pending = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+          action: "ask_operator",
+          timestamp: "2026-07-27T23:04:00.500Z",
+          reason: "operator is taking over",
+        });
+        assert.equal(pending.statusCode, 200);
+      }
+
+      const terminal = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+        action,
+        timestamp: "2026-07-27T23:04:01.000Z",
+        reason: `${action} requested by operator`,
+      });
+      assert.equal(terminal.statusCode, 200);
+      assert.equal(terminal.payload.flowState, "wrap");
+
+      const heldTurn = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+        timestamp: "2026-07-27T23:04:02.000Z",
+        text: `Do not automate after ${action}.`,
+        conversationMode: "openai_llm",
+      });
+      assert.equal(heldTurn.statusCode, 409);
+      assert.equal(heldTurn.payload.error, "live_sip_openai_automation_stopped");
+      assert.equal(
+        heldTurn.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === `Do not automate after ${action}.`),
+        false,
+      );
+    }
+    assert.equal(openAiRequests.length, 0);
+
+    const releaseStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T23:05:00.000Z",
+      sipCallId: "sip-openai-terminal-release",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(releaseStarted.statusCode, 201);
+    const releaseCallId = releaseStarted.payload.call.session.callId;
+    const terminal = await requestJson(address.port, "POST", `/api/calls/${releaseCallId}/operator-steer`, {
+      action: "transfer",
+      timestamp: "2026-07-27T23:05:01.000Z",
+      reason: "operator transfer test",
+    });
+    assert.equal(terminal.statusCode, 200);
+    const resumed = await requestJson(address.port, "POST", `/api/calls/${releaseCallId}/operator-steer`, {
+      action: "resume",
+      timestamp: "2026-07-27T23:05:02.000Z",
+      reason: "operator explicitly released automation",
+    });
+    assert.equal(resumed.statusCode, 200);
+    assert.equal(resumed.payload.flowState, "steered_response");
+    const resumedTurn = await requestJson(address.port, "POST", `/api/calls/${releaseCallId}/caller-turn`, {
+      timestamp: "2026-07-27T23:05:03.000Z",
+      text: "Automation may continue after explicit release.",
+      conversationMode: "openai_llm",
+    });
+    assert.equal(resumedTurn.statusCode, 200);
+    assert.equal(openAiRequests.length, 1);
+  } finally {
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => openAiServer.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("live SIP scripted caller turns honor explicit operator pause holds", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T23:06:00.000Z",
+      sipCallId: "sip-scripted-explicit-pause",
+      destination: "8611",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+    assert.equal(started.payload.call.scenario.conversationMode, "scripted");
+    const callId = started.payload.call.session.callId;
+
+    const paused = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "pause",
+      timestamp: "2026-07-27T23:06:01.000Z",
+      reason: "operator explicitly paused scripted SIP flow",
+    });
+    assert.equal(paused.statusCode, 200);
+    assert.equal(paused.payload.flowState, "policy_hold");
+
+    const heldDirectTurn = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      timestamp: "2026-07-27T23:06:02.000Z",
+      text: "I want to keep talking while paused.",
+      conversationMode: "scripted",
+    });
+    assert.equal(heldDirectTurn.statusCode, 409);
+    assert.equal(heldDirectTurn.payload.error, "live_sip_operator_hold_active");
+    assert.equal(
+      heldDirectTurn.payload.call.events.some((event: any) => event.type === "rtc_asr_transcript" && event.detail.held === true && event.detail.holdReason === "operator_policy_hold_active"),
+      true,
+    );
+    assert.equal(
+      heldDirectTurn.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "I want to keep talking while paused."),
+      false,
+    );
+
+    const heldMediaTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-27T23:06:03.000Z",
+      sipCallId: "sip-scripted-explicit-pause",
+      text: "Media transcript should also wait.",
+    });
+    assert.equal(heldMediaTranscript.statusCode, 409);
+    assert.equal(heldMediaTranscript.payload.error, "live_sip_operator_hold_active");
+    assert.equal(
+      heldMediaTranscript.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "Media transcript should also wait."),
+      false,
+    );
+
+    const resumed = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "resume",
+      timestamp: "2026-07-27T23:06:04.000Z",
+      reason: "operator resumed scripted SIP flow",
+    });
+    assert.equal(resumed.statusCode, 200);
+    assert.equal(resumed.payload.flowState, "steered_response");
+
+    const acceptedMediaTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-27T23:06:05.000Z",
+      sipCallId: "sip-scripted-explicit-pause",
+      text: "I'm thinking about canceling my policy.",
+    });
+    assert.equal(acceptedMediaTranscript.statusCode, 200);
+    assert.equal(
+      acceptedMediaTranscript.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === "I'm thinking about canceling my policy."),
+      true,
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("SignalWire webhook can be labeled signalwire_live without credentials in config", async () => {
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));

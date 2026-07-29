@@ -2112,6 +2112,35 @@ function getLatestEvent(snapshot: CallSnapshot, eventType: string) {
   return [...snapshot.events].reverse().find((event) => event.type === eventType) ?? null;
 }
 
+const liveSipOperatorReleaseActions = new Set(["resume", "disarm_fallback"]);
+const liveSipTerminalOperatorActions = new Set(["escalate_to_human", "transfer", "end_call"]);
+const liveSipExplicitOperatorHoldReasons = new Map([
+  ["pause", "operator_policy_hold_active"],
+  ["goto_slide", "operator_steer_active"],
+  ["ask_operator", "operator_steer_active"],
+  ["arm_fallback", "demo_fallback_active"],
+]);
+
+function getOperatorSteerAction(event: CallSnapshot["events"][number]): string | null {
+  return typeof event.detail.action === "string" ? event.detail.action : null;
+}
+
+function isLiveSipOperatorReleaseEvent(event: CallSnapshot["events"][number]): boolean {
+  if (event.type === "demo_fallback_disarmed") return true;
+  if (event.type !== "operator_steer_applied") return false;
+  const action = getOperatorSteerAction(event);
+  return action !== null && liveSipOperatorReleaseActions.has(action);
+}
+
+function isLiveSipTerminalOperatorStopEvent(event: CallSnapshot["events"][number]): boolean {
+  const action = getOperatorSteerAction(event);
+  if (event.type === "operator_steer_applied" && action !== null && liveSipTerminalOperatorActions.has(action)) {
+    return true;
+  }
+  if (event.type === "operator_transfer_started" || event.type === "operator_call_ended") return true;
+  return event.type === "human_handoff_started" && event.detail.source === "operator_steer";
+}
+
 function isOpenAiLiveSipAutomationStopped(snapshot: CallSnapshot): boolean {
   if (snapshot.scenario.conversationMode !== "openai_llm") return false;
 
@@ -2119,14 +2148,12 @@ function isOpenAiLiveSipAutomationStopped(snapshot: CallSnapshot): boolean {
     const failClosedHandoff = event.type === "human_handoff_started"
       && typeof event.detail.source === "string"
       && event.detail.source.includes("fail_closed");
-    return event.type === "demo_fallback_triggered" || failClosedHandoff ? index : latest;
+    return event.type === "demo_fallback_triggered" || failClosedHandoff || isLiveSipTerminalOperatorStopEvent(event)
+      ? index
+      : latest;
   }, -1);
   const releaseIndex = snapshot.events.reduce((latest, event, index) => {
-    if (event.type === "demo_fallback_disarmed") return index;
-    if (event.type === "operator_steer_applied" && (event.detail.action === "resume" || event.detail.action === "disarm_fallback")) {
-      return index;
-    }
-    return latest;
+    return isLiveSipOperatorReleaseEvent(event) ? index : latest;
   }, -1);
 
   return (snapshot.demoFallback.armed || stopIndex >= 0) && releaseIndex <= stopIndex;
@@ -2137,6 +2164,42 @@ function getLiveSipOperatorHoldReason(snapshot: CallSnapshot): string | null {
   if (snapshot.flowState === "policy_hold") return "operator_policy_hold_active";
   if (snapshot.demoFallback.armed) return "demo_fallback_active";
   return null;
+}
+
+function getExplicitLiveSipOperatorHoldReason(snapshot: CallSnapshot): string | null {
+  let latestHoldIndex = -1;
+  let latestHoldReason: string | null = null;
+  const releaseIndex = snapshot.events.reduce((latest, event, index) => {
+    return isLiveSipOperatorReleaseEvent(event) ? index : latest;
+  }, -1);
+
+  snapshot.events.forEach((event, index) => {
+    if (event.type === "operator_demo_paused") {
+      latestHoldIndex = index;
+      latestHoldReason = "operator_policy_hold_active";
+      return;
+    }
+    if (event.type === "demo_fallback_armed") {
+      latestHoldIndex = index;
+      latestHoldReason = "demo_fallback_active";
+      return;
+    }
+    if (event.type !== "operator_steer_applied") return;
+    const action = getOperatorSteerAction(event);
+    const reason = action === null ? undefined : liveSipExplicitOperatorHoldReasons.get(action);
+    if (reason) {
+      latestHoldIndex = index;
+      latestHoldReason = reason;
+    }
+  });
+
+  if (latestHoldReason === null || releaseIndex > latestHoldIndex) return null;
+  return latestHoldReason;
+}
+
+function getLiveSipCallerTurnHoldReason(snapshot: CallSnapshot, conversationMode: ConversationMode): string | null {
+  if (conversationMode === "openai_llm") return getLiveSipOperatorHoldReason(snapshot);
+  return getExplicitLiveSipOperatorHoldReason(snapshot);
 }
 
 async function rejectHeldLiveSipCallerTurn(
@@ -5874,7 +5937,7 @@ async function routeRequest(
           );
           return;
         }
-        const currentOperatorHoldReason = conversationMode === "openai_llm" ? getLiveSipOperatorHoldReason(currentSnapshot) : null;
+        const currentOperatorHoldReason = getLiveSipCallerTurnHoldReason(currentSnapshot, conversationMode);
         if (currentOperatorHoldReason) {
           await rejectHeldLiveSipCallerTurn(
             response,
@@ -5913,7 +5976,7 @@ async function routeRequest(
           );
           return;
         }
-        const latestOperatorHoldReason = conversationMode === "openai_llm" ? getLiveSipOperatorHoldReason(latestSnapshot) : null;
+        const latestOperatorHoldReason = getLiveSipCallerTurnHoldReason(latestSnapshot, conversationMode);
         if (latestOperatorHoldReason) {
           await rejectHeldLiveSipCallerTurn(
             response,
@@ -6609,7 +6672,7 @@ async function routeRequest(
         );
         return;
       }
-      const currentOperatorHoldReason = effectiveConversationMode === "openai_llm" ? getLiveSipOperatorHoldReason(currentSnapshot) : null;
+      const currentOperatorHoldReason = getLiveSipCallerTurnHoldReason(currentSnapshot, effectiveConversationMode);
       if (currentOperatorHoldReason) {
         await rejectHeldLiveSipCallerTurn(
           response,
@@ -6674,7 +6737,7 @@ async function routeRequest(
         );
         return;
       }
-      const latestOperatorHoldReason = effectiveConversationMode === "openai_llm" ? getLiveSipOperatorHoldReason(latestSnapshot) : null;
+      const latestOperatorHoldReason = getLiveSipCallerTurnHoldReason(latestSnapshot, effectiveConversationMode);
       if (latestOperatorHoldReason) {
         await rejectHeldLiveSipCallerTurn(
           response,

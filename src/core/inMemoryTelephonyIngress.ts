@@ -64,6 +64,36 @@ interface CallerTurnOptions {
 
 type VoiceSessionScope = Pick<CallerTurnOptions, "voiceSessionId" | "realtimeVoiceSessionId">;
 
+const terminalOperatorSteerActions = new Set(["escalate_to_human", "transfer", "end_call"]);
+const operatorSteerReleaseActions = new Set(["resume", "disarm_fallback"]);
+
+function getOperatorSteerAction(event: CallSnapshot["events"][number]): string | null {
+  return typeof event.detail.action === "string" ? event.detail.action : null;
+}
+
+function isOperatorSteerReleaseEvent(event: CallSnapshot["events"][number]): boolean {
+  if (event.type === "demo_fallback_disarmed") return true;
+  if (event.type !== "operator_steer_applied") return false;
+  const action = getOperatorSteerAction(event);
+  return action !== null && operatorSteerReleaseActions.has(action);
+}
+
+function hasActiveTerminalOperatorStop(snapshot: CallSnapshot): boolean {
+  const stopIndex = snapshot.events.reduce((latest, event, index) => {
+    const action = getOperatorSteerAction(event);
+    const terminalAction = event.type === "operator_steer_applied" && action !== null && terminalOperatorSteerActions.has(action);
+    const terminalEvent =
+      event.type === "operator_transfer_started" ||
+      event.type === "operator_call_ended" ||
+      (event.type === "human_handoff_started" && event.detail.source === "operator_steer");
+    return terminalAction || terminalEvent ? index : latest;
+  }, -1);
+  const releaseIndex = snapshot.events.reduce((latest, event, index) => {
+    return isOperatorSteerReleaseEvent(event) ? index : latest;
+  }, -1);
+  return stopIndex >= 0 && releaseIndex <= stopIndex;
+}
+
 function buildOpenClawArtifactLinks(callId: string) {
   const basePath = `/api/calls/${callId}`;
 
@@ -555,11 +585,13 @@ export class InMemoryTelephonyIngress {
     const requiresPendingState =
       action === "approve_offer" || action === "deny_offer" || action === "escalate_to_human" || action === "resume";
     const resumesArmedFallback = action === "resume" && snapshot.demoFallback.armed;
+    const resumesTerminalOperatorStop = action === "resume" && hasActiveTerminalOperatorStop(snapshot);
     if (
       requiresPendingState &&
       snapshot.flowState !== "policy_hold" &&
       snapshot.flowState !== "operator_steer" &&
-      !resumesArmedFallback
+      !resumesArmedFallback &&
+      !resumesTerminalOperatorStop
     ) {
       throw new Error(`Call is not awaiting operator steer: ${callId}`);
     }
