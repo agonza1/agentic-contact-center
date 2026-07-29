@@ -180,6 +180,86 @@ async def run_regression() -> dict[str, Any]:
     )
     held_result = await held_adapter.preview_caller_turn(text="pause race", conversation_mode="openai_llm")
 
+    recovered_requests: list[dict[str, Any]] = []
+    recovered_nodes = iter(["wrap", "diagnose"])
+
+    def recovered_http(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        recovered_requests.append({"method": method, "url": url, "payload": payload})
+        if url.endswith("/fallback"):
+            return {
+                "flowState": "wrap",
+                "transcript": [{"speaker": "agent", "text": "This should not repeat after operator release."}],
+            }
+        node = next(recovered_nodes)
+        if node == "wrap":
+            return {
+                "flowState": "wrap",
+                "callerTurnCommit": {"mode": "delivery_ack", "status": "pending"},
+                "events": [
+                    {
+                        "type": "human_handoff_started",
+                        "detail": {"source": "openai_llm_fail_closed"},
+                    },
+                    {
+                        "type": "flow_state_transition",
+                        "detail": {"from": "greet", "to": "wrap", "reason": "openai_llm_failed_closed"},
+                    },
+                ],
+                "transcript": [
+                    {"speaker": "caller", "text": payload["text"]},
+                    {"speaker": "agent", "text": "fail closed response"},
+                ],
+            }
+        return {
+            "flowState": "diagnose",
+            "callerTurnCommit": {"mode": "delivery_ack", "status": "pending"},
+            "events": [
+                {
+                    "type": "human_handoff_started",
+                    "detail": {"source": "openai_llm_fail_closed"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "greet", "to": "wrap", "reason": "openai_llm_failed_closed"},
+                },
+                {
+                    "type": "demo_fallback_disarmed",
+                    "detail": {"source": "operator_resume"},
+                },
+                {
+                    "type": "operator_steer_applied",
+                    "detail": {"action": "resume"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "wrap", "to": "steered_response", "reason": "operator_resumed"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "steered_response", "to": "diagnose", "reason": "openai_llm_conversation"},
+                },
+            ],
+            "transcript": [
+                {"speaker": "caller", "text": "first failed turn"},
+                {"speaker": "agent", "text": "fail closed response"},
+                {"speaker": "operator", "text": "operator steer: resume"},
+                {"speaker": "caller", "text": payload["text"]},
+                {"speaker": "agent", "text": "recovered response"},
+            ],
+        }
+
+    recovered_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-recovered",
+        request_json=recovered_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    recovered_fail_closed = await recovered_adapter.preview_caller_turn(text="first failed turn", conversation_mode="openai_llm")
+    await recovered_adapter.commit_pending_transition()
+    recovered_preview = await recovered_adapter.preview_caller_turn(text="recovered caller turn", conversation_mode="openai_llm")
+    await recovered_adapter.commit_pending_transition()
+
     checks = {
         "actualFlowManagerFactoryOwnsNodes": adapter.manager is not None and adapter.manager.current_node == "wrap",
         "normalCancellationTransitionsGuarded": [step["to"] for step in adapter.transition_trace] == ["greet", "diagnose", "diagnose", "wrap"],
@@ -201,6 +281,16 @@ async def run_regression() -> dict[str, Any]:
             and held_adapter.pending_transition is None
             and not any(item["url"].endswith("/fallback") for item in held_requests)
         ),
+        "releasedFailClosedResynchronizesFlowManager": (
+            recovered_fail_closed["flowState"] == "wrap"
+            and recovered_preview["flowState"] == "diagnose"
+            and recovered_preview["flowManagerRuntime"]["pendingNode"] == "diagnose"
+            and recovered_preview["flowManagerRuntime"]["resynchronizedFrom"] == "wrap"
+            and recovered_preview["flowManagerRuntime"]["resynchronizedTo"] == "steered_response"
+            and recovered_adapter.manager.current_node == "diagnose"
+            and [step["to"] for step in recovered_adapter.transition_trace] == ["wrap", "steered_response", "diagnose"]
+            and not any(item["url"].endswith("/fallback") for item in recovered_requests)
+        ),
         "requiredVersionsRecorded": normal_results[0]["flowManagerRuntime"]["runtimeVersions"] == {"pipecat-ai": "1.4.0", "pipecat-ai-flows": "1.4.0"},
     }
     return {
@@ -212,6 +302,7 @@ async def run_regression() -> dict[str, Any]:
         "unsafeEvidence": unsafe_result["flowManagerRuntime"],
         "missingRuntimeEvidence": missing_result["flowManagerRuntime"],
         "heldEvidence": held_result["flowManagerRuntime"],
+        "recoveredEvidence": recovered_preview["flowManagerRuntime"],
         "checks": checks,
     }
 

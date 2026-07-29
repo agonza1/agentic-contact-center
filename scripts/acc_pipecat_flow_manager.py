@@ -29,7 +29,7 @@ FLOW_MANAGER_ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "diagnose": {"diagnose", "policy_hold", "wrap"},
     "policy_hold": {"policy_hold", "operator_steer", "wrap"},
     "operator_steer": {"operator_steer", "steered_response", "wrap"},
-    "steered_response": {"steered_response", "wrap"},
+    "steered_response": {"steered_response", "diagnose", "wrap"},
     "wrap": {"wrap"},
 }
 
@@ -204,6 +204,90 @@ class AccPipecatFlowManagerAdapter:
             "currentNode": self.manager.current_node,
             "lastTransition": transition,
             "transitionCount": len(self.transition_trace),
+            "queuedFrameTypes": list(self.frame_sink.queued_frame_types),
+        }
+
+    @staticmethod
+    def _event_detail(event: Any) -> dict[str, Any]:
+        if not isinstance(event, dict):
+            return {}
+        detail = event.get("detail")
+        return detail if isinstance(detail, dict) else {}
+
+    @classmethod
+    def _released_fail_closed_after_stop(cls, preview: dict[str, Any]) -> bool:
+        events = preview.get("events")
+        if not isinstance(events, list):
+            return False
+
+        stop_index = -1
+        release_index = -1
+        for index, event in enumerate(events):
+            if not isinstance(event, dict):
+                continue
+            event_type = event.get("type")
+            detail = cls._event_detail(event)
+            fail_closed_handoff = (
+                event_type == "human_handoff_started"
+                and isinstance(detail.get("source"), str)
+                and "fail_closed" in detail["source"]
+            )
+            if event_type == "demo_fallback_triggered" or fail_closed_handoff:
+                stop_index = index
+            if event_type == "demo_fallback_disarmed":
+                release_index = index
+            if event_type == "operator_steer_applied" and detail.get("action") in {"resume", "disarm_fallback"}:
+                release_index = index
+        return stop_index >= 0 and release_index > stop_index
+
+    @classmethod
+    def _latest_acc_transition_source(cls, preview: dict[str, Any], target_node: str) -> str | None:
+        events = preview.get("events")
+        if not isinstance(events, list):
+            return None
+
+        for event in reversed(events):
+            if not isinstance(event, dict) or event.get("type") != "flow_state_transition":
+                continue
+            detail = cls._event_detail(event)
+            if detail.get("to") == target_node and isinstance(detail.get("from"), str):
+                return detail["from"]
+        return None
+
+    async def resync_released_fail_closed_state(self, preview: dict[str, Any], target_node: str) -> None:
+        if not self.manager or not self.initialized:
+            return
+        current_node = getattr(self.manager, "current_node", None)
+        if current_node != "wrap" or target_node in FLOW_MANAGER_ALLOWED_TRANSITIONS.get("wrap", set()):
+            return
+        if not self._released_fail_closed_after_stop(preview):
+            return
+        restored_node = self._latest_acc_transition_source(preview, target_node)
+        if (
+            restored_node not in FLOW_MANAGER_NODE_INTENTS
+            or target_node not in FLOW_MANAGER_ALLOWED_TRANSITIONS.get(restored_node, set())
+        ):
+            return
+
+        await self.manager.set_node_from_config(flow_manager_node_config(restored_node))
+        self._terminal_result = None
+        transition = {
+            "from": current_node,
+            "to": restored_node,
+            "reason": "acc_released_fail_closed_resync",
+            "at": datetime.now(UTC).isoformat(timespec="milliseconds"),
+            "resynchronized": True,
+        }
+        self.transition_trace.append(transition)
+        self.last_evidence = {
+            **self.last_evidence,
+            "ok": True,
+            "currentNode": restored_node,
+            "lastTransition": transition,
+            "transitionCount": len(self.transition_trace),
+            "resynchronizedFrom": current_node,
+            "resynchronizedTo": restored_node,
+            "resynchronizationReason": "acc_released_fail_closed",
             "queuedFrameTypes": list(self.frame_sink.queued_frame_types),
         }
 
@@ -543,6 +627,7 @@ class AccPipecatFlowManagerAdapter:
                 target_node = preview.get("flowState")
                 if not isinstance(target_node, str):
                     raise FlowManagerRuntimeError("ACC caller-turn preview did not return flowState")
+                await self.resync_released_fail_closed_state(preview, target_node)
                 self.stage_transition(target_node, reason="caller_turn_preview")
                 evidence = {
                     **self.last_evidence,
