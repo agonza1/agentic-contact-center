@@ -4596,6 +4596,34 @@ function purgeCallerTurnDeliveryAckPreviewsForCall(
   }
 }
 
+function getCallerTurnDeliveryAckPreview(
+  previews: Map<string, CallerTurnDeliveryAckPreview>,
+  callId: string,
+  snapshotVersion: string,
+): CallerTurnDeliveryAckPreview | undefined {
+  return previews.get(buildCallerTurnDeliveryAckKey(callId, snapshotVersion));
+}
+
+function writeCallerTurnDeliveryAckPreviewPending(
+  response: ServerResponse,
+  callId: string,
+  snapshotVersion: string,
+  preview: CallerTurnDeliveryAckPreview,
+): void {
+  writeJson(response, 409, {
+    ok: false,
+    route: "/api/calls/:callId/caller-turn",
+    error: "caller_turn_delivery_ack_preview_pending",
+    callerTurnCommit: {
+      mode: "delivery_ack",
+      status: "pending",
+      callId,
+      snapshotVersion,
+      createdAtMs: preview.createdAtMs,
+    },
+  });
+}
+
 function uniqueLiveSipCallIds(...values: Array<string | null | undefined>): string[] {
   return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))));
 }
@@ -6622,6 +6650,11 @@ async function routeRequest(
       }
       if (commitMode === "delivery_ack") {
         const snapshotVersion = buildDeliveryAckSnapshotVersion(latestSnapshot);
+        const pendingPreview = getCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
+        if (pendingPreview) {
+          writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, pendingPreview);
+          return;
+        }
         const snapshot = await ingress.previewCallerTurn(callerTurnMatch[1], turn, config, {
           conversationMode: effectiveConversationMode,
           openAiLlm,
@@ -6630,6 +6663,11 @@ async function routeRequest(
         const expectedAgentText = snapshot.transcript.at(-1)?.speaker === "agent" ? snapshot.transcript.at(-1)?.text : undefined;
         if (!expectedAgentText) {
           writeBadRequest(response, "caller_turn_preview_agent_text_missing");
+          return;
+        }
+        const concurrentPendingPreview = getCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
+        if (concurrentPendingPreview) {
+          writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, concurrentPendingPreview);
           return;
         }
         callerTurnDeliveryAckPreviews.set(buildCallerTurnDeliveryAckKey(callerTurnMatch[1], snapshotVersion), {

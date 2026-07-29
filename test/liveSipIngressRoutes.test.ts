@@ -1045,6 +1045,97 @@ test("delivery-ack commits must match the server-side OpenAI preview", async () 
   }
 });
 
+test("delivery-ack OpenAI previews reject a concurrent preview for the same snapshot", async () => {
+  const originalEnv = {
+    ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
+  };
+  const openAiServer = createTestServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      setTimeout(() => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ id: "resp-concurrent-preview", output_text: "I can help with the live AI path." }));
+      }, 25);
+    });
+  });
+  await new Promise<void>((resolve) => openAiServer.listen(0, "127.0.0.1", resolve));
+  const openAiAddress = openAiServer.address();
+  assert.ok(openAiAddress && typeof openAiAddress !== "string");
+
+  process.env.ACC_OPENAI_API_KEY = "test-openai-key";
+  delete process.env.OPENAI_API_KEY;
+  process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${openAiAddress.port}/v1`;
+  delete process.env.OPENAI_BASE_URL;
+  delete process.env.ACC_OPENAI_AUTH_MODE;
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENCLAW_AGENT_ID;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T22:51:00.000Z",
+      sipCallId: "sip-openai-concurrent-delivery-ack",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+    const callId = started.payload.call.session.callId;
+
+    const [first, second] = await Promise.all([
+      requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+        text: "Can you help with my account?",
+        timestamp: "2026-07-27T22:51:01.000Z",
+        commitMode: "delivery_ack",
+      }),
+      requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+        text: "Can you also update my address?",
+        timestamp: "2026-07-27T22:51:02.000Z",
+        commitMode: "delivery_ack",
+      }),
+    ]);
+    const accepted = [first, second].find((result) => result.statusCode === 200);
+    const rejected = [first, second].find((result) => result.statusCode === 409);
+    assert.ok(accepted);
+    assert.ok(rejected);
+    assert.equal(rejected.payload.error, "caller_turn_delivery_ack_preview_pending");
+    assert.equal(rejected.payload.callerTurnCommit.snapshotVersion, accepted.payload.callerTurnCommit.snapshotVersion);
+
+    const committed = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn/commit`, {
+      text: accepted.payload.callerTurnCommit.callerTranscript,
+      timestamp: accepted.payload.callerTurnCommit.timestamp,
+      expectedSnapshotVersion: accepted.payload.callerTurnCommit.snapshotVersion,
+      expectedAgentText: accepted.payload.callerTurnCommit.expectedAgentText,
+    });
+    assert.equal(committed.statusCode, 200);
+    assert.equal(
+      committed.payload.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === rejected.payload.callerTurnCommit.callerTranscript),
+      false,
+    );
+  } finally {
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => openAiServer.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("delivery-ack OpenAI failures persist fail-closed state before audible commit", async () => {
   const originalEnv = {
     ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,

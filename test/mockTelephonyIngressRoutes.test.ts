@@ -4361,6 +4361,56 @@ test("delivery-ack caller turns preview without mutating until commit", async ()
   });
 });
 
+test("delivery-ack caller turns reject concurrent previews for the same snapshot", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const preview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      commitMode: "delivery_ack",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const previewPayload = preview.payload as SnapshotPayload & {
+      callerTurnCommit: { expectedAgentText: string; snapshotVersion: string };
+    };
+    assert.equal(preview.statusCode, 200);
+
+    const concurrentPreview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you also update my address?",
+      conversationMode: "free_caller",
+      commitMode: "delivery_ack",
+      timestamp: "2026-06-10T14:00:01.000Z",
+    });
+    assert.equal(concurrentPreview.statusCode, 409);
+    assert.equal((concurrentPreview.payload as { error: string }).error, "caller_turn_delivery_ack_preview_pending");
+    assert.equal(
+      (concurrentPreview.payload as { callerTurnCommit: { snapshotVersion: string } }).callerTurnCommit.snapshotVersion,
+      previewPayload.callerTurnCommit.snapshotVersion,
+    );
+
+    const fetchedBeforeCommit = await requestJson(port, "GET", `/api/calls/${callId}`);
+    const beforeCommitPayload = fetchedBeforeCommit.payload as SnapshotPayload;
+    assert.equal(fetchedBeforeCommit.statusCode, 200);
+    assert.deepEqual(beforeCommitPayload.transcript, []);
+
+    const committed = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn/commit`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      expectedAgentText: previewPayload.callerTurnCommit.expectedAgentText,
+      expectedSnapshotVersion: previewPayload.callerTurnCommit.snapshotVersion,
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const committedPayload = committed.payload as SnapshotPayload;
+    assert.equal(committed.statusCode, 200);
+    assert.equal(committedPayload.transcript.at(0)?.text, "Can you help with billing?");
+    assert.equal(committedPayload.transcript.some((turn) => turn.text === "Can you also update my address?"), false);
+  });
+});
+
 test("delivery-ack caller turn previews expire when delivery is abandoned", async () => {
   const originalDateNow = Date.now;
   let nowMs = Date.parse("2026-06-10T14:00:00.000Z");
