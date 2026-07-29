@@ -12,6 +12,8 @@ Do not put live SignalWire values in Git, docs, issue comments, screenshots, or 
 
 Keep these values in a local `.env` or shell session. `.env` and `artifacts/` are gitignored.
 
+Registration trunks require:
+
 ```sh
 export SIGNALWIRE_SPACE_URL="https://SPACE.signalwire.com"
 export SIGNALWIRE_PROJECT_ID="PROJECT_ID_PLACEHOLDER"
@@ -21,6 +23,8 @@ export SIGNALWIRE_SIP_PASSWORD="SIP_PASSWORD_PLACEHOLDER"
 export SIGNALWIRE_FROM_NUMBER="+12029687351"
 export FREESWITCH_PUBLIC_SIP_HOST="PUBLIC_SIP_HOST_OR_TUNNEL_PLACEHOLDER"
 ```
+
+IP-auth trunks require only `SIGNALWIRE_TRUNK_MODE=ip_auth`, `SIGNALWIRE_FROM_NUMBER`, and `FREESWITCH_PUBLIC_SIP_HOST`; they do not require a Space URL or SIP registration credentials.
 
 Optional overrides:
 
@@ -42,10 +46,12 @@ npm run signalwire:freeswitch:readiness -- --render --skip-fs-cli
 
 That render-only command should report `config_rendered_pending_freeswitch_cli`. It does not prove the trunk is reachable and does not open the manual-call gate.
 
-Generated files:
+Registration mode generates:
 
 - `artifacts/freeswitch-signalwire/conf/sip_profiles/external/signalwire.xml`
 - `artifacts/freeswitch-signalwire/conf/dialplan/public/signalwire_inbound.xml`
+
+IP-auth mode generates only the inbound dialplan because it has no registered gateway.
 
 Mount or copy those files into the active FreeSWITCH config:
 

@@ -89,7 +89,17 @@ test("SignalWire FreeSWITCH readiness redacts normalized SIP hosts from fs_cli p
   const fsCliBin = path.join(tempDir, "fs_cli");
 
   try {
-    await writeFile(fsCliBin, `#!/bin/sh\nprintf '%s\\n' "gateway signalwire REGED example.sip.signalwire.com"\n`, "utf8");
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" ;;
+  "sofia status gateway signalwire") printf '%s\\n' "gateway signalwire REGED example.sip.signalwire.com" ;;
+  *) printf '%s\\n' "0 total registrations" ;;
+esac
+`,
+      "utf8",
+    );
     await chmod(fsCliBin, 0o700);
 
     const { stdout } = await execFileAsync(process.execPath, [
@@ -140,9 +150,6 @@ test("SignalWire FreeSWITCH readiness supports IP-auth trunks without REGED", as
       env: {
         PATH: process.env.PATH ?? "",
         SIGNALWIRE_TRUNK_MODE: "ip-auth",
-        SIGNALWIRE_SPACE_URL: "https://example.signalwire.com",
-        SIGNALWIRE_SIP_USERNAME: "acc-sip-user",
-        SIGNALWIRE_SIP_PASSWORD: "example-rendered-sip-password",
         SIGNALWIRE_FROM_NUMBER: "+12029687351",
         FREESWITCH_PUBLIC_SIP_HOST: "sip-public-host.example.test",
       },
@@ -152,6 +159,8 @@ test("SignalWire FreeSWITCH readiness supports IP-auth trunks without REGED", as
     const payload = JSON.parse(stdout);
     assert.equal(payload.ok, true);
     assert.equal(payload.trunkMode, "ip_auth");
+    assert.deepEqual(payload.requiredEnv, ["SIGNALWIRE_FROM_NUMBER", "FREESWITCH_PUBLIC_SIP_HOST"]);
+    assert.deepEqual(payload.missingEnv, []);
     assert.equal(payload.status, "ready_for_manual_pstn_call");
     assert.equal(payload.manualCallReady, true);
     assert.deepEqual(
@@ -163,3 +172,82 @@ test("SignalWire FreeSWITCH readiness supports IP-auth trunks without REGED", as
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test("SignalWire FreeSWITCH readiness renders only the inbound dialplan for IP-auth trunks", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [
+      "scripts/signalwire-freeswitch-readiness.mjs",
+      "--render",
+      "--skip-fs-cli",
+      "--out-dir",
+      tempDir,
+      "--manifest",
+      path.join(tempDir, "readiness.json"),
+    ], {
+      cwd: repoRoot,
+      env: {
+        PATH: process.env.PATH ?? "",
+        SIGNALWIRE_TRUNK_MODE: "ip_auth",
+        SIGNALWIRE_FROM_NUMBER: "+12029687351",
+        FREESWITCH_PUBLIC_SIP_HOST: "sip-public-host.example.test",
+      },
+      encoding: "utf8",
+    });
+
+    const payload = JSON.parse(stdout);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.generatedConfig.gatewayPath, null);
+    assert.match(payload.generatedConfig.dialplanPath, /signalwire_inbound\.xml$/);
+    await assert.rejects(readFile(path.join(tempDir, "sip_profiles/external/signalwire.xml"), "utf8"));
+    assert.match(
+      await readFile(path.join(tempDir, "dialplan/public/signalwire_inbound.xml"), "utf8"),
+      /agentic_contact_center_signalwire_pstn/,
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+for (const profileOutput of ["Invalid Profile!", "external profile DOWN"]) {
+  test(`SignalWire FreeSWITCH readiness rejects IP-auth profile output: ${profileOutput}`, async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+    const fsCliBin = path.join(tempDir, "fs_cli");
+
+    try {
+      await writeFile(fsCliBin, `#!/bin/sh\nprintf '%s\\n' "${profileOutput}"\n`, "utf8");
+      await chmod(fsCliBin, 0o700);
+
+      await assert.rejects(
+        execFileAsync(process.execPath, [
+          "scripts/signalwire-freeswitch-readiness.mjs",
+          "--fs-cli-bin",
+          fsCliBin,
+          "--manifest",
+          path.join(tempDir, "readiness.json"),
+        ], {
+          cwd: repoRoot,
+          env: {
+            PATH: process.env.PATH ?? "",
+            SIGNALWIRE_TRUNK_MODE: "ip_auth",
+            SIGNALWIRE_FROM_NUMBER: "+12029687351",
+            FREESWITCH_PUBLIC_SIP_HOST: "sip-public-host.example.test",
+          },
+          encoding: "utf8",
+        }),
+        (error: unknown) => {
+          const result = error as { stdout?: string; code?: number };
+          assert.equal(result.code, 2);
+          const payload = JSON.parse(result.stdout ?? "{}");
+          assert.equal(payload.manualCallReady, false);
+          assert.equal(payload.status, "blocked");
+          assert.ok(payload.blockers.includes("freeswitch_external_profile_not_running"));
+          return true;
+        },
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+}

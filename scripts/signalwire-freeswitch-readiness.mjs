@@ -8,13 +8,16 @@ const execFileAsync = promisify(execFile);
 const repoRoot = process.cwd();
 const args = process.argv.slice(2);
 
-const REQUIRED_ENV = [
-  "SIGNALWIRE_SPACE_URL",
-  "SIGNALWIRE_SIP_USERNAME",
-  "SIGNALWIRE_SIP_PASSWORD",
+const COMMON_REQUIRED_ENV = [
   "SIGNALWIRE_FROM_NUMBER",
   "FREESWITCH_PUBLIC_SIP_HOST",
 ];
+const REGISTRATION_REQUIRED_ENV = [
+  "SIGNALWIRE_SPACE_URL",
+  "SIGNALWIRE_SIP_USERNAME",
+  "SIGNALWIRE_SIP_PASSWORD",
+];
+const ALL_ENV = [...COMMON_REQUIRED_ENV, ...REGISTRATION_REQUIRED_ENV];
 
 function hasFlag(name) {
   return args.includes(name);
@@ -87,6 +90,13 @@ function didPattern(value) {
   return [withOptionalPlus, withoutCountry].filter(Boolean).join("|");
 }
 
+function isExternalProfileRunning(entry) {
+  if (!entry) return false;
+  const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
+  if (/\b(?:DOWN|FAILED|STOPPED)\b|invalid\s+profile|not\s+running/i.test(output)) return false;
+  return /\bRUNNING\b/i.test(output);
+}
+
 async function renderTemplate(templatePath, outputPath, replacements) {
   let text = await readFile(templatePath, "utf8");
   for (const [key, value] of Object.entries(replacements)) {
@@ -112,9 +122,12 @@ async function runFsCli(command, redactor) {
   };
 }
 
-const env = Object.fromEntries(REQUIRED_ENV.map((name) => [name, clean(process.env[name])]));
-const missing = REQUIRED_ENV.filter((name) => !env[name]);
 const trunkMode = clean(process.env.SIGNALWIRE_TRUNK_MODE || "registration").toLowerCase().replace(/-/g, "_");
+const requiredEnv = trunkMode === "registration"
+  ? [...COMMON_REQUIRED_ENV, ...REGISTRATION_REQUIRED_ENV]
+  : COMMON_REQUIRED_ENV;
+const env = Object.fromEntries(ALL_ENV.map((name) => [name, clean(process.env[name])]));
+const missing = requiredEnv.filter((name) => !env[name]);
 const signalwireRealm = clean(process.env.SIGNALWIRE_SIP_REALM) || signalwireSipHostFromSpaceUrl(env.SIGNALWIRE_SPACE_URL);
 const signalwireProxy = clean(process.env.SIGNALWIRE_SIP_PROXY) || signalwireRealm;
 const outputDir = path.resolve(repoRoot, argValue("--out-dir", "artifacts/freeswitch-signalwire/conf"));
@@ -135,7 +148,7 @@ const summary = {
   manualCallReady: false,
   telephonyMode: "signalwire_live",
   trunkMode,
-  requiredEnv: REQUIRED_ENV,
+  requiredEnv,
   missingEnv: missing,
   endpoint: {
     signalwireRealm: signalwireRealm ? redact(signalwireRealm) : null,
@@ -149,11 +162,11 @@ const summary = {
   blockers: [],
 };
 
-if (missing.length) {
-  summary.blockers.push("missing_signalwire_or_freeswitch_env");
-} else if (!["registration", "ip_auth"].includes(trunkMode)) {
+if (!["registration", "ip_auth"].includes(trunkMode)) {
   summary.blockers.push("invalid_signalwire_trunk_mode");
-} else if (!signalwireRealm || !signalwireProxy) {
+} else if (missing.length) {
+  summary.blockers.push("missing_signalwire_or_freeswitch_env");
+} else if (trunkMode === "registration" && (!signalwireRealm || !signalwireProxy)) {
   summary.missingEnv.push("SIGNALWIRE_SIP_REALM_OR_PROXY");
   summary.blockers.push("missing_signalwire_sip_realm_or_proxy");
 }
@@ -168,18 +181,20 @@ if (hasFlag("--render") && summary.blockers.length === 0) {
     SIGNALWIRE_FROM_NUMBER_SAFE: xmlEscape(env.SIGNALWIRE_FROM_NUMBER),
     FREESWITCH_PUBLIC_SIP_HOST_SAFE: xmlEscape(env.FREESWITCH_PUBLIC_SIP_HOST),
   };
-  const gatewayPath = await renderTemplate(
-    path.join(repoRoot, "freeswitch/templates/signalwire-gateway.xml.template"),
-    path.join(outputDir, "sip_profiles/external/signalwire.xml"),
-    replacements,
-  );
+  const gatewayPath = trunkMode === "registration"
+    ? await renderTemplate(
+      path.join(repoRoot, "freeswitch/templates/signalwire-gateway.xml.template"),
+      path.join(outputDir, "sip_profiles/external/signalwire.xml"),
+      replacements,
+    )
+    : null;
   const dialplanPath = await renderTemplate(
     path.join(repoRoot, "freeswitch/templates/signalwire_inbound.xml.template"),
     path.join(outputDir, "dialplan/public/signalwire_inbound.xml"),
     replacements,
   );
   summary.generatedConfig = {
-    gatewayPath: path.relative(repoRoot, gatewayPath),
+    gatewayPath: gatewayPath ? path.relative(repoRoot, gatewayPath) : null,
     dialplanPath: path.relative(repoRoot, dialplanPath),
     gitignored: true,
   };
@@ -206,6 +221,13 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
       });
       break;
     }
+  }
+}
+
+if (summary.blockers.length === 0 && !fsCliSkipped) {
+  const externalProfile = summary.freeswitchCli.find((entry) => entry.command.includes("profile external"));
+  if (!isExternalProfileRunning(externalProfile)) {
+    summary.blockers.push("freeswitch_external_profile_not_running");
   }
 }
 
