@@ -907,12 +907,12 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             and followup_session.flow_manager_adapter.pending_transition is not None
             and followup_session.flow_manager_adapter.pending_transition.get("to") == "diagnose"
         ),
-        "queuedPreviewWaitsForFailClosedTerminalState": (
+        "queuedPreviewRevalidatesFailClosedTerminalState": (
             fail_closed_preview_waited
             and fail_closed_cancellation_waited_for_cleanup
             and isinstance(fail_closed_prepare_result[0], asyncio.CancelledError)
             and len(fail_closed_fallback_calls) == 1
-            and not fail_closed_preview_calls
+            and len(fail_closed_preview_calls) == 1
             and fail_closed_preview_result.get("flowManagerRuntime", {}).get("commitPolicy") == "terminal_handoff"
             and fail_closed_preview_result.get("flowState") == "wrap"
             and fail_closed_session.flow_manager_adapter.manager.current_node == "wrap"

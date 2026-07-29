@@ -4361,6 +4361,52 @@ test("delivery-ack caller turns preview without mutating until commit", async ()
   });
 });
 
+test("delivery-ack caller turn previews expire when delivery is abandoned", async () => {
+  const originalDateNow = Date.now;
+  let nowMs = Date.parse("2026-06-10T14:00:00.000Z");
+  Date.now = () => nowMs;
+
+  try {
+    await withServer(async (port) => {
+      const started = await requestJson(port, "POST", "/api/demo/start", {
+        openclawSessionLabel: "pipecat-local-voice",
+      });
+      const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+      const preview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+        text: "Can you help with billing?",
+        conversationMode: "free_caller",
+        commitMode: "delivery_ack",
+        timestamp: "2026-06-10T14:00:00.000Z",
+      });
+      const previewPayload = preview.payload as SnapshotPayload & {
+        callerTurnCommit: { expectedAgentText: string; snapshotVersion: string };
+      };
+      assert.equal(preview.statusCode, 200);
+
+      nowMs += 5 * 60 * 1000 + 1;
+
+      const expiredCommit = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn/commit`, {
+        text: "Can you help with billing?",
+        conversationMode: "free_caller",
+        expectedAgentText: previewPayload.callerTurnCommit.expectedAgentText,
+        expectedSnapshotVersion: previewPayload.callerTurnCommit.snapshotVersion,
+        timestamp: "2026-06-10T14:00:00.000Z",
+      });
+      assert.equal(expiredCommit.statusCode, 400);
+      assert.equal((expiredCommit.payload as { error: string }).error, "caller_turn_commit_stale");
+
+      const fetchedAfterExpiry = await requestJson(port, "GET", `/api/calls/${callId}`);
+      const afterExpiryPayload = fetchedAfterExpiry.payload as SnapshotPayload;
+      assert.equal(fetchedAfterExpiry.statusCode, 200);
+      assert.deepEqual(afterExpiryPayload.transcript, []);
+      assert.equal(afterExpiryPayload.events.some((event) => event.type === "caller_turn_appended"), false);
+    });
+  } finally {
+    Date.now = originalDateNow;
+  }
+});
+
 test("delivery-ack commit requires expected agent text without mutating transcript", async () => {
   await withServer(async (port) => {
     for (const expectedAgentText of [undefined, "", "   ", 42]) {

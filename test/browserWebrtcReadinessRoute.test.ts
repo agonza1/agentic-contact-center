@@ -158,7 +158,7 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
     cancellationWaitedForCleanup: true,
     prepareCancelled: true,
     fallbackCalls: 1,
-    previewCalls: 0,
+    previewCalls: 1,
     currentNode: "wrap",
     pendingTransition: null,
     previewFlowState: "wrap",
@@ -233,7 +233,7 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.checks.slowCommitBargeInPreservesDeliveredCommit, true);
   assert.equal(payload.checks.followupTurnWaitsForPriorDeliveryAck, true);
   assert.equal(payload.checks.followupTurnStagesWithoutFallback, true);
-  assert.equal(payload.checks.queuedPreviewWaitsForFailClosedTerminalState, true);
+  assert.equal(payload.checks.queuedPreviewRevalidatesFailClosedTerminalState, true);
   assert.equal(payload.checks.failClosedWrapPreservesRuntimeFailureEvidence, true);
   assert.equal(payload.checks.rolledBackPreparedTransitionIsRemovedFromTraceEvidence, true);
   assert.equal(payload.checks.successfulTurnPublishesFinalizedFlowManagerEvidence, true);

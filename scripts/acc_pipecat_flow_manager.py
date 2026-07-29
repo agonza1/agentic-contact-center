@@ -279,7 +279,7 @@ class AccPipecatFlowManagerAdapter:
             "resynchronized": True,
         }
         self.transition_trace.append(transition)
-        self.last_evidence = {
+        evidence = {
             **self.last_evidence,
             "ok": True,
             "currentNode": restored_node,
@@ -290,6 +290,9 @@ class AccPipecatFlowManagerAdapter:
             "resynchronizationReason": "acc_released_fail_closed",
             "queuedFrameTypes": list(self.frame_sink.queued_frame_types),
         }
+        for key in ("error", "detail", "fallbackAccepted", "fallbackNode", "triggerError"):
+            evidence.pop(key, None)
+        self.last_evidence = evidence
 
     def stage_transition(self, target_node: str, *, reason: str) -> None:
         if self.pending_transition is not None:
@@ -607,8 +610,7 @@ class AccPipecatFlowManagerAdapter:
                 # transition so it is evaluated from the committed node instead
                 # of colliding with the single pending slot and failing closed.
                 await self._transition_available.wait()
-                if self._terminal_result is not None:
-                    return dict(self._terminal_result)
+                cached_terminal_result = dict(self._terminal_result) if self._terminal_result is not None else None
                 try:
                     preview = await self.request(
                         "POST",
@@ -623,10 +625,20 @@ class AccPipecatFlowManagerAdapter:
                     held_result = self.held_caller_turn_result(exc, text=text)
                     if held_result is not None:
                         return held_result
+                    if cached_terminal_result is not None:
+                        return cached_terminal_result
+                    raise
+                except Exception:
+                    if cached_terminal_result is not None:
+                        return cached_terminal_result
                     raise
                 target_node = preview.get("flowState")
                 if not isinstance(target_node, str):
                     raise FlowManagerRuntimeError("ACC caller-turn preview did not return flowState")
+                if cached_terminal_result is not None:
+                    if not self._released_fail_closed_after_stop(preview):
+                        return cached_terminal_result
+                    self._terminal_result = None
                 await self.resync_released_fail_closed_state(preview, target_node)
                 self.stage_transition(target_node, reason="caller_turn_preview")
                 evidence = {

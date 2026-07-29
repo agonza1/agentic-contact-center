@@ -260,6 +260,72 @@ async def run_regression() -> dict[str, Any]:
     recovered_preview = await recovered_adapter.preview_caller_turn(text="recovered caller turn", conversation_mode="openai_llm")
     await recovered_adapter.commit_pending_transition()
 
+    terminal_revalidation_requests: list[dict[str, Any]] = []
+    terminal_revalidation_attempts = 0
+
+    def terminal_revalidation_http(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        nonlocal terminal_revalidation_attempts
+        terminal_revalidation_requests.append({"method": method, "url": url, "payload": payload})
+        if url.endswith("/fallback"):
+            return {
+                "flowState": "wrap",
+                "transcript": [{"speaker": "agent", "text": "FlowManager failed closed; handing off."}],
+            }
+        terminal_revalidation_attempts += 1
+        if terminal_revalidation_attempts == 1:
+            raise urllib.error.URLError("transient ACC caller-turn timeout")
+        return {
+            "flowState": "diagnose",
+            "callerTurnCommit": {"mode": "delivery_ack", "status": "pending"},
+            "events": [
+                {
+                    "type": "human_handoff_started",
+                    "detail": {"source": "flowmanager_runtime_fail_closed"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "greet", "to": "wrap", "reason": "flowmanager_runtime_failure"},
+                },
+                {
+                    "type": "demo_fallback_disarmed",
+                    "detail": {"source": "operator_resume"},
+                },
+                {
+                    "type": "operator_steer_applied",
+                    "detail": {"action": "resume"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "wrap", "to": "steered_response", "reason": "operator_resumed"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "steered_response", "to": "diagnose", "reason": "openai_llm_conversation"},
+                },
+            ],
+            "transcript": [
+                {"speaker": "caller", "text": payload["text"]},
+                {"speaker": "agent", "text": "Recovered after operator release."},
+            ],
+        }
+
+    terminal_revalidation_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-terminal-revalidation",
+        request_json=terminal_revalidation_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    terminal_cached = await terminal_revalidation_adapter.preview_caller_turn(
+        text="first request times out",
+        conversation_mode="openai_llm",
+    )
+    terminal_revalidated = await terminal_revalidation_adapter.preview_caller_turn(
+        text="operator resumed this call",
+        conversation_mode="openai_llm",
+    )
+    await terminal_revalidation_adapter.commit_pending_transition()
+
     checks = {
         "actualFlowManagerFactoryOwnsNodes": adapter.manager is not None and adapter.manager.current_node == "wrap",
         "normalCancellationTransitionsGuarded": [step["to"] for step in adapter.transition_trace] == ["greet", "diagnose", "diagnose", "wrap"],
@@ -291,6 +357,16 @@ async def run_regression() -> dict[str, Any]:
             and [step["to"] for step in recovered_adapter.transition_trace] == ["wrap", "steered_response", "diagnose"]
             and not any(item["url"].endswith("/fallback") for item in recovered_requests)
         ),
+        "terminalHandoffCacheRevalidatedBeforeReplay": (
+            terminal_cached["flowState"] == "wrap"
+            and terminal_revalidated["flowState"] == "diagnose"
+            and terminal_revalidated["flowManagerRuntime"]["resynchronizedFrom"] == "wrap"
+            and terminal_revalidated["flowManagerRuntime"]["resynchronizedTo"] == "steered_response"
+            and terminal_revalidation_adapter.manager.current_node == "diagnose"
+            and terminal_revalidation_attempts == 2
+            and [step["to"] for step in terminal_revalidation_adapter.transition_trace] == ["wrap", "steered_response", "diagnose"]
+            and len([item for item in terminal_revalidation_requests if item["url"].endswith("/fallback")]) == 1
+        ),
         "requiredVersionsRecorded": normal_results[0]["flowManagerRuntime"]["runtimeVersions"] == {"pipecat-ai": "1.4.0", "pipecat-ai-flows": "1.4.0"},
     }
     return {
@@ -303,6 +379,7 @@ async def run_regression() -> dict[str, Any]:
         "missingRuntimeEvidence": missing_result["flowManagerRuntime"],
         "heldEvidence": held_result["flowManagerRuntime"],
         "recoveredEvidence": recovered_preview["flowManagerRuntime"],
+        "terminalRevalidatedEvidence": terminal_revalidated["flowManagerRuntime"],
         "checks": checks,
     }
 

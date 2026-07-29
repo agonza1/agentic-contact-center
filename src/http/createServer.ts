@@ -4565,14 +4565,35 @@ type CallerTurnDeliveryAckPreview = {
   snapshotVersion: string;
   callerTranscript: string;
   timestamp: string;
+  createdAtMs: number;
   conversationMode?: ConversationMode;
   expectedAgentText: string;
   openAiLlm?: OpenAiLlmTurnResult;
   openAiFailClosedAlreadyPersisted?: boolean;
 };
 
+const callerTurnDeliveryAckPreviewTtlMs = 5 * 60 * 1000;
+
 function buildCallerTurnDeliveryAckKey(callId: string, snapshotVersion: string): string {
   return `${callId}:${snapshotVersion}`;
+}
+
+function purgeExpiredCallerTurnDeliveryAckPreviews(
+  previews: Map<string, CallerTurnDeliveryAckPreview>,
+  nowMs = Date.now(),
+): void {
+  for (const [key, preview] of previews) {
+    if (nowMs - preview.createdAtMs >= callerTurnDeliveryAckPreviewTtlMs) previews.delete(key);
+  }
+}
+
+function purgeCallerTurnDeliveryAckPreviewsForCall(
+  previews: Map<string, CallerTurnDeliveryAckPreview>,
+  callId: string,
+): void {
+  for (const [key, preview] of previews) {
+    if (preview.callId === callId) previews.delete(key);
+  }
 }
 
 function uniqueLiveSipCallIds(...values: Array<string | null | undefined>): string[] {
@@ -4636,6 +4657,7 @@ async function routeRequest(
   const url = request.url ?? "/";
   const requestUrl = new URL(url, "http://localhost");
   const pathname = requestUrl.pathname;
+  purgeExpiredCallerTurnDeliveryAckPreviews(callerTurnDeliveryAckPreviews);
 
   if (request.method === "GET" && pathname === "/health") {
     const pipecatFlow = getPipecatPrototypeHealth();
@@ -5715,6 +5737,7 @@ async function routeRequest(
         const endedSnapshot = await ingress.getSnapshot(endedCallId);
         if (endedSnapshot && isLiveSipCallEnded(endedSnapshot)) {
           if (eventType === "call.ended") {
+            purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, endedSnapshot.session.callId);
             writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(endedSnapshot), idempotent: true });
           } else {
             writeBadRequest(response, "live_sip_call_not_started");
@@ -5729,6 +5752,7 @@ async function routeRequest(
           callId = matchingSnapshot.session.callId;
           const alreadyEnded = matchingSnapshot.events.some((event) => event.type === "sip_call_ended");
           if (alreadyEnded) {
+            purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, matchingSnapshot.session.callId);
             writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(matchingSnapshot), idempotent: true });
             return;
           }
@@ -5741,6 +5765,7 @@ async function routeRequest(
       if (eventType === "call.ended") {
         const existingSnapshot = await ingress.getSnapshot(callId);
         if (existingSnapshot?.events.some((event) => event.type === "sip_call_ended")) {
+          purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
           writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(existingSnapshot), idempotent: true });
           return;
         }
@@ -6035,6 +6060,7 @@ async function routeRequest(
           durationSeconds,
         },
       });
+      purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, snapshot.session.callId);
       const endedAliases = uniqueLiveSipCallIds(
         ...liveSipCallAliasesForCall(liveSipCallMap, snapshot.session.callId),
         ...liveSipCorrelationIds,
@@ -6157,6 +6183,7 @@ async function routeRequest(
       }
 
       const snapshot = await ingress.applyOperatorSteer(callId, "end_call", timestamp, "signalwire_call_ended");
+      purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, snapshot.session.callId);
       if (signalWireCallId) {
         signalWireCallMap.delete(signalWireCallId);
       }
@@ -6610,6 +6637,7 @@ async function routeRequest(
           snapshotVersion,
           callerTranscript: text,
           timestamp,
+          createdAtMs: Date.now(),
           conversationMode: effectiveConversationMode,
           expectedAgentText,
           openAiLlm,
@@ -6695,6 +6723,7 @@ async function routeRequest(
         return;
       }
       if (isLiveSipCallEnded(currentSnapshot)) {
+        purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callerTurnCommitMatch[1]);
         writeJson(response, 409, {
           ok: false,
           route: "/api/calls/:callId/caller-turn/commit",
@@ -6710,6 +6739,11 @@ async function routeRequest(
       const effectiveConversationMode = conversationMode ?? currentSnapshot.scenario.conversationMode;
       const previewKey = buildCallerTurnDeliveryAckKey(callerTurnCommitMatch[1], expectedSnapshotVersion);
       const pendingPreview = callerTurnDeliveryAckPreviews.get(previewKey);
+      if (pendingPreview && Date.now() - pendingPreview.createdAtMs >= callerTurnDeliveryAckPreviewTtlMs) {
+        callerTurnDeliveryAckPreviews.delete(previewKey);
+        writeBadRequest(response, "caller_turn_commit_stale");
+        return;
+      }
       if (
         !pendingPreview
         || pendingPreview.callerTranscript !== text
@@ -6863,6 +6897,9 @@ async function routeRequest(
         parsedSteer.timestamp,
         parsedSteer.reason,
       );
+      if (parsedSteer.action === "end_call") {
+        purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, snapshot.session.callId);
+      }
       writeJson(response, 200, buildCallPayload(snapshot));
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Call is not awaiting operator steer")) {
