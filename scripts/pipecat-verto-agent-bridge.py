@@ -941,6 +941,7 @@ class VertoAgentBridge:
             intro_frames.append(TTSStoppedFrame(context_id=intro_context_id))
             await task.queue_frames(intro_frames)
             intro_duration_s = len(intro_pcm) / max(intro_sample_rate * 2, 1)
+            greeting_text = os.environ.get("ACC_SIP_PRERECORDED_INTRO_TEXT", DEFAULT_INTRO_TEXT)
 
             async def finish_intro_output_stream() -> None:
                 await asyncio.sleep(intro_duration_s)
@@ -949,34 +950,44 @@ class VertoAgentBridge:
                     and session.output_generation == intro_output_generation
                 ):
                     session.finish_output_stream()
+                    await asyncio.to_thread(
+                        json_http,
+                        "POST",
+                        f"{self.acc_url.rstrip('/')}/api/live-sip/events",
+                        {
+                            "eventType": "agent.greeting",
+                            "timestamp": now_iso(),
+                            "sipCallId": linked_sip_call_id or call_id,
+                            "vertoCallId": call_id,
+                            **({"linkedSipCallId": linked_sip_call_id} if linked_sip_call_id else {}),
+                            **({"proofSipCallId": proof_sip_call_id} if proof_sip_call_id else {}),
+                            **({"destinationNumber": destination_number} if destination_number else {}),
+                            "conversationMode": conversation_mode,
+                            "text": greeting_text,
+                        },
+                    )
+                    session.release_caller_turns("prerecorded_greeting_evidence_posted")
                     session.record_stage(
                         "tts.prerecorded_intro_completed",
                         streamId=intro_context_id,
                         outputGeneration=session.output_generation,
                         durationMs=round(intro_duration_s * 1000),
                     )
+                else:
+                    session.record_stage(
+                        "tts.prerecorded_intro_interrupted",
+                        streamId=intro_context_id,
+                        queuedOutputGeneration=intro_output_generation,
+                        outputGeneration=session.output_generation,
+                        durationMs=round(intro_duration_s * 1000),
+                        bargeIn=session.last_barge_in_evidence,
+                    )
+                    session.release_caller_turns("prerecorded_greeting_interrupted")
 
             asyncio.create_task(finish_intro_output_stream())
-            await asyncio.to_thread(
-                json_http,
-                "POST",
-                f"{self.acc_url.rstrip('/')}/api/live-sip/events",
-                {
-                    "eventType": "agent.greeting",
-                    "timestamp": now_iso(),
-                    "sipCallId": linked_sip_call_id or call_id,
-                    "vertoCallId": call_id,
-                    **({"linkedSipCallId": linked_sip_call_id} if linked_sip_call_id else {}),
-                    **({"proofSipCallId": proof_sip_call_id} if proof_sip_call_id else {}),
-                    **({"destinationNumber": destination_number} if destination_number else {}),
-                    "conversationMode": conversation_mode,
-                    "text": os.environ.get("ACC_SIP_PRERECORDED_INTRO_TEXT", DEFAULT_INTRO_TEXT),
-                },
-            )
-            session.release_caller_turns("prerecorded_greeting_evidence_posted")
             session.record_stage(
                 "tts.prerecorded_intro_queued",
-                text=os.environ.get("ACC_SIP_PRERECORDED_INTRO_TEXT", DEFAULT_INTRO_TEXT),
+                text=greeting_text,
                 audioPath=str(intro_path),
                 audioBytes=len(intro_pcm),
                 chunkCount=intro_chunk_count,

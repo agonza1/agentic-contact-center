@@ -88,16 +88,27 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   const bridge = readFileSync("scripts/pipecat-verto-agent-bridge.py", "utf8");
   const callStartedIndex = bridge.indexOf("\"eventType\": \"call.started\"");
   const queueFramesIndex = bridge.indexOf("await task.queue_frames(intro_frames)");
+  const finishIntroIndex = bridge.indexOf("async def finish_intro_output_stream");
+  const scheduleFinishIntroIndex = bridge.indexOf("asyncio.create_task(finish_intro_output_stream())");
+  const introCompletedIndex = bridge.indexOf("\"tts.prerecorded_intro_completed\"");
   const greetingIndex = bridge.indexOf("\"eventType\": \"agent.greeting\"");
 
   assert.ok(callStartedIndex >= 0);
   assert.ok(bridge.indexOf("\"rtcAsrMode\": \"rtc_asr_live\"", callStartedIndex) > callStartedIndex);
   assert.ok(queueFramesIndex >= 0);
-  assert.ok(greetingIndex > queueFramesIndex);
+  assert.ok(finishIntroIndex > queueFramesIndex);
+  assert.ok(scheduleFinishIntroIndex > finishIntroIndex);
+  assert.ok(introCompletedIndex > queueFramesIndex);
+  assert.ok(greetingIndex > finishIntroIndex);
+  assert.ok(greetingIndex < scheduleFinishIntroIndex);
+  assert.ok(greetingIndex < introCompletedIndex);
   assert.match(bridge, /session\.begin_output_stream\(stream_id=intro_context_id\)/);
   assert.match(bridge, /session\.extend_output_window\(audio_bytes=len\(audio_chunk\), sample_rate=intro_sample_rate\)/);
   assert.match(bridge, /session\.record_output_chunk\(len\(audio_chunk\)\)/);
   assert.match(bridge, /session\.finish_output_stream\(\)/);
+  assert.match(bridge, /"tts\.prerecorded_intro_interrupted"/);
+  assert.match(bridge, /session\.release_caller_turns\("prerecorded_greeting_interrupted"\)/);
+  assert.match(bridge, /session\.release_caller_turns\("prerecorded_greeting_evidence_posted"\)/);
   assert.match(bridge, /session\.record_agent_track\(/);
   assert.match(bridge, /"source": "freeswitch_verto"/);
   assert.match(bridge, /"rtcAsrMode": "rtc_asr_live" if readiness\.ok else "rtc_asr_blocked"/);
