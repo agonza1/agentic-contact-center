@@ -46,6 +46,7 @@ FLOW_MANAGER_NODE_INTENTS = {
 HELD_CALLER_TURN_ERRORS = {
     "live_sip_operator_hold_active": "caller_turn_held",
     "live_sip_openai_automation_stopped": "caller_turn_stopped",
+    "caller_turn_delivery_ack_preview_pending": "caller_turn_held",
 }
 
 

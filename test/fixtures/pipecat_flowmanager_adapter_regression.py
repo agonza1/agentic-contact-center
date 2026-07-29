@@ -180,6 +180,41 @@ async def run_regression() -> dict[str, Any]:
     )
     held_result = await held_adapter.preview_caller_turn(text="pause race", conversation_mode="openai_llm")
 
+    delivery_ack_pending_requests: list[dict[str, Any]] = []
+
+    def delivery_ack_pending_http(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        delivery_ack_pending_requests.append({"method": method, "url": url, "payload": payload})
+        if url.endswith("/fallback"):
+            return {
+                "flowState": "wrap",
+                "transcript": [{"speaker": "agent", "text": "This should not be reached for delivery-ack preview reservations."}],
+            }
+        body = json.dumps(
+            {
+                "ok": False,
+                "error": "caller_turn_delivery_ack_preview_pending",
+                "callerTurnCommit": {
+                    "mode": "delivery_ack",
+                    "status": "pending",
+                    "callId": "flowmanager-delivery-ack-pending",
+                    "snapshotVersion": "snapshot-pending",
+                },
+            }
+        ).encode("utf-8")
+        raise urllib.error.HTTPError(url, 409, "Conflict", {}, io.BytesIO(body))
+
+    delivery_ack_pending_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-delivery-ack-pending",
+        request_json=delivery_ack_pending_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    delivery_ack_pending_result = await delivery_ack_pending_adapter.preview_caller_turn(
+        text="barge-in while prior preview is reserved",
+        conversation_mode="openai_llm",
+    )
+
     recovered_requests: list[dict[str, Any]] = []
     recovered_nodes = iter(["wrap", "diagnose"])
 
@@ -347,6 +382,12 @@ async def run_regression() -> dict[str, Any]:
             and held_adapter.pending_transition is None
             and not any(item["url"].endswith("/fallback") for item in held_requests)
         ),
+        "deliveryAckPreviewPendingRemainsNonterminal": (
+            delivery_ack_pending_result["flowManagerRuntime"]["commitPolicy"] == "caller_turn_held"
+            and delivery_ack_pending_adapter.manager.current_node == "call_started"
+            and delivery_ack_pending_adapter.pending_transition is None
+            and not any(item["url"].endswith("/fallback") for item in delivery_ack_pending_requests)
+        ),
         "releasedFailClosedResynchronizesFlowManager": (
             recovered_fail_closed["flowState"] == "wrap"
             and recovered_preview["flowState"] == "diagnose"
@@ -378,6 +419,7 @@ async def run_regression() -> dict[str, Any]:
         "unsafeEvidence": unsafe_result["flowManagerRuntime"],
         "missingRuntimeEvidence": missing_result["flowManagerRuntime"],
         "heldEvidence": held_result["flowManagerRuntime"],
+        "deliveryAckPendingEvidence": delivery_ack_pending_result["flowManagerRuntime"],
         "recoveredEvidence": recovered_preview["flowManagerRuntime"],
         "terminalRevalidatedEvidence": terminal_revalidated["flowManagerRuntime"],
         "checks": checks,
