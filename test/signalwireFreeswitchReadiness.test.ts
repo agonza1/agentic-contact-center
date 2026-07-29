@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -93,8 +93,9 @@ test("SignalWire FreeSWITCH readiness redacts normalized SIP hosts from fs_cli p
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "SIP-IP 192.168.50.4" "RTP-IP 10.0.0.8" "Ext-SIP-IP fd00::1234" ;;
   "sofia status gateway signalwire") printf '%s\\n' "gateway signalwire REGED example.sip.signalwire.com" ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><action application="set" data="acc_route=signalwire_live"/></extension>' ;;
   *) printf '%s\\n' "0 total registrations" ;;
 esac
 `,
@@ -125,6 +126,8 @@ esac
     assert.equal(payload.ok, true);
     assert.equal(payload.status, "ready_for_manual_pstn_call");
     assert.doesNotMatch(stdout, /example\.sip\.signalwire\.com/);
+    assert.doesNotMatch(stdout, /192\.168\.50\.4|10\.0\.0\.8|fd00::1234/);
+    assert.match(stdout, /\[redacted-address\]/);
     assert.match(stdout, /gateway signalwire REGED \[redacted\]/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -136,7 +139,17 @@ test("SignalWire FreeSWITCH readiness supports IP-auth trunks without REGED", as
   const fsCliBin = path.join(tempDir, "fs_cli");
 
   try {
-    await writeFile(fsCliBin, `#!/bin/sh\nprintf '%s\\n' "external profile RUNNING"\n`, "utf8");
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><action application="set" data="acc_route=signalwire_live"/></extension>' ;;
+  *) printf '%s\\n' "0 total registrations" ;;
+esac
+`,
+      "utf8",
+    );
     await chmod(fsCliBin, 0o700);
 
     const { stdout } = await execFileAsync(process.execPath, [
@@ -165,7 +178,11 @@ test("SignalWire FreeSWITCH readiness supports IP-auth trunks without REGED", as
     assert.equal(payload.manualCallReady, true);
     assert.deepEqual(
       payload.freeswitchCli.map((entry: { command: string }) => entry.command),
-      ["fs_cli -x 'sofia status profile external'", "fs_cli -x 'show registrations'"],
+      [
+        "fs_cli -x 'sofia status profile external'",
+        "fs_cli -x 'show registrations'",
+        "fs_cli -x 'xml_locate dialplan extension name agentic_contact_center_signalwire_pstn'",
+      ],
     );
     assert.ok(!payload.blockers.includes("signalwire_gateway_status_not_proven"));
   } finally {
@@ -177,6 +194,10 @@ test("SignalWire FreeSWITCH readiness renders only the inbound dialplan for IP-a
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
 
   try {
+    const staleGatewayPath = path.join(tempDir, "sip_profiles/external/signalwire.xml");
+    await mkdir(path.dirname(staleGatewayPath), { recursive: true });
+    await writeFile(staleGatewayPath, "<gateway name=\"stale-registration\"/>", "utf8");
+
     const { stdout } = await execFileAsync(process.execPath, [
       "scripts/signalwire-freeswitch-readiness.mjs",
       "--render",
@@ -200,10 +221,59 @@ test("SignalWire FreeSWITCH readiness renders only the inbound dialplan for IP-a
     assert.equal(payload.ok, true);
     assert.equal(payload.generatedConfig.gatewayPath, null);
     assert.match(payload.generatedConfig.dialplanPath, /signalwire_inbound\.xml$/);
-    await assert.rejects(readFile(path.join(tempDir, "sip_profiles/external/signalwire.xml"), "utf8"));
+    await assert.rejects(readFile(staleGatewayPath, "utf8"));
     assert.match(
       await readFile(path.join(tempDir, "dialplan/public/signalwire_inbound.xml"), "utf8"),
       /agentic_contact_center_signalwire_pstn/,
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("SignalWire FreeSWITCH readiness rejects an inactive inbound dialplan", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' "Can't find extension." ;;
+  *) printf '%s\\n' "0 total registrations" ;;
+esac
+`,
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_TRUNK_MODE: "ip_auth",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "sip-public-host.example.test",
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const result = error as { stdout?: string; code?: number };
+        assert.equal(result.code, 2);
+        const payload = JSON.parse(result.stdout ?? "{}");
+        assert.equal(payload.manualCallReady, false);
+        assert.ok(payload.blockers.includes("signalwire_inbound_dialplan_not_proven"));
+        return true;
+      },
     );
   } finally {
     await rm(tempDir, { recursive: true, force: true });

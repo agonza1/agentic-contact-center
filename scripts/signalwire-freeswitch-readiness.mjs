@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -66,7 +66,13 @@ function buildRedactor(values) {
     for (const secret of secrets) {
       redacted = redacted.split(secret).join("[redacted]");
     }
-    return redacted;
+    return redacted
+      .replace(
+        /^(\s*(?:ext-)?(?:sip|rtp)-ip(?:\s*[:=]\s*|\s+))\S+/gim,
+        "$1[redacted-address]",
+      )
+      .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[redacted-address]")
+      .replace(/\[[0-9a-f:]+\]/gi, "[redacted-address]");
   };
 }
 
@@ -95,6 +101,13 @@ function isExternalProfileRunning(entry) {
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
   if (/\b(?:DOWN|FAILED|STOPPED)\b|invalid\s+profile|not\s+running/i.test(output)) return false;
   return /\bRUNNING\b/i.test(output);
+}
+
+function isInboundDialplanActive(entry) {
+  if (!entry) return false;
+  const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
+  if (/can't\s+find|not\s+found|invalid/i.test(output)) return false;
+  return /agentic_contact_center_signalwire_pstn/i.test(output) && /acc_route=signalwire_live/i.test(output);
 }
 
 async function renderTemplate(templatePath, outputPath, replacements) {
@@ -181,13 +194,17 @@ if (hasFlag("--render") && summary.blockers.length === 0) {
     SIGNALWIRE_FROM_NUMBER_SAFE: xmlEscape(env.SIGNALWIRE_FROM_NUMBER),
     FREESWITCH_PUBLIC_SIP_HOST_SAFE: xmlEscape(env.FREESWITCH_PUBLIC_SIP_HOST),
   };
+  const gatewayOutputPath = path.join(outputDir, "sip_profiles/external/signalwire.xml");
   const gatewayPath = trunkMode === "registration"
     ? await renderTemplate(
       path.join(repoRoot, "freeswitch/templates/signalwire-gateway.xml.template"),
-      path.join(outputDir, "sip_profiles/external/signalwire.xml"),
+      gatewayOutputPath,
       replacements,
     )
     : null;
+  if (trunkMode === "ip_auth") {
+    await rm(gatewayOutputPath, { force: true });
+  }
   const dialplanPath = await renderTemplate(
     path.join(repoRoot, "freeswitch/templates/signalwire_inbound.xml.template"),
     path.join(outputDir, "dialplan/public/signalwire_inbound.xml"),
@@ -203,9 +220,10 @@ if (hasFlag("--render") && summary.blockers.length === 0) {
 const fsCliSkipped = hasFlag("--skip-fs-cli");
 
 if (summary.blockers.length === 0 && !fsCliSkipped) {
+  const dialplanCommand = "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn";
   const commands = trunkMode === "ip_auth"
-    ? ["sofia status profile external", "show registrations"]
-    : ["sofia status profile external", "sofia status gateway signalwire", "show registrations"];
+    ? ["sofia status profile external", "show registrations", dialplanCommand]
+    : ["sofia status profile external", "sofia status gateway signalwire", "show registrations", dialplanCommand];
   for (const command of commands) {
     try {
       summary.freeswitchCli.push(await runFsCli(command, redactor));
@@ -235,6 +253,13 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
   const gateway = summary.freeswitchCli.find((entry) => entry.command.includes("gateway signalwire"));
   if (trunkMode === "registration" && gateway && !/\bREGED\b/i.test(`${gateway.stdout}\n${gateway.stderr}`)) {
     summary.blockers.push("signalwire_gateway_status_not_proven");
+  }
+}
+
+if (summary.blockers.length === 0 && !fsCliSkipped) {
+  const dialplan = summary.freeswitchCli.find((entry) => entry.command.includes("xml_locate dialplan"));
+  if (!isInboundDialplanActive(dialplan)) {
+    summary.blockers.push("signalwire_inbound_dialplan_not_proven");
   }
 }
 

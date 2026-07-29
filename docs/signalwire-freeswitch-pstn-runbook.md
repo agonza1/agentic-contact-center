@@ -99,6 +99,7 @@ Expected proof:
 - `manualCallReady` is `true`.
 - For registration trunks, `freeswitchCli` includes redacted output for `sofia status profile external`, `sofia status gateway signalwire`, and `show registrations`.
 - For IP-auth trunks, `freeswitchCli` includes redacted output for `sofia status profile external` and `show registrations`; `REGED` is not required because there is no outbound gateway registration.
+- Both modes include `xml_locate` proof that the active `agentic_contact_center_signalwire_pstn` extension routes to `acc_route=signalwire_live`.
 - `artifacts/freeswitch-signalwire/readiness.json` contains no live tokens, SIP passwords, project IDs, or private host values.
 
 If FreeSWITCH is down, the registration gateway is unregistered, the selected trunk mode is wrong, or the public SIP endpoint is unavailable, the probe exits non-zero with an actionable blocker. Do not ask for the live PSTN call until this is ready and QA has confirmed the ACC voice path is listening.
