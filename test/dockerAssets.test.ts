@@ -46,10 +46,13 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /freeswitch:\n[\s\S]*acc-pipecat\.xml/);
   assert.match(compose, /freeswitch:\n[\s\S]*verto\.conf\.xml/);
   assert.match(freeswitchDialplan, /acc_linked_sip_call_id=\$\{uuid\}/);
+  assert.match(freeswitchDialplan, /acc_proof_sip_call_id=\$\{sip_h_X-ACC-Proof-Call-ID\}/);
+  assert.match(freeswitchDialplan, /export" data="nolocal:sip_h_X-ACC-Proof-Call-ID=\$\{sip_h_X-ACC-Proof-Call-ID\}"/);
   assert.match(freeswitchDialplan, /agentic_contact_center_local_sip_openai_8600/);
   assert.match(freeswitchDialplan, /agentic_contact_center_local_sip_scripted_8611/);
   assert.match(freeswitchDialplan, /sip_h_X-ACC-Conversation-Mode=openai_llm/);
   assert.match(freeswitchDialplan, /sip_h_X-ACC-Conversation-Mode=scripted/);
+  assert.match(freeswitchDialplan, /sip_h_X-ACC-Proof-Call-ID=\$\{sip_h_X-ACC-Proof-Call-ID\}/);
   assert.match(freeswitchDialplan, /rtp_jitter_buffer_during_bridge=true/);
   assert.match(freeswitchDialplan, /bridge" data="\{absolute_codec_string=PCMU,jitterbuffer_msec=60:200:20,[^"]*acc_conversation_mode=openai_llm[^"]*\}\$\{verto_contact\(acc-pipecat@\$\$\{domain\}\)\}"/);
   assert.match(freeswitchDialplan, /bridge" data="\{absolute_codec_string=PCMU,jitterbuffer_msec=60:200:20,[^"]*acc_conversation_mode=scripted[^"]*\}\$\{verto_contact\(acc-pipecat@\$\$\{domain\}\)\}"/);
