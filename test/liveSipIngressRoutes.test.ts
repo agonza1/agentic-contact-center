@@ -1128,6 +1128,59 @@ test("delivery-ack OpenAI failures persist fail-closed state before audible comm
       heldTurn.payload.call.transcript.some((turn: any) => turn.text === "Are you still automating?"),
       false,
     );
+
+    const resumed = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "resume",
+      timestamp: "2026-07-27T22:52:03.000Z",
+      reason: "operator approved automation resume",
+    });
+    assert.equal(resumed.statusCode, 200);
+    assert.equal(resumed.payload.flowState, "steered_response");
+    assert.equal(resumed.payload.demoFallback.armed, false);
+    assert.equal(
+      resumed.payload.events.some((event: any) => event.type === "demo_fallback_disarmed" && event.detail.source === "operator_resume"),
+      true,
+    );
+
+    const resumedTurn = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Continue after resume.",
+      timestamp: "2026-07-27T22:52:04.000Z",
+    });
+    assert.equal(resumedTurn.statusCode, 200);
+    assert.notEqual(resumedTurn.payload.error, "live_sip_operator_hold_active");
+
+    const secondStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T22:53:00.000Z",
+      sipCallId: "sip-openai-delivery-fail-closed-disarm",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(secondStarted.statusCode, 201);
+    const secondCallId = secondStarted.payload.call.session.callId;
+    const secondFailure = await requestJson(address.port, "POST", `/api/calls/${secondCallId}/caller-turn`, {
+      text: "Trigger a second fail-closed hold.",
+      timestamp: "2026-07-27T22:53:01.000Z",
+    });
+    assert.equal(secondFailure.statusCode, 200);
+    assert.equal(secondFailure.payload.demoFallback.armed, true);
+
+    const disarmed = await requestJson(address.port, "POST", `/api/calls/${secondCallId}/operator-steer`, {
+      action: "disarm_fallback",
+      timestamp: "2026-07-27T22:53:02.000Z",
+    });
+    assert.equal(disarmed.statusCode, 200);
+    assert.equal(disarmed.payload.flowState, "steered_response");
+    assert.equal(disarmed.payload.demoFallback.armed, false);
+
+    const disarmedTurn = await requestJson(address.port, "POST", `/api/calls/${secondCallId}/caller-turn`, {
+      text: "Continue after disarm.",
+      timestamp: "2026-07-27T22:53:03.000Z",
+    });
+    assert.equal(disarmedTurn.statusCode, 200);
+    assert.notEqual(disarmedTurn.payload.error, "live_sip_operator_hold_active");
   } finally {
     Object.assign(process.env, originalEnv);
     for (const [key, value] of Object.entries(originalEnv)) {

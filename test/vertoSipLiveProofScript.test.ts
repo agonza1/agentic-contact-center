@@ -68,10 +68,14 @@ test("Verto SIP proof requires transcript-backed non-silent caller playback", ()
   assert.match(script, /type: rtcAsrReady \? "transcript\.final"/);
   assert.match(script, /this\.returnPacketCount >= 10/);
   assert.match(script, /playbackRms >= 50/);
-  assert.match(script, /responsePlaybackBoundaryAt = rtcAsrEvidence\.responseStartedAt \|\| rtcAsrEvidence\.ttsReadyAt/);
+  assert.match(script, /waitForObservableIntroCompletion/);
+  assert.match(script, /rtp\.prerecorded_intro_completed/);
+  assert.match(script, /caller_rtp_non_silent_then_240ms_silence/);
+  assert.match(script, /responsePlaybackBoundaryAt = latestTimestamp/);
+  assert.match(script, /this\.observableIntroCompletedAt/);
   assert.match(script, /playbackBeforeTimestamp\(this\.returnRtpChunks, responsePlaybackBoundaryAt\)/);
   assert.match(script, /playbackAfterTimestamp\(this\.returnRtpChunks, responsePlaybackBoundaryAt\)/);
-  assert.match(script, /const callerPlaybackConfirmed = rtcAsrReady && responsePlayback\.confirmed/);
+  assert.match(script, /const callerPlaybackConfirmed = rtcAsrReady && Boolean\(this\.observableIntroCompletedAt\) && responsePlayback\.confirmed/);
   assert.match(script, /responsePlaybackConfirmed/);
   assert.match(script, /No caller-side return RTP audio was captured after the response TTS start event/);
   assert.match(script, /--local-host must be a non-loopback IPv4 address reachable from FreeSWITCH/);

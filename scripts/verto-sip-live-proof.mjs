@@ -215,6 +215,13 @@ function playbackBeforeTimestamp(chunks, timestamp) {
   };
 }
 
+function latestTimestamp(...timestamps) {
+  const parsed = timestamps
+    .map((timestamp) => Date.parse(timestamp || ""))
+    .filter((timestamp) => Number.isFinite(timestamp));
+  return parsed.length ? new Date(Math.max(...parsed)).toISOString() : null;
+}
+
 function pcm16MonoFromWav(wav, targetSampleRate = 8000) {
   if (wav.toString("ascii", 0, 4) !== "RIFF" || wav.toString("ascii", 8, 12) !== "WAVE") {
     throw new Error("caller audio must be a RIFF/WAVE file");
@@ -424,6 +431,10 @@ class SipProofCall {
     this.authInviteSent = false;
     this.challengeAckSent = false;
     this.mediaTasks = new Set();
+    this.callerAudioStartedAtMs = null;
+    this.introNonSilentPacketCount = 0;
+    this.introConsecutiveSilentPacketCount = 0;
+    this.observableIntroCompletedAt = null;
   }
 
   async run() {
@@ -595,6 +606,8 @@ class SipProofCall {
       this.record("rtp.caller_audio_waiting", { mediaDelayMs: this.options.mediaDelayMs });
       await new Promise((resolve) => setTimeout(resolve, this.options.mediaDelayMs));
     }
+    await this.waitForObservableIntroCompletion();
+    this.callerAudioStartedAtMs = Date.now();
     const packets = ulawPacketsFromPcm(this.callerPcm, { ssrc: this.options.ssrc });
     this.record("rtp.caller_audio_started", { packetCount: packets.length, remoteRtp: this.remoteRtp, audioBytes: this.callerPcm.length });
     for (const packet of packets) {
@@ -604,6 +617,21 @@ class SipProofCall {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
     this.record("rtp.caller_audio_finished", { packetCount: packets.length });
+  }
+
+  async waitForObservableIntroCompletion() {
+    const deadline = Date.now() + this.options.introWaitTimeoutMs;
+    while (!this.observableIntroCompletedAt && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    if (!this.observableIntroCompletedAt) {
+      this.record("rtp.prerecorded_intro_completion_timeout", {
+        timeoutMs: this.options.introWaitTimeoutMs,
+        nonSilentPacketCount: this.introNonSilentPacketCount,
+        consecutiveSilentPacketCount: this.introConsecutiveSilentPacketCount,
+      });
+    }
+    return this.observableIntroCompletedAt;
   }
 
   handleRtp(msg, rinfo) {
@@ -618,6 +646,24 @@ class SipProofCall {
     this.returnRtpChunks.push({ pcm, receivedAtMs, receivedAt: new Date(receivedAtMs).toISOString() });
     this.returnPacketCount += 1;
     if (this.returnPacketCount === 1) this.record("rtp.return_audio_started", { remote: `${rinfo.address}:${rinfo.port}` });
+    if (!this.callerAudioStartedAtMs && !this.observableIntroCompletedAt) {
+      const packetRms = pcm16Rms(pcm);
+      if (packetRms >= 50) {
+        this.introNonSilentPacketCount += 1;
+        this.introConsecutiveSilentPacketCount = 0;
+      } else if (this.introNonSilentPacketCount >= 10) {
+        this.introConsecutiveSilentPacketCount += 1;
+        if (this.introConsecutiveSilentPacketCount >= 12) {
+          this.observableIntroCompletedAt = new Date(receivedAtMs).toISOString();
+          this.record("rtp.prerecorded_intro_completed", {
+            observedAt: this.observableIntroCompletedAt,
+            method: "caller_rtp_non_silent_then_240ms_silence",
+            nonSilentPacketCount: this.introNonSilentPacketCount,
+            consecutiveSilentPacketCount: this.introConsecutiveSilentPacketCount,
+          });
+        }
+      }
+    }
   }
 
   async writeArtifacts() {
@@ -641,11 +687,14 @@ class SipProofCall {
     });
     const rtcAsrReady = rtcAsrEvidence.ready;
     const playbackRms = pcm16Rms(playbackPcm);
-    const responsePlaybackBoundaryAt = rtcAsrEvidence.responseStartedAt || rtcAsrEvidence.ttsReadyAt;
+    const responsePlaybackBoundaryAt = latestTimestamp(
+      rtcAsrEvidence.responseStartedAt || rtcAsrEvidence.ttsReadyAt,
+      this.observableIntroCompletedAt,
+    );
     const introPlayback = playbackBeforeTimestamp(this.returnRtpChunks, responsePlaybackBoundaryAt);
     const responsePlayback = playbackAfterTimestamp(this.returnRtpChunks, responsePlaybackBoundaryAt);
     const anyPlaybackConfirmed = this.returnPacketCount >= 10 && playbackRms >= 50;
-    const callerPlaybackConfirmed = rtcAsrReady && responsePlayback.confirmed;
+    const callerPlaybackConfirmed = rtcAsrReady && Boolean(this.observableIntroCompletedAt) && responsePlayback.confirmed;
     await writeFile(
       playbackEvidencePath,
       `${JSON.stringify({
@@ -660,6 +709,8 @@ class SipProofCall {
         playbackAudioBytes: playbackPcm.length,
         responsePlaybackBoundaryAt: responsePlayback.timestamp,
         responsePlaybackBoundaryStage: rtcAsrEvidence.responseStartedStage || null,
+        observableIntroCompletedAt: this.observableIntroCompletedAt,
+        observableIntroCompletionMethod: "caller_rtp_non_silent_then_240ms_silence",
         responseTtsStartedAt: rtcAsrEvidence.responseStartedAt || null,
         responseTtsReadyAt: rtcAsrEvidence.ttsReadyAt || null,
         responsePlaybackConfirmed: responsePlayback.confirmed,
@@ -702,6 +753,7 @@ class SipProofCall {
     const blockers = [];
     if (!this.remoteRtp) blockers.push("FreeSWITCH did not return an RTP target in the accepted INVITE SDP.");
     if (!anyPlaybackConfirmed) blockers.push("No caller-side return RTP audio was captured.");
+    if (!this.observableIntroCompletedAt) blockers.push("Caller-side RTP did not expose a non-silent intro followed by 240 ms of silence before caller audio.");
     if (rtcAsrReady && !responsePlayback.confirmed) blockers.push("No caller-side return RTP audio was captured after the response TTS start event.");
     if (!rtcAsrReady) blockers.push("rtc-asr transcript evidence path was not attached or is empty.");
     const manifest = {
@@ -769,6 +821,7 @@ class SipProofCall {
         anyPlaybackConfirmed,
         responsePlaybackBoundaryAt: responsePlayback.timestamp,
         responsePlaybackBoundaryStage: rtcAsrEvidence.responseStartedStage || null,
+        observableIntroCompletedAt: this.observableIntroCompletedAt,
         responseTtsStartedAt: rtcAsrEvidence.responseStartedAt || null,
         responseTtsReadyAt: rtcAsrEvidence.ttsReadyAt || null,
         responsePlaybackConfirmed: responsePlayback.confirmed,
@@ -810,6 +863,15 @@ function runSelfTest() {
   const sdpTarget = parseRtpTargetFromSdp("v=0\r\nc=IN IP4 127.0.0.1\r\nm=audio 29790 RTP/AVP 0\r\n", "fallback");
   const pcm = tonePcm16({ durationMs: 40 });
   const packets = ulawPacketsFromPcm(pcm, { ssrc: 1 });
+  const loudIntroPcm = Buffer.alloc(160 * 2 * 10);
+  for (let offset = 0; offset < loudIntroPcm.length; offset += 2) loudIntroPcm.writeInt16LE(5000, offset);
+  const introObserver = new SipProofCall({});
+  for (const packet of ulawPacketsFromPcm(loudIntroPcm, { ssrc: 2 })) {
+    introObserver.handleRtp(packet, { address: "127.0.0.1", port: 1234 });
+  }
+  for (const packet of ulawPacketsFromPcm(Buffer.alloc(160 * 2 * 12), { ssrc: 2 })) {
+    introObserver.handleRtp(packet, { address: "127.0.0.1", port: 1234 });
+  }
   const responsePlayback = playbackAfterTimestamp([
     { receivedAtMs: Date.parse("2026-07-27T10:00:00.000Z"), pcm: Buffer.alloc(160 * 2) },
     ...Array.from({ length: 10 }, (_, index) => ({
@@ -837,6 +899,9 @@ function runSelfTest() {
     && packets.length > 0
     && responsePlayback.packetCount === 10
     && responsePlayback.confirmed === true
+    && Boolean(introObserver.observableIntroCompletedAt)
+    && introObserver.introNonSilentPacketCount === 10
+    && introObserver.introConsecutiveSilentPacketCount === 12
     && inferredLocalHost.host === "192.168.86.28"
     && loopbackRejected;
   console.log(JSON.stringify({
@@ -846,6 +911,11 @@ function runSelfTest() {
     sdpTarget,
     packetCount: packets.length,
     responsePlayback,
+    observableIntroCompletion: {
+      completedAt: introObserver.observableIntroCompletedAt,
+      nonSilentPacketCount: introObserver.introNonSilentPacketCount,
+      consecutiveSilentPacketCount: introObserver.introConsecutiveSilentPacketCount,
+    },
     inferredLocalHost,
     loopbackRejected,
   }, null, 2));
@@ -877,6 +947,7 @@ async function main() {
     toneMs: Number(argValue("--tone-ms", "1800")),
     tailSilenceMs: Number(argValue("--tail-silence-ms", process.env.ACC_SIP_PROOF_TAIL_SILENCE_MS || "10000")),
     mediaDelayMs: Number(argValue("--media-delay-ms", process.env.ACC_SIP_PROOF_MEDIA_DELAY_MS || "1000")),
+    introWaitTimeoutMs: Number(argValue("--intro-wait-timeout-ms", process.env.ACC_SIP_PROOF_INTRO_WAIT_TIMEOUT_MS || "8000")),
     callMs: Number(argValue("--call-ms", "10000")),
     frequency: Number(argValue("--frequency", "440")),
     callerAudioPath: argValue("--caller-audio", process.env.ACC_SIP_PROOF_CALLER_AUDIO),

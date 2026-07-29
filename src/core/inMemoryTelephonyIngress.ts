@@ -554,7 +554,13 @@ export class InMemoryTelephonyIngress {
 
     const requiresPendingState =
       action === "approve_offer" || action === "deny_offer" || action === "escalate_to_human" || action === "resume";
-    if (requiresPendingState && snapshot.flowState !== "policy_hold" && snapshot.flowState !== "operator_steer") {
+    const resumesArmedFallback = action === "resume" && snapshot.demoFallback.armed;
+    if (
+      requiresPendingState &&
+      snapshot.flowState !== "policy_hold" &&
+      snapshot.flowState !== "operator_steer" &&
+      !resumesArmedFallback
+    ) {
       throw new Error(`Call is not awaiting operator steer: ${callId}`);
     }
 
