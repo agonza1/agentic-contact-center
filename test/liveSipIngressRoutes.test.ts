@@ -353,12 +353,17 @@ test("live SIP proof reports FreeSWITCH broadcast playback as confirmed", async 
 });
 
 test("live SIP call.started and call.ended are idempotent for shared Verto and FreeSWITCH call ids", async () => {
-  const server = buildHttpServer(loadPocConfig());
-  await new Promise<void>((resolve) => server.listen(0, resolve));
-  const address = server.address();
-  assert.ok(address && typeof address !== "string");
+  const originalDateNow = Date.now;
+  let nowMs = Date.parse("2026-07-26T22:00:00.000Z");
+  Date.now = () => nowMs;
+  let server: ReturnType<typeof buildHttpServer> | undefined;
 
   try {
+    server = buildHttpServer(loadPocConfig());
+    await new Promise<void>((resolve) => server!.listen(0, resolve));
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+
     const vertoStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "call.started",
       timestamp: "2026-07-26T22:00:00.000Z",
@@ -444,6 +449,16 @@ test("live SIP call.started and call.ended are idempotent for shared Verto and F
     assert.equal(freeswitchDuplicateEnded.payload.idempotent, true);
     assert.equal(freeswitchDuplicateEnded.payload.call.events.filter((event: any) => event.type === "sip_call_ended").length, 1);
 
+    const vertoDuplicateEnded = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.ended",
+      timestamp: "2026-07-26T22:00:00.650Z",
+      sipCallId: "verto-b-leg-uuid",
+      hangupCause: "verto_duplicate_hangup",
+    });
+    assert.equal(vertoDuplicateEnded.statusCode, 200);
+    assert.equal(vertoDuplicateEnded.payload.idempotent, true);
+    assert.equal(vertoDuplicateEnded.payload.call.session.callId, freeswitchALegStarted.payload.call.session.callId);
+
     const staleVertoTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.transcript",
       timestamp: "2026-07-26T22:00:00.700Z",
@@ -474,6 +489,17 @@ test("live SIP call.started and call.ended are idempotent for shared Verto and F
     });
     assert.equal(delayedVertoStarted.statusCode, 400);
     assert.equal(delayedVertoStarted.payload.error, "live_sip_call_already_ended");
+
+    nowMs += 10 * 60 * 1000 + 1;
+
+    const expiredVertoDuplicateEnded = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.ended",
+      timestamp: "2026-07-26T22:10:01.000Z",
+      sipCallId: "verto-b-leg-uuid",
+      hangupCause: "late_verto_duplicate_hangup",
+    });
+    assert.equal(expiredVertoDuplicateEnded.statusCode, 400);
+    assert.equal(expiredVertoDuplicateEnded.payload.error, "live_sip_call_not_started");
 
     const transcript = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.transcript",
@@ -559,7 +585,11 @@ test("live SIP call.started and call.ended are idempotent for shared Verto and F
     assert.equal(concurrentFreeSwitchEnded.payload.call.events.filter((event: any) => event.type === "sip_call_ended").length, 1);
     assert.equal(concurrentVertoEnded.payload.idempotent || concurrentFreeSwitchEnded.payload.idempotent, true);
   } finally {
-    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    Date.now = originalDateNow;
+    if (server?.listening) {
+      const runningServer = server;
+      await new Promise<void>((resolve, reject) => runningServer.close((error) => error ? reject(error) : resolve()));
+    }
   }
 });
 

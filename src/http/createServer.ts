@@ -4640,6 +4640,13 @@ type CallerTurnDeliveryAckPreview = {
 };
 
 const callerTurnDeliveryAckPreviewTtlMs = 5 * 60 * 1000;
+const liveSipEndedCallAliasTtlMs = 10 * 60 * 1000;
+const maxLiveSipEndedCallAliases = 1000;
+
+interface LiveSipEndedCallAlias {
+  callId: string;
+  endedAtMs: number;
+}
 
 function buildCallerTurnDeliveryAckKey(callId: string, snapshotVersion: string): string {
   return `${callId}:${snapshotVersion}`;
@@ -4743,6 +4750,55 @@ function liveSipCallAliasesForCall(liveSipCallMap: Map<string, string>, callId: 
   return [...liveSipCallMap.entries()].filter(([, mappedCallId]) => mappedCallId === callId).map(([id]) => id);
 }
 
+function purgeLiveSipEndedCallAliases(
+  liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>,
+  nowMs = Date.now(),
+): void {
+  for (const [id, alias] of liveSipEndedCallMap) {
+    if (nowMs - alias.endedAtMs >= liveSipEndedCallAliasTtlMs) liveSipEndedCallMap.delete(id);
+  }
+
+  while (liveSipEndedCallMap.size > maxLiveSipEndedCallAliases) {
+    let oldestId: string | null = null;
+    let oldestEndedAtMs = Number.POSITIVE_INFINITY;
+    for (const [id, alias] of liveSipEndedCallMap) {
+      if (alias.endedAtMs < oldestEndedAtMs) {
+        oldestId = id;
+        oldestEndedAtMs = alias.endedAtMs;
+      }
+    }
+    if (!oldestId) break;
+    liveSipEndedCallMap.delete(oldestId);
+  }
+}
+
+function getMappedLiveSipEndedCallId(
+  liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>,
+  ids: string[],
+): string | undefined {
+  purgeLiveSipEndedCallAliases(liveSipEndedCallMap);
+  for (const id of ids) {
+    const alias = liveSipEndedCallMap.get(id);
+    if (alias) return alias.callId;
+  }
+  return undefined;
+}
+
+function setLiveSipEndedCallAliases(
+  liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>,
+  ids: string[],
+  callId: string,
+  endedAtMs = Date.now(),
+): void {
+  purgeLiveSipEndedCallAliases(liveSipEndedCallMap, endedAtMs);
+  for (const id of ids) liveSipEndedCallMap.set(id, { callId, endedAtMs });
+  purgeLiveSipEndedCallAliases(liveSipEndedCallMap, endedAtMs);
+}
+
+function deleteLiveSipEndedCallAliases(liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>, ids: string[]): void {
+  for (const id of ids) liveSipEndedCallMap.delete(id);
+}
+
 function isLiveSipCallEnded(snapshot: CallSnapshot): boolean {
   return snapshot.events.some((event) => event.type === "sip_call_ended");
 }
@@ -4766,7 +4822,7 @@ async function routeRequest(
   ingress: InMemoryTelephonyIngress,
   signalWireCallMap: Map<string, string>,
   liveSipCallMap: Map<string, string>,
-  liveSipEndedCallMap: Map<string, string>,
+  liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>,
   liveSipCallLocks: Map<string, Promise<void>>,
   callerTurnDeliveryAckPreviews: Map<string, CallerTurnDeliveryAckPreview>,
   callerTurnDeliveryAckPreviewReservations: Set<string>,
@@ -4776,6 +4832,7 @@ async function routeRequest(
   const requestUrl = new URL(url, "http://localhost");
   const pathname = requestUrl.pathname;
   purgeExpiredCallerTurnDeliveryAckPreviews(callerTurnDeliveryAckPreviews);
+  purgeLiveSipEndedCallAliases(liveSipEndedCallMap);
 
   if (request.method === "GET" && pathname === "/health") {
     const pipecatFlow = getPipecatPrototypeHealth();
@@ -5785,7 +5842,7 @@ async function routeRequest(
 
     const prelockCallId =
       getMappedLiveSipCallId(liveSipCallMap, liveSipCorrelationIds)
-      ?? getMappedLiveSipCallId(liveSipEndedCallMap, liveSipCorrelationIds);
+      ?? getMappedLiveSipEndedCallId(liveSipEndedCallMap, liveSipCorrelationIds);
     const prelockSnapshots = prelockCallId ? [] : await listLiveSipSnapshotsByProviderIds(ingress, liveSipCorrelationIds);
     const prelockActiveSnapshot = prelockSnapshots.find((snapshot) => !isLiveSipCallEnded(snapshot));
     const liveSipCallLockKey = prelockCallId ?? prelockActiveSnapshot?.session.callId ?? canonicalSipCallId;
@@ -5806,14 +5863,14 @@ async function routeRequest(
           }
           deleteLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds);
         }
-        const endedCallId = getMappedLiveSipCallId(liveSipEndedCallMap, liveSipCorrelationIds);
+        const endedCallId = getMappedLiveSipEndedCallId(liveSipEndedCallMap, liveSipCorrelationIds);
         if (endedCallId) {
           const endedSnapshot = await ingress.getSnapshot(endedCallId);
           if (endedSnapshot && isLiveSipCallEnded(endedSnapshot)) {
             writeBadRequest(response, "live_sip_call_already_ended");
             return;
           }
-          deleteLiveSipCallAliases(liveSipEndedCallMap, liveSipCorrelationIds);
+          deleteLiveSipEndedCallAliases(liveSipEndedCallMap, liveSipCorrelationIds);
         }
         const matchingSnapshots = await listLiveSipSnapshotsByProviderIds(ingress, liveSipCorrelationIds);
         const matchingSnapshot = matchingSnapshots.find((snapshot) => !isLiveSipCallEnded(snapshot));
@@ -5824,7 +5881,7 @@ async function routeRequest(
         }
         const endedMatchingSnapshot = matchingSnapshots.find((snapshot) => isLiveSipCallEnded(snapshot));
         if (endedMatchingSnapshot) {
-          setLiveSipCallAliases(liveSipEndedCallMap, liveSipCorrelationIds, endedMatchingSnapshot.session.callId);
+          setLiveSipEndedCallAliases(liveSipEndedCallMap, liveSipCorrelationIds, endedMatchingSnapshot.session.callId);
           writeBadRequest(response, "live_sip_call_already_ended");
           return;
         }
@@ -5850,7 +5907,7 @@ async function routeRequest(
       }
 
       let callId = getMappedLiveSipCallId(liveSipCallMap, liveSipCorrelationIds);
-      const endedCallId = getMappedLiveSipCallId(liveSipEndedCallMap, liveSipCorrelationIds);
+      const endedCallId = getMappedLiveSipEndedCallId(liveSipEndedCallMap, liveSipCorrelationIds);
       if (!callId && endedCallId) {
         const endedSnapshot = await ingress.getSnapshot(endedCallId);
         if (endedSnapshot && isLiveSipCallEnded(endedSnapshot)) {
@@ -5862,7 +5919,7 @@ async function routeRequest(
           }
           return;
         }
-        deleteLiveSipCallAliases(liveSipEndedCallMap, liveSipCorrelationIds);
+        deleteLiveSipEndedCallAliases(liveSipEndedCallMap, liveSipCorrelationIds);
       }
       if (!callId && eventType === "call.ended") {
         const matchingSnapshot = (await listLiveSipSnapshotsByProviderIds(ingress, liveSipCorrelationIds))[0];
@@ -6184,7 +6241,7 @@ async function routeRequest(
         ...liveSipCorrelationIds,
       );
       deleteLiveSipCallAliasesForCall(liveSipCallMap, snapshot.session.callId);
-      setLiveSipCallAliases(liveSipEndedCallMap, endedAliases, snapshot.session.callId);
+      setLiveSipEndedCallAliases(liveSipEndedCallMap, endedAliases, snapshot.session.callId);
       writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(snapshot) });
     } catch {
       writeNotFound(response);
@@ -7457,7 +7514,7 @@ export function buildHttpServer(config: PocConfig) {
   const ingress = new InMemoryTelephonyIngress();
   const signalWireCallMap = new Map<string, string>();
   const liveSipCallMap = new Map<string, string>();
-  const liveSipEndedCallMap = new Map<string, string>();
+  const liveSipEndedCallMap = new Map<string, LiveSipEndedCallAlias>();
   const liveSipCallLocks = new Map<string, Promise<void>>();
   const callerTurnDeliveryAckPreviews = new Map<string, CallerTurnDeliveryAckPreview>();
   const callerTurnDeliveryAckPreviewReservations = new Set<string>();
