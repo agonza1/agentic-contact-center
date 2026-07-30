@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { lookup } from "node:dns/promises";
-import { chmod, lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { BlockList, isIP } from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -134,6 +134,8 @@ function isInboundDialplanActive(entry, expectedDidPattern) {
     && /(?:sip_h_X-ACC-Telephony-Mode|X-ACC-Telephony-Mode)=signalwire_live/i.test(output)
     && /(?:sip_h_X-ACC-Destination|X-ACC-Destination)=8600/i.test(output)
     && /(?:sip_h_X-ACC-Conversation-Mode|X-ACC-Conversation-Mode)=openai_llm/i.test(output)
+    && /acc_media_bridge=pipecat_verto_agent_leg/i.test(output)
+    && /verto_contact\(acc-pipecat@/i.test(output)
     && output.includes(expectedDidPattern);
 }
 
@@ -230,8 +232,12 @@ async function renderTemplate(templatePath, outputPath, replacements) {
   for (const [key, value] of Object.entries(replacements)) {
     text = text.replaceAll(`__${key}__`, value);
   }
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, text, { mode: 0o600 });
+  const outputDirname = path.dirname(outputPath);
+  await mkdir(outputDirname, { recursive: true });
+  const tempPath = path.join(outputDirname, `.${path.basename(outputPath)}.${process.pid}.${Date.now()}.tmp`);
+  await writeFile(tempPath, text, { mode: 0o600 });
+  await chmod(tempPath, 0o600);
+  await rename(tempPath, outputPath);
   await chmod(outputPath, 0o600);
   return outputPath;
 }
@@ -239,6 +245,15 @@ async function renderTemplate(templatePath, outputPath, replacements) {
 async function safeArtifactOutputPath(outputPath) {
   return isPathInside(artifactsRoot, outputPath)
     && !(await hasSymlinkedAncestor(artifactsRoot, outputPath));
+}
+
+async function isMultiplyLinkedDestination(outputPath) {
+  try {
+    return (await lstat(outputPath)).nlink > 1;
+  } catch (error) {
+    if (error && error.code === "ENOENT") return false;
+    throw error;
+  }
 }
 
 async function runFsCli(command, redactor) {
@@ -342,6 +357,10 @@ if (hasFlag("--render") && summary.blockers.length === 0) {
   for (const destinationPath of [gatewayOutputPath, dialplanOutputPath]) {
     if (!(await safeArtifactOutputPath(destinationPath))) {
       summary.blockers.push("unsafe_freeswitch_output_dir");
+      break;
+    }
+    if (await isMultiplyLinkedDestination(destinationPath)) {
+      summary.blockers.push("unsafe_freeswitch_output_link");
       break;
     }
   }
