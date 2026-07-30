@@ -6039,49 +6039,108 @@ async function routeRequest(
           );
           return;
         }
-        const openAiLlm = conversationMode === "openai_llm"
-          ? await generateOpenAiLiveSipResponse(currentSnapshot, text, timestamp)
-          : undefined;
-        const latestSnapshot = openAiLlm ? await ingress.getSnapshot(callId) : currentSnapshot;
-        if (!latestSnapshot || isLiveSipCallEnded(latestSnapshot)) {
-          writeBadRequest(response, "live_sip_call_not_started");
-          return;
-        }
-        if (isOpenAiLiveSipAutomationStopped(latestSnapshot)) {
-          await rejectHeldLiveSipCallerTurn(
-            response,
-            ingress,
-            callId,
-            text,
-            timestamp,
-            getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
-            "/api/live-sip/events",
-            "openai_fail_closed_handoff_active",
-            { eventType, sipCallId },
-            voiceSessionScope,
-          );
-          return;
-        }
-        const latestOperatorHoldReason = getLiveSipCallerTurnHoldReason(latestSnapshot, conversationMode);
-        if (latestOperatorHoldReason) {
-          await rejectHeldLiveSipCallerTurn(
-            response,
-            ingress,
-            callId,
-            text,
-            timestamp,
-            getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
-            "/api/live-sip/events",
-            latestOperatorHoldReason,
-            { eventType, sipCallId },
-            voiceSessionScope,
-          );
+        if (conversationMode === "openai_llm") {
+          await withLiveSipOpenAiGenerationLock(liveSipOpenAiGenerationLocks, callId, async () => {
+            const lockedSnapshot = await ingress.getSnapshot(callId);
+            if (!lockedSnapshot || isLiveSipCallEnded(lockedSnapshot)) {
+              writeBadRequest(response, "live_sip_call_not_started");
+              return;
+            }
+            if (isOpenAiLiveSipAutomationStopped(lockedSnapshot)) {
+              await rejectHeldLiveSipCallerTurn(
+                response,
+                ingress,
+                callId,
+                text,
+                timestamp,
+                getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+                "/api/live-sip/events",
+                "openai_fail_closed_handoff_active",
+                { eventType, sipCallId },
+                voiceSessionScope,
+              );
+              return;
+            }
+            const lockedOperatorHoldReason = getLiveSipCallerTurnHoldReason(lockedSnapshot, conversationMode);
+            if (lockedOperatorHoldReason) {
+              await rejectHeldLiveSipCallerTurn(
+                response,
+                ingress,
+                callId,
+                text,
+                timestamp,
+                getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+                "/api/live-sip/events",
+                lockedOperatorHoldReason,
+                { eventType, sipCallId },
+                voiceSessionScope,
+              );
+              return;
+            }
+            const openAiLlm = await generateOpenAiLiveSipResponse(lockedSnapshot, text, timestamp);
+            let latestSnapshot = await ingress.getSnapshot(callId);
+            if (openAiLlm?.ok && latestSnapshot && latestSnapshot.events.length === lockedSnapshot.events.length) {
+              await new Promise<void>((resolve) => setImmediate(resolve));
+              const recheckedSnapshot = await ingress.getSnapshot(callId);
+              if (recheckedSnapshot) latestSnapshot = recheckedSnapshot;
+            }
+            if (!latestSnapshot || isLiveSipCallEnded(latestSnapshot)) {
+              writeBadRequest(response, "live_sip_call_not_started");
+              return;
+            }
+            if (isOpenAiLiveSipAutomationStopped(latestSnapshot)) {
+              await rejectHeldLiveSipCallerTurn(
+                response,
+                ingress,
+                callId,
+                text,
+                timestamp,
+                getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+                "/api/live-sip/events",
+                "openai_fail_closed_handoff_active",
+                { eventType, sipCallId },
+                voiceSessionScope,
+              );
+              return;
+            }
+            const latestOperatorHoldReason = getLiveSipCallerTurnHoldReason(latestSnapshot, conversationMode);
+            if (latestOperatorHoldReason) {
+              await rejectHeldLiveSipCallerTurn(
+                response,
+                ingress,
+                callId,
+                text,
+                timestamp,
+                getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+                "/api/live-sip/events",
+                latestOperatorHoldReason,
+                { eventType, sipCallId },
+                voiceSessionScope,
+              );
+              return;
+            }
+            await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config, {
+              ...voiceSessionScope,
+              conversationMode,
+              openAiLlm,
+            });
+            const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+              eventType: "rtc_asr_transcript",
+              timestamp,
+              detail: {
+                provider: "rtc-asr",
+                transcriptText: text,
+                evidencePath: getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+                ...voiceSessionScope,
+              },
+            });
+            writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+          });
           return;
         }
         await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config, {
           ...voiceSessionScope,
           conversationMode,
-          openAiLlm,
         });
         const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
           eventType: "rtc_asr_transcript",

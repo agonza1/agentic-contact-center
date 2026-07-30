@@ -1294,6 +1294,137 @@ test("live SIP immediate OpenAI caller turns serialize concurrent generation per
   }
 });
 
+test("live SIP media transcript OpenAI generation serializes with immediate caller turns", async () => {
+  const originalEnv = {
+    ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
+  };
+  const mediaTranscriptOpenAiGate: { release?: () => void } = {};
+  let mediaTranscriptOpenAiReleased = false;
+  let directOpenAiRequestSeenBeforeRelease = false;
+  let resolveMediaTranscriptOpenAiSeen!: () => void;
+  const mediaTranscriptOpenAiSeen = new Promise<void>((resolve) => {
+    resolveMediaTranscriptOpenAiSeen = resolve;
+  });
+  const openAiServer = createTestServer((req, res) => {
+    let collected = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      collected += chunk;
+    });
+    req.on("end", () => {
+      void (async () => {
+        const payload = JSON.parse(collected) as { input?: unknown };
+        const input = payload.input;
+        const userPromptText = Array.isArray(input)
+          ? input.find((entry): entry is { role?: string; content?: Array<{ type?: string; text?: string }> } => {
+              return typeof entry === "object" && entry !== null && "role" in entry && (entry as { role?: unknown }).role === "user";
+            })?.content?.[0]?.text ?? ""
+          : typeof input === "string"
+            ? input
+            : "";
+        const latestCallerTurn = userPromptText.match(/Latest caller turn:\s*([^\n]+)/)?.[1]?.trim() ?? "";
+        if (latestCallerTurn === "Legacy media transcript turn") {
+          resolveMediaTranscriptOpenAiSeen();
+          await new Promise<void>((release) => {
+            mediaTranscriptOpenAiGate.release = release;
+          });
+          mediaTranscriptOpenAiReleased = true;
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({
+            id: "resp-media-transcript-serial",
+            output_text: "Legacy media transcript response.",
+          }));
+          return;
+        }
+        if (!mediaTranscriptOpenAiReleased) directOpenAiRequestSeenBeforeRelease = true;
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          id: "resp-media-transcript-direct",
+          output_text: "Direct response after media transcript.",
+        }));
+      })().catch((error) => {
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: String(error) }));
+      });
+    });
+  });
+  await new Promise<void>((resolve) => openAiServer.listen(0, "127.0.0.1", resolve));
+  const openAiAddress = openAiServer.address();
+  assert.ok(openAiAddress && typeof openAiAddress !== "string");
+
+  process.env.ACC_OPENAI_API_KEY = "test-openai-key";
+  delete process.env.OPENAI_API_KEY;
+  process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${openAiAddress.port}/v1`;
+  delete process.env.OPENAI_BASE_URL;
+  delete process.env.ACC_OPENAI_AUTH_MODE;
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENCLAW_AGENT_ID;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T23:01:30.000Z",
+      sipCallId: "sip-openai-media-transcript-serial",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+    const callId = started.payload.call.session.callId;
+
+    const mediaTranscriptRequest = requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-27T23:01:31.000Z",
+      sipCallId: "sip-openai-media-transcript-serial",
+      text: "Legacy media transcript turn",
+      rtcAsrEvidencePath: "artifacts/live-sip/media-transcript-final.json",
+    });
+    await mediaTranscriptOpenAiSeen;
+    const directTurnRequest = requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Direct overlapping test turn",
+      timestamp: "2026-07-27T23:01:32.000Z",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.equal(directOpenAiRequestSeenBeforeRelease, false);
+    mediaTranscriptOpenAiGate.release?.();
+
+    const [mediaTranscript, directTurn] = await Promise.all([mediaTranscriptRequest, directTurnRequest]);
+    assert.equal(mediaTranscript.statusCode, 200);
+    assert.equal(directTurn.statusCode, 200);
+    assert.deepEqual(
+      directTurn.payload.transcript.map((turn: { text: string }) => turn.text),
+      [
+        "Legacy media transcript turn",
+        "Legacy media transcript response.",
+        "Direct overlapping test turn",
+        "Direct response after media transcript.",
+      ],
+    );
+  } finally {
+    mediaTranscriptOpenAiGate.release?.();
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => openAiServer.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("live SIP delivery-ack OpenAI previews serialize with immediate caller turns", async () => {
   const originalEnv = {
     ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
