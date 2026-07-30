@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
+import { lookup } from "node:dns/promises";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { isIP } from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -103,11 +105,61 @@ function isExternalProfileRunning(entry) {
   return /\bRUNNING\b/i.test(output);
 }
 
-function isInboundDialplanActive(entry) {
+function isInboundDialplanActive(entry, expectedDidPattern) {
   if (!entry) return false;
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
   if (/can't\s+find|not\s+found|invalid/i.test(output)) return false;
-  return /agentic_contact_center_signalwire_pstn/i.test(output) && /acc_route=signalwire_live/i.test(output);
+  return /agentic_contact_center_signalwire_pstn/i.test(output)
+    && /acc_route=signalwire_live/i.test(output)
+    && output.includes(expectedDidPattern);
+}
+
+function isPublicIpAddress(address) {
+  if (isIP(address) === 4) {
+    const [a, b] = address.split(".").map(Number);
+    return !(a === 0 || a === 10 || a === 127 || a >= 224
+      || (a === 100 && b >= 64 && b <= 127)
+      || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168));
+  }
+  if (isIP(address) === 6) {
+    const normalized = address.toLowerCase();
+    return !(normalized === "::" || normalized === "::1"
+      || normalized.startsWith("fc") || normalized.startsWith("fd")
+      || /^fe[89ab]/.test(normalized));
+  }
+  return false;
+}
+
+function normalizeSipEndpointHost(value) {
+  const raw = clean(value);
+  if (!raw) return "";
+  try {
+    return new URL(raw.includes("://") ? raw : `sip://${raw}`).hostname.replace(/^\[|\]$/g, "");
+  } catch {
+    return raw.replace(/^\[|\]$/g, "").replace(/:\d+$/, "");
+  }
+}
+
+async function resolvePublicEndpointAddresses(value) {
+  const host = normalizeSipEndpointHost(value);
+  if (!host) return [];
+  if (isIP(host)) return isPublicIpAddress(host) ? [host] : [];
+  try {
+    const addresses = (await lookup(host, { all: true })).map((entry) => entry.address);
+    return addresses.filter(isPublicIpAddress);
+  } catch {
+    return [];
+  }
+}
+
+function isIpAuthEndpointAdvertised(entry, expectedAddresses) {
+  if (!entry || expectedAddresses.length === 0) return false;
+  const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
+  const advertised = [...output.matchAll(/^\s*(?:ext-)?sip-ip(?:\s*[:=]\s*|\s+)(\S+)/gim)]
+    .map((match) => match[1].replace(/^\[|\]$/g, "").replace(/:\d+$/, ""));
+  return expectedAddresses.some((address) => advertised.includes(address));
 }
 
 async function renderTemplate(templatePath, outputPath, replacements) {
@@ -129,9 +181,15 @@ async function runFsCli(command, redactor) {
     maxBuffer: 1024 * 1024,
   });
   return {
-    command: `fs_cli -x '${command}'`,
-    stdout: redactor(stdout.trim()),
-    stderr: redactor(stderr.trim()),
+    proof: {
+      command: `fs_cli -x '${command}'`,
+      stdout: redactor(stdout.trim()),
+      stderr: redactor(stderr.trim()),
+    },
+    raw: {
+      stdout: stdout.trim(),
+      stderr: stderr.trim(),
+    },
   };
 }
 
@@ -226,6 +284,7 @@ if (hasFlag("--render") && summary.blockers.length === 0) {
 }
 
 const fsCliSkipped = hasFlag("--skip-fs-cli");
+const rawFsCli = new Map();
 
 if (summary.blockers.length === 0 && !fsCliSkipped) {
   const dialplanCommand = "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn";
@@ -234,7 +293,9 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
     : ["sofia status profile external", "sofia status gateway signalwire", "show registrations", dialplanCommand];
   for (const command of commands) {
     try {
-      summary.freeswitchCli.push(await runFsCli(command, redactor));
+      const result = await runFsCli(command, redactor);
+      summary.freeswitchCli.push(result.proof);
+      rawFsCli.set(command, result.raw);
     } catch (error) {
       summary.blockers.push(
         trunkMode === "ip_auth"
@@ -251,22 +312,30 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
 }
 
 if (summary.blockers.length === 0 && !fsCliSkipped) {
-  const externalProfile = summary.freeswitchCli.find((entry) => entry.command.includes("profile external"));
+  const externalProfile = rawFsCli.get("sofia status profile external");
   if (!isExternalProfileRunning(externalProfile)) {
     summary.blockers.push("freeswitch_external_profile_not_running");
   }
 }
 
+if (summary.blockers.length === 0 && !fsCliSkipped && trunkMode === "ip_auth") {
+  const publicAddresses = await resolvePublicEndpointAddresses(env.FREESWITCH_PUBLIC_SIP_HOST);
+  const externalProfile = rawFsCli.get("sofia status profile external");
+  if (!isIpAuthEndpointAdvertised(externalProfile, publicAddresses)) {
+    summary.blockers.push("freeswitch_public_sip_endpoint_not_proven");
+  }
+}
+
 if (summary.blockers.length === 0 && !fsCliSkipped) {
-  const gateway = summary.freeswitchCli.find((entry) => entry.command.includes("gateway signalwire"));
+  const gateway = rawFsCli.get("sofia status gateway signalwire");
   if (trunkMode === "registration" && gateway && !/\bREGED\b/i.test(`${gateway.stdout}\n${gateway.stderr}`)) {
     summary.blockers.push("signalwire_gateway_status_not_proven");
   }
 }
 
 if (summary.blockers.length === 0 && !fsCliSkipped) {
-  const dialplan = summary.freeswitchCli.find((entry) => entry.command.includes("xml_locate dialplan"));
-  if (!isInboundDialplanActive(dialplan)) {
+  const dialplan = rawFsCli.get("xml_locate dialplan extension name agentic_contact_center_signalwire_pstn");
+  if (!isInboundDialplanActive(dialplan, signalwireDidPattern)) {
     summary.blockers.push("signalwire_inbound_dialplan_not_proven");
   }
 }

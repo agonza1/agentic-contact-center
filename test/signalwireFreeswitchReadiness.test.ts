@@ -144,8 +144,8 @@ test("SignalWire FreeSWITCH readiness supports IP-auth trunks without REGED", as
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" ;;
-  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><action application="set" data="acc_route=signalwire_live"/></extension>' ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><action application="set" data="acc_route=signalwire_live"/></condition></extension>' ;;
   *) printf '%s\\n' "0 total registrations" ;;
 esac
 `,
@@ -165,7 +165,7 @@ esac
         PATH: process.env.PATH ?? "",
         SIGNALWIRE_TRUNK_MODE: "ip-auth",
         SIGNALWIRE_FROM_NUMBER: "+12029687351",
-        FREESWITCH_PUBLIC_SIP_HOST: "sip-public-host.example.test",
+        FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
       },
       encoding: "utf8",
     });
@@ -241,7 +241,7 @@ test("SignalWire FreeSWITCH readiness rejects an inactive inbound dialplan", asy
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
   "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' "Can't find extension." ;;
   *) printf '%s\\n' "0 total registrations" ;;
 esac
@@ -263,7 +263,7 @@ esac
           PATH: process.env.PATH ?? "",
           SIGNALWIRE_TRUNK_MODE: "ip_auth",
           SIGNALWIRE_FROM_NUMBER: "+12029687351",
-          FREESWITCH_PUBLIC_SIP_HOST: "sip-public-host.example.test",
+          FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
         },
         encoding: "utf8",
       }),
@@ -273,6 +273,94 @@ esac
         const payload = JSON.parse(result.stdout ?? "{}");
         assert.equal(payload.manualCallReady, false);
         assert.ok(payload.blockers.includes("signalwire_inbound_dialplan_not_proven"));
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("SignalWire FreeSWITCH readiness rejects a stale inbound DID", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?13125550100)$"><action application="set" data="acc_route=signalwire_live"/></condition></extension>' ;;
+  *) printf '%s\\n' "0 total registrations" ;;
+esac
+`,
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_TRUNK_MODE: "ip_auth",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const payload = JSON.parse((error as { stdout?: string }).stdout ?? "{}");
+        assert.equal(payload.manualCallReady, false);
+        assert.ok(payload.blockers.includes("signalwire_inbound_dialplan_not_proven"));
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("SignalWire FreeSWITCH readiness rejects an unadvertised IP-auth endpoint", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      "#!/bin/sh\nprintf '%s\\n' 'external profile RUNNING' 'Ext-SIP-IP 8.8.4.4'\n",
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_TRUNK_MODE: "ip_auth",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const payload = JSON.parse((error as { stdout?: string }).stdout ?? "{}");
+        assert.equal(payload.manualCallReady, false);
+        assert.ok(payload.blockers.includes("freeswitch_public_sip_endpoint_not_proven"));
         return true;
       },
     );
@@ -303,7 +391,7 @@ for (const profileOutput of ["Invalid Profile!", "external profile DOWN"]) {
             PATH: process.env.PATH ?? "",
             SIGNALWIRE_TRUNK_MODE: "ip_auth",
             SIGNALWIRE_FROM_NUMBER: "+12029687351",
-            FREESWITCH_PUBLIC_SIP_HOST: "sip-public-host.example.test",
+            FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           },
           encoding: "utf8",
         }),
