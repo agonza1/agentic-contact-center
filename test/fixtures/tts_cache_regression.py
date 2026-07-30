@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -21,13 +22,16 @@ from pipecat.frames.frames import TextFrame  # noqa: E402
 
 
 class FakeResponse:
-    def __init__(self, audio: bytes):
+    def __init__(self, audio: bytes, *, read_delay: float = 0):
         self.audio = audio
         self.offset = 0
+        self.read_delay = read_delay
 
     def read(self, size: int) -> bytes:
         chunk = self.audio[self.offset : self.offset + size]
         self.offset += len(chunk)
+        if chunk and self.read_delay:
+            time.sleep(self.read_delay)
         return chunk
 
     def close(self) -> None:
@@ -37,11 +41,15 @@ class FakeResponse:
 async def main() -> None:
     source_audio = (b"\x01\x02" * 2_400) + (b"\x03\x04" * 960)
     provider_calls = 0
+    streaming_miss_text = "Cache miss streams while filling deterministic cache."
+    streaming_miss_read_delay = 0.05
 
-    def fake_open_http_stream(*_args: object, **_kwargs: object) -> FakeResponse:
+    def fake_open_http_stream(*args: object, **_kwargs: object) -> FakeResponse:
         nonlocal provider_calls
         provider_calls += 1
-        return FakeResponse(source_audio)
+        payload = args[2] if len(args) > 2 and isinstance(args[2], dict) else {}
+        read_delay = streaming_miss_read_delay if payload.get("input") == streaming_miss_text else 0
+        return FakeResponse(source_audio, read_delay=read_delay)
 
     async def synthesize(
         session: AccVoicePipelineSession,
@@ -109,7 +117,12 @@ async def main() -> None:
                     text="A different generated response number two.",
                 )
                 await openai_session.prewarm_conversation_tts_cache()
-                miss_lock_text = "Cache miss releases before paced playback."
+                streaming_miss_started_at = asyncio.get_running_loop().time()
+                streaming_miss_audio, streaming_miss_metadata, streaming_miss_first_chunk_at = await synthesize(
+                    session,
+                    text=streaming_miss_text,
+                )
+                miss_lock_text = "Cache miss lock remains during fill."
                 miss_lock_path = pipeline.tts_cache_path(miss_lock_text, 24000)
                 if miss_lock_path is None:
                     raise AssertionError("expected deterministic miss TTS cache path")
@@ -124,13 +137,14 @@ async def main() -> None:
                 )
                 await miss_lock_generator.__anext__()
                 miss_lock = pipeline.TTS_CACHE_LOCKS[miss_lock_path]
-                miss_lock_released_before_playback = False
+                miss_lock_held_during_fill = True
                 try:
                     await asyncio.wait_for(miss_lock.acquire(), timeout=0.05)
-                    miss_lock_released_before_playback = True
+                    miss_lock_held_during_fill = False
+                    miss_lock.release()
+                except asyncio.TimeoutError:
+                    pass
                 finally:
-                    if miss_lock_released_before_playback:
-                        miss_lock.release()
                     await miss_lock_generator.aclose()
                 lock_probe_text = "Cache lock ownership probe."
                 lock_probe_path = pipeline.tts_cache_path(lock_probe_text, 24000)
@@ -156,6 +170,7 @@ async def main() -> None:
 
     concurrent_first_delta = abs((concurrent_first_a or 0) - (concurrent_first_b or 0))
     concurrent_first_wait = max((concurrent_first_a or 0) - concurrent_started_at, (concurrent_first_b or 0) - concurrent_started_at)
+    streaming_miss_first_wait = (streaming_miss_first_chunk_at or 0) - streaming_miss_started_at
 
     result = {
         "ok": (
@@ -169,14 +184,17 @@ async def main() -> None:
             and concurrent_metadata_b.get("cacheHit") is True
             and openai_audio_a == source_audio
             and openai_audio_b == source_audio
+            and streaming_miss_audio == source_audio
             and openai_metadata_a.get("cacheHit") is False
             and openai_metadata_b.get("cacheHit") is False
-            and provider_calls == 4
+            and streaming_miss_metadata.get("cacheHit") is False
+            and provider_calls == 5
             and len(cache_files) == 3
-            and len(pipeline.TTS_CACHE_LOCKS) == cached_lock_count + 2
+            and len(pipeline.TTS_CACHE_LOCKS) == cached_lock_count + 3
             and concurrent_first_delta < 0.05
             and concurrent_first_wait < 0.05
-            and miss_lock_released_before_playback
+            and streaming_miss_first_wait < streaming_miss_read_delay * 3
+            and miss_lock_held_during_fill
             and lock_still_owned_by_probe
         ),
         "providerCalls": provider_calls,
@@ -184,11 +202,12 @@ async def main() -> None:
         "secondCacheHit": second_metadata.get("cacheHit"),
         "concurrentFirstDeltaMs": round(concurrent_first_delta * 1000),
         "concurrentFirstWaitMs": round(concurrent_first_wait * 1000),
+        "streamingMissFirstWaitMs": round(streaming_miss_first_wait * 1000),
         "openAiCacheHits": [openai_metadata_a.get("cacheHit"), openai_metadata_b.get("cacheHit")],
         "audioBytes": len(second_audio),
         "cacheFiles": len(cache_files),
         "cacheLocks": len(pipeline.TTS_CACHE_LOCKS),
-        "missLockReleasedBeforePlayback": miss_lock_released_before_playback,
+        "missLockHeldDuringFill": miss_lock_held_during_fill,
         "lockStillOwnedByProbe": lock_still_owned_by_probe,
     }
     print(json.dumps(result))

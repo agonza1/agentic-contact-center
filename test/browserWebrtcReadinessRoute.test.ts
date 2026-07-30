@@ -109,13 +109,14 @@ test("deterministic Kokoro responses persist PCM while OpenAI responses bypass t
   ], { encoding: "utf8" }).trim().split("\n").at(-1) ?? "{}");
 
   assert.equal(payload.ok, true);
-  assert.equal(payload.providerCalls, 4);
+  assert.equal(payload.providerCalls, 5);
   assert.equal(payload.firstCacheHit, false);
   assert.equal(payload.secondCacheHit, true);
   assert.deepEqual(payload.openAiCacheHits, [false, false]);
   assert.equal(payload.cacheFiles, 3);
-  assert.equal(payload.cacheLocks, 3);
-  assert.equal(payload.missLockReleasedBeforePlayback, true);
+  assert.equal(payload.cacheLocks, 4);
+  assert.ok(payload.streamingMissFirstWaitMs < 150);
+  assert.equal(payload.missLockHeldDuringFill, true);
   assert.equal(payload.lockStillOwnedByProbe, true);
 });
 
