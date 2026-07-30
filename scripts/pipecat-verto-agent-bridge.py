@@ -459,6 +459,22 @@ class VertoAgentBridge:
                 return value.strip()
         return "openai_llm" if destination_number == "8600" else "scripted"
 
+    def telephony_mode(self, params: dict[str, Any]) -> str:
+        for key in (
+            "sip_h_X-ACC-Telephony-Mode",
+            "variable_sip_h_X-ACC-Telephony-Mode",
+            "sip_h_X_ACC_Telephony_Mode",
+            "variable_sip_h_X_ACC_Telephony_Mode",
+            "X-ACC-Telephony-Mode",
+            "acc_route",
+            "variable_acc_route",
+            "telephonyMode",
+        ):
+            value = params.get(key)
+            if isinstance(value, str) and value.strip() == "signalwire_live":
+                return "signalwire_live"
+        return "local_sip"
+
     async def end_acc_call(self, call_id: str, *, reason: str, timestamp: str | None = None, timeout: float = 2.0, linked_sip_call_id: str | None = None) -> bool:
         try:
             payload = {
@@ -531,6 +547,7 @@ class VertoAgentBridge:
         proof_sip_call_id = self.proof_sip_call_id(params)
         destination_number = self.destination_number(params)
         conversation_mode = self.conversation_mode(params, destination_number)
+        telephony_mode = self.telephony_mode(params)
         offer_sdp = params.get("sdp") if isinstance(params.get("sdp"), str) else ""
         if not offer_sdp.strip():
             proof = {
@@ -543,6 +560,7 @@ class VertoAgentBridge:
                 "proofSipCallId": proof_sip_call_id,
                 "destinationNumber": destination_number,
                 "conversationMode": conversation_mode,
+                "telephonyMode": telephony_mode,
                 "mediaTarget": "pipecat_verto_webrtc_agent_leg",
                 "reviewReady": False,
                 "blocker": "Incoming FreeSWITCH Verto invite did not include SDP, so the Pipecat sidecar cannot create a WebRTC answer.",
@@ -577,6 +595,7 @@ class VertoAgentBridge:
             "proofSipCallId": proof_sip_call_id,
             "destinationNumber": destination_number,
             "conversationMode": conversation_mode,
+            "telephonyMode": telephony_mode,
             "mediaTarget": "pipecat_verto_webrtc_agent_leg",
             "reviewReady": False,
             "offerSdpBytes": len(offer_sdp.encode("utf-8")),
@@ -594,11 +613,12 @@ class VertoAgentBridge:
             proof_sip_call_id=proof_sip_call_id,
             destination_number=destination_number,
             conversation_mode=conversation_mode,
+            telephony_mode=telephony_mode,
             offer_sdp=offer_sdp,
             params=params,
         )
 
-    async def answer_invite(self, *, call_id: str, linked_sip_call_id: str | None, proof_sip_call_id: str | None, destination_number: str | None, conversation_mode: str, offer_sdp: str, params: dict[str, Any]) -> None:
+    async def answer_invite(self, *, call_id: str, linked_sip_call_id: str | None, proof_sip_call_id: str | None, destination_number: str | None, conversation_mode: str, telephony_mode: str, offer_sdp: str, params: dict[str, Any]) -> None:
         readiness = await asyncio.to_thread(check_readiness, self.acc_url)
         sip_call_id = linked_sip_call_id or call_id
         try:
@@ -615,7 +635,7 @@ class VertoAgentBridge:
                     **({"proofSipCallId": proof_sip_call_id} if proof_sip_call_id else {}),
                     **({"destinationNumber": destination_number} if destination_number else {}),
                     "conversationMode": conversation_mode,
-                    "telephonyMode": "local_sip",
+                    "telephonyMode": telephony_mode,
                     "source": "freeswitch_verto",
                     "rtcAsrMode": "rtc_asr_live" if readiness.ok else "rtc_asr_blocked",
                 },
@@ -654,6 +674,7 @@ class VertoAgentBridge:
                         **({"proofSipCallId": proof_sip_call_id} if proof_sip_call_id else {}),
                         **({"destinationNumber": destination_number} if destination_number else {}),
                         "conversationMode": conversation_mode,
+                        "telephonyMode": telephony_mode,
                         "blocker": readiness.detail,
                         "nextAction": "Restore ACC, rtc-asr, Kokoro, and Pipecat readiness before rerunning the Verto live SIP proof.",
                     },
@@ -682,6 +703,7 @@ class VertoAgentBridge:
                     "proofSipCallId": proof_sip_call_id,
                     "destinationNumber": destination_number,
                     "conversationMode": conversation_mode,
+                    "telephonyMode": telephony_mode,
                     "reviewReady": False,
                     "blocker": "ACC, rtc-asr, Kokoro, or Pipecat runtime readiness failed before answering Verto media.",
                     "blockedEvidencePosted": blocked_evidence_posted,
@@ -713,6 +735,7 @@ class VertoAgentBridge:
                     "proofSipCallId": proof_sip_call_id,
                     "destinationNumber": destination_number,
                     "conversationMode": conversation_mode,
+                    "telephonyMode": telephony_mode,
                     "vertoCallId": call_id,
                     "vertoParams": {key: value for key, value in params.items() if key != "sdp"},
                 },
@@ -729,6 +752,7 @@ class VertoAgentBridge:
                     proof_sip_call_id=proof_sip_call_id,
                     destination_number=destination_number,
                     conversation_mode=conversation_mode,
+                    telephony_mode=telephony_mode,
                     acc_call_id=acc_call_id,
                     readiness=readiness,
                 )
@@ -820,6 +844,7 @@ class VertoAgentBridge:
             "linkedSipCallId": linked_sip_call_id,
             "proofSipCallId": proof_sip_call_id,
             "accCallId": acc_call_id,
+            "telephonyMode": telephony_mode,
             "sessionId": session_id,
             "pcId": str(answer.get("pc_id") or call_id),
             "answerSdpBytes": len(answer_sdp.encode("utf-8")),
@@ -844,6 +869,7 @@ class VertoAgentBridge:
         proof_sip_call_id: str | None,
         destination_number: str | None,
         conversation_mode: str,
+        telephony_mode: str,
         acc_call_id: str,
         readiness: Any,
     ) -> None:
@@ -856,6 +882,7 @@ class VertoAgentBridge:
                 "linkedSipCallId": linked_sip_call_id,
                 "proofSipCallId": proof_sip_call_id,
                 "conversationMode": conversation_mode,
+                "telephonyMode": telephony_mode,
             }
             self.write_proof_artifact(
                 "verto.pipeline.stage",

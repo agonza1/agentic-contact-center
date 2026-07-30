@@ -111,6 +111,9 @@ function isInboundDialplanActive(entry, expectedDidPattern) {
   if (/can't\s+find|not\s+found|invalid/i.test(output)) return false;
   return /agentic_contact_center_signalwire_pstn/i.test(output)
     && /acc_route=signalwire_live/i.test(output)
+    && /acc_destination_number=8600/i.test(output)
+    && /acc_conversation_mode=openai_llm/i.test(output)
+    && /(?:sip_h_X-ACC-Telephony-Mode|X-ACC-Telephony-Mode)=signalwire_live/i.test(output)
     && output.includes(expectedDidPattern);
 }
 
@@ -129,6 +132,8 @@ function isPublicIpAddress(address) {
   }
   if (isIP(address) === 6) {
     const normalized = address.toLowerCase();
+    const mappedIpv4 = normalized.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+    if (mappedIpv4) return isPublicIpAddress(mappedIpv4[1]);
     return !(normalized === "::" || normalized === "::1"
       || normalized.startsWith("2001:db8:")
       || normalized.startsWith("fc") || normalized.startsWith("fd")
