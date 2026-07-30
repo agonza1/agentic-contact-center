@@ -1,14 +1,32 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { lookup } from "node:dns/promises";
-import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { isIP } from "node:net";
+import { chmod, lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { BlockList, isIP } from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = process.cwd();
 const args = process.argv.slice(2);
+const specialUseIpv6 = new BlockList();
+for (const [address, prefix] of [
+  ["::", 128],
+  ["::1", 128],
+  ["::ffff:0.0.0.0", 96],
+  ["64:ff9b::", 96],
+  ["64:ff9b:1::", 48],
+  ["100::", 64],
+  ["2001::", 23],
+  ["2001:2::", 48],
+  ["2001:db8::", 32],
+  ["2002::", 16],
+  ["fc00::", 7],
+  ["fe80::", 10],
+  ["ff00::", 8],
+]) {
+  specialUseIpv6.addSubnet(address, prefix, "ipv6");
+}
 
 const COMMON_REQUIRED_ENV = [
   "SIGNALWIRE_FROM_NUMBER",
@@ -114,6 +132,8 @@ function isInboundDialplanActive(entry, expectedDidPattern) {
     && /acc_destination_number=8600/i.test(output)
     && /acc_conversation_mode=openai_llm/i.test(output)
     && /(?:sip_h_X-ACC-Telephony-Mode|X-ACC-Telephony-Mode)=signalwire_live/i.test(output)
+    && /(?:sip_h_X-ACC-Destination|X-ACC-Destination)=8600/i.test(output)
+    && /(?:sip_h_X-ACC-Conversation-Mode|X-ACC-Conversation-Mode)=openai_llm/i.test(output)
     && output.includes(expectedDidPattern);
 }
 
@@ -134,11 +154,7 @@ function isPublicIpAddress(address) {
     const normalized = address.toLowerCase();
     const mappedIpv4 = normalized.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
     if (mappedIpv4) return isPublicIpAddress(mappedIpv4[1]);
-    return !(normalized === "::" || normalized === "::1"
-      || normalized.startsWith("2001:db8:")
-      || normalized.startsWith("fc") || normalized.startsWith("fd")
-      || /^fe[89ab]/.test(normalized)
-      || /^ff/.test(normalized));
+    return !specialUseIpv6.check(normalized, "ipv6");
   }
   return false;
 }
@@ -216,7 +232,13 @@ async function renderTemplate(templatePath, outputPath, replacements) {
   }
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, text, { mode: 0o600 });
+  await chmod(outputPath, 0o600);
   return outputPath;
+}
+
+async function safeArtifactOutputPath(outputPath) {
+  return isPathInside(artifactsRoot, outputPath)
+    && !(await hasSymlinkedAncestor(artifactsRoot, outputPath));
 }
 
 async function runFsCli(command, redactor) {
@@ -304,17 +326,30 @@ if (hasFlag("--render") && !outputDirIsArtifact) {
   summary.blockers.push("unsafe_freeswitch_output_dir");
 }
 
+const replacements = {
+  SIGNALWIRE_SIP_USERNAME: xmlEscape(env.SIGNALWIRE_SIP_USERNAME),
+  SIGNALWIRE_SIP_PASSWORD: xmlEscape(env.SIGNALWIRE_SIP_PASSWORD),
+  SIGNALWIRE_SIP_REALM: xmlEscape(signalwireRealm),
+  SIGNALWIRE_SIP_PROXY: xmlEscape(signalwireProxy),
+  SIGNALWIRE_TO_NUMBER_PATTERN: signalwireDidPattern,
+  SIGNALWIRE_FROM_NUMBER_SAFE: xmlEscape(env.SIGNALWIRE_FROM_NUMBER),
+  FREESWITCH_PUBLIC_SIP_HOST_SAFE: xmlEscape(env.FREESWITCH_PUBLIC_SIP_HOST),
+};
+
 if (hasFlag("--render") && summary.blockers.length === 0) {
-  const replacements = {
-    SIGNALWIRE_SIP_USERNAME: xmlEscape(env.SIGNALWIRE_SIP_USERNAME),
-    SIGNALWIRE_SIP_PASSWORD: xmlEscape(env.SIGNALWIRE_SIP_PASSWORD),
-    SIGNALWIRE_SIP_REALM: xmlEscape(signalwireRealm),
-    SIGNALWIRE_SIP_PROXY: xmlEscape(signalwireProxy),
-    SIGNALWIRE_TO_NUMBER_PATTERN: signalwireDidPattern,
-    SIGNALWIRE_FROM_NUMBER_SAFE: xmlEscape(env.SIGNALWIRE_FROM_NUMBER),
-    FREESWITCH_PUBLIC_SIP_HOST_SAFE: xmlEscape(env.FREESWITCH_PUBLIC_SIP_HOST),
-  };
   const gatewayOutputPath = path.join(outputDir, "sip_profiles/external/signalwire.xml");
+  const dialplanOutputPath = path.join(outputDir, "dialplan/public/signalwire_inbound.xml");
+  for (const destinationPath of [gatewayOutputPath, dialplanOutputPath]) {
+    if (!(await safeArtifactOutputPath(destinationPath))) {
+      summary.blockers.push("unsafe_freeswitch_output_dir");
+      break;
+    }
+  }
+}
+
+if (hasFlag("--render") && summary.blockers.length === 0) {
+  const gatewayOutputPath = path.join(outputDir, "sip_profiles/external/signalwire.xml");
+  const dialplanOutputPath = path.join(outputDir, "dialplan/public/signalwire_inbound.xml");
   const gatewayPath = trunkMode === "registration"
     ? await renderTemplate(
       path.join(repoRoot, "freeswitch/templates/signalwire-gateway.xml.template"),
@@ -327,7 +362,7 @@ if (hasFlag("--render") && summary.blockers.length === 0) {
   }
   const dialplanPath = await renderTemplate(
     path.join(repoRoot, "freeswitch/templates/signalwire_inbound.xml.template"),
-    path.join(outputDir, "dialplan/public/signalwire_inbound.xml"),
+    dialplanOutputPath,
     replacements,
   );
   summary.generatedConfig = {
