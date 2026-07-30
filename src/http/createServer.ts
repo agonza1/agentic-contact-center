@@ -2171,6 +2171,7 @@ function getLiveSipOperatorHoldReason(snapshot: CallSnapshot): string | null {
 }
 
 function getExplicitLiveSipOperatorHoldReason(snapshot: CallSnapshot): string | null {
+  if (snapshot.demoFallback.armed) return "demo_fallback_active";
   let latestHoldIndex = -1;
   let latestHoldReason: string | null = null;
   const releaseIndex = snapshot.events.reduce((latest, event, index) => {
@@ -2183,7 +2184,7 @@ function getExplicitLiveSipOperatorHoldReason(snapshot: CallSnapshot): string | 
       latestHoldReason = "operator_policy_hold_active";
       return;
     }
-    if (event.type === "demo_fallback_armed") {
+    if (event.type === "demo_fallback_armed" || event.type === "demo_fallback_triggered") {
       latestHoldIndex = index;
       latestHoldReason = "demo_fallback_active";
       return;
@@ -4411,6 +4412,29 @@ async function withLiveSipCallLock<T>(
   }
 }
 
+async function withLiveSipOpenAiGenerationLock<T>(
+  locks: Map<string, Promise<void>>,
+  sipCallId: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const previous = locks.get(sipCallId) ?? Promise.resolve();
+  let releaseCurrent!: () => void;
+  const current = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+  const queued = previous.catch(() => undefined).then(() => current);
+  locks.set(sipCallId, queued);
+  await previous.catch(() => undefined);
+  try {
+    return await run();
+  } finally {
+    releaseCurrent();
+    if (locks.get(sipCallId) === queued) {
+      locks.delete(sipCallId);
+    }
+  }
+}
+
 function normalizeLiveSipIngressSource(value: unknown): "freeswitch_esl" | "freeswitch_verto" | "local_sip_harness" {
   const source = getOptionalTrimmedString(value);
   if (source === "freeswitch_esl" || source === "freeswitch_verto") return source;
@@ -4824,6 +4848,7 @@ async function routeRequest(
   liveSipCallMap: Map<string, string>,
   liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>,
   liveSipCallLocks: Map<string, Promise<void>>,
+  liveSipOpenAiGenerationLocks: Map<string, Promise<void>>,
   callerTurnDeliveryAckPreviews: Map<string, CallerTurnDeliveryAckPreview>,
   callerTurnDeliveryAckPreviewReservations: Set<string>,
   voiceSessions: RealtimeVoiceSessionStore,
@@ -6768,7 +6793,7 @@ async function routeRequest(
         }
         callerTurnDeliveryAckPreviewReservations.add(deliveryAckPreviewReservationKey);
       }
-      const openAiLlm = effectiveConversationMode === "openai_llm"
+      const openAiLlm = commitMode === "delivery_ack" && effectiveConversationMode === "openai_llm"
         ? await generateOpenAiLiveSipResponse(currentSnapshot, text, timestamp)
         : undefined;
       let latestSnapshot = openAiLlm ? await ingress.getSnapshot(callerTurnMatch[1]) : currentSnapshot;
@@ -6882,6 +6907,104 @@ async function routeRequest(
         } finally {
           if (previewKey !== deliveryAckPreviewReservationKey) callerTurnDeliveryAckPreviewReservations.delete(previewKey);
         }
+      }
+      if (effectiveConversationMode === "openai_llm") {
+        await withLiveSipOpenAiGenerationLock(liveSipOpenAiGenerationLocks, callerTurnMatch[1], async () => {
+          const lockedSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
+          if (!lockedSnapshot) {
+            writeNotFound(response);
+            return;
+          }
+          if (isLiveSipCallEnded(lockedSnapshot)) {
+            writeJson(response, 409, {
+              ok: false,
+              route: "/api/calls/:callId/caller-turn",
+              error: "live_sip_call_ended",
+              call: buildCallPayload(lockedSnapshot),
+            });
+            return;
+          }
+          if (isOpenAiLiveSipAutomationStopped(lockedSnapshot)) {
+            await rejectHeldLiveSipCallerTurn(
+              response,
+              ingress,
+              callerTurnMatch[1],
+              text,
+              timestamp,
+              getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+              "/api/calls/:callId/caller-turn",
+              "openai_fail_closed_handoff_active",
+            );
+            return;
+          }
+          const lockedOperatorHoldReason = getLiveSipCallerTurnHoldReason(lockedSnapshot, effectiveConversationMode);
+          if (lockedOperatorHoldReason) {
+            await rejectHeldLiveSipCallerTurn(
+              response,
+              ingress,
+              callerTurnMatch[1],
+              text,
+              timestamp,
+              getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+              "/api/calls/:callId/caller-turn",
+              lockedOperatorHoldReason,
+            );
+            return;
+          }
+          const openAiLlm = await generateOpenAiLiveSipResponse(lockedSnapshot, text, timestamp);
+          let latestSnapshot = openAiLlm ? await ingress.getSnapshot(callerTurnMatch[1]) : lockedSnapshot;
+          if (!latestSnapshot) {
+            writeNotFound(response);
+            return;
+          }
+          if (openAiLlm?.ok && latestSnapshot.events.length === lockedSnapshot.events.length) {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            const recheckedSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
+            if (recheckedSnapshot) latestSnapshot = recheckedSnapshot;
+          }
+          if (isLiveSipCallEnded(latestSnapshot)) {
+            writeJson(response, 409, {
+              ok: false,
+              route: "/api/calls/:callId/caller-turn",
+              error: "live_sip_call_ended",
+              call: buildCallPayload(latestSnapshot),
+            });
+            return;
+          }
+          if (isOpenAiLiveSipAutomationStopped(latestSnapshot)) {
+            await rejectHeldLiveSipCallerTurn(
+              response,
+              ingress,
+              callerTurnMatch[1],
+              text,
+              timestamp,
+              getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+              "/api/calls/:callId/caller-turn",
+              "openai_fail_closed_handoff_active",
+            );
+            return;
+          }
+          const latestOperatorHoldReason = getLiveSipCallerTurnHoldReason(latestSnapshot, effectiveConversationMode);
+          if (latestOperatorHoldReason) {
+            await rejectHeldLiveSipCallerTurn(
+              response,
+              ingress,
+              callerTurnMatch[1],
+              text,
+              timestamp,
+              getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+              "/api/calls/:callId/caller-turn",
+              latestOperatorHoldReason,
+            );
+            return;
+          }
+          const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config, {
+            conversationMode: effectiveConversationMode,
+            openAiLlm,
+          });
+          writeJson(response, 200, buildCallPayload(snapshot));
+        });
+        return;
       }
       const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config, {
         conversationMode: effectiveConversationMode,
@@ -7516,12 +7639,13 @@ export function buildHttpServer(config: PocConfig) {
   const liveSipCallMap = new Map<string, string>();
   const liveSipEndedCallMap = new Map<string, LiveSipEndedCallAlias>();
   const liveSipCallLocks = new Map<string, Promise<void>>();
+  const liveSipOpenAiGenerationLocks = new Map<string, Promise<void>>();
   const callerTurnDeliveryAckPreviews = new Map<string, CallerTurnDeliveryAckPreview>();
   const callerTurnDeliveryAckPreviewReservations = new Set<string>();
   const voiceSessions = new RealtimeVoiceSessionStore();
 
   const server = createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;

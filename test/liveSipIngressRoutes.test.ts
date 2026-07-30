@@ -1166,6 +1166,134 @@ test("delivery-ack OpenAI previews reject a concurrent preview for the same snap
   }
 });
 
+test("live SIP immediate OpenAI caller turns serialize concurrent generation per call", async () => {
+  const originalEnv = {
+    ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
+  };
+  let resolveFirstOpenAiRequest: (() => void) | null = null;
+  const firstOpenAiRequestSeen = new Promise<void>((resolve) => {
+    resolveFirstOpenAiRequest = resolve;
+  });
+  const openAiServer = createTestServer((req, res) => {
+    let collected = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      collected += chunk;
+    });
+    req.on("end", () => {
+      const payload = JSON.parse(collected) as { input?: unknown };
+      const input = payload.input;
+      const userPromptText = Array.isArray(input)
+        ? input.find((entry): entry is { role?: string; content?: Array<{ type?: string; text?: string }> } => {
+            return typeof entry === "object" && entry !== null && "role" in entry && (entry as { role?: unknown }).role === "user";
+          })?.content?.[0]?.text ?? ""
+        : typeof input === "string"
+          ? input
+          : "";
+      const latestCallerTurn = userPromptText.match(/Latest caller turn:\s*([^\n]+)/)?.[1]?.trim() ?? "";
+      const firstTurn = latestCallerTurn === "Can you help with my account?";
+      if (firstTurn) resolveFirstOpenAiRequest?.();
+      const responseText = firstTurn ? "First live AI response." : "Second live AI response.";
+      const delayMs = firstTurn ? 50 : 0;
+      setTimeout(() => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          id: firstTurn ? "resp-live-serial-1" : "resp-live-serial-2",
+          output_text: responseText,
+        }));
+      }, delayMs);
+    });
+  });
+  await new Promise<void>((resolve) => openAiServer.listen(0, "127.0.0.1", resolve));
+  const openAiAddress = openAiServer.address();
+  assert.ok(openAiAddress && typeof openAiAddress !== "string");
+
+  process.env.ACC_OPENAI_API_KEY = "test-openai-key";
+  delete process.env.OPENAI_API_KEY;
+  process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${openAiAddress.port}/v1`;
+  delete process.env.OPENAI_BASE_URL;
+  delete process.env.ACC_OPENAI_AUTH_MODE;
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENCLAW_AGENT_ID;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T23:01:00.000Z",
+      sipCallId: "sip-openai-immediate-serial",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+    const callId = started.payload.call.session.callId;
+
+    const firstTurnRequest = requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help with my account?",
+      timestamp: "2026-07-27T23:01:01.000Z",
+    });
+    await firstOpenAiRequestSeen;
+    const secondTurnRequest = requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you also update my address?",
+      timestamp: "2026-07-27T23:01:02.000Z",
+    });
+    const [first, second] = await Promise.all([firstTurnRequest, secondTurnRequest]);
+
+    assert.equal(first.statusCode, 200);
+    assert.equal(second.statusCode, 200);
+
+    const firstPayload = first.payload as {
+      transcript: Array<{ speaker: string; text: string }>;
+      events: Array<{ type: string }>;
+    };
+    const secondPayload = second.payload as {
+      transcript: Array<{ speaker: string; text: string }>;
+      events: Array<{ type: string }>;
+    };
+    const combinedCall = secondPayload.transcript.length > firstPayload.transcript.length ? secondPayload : firstPayload;
+
+    assert.equal(combinedCall.transcript.length, 4);
+    assert.deepEqual(
+      combinedCall.transcript.map((turn: { speaker: string }) => turn.speaker),
+      ["caller", "agent", "caller", "agent"],
+    );
+    assert.deepEqual(
+      combinedCall.transcript.map((turn: { text: string }) => turn.text),
+      [
+        "Can you help with my account?",
+        "First live AI response.",
+        "Can you also update my address?",
+        "Second live AI response.",
+      ],
+    );
+    assert.equal(
+      combinedCall.events.filter((event: { type: string }) => event.type === "caller_turn_appended").length,
+      2,
+    );
+  } finally {
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => openAiServer.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("delivery-ack OpenAI failures persist fail-closed state before audible commit", async () => {
   const originalEnv = {
     ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
@@ -1618,6 +1746,7 @@ test("direct OpenAI caller turns preserve operator holds after async generation"
     });
     assert.equal(paused.statusCode, 200);
     assert.equal(paused.payload.flowState, "policy_hold");
+    await new Promise<void>((resolve) => setTimeout(resolve, 25));
 
     releaseOpenAiResponse();
     const rejectedTurn = await turnRequest;

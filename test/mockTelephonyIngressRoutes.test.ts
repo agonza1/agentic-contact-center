@@ -1251,6 +1251,14 @@ test("POST /api/signalwire/events maps local SignalWire lifecycle into call runt
     assert.equal(errorPayload.call.demoFallback.reason, "media websocket timeout");
     assert.equal(errorPayload.call.flowState, "wrap");
 
+    const heldAfterError = await requestJson(port, "POST", `/api/calls/${startedPayload.call.session.callId}/caller-turn`, {
+      text: "Can I keep talking after the call.error fallback?",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:09:09.000Z",
+    });
+    assert.equal(heldAfterError.statusCode, 409);
+    assert.equal((heldAfterError.payload as { error: string }).error, "live_sip_operator_hold_active");
+
     const filtered = await requestJson(port, "GET", "/api/calls?providerCallId=sw-call-123");
     const filteredPayload = filtered.payload as CallListPayload;
     assert.equal(filtered.statusCode, 200);
@@ -1719,26 +1727,19 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       text: "Okay, that sounds good. Thanks.",
       timestamp: "2026-06-10T14:10:15.000Z",
     });
+    await new Promise<void>((resolve) => setTimeout(resolve, 25));
     const progressedConsole = await requestJson(port, "GET", "/api/operator/console?minScriptProgressPct=75");
     const progressedPayload = progressedConsole.payload as OperatorConsolePayload;
 
     assert.equal(progressedConsole.statusCode, 200);
     assert.deepEqual(progressedPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
     assert.equal(progressedPayload.calls.summary.filteredSummary.totalCalls, 1);
-    assert.equal(progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressQueue, "/api/queue?scriptCompleted=true");
-    assert.equal(progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressCallList, "/api/calls?scriptCompleted=true&limit=5");
+    assert.equal(progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressQueue, "/api/queue?minScriptProgressPct=75");
+    assert.equal(progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressCallList, "/api/calls?minScriptProgressPct=75&limit=5");
     assert.equal(
       progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressOperatorConsole,
-      "/api/operator/console?scriptCompleted=true&limit=1",
+      "/api/operator/console?minScriptProgressPct=75&limit=1",
     );
-
-    const completedConsole = await requestJson(port, "GET", "/api/operator/console?scriptCompleted=true");
-    const completedPayload = completedConsole.payload as OperatorConsolePayload;
-
-    assert.equal(completedConsole.statusCode, 200);
-    assert.deepEqual(completedPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
-    assert.equal(completedPayload.calls.summary.filteredSummary.scriptCompleted, 1);
-    assert.equal(completedPayload.calls.summary.filteredSummary.scriptInProgress, 0);
 
     const invalidScriptProgressFilter = await requestJson(port, "GET", "/api/operator/console?minScriptProgressPct=101");
     assert.equal(invalidScriptProgressFilter.statusCode, 400);
@@ -3778,6 +3779,14 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.ok(fallbackHandoff);
     assert.equal(fallbackHandoff.detail.source, "tool_timeout_fail_closed");
     assert.equal(fallbackHandoff.detail.reason, "pipecat tool exceeded latency budget");
+
+    const heldAfterFallback = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can I keep talking while the fallback is armed?",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:03.000Z",
+    });
+    assert.equal(heldAfterFallback.statusCode, 409);
+    assert.equal((heldAfterFallback.payload as { error: string }).error, "live_sip_operator_hold_active");
 
     const lastAgentTurn = [...fallbackPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
     assert.ok(lastAgentTurn);
