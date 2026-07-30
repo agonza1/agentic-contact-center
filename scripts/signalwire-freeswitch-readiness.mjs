@@ -116,18 +116,24 @@ function isInboundDialplanActive(entry, expectedDidPattern) {
 
 function isPublicIpAddress(address) {
   if (isIP(address) === 4) {
-    const [a, b] = address.split(".").map(Number);
+    const [a, b, c] = address.split(".").map(Number);
     return !(a === 0 || a === 10 || a === 127 || a >= 224
       || (a === 100 && b >= 64 && b <= 127)
       || (a === 169 && b === 254)
       || (a === 172 && b >= 16 && b <= 31)
-      || (a === 192 && b === 168));
+      || (a === 192 && b === 0)
+      || (a === 192 && b === 168)
+      || (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100)))
+      || (a === 203 && b === 0 && c === 113)
+      || a === 255);
   }
   if (isIP(address) === 6) {
     const normalized = address.toLowerCase();
     return !(normalized === "::" || normalized === "::1"
+      || normalized.startsWith("2001:db8:")
       || normalized.startsWith("fc") || normalized.startsWith("fd")
-      || /^fe[89ab]/.test(normalized));
+      || /^fe[89ab]/.test(normalized)
+      || /^ff/.test(normalized));
   }
   return false;
 }
@@ -152,6 +158,11 @@ async function resolvePublicEndpointAddresses(value) {
   } catch {
     return [];
   }
+}
+
+function isPathInside(parent, child) {
+  const relative = path.relative(parent, child);
+  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
 function isIpAuthEndpointAdvertised(entry, expectedAddresses) {
@@ -208,6 +219,8 @@ const signalwireDidNational = signalwireDidDigits.length === 11 && signalwireDid
 const signalwireDidPattern = didPattern(env.SIGNALWIRE_FROM_NUMBER);
 const outputDir = path.resolve(repoRoot, argValue("--out-dir", "artifacts/freeswitch-signalwire/conf"));
 const manifestPath = path.resolve(repoRoot, argValue("--manifest", "artifacts/freeswitch-signalwire/readiness.json"));
+const artifactsRoot = path.resolve(repoRoot, "artifacts");
+const outputDirIsArtifact = isPathInside(artifactsRoot, outputDir);
 const redactor = buildRedactor([
   ...Object.values(env),
   signalwireRealm,
@@ -250,6 +263,10 @@ if (!["registration", "ip_auth"].includes(trunkMode)) {
   summary.blockers.push("missing_signalwire_sip_realm_or_proxy");
 }
 
+if (hasFlag("--render") && !outputDirIsArtifact) {
+  summary.blockers.push("unsafe_freeswitch_output_dir");
+}
+
 if (hasFlag("--render") && summary.blockers.length === 0) {
   const replacements = {
     SIGNALWIRE_SIP_USERNAME: xmlEscape(env.SIGNALWIRE_SIP_USERNAME),
@@ -279,7 +296,7 @@ if (hasFlag("--render") && summary.blockers.length === 0) {
   summary.generatedConfig = {
     gatewayPath: gatewayPath ? path.relative(repoRoot, gatewayPath) : null,
     dialplanPath: path.relative(repoRoot, dialplanPath),
-    gitignored: true,
+    gitignored: outputDirIsArtifact,
   };
 }
 

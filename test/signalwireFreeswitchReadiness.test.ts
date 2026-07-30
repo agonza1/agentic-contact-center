@@ -8,6 +8,12 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(__dirname, "..", "..");
+const artifactsRoot = path.join(repoRoot, "artifacts");
+
+async function mkArtifactTempDir(prefix: string) {
+  await mkdir(artifactsRoot, { recursive: true });
+  return mkdtemp(path.join(artifactsRoot, prefix));
+}
 
 test("SignalWire FreeSWITCH readiness fails closed when required env is missing", async () => {
   await assert.rejects(
@@ -30,7 +36,7 @@ test("SignalWire FreeSWITCH readiness fails closed when required env is missing"
 });
 
 test("SignalWire FreeSWITCH readiness renders ignored config without leaking secrets to stdout", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const tempDir = await mkArtifactTempDir("acc-signalwire-fs-");
   const renderedPassword = "example-rendered-sip-password";
   const projectId = "example-project-id";
   const token = "example-api-token";
@@ -192,7 +198,7 @@ esac
 });
 
 test("SignalWire FreeSWITCH readiness renders only the inbound dialplan for IP-auth trunks", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const tempDir = await mkArtifactTempDir("acc-signalwire-fs-");
 
   try {
     const staleGatewayPath = path.join(tempDir, "sip_profiles/external/signalwire.xml");
@@ -227,6 +233,46 @@ test("SignalWire FreeSWITCH readiness renders only the inbound dialplan for IP-a
       await readFile(path.join(tempDir, "dialplan/public/signalwire_inbound.xml"), "utf8"),
       /agentic_contact_center_signalwire_pstn/,
     );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("SignalWire FreeSWITCH readiness rejects render output outside ignored artifacts", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+
+  try {
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--render",
+        "--skip-fs-cli",
+        "--out-dir",
+        tempDir,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_SPACE_URL: "https://example.signalwire.com",
+          SIGNALWIRE_SIP_USERNAME: "acc-sip-user",
+          SIGNALWIRE_SIP_PASSWORD: "example-rendered-sip-password",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "sip-public-host.example.test",
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const result = error as { stdout?: string; code?: number };
+        assert.equal(result.code, 2);
+        const payload = JSON.parse(result.stdout ?? "{}");
+        assert.equal(payload.generatedConfig, null);
+        assert.ok(payload.blockers.includes("unsafe_freeswitch_output_dir"));
+        return true;
+      },
+    );
+    await assert.rejects(readFile(path.join(tempDir, "sip_profiles/external/signalwire.xml"), "utf8"));
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -368,6 +414,55 @@ test("SignalWire FreeSWITCH readiness rejects an unadvertised IP-auth endpoint",
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+for (const unroutableHost of ["192.0.2.10", "198.51.100.7", "203.0.113.9", "2001:db8::10"]) {
+  test(`SignalWire FreeSWITCH readiness rejects non-routable IP-auth endpoint: ${unroutableHost}`, async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+    const fsCliBin = path.join(tempDir, "fs_cli");
+
+    try {
+      await writeFile(
+        fsCliBin,
+        `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP ${unroutableHost}" ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><action application="set" data="acc_route=signalwire_live"/></condition></extension>' ;;
+  *) printf '%s\\n' "0 total registrations" ;;
+esac
+`,
+        "utf8",
+      );
+      await chmod(fsCliBin, 0o700);
+
+      await assert.rejects(
+        execFileAsync(process.execPath, [
+          "scripts/signalwire-freeswitch-readiness.mjs",
+          "--fs-cli-bin",
+          fsCliBin,
+          "--manifest",
+          path.join(tempDir, "readiness.json"),
+        ], {
+          cwd: repoRoot,
+          env: {
+            PATH: process.env.PATH ?? "",
+            SIGNALWIRE_TRUNK_MODE: "ip_auth",
+            SIGNALWIRE_FROM_NUMBER: "+12029687351",
+            FREESWITCH_PUBLIC_SIP_HOST: unroutableHost,
+          },
+          encoding: "utf8",
+        }),
+        (error: unknown) => {
+          const payload = JSON.parse((error as { stdout?: string }).stdout ?? "{}");
+          assert.equal(payload.manualCallReady, false);
+          assert.ok(payload.blockers.includes("freeswitch_public_sip_endpoint_not_proven"));
+          return true;
+        },
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+}
 
 for (const profileOutput of ["Invalid Profile!", "external profile DOWN"]) {
   test(`SignalWire FreeSWITCH readiness rejects IP-auth profile output: ${profileOutput}`, async () => {
