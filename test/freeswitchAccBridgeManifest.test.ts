@@ -1786,6 +1786,66 @@ test("FreeSWITCH bridge blocks attached rtc-asr evidence when live rtc-asr is no
 });
 
 
+test("FreeSWITCH bridge skips legacy RECORD_STOP turn processing when Verto owns media", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-verto-owns-media-"));
+  const audioPath = path.join(tempDir, "fs-call.wav");
+  const logPath = path.join(tempDir, "freeswitch-esl-events.json");
+  const manifestPath = path.join(tempDir, "freeswitch-live-proof-manifest.json");
+  const receivedEvents: any[] = [];
+
+  const server = await new Promise<import("node:http").Server>((resolve) => {
+    const http = require("node:http") as typeof import("node:http");
+    const instance = http.createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk) => chunks.push(chunk));
+      request.on("end", () => {
+        receivedEvents.push(chunks.length > 0 ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {});
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ ok: true, call: { session: { callId: "acc-call-verto-owned" } } }));
+      });
+    });
+    instance.listen(0, "127.0.0.1", () => resolve(instance));
+  });
+
+  try {
+    await writeFile(audioPath, validWavFixture());
+    const moduleUrl = pathToFileURL(path.join(repoRoot, "scripts/freeswitch-acc-bridge.mjs")).href;
+    const script = `
+      const { EslBridge } = await import(${JSON.stringify(moduleUrl)});
+      const bridge = new EslBridge({
+        accBaseUrl: ${JSON.stringify(`http://127.0.0.1:${(server.address() as any).port}`)},
+        logPath: ${JSON.stringify(logPath)},
+        manifestPath: ${JSON.stringify(manifestPath)},
+        rtcAsrUrl: "ws://127.0.0.1:8080/v1/stt/stream",
+        rtcAsrEvidencePath: ${JSON.stringify(path.join(tempDir, "rtc-asr-evidence.jsonl"))},
+        telephonyMode: "local_sip",
+        vertoOwnsMedia: true
+      });
+      bridge.callMap.set("fs-call-verto-owned", {
+        wavPath: ${JSON.stringify(audioPath)},
+        freeswitchPath: ${JSON.stringify(audioPath)},
+        startedAt: Date.now(),
+        destination: "8600",
+        accCallId: "acc-call-verto-owned"
+      });
+      await bridge.onRecordStop("fs-call-verto-owned");
+    `;
+    await execFileAsync(process.execPath, ["--input-type=module", "--eval", script], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+
+    assert.deepEqual(receivedEvents, []);
+    const log = JSON.parse(await readFile(logPath, "utf8")) as { events: Array<{ legacyRecordStopIgnored?: { reason: string } }> };
+    assert.equal(log.events.some((event) => event.legacyRecordStopIgnored?.reason === "verto_owns_media"), true);
+  } finally {
+    server.close();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+
 test("FreeSWITCH bridge re-transcribes current SIP audio instead of trusting stale rtc-asr evidence", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-fs-current-rtc-asr-"));

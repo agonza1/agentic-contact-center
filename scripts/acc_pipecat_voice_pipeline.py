@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import importlib.metadata
 import json
 import os
@@ -49,6 +50,18 @@ WEBRTC_SAMPLE_RATE = 48000
 WEBRTC_FRAME_MS = 20
 WEBRTC_SAMPLES_PER_FRAME = WEBRTC_SAMPLE_RATE * WEBRTC_FRAME_MS // 1000
 SAMPLE_WIDTH_BYTES = 2
+DEFAULT_TTS_PREWARM_TEXT = (
+    "Hi, I can help with billing, cancellation, account updates, or a human handoff. "
+    "What do you need today?"
+)
+DEFAULT_TTS_PREWARM_TEXTS = (
+    DEFAULT_TTS_PREWARM_TEXT,
+    "Is this billing, cancellation, an account update, or a human handoff?",
+    "I can help. Is it a charge, renewal increase, refund, or payment issue?",
+    "I can help with cancellation. What is the main reason you want to cancel?",
+    "I’ll prepare a handoff summary for a human operator. What is the one thing you want them to solve first?",
+)
+TTS_CACHE_LOCKS: dict[Path, asyncio.Lock] = {}
 
 
 class CallerTurnDeliveryCommitError(RuntimeError):
@@ -98,6 +111,25 @@ def open_http_stream(method: str, url: str, payload: dict[str, Any] | None = Non
     body = None if payload is None else json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(url, data=body, method=method, headers={"content-type": "application/json"})
     return urllib.request.urlopen(request, timeout=timeout)
+
+
+def tts_cache_path(text: str, sample_rate: int) -> Path | None:
+    cache_dir = os.environ.get("ACC_TTS_CACHE_DIR", "").strip()
+    if not cache_dir:
+        return None
+    cache_key = json.dumps(
+        {
+            "engine": "kokoro",
+            "model": DEFAULT_KOKORO_MODEL,
+            "voice": DEFAULT_KOKORO_VOICE,
+            "sampleRate": sample_rate,
+            "format": "pcm_s16le",
+            "text": text,
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return Path(cache_dir) / f"{hashlib.sha256(cache_key).hexdigest()}.pcm"
 
 
 def probe_json(url: str, service_id: str, timeout: float = 1.5) -> ProbeResult:
@@ -324,10 +356,12 @@ class AccVoicePipelineSession:
         track_recording_dir: str | Path | None = None,
         correlation_id: str | None = None,
         flow_manager_adapter: AccPipecatFlowManagerAdapter | None = None,
+        conversation_mode: str | None = None,
     ):
         self.acc_url = acc_url.rstrip("/")
         self.call_id = call_id
         self.correlation_id = correlation_id or f"acc-pipecat-{call_id}"
+        self.conversation_mode = conversation_mode if conversation_mode in {"free_caller", "scripted", "openai_llm"} else None
         self.readiness = readiness
         self.turn_count = 0
         self.output_generation = 0
@@ -358,6 +392,7 @@ class AccVoicePipelineSession:
         self.rtc_asr_session_audio_bytes = 0
         self.rtc_asr_session_event_count = 0
         self.rtc_asr_interim_events: list[dict[str, Any]] = []
+        self.rtc_asr_current_interim_text = ""
         self.turn_controls: PipecatTurnControls | None = None
         self.evidence_callback = evidence_callback
         self.pending_caller_turn_commit: dict[str, Any] | None = None
@@ -365,6 +400,10 @@ class AccVoicePipelineSession:
         self.track_recorder = SeparateTrackRecorder(artifact_dir=recording_dir, call_id=call_id) if recording_dir else None
         self.last_track_recording_manifest: dict[str, Any] | None = None
         self.flow_manager_adapter = flow_manager_adapter
+        self.tts_cache_locks = TTS_CACHE_LOCKS
+        self.caller_turn_gate = asyncio.Event()
+        self.caller_turn_gate.set()
+        self.caller_turn_gate_reason: str | None = None
 
     def evidence_snapshot(self) -> dict[str, Any]:
         return {
@@ -407,6 +446,15 @@ class AccVoicePipelineSession:
                 request_json=lambda method, url, payload: json_http(method, url, payload),
             )
         return self.flow_manager_adapter
+
+    def hold_caller_turns(self, reason: str) -> None:
+        self.caller_turn_gate_reason = reason
+        self.caller_turn_gate.clear()
+
+    def release_caller_turns(self, reason: str) -> None:
+        self.caller_turn_gate_reason = None
+        self.caller_turn_gate.set()
+        self.record_stage("acc.caller_turn_gate_released", reason=reason)
 
     def record_stage(self, stage: str, *, ok: bool = True, **detail: Any) -> dict[str, Any]:
         event = {
@@ -714,6 +762,11 @@ class AccVoicePipelineSession:
             }
             print(json.dumps({"type": "browser_webrtc_output_cancel_skipped", **self.last_barge_in_evidence}), flush=True)
             return self.last_barge_in_evidence
+        intro_gate_was_held = (
+            self.caller_turn_gate_reason == "prerecorded_greeting_evidence_pending"
+            and isinstance(self.output_stream_id, str)
+            and self.output_stream_id.startswith("prerecorded-intro-")
+        )
         requested_at = time.monotonic()
         self.output_generation += 1
         if self.output_stream_chunk_count == 0:
@@ -743,6 +796,8 @@ class AccVoicePipelineSession:
             "stopRequestedMonotonicMs": round(requested_at * 1000, 3),
             "timestamp": datetime.now(UTC).isoformat(timespec="milliseconds"),
         }
+        if intro_gate_was_held:
+            self.release_caller_turns("prerecorded_greeting_interrupted")
         print(json.dumps({"type": "browser_webrtc_output_cancelled", **self.last_barge_in_evidence}), flush=True)
         return self.last_barge_in_evidence
 
@@ -786,20 +841,27 @@ class AccVoicePipelineSession:
             await ws.send(json.dumps({"type": "finalize"}))
             try:
                 deadline = time.monotonic() + float(os.environ.get("RTC_ASR_FINAL_TIMEOUT_SEC", "12"))
+                final_event_text = ""
+                final_event_observed = False
                 while time.monotonic() < deadline:
                     event = await self.recv_rtc_asr_event_locked(timeout=max(0.1, deadline - time.monotonic()))
                     if event is None:
                         continue
                     events.append(event)
                     candidate = transcript_text_from_event(event)
-                    if candidate:
-                        final_text = candidate
                     if is_final_stt_event(event):
+                        final_event_observed = True
+                        final_event_text = candidate
+                        final_text = candidate
                         break
             finally:
                 # local-stt.v1 finalize ends the current utterance, not the socket.
                 # The next audio turn must send a new start event on this connection.
                 self.rtc_asr_started = False
+            final_transcript_source = "rtc_asr_final"
+            if final_event_observed and not final_event_text.strip() and self.rtc_asr_current_interim_text.strip():
+                final_text = self.rtc_asr_current_interim_text
+                final_transcript_source = "rtc_asr_interim_fallback"
         elapsed_ms = round((time.perf_counter() - started) * 1000)
         audio_bytes = self.rtc_asr_current_audio_bytes or len(frame.audio)
         meta = {
@@ -815,8 +877,11 @@ class AccVoicePipelineSession:
             "sessionEventCount": self.rtc_asr_session_event_count,
             "interimEventCount": len([event for event in events if not is_final_stt_event(event) and transcript_text_from_event(event)]),
             "eventCount": len(events),
+            "finalEventObserved": final_event_observed,
+            "finalTranscriptSource": final_transcript_source,
         }
         self.rtc_asr_current_audio_bytes = 0
+        self.rtc_asr_current_interim_text = ""
         result_frame = TranscriptionFrame(final_text.strip(), user_id="browser", timestamp=str(time.time()), result={"events": events}, finalized=True)
         return result_frame.text.strip(), meta, result_frame
 
@@ -866,6 +931,7 @@ class AccVoicePipelineSession:
             raise RuntimeError("rtc-asr session is closing")
         self.rtc_asr_utterance_id += 1
         self.rtc_asr_started = True
+        self.rtc_asr_current_interim_text = ""
         self.record_stage(
             "stt.utterance_started",
             connectionId=self.rtc_asr_connection_id,
@@ -889,6 +955,7 @@ class AccVoicePipelineSession:
         self.rtc_asr_session_event_count += 1
         transcript = transcript_text_from_event(event)
         if transcript and not is_final_stt_event(event):
+            self.rtc_asr_current_interim_text = transcript
             interim = self.record_stage(
                 "stt.transcript_interim",
                 transcript=transcript,
@@ -933,8 +1000,72 @@ class AccVoicePipelineSession:
         self.record_stage("stt.session_closed", connectionId=self.rtc_asr_connection_id, reason=reason, persistentSession=True)
 
     async def stream_synthesize(self, frame: TextFrame, *, chunk_bytes: int) -> Any:
-        """Yield raw Kokoro PCM chunks as the HTTP streaming response produces them."""
+        """Yield raw Kokoro PCM chunks, reusing persistent deterministic audio."""
         started = time.perf_counter()
+        sample_rate = int(os.environ.get("KOKORO_OUTPUT_SAMPLE_RATE", "24000"))
+        # OpenAI responses are effectively unbounded and usually unique. Caching
+        # them would grow both the on-disk PCM artifact set and the process-wide
+        # lock map for the lifetime of the bridge. Keep persistence for the
+        # finite scripted phrase set only.
+        cache_path = None if self.conversation_mode == "openai_llm" else tts_cache_path(frame.text, sample_rate)
+        cache_lock = self.tts_cache_locks.setdefault(cache_path, asyncio.Lock()) if cache_path else None
+        cache_lock_owned = False
+
+        if cache_lock:
+            await cache_lock.acquire()
+            cache_lock_owned = True
+        try:
+            if cache_path and cache_path.is_file():
+                cached_audio = await asyncio.to_thread(cache_path.read_bytes)
+                if cache_lock_owned and cache_lock:
+                    cache_lock.release()
+                    cache_lock_owned = False
+                first_audio_ms = round((time.perf_counter() - started) * 1000)
+                for offset in range(0, len(cached_audio), chunk_bytes):
+                    yield cached_audio[offset : offset + chunk_bytes], sample_rate, {
+                        "engine": "kokoro",
+                        "voice": DEFAULT_KOKORO_VOICE,
+                        "model": DEFAULT_KOKORO_MODEL,
+                        "format": "pcm_s16le",
+                        "providerStream": False,
+                        "cacheHit": True,
+                        "firstAudioMs": first_audio_ms,
+                        "elapsedMs": round((time.perf_counter() - started) * 1000),
+                    }
+                return
+
+            if cache_path and cache_lock:
+                async for item in self._stream_synthesize_uncached(
+                    frame,
+                    chunk_bytes=chunk_bytes,
+                    sample_rate=sample_rate,
+                    cache_path=cache_path,
+                    started=started,
+                ):
+                    yield item
+                return
+
+            async for item in self._stream_synthesize_uncached(
+                frame,
+                chunk_bytes=chunk_bytes,
+                sample_rate=sample_rate,
+                cache_path=cache_path,
+                started=started,
+            ):
+                yield item
+        finally:
+            if cache_lock_owned and cache_lock:
+                cache_lock.release()
+
+    async def _stream_synthesize_uncached(
+        self,
+        frame: TextFrame,
+        *,
+        chunk_bytes: int,
+        sample_rate: int,
+        cache_path: Path | None,
+        started: float,
+    ) -> Any:
         payload = {
             "model": DEFAULT_KOKORO_MODEL,
             "voice": DEFAULT_KOKORO_VOICE,
@@ -949,14 +1080,16 @@ class AccVoicePipelineSession:
             payload,
             30,
         )
-        sample_rate = int(os.environ.get("KOKORO_OUTPUT_SAMPLE_RATE", "24000"))
         read_size = max(chunk_bytes - (chunk_bytes % SAMPLE_WIDTH_BYTES), SAMPLE_WIDTH_BYTES)
         pending = b""
+        complete_audio = bytearray()
         first_audio_ms: int | None = None
+        completed = False
         try:
             while True:
                 raw = await asyncio.to_thread(response.read, read_size)
                 if not raw:
+                    completed = True
                     break
                 pending += raw
                 aligned_bytes = len(pending) - (len(pending) % SAMPLE_WIDTH_BYTES)
@@ -964,6 +1097,7 @@ class AccVoicePipelineSession:
                     continue
                 chunk = pending[:aligned_bytes]
                 pending = pending[aligned_bytes:]
+                complete_audio.extend(chunk)
                 elapsed_ms = round((time.perf_counter() - started) * 1000)
                 if first_audio_ms is None:
                     first_audio_ms = elapsed_ms
@@ -973,12 +1107,68 @@ class AccVoicePipelineSession:
                     "model": DEFAULT_KOKORO_MODEL,
                     "format": "pcm_s16le",
                     "providerStream": True,
+                    "cacheHit": False,
                     "firstAudioMs": first_audio_ms,
                     "elapsedMs": elapsed_ms,
                 }
         finally:
             with contextlib.suppress(Exception):
                 await asyncio.to_thread(response.close)
+        if completed and cache_path and complete_audio:
+            temporary_path = cache_path.with_suffix(f".{uuid4().hex}.tmp")
+            try:
+                await asyncio.to_thread(cache_path.parent.mkdir, parents=True, exist_ok=True)
+                await asyncio.to_thread(temporary_path.write_bytes, bytes(complete_audio))
+                await asyncio.to_thread(temporary_path.replace, cache_path)
+            except Exception as exc:
+                self.record_stage(
+                    "tts.cache_persist_failed",
+                    ok=False,
+                    error=str(exc),
+                    cachePath=str(cache_path),
+                    audioBytes=len(complete_audio),
+                    bestEffort=True,
+                )
+            finally:
+                with contextlib.suppress(FileNotFoundError):
+                    temporary_path.unlink()
+
+    async def prewarm_tts_cache(self, text: str = DEFAULT_TTS_PREWARM_TEXT) -> None:
+        sample_rate = int(os.environ.get("KOKORO_OUTPUT_SAMPLE_RATE", "24000"))
+        cache_path = tts_cache_path(text, sample_rate)
+        if not cache_path or cache_path.is_file():
+            return
+        started = time.perf_counter()
+        audio_bytes = 0
+        try:
+            async for chunk, _sample_rate, metadata in self.stream_synthesize(
+                TextFrame(text),
+                chunk_bytes=max(sample_rate * SAMPLE_WIDTH_BYTES // 50, SAMPLE_WIDTH_BYTES),
+            ):
+                audio_bytes += len(chunk)
+            self.record_stage(
+                "tts.cache_prewarmed",
+                text=text,
+                audioBytes=audio_bytes,
+                cachePath=str(cache_path),
+                elapsedMs=round((time.perf_counter() - started) * 1000),
+                cacheHit=metadata.get("cacheHit", False) if audio_bytes else False,
+            )
+        except Exception as exc:
+            self.record_stage(
+                "tts.cache_prewarm_failed",
+                ok=False,
+                error="tts_cache_prewarm_failed",
+                detail=str(exc),
+                text=text,
+            )
+
+    async def prewarm_conversation_tts_cache(self) -> None:
+        """Warm common deterministic branches in conversational priority order."""
+        if self.conversation_mode == "openai_llm":
+            return
+        for text in DEFAULT_TTS_PREWARM_TEXTS:
+            await self.prewarm_tts_cache(text)
 
 
 class PipecatTurnControls:
@@ -1138,6 +1328,12 @@ class RtcAsrTurnProcessor(FrameProcessor):
             }
             self.session.record_stage("stt.empty_transcript", ok=False, error="empty_transcript", stt=stt_meta)
             return
+        if stt_meta.get("finalTranscriptSource") == "rtc_asr_interim_fallback":
+            self.session.record_stage(
+                "stt.transcript_recovered_from_interim",
+                transcript=transcript,
+                stt=stt_meta,
+            )
         self.session.record_stage("stt.transcript_final", transcript=transcript, stt=stt_meta)
         transcription_frame.result = {**(transcription_frame.result or {}), "stt": stt_meta}
         await self.turn_controls.observe_transcription(transcription_frame)
@@ -1215,6 +1411,13 @@ class AccCallerTurnProcessor(FrameProcessor):
         if direction != FrameDirection.DOWNSTREAM or not isinstance(frame, TranscriptionFrame):
             await self.push_frame(frame, direction)
             return
+        if not self.session.caller_turn_gate.is_set():
+            self.session.record_stage(
+                "acc.caller_turn_waiting",
+                callerTranscript=frame.text,
+                reason=self.session.caller_turn_gate_reason or "caller_turn_gate_held",
+            )
+            await self.session.caller_turn_gate.wait()
         deterministic_agent_text = os.environ.get("ACC_PIPECAT_AGENT_TEXT_OVERRIDE", "").strip()
         if deterministic_agent_text:
             self.session.turn_count += 1
@@ -1247,8 +1450,8 @@ class AccCallerTurnProcessor(FrameProcessor):
             await self.push_frame(TextFrame(deterministic_agent_text), FrameDirection.DOWNSTREAM)
             return
         turn_output_generation = self.session.output_generation
-        conversation_mode = os.environ.get("ACC_PIPECAT_CONVERSATION_MODE", "free_caller").strip() or "free_caller"
-        if conversation_mode not in {"free_caller", "scripted"}:
+        conversation_mode = self.session.conversation_mode or os.environ.get("ACC_PIPECAT_CONVERSATION_MODE", "free_caller").strip() or "free_caller"
+        if conversation_mode not in {"free_caller", "scripted", "openai_llm"}:
             conversation_mode = "free_caller"
         flow_manager = self.session.get_flow_manager_adapter()
         agent_task = asyncio.create_task(flow_manager.preview_caller_turn(
@@ -1297,6 +1500,34 @@ class AccCallerTurnProcessor(FrameProcessor):
             if isinstance(flow_manager_evidence, dict)
             else None
         )
+        if flow_manager_commit_policy in {"caller_turn_held", "caller_turn_stopped"}:
+            self.session.discard_pending_caller_turn_commit(str(flow_manager_commit_policy))
+            self.session.record_stage(
+                "acc.caller_turn_held",
+                callerTranscript=frame.text,
+                flowState=call.get("flowState") if isinstance(call, dict) else None,
+                flowManager=flow_manager_evidence,
+            )
+            self.session.last_evidence = {
+                "ok": True,
+                "callerTranscript": frame.text,
+                "agentText": "",
+                "audio": self.session.last_audio_evidence,
+                "stt": (frame.result or {}).get("stt", {}),
+                "acc": self.session.last_acc_evidence,
+                "tts": {"engine": "kokoro", "skipped": True, "audioBytes": 0, "reason": flow_manager_commit_policy},
+                "bargeIn": self.session.last_barge_in_evidence,
+                "outputCancelled": False,
+                "pipecatFrames": {
+                    "input": "InputAudioRawFrame",
+                    "transcription": "TranscriptionFrame",
+                    "agentText": None,
+                    "output": None,
+                },
+                "callId": self.session.call_id,
+                "flowManager": flow_manager_evidence,
+            }
+            return
         self.session.turn_count += 1
         self.session.record_stage(
             "acc.caller_turn_completed",
@@ -1381,6 +1612,10 @@ class KokoroTtsProcessor(FrameProcessor):
         chunk_bytes = max(sample_rate * SAMPLE_WIDTH_BYTES * chunk_ms // 1000, SAMPLE_WIDTH_BYTES)
         output_cancelled = False
         stream_started = False
+        pacing_started_monotonic = 0.0
+        paced_audio_seconds = 0.0
+        paced_chunk_count = 0
+        evidence_every_n_chunks = max(int(os.environ.get("ACC_TTS_EVIDENCE_EVERY_N_CHUNKS", "50")), 1)
         tts_meta: dict[str, Any] = {
             "engine": "kokoro",
             "voice": DEFAULT_KOKORO_VOICE,
@@ -1417,6 +1652,7 @@ class KokoroTtsProcessor(FrameProcessor):
                     break
                 if not stream_started:
                     stream_started = True
+                    pacing_started_monotonic = time.monotonic()
                     self.session.begin_output_stream(stream_id=context_id)
                     if self.session.turn_controls:
                         await self.session.turn_controls.bot_started()
@@ -1443,14 +1679,17 @@ class KokoroTtsProcessor(FrameProcessor):
                     sample_rate=sample_rate,
                     event_id=f"agent-frame-{self.session.output_stream_chunk_count + 1}",
                 )
-                self.session.record_stage(
-                    "tts.audio_chunk",
-                    streamId=context_id,
-                    chunkIndex=self.session.output_stream_chunk_count + 1,
-                    audioBytes=len(audio_chunk),
-                    sampleRate=sample_rate,
-                    outputGeneration=turn_output_generation,
-                )
+                chunk_index = self.session.output_stream_chunk_count + 1
+                if chunk_index == 1 or chunk_index % evidence_every_n_chunks == 0:
+                    self.session.record_stage(
+                        "tts.audio_chunk",
+                        streamId=context_id,
+                        chunkIndex=chunk_index,
+                        audioBytes=len(audio_chunk),
+                        sampleRate=sample_rate,
+                        outputGeneration=turn_output_generation,
+                        evidenceIntervalChunks=evidence_every_n_chunks,
+                    )
                 self.session.record_output_chunk(len(audio_chunk))
                 if self.session.pending_caller_turn_commit:
                     await self.session.commit_pending_caller_turn_delivery(
@@ -1458,8 +1697,12 @@ class KokoroTtsProcessor(FrameProcessor):
                         output_generation=turn_output_generation,
                     )
                 tts_meta = {**tts_meta, **chunk_meta, "outputWindow": output_window}
-                chunk_yield_ms = max(float(os.environ.get("ACC_TTS_OUTPUT_CHUNK_YIELD_MS", "0")), 0.0)
-                await asyncio.sleep(chunk_yield_ms / 1000)
+                paced_audio_seconds += len(audio_chunk) / max(sample_rate * SAMPLE_WIDTH_BYTES, 1)
+                paced_chunk_count += 1
+                configured_yield_ms = max(float(os.environ.get("ACC_TTS_OUTPUT_CHUNK_YIELD_MS", "20")), 0.0)
+                if configured_yield_ms > 0:
+                    pacing_deadline = pacing_started_monotonic + (configured_yield_ms / 1000.0 * paced_chunk_count)
+                    await asyncio.sleep(max(pacing_deadline - time.monotonic(), 0.0))
             if output_cancelled:
                 self.session.record_stage(
                     "tts.stream_cancelled",
@@ -1480,6 +1723,8 @@ class KokoroTtsProcessor(FrameProcessor):
                 chunkCount=self.session.output_stream_chunk_count,
                 audioBytesEnqueued=self.session.output_stream_audio_bytes,
                 outputGeneration=self.session.output_generation,
+                pacedAudioMs=round(paced_audio_seconds * 1000),
+                wallClockMs=round((time.monotonic() - pacing_started_monotonic) * 1000),
             )
             self.session.last_evidence = {
                 **self.session.last_evidence,

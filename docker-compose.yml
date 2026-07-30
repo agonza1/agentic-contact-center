@@ -13,6 +13,13 @@ services:
       RTC_ASR_MODEL: ${RTC_ASR_MODEL:-mlx-community/parakeet-tdt_ctc-110m}
       KOKORO_BASE_URL: http://kokoro:8880
       BROWSER_WEBRTC_BRIDGE_URL: http://browser-webrtc-bridge:8766
+      ACC_OPENAI_CONVERSATION_MODEL: ${ACC_OPENAI_CONVERSATION_MODEL:-GPT-5.4-mini}
+      ACC_OPENAI_AUTH_MODE: ${ACC_OPENAI_AUTH_MODE:-api_key}
+      ACC_OPENAI_AUTH_TOKEN: ${ACC_OPENAI_AUTH_TOKEN:-}
+      ACC_OPENCLAW_AGENT_ID: ${ACC_OPENCLAW_AGENT_ID:-acc-voice}
+      ACC_OPENAI_BASE_URL: ${ACC_OPENAI_BASE_URL:-https://api.openai.com/v1}
+      ACC_OPENAI_API_KEY: ${ACC_OPENAI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     healthcheck:
       test:
         - CMD
@@ -194,6 +201,8 @@ services:
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
       KOKORO_BASE_URL: http://kokoro:8880
       KOKORO_VOICE: ${KOKORO_VOICE:-af_heart}
+      ACC_VERTO_OWNS_GREETING: ${ACC_VERTO_OWNS_GREETING:-false}
+      ACC_VERTO_OWNS_MEDIA: ${ACC_VERTO_OWNS_MEDIA:-false}
 
   pipecat-verto-bridge:
     build:
@@ -228,9 +237,17 @@ services:
       RTC_ASR_BASE_URL: http://rtc-asr:8080
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
       KOKORO_BASE_URL: http://kokoro:8880
+      ACC_TTS_CACHE_DIR: ${ACC_TTS_CACHE_DIR:-/app/artifacts/tts-cache}
       FREESWITCH_VERTO_URL: ws://freeswitch:8081
       FREESWITCH_VERTO_LOGIN: acc-pipecat@127.0.0.1
       FREESWITCH_VERTO_PASSWORD: local-verto-pass
+      ACC_VERTO_OWNS_GREETING: ${ACC_VERTO_OWNS_GREETING:-true}
+      ACC_SIP_GREETING_PREROLL_MS: ${ACC_SIP_GREETING_PREROLL_MS:-300}
+      ACC_WEBRTC_SILENCE_MS: ${ACC_WEBRTC_SILENCE_MS:-600}
+      ACC_WEBRTC_MIN_TURN_MS: ${ACC_WEBRTC_MIN_TURN_MS:-300}
+      ACC_WEBRTC_MAX_TURN_MS: ${ACC_WEBRTC_MAX_TURN_MS:-5000}
+      ACC_TTS_OUTPUT_CHUNK_YIELD_MS: ${ACC_TTS_OUTPUT_CHUNK_YIELD_MS:-20}
+      ACC_TTS_EVIDENCE_EVERY_N_CHUNKS: ${ACC_TTS_EVIDENCE_EVERY_N_CHUNKS:-50}
       PIPECAT_VERTO_PROOF_OUT: /app/artifacts/freeswitch-live/pipecat-verto-proof.json
     healthcheck:
       test:

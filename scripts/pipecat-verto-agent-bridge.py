@@ -21,6 +21,7 @@ import os
 import re
 import sys
 import time
+import wave
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,8 @@ from uuid import uuid4
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_RUNTIME_PATH = REPO_ROOT / ".pipecat-runtime"
+DEFAULT_INTRO_AUDIO_PATH = REPO_ROOT / "assets/audio/agilityfeat-intro.wav"
+DEFAULT_INTRO_TEXT = "Hello, you are calling AgilityFeat."
 if LOCAL_RUNTIME_PATH.exists():
     sys.path.insert(0, str(LOCAL_RUNTIME_PATH))
 
@@ -41,6 +44,7 @@ try:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import rsa
     from aiohttp import web
+    from pipecat.frames.frames import TTSAudioRawFrame, TTSStartedFrame, TTSStoppedFrame
     from pipecat.pipeline.runner import PipelineRunner
     from pipecat.pipeline.task import PipelineParams, PipelineTask
     from pipecat.transports.base_transport import TransportParams
@@ -54,6 +58,7 @@ try:
         AccVoicePipelineSession,
         build_acc_voice_pipeline,
         check_readiness,
+        json_http,
         normalize_browser_answer_sdp,
     )
 except Exception as exc:  # pragma: no cover - local setup guard
@@ -73,6 +78,13 @@ except Exception as exc:  # pragma: no cover - local setup guard
 
 def now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds")
+
+
+def safe_artifact_id(value: Any) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    safe_value = "".join(character if character.isalnum() or character in "._-" else "_" for character in value.strip())
+    return safe_value[:160] or None
 
 
 def normalize_verto_answer_sdp(sdp: str) -> str:
@@ -276,41 +288,201 @@ class VertoAgentBridge:
         self.sessions: dict[str, dict[str, Any]] = {}
         self.pipeline_evidence: dict[str, dict[str, Any]] = {}
 
-    def write_proof_artifact(self, event_type: str) -> None:
+    def write_proof_artifact(self, event_type: str, *, affected_artifact_ids: list[str | None] | None = None) -> None:
         if self.proof_out is None:
             return
+        try:
+            pipeline_evidence = list(self.pipeline_evidence.values())
+            payload = {
+                "schemaVersion": 1,
+                "generatedAt": now_iso(),
+                "eventType": event_type,
+                "status": "registered_media_answer_ready" if self.last_login.get("ok") else "blocked",
+                "reviewReady": False,
+                "vertoUrl": self.verto_url,
+                "login": self.login,
+                "transport": "freeswitch_verto_webrtc",
+                "inviteCount": self.invite_count,
+                "lastLogin": self.last_login,
+                "lastInvite": self.last_invite,
+                "lastAnswer": self.last_answer,
+                "lastError": self.last_error,
+                "pipelineEvidence": pipeline_evidence,
+                "remainingMediaBlocker": "Verto signaling is configured and the sidecar can attempt a Pipecat-backed WebRTC answer, but caller-audible acceptance still requires a live 8600 proof showing rtc-asr final transcript and Kokoro/Pipecat playback heard by the caller.",
+                "nextAction": "Place a local 8600 call with the Verto bridge running, then attach this artifact with the strict live SIP bundle once caller playback proof is captured.",
+            }
+            scoped_paths = self.call_scoped_proof_paths(payload)
+            paths_to_write = (
+                self.call_scoped_proof_paths(payload, artifact_ids=affected_artifact_ids)
+                if affected_artifact_ids is not None
+                else scoped_paths
+            )
+            if scoped_paths:
+                payload["callScopedProofArtifactPaths"] = [str(path) for path in scoped_paths]
+            self.proof_out.parent.mkdir(parents=True, exist_ok=True)
+            self.write_json_atomic(self.proof_out, payload)
+            for path in paths_to_write:
+                scoped_payload = self.call_scoped_payload(payload, path.parent.name)
+                scoped_payload["callScopedProofArtifactPaths"] = [str(path)]
+                self.write_json_atomic(path, scoped_payload)
+        except Exception as exc:
+            print(json.dumps({
+                "type": "verto.proof_artifact.error",
+                "at": now_iso(),
+                "eventType": event_type,
+                "proofArtifactPath": str(self.proof_out),
+                "error": str(exc),
+            }), flush=True)
 
-        payload = {
-            "schemaVersion": 1,
-            "generatedAt": now_iso(),
-            "eventType": event_type,
-            "status": "registered_media_answer_ready" if self.last_login.get("ok") else "blocked",
-            "reviewReady": False,
-            "vertoUrl": self.verto_url,
-            "login": self.login,
-            "transport": "freeswitch_verto_webrtc",
-            "inviteCount": self.invite_count,
-            "lastLogin": self.last_login,
-            "lastInvite": self.last_invite,
-            "lastAnswer": self.last_answer,
-            "lastError": self.last_error,
-            "pipelineEvidence": list(self.pipeline_evidence.values()),
-            "remainingMediaBlocker": "Verto signaling is configured and the sidecar can attempt a Pipecat-backed WebRTC answer, but caller-audible acceptance still requires a live 8600 proof showing rtc-asr final transcript and Kokoro/Pipecat playback heard by the caller.",
-            "nextAction": "Place a local 8600 call with the Verto bridge running, then attach this artifact with the strict live SIP bundle once caller playback proof is captured.",
-        }
-        self.proof_out.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = self.proof_out.with_suffix(f"{self.proof_out.suffix}.tmp")
+    def write_json_atomic(self, path: Path, payload: dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_suffix(f"{path.suffix}.tmp")
         tmp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf8")
-        tmp_path.replace(self.proof_out)
+        tmp_path.replace(path)
+
+    def call_scoped_proof_paths(self, payload: dict[str, Any], *, artifact_ids: list[str | None] | None = None) -> list[Path]:
+        if self.proof_out is None:
+            return []
+        if artifact_ids is not None:
+            ids: list[str] = []
+            for artifact_id in artifact_ids:
+                safe_id = safe_artifact_id(artifact_id)
+                if safe_id and safe_id not in ids:
+                    ids.append(safe_id)
+            return [self.proof_out.parent / "calls" / artifact_id / self.proof_out.name for artifact_id in ids]
+        ids: list[str] = []
+        for source in [
+            payload.get("lastInvite"),
+            payload.get("lastAnswer"),
+            payload.get("lastError"),
+            *payload.get("pipelineEvidence", []),
+        ]:
+            if not isinstance(source, dict):
+                continue
+            for key in ("callId", "vertoCallId", "sipCallId", "linkedSipCallId", "proofSipCallId", "harnessSipCallId", "accCallId"):
+                safe_id = safe_artifact_id(source.get(key))
+                if safe_id and safe_id not in ids:
+                    ids.append(safe_id)
+        return [self.proof_out.parent / "calls" / artifact_id / self.proof_out.name for artifact_id in ids]
+
+    def payload_matches_artifact_id(self, payload: dict[str, Any], artifact_id: str) -> bool:
+        for key in ("callId", "vertoCallId", "sipCallId", "linkedSipCallId", "proofSipCallId", "harnessSipCallId", "accCallId"):
+            if safe_artifact_id(payload.get(key)) == artifact_id:
+                return True
+        return False
+
+    def call_scoped_payload(self, payload: dict[str, Any], artifact_id: str) -> dict[str, Any]:
+        scoped_pipeline_evidence = [
+            item for item in payload.get("pipelineEvidence", [])
+            if isinstance(item, dict) and self.payload_matches_artifact_id(item, artifact_id)
+        ]
+        scoped_payload = dict(payload)
+        scoped_payload["pipelineEvidence"] = scoped_pipeline_evidence
+        for key in ("lastInvite", "lastAnswer", "lastError"):
+            value = payload.get(key)
+            scoped_payload[key] = value if isinstance(value, dict) and self.payload_matches_artifact_id(value, artifact_id) else {}
+        scoped_payload["inviteCount"] = len(scoped_pipeline_evidence)
+        return scoped_payload
 
     def write_sdp_artifact(self, call_id: str, kind: str, sdp: str) -> str | None:
         if self.proof_out is None:
             return None
-        safe_call_id = "".join(character if character.isalnum() or character in "._-" else "_" for character in call_id)
+        safe_call_id = safe_artifact_id(call_id) or "unknown-call"
         path = self.proof_out.parent / f"{safe_call_id}-{kind}.sdp"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(sdp, encoding="utf8")
         return str(path)
+
+    def linked_sip_call_id(self, params: dict[str, Any]) -> str | None:
+        for key in (
+            "acc_linked_sip_call_id",
+            "variable_acc_linked_sip_call_id",
+            "linkedSipCallId",
+            "linked_sip_call_id",
+            "aleg_uuid",
+            "variable_originating_leg_uuid",
+        ):
+            value = params.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    def proof_sip_call_id(self, params: dict[str, Any]) -> str | None:
+        for key in (
+            "sip_h_X-ACC-Proof-Call-ID",
+            "variable_sip_h_X-ACC-Proof-Call-ID",
+            "sip_h_X_ACC_Proof_Call_ID",
+            "variable_sip_h_X_ACC_Proof_Call_ID",
+            "X-ACC-Proof-Call-ID",
+            "x-acc-proof-call-id",
+            "proofSipCallId",
+            "harnessSipCallId",
+        ):
+            value = params.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    def destination_number(self, params: dict[str, Any]) -> str | None:
+        for key in (
+            "sip_h_X-ACC-Destination",
+            "variable_sip_h_X-ACC-Destination",
+            "sip_h_X_ACC_Destination",
+            "variable_sip_h_X_ACC_Destination",
+            "X-ACC-Destination",
+            "Caller-Destination-Number",
+            "acc_destination_number",
+            "variable_acc_destination_number",
+            "variable_destination_number",
+            "destinationNumber",
+            "destination",
+        ):
+            value = params.get(key)
+            if isinstance(value, str) and value.strip():
+                destination = value.strip()
+                return "8600" if destination.lower() == "acc" else destination
+        return None
+
+    def conversation_mode(self, params: dict[str, Any], destination_number: str | None) -> str:
+        for key in (
+            "sip_h_X-ACC-Conversation-Mode",
+            "variable_sip_h_X-ACC-Conversation-Mode",
+            "sip_h_X_ACC_Conversation_Mode",
+            "variable_sip_h_X_ACC_Conversation_Mode",
+            "X-ACC-Conversation-Mode",
+            "acc_conversation_mode",
+            "variable_acc_conversation_mode",
+            "conversationMode",
+        ):
+            value = params.get(key)
+            if isinstance(value, str) and value.strip() in {"scripted", "free_caller", "openai_llm"}:
+                return value.strip()
+        return "openai_llm" if destination_number == "8600" else "scripted"
+
+    async def end_acc_call(self, call_id: str, *, reason: str, timestamp: str | None = None, timeout: float = 2.0, linked_sip_call_id: str | None = None) -> bool:
+        try:
+            payload = {
+                "eventType": "call.ended",
+                "timestamp": timestamp or now_iso(),
+                "sipCallId": linked_sip_call_id or call_id,
+                "vertoCallId": call_id,
+                "hangupCause": reason,
+            }
+            if linked_sip_call_id:
+                payload["linkedSipCallId"] = linked_sip_call_id
+            await asyncio.to_thread(
+                json_http,
+                "POST",
+                f"{self.acc_url.rstrip('/')}/api/live-sip/events",
+                payload,
+                timeout,
+            )
+            return True
+        except Exception as exc:
+            self.last_error = {"at": now_iso(), "error": f"ACC live SIP call end failed: {exc}", "callId": call_id, "reason": reason}
+            print(json.dumps({"type": "verto.call_end.error", **self.last_error}), flush=True)
+            self.write_proof_artifact("verto.call_end.error")
+            return False
 
     def next_id(self) -> str:
         self._rpc_id += 1
@@ -355,12 +527,22 @@ class VertoAgentBridge:
     async def handle_invite(self, event: dict[str, Any]) -> None:
         params = event.get("params") if isinstance(event.get("params"), dict) else {}
         call_id = params.get("callID") or params.get("callId") or str(uuid4())
+        linked_sip_call_id = self.linked_sip_call_id(params)
+        proof_sip_call_id = self.proof_sip_call_id(params)
+        destination_number = self.destination_number(params)
+        conversation_mode = self.conversation_mode(params, destination_number)
         offer_sdp = params.get("sdp") if isinstance(params.get("sdp"), str) else ""
         if not offer_sdp.strip():
             proof = {
                 "type": "verto.invite.blocked",
                 "at": now_iso(),
                 "callId": call_id,
+                "vertoCallId": call_id,
+                "sipCallId": linked_sip_call_id or call_id,
+                "linkedSipCallId": linked_sip_call_id,
+                "proofSipCallId": proof_sip_call_id,
+                "destinationNumber": destination_number,
+                "conversationMode": conversation_mode,
                 "mediaTarget": "pipecat_verto_webrtc_agent_leg",
                 "reviewReady": False,
                 "blocker": "Incoming FreeSWITCH Verto invite did not include SDP, so the Pipecat sidecar cannot create a WebRTC answer.",
@@ -369,38 +551,150 @@ class VertoAgentBridge:
             print(json.dumps(proof), flush=True)
             self.write_proof_artifact("verto.invite.blocked")
             return
+        offer_sdp_path = None
+        offer_artifact_error = None
+        try:
+            offer_sdp_path = self.write_sdp_artifact(call_id, "offer", offer_sdp)
+        except Exception as exc:
+            offer_artifact_error = str(exc)
+            self.last_error = {
+                "at": now_iso(),
+                "error": f"Verto offer SDP artifact write failed before answer delivery: {exc}",
+                "callId": call_id,
+                "vertoCallId": call_id,
+                "sipCallId": linked_sip_call_id or call_id,
+                "linkedSipCallId": linked_sip_call_id,
+                "proofSipCallId": proof_sip_call_id,
+            }
+            print(json.dumps({"type": "verto.invite.artifact_error", **self.last_error}), flush=True)
         proof = {
             "type": "verto.invite.received",
             "at": now_iso(),
             "callId": call_id,
+            "vertoCallId": call_id,
+            "sipCallId": linked_sip_call_id or call_id,
+            "linkedSipCallId": linked_sip_call_id,
+            "proofSipCallId": proof_sip_call_id,
+            "destinationNumber": destination_number,
+            "conversationMode": conversation_mode,
             "mediaTarget": "pipecat_verto_webrtc_agent_leg",
             "reviewReady": False,
             "offerSdpBytes": len(offer_sdp.encode("utf-8")),
-            "offerSdpPath": self.write_sdp_artifact(call_id, "offer", offer_sdp),
+            "offerSdpPath": offer_sdp_path,
+            "offerSdpArtifactPersisted": offer_sdp_path is not None,
+            "offerSdpArtifactError": offer_artifact_error,
             "nextAction": "Answer the Verto WebRTC dialog with the shared Pipecat pipeline and then rerun the strict live SIP bundle for caller-audible proof.",
         }
         self.last_invite = proof
         print(json.dumps(proof), flush=True)
         self.write_proof_artifact("verto.invite.received")
-        await self.answer_invite(call_id=call_id, offer_sdp=offer_sdp, params=params)
+        await self.answer_invite(
+            call_id=call_id,
+            linked_sip_call_id=linked_sip_call_id,
+            proof_sip_call_id=proof_sip_call_id,
+            destination_number=destination_number,
+            conversation_mode=conversation_mode,
+            offer_sdp=offer_sdp,
+            params=params,
+        )
 
-    async def answer_invite(self, *, call_id: str, offer_sdp: str, params: dict[str, Any]) -> None:
+    async def answer_invite(self, *, call_id: str, linked_sip_call_id: str | None, proof_sip_call_id: str | None, destination_number: str | None, conversation_mode: str, offer_sdp: str, params: dict[str, Any]) -> None:
         readiness = await asyncio.to_thread(check_readiness, self.acc_url)
-        if not readiness.ok:
+        sip_call_id = linked_sip_call_id or call_id
+        try:
+            started_call = await asyncio.to_thread(
+                json_http,
+                "POST",
+                f"{self.acc_url.rstrip('/')}/api/live-sip/events",
+                {
+                    "eventType": "call.started",
+                    "timestamp": now_iso(),
+                    "sipCallId": sip_call_id,
+                    "vertoCallId": call_id,
+                    **({"linkedSipCallId": linked_sip_call_id} if linked_sip_call_id else {}),
+                    **({"proofSipCallId": proof_sip_call_id} if proof_sip_call_id else {}),
+                    **({"destinationNumber": destination_number} if destination_number else {}),
+                    "conversationMode": conversation_mode,
+                    "telephonyMode": "local_sip",
+                    "source": "freeswitch_verto",
+                    "rtcAsrMode": "rtc_asr_live" if readiness.ok else "rtc_asr_blocked",
+                },
+            )
+            acc_call_id = str(started_call["call"]["session"]["callId"])
+        except Exception as exc:
             self.last_answer = {
                 "type": "verto.answer.blocked",
                 "at": now_iso(),
                 "callId": call_id,
+                "vertoCallId": call_id,
+                "sipCallId": sip_call_id,
+                "linkedSipCallId": linked_sip_call_id,
+                "proofSipCallId": proof_sip_call_id,
                 "reviewReady": False,
-                "blocker": "ACC, rtc-asr, Kokoro, or Pipecat runtime readiness failed before answering Verto media.",
-                "readiness": {
-                    "status": readiness.status,
-                    "detail": readiness.detail,
-                    "blockers": readiness.blockers,
-                },
+                "blocker": f"ACC live SIP call creation failed: {exc}",
             }
             print(json.dumps(self.last_answer), flush=True)
             self.write_proof_artifact("verto.answer.blocked")
+            return
+
+        if not readiness.ok:
+            blocked_evidence_posted = False
+            blocked_evidence_error = None
+            try:
+                await asyncio.to_thread(
+                    json_http,
+                    "POST",
+                    f"{self.acc_url.rstrip('/')}/api/live-sip/events",
+                    {
+                        "eventType": "rtc_asr.blocked",
+                        "timestamp": now_iso(),
+                        "sipCallId": sip_call_id,
+                        "vertoCallId": call_id,
+                        **({"linkedSipCallId": linked_sip_call_id} if linked_sip_call_id else {}),
+                        **({"proofSipCallId": proof_sip_call_id} if proof_sip_call_id else {}),
+                        **({"destinationNumber": destination_number} if destination_number else {}),
+                        "conversationMode": conversation_mode,
+                        "blocker": readiness.detail,
+                        "nextAction": "Restore ACC, rtc-asr, Kokoro, and Pipecat readiness before rerunning the Verto live SIP proof.",
+                    },
+                )
+                blocked_evidence_posted = True
+            except Exception as exc:
+                blocked_evidence_error = str(exc)
+                self.last_error = {
+                    "at": now_iso(),
+                    "error": f"ACC rtc_asr.blocked evidence post failed: {exc}",
+                    "callId": call_id,
+                    "vertoCallId": call_id,
+                    "sipCallId": sip_call_id,
+                    "linkedSipCallId": linked_sip_call_id,
+                }
+                print(json.dumps({"type": "verto.rtc_asr_blocked.post_error", **self.last_error}), flush=True)
+                self.write_proof_artifact("verto.rtc_asr_blocked.post_error")
+            finally:
+                self.last_answer = {
+                    "type": "verto.answer.blocked",
+                    "at": now_iso(),
+                    "callId": call_id,
+                    "vertoCallId": call_id,
+                    "sipCallId": sip_call_id,
+                    "linkedSipCallId": linked_sip_call_id,
+                    "proofSipCallId": proof_sip_call_id,
+                    "destinationNumber": destination_number,
+                    "conversationMode": conversation_mode,
+                    "reviewReady": False,
+                    "blocker": "ACC, rtc-asr, Kokoro, or Pipecat runtime readiness failed before answering Verto media.",
+                    "blockedEvidencePosted": blocked_evidence_posted,
+                    "blockedEvidenceError": blocked_evidence_error,
+                    "readiness": {
+                        "status": readiness.status,
+                        "detail": readiness.detail,
+                        "blockers": readiness.blockers,
+                    },
+                }
+                print(json.dumps(self.last_answer), flush=True)
+                self.write_proof_artifact("verto.answer.blocked")
+                await self.end_acc_call(call_id, reason="verto_readiness_blocked", linked_sip_call_id=linked_sip_call_id)
             return
 
         session_id = f"verto-{call_id}"
@@ -414,38 +708,124 @@ class VertoAgentBridge:
                     "source": "freeswitch_verto",
                     "sessionId": session_id,
                     "callId": call_id,
+                    "sipCallId": sip_call_id,
+                    "linkedSipCallId": linked_sip_call_id,
+                    "proofSipCallId": proof_sip_call_id,
+                    "destinationNumber": destination_number,
+                    "conversationMode": conversation_mode,
+                    "vertoCallId": call_id,
                     "vertoParams": {key: value for key, value in params.items() if key != "sdp"},
                 },
             }
         )
 
         async def on_connection(connection: Any) -> None:
-            await self.start_pipeline(connection=connection, session_id=session_id, call_id=call_id, readiness=readiness)
+            try:
+                await self.start_pipeline(
+                    connection=connection,
+                    session_id=session_id,
+                    call_id=call_id,
+                    linked_sip_call_id=linked_sip_call_id,
+                    proof_sip_call_id=proof_sip_call_id,
+                    destination_number=destination_number,
+                    conversation_mode=conversation_mode,
+                    acc_call_id=acc_call_id,
+                    readiness=readiness,
+                )
+            except Exception as exc:
+                self.last_error = {"at": now_iso(), "error": f"Verto pipeline start failed: {exc}", "callId": call_id, "vertoCallId": call_id, "sipCallId": sip_call_id, "linkedSipCallId": linked_sip_call_id, "proofSipCallId": proof_sip_call_id}
+                print(json.dumps({"type": "verto.pipeline_start.error", **self.last_error}), flush=True)
+                self.write_proof_artifact("verto.pipeline_start.error")
+                await self.end_acc_call(call_id, reason="verto_pipeline_start_failed", linked_sip_call_id=linked_sip_call_id)
+                raise
 
-        answer = await self.request_handler.handle_web_request(small_request, on_connection)
+        try:
+            answer = await self.request_handler.handle_web_request(small_request, on_connection)
+        except Exception as exc:
+            self.last_answer = {
+                "type": "verto.answer.failed",
+                "at": now_iso(),
+                "callId": call_id,
+                "vertoCallId": call_id,
+                "sipCallId": sip_call_id,
+                "linkedSipCallId": linked_sip_call_id,
+                "proofSipCallId": proof_sip_call_id,
+                "reviewReady": False,
+                "blocker": f"Pipecat SmallWebRTCRequestHandler failed before returning an SDP answer: {exc}",
+            }
+            print(json.dumps(self.last_answer), flush=True)
+            self.write_proof_artifact("verto.answer.failed")
+            if session_id in self.sessions:
+                await self.close_session(session_id, reason="verto_sdp_answer_failed")
+            else:
+                await self.end_acc_call(call_id, reason="verto_sdp_answer_failed", linked_sip_call_id=linked_sip_call_id)
+            return
         if not answer or not isinstance(answer.get("sdp"), str):
             self.last_answer = {
                 "type": "verto.answer.failed",
                 "at": now_iso(),
                 "callId": call_id,
+                "vertoCallId": call_id,
+                "sipCallId": sip_call_id,
+                "linkedSipCallId": linked_sip_call_id,
+                "proofSipCallId": proof_sip_call_id,
                 "reviewReady": False,
                 "blocker": "Pipecat SmallWebRTCRequestHandler did not return an SDP answer for the Verto offer.",
             }
             print(json.dumps(self.last_answer), flush=True)
             self.write_proof_artifact("verto.answer.failed")
+            if session_id in self.sessions:
+                await self.close_session(session_id, reason="verto_sdp_answer_failed")
+            else:
+                await self.end_acc_call(call_id, reason="verto_sdp_answer_failed", linked_sip_call_id=linked_sip_call_id)
             return
 
         answer_sdp = normalize_verto_answer_sdp(normalize_browser_answer_sdp(str(answer["sdp"])))
-        await self.send_rpc("verto.answer", {"dialogParams": {"callID": call_id}, "sdp": answer_sdp})
-        answer_sdp_path = self.write_sdp_artifact(call_id, "answer", answer_sdp)
+        try:
+            await self.send_rpc("verto.answer", {"dialogParams": {"callID": call_id}, "sdp": answer_sdp})
+        except Exception as exc:
+            self.last_answer = {
+                "type": "verto.answer.failed",
+                "at": now_iso(),
+                "callId": call_id,
+                "vertoCallId": call_id,
+                "sipCallId": sip_call_id,
+                "linkedSipCallId": linked_sip_call_id,
+                "proofSipCallId": proof_sip_call_id,
+                "reviewReady": False,
+                "blocker": f"Verto answer send failed after ACC call creation: {exc}",
+            }
+            print(json.dumps(self.last_answer), flush=True)
+            self.write_proof_artifact("verto.answer.failed")
+            await self.close_session(session_id, reason="verto_answer_send_failed")
+            return
+        answer_sdp_path = None
+        answer_artifact_error = None
+        try:
+            answer_sdp_path = self.write_sdp_artifact(call_id, "answer", answer_sdp)
+        except Exception as exc:
+            answer_artifact_error = str(exc)
+            self.last_error = {
+                "at": now_iso(),
+                "error": f"Verto answer SDP artifact write failed after successful answer delivery: {exc}",
+                "callId": call_id,
+            }
+            print(json.dumps({"type": "verto.answer.artifact_error", **self.last_error}), flush=True)
         self.last_answer = {
             "type": "verto.answer.sent",
             "at": now_iso(),
             "callId": call_id,
+            "vertoCallId": call_id,
+            "sipCallId": sip_call_id,
+            "linkedSipCallId": linked_sip_call_id,
+            "proofSipCallId": proof_sip_call_id,
+            "accCallId": acc_call_id,
             "sessionId": session_id,
             "pcId": str(answer.get("pc_id") or call_id),
             "answerSdpBytes": len(answer_sdp.encode("utf-8")),
             "answerSdpPath": answer_sdp_path,
+            "answerSdpArtifactPersisted": answer_sdp_path is not None,
+            "answerSdpArtifactError": answer_artifact_error,
             "transport": "SmallWebRTCTransport",
             "pipeline": ACC_VOICE_PIPELINE_CONTRACT,
             "reviewReady": False,
@@ -454,17 +834,43 @@ class VertoAgentBridge:
         print(json.dumps(self.last_answer), flush=True)
         self.write_proof_artifact("verto.answer.sent")
 
-    async def start_pipeline(self, *, connection: Any, session_id: str, call_id: str, readiness: Any) -> None:
+    async def start_pipeline(
+        self,
+        *,
+        connection: Any,
+        session_id: str,
+        call_id: str,
+        linked_sip_call_id: str | None,
+        proof_sip_call_id: str | None,
+        destination_number: str | None,
+        conversation_mode: str,
+        acc_call_id: str,
+        readiness: Any,
+    ) -> None:
         def record_pipeline_evidence(snapshot: dict[str, Any]) -> None:
-            self.pipeline_evidence[call_id] = snapshot
-            self.write_proof_artifact("verto.pipeline.stage")
+            self.pipeline_evidence[call_id] = {
+                **snapshot,
+                "accCallId": acc_call_id,
+                "vertoCallId": call_id,
+                "sipCallId": linked_sip_call_id or call_id,
+                "linkedSipCallId": linked_sip_call_id,
+                "proofSipCallId": proof_sip_call_id,
+                "conversationMode": conversation_mode,
+            }
+            self.write_proof_artifact(
+                "verto.pipeline.stage",
+                affected_artifact_ids=[call_id, acc_call_id, linked_sip_call_id, proof_sip_call_id],
+            )
 
         session = AccVoicePipelineSession(
             acc_url=self.acc_url,
-            call_id=call_id,
+            call_id=acc_call_id,
+            correlation_id=f"acc-pipecat-{call_id}",
             readiness=readiness,
             evidence_callback=record_pipeline_evidence,
+            conversation_mode=conversation_mode,
         )
+        session.hold_caller_turns("prerecorded_greeting_evidence_pending")
         transport = SmallWebRTCTransport(
             webrtc_connection=connection,
             params=TransportParams(
@@ -490,20 +896,156 @@ class VertoAgentBridge:
             idle_timeout_secs=None,
         )
         runner = PipelineRunner()
+        session_record: dict[str, Any] = {}
         runner_task = asyncio.create_task(runner.run(task, auto_end=False))
-        session_record = {
-            "connection": connection,
-            "transport": transport,
-            "runner": runner,
-            "runnerTask": runner_task,
-            "pipelineTask": task,
-            "turnSession": session,
-            "callId": call_id,
-            "sessionId": session_id,
-            "startedAt": now_iso(),
-            "closedAt": None,
-            "closeReason": None,
-        }
+        async def queue_prerecorded_intro() -> None:
+            prewarm_task = asyncio.create_task(session.prewarm_conversation_tts_cache())
+            session_record["prewarmTask"] = prewarm_task
+            flow_manager_task = asyncio.create_task(session.get_flow_manager_adapter().initialize())
+            greeting_preroll_ms = max(int(os.environ.get("ACC_SIP_GREETING_PREROLL_MS", "300")), 0)
+            if greeting_preroll_ms:
+                await asyncio.sleep(greeting_preroll_ms / 1000)
+            session.record_stage(
+                "greeting.media_preroll_completed",
+                prerollMs=greeting_preroll_ms,
+                reason="allow_ice_dtls_srtp_and_output_clock_to_stabilize",
+            )
+            intro_path = Path(os.environ.get("ACC_SIP_PRERECORDED_INTRO_PATH", str(DEFAULT_INTRO_AUDIO_PATH)))
+            with wave.open(str(intro_path), "rb") as intro:
+                if intro.getnchannels() != 1 or intro.getsampwidth() != 2:
+                    raise RuntimeError("Prerecorded SIP intro must be mono 16-bit PCM WAV")
+                intro_sample_rate = intro.getframerate()
+                intro_pcm = intro.readframes(intro.getnframes())
+            intro_context_id = f"prerecorded-intro-{call_id}"
+            intro_chunk_bytes = intro_sample_rate * 2 * 20 // 1000
+            session.begin_output_stream(stream_id=intro_context_id)
+            intro_output_generation = session.output_generation
+            intro_frames = [TTSStartedFrame(context_id=intro_context_id)]
+            intro_chunk_count = 0
+            for offset in range(0, len(intro_pcm), intro_chunk_bytes):
+                audio_chunk = intro_pcm[offset:offset + intro_chunk_bytes]
+                intro_chunk_count += 1
+                session.extend_output_window(audio_bytes=len(audio_chunk), sample_rate=intro_sample_rate)
+                session.record_agent_track(
+                    audio_chunk,
+                    sample_rate=intro_sample_rate,
+                    event_id=f"prerecorded-intro-frame-{intro_chunk_count}",
+                )
+                session.record_output_chunk(len(audio_chunk))
+                intro_frames.append(TTSAudioRawFrame(
+                    audio=audio_chunk,
+                    sample_rate=intro_sample_rate,
+                    num_channels=1,
+                    context_id=intro_context_id,
+                ))
+            intro_frames.append(TTSStoppedFrame(context_id=intro_context_id))
+            await task.queue_frames(intro_frames)
+            intro_duration_s = len(intro_pcm) / max(intro_sample_rate * 2, 1)
+            greeting_text = os.environ.get("ACC_SIP_PRERECORDED_INTRO_TEXT", DEFAULT_INTRO_TEXT)
+
+            async def finish_intro_output_stream() -> None:
+                await asyncio.sleep(intro_duration_s)
+                if (
+                    session.output_stream_id == intro_context_id
+                    and session.output_generation == intro_output_generation
+                ):
+                    session.finish_output_stream()
+                    try:
+                        await asyncio.to_thread(
+                            json_http,
+                            "POST",
+                            f"{self.acc_url.rstrip('/')}/api/live-sip/events",
+                            {
+                                "eventType": "agent.greeting",
+                                "timestamp": now_iso(),
+                                "sipCallId": linked_sip_call_id or call_id,
+                                "vertoCallId": call_id,
+                                **({"linkedSipCallId": linked_sip_call_id} if linked_sip_call_id else {}),
+                                **({"proofSipCallId": proof_sip_call_id} if proof_sip_call_id else {}),
+                                **({"destinationNumber": destination_number} if destination_number else {}),
+                                "conversationMode": conversation_mode,
+                                "text": greeting_text,
+                            },
+                        )
+                    except Exception as exc:
+                        session.record_stage(
+                            "greeting.evidence_post_failed",
+                            ok=False,
+                            error=str(exc),
+                            streamId=intro_context_id,
+                            outputGeneration=session.output_generation,
+                        )
+                    finally:
+                        session.release_caller_turns("prerecorded_greeting_evidence_finished")
+                    session.record_stage(
+                        "tts.prerecorded_intro_completed",
+                        streamId=intro_context_id,
+                        outputGeneration=session.output_generation,
+                        durationMs=round(intro_duration_s * 1000),
+                    )
+                else:
+                    session.record_stage(
+                        "tts.prerecorded_intro_interrupted",
+                        streamId=intro_context_id,
+                        queuedOutputGeneration=intro_output_generation,
+                        outputGeneration=session.output_generation,
+                        durationMs=round(intro_duration_s * 1000),
+                        bargeIn=session.last_barge_in_evidence,
+                    )
+                    session.release_caller_turns("prerecorded_greeting_interrupted")
+
+            asyncio.create_task(finish_intro_output_stream())
+            session.record_stage(
+                "tts.prerecorded_intro_queued",
+                text=greeting_text,
+                audioPath=str(intro_path),
+                audioBytes=len(intro_pcm),
+                chunkCount=intro_chunk_count,
+                streamId=intro_context_id,
+                sampleRate=intro_sample_rate,
+                durationMs=round(len(intro_pcm) / (intro_sample_rate * 2) * 1000),
+            )
+            # Keep cache generation off the greeting's media clock. It normally
+            # completes under the prerecorded intro or while the caller speaks.
+            prewarm_task.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
+            flow_manager_task.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
+
+        @connection.event_handler("connected")
+        async def queue_intro_for_connected_peer(_connection: Any) -> None:
+            verto_owns_greeting = os.environ.get("ACC_VERTO_OWNS_GREETING", "true").strip().lower() != "false"
+            session.record_stage(
+                "greeting.owner_selected",
+                owner="pipecat_verto_bridge" if verto_owns_greeting else "freeswitch_esl_bridge",
+                vertoOwnsGreeting=verto_owns_greeting,
+            )
+            if verto_owns_greeting:
+                try:
+                    await queue_prerecorded_intro()
+                except Exception as exc:
+                    session.record_stage("tts.prerecorded_intro_failed", ok=False, error=str(exc))
+                    session.release_caller_turns("prerecorded_greeting_failed")
+                    raise
+            else:
+                session.release_caller_turns("freeswitch_esl_bridge_owns_greeting")
+        session_record.update(
+            {
+                "connection": connection,
+                "transport": transport,
+                "runner": runner,
+                "runnerTask": runner_task,
+                "pipelineTask": task,
+                "turnSession": session,
+                "callId": call_id,
+                "vertoCallId": call_id,
+                "sipCallId": linked_sip_call_id or call_id,
+                "linkedSipCallId": linked_sip_call_id,
+                "accCallId": acc_call_id,
+                "sessionId": session_id,
+                "startedAt": now_iso(),
+                "closedAt": None,
+                "closeReason": None,
+            }
+        )
         self.sessions[session_id] = session_record
         self.sessions[call_id] = session_record
 
@@ -513,24 +1055,73 @@ class VertoAgentBridge:
 
     async def close_session(self, session_id: str, *, reason: str = "verto session closed") -> None:
         session = self.sessions.get(session_id) or {}
+        call_id = session.get("callId")
+        linked_sip_call_id = session.get("linkedSipCallId")
+        closed_at = now_iso()
         if session:
-            session["closedAt"] = session.get("closedAt") or now_iso()
+            session["closedAt"] = session.get("closedAt") or closed_at
             session["closeReason"] = session.get("closeReason") or reason
+            closed_at = session["closedAt"]
         for key, value in list(self.sessions.items()):
             if value is session:
                 self.sessions.pop(key, None)
-        turn_session = session.get("turnSession")
-        if isinstance(turn_session, AccVoicePipelineSession):
-            turn_session.cancel_output("verto_peer_closed")
-            await turn_session.close_rtc_asr_stream(reason)
-        runner = session.get("runner")
-        if isinstance(runner, PipelineRunner):
-            await runner.cancel(reason)
-        task = session.get("runnerTask")
-        if isinstance(task, asyncio.Task):
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+        teardown_errors: list[dict[str, Any]] = []
+
+        def record_teardown_error(stage: str, exc: BaseException) -> None:
+            detail = {
+                "at": now_iso(),
+                "error": f"Verto session teardown failed during {stage}: {exc}",
+                "callId": call_id,
+                "sessionId": session_id,
+                "reason": reason,
+                "stage": stage,
+            }
+            teardown_errors.append(detail)
+            self.last_error = detail
+            print(json.dumps({"type": "verto.session_teardown.error", **detail}), flush=True)
+
+        try:
+            turn_session = session.get("turnSession")
+            if isinstance(turn_session, AccVoicePipelineSession):
+                try:
+                    turn_session.cancel_output("verto_peer_closed")
+                    await turn_session.close_rtc_asr_stream(reason)
+                except Exception as exc:
+                    record_teardown_error("rtc_asr_close", exc)
+            runner = session.get("runner")
+            if isinstance(runner, PipelineRunner):
+                try:
+                    await runner.cancel(reason)
+                except Exception as exc:
+                    record_teardown_error("runner_cancel", exc)
+            task = session.get("runnerTask")
+            if isinstance(task, asyncio.Task):
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    record_teardown_error("runner_task", exc)
+            prewarm_task = session.get("prewarmTask")
+            if isinstance(prewarm_task, asyncio.Task):
+                prewarm_task.cancel()
+                try:
+                    await prewarm_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    record_teardown_error("prewarm_task", exc)
+        finally:
+            if teardown_errors:
+                self.write_proof_artifact("verto.session_teardown.error")
+            if isinstance(call_id, str) and call_id:
+                await self.end_acc_call(
+                    call_id,
+                    reason=reason,
+                    timestamp=closed_at,
+                    linked_sip_call_id=linked_sip_call_id if isinstance(linked_sip_call_id, str) else None,
+                )
 
     def readiness_payload(self) -> dict[str, Any]:
         logged_in = bool(self.last_login.get("ok"))

@@ -1218,6 +1218,10 @@ export class EslBridge {
     return new PipecatRtpFrameCollector({ maxFrames: this.options.rtpMaxFrames ?? 200 });
   }
 
+  vertoOwnsMedia() {
+    return this.options.vertoOwnsMedia === true || this.options.vertoOwnsGreeting === true;
+  }
+
   activeRtpCollector() {
     if (!this.currentRtpCallUuid) return this.rtpCollector;
     return this.callMap.get(this.currentRtpCallUuid)?.rtpCollector ?? this.rtpCollector;
@@ -1423,6 +1427,7 @@ export class EslBridge {
   async onAnswer(uuid, headers) {
     if (this.callMap.has(uuid)) return;
     const destination = headers.get("Caller-Destination-Number") ?? "8600";
+    const conversationMode = headers.get("variable_acc_conversation_mode") ?? (destination === "8600" || destination === "acc" ? "openai_llm" : "scripted");
     this.rtpCollector = this.createRtpCollector();
     const rtpCollector = this.createRtpCollector();
     const rtpPlaybackSink = this.createRtpPlaybackSink();
@@ -1438,6 +1443,7 @@ export class EslBridge {
       telephonyMode: this.options.telephonyMode,
       rtcAsrMode: this.options.rtcAsrUrl ? "rtc_asr_live" : "rtc_asr_blocked",
       destination,
+      conversationMode,
     });
     this.callMap.set(uuid, {
       wavPath,
@@ -1458,9 +1464,11 @@ export class EslBridge {
     this.currentRtpCallUuid = uuid;
     this.send(`api uuid_record ${uuid} start ${freeswitchPath}`);
     await this.playPipecatOutputFixture(uuid);
-    const greetingPlayback = await this.playLiveKokoroTts(latestAgentText(response.body) || this.options.initialGreetingText, uuid);
+    const greetingPlayback = this.options.vertoOwnsGreeting
+      ? null
+      : await this.playLiveKokoroTts(latestAgentText(response.body) || this.options.initialGreetingText, uuid);
     const call = this.callMap.get(uuid);
-    if (call) {
+    if (call && greetingPlayback) {
       const greetingWasRecordedInCallerWav = playbackHasCompleteFreeswitchBroadcastEvidence(greetingPlayback);
       call.initialGreetingPlaybackDurationMs = greetingWasRecordedInCallerWav ? greetingPlayback.ttsFrameDurationMs : 0;
     }
@@ -1470,6 +1478,18 @@ export class EslBridge {
   async onRecordStop(uuid) {
     const call = this.callMap.get(uuid);
     if (!call) return;
+    if (this.vertoOwnsMedia()) {
+      this.events.push({
+        at: nowIso(),
+        legacyRecordStopIgnored: {
+          uuid,
+          reason: "verto_owns_media",
+          accCallId: call.accCallId ?? null,
+        },
+      });
+      await this.flushLog();
+      return;
+    }
     await this.playPipecatOutputFixture(uuid);
     let pipecatRtpFrameBatch = (call.rtpCollector ?? this.rtpCollector).summary();
     if (pipecatRtpFrameBatch.frames.length === 0) {
@@ -1609,6 +1629,8 @@ async function main() {
     kokoroVoice: argValue("--kokoro-voice", process.env.KOKORO_VOICE || "af_heart"),
     kokoroModel: argValue("--kokoro-model", process.env.KOKORO_MODEL || "kokoro"),
     initialGreetingText: argValue("--initial-greeting", process.env.ACC_SIP_INITIAL_GREETING || "Hello, this is the agentic contact center. I can hear you now."),
+    vertoOwnsGreeting: process.env.ACC_VERTO_OWNS_GREETING === "true",
+    vertoOwnsMedia: process.env.ACC_VERTO_OWNS_MEDIA === "true" || process.env.ACC_VERTO_OWNS_GREETING === "true",
   });
   await bridge.start();
   console.log(`FreeSWITCH ACC bridge connected target ${bridge.options.eslHost}:${bridge.options.eslPort}; ACC ${bridge.options.accBaseUrl}`);

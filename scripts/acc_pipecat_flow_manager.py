@@ -11,6 +11,8 @@ from __future__ import annotations
 import asyncio
 import importlib
 import importlib.metadata
+import json
+import urllib.error
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Callable
@@ -27,7 +29,7 @@ FLOW_MANAGER_ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "diagnose": {"diagnose", "policy_hold", "wrap"},
     "policy_hold": {"policy_hold", "operator_steer", "wrap"},
     "operator_steer": {"operator_steer", "steered_response", "wrap"},
-    "steered_response": {"steered_response", "wrap"},
+    "steered_response": {"steered_response", "diagnose", "wrap"},
     "wrap": {"wrap"},
 }
 
@@ -40,6 +42,16 @@ FLOW_MANAGER_NODE_INTENTS = {
     "steered_response": "Deliver only the bounded response approved by ACC operator controls.",
     "wrap": "Stop automated retention handling and preserve handoff or close proof.",
 }
+
+HELD_CALLER_TURN_ERRORS = {
+    "live_sip_operator_hold_active": "caller_turn_held",
+    "live_sip_openai_automation_stopped": "caller_turn_stopped",
+    "caller_turn_delivery_ack_preview_pending": "caller_turn_held",
+    "live_sip_call_ended": "caller_turn_terminal",
+}
+FLOW_MANAGER_TERMINAL_OPERATOR_ACTIONS = {"escalate_to_human", "transfer", "end_call"}
+FLOW_MANAGER_OPERATOR_RELEASE_ACTIONS = {"resume", "disarm_fallback"}
+FLOW_MANAGER_RESYNCABLE_STOP_NODES = {"policy_hold", "operator_steer", "wrap"}
 
 
 class FlowManagerRuntimeError(RuntimeError):
@@ -110,6 +122,7 @@ class AccPipecatFlowManagerAdapter:
         self.pending_transition: dict[str, Any] | None = None
         self._transition_available = asyncio.Event()
         self._transition_available.set()
+        self._initialize_lock = asyncio.Lock()
         self._preview_lock = asyncio.Lock()
         self._prepared_transition_trace_start: int | None = None
         self._terminal_result: dict[str, Any] | None = None
@@ -149,23 +162,26 @@ class AccPipecatFlowManagerAdapter:
     async def initialize(self) -> None:
         if self.initialized:
             return
-        versions = self.runtime_versions()
-        factory = self.resolve_manager_factory()
-        self.manager = factory(
-            llm=object(),
-            context_aggregator=None,
-            worker=self.frame_sink,
-        )
-        await self.manager.initialize(flow_manager_node_config("call_started"))
-        self.initialized = True
-        self.last_evidence = {
-            "ok": True,
-            "runtimeAdapter": "pipecat_flows.FlowManager",
-            "runtimeVersions": versions,
-            "currentNode": self.manager.current_node,
-            "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
-            "queuedFrameTypes": list(self.frame_sink.queued_frame_types),
-        }
+        async with self._initialize_lock:
+            if self.initialized:
+                return
+            versions = self.runtime_versions()
+            factory = self.resolve_manager_factory()
+            self.manager = factory(
+                llm=object(),
+                context_aggregator=None,
+                worker=self.frame_sink,
+            )
+            await self.manager.initialize(flow_manager_node_config("call_started"))
+            self.initialized = True
+            self.last_evidence = {
+                "ok": True,
+                "runtimeAdapter": "pipecat_flows.FlowManager",
+                "runtimeVersions": versions,
+                "currentNode": self.manager.current_node,
+                "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
+                "queuedFrameTypes": list(self.frame_sink.queued_frame_types),
+            }
 
     def validate_transition(self, target_node: str) -> str:
         if not self.manager or not self.initialized:
@@ -195,6 +211,110 @@ class AccPipecatFlowManagerAdapter:
             "transitionCount": len(self.transition_trace),
             "queuedFrameTypes": list(self.frame_sink.queued_frame_types),
         }
+
+    @staticmethod
+    def _event_detail(event: Any) -> dict[str, Any]:
+        if not isinstance(event, dict):
+            return {}
+        detail = event.get("detail")
+        return detail if isinstance(detail, dict) else {}
+
+    @classmethod
+    def _released_fail_closed_after_stop(cls, preview: dict[str, Any]) -> bool:
+        events = preview.get("events")
+        if not isinstance(events, list):
+            return False
+
+        stop_index = -1
+        release_index = -1
+        for index, event in enumerate(events):
+            if not isinstance(event, dict):
+                continue
+            event_type = event.get("type")
+            detail = cls._event_detail(event)
+            fail_closed_handoff = (
+                event_type == "human_handoff_started"
+                and isinstance(detail.get("source"), str)
+                and "fail_closed" in detail["source"]
+            )
+            terminal_operator_action = (
+                event_type == "operator_steer_applied"
+                and isinstance(detail.get("action"), str)
+                and detail["action"] in FLOW_MANAGER_TERMINAL_OPERATOR_ACTIONS
+            )
+            if (
+                event_type == "demo_fallback_triggered"
+                or fail_closed_handoff
+                or terminal_operator_action
+                or event_type in {"operator_transfer_started", "operator_call_ended"}
+            ):
+                stop_index = index
+            if event_type == "demo_fallback_disarmed":
+                release_index = index
+            if (
+                event_type == "operator_steer_applied"
+                and isinstance(detail.get("action"), str)
+                and detail["action"] in FLOW_MANAGER_OPERATOR_RELEASE_ACTIONS
+            ):
+                release_index = index
+        return stop_index >= 0 and release_index > stop_index
+
+    @classmethod
+    def _latest_acc_transition_source(cls, preview: dict[str, Any], target_node: str) -> str | None:
+        events = preview.get("events")
+        if not isinstance(events, list):
+            return None
+
+        for event in reversed(events):
+            if not isinstance(event, dict) or event.get("type") != "flow_state_transition":
+                continue
+            detail = cls._event_detail(event)
+            if detail.get("to") == target_node and isinstance(detail.get("from"), str):
+                return detail["from"]
+        return None
+
+    async def resync_released_fail_closed_state(self, preview: dict[str, Any], target_node: str) -> None:
+        if not self.manager or not self.initialized:
+            return
+        current_node = getattr(self.manager, "current_node", None)
+        if (
+            current_node not in FLOW_MANAGER_RESYNCABLE_STOP_NODES
+            or target_node in FLOW_MANAGER_ALLOWED_TRANSITIONS.get(current_node, set())
+        ):
+            return
+        if not self._released_fail_closed_after_stop(preview):
+            return
+        restored_node = self._latest_acc_transition_source(preview, target_node)
+        if (
+            restored_node not in FLOW_MANAGER_NODE_INTENTS
+            or target_node not in FLOW_MANAGER_ALLOWED_TRANSITIONS.get(restored_node, set())
+        ):
+            return
+
+        await self.manager.set_node_from_config(flow_manager_node_config(restored_node))
+        self._terminal_result = None
+        transition = {
+            "from": current_node,
+            "to": restored_node,
+            "reason": "acc_released_fail_closed_resync",
+            "at": datetime.now(UTC).isoformat(timespec="milliseconds"),
+            "resynchronized": True,
+        }
+        self.transition_trace.append(transition)
+        evidence = {
+            **self.last_evidence,
+            "ok": True,
+            "currentNode": restored_node,
+            "lastTransition": transition,
+            "transitionCount": len(self.transition_trace),
+            "resynchronizedFrom": current_node,
+            "resynchronizedTo": restored_node,
+            "resynchronizationReason": "acc_released_fail_closed",
+            "queuedFrameTypes": list(self.frame_sink.queued_frame_types),
+        }
+        for key in ("error", "detail", "fallbackAccepted", "fallbackNode", "triggerError"):
+            evidence.pop(key, None)
+        self.last_evidence = evidence
 
     def stage_transition(self, target_node: str, *, reason: str) -> None:
         if self.pending_transition is not None:
@@ -365,6 +485,48 @@ class AccPipecatFlowManagerAdapter:
     async def request(self, method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
         return await asyncio.to_thread(self.request_json, method, url, payload)
 
+    def held_caller_turn_result(self, error: urllib.error.HTTPError, *, text: str) -> dict[str, Any] | None:
+        if error.code != 409:
+            return None
+        try:
+            raw = error.read().decode("utf-8")
+            payload = json.loads(raw) if raw else {}
+        except Exception:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        error_code = payload.get("error")
+        if not isinstance(error_code, str) or error_code not in HELD_CALLER_TURN_ERRORS:
+            return None
+
+        call = payload.get("call") if isinstance(payload.get("call"), dict) else {}
+        flow_state = call.get("flowState") if isinstance(call.get("flowState"), str) else getattr(self.manager, "current_node", None)
+        transcript = call.get("transcript") if isinstance(call.get("transcript"), list) else []
+        commit_policy = HELD_CALLER_TURN_ERRORS[error_code]
+        evidence = {
+            **self.last_evidence,
+            "ok": True,
+            "currentNode": getattr(self.manager, "current_node", None),
+            "pendingNode": None,
+            "pendingTransition": None,
+            "commitPolicy": commit_policy,
+            "callerTranscript": text,
+            "held": True,
+            "terminal": error_code == "live_sip_call_ended",
+            "error": error_code,
+            "httpStatus": error.code,
+            "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
+        }
+        self.last_evidence = evidence
+        return {
+            **call,
+            "ok": False,
+            "flowState": flow_state,
+            "transcript": transcript,
+            "callerTurnCommit": {"mode": "none", "status": commit_policy},
+            "flowManagerRuntime": evidence,
+        }
+
     async def fail_closed(self, error: Exception) -> dict[str, Any]:
         self.pending_transition = None
         self._prepared_transition_trace_start = None
@@ -471,20 +633,36 @@ class AccPipecatFlowManagerAdapter:
                 # transition so it is evaluated from the committed node instead
                 # of colliding with the single pending slot and failing closed.
                 await self._transition_available.wait()
-                if self._terminal_result is not None:
-                    return dict(self._terminal_result)
-                preview = await self.request(
-                    "POST",
-                    f"{self.acc_url}/api/calls/{self.call_id}/caller-turn",
-                    {
-                        "text": text,
-                        "conversationMode": conversation_mode,
-                        "commitMode": "delivery_ack",
-                    },
-                )
+                cached_terminal_result = dict(self._terminal_result) if self._terminal_result is not None else None
+                try:
+                    preview = await self.request(
+                        "POST",
+                        f"{self.acc_url}/api/calls/{self.call_id}/caller-turn",
+                        {
+                            "text": text,
+                            "conversationMode": conversation_mode,
+                            "commitMode": "delivery_ack",
+                        },
+                    )
+                except urllib.error.HTTPError as exc:
+                    held_result = self.held_caller_turn_result(exc, text=text)
+                    if held_result is not None:
+                        return held_result
+                    if cached_terminal_result is not None:
+                        return cached_terminal_result
+                    raise
+                except Exception:
+                    if cached_terminal_result is not None:
+                        return cached_terminal_result
+                    raise
                 target_node = preview.get("flowState")
                 if not isinstance(target_node, str):
                     raise FlowManagerRuntimeError("ACC caller-turn preview did not return flowState")
+                if cached_terminal_result is not None:
+                    if not self._released_fail_closed_after_stop(preview):
+                        return cached_terminal_result
+                    self._terminal_result = None
+                await self.resync_released_fail_closed_state(preview, target_node)
                 self.stage_transition(target_node, reason="caller_turn_preview")
                 evidence = {
                     **self.last_evidence,

@@ -8,6 +8,7 @@ const repoRoot = join(__dirname, "..", "..");
 test("Docker runtime assets keep the documented health and proof contract", () => {
   const dockerfile = readFileSync(join(repoRoot, "Dockerfile"), "utf8");
   const compose = readFileSync(join(repoRoot, "docker-compose.yml"), "utf8");
+  const freeswitchDialplan = readFileSync(join(repoRoot, "freeswitch", "conf", "dialplan", "default", "acc_local_sip.xml"), "utf8");
   const readme = readFileSync(join(repoRoot, "README.md"), "utf8");
   const packageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as {
     scripts?: Record<string, string>;
@@ -44,11 +45,31 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /freeswitch:\n[\s\S]*"127\.0\.0\.1:8081:8081\/tcp"/);
   assert.match(compose, /freeswitch:\n[\s\S]*acc-pipecat\.xml/);
   assert.match(compose, /freeswitch:\n[\s\S]*verto\.conf\.xml/);
+  assert.match(freeswitchDialplan, /acc_linked_sip_call_id=\$\{uuid\}/);
+  assert.match(freeswitchDialplan, /acc_proof_sip_call_id=\$\{sip_h_X-ACC-Proof-Call-ID\}/);
+  assert.match(freeswitchDialplan, /export" data="nolocal:sip_h_X-ACC-Proof-Call-ID=\$\{sip_h_X-ACC-Proof-Call-ID\}"/);
+  assert.match(freeswitchDialplan, /agentic_contact_center_local_sip_openai_8600/);
+  assert.match(freeswitchDialplan, /agentic_contact_center_local_sip_scripted_8611/);
+  assert.match(freeswitchDialplan, /sip_h_X-ACC-Conversation-Mode=openai_llm/);
+  assert.match(freeswitchDialplan, /sip_h_X-ACC-Conversation-Mode=scripted/);
+  assert.match(freeswitchDialplan, /sip_h_X-ACC-Proof-Call-ID=\$\{sip_h_X-ACC-Proof-Call-ID\}/);
+  assert.match(freeswitchDialplan, /rtp_jitter_buffer_during_bridge=true/);
+  assert.match(freeswitchDialplan, /bridge" data="\{absolute_codec_string=PCMU,jitterbuffer_msec=60:200:20,[^"]*acc_conversation_mode=openai_llm[^"]*\}\$\{verto_contact\(acc-pipecat@\$\$\{domain\}\)\}"/);
+  assert.match(freeswitchDialplan, /bridge" data="\{absolute_codec_string=PCMU,jitterbuffer_msec=60:200:20,[^"]*acc_conversation_mode=scripted[^"]*\}\$\{verto_contact\(acc-pipecat@\$\$\{domain\}\)\}"/);
   assert.match(compose, /freeswitch-bridge:\n[\s\S]*scripts\/freeswitch-acc-bridge\.mjs/);
+  assert.match(compose, /freeswitch-bridge:\n[\s\S]*ACC_VERTO_OWNS_GREETING: \${ACC_VERTO_OWNS_GREETING:-false}/);
+  assert.match(compose, /freeswitch-bridge:\n[\s\S]*ACC_VERTO_OWNS_MEDIA: \${ACC_VERTO_OWNS_MEDIA:-false}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*target: voice-runtime/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*scripts\/pipecat-verto-agent-bridge\.py/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*\.\/artifacts:\/app\/artifacts/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_VERTO_OWNS_GREETING: \${ACC_VERTO_OWNS_GREETING:-true}/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_SIP_GREETING_PREROLL_MS: \${ACC_SIP_GREETING_PREROLL_MS:-300}/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_TTS_CACHE_DIR: \${ACC_TTS_CACHE_DIR:-\/app\/artifacts\/tts-cache}/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_TTS_OUTPUT_CHUNK_YIELD_MS: \${ACC_TTS_OUTPUT_CHUNK_YIELD_MS:-20}/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_TTS_EVIDENCE_EVERY_N_CHUNKS: \${ACC_TTS_EVIDENCE_EVERY_N_CHUNKS:-50}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*PIPECAT_VERTO_PROOF_OUT: \/app\/artifacts\/freeswitch-live\/pipecat-verto-proof\.json/);
+  assert.match(compose, /app:\n[\s\S]*ACC_OPENAI_CONVERSATION_MODEL: \${ACC_OPENAI_CONVERSATION_MODEL:-GPT-5\.4-mini}/);
+  assert.match(compose, /app:\n[\s\S]*ACC_OPENAI_API_KEY: \${ACC_OPENAI_API_KEY:-}/);
   assert.match(compose, /assert-viewer:\n[\s\S]*target: assert-runtime/);
   assert.match(compose, /assert-viewer:\n[\s\S]*scripts\/assert-viewer\.mjs/);
 
@@ -74,7 +95,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.equal(packageJson.scripts?.["pipecat:verto:live-proof"], "node scripts/verto-sip-live-proof.mjs");
   assert.equal(packageJson.scripts?.["docker:sip"], "docker compose --profile sip up --build app freeswitch rtc-asr kokoro freeswitch-bridge");
   assert.equal(packageJson.scripts?.["docker:assert"], "docker compose --profile eval up --build assert-viewer");
-  assert.equal(packageJson.scripts?.["docker:full"], "docker compose --profile full up --build");
+  assert.equal(packageJson.scripts?.["docker:full"], "ACC_VERTO_OWNS_GREETING=true ACC_VERTO_OWNS_MEDIA=true docker compose --profile full up --build");
   assert.equal(packageJson.scripts?.["docker:freeswitch:only"], "docker compose --profile freeswitch up -d freeswitch --no-deps");
   assert.match(readme, /npm run docker:app/);
   assert.match(readme, /npm run docker:smoke/);

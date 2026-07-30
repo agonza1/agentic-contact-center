@@ -6,9 +6,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import io
 import importlib.metadata
 import json
 import sys
+import urllib.error
 from pathlib import Path
 from typing import Any
 
@@ -139,6 +141,311 @@ async def run_regression() -> dict[str, Any]:
     )
     missing_result = await missing_adapter.preview_caller_turn(text="cancel", conversation_mode="free_caller")
 
+    held_requests: list[dict[str, Any]] = []
+
+    def held_http(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        held_requests.append({"method": method, "url": url, "payload": payload})
+        if url.endswith("/fallback"):
+            return {
+                "flowState": "wrap",
+                "transcript": [{"speaker": "agent", "text": "This should not be reached for operator holds."}],
+            }
+        body = json.dumps(
+            {
+                "ok": False,
+                "error": "live_sip_operator_hold_active",
+                "call": {
+                    "flowState": "policy_hold",
+                    "transcript": [],
+                    "events": [
+                        {
+                            "type": "rtc_asr_transcript",
+                            "detail": {
+                                "held": True,
+                                "holdReason": "operator_policy_hold_active",
+                            },
+                        }
+                    ],
+                },
+            }
+        ).encode("utf-8")
+        raise urllib.error.HTTPError(url, 409, "Conflict", {}, io.BytesIO(body))
+
+    held_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-held",
+        request_json=held_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    held_result = await held_adapter.preview_caller_turn(text="pause race", conversation_mode="openai_llm")
+
+    delivery_ack_pending_requests: list[dict[str, Any]] = []
+
+    def delivery_ack_pending_http(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        delivery_ack_pending_requests.append({"method": method, "url": url, "payload": payload})
+        if url.endswith("/fallback"):
+            return {
+                "flowState": "wrap",
+                "transcript": [{"speaker": "agent", "text": "This should not be reached for delivery-ack preview reservations."}],
+            }
+        body = json.dumps(
+            {
+                "ok": False,
+                "error": "caller_turn_delivery_ack_preview_pending",
+                "callerTurnCommit": {
+                    "mode": "delivery_ack",
+                    "status": "pending",
+                    "callId": "flowmanager-delivery-ack-pending",
+                    "snapshotVersion": "snapshot-pending",
+                },
+            }
+        ).encode("utf-8")
+        raise urllib.error.HTTPError(url, 409, "Conflict", {}, io.BytesIO(body))
+
+    delivery_ack_pending_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-delivery-ack-pending",
+        request_json=delivery_ack_pending_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    delivery_ack_pending_result = await delivery_ack_pending_adapter.preview_caller_turn(
+        text="barge-in while prior preview is reserved",
+        conversation_mode="openai_llm",
+    )
+
+    ended_requests: list[dict[str, Any]] = []
+
+    def ended_http(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        ended_requests.append({"method": method, "url": url, "payload": payload})
+        if url.endswith("/fallback"):
+            return {
+                "flowState": "wrap",
+                "transcript": [{"speaker": "agent", "text": "This should not be reached after SIP termination."}],
+            }
+        body = json.dumps(
+            {
+                "ok": False,
+                "error": "live_sip_call_ended",
+                "call": {
+                    "flowState": "wrap",
+                    "transcript": [{"speaker": "agent", "text": "Call already ended."}],
+                    "endedAt": "2026-07-17T00:00:01.000Z",
+                },
+            }
+        ).encode("utf-8")
+        raise urllib.error.HTTPError(url, 409, "Conflict", {}, io.BytesIO(body))
+
+    ended_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-ended",
+        request_json=ended_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    ended_result = await ended_adapter.preview_caller_turn(text="after hangup", conversation_mode="openai_llm")
+
+    recovered_requests: list[dict[str, Any]] = []
+    recovered_nodes = iter(["wrap", "diagnose"])
+
+    def recovered_http(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        recovered_requests.append({"method": method, "url": url, "payload": payload})
+        if url.endswith("/fallback"):
+            return {
+                "flowState": "wrap",
+                "transcript": [{"speaker": "agent", "text": "This should not repeat after operator release."}],
+            }
+        node = next(recovered_nodes)
+        if node == "wrap":
+            return {
+                "flowState": "wrap",
+                "callerTurnCommit": {"mode": "delivery_ack", "status": "pending"},
+                "events": [
+                    {
+                        "type": "human_handoff_started",
+                        "detail": {"source": "openai_llm_fail_closed"},
+                    },
+                    {
+                        "type": "flow_state_transition",
+                        "detail": {"from": "greet", "to": "wrap", "reason": "openai_llm_failed_closed"},
+                    },
+                ],
+                "transcript": [
+                    {"speaker": "caller", "text": payload["text"]},
+                    {"speaker": "agent", "text": "fail closed response"},
+                ],
+            }
+        return {
+            "flowState": "diagnose",
+            "callerTurnCommit": {"mode": "delivery_ack", "status": "pending"},
+            "events": [
+                {
+                    "type": "human_handoff_started",
+                    "detail": {"source": "openai_llm_fail_closed"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "greet", "to": "wrap", "reason": "openai_llm_failed_closed"},
+                },
+                {
+                    "type": "demo_fallback_disarmed",
+                    "detail": {"source": "operator_resume"},
+                },
+                {
+                    "type": "operator_steer_applied",
+                    "detail": {"action": "resume"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "wrap", "to": "steered_response", "reason": "operator_resumed"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "steered_response", "to": "diagnose", "reason": "openai_llm_conversation"},
+                },
+            ],
+            "transcript": [
+                {"speaker": "caller", "text": "first failed turn"},
+                {"speaker": "agent", "text": "fail closed response"},
+                {"speaker": "operator", "text": "operator steer: resume"},
+                {"speaker": "caller", "text": payload["text"]},
+                {"speaker": "agent", "text": "recovered response"},
+            ],
+        }
+
+    recovered_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-recovered",
+        request_json=recovered_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    recovered_fail_closed = await recovered_adapter.preview_caller_turn(text="first failed turn", conversation_mode="openai_llm")
+    await recovered_adapter.commit_pending_transition()
+    recovered_preview = await recovered_adapter.preview_caller_turn(text="recovered caller turn", conversation_mode="openai_llm")
+    await recovered_adapter.commit_pending_transition()
+
+    terminal_revalidation_requests: list[dict[str, Any]] = []
+    terminal_revalidation_attempts = 0
+
+    def terminal_revalidation_http(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        nonlocal terminal_revalidation_attempts
+        terminal_revalidation_requests.append({"method": method, "url": url, "payload": payload})
+        if url.endswith("/fallback"):
+            return {
+                "flowState": "wrap",
+                "transcript": [{"speaker": "agent", "text": "FlowManager failed closed; handing off."}],
+            }
+        terminal_revalidation_attempts += 1
+        if terminal_revalidation_attempts == 1:
+            raise urllib.error.URLError("transient ACC caller-turn timeout")
+        return {
+            "flowState": "diagnose",
+            "callerTurnCommit": {"mode": "delivery_ack", "status": "pending"},
+            "events": [
+                {
+                    "type": "human_handoff_started",
+                    "detail": {"source": "flowmanager_runtime_fail_closed"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "greet", "to": "wrap", "reason": "flowmanager_runtime_failure"},
+                },
+                {
+                    "type": "demo_fallback_disarmed",
+                    "detail": {"source": "operator_resume"},
+                },
+                {
+                    "type": "operator_steer_applied",
+                    "detail": {"action": "resume"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "wrap", "to": "steered_response", "reason": "operator_resumed"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "steered_response", "to": "diagnose", "reason": "openai_llm_conversation"},
+                },
+            ],
+            "transcript": [
+                {"speaker": "caller", "text": payload["text"]},
+                {"speaker": "agent", "text": "Recovered after operator release."},
+            ],
+        }
+
+    terminal_revalidation_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-terminal-revalidation",
+        request_json=terminal_revalidation_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    terminal_cached = await terminal_revalidation_adapter.preview_caller_turn(
+        text="first request times out",
+        conversation_mode="openai_llm",
+    )
+    terminal_revalidated = await terminal_revalidation_adapter.preview_caller_turn(
+        text="operator resumed this call",
+        conversation_mode="openai_llm",
+    )
+    await terminal_revalidation_adapter.commit_pending_transition()
+
+    terminal_release_from_hold_requests: list[dict[str, Any]] = []
+
+    def terminal_release_from_hold_http(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        terminal_release_from_hold_requests.append({"method": method, "url": url, "payload": payload})
+        return {
+            "flowState": "diagnose",
+            "callerTurnCommit": {"mode": "delivery_ack", "status": "pending"},
+            "events": [
+                {
+                    "type": "operator_steer_applied",
+                    "detail": {"action": "transfer"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "policy_hold", "to": "wrap", "reason": "operator_transfer"},
+                },
+                {
+                    "type": "operator_steer_applied",
+                    "detail": {"action": "resume"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "wrap", "to": "steered_response", "reason": "operator_resumed"},
+                },
+                {
+                    "type": "flow_state_transition",
+                    "detail": {"from": "steered_response", "to": "diagnose", "reason": "openai_llm_conversation"},
+                },
+            ],
+            "transcript": [
+                {"speaker": "operator", "text": "operator steer: transfer"},
+                {"speaker": "operator", "text": "operator steer: resume"},
+                {"speaker": "caller", "text": payload["text"]},
+                {"speaker": "agent", "text": "Recovered after operator terminal release."},
+            ],
+        }
+
+    terminal_release_from_hold_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-terminal-release-from-hold",
+        request_json=terminal_release_from_hold_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    await terminal_release_from_hold_adapter.initialize()
+    await terminal_release_from_hold_adapter.activate_node("greet", reason="fixture")
+    await terminal_release_from_hold_adapter.activate_node("diagnose", reason="fixture")
+    await terminal_release_from_hold_adapter.activate_node("policy_hold", reason="fixture")
+    terminal_release_from_hold_preview = await terminal_release_from_hold_adapter.preview_caller_turn(
+        text="operator resumed after transfer",
+        conversation_mode="openai_llm",
+    )
+    await terminal_release_from_hold_adapter.commit_pending_transition()
+
     checks = {
         "actualFlowManagerFactoryOwnsNodes": adapter.manager is not None and adapter.manager.current_node == "wrap",
         "normalCancellationTransitionsGuarded": [step["to"] for step in adapter.transition_trace] == ["greet", "diagnose", "diagnose", "wrap"],
@@ -153,6 +460,56 @@ async def run_regression() -> dict[str, Any]:
         "unsafePreviewNeverBecomesDeliveryAckCommit": not any(item["url"].endswith("/caller-turn/commit") for item in unsafe_requests),
         "missingRuntimeFailsClosed": missing_result["flowState"] == "wrap" and "pipecat-ai-flows is missing" in missing_result["flowManagerRuntime"]["detail"],
         "missingRuntimeSkipsCallerTurnPreview": len(missing_requests) == 1 and missing_requests[0]["url"].endswith("/fallback"),
+        "operatorHoldRemainsNonterminal": (
+            held_result["flowState"] == "policy_hold"
+            and held_result["flowManagerRuntime"]["commitPolicy"] == "caller_turn_held"
+            and held_adapter.manager.current_node == "call_started"
+            and held_adapter.pending_transition is None
+            and not any(item["url"].endswith("/fallback") for item in held_requests)
+        ),
+        "deliveryAckPreviewPendingRemainsNonterminal": (
+            delivery_ack_pending_result["flowManagerRuntime"]["commitPolicy"] == "caller_turn_held"
+            and delivery_ack_pending_adapter.manager.current_node == "call_started"
+            and delivery_ack_pending_adapter.pending_transition is None
+            and not any(item["url"].endswith("/fallback") for item in delivery_ack_pending_requests)
+        ),
+        "endedCallRejectionDoesNotFailClosed": (
+            ended_result["flowState"] == "wrap"
+            and ended_result["flowManagerRuntime"]["commitPolicy"] == "caller_turn_terminal"
+            and ended_result["flowManagerRuntime"]["terminal"] is True
+            and ended_adapter.manager.current_node == "call_started"
+            and ended_adapter.pending_transition is None
+            and not any(item["url"].endswith("/fallback") for item in ended_requests)
+        ),
+        "releasedFailClosedResynchronizesFlowManager": (
+            recovered_fail_closed["flowState"] == "wrap"
+            and recovered_preview["flowState"] == "diagnose"
+            and recovered_preview["flowManagerRuntime"]["pendingNode"] == "diagnose"
+            and recovered_preview["flowManagerRuntime"]["resynchronizedFrom"] == "wrap"
+            and recovered_preview["flowManagerRuntime"]["resynchronizedTo"] == "steered_response"
+            and recovered_adapter.manager.current_node == "diagnose"
+            and [step["to"] for step in recovered_adapter.transition_trace] == ["wrap", "steered_response", "diagnose"]
+            and not any(item["url"].endswith("/fallback") for item in recovered_requests)
+        ),
+        "terminalHandoffCacheRevalidatedBeforeReplay": (
+            terminal_cached["flowState"] == "wrap"
+            and terminal_revalidated["flowState"] == "diagnose"
+            and terminal_revalidated["flowManagerRuntime"]["resynchronizedFrom"] == "wrap"
+            and terminal_revalidated["flowManagerRuntime"]["resynchronizedTo"] == "steered_response"
+            and terminal_revalidation_adapter.manager.current_node == "diagnose"
+            and terminal_revalidation_attempts == 2
+            and [step["to"] for step in terminal_revalidation_adapter.transition_trace] == ["wrap", "steered_response", "diagnose"]
+            and len([item for item in terminal_revalidation_requests if item["url"].endswith("/fallback")]) == 1
+        ),
+        "terminalOperatorReleaseResynchronizesFromHeldNode": (
+            terminal_release_from_hold_preview["flowState"] == "diagnose"
+            and terminal_release_from_hold_preview["flowManagerRuntime"]["resynchronizedFrom"] == "policy_hold"
+            and terminal_release_from_hold_preview["flowManagerRuntime"]["resynchronizedTo"] == "steered_response"
+            and terminal_release_from_hold_adapter.manager.current_node == "diagnose"
+            and [step["to"] for step in terminal_release_from_hold_adapter.transition_trace]
+            == ["greet", "diagnose", "policy_hold", "steered_response", "diagnose"]
+            and not any(item["url"].endswith("/fallback") for item in terminal_release_from_hold_requests)
+        ),
         "requiredVersionsRecorded": normal_results[0]["flowManagerRuntime"]["runtimeVersions"] == {"pipecat-ai": "1.4.0", "pipecat-ai-flows": "1.4.0"},
     }
     return {
@@ -163,6 +520,12 @@ async def run_regression() -> dict[str, Any]:
         "normalPreviewRequests": len(requests),
         "unsafeEvidence": unsafe_result["flowManagerRuntime"],
         "missingRuntimeEvidence": missing_result["flowManagerRuntime"],
+        "heldEvidence": held_result["flowManagerRuntime"],
+        "deliveryAckPendingEvidence": delivery_ack_pending_result["flowManagerRuntime"],
+        "endedEvidence": ended_result["flowManagerRuntime"],
+        "recoveredEvidence": recovered_preview["flowManagerRuntime"],
+        "terminalRevalidatedEvidence": terminal_revalidated["flowManagerRuntime"],
+        "terminalReleaseFromHeldNodeEvidence": terminal_release_from_hold_preview["flowManagerRuntime"],
         "checks": checks,
     }
 

@@ -1,5 +1,6 @@
 import type {
   CallSnapshot,
+  ConversationMode,
   EventTrailEntry,
   FlowState,
   FallbackMode,
@@ -10,6 +11,18 @@ import type {
   TranscriptTurn,
 } from "./types";
 import { defaultAssertEvaluationSpec } from "./assertEvaluationSpec";
+
+export interface OpenAiLlmTurnResult {
+  ok: boolean;
+  model: string;
+  text?: string;
+  responseId?: string | null;
+  error?: string;
+  status?: number | null;
+}
+
+export const OPENAI_LIVE_SIP_FAIL_CLOSED_AGENT_TEXT =
+  "I am having trouble with the live AI path, so I am stopping automated responses and connecting you to a licensed specialist.";
 
 export const SCRIPTED_CALLER_TURNS = [
   "I'm thinking about canceling my policy.",
@@ -567,6 +580,70 @@ export function applyFreeCallerPipecatFlow(snapshot: CallSnapshot, turn: Transcr
   appendAgentTurn(snapshot, response, turn.timestamp);
 }
 
+export function applyOpenAiLlmPipecatFlow(
+  snapshot: CallSnapshot,
+  turn: TranscriptTurn,
+  llm: OpenAiLlmTurnResult | undefined,
+  options: { failClosedAlreadyPersisted?: boolean } = {},
+): void {
+  const callerTurnCount = snapshot.transcript.filter((entry) => entry.speaker === "caller").length;
+  snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
+
+  if (!llm?.ok || !llm.text?.trim()) {
+    if (!options.failClosedAlreadyPersisted) {
+      applyOpenAiLlmFailClosedState(snapshot, turn, llm);
+    }
+    appendAgentTurn(snapshot, OPENAI_LIVE_SIP_FAIL_CLOSED_AGENT_TEXT, turn.timestamp);
+    return;
+  }
+
+  snapshot.pipecatFlow.activeTool = "conversation_agent";
+  recordEvent(snapshot, "openai_conversation_turn_processed", turn.timestamp, {
+    conversationMode: "openai_llm",
+    model: llm.model,
+    responseId: llm.responseId ?? null,
+    callerTurnCount,
+    noScriptedFallback: true,
+  });
+
+  if (callerTurnCount === 1) {
+    transitionFlowState(snapshot, "greet", turn.timestamp, "openai_llm_connected");
+  } else {
+    transitionFlowState(snapshot, "diagnose", turn.timestamp, "openai_llm_conversation");
+  }
+
+  appendAgentTurn(snapshot, llm.text.trim(), turn.timestamp);
+}
+
+export function applyOpenAiLlmFailClosedState(
+  snapshot: CallSnapshot,
+  turn: TranscriptTurn,
+  llm: OpenAiLlmTurnResult | undefined,
+): void {
+  const reason = llm?.error ?? "openai_llm_response_missing";
+  snapshot.pipecatFlow.activeTool = "pause_presentation";
+  setDemoFallback(snapshot, true, turn.timestamp, reason, "runtime_failure");
+  setOperatorSteerState(snapshot, false, turn.timestamp, "escalate_to_human", "openai_llm_fail_closed");
+  recordEvent(snapshot, "openai_conversation_generation_failed", turn.timestamp, {
+    conversationMode: "openai_llm",
+    model: llm?.model ?? "unknown",
+    error: reason,
+    status: llm?.status ?? null,
+    noScriptedFallback: true,
+  });
+  recordEvent(snapshot, "human_handoff_started", turn.timestamp, {
+    operatorChannel: snapshot.scenario.operatorChannel,
+    reason,
+    mode: "runtime_failure",
+    source: "openai_llm_fail_closed",
+  });
+  transitionFlowState(snapshot, "wrap", turn.timestamp, "openai_llm_failed_closed");
+}
+
+export function isConversationMode(value: unknown): value is ConversationMode {
+  return value === "scripted" || value === "free_caller" || value === "openai_llm";
+}
+
 export function applyOperatorSteer(
   snapshot: CallSnapshot,
   action: OperatorSteerAction,
@@ -616,14 +693,29 @@ export function applyOperatorSteer(
   }
 
   if (action === "disarm_fallback") {
-    setDemoFallback(snapshot, false, timestamp, null, snapshot.demoFallback.mode);
-    transitionFlowState(snapshot, "operator_steer", timestamp, "operator_disarmed_manual_fallback");
-    recordEvent(snapshot, "demo_fallback_disarmed", timestamp, {
-      operatorChannel: snapshot.scenario.operatorChannel,
-    });
-    appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
+    if (snapshot.demoFallback.armed) {
+      setDemoFallback(snapshot, false, timestamp, null, snapshot.demoFallback.mode);
+      transitionFlowState(snapshot, "steered_response", timestamp, "operator_disarmed_manual_fallback");
+      recordEvent(snapshot, "demo_fallback_disarmed", timestamp, {
+        operatorChannel: snapshot.scenario.operatorChannel,
+      });
+      appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
+    } else {
+      recordEvent(snapshot, "demo_fallback_disarm_ignored", timestamp, {
+        operatorChannel: snapshot.scenario.operatorChannel,
+        reason: "fallback_not_armed",
+      });
+    }
     snapshot.pipecatFlow.activeTool = "ask_operator";
     return;
+  }
+
+  if (action === "resume" && snapshot.demoFallback.armed) {
+    setDemoFallback(snapshot, false, timestamp, null, snapshot.demoFallback.mode);
+    recordEvent(snapshot, "demo_fallback_disarmed", timestamp, {
+      operatorChannel: snapshot.scenario.operatorChannel,
+      source: "operator_resume",
+    });
   }
 
   if (action === "goto_slide") {

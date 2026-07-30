@@ -28,11 +28,17 @@ import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { buildPipecatFlowManagerContractPayload } from "../core/pipecatFlowManagerContract";
 import { buildPipecatMediaEngineReadinessPayload } from "../core/pipecatMediaEngineReadiness";
 import { RealtimeVoiceSessionStore, buildRealtimeVoiceSessionEndpoints } from "../core/realtimeVoiceSessions";
-import { getPipecatPrototypeHealth, SCRIPTED_CALLER_TURNS } from "../core/pipecatFlowPrototype";
+import {
+  getPipecatPrototypeHealth,
+  isConversationMode,
+  SCRIPTED_CALLER_TURNS,
+  type OpenAiLlmTurnResult,
+} from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
 import type {
   AttentionSource,
   CallSnapshot,
+  ConversationMode,
   FallbackMode,
   FlowState,
   OperatorSteerAction,
@@ -2104,6 +2110,136 @@ function buildHandoffTrail(snapshot: CallSnapshot): string | null {
 
 function getLatestEvent(snapshot: CallSnapshot, eventType: string) {
   return [...snapshot.events].reverse().find((event) => event.type === eventType) ?? null;
+}
+
+const liveSipOperatorReleaseActions = new Set(["resume"]);
+const liveSipTerminalOperatorActions = new Set(["escalate_to_human", "transfer", "end_call"]);
+const liveSipExplicitOperatorHoldReasons = new Map([
+  ["pause", "operator_policy_hold_active"],
+  ["goto_slide", "operator_steer_active"],
+  ["ask_operator", "operator_steer_active"],
+  ["arm_fallback", "demo_fallback_active"],
+  ["takeover", "demo_fallback_active"],
+  ["escalate_to_human", "operator_terminal_stop_active"],
+  ["transfer", "operator_terminal_stop_active"],
+  ["end_call", "operator_terminal_stop_active"],
+]);
+
+function getOperatorSteerAction(event: CallSnapshot["events"][number]): string | null {
+  return typeof event.detail.action === "string" ? event.detail.action : null;
+}
+
+function isLiveSipOperatorReleaseEvent(event: CallSnapshot["events"][number]): boolean {
+  if (event.type === "demo_fallback_disarmed") return true;
+  if (event.type !== "operator_steer_applied") return false;
+  const action = getOperatorSteerAction(event);
+  return action !== null && liveSipOperatorReleaseActions.has(action);
+}
+
+function isLiveSipTerminalOperatorStopEvent(event: CallSnapshot["events"][number]): boolean {
+  const action = getOperatorSteerAction(event);
+  if (event.type === "operator_steer_applied" && action !== null && liveSipTerminalOperatorActions.has(action)) {
+    return true;
+  }
+  if (event.type === "operator_transfer_started" || event.type === "operator_call_ended") return true;
+  return event.type === "human_handoff_started" && event.detail.source === "operator_steer";
+}
+
+function isOpenAiLiveSipAutomationStopped(snapshot: CallSnapshot): boolean {
+  if (snapshot.scenario.conversationMode !== "openai_llm") return false;
+
+  const stopIndex = snapshot.events.reduce((latest, event, index) => {
+    const failClosedHandoff = event.type === "human_handoff_started"
+      && typeof event.detail.source === "string"
+      && event.detail.source.includes("fail_closed");
+    return event.type === "demo_fallback_triggered" || failClosedHandoff || isLiveSipTerminalOperatorStopEvent(event)
+      ? index
+      : latest;
+  }, -1);
+  const releaseIndex = snapshot.events.reduce((latest, event, index) => {
+    return isLiveSipOperatorReleaseEvent(event) ? index : latest;
+  }, -1);
+
+  return (snapshot.demoFallback.armed || stopIndex >= 0) && releaseIndex <= stopIndex;
+}
+
+function getLiveSipOperatorHoldReason(snapshot: CallSnapshot): string | null {
+  if (snapshot.operatorSteer.pending || snapshot.flowState === "operator_steer") return "operator_steer_active";
+  if (snapshot.flowState === "policy_hold") return "operator_policy_hold_active";
+  if (snapshot.demoFallback.armed) return "demo_fallback_active";
+  return null;
+}
+
+function getExplicitLiveSipOperatorHoldReason(snapshot: CallSnapshot): string | null {
+  if (snapshot.demoFallback.armed) return "demo_fallback_active";
+  let latestHoldIndex = -1;
+  let latestHoldReason: string | null = null;
+  const releaseIndex = snapshot.events.reduce((latest, event, index) => {
+    return isLiveSipOperatorReleaseEvent(event) ? index : latest;
+  }, -1);
+
+  snapshot.events.forEach((event, index) => {
+    if (event.type === "operator_demo_paused") {
+      latestHoldIndex = index;
+      latestHoldReason = "operator_policy_hold_active";
+      return;
+    }
+    if (event.type === "demo_fallback_armed" || event.type === "demo_fallback_triggered") {
+      latestHoldIndex = index;
+      latestHoldReason = "demo_fallback_active";
+      return;
+    }
+    if (event.type !== "operator_steer_applied") return;
+    const action = getOperatorSteerAction(event);
+    const reason = action === null ? undefined : liveSipExplicitOperatorHoldReasons.get(action);
+    if (reason) {
+      latestHoldIndex = index;
+      latestHoldReason = reason;
+    }
+  });
+
+  if (latestHoldReason === null || releaseIndex > latestHoldIndex) return null;
+  return latestHoldReason;
+}
+
+function getLiveSipCallerTurnHoldReason(snapshot: CallSnapshot, conversationMode: ConversationMode): string | null {
+  if (conversationMode === "openai_llm") return getLiveSipOperatorHoldReason(snapshot);
+  return getExplicitLiveSipOperatorHoldReason(snapshot);
+}
+
+async function rejectHeldLiveSipCallerTurn(
+  response: ServerResponse,
+  ingress: InMemoryTelephonyIngress,
+  callId: string,
+  text: string,
+  timestamp: string,
+  evidencePath: string | null,
+  route: "/api/live-sip/events" | "/api/calls/:callId/caller-turn",
+  reason: string,
+  context: { eventType?: string; sipCallId?: string } = {},
+  extraDetail: Record<string, string | number | boolean | null> = {},
+): Promise<void> {
+  const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+    eventType: "rtc_asr_transcript",
+    timestamp,
+    detail: {
+      provider: "rtc-asr",
+      transcriptText: text,
+      evidencePath,
+      held: true,
+      holdReason: reason,
+      ...extraDetail,
+    },
+  });
+  writeJson(response, 409, {
+    ok: false,
+    route,
+    ...context,
+    error: reason === "openai_fail_closed_handoff_active"
+      ? "live_sip_openai_automation_stopped"
+      : "live_sip_operator_hold_active",
+    call: buildCallPayload(snapshot),
+  });
 }
 
 function getOptionalEventString(value: string | number | boolean | null | undefined): string | null {
@@ -4253,6 +4389,456 @@ function buildProductionReadiness(
   };
 }
 
+async function withLiveSipCallLock<T>(
+  locks: Map<string, Promise<void>>,
+  sipCallId: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const previous = locks.get(sipCallId) ?? Promise.resolve();
+  let releaseCurrent!: () => void;
+  const current = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+  const queued = previous.catch(() => undefined).then(() => current);
+  locks.set(sipCallId, queued);
+  await previous.catch(() => undefined);
+  try {
+    return await run();
+  } finally {
+    releaseCurrent();
+    if (locks.get(sipCallId) === queued) {
+      locks.delete(sipCallId);
+    }
+  }
+}
+
+async function withLiveSipOpenAiGenerationLock<T>(
+  locks: Map<string, Promise<void>>,
+  sipCallId: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const previous = locks.get(sipCallId) ?? Promise.resolve();
+  let releaseCurrent!: () => void;
+  const current = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+  const queued = previous.catch(() => undefined).then(() => current);
+  locks.set(sipCallId, queued);
+  await previous.catch(() => undefined);
+  try {
+    return await run();
+  } finally {
+    releaseCurrent();
+    if (locks.get(sipCallId) === queued) {
+      locks.delete(sipCallId);
+    }
+  }
+}
+
+function normalizeLiveSipIngressSource(value: unknown): "freeswitch_esl" | "freeswitch_verto" | "local_sip_harness" {
+  const source = getOptionalTrimmedString(value);
+  if (source === "freeswitch_esl" || source === "freeswitch_verto") return source;
+  return "local_sip_harness";
+}
+
+function normalizeLiveSipDestination(value: unknown): string | null {
+  const destination = getOptionalTrimmedString(value);
+  if (!destination) return null;
+  const normalized = destination.toLowerCase() === "acc" ? "8600" : destination;
+  return /^(8600|8611)$/.test(normalized) ? normalized : destination;
+}
+
+function conversationModeForLiveSipDestination(destination: string | null): ConversationMode {
+  if (destination === "8600") return "openai_llm";
+  return "scripted";
+}
+
+function normalizeLiveSipConversationMode(value: unknown, destination: string | null): ConversationMode {
+  if (isConversationMode(value)) return value;
+  return conversationModeForLiveSipDestination(destination);
+}
+
+function openAiConversationModel(env: NodeJS.ProcessEnv = process.env): string {
+  return env.ACC_OPENAI_CONVERSATION_MODEL?.trim() || "GPT-5.4-mini";
+}
+
+function openAiConversationTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const parsed = Number.parseInt(env.ACC_OPENAI_REQUEST_TIMEOUT_MS?.trim() || "12000", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 12000;
+}
+
+type OpenAiConversationAuthMode = "api_key" | "openclaw_oauth";
+
+type OpenAiConversationRequestConfig = {
+  model: string;
+  requestModel: string;
+  baseUrl: string;
+  bearerToken: string | null;
+  missingCredentialError: string;
+  useStringInput: boolean;
+  headers: Record<string, string>;
+};
+
+function openAiConversationAuthMode(env: NodeJS.ProcessEnv = process.env): OpenAiConversationAuthMode {
+  return env.ACC_OPENAI_AUTH_MODE?.trim().toLowerCase() === "openclaw_oauth" ? "openclaw_oauth" : "api_key";
+}
+
+function openAiConversationGatewayAgentId(env: NodeJS.ProcessEnv = process.env): string {
+  return env.ACC_OPENCLAW_AGENT_ID?.trim() || "acc-voice";
+}
+
+function openAiConversationGatewayBackendModel(model: string): string {
+  return model.includes("/") ? model : `openai/${model.toLowerCase()}`;
+}
+
+function buildOpenAiConversationRequestConfig(model: string, env: NodeJS.ProcessEnv = process.env): OpenAiConversationRequestConfig {
+  if (openAiConversationAuthMode(env) === "openclaw_oauth") {
+    const agentId = openAiConversationGatewayAgentId(env);
+    const backendModel = openAiConversationGatewayBackendModel(model);
+    return {
+      model,
+      requestModel: `openclaw/${agentId}`,
+      baseUrl: (env.ACC_OPENAI_BASE_URL?.trim() || env.OPENAI_BASE_URL?.trim() || "http://127.0.0.1:18789/v1").replace(/\/+$/, ""),
+      bearerToken: env.ACC_OPENAI_AUTH_TOKEN?.trim() || env.OPENCLAW_GATEWAY_TOKEN?.trim() || null,
+      missingCredentialError: "openclaw_gateway_token_missing",
+      useStringInput: true,
+      headers: {
+        "x-openclaw-agent-id": agentId,
+        "x-openclaw-model": backendModel,
+      },
+    };
+  }
+
+  return {
+    model,
+    requestModel: model,
+    baseUrl: (env.ACC_OPENAI_BASE_URL?.trim() || env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1").replace(/\/+$/, ""),
+    bearerToken: env.ACC_OPENAI_API_KEY?.trim() || env.OPENAI_API_KEY?.trim() || null,
+    missingCredentialError: "openai_api_key_missing",
+    useStringInput: false,
+    headers: {},
+  };
+}
+
+function redactOpenAiError(value: unknown): string {
+  const text = value instanceof Error ? value.message : String(value ?? "openai_request_failed");
+  return text
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/g, "Bearer [redacted]")
+    .replace(/sk-[A-Za-z0-9._-]+/g, "sk-[redacted]");
+}
+
+function extractOpenAiResponseText(payload: unknown): string {
+  if (!isRecord(payload)) return "";
+  const outputText = getOptionalTrimmedString(payload.output_text);
+  if (outputText) return outputText;
+  const output = Array.isArray(payload.output) ? payload.output : [];
+  const chunks: string[] = [];
+  for (const item of output) {
+    if (!isRecord(item)) continue;
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const part of content) {
+      if (!isRecord(part)) continue;
+      const text = getOptionalTrimmedString(part.text);
+      if (text) chunks.push(text);
+    }
+  }
+  return chunks.join(" ").trim();
+}
+
+function validateOpenAiAgentText(text: string): string | null {
+  if (!text.trim()) return "openai_response_empty";
+  if (text.length > 700) return "openai_response_too_long";
+  if (/\b(guarantee|guaranteed|approved\s+(credit|discount|refund)|i can offer you|i can give you)\b/i.test(text)) {
+    return "openai_response_guardrail_violation";
+  }
+  return null;
+}
+
+async function generateOpenAiLiveSipResponse(
+  snapshot: CallSnapshot,
+  callerText: string,
+  timestamp: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<OpenAiLlmTurnResult> {
+  const model = openAiConversationModel(env);
+  const requestConfig = buildOpenAiConversationRequestConfig(model, env);
+  if (!requestConfig.bearerToken) {
+    return { ok: false, model, error: requestConfig.missingCredentialError, status: null };
+  }
+  const transcript = snapshot.transcript
+    .slice(-8)
+    .map((turn) => `${turn.speaker}: ${turn.text}`)
+    .join("\n");
+  const systemPromptText = [
+    "You are the live OpenAI-backed conversation path for ACC SIP extension 8600.",
+    "Answer in one or two short sentences suitable for TTS.",
+    "Do not promise discounts, refunds, cancellation completion, policy changes, or regulated advice.",
+    "When a request requires approval, account access, or a human decision, say you will prepare a safe handoff.",
+    "Ask at most one focused follow-up question.",
+  ].join(" ");
+  const userPromptText = [
+    `Timestamp: ${timestamp}`,
+    `Flow state: ${snapshot.flowState}`,
+    `Recent transcript:\n${transcript || "(none)"}`,
+    `Latest caller turn: ${callerText}`,
+  ].join("\n");
+  const input = requestConfig.useStringInput
+    ? `${systemPromptText}\n\n${userPromptText}`
+    : [
+        {
+          role: "system",
+          content: [
+            {
+              type: "input_text",
+              text: systemPromptText,
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: userPromptText,
+            },
+          ],
+        },
+      ];
+  const body = {
+    model: requestConfig.requestModel,
+    store: false,
+    max_output_tokens: 160,
+    input,
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), openAiConversationTimeoutMs(env));
+  try {
+    const response = await fetch(`${requestConfig.baseUrl}/responses`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${requestConfig.bearerToken}`,
+        "content-type": "application/json",
+        ...requestConfig.headers,
+      },
+      signal: controller.signal,
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const errorMessage = isRecord(payload) && isRecord(payload.error) ? getOptionalTrimmedString(payload.error.message) : null;
+      return { ok: false, model, error: redactOpenAiError(errorMessage ?? response.statusText), status: response.status };
+    }
+    const text = extractOpenAiResponseText(payload);
+    const validationError = validateOpenAiAgentText(text);
+    if (validationError) {
+      return { ok: false, model, error: validationError, status: response.status };
+    }
+    return {
+      ok: true,
+      model,
+      text,
+      responseId: isRecord(payload) ? getOptionalTrimmedString(payload.id) ?? null : null,
+      status: response.status,
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return { ok: false, model, error: "openai_request_timeout", status: null };
+    }
+    return { ok: false, model, error: redactOpenAiError(error), status: null };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+type CallerTurnDeliveryAckPreview = {
+  callId: string;
+  snapshotVersion: string;
+  callerTranscript: string;
+  timestamp: string;
+  createdAtMs: number;
+  conversationMode?: ConversationMode;
+  expectedAgentText: string;
+  openAiLlm?: OpenAiLlmTurnResult;
+  openAiFailClosedAlreadyPersisted?: boolean;
+};
+
+const callerTurnDeliveryAckPreviewTtlMs = 5 * 60 * 1000;
+const liveSipEndedCallAliasTtlMs = 10 * 60 * 1000;
+const maxLiveSipEndedCallAliases = 1000;
+
+interface LiveSipEndedCallAlias {
+  callId: string;
+  endedAtMs: number;
+}
+
+function buildCallerTurnDeliveryAckKey(callId: string, snapshotVersion: string): string {
+  return `${callId}:${snapshotVersion}`;
+}
+
+function purgeExpiredCallerTurnDeliveryAckPreviews(
+  previews: Map<string, CallerTurnDeliveryAckPreview>,
+  nowMs = Date.now(),
+): void {
+  for (const [key, preview] of previews) {
+    if (nowMs - preview.createdAtMs >= callerTurnDeliveryAckPreviewTtlMs) previews.delete(key);
+  }
+}
+
+function purgeCallerTurnDeliveryAckPreviewsForCall(
+  previews: Map<string, CallerTurnDeliveryAckPreview>,
+  callId: string,
+): void {
+  for (const [key, preview] of previews) {
+    if (preview.callId === callId) previews.delete(key);
+  }
+}
+
+function getCallerTurnDeliveryAckPreview(
+  previews: Map<string, CallerTurnDeliveryAckPreview>,
+  callId: string,
+  snapshotVersion: string,
+): CallerTurnDeliveryAckPreview | undefined {
+  return previews.get(buildCallerTurnDeliveryAckKey(callId, snapshotVersion));
+}
+
+function deleteCallerTurnDeliveryAckPreview(
+  previews: Map<string, CallerTurnDeliveryAckPreview>,
+  callId: string,
+  snapshotVersion: string,
+): void {
+  previews.delete(buildCallerTurnDeliveryAckKey(callId, snapshotVersion));
+}
+
+function isCallerTurnDeliveryAckPreviewForTurn(
+  preview: CallerTurnDeliveryAckPreview,
+  callerTranscript: string,
+  timestamp: string,
+  conversationMode: ConversationMode,
+): boolean {
+  return (
+    preview.callerTranscript === callerTranscript
+    && preview.timestamp === timestamp
+    && preview.conversationMode === conversationMode
+  );
+}
+
+function writeCallerTurnDeliveryAckPreviewPending(
+  response: ServerResponse,
+  callId: string,
+  snapshotVersion: string,
+  createdAtMs: number,
+  route = "/api/calls/:callId/caller-turn",
+): void {
+  writeJson(response, 409, {
+    ok: false,
+    route,
+    error: "caller_turn_delivery_ack_preview_pending",
+    callerTurnCommit: {
+      mode: "delivery_ack",
+      status: "pending",
+      callId,
+      snapshotVersion,
+      createdAtMs,
+    },
+  });
+}
+
+function uniqueLiveSipCallIds(...values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))));
+}
+
+function getMappedLiveSipCallId(liveSipCallMap: Map<string, string>, ids: string[]): string | undefined {
+  for (const id of ids) {
+    const callId = liveSipCallMap.get(id);
+    if (callId) return callId;
+  }
+  return undefined;
+}
+
+function setLiveSipCallAliases(liveSipCallMap: Map<string, string>, ids: string[], callId: string): void {
+  for (const id of ids) liveSipCallMap.set(id, callId);
+}
+
+function deleteLiveSipCallAliases(liveSipCallMap: Map<string, string>, ids: string[]): void {
+  for (const id of ids) liveSipCallMap.delete(id);
+}
+
+function deleteLiveSipCallAliasesForCall(liveSipCallMap: Map<string, string>, callId: string): void {
+  for (const [id, mappedCallId] of liveSipCallMap) {
+    if (mappedCallId === callId) liveSipCallMap.delete(id);
+  }
+}
+
+function liveSipCallAliasesForCall(liveSipCallMap: Map<string, string>, callId: string): string[] {
+  return [...liveSipCallMap.entries()].filter(([, mappedCallId]) => mappedCallId === callId).map(([id]) => id);
+}
+
+function purgeLiveSipEndedCallAliases(
+  liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>,
+  nowMs = Date.now(),
+): void {
+  for (const [id, alias] of liveSipEndedCallMap) {
+    if (nowMs - alias.endedAtMs >= liveSipEndedCallAliasTtlMs) liveSipEndedCallMap.delete(id);
+  }
+
+  while (liveSipEndedCallMap.size > maxLiveSipEndedCallAliases) {
+    let oldestId: string | null = null;
+    let oldestEndedAtMs = Number.POSITIVE_INFINITY;
+    for (const [id, alias] of liveSipEndedCallMap) {
+      if (alias.endedAtMs < oldestEndedAtMs) {
+        oldestId = id;
+        oldestEndedAtMs = alias.endedAtMs;
+      }
+    }
+    if (!oldestId) break;
+    liveSipEndedCallMap.delete(oldestId);
+  }
+}
+
+function getMappedLiveSipEndedCallId(
+  liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>,
+  ids: string[],
+): string | undefined {
+  purgeLiveSipEndedCallAliases(liveSipEndedCallMap);
+  for (const id of ids) {
+    const alias = liveSipEndedCallMap.get(id);
+    if (alias) return alias.callId;
+  }
+  return undefined;
+}
+
+function setLiveSipEndedCallAliases(
+  liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>,
+  ids: string[],
+  callId: string,
+  endedAtMs = Date.now(),
+): void {
+  purgeLiveSipEndedCallAliases(liveSipEndedCallMap, endedAtMs);
+  for (const id of ids) liveSipEndedCallMap.set(id, { callId, endedAtMs });
+  purgeLiveSipEndedCallAliases(liveSipEndedCallMap, endedAtMs);
+}
+
+function deleteLiveSipEndedCallAliases(liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>, ids: string[]): void {
+  for (const id of ids) liveSipEndedCallMap.delete(id);
+}
+
+function isLiveSipCallEnded(snapshot: CallSnapshot): boolean {
+  return snapshot.events.some((event) => event.type === "sip_call_ended");
+}
+
+async function listLiveSipSnapshotsByProviderIds(
+  ingress: InMemoryTelephonyIngress,
+  ids: string[],
+): Promise<CallSnapshot[]> {
+  const snapshots = (await Promise.all(ids.map((id) => ingress.listSnapshots({ providerCallId: id })))).flat();
+  const uniqueSnapshots = new Map<string, CallSnapshot>();
+  for (const snapshot of snapshots) {
+    uniqueSnapshots.set(snapshot.session.callId, snapshot);
+  }
+  return [...uniqueSnapshots.values()];
+}
+
 async function routeRequest(
   request: IncomingMessage,
   response: ServerResponse,
@@ -4260,11 +4846,18 @@ async function routeRequest(
   ingress: InMemoryTelephonyIngress,
   signalWireCallMap: Map<string, string>,
   liveSipCallMap: Map<string, string>,
+  liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>,
+  liveSipCallLocks: Map<string, Promise<void>>,
+  liveSipOpenAiGenerationLocks: Map<string, Promise<void>>,
+  callerTurnDeliveryAckPreviews: Map<string, CallerTurnDeliveryAckPreview>,
+  callerTurnDeliveryAckPreviewReservations: Set<string>,
   voiceSessions: RealtimeVoiceSessionStore,
 ): Promise<void> {
   const url = request.url ?? "/";
   const requestUrl = new URL(url, "http://localhost");
   const pathname = requestUrl.pathname;
+  purgeExpiredCallerTurnDeliveryAckPreviews(callerTurnDeliveryAckPreviews);
+  purgeLiveSipEndedCallAliases(liveSipEndedCallMap);
 
   if (request.method === "GET" && pathname === "/health") {
     const pipecatFlow = getPipecatPrototypeHealth();
@@ -5239,7 +5832,7 @@ async function routeRequest(
     }
 
     const eventType = getOptionalTrimmedString(body.eventType);
-    if (!eventType || !["call.started", "media.capture", "media.playback", "media.transcript", "rtc_asr.blocked", "call.ended", "call.error"].includes(eventType)) {
+    if (!eventType || !["call.started", "agent.greeting", "media.capture", "media.playback", "media.transcript", "rtc_asr.blocked", "call.ended", "call.error"].includes(eventType)) {
       writeBadRequest(response, "live_sip_event_type_invalid");
       return;
     }
@@ -5255,32 +5848,339 @@ async function routeRequest(
       writeBadRequest(response, "live_sip_call_id_required");
       return;
     }
-
-    if (eventType === "call.started") {
-      const telephonyMode = body.telephonyMode === "signalwire_live" ? "signalwire_live" : "local_sip";
-      const snapshot = await ingress.startCall(config, {
-        providerName: telephonyMode === "signalwire_live" ? "signalwire" : "freeswitch-local-sip",
-        providerCallId: sipCallId,
-        openclawSessionId: `live-sip-${sipCallId}`,
-        openclawSessionLabel: `${telephonyMode}/${sipCallId}`,
-        source: getOptionalTrimmedString(body.source) === "freeswitch_esl" ? "freeswitch_esl" : "local_sip_harness",
-        runtimeModeLabels: {
-          telephony: telephonyMode,
-          media: "live_capture",
-          rtcAsr: body.rtcAsrMode === "rtc_asr_live" ? "rtc_asr_live" : "rtc_asr_blocked",
-          credentialsMode: telephonyMode === "signalwire_live" ? "signalwire_live" : "mocked",
-        },
-      });
-      liveSipCallMap.set(sipCallId, snapshot.session.callId);
-      writeJson(response, 201, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+    const linkedSipCallId = getOptionalTrimmedString(body.linkedSipCallId)
+      ?? getOptionalTrimmedString(body.linkedFsUuid)
+      ?? getOptionalTrimmedString(body.parentSipCallId)
+      ?? getOptionalTrimmedString(body.alegUuid);
+    const vertoCallId = getOptionalTrimmedString(body.vertoCallId);
+    const fsUuid = getOptionalTrimmedString(body.fsUuid);
+    const destinationNumber = normalizeLiveSipDestination(
+      body.destinationNumber ?? body.destination ?? body.extension ?? body.calledNumber,
+    );
+    if (body.conversationMode !== undefined && !isConversationMode(body.conversationMode)) {
+      writeBadRequest(response, "live_sip_conversation_mode_invalid");
       return;
     }
+    const liveSipConversationMode = normalizeLiveSipConversationMode(body.conversationMode, destinationNumber);
+    const canonicalSipCallId = linkedSipCallId ?? sipCallId;
+    const liveSipCorrelationIds = uniqueLiveSipCallIds(canonicalSipCallId, sipCallId, linkedSipCallId, vertoCallId, fsUuid);
 
-    const callId = liveSipCallMap.get(sipCallId);
-    if (!callId) {
-      writeBadRequest(response, "live_sip_call_not_started");
-      return;
-    }
+    const prelockCallId =
+      getMappedLiveSipCallId(liveSipCallMap, liveSipCorrelationIds)
+      ?? getMappedLiveSipEndedCallId(liveSipEndedCallMap, liveSipCorrelationIds);
+    const prelockSnapshots = prelockCallId ? [] : await listLiveSipSnapshotsByProviderIds(ingress, liveSipCorrelationIds);
+	    const prelockActiveSnapshot = prelockSnapshots.find((snapshot) => !isLiveSipCallEnded(snapshot));
+	    const liveSipCallLockKey = prelockCallId ?? prelockActiveSnapshot?.session.callId ?? canonicalSipCallId;
+
+	    if (eventType === "media.transcript") {
+	      const text = getOptionalTrimmedString(body.text) ?? getOptionalTrimmedString(body.transcript);
+	      if (!text) {
+	        writeBadRequest(response, "live_sip_transcript_text_required");
+	        return;
+	      }
+
+	      const voiceSessionId = getOptionalTrimmedString(body.voiceSessionId);
+	      const realtimeVoiceSessionId = getOptionalTrimmedString(body.realtimeVoiceSessionId);
+	      const voiceSessionScope = {
+	        ...(voiceSessionId ? { voiceSessionId } : {}),
+	        ...(realtimeVoiceSessionId ? { realtimeVoiceSessionId } : {}),
+	      };
+	      let mediaTranscriptCallId: string | null = null;
+	      let mediaTranscriptConversationMode: ConversationMode | null = null;
+	      let mediaTranscriptResponseWritten = false;
+
+	      await withLiveSipCallLock(liveSipCallLocks, liveSipCallLockKey, async () => {
+	        const callId = getMappedLiveSipCallId(liveSipCallMap, liveSipCorrelationIds);
+	        const endedCallId = getMappedLiveSipEndedCallId(liveSipEndedCallMap, liveSipCorrelationIds);
+	        if (!callId && endedCallId) {
+	          const endedSnapshot = await ingress.getSnapshot(endedCallId);
+	          if (endedSnapshot && isLiveSipCallEnded(endedSnapshot)) {
+	            writeBadRequest(response, "live_sip_call_not_started");
+	            mediaTranscriptResponseWritten = true;
+	            return;
+	          }
+	          deleteLiveSipEndedCallAliases(liveSipEndedCallMap, liveSipCorrelationIds);
+	        }
+	        if (!callId) {
+	          writeBadRequest(response, "live_sip_call_not_started");
+	          mediaTranscriptResponseWritten = true;
+	          return;
+	        }
+	        const currentSnapshot = await ingress.getSnapshot(callId);
+	        if (!currentSnapshot || isLiveSipCallEnded(currentSnapshot)) {
+	          writeBadRequest(response, "live_sip_call_not_started");
+	          mediaTranscriptResponseWritten = true;
+	          return;
+	        }
+	        const conversationMode = currentSnapshot.scenario.conversationMode;
+	        if (isOpenAiLiveSipAutomationStopped(currentSnapshot)) {
+	          await rejectHeldLiveSipCallerTurn(
+	            response,
+	            ingress,
+	            callId,
+	            text,
+	            timestamp,
+	            getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+	            "/api/live-sip/events",
+	            "openai_fail_closed_handoff_active",
+	            { eventType, sipCallId },
+	            voiceSessionScope,
+	          );
+	          mediaTranscriptResponseWritten = true;
+	          return;
+	        }
+	        const currentOperatorHoldReason = getLiveSipCallerTurnHoldReason(currentSnapshot, conversationMode);
+	        if (currentOperatorHoldReason) {
+	          await rejectHeldLiveSipCallerTurn(
+	            response,
+	            ingress,
+	            callId,
+	            text,
+	            timestamp,
+	            getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+	            "/api/live-sip/events",
+	            currentOperatorHoldReason,
+	            { eventType, sipCallId },
+	            voiceSessionScope,
+	          );
+	          mediaTranscriptResponseWritten = true;
+	          return;
+	        }
+	        if (conversationMode !== "openai_llm") {
+	          await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config, {
+	            ...voiceSessionScope,
+	            conversationMode,
+	          });
+	          const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+	            eventType: "rtc_asr_transcript",
+	            timestamp,
+	            detail: {
+	              provider: "rtc-asr",
+	              transcriptText: text,
+	              evidencePath: getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+	              ...voiceSessionScope,
+	            },
+	          });
+	          writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+	          mediaTranscriptResponseWritten = true;
+	          return;
+	        }
+	        mediaTranscriptCallId = callId;
+	        mediaTranscriptConversationMode = conversationMode;
+	      });
+
+	      if (mediaTranscriptResponseWritten) return;
+	      if (!mediaTranscriptCallId || mediaTranscriptConversationMode !== "openai_llm") {
+	        writeBadRequest(response, "live_sip_call_not_started");
+	        return;
+	      }
+	      const openAiMediaTranscriptCallId = mediaTranscriptCallId;
+	      const openAiMediaTranscriptConversationMode = mediaTranscriptConversationMode;
+
+	      await withLiveSipOpenAiGenerationLock(liveSipOpenAiGenerationLocks, openAiMediaTranscriptCallId, async () => {
+	        const lockedSnapshot = await ingress.getSnapshot(openAiMediaTranscriptCallId);
+	        if (!lockedSnapshot || isLiveSipCallEnded(lockedSnapshot)) {
+	          writeBadRequest(response, "live_sip_call_not_started");
+	          return;
+	        }
+	        if (isOpenAiLiveSipAutomationStopped(lockedSnapshot)) {
+	          await withLiveSipCallLock(liveSipCallLocks, openAiMediaTranscriptCallId, async () => {
+	            await rejectHeldLiveSipCallerTurn(
+	              response,
+	              ingress,
+	              openAiMediaTranscriptCallId,
+	              text,
+	              timestamp,
+	              getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+	              "/api/live-sip/events",
+	              "openai_fail_closed_handoff_active",
+	              { eventType, sipCallId },
+	              voiceSessionScope,
+	            );
+	          });
+	          return;
+	        }
+	        const lockedOperatorHoldReason = getLiveSipCallerTurnHoldReason(lockedSnapshot, openAiMediaTranscriptConversationMode);
+	        if (lockedOperatorHoldReason) {
+	          await withLiveSipCallLock(liveSipCallLocks, openAiMediaTranscriptCallId, async () => {
+	            await rejectHeldLiveSipCallerTurn(
+	              response,
+	              ingress,
+	              openAiMediaTranscriptCallId,
+	              text,
+	              timestamp,
+	              getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+	              "/api/live-sip/events",
+	              lockedOperatorHoldReason,
+	              { eventType, sipCallId },
+	              voiceSessionScope,
+	            );
+	          });
+	          return;
+	        }
+	        const openAiLlm = await generateOpenAiLiveSipResponse(lockedSnapshot, text, timestamp);
+	        await withLiveSipCallLock(liveSipCallLocks, openAiMediaTranscriptCallId, async () => {
+	          const latestSnapshot = await ingress.getSnapshot(openAiMediaTranscriptCallId);
+	          if (!latestSnapshot || isLiveSipCallEnded(latestSnapshot)) {
+	            writeBadRequest(response, "live_sip_call_not_started");
+	            return;
+	          }
+	          if (isOpenAiLiveSipAutomationStopped(latestSnapshot)) {
+	            await rejectHeldLiveSipCallerTurn(
+	              response,
+	              ingress,
+	              openAiMediaTranscriptCallId,
+	              text,
+	              timestamp,
+	              getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+	              "/api/live-sip/events",
+	              "openai_fail_closed_handoff_active",
+	              { eventType, sipCallId },
+	              voiceSessionScope,
+	            );
+	            return;
+	          }
+	          const latestOperatorHoldReason = getLiveSipCallerTurnHoldReason(latestSnapshot, openAiMediaTranscriptConversationMode);
+	          if (latestOperatorHoldReason) {
+	            await rejectHeldLiveSipCallerTurn(
+	              response,
+	              ingress,
+	              openAiMediaTranscriptCallId,
+	              text,
+	              timestamp,
+	              getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+	              "/api/live-sip/events",
+	              latestOperatorHoldReason,
+	              { eventType, sipCallId },
+	              voiceSessionScope,
+	            );
+	            return;
+	          }
+	          await ingress.appendCallerTurn(openAiMediaTranscriptCallId, { speaker: "caller", text, timestamp }, config, {
+	            ...voiceSessionScope,
+	            conversationMode: openAiMediaTranscriptConversationMode,
+	            openAiLlm,
+	          });
+	          const snapshot = await ingress.recordLiveTelephonyEvidence(openAiMediaTranscriptCallId, {
+	            eventType: "rtc_asr_transcript",
+	            timestamp,
+	            detail: {
+	              provider: "rtc-asr",
+	              transcriptText: text,
+	              evidencePath: getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+	              ...voiceSessionScope,
+	            },
+	          });
+	          writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+	        });
+	      });
+	      return;
+	    }
+
+	    await withLiveSipCallLock(liveSipCallLocks, liveSipCallLockKey, async () => {
+      if (eventType === "call.started") {
+        const existingCallId = getMappedLiveSipCallId(liveSipCallMap, liveSipCorrelationIds);
+        if (existingCallId) {
+          const existingSnapshot = await ingress.getSnapshot(existingCallId);
+          if (existingSnapshot) {
+            if (isLiveSipCallEnded(existingSnapshot)) {
+              writeBadRequest(response, "live_sip_call_already_ended");
+              return;
+            }
+            setLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds, existingSnapshot.session.callId);
+            writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(existingSnapshot), idempotent: true });
+            return;
+          }
+          deleteLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds);
+        }
+        const endedCallId = getMappedLiveSipEndedCallId(liveSipEndedCallMap, liveSipCorrelationIds);
+        if (endedCallId) {
+          const endedSnapshot = await ingress.getSnapshot(endedCallId);
+          if (endedSnapshot && isLiveSipCallEnded(endedSnapshot)) {
+            writeBadRequest(response, "live_sip_call_already_ended");
+            return;
+          }
+          deleteLiveSipEndedCallAliases(liveSipEndedCallMap, liveSipCorrelationIds);
+        }
+        const matchingSnapshots = await listLiveSipSnapshotsByProviderIds(ingress, liveSipCorrelationIds);
+        const matchingSnapshot = matchingSnapshots.find((snapshot) => !isLiveSipCallEnded(snapshot));
+        if (matchingSnapshot) {
+          setLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds, matchingSnapshot.session.callId);
+          writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(matchingSnapshot), idempotent: true });
+          return;
+        }
+        const endedMatchingSnapshot = matchingSnapshots.find((snapshot) => isLiveSipCallEnded(snapshot));
+        if (endedMatchingSnapshot) {
+          setLiveSipEndedCallAliases(liveSipEndedCallMap, liveSipCorrelationIds, endedMatchingSnapshot.session.callId);
+          writeBadRequest(response, "live_sip_call_already_ended");
+          return;
+        }
+        const telephonyMode = body.telephonyMode === "signalwire_live" ? "signalwire_live" : "local_sip";
+        const snapshot = await ingress.startCall(config, {
+          providerName: telephonyMode === "signalwire_live" ? "signalwire" : "freeswitch-local-sip",
+          providerCallId: canonicalSipCallId,
+          openclawSessionId: `live-sip-${canonicalSipCallId}`,
+          openclawSessionLabel: `${telephonyMode}/${destinationNumber ?? "unknown"}/${canonicalSipCallId}`,
+          source: normalizeLiveSipIngressSource(body.source),
+          conversationMode: liveSipConversationMode,
+          sipExtension: destinationNumber,
+          runtimeModeLabels: {
+            telephony: telephonyMode,
+            media: "live_capture",
+            rtcAsr: body.rtcAsrMode === "rtc_asr_live" ? "rtc_asr_live" : "rtc_asr_blocked",
+            credentialsMode: telephonyMode === "signalwire_live" ? "signalwire_live" : "mocked",
+          },
+        });
+        setLiveSipCallAliases(liveSipCallMap, liveSipCorrelationIds, snapshot.session.callId);
+        writeJson(response, 201, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(snapshot) });
+        return;
+      }
+
+      let callId = getMappedLiveSipCallId(liveSipCallMap, liveSipCorrelationIds);
+      const endedCallId = getMappedLiveSipEndedCallId(liveSipEndedCallMap, liveSipCorrelationIds);
+      if (!callId && endedCallId) {
+        const endedSnapshot = await ingress.getSnapshot(endedCallId);
+        if (endedSnapshot && isLiveSipCallEnded(endedSnapshot)) {
+          if (eventType === "call.ended") {
+            purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, endedSnapshot.session.callId);
+            writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(endedSnapshot), idempotent: true });
+          } else {
+            writeBadRequest(response, "live_sip_call_not_started");
+          }
+          return;
+        }
+        deleteLiveSipEndedCallAliases(liveSipEndedCallMap, liveSipCorrelationIds);
+      }
+      if (!callId && eventType === "call.ended") {
+        const matchingSnapshot = (await listLiveSipSnapshotsByProviderIds(ingress, liveSipCorrelationIds))[0];
+        if (matchingSnapshot) {
+          callId = matchingSnapshot.session.callId;
+          const alreadyEnded = matchingSnapshot.events.some((event) => event.type === "sip_call_ended");
+          if (alreadyEnded) {
+            purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, matchingSnapshot.session.callId);
+            writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(matchingSnapshot), idempotent: true });
+            return;
+          }
+        }
+      }
+      if (!callId) {
+        writeBadRequest(response, "live_sip_call_not_started");
+        return;
+      }
+      if (eventType === "call.ended") {
+        const existingSnapshot = await ingress.getSnapshot(callId);
+        if (existingSnapshot?.events.some((event) => event.type === "sip_call_ended")) {
+          purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
+          writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(existingSnapshot), idempotent: true });
+          return;
+        }
+      } else {
+        const existingSnapshot = await ingress.getSnapshot(callId);
+        if (existingSnapshot && isLiveSipCallEnded(existingSnapshot)) {
+          writeBadRequest(response, "live_sip_call_not_started");
+          return;
+        }
+      }
 
     const voiceSessionId = getOptionalTrimmedString(body.voiceSessionId);
     const realtimeVoiceSessionId = getOptionalTrimmedString(body.realtimeVoiceSessionId);
@@ -5290,13 +6190,163 @@ async function routeRequest(
     };
 
     try {
+      if (eventType === "agent.greeting") {
+        const text = getOptionalTrimmedString(body.text);
+        if (!text) {
+          writeBadRequest(response, "live_sip_agent_greeting_text_required");
+          return;
+        }
+        const snapshot = await ingress.recordInitialAgentGreeting(callId, text, timestamp);
+        writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+        return;
+      }
+
       if (eventType === "media.transcript") {
         const text = getOptionalTrimmedString(body.text) ?? getOptionalTrimmedString(body.transcript);
         if (!text) {
           writeBadRequest(response, "live_sip_transcript_text_required");
           return;
         }
-        await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config, voiceSessionScope);
+        const currentSnapshot = await ingress.getSnapshot(callId);
+        if (!currentSnapshot || isLiveSipCallEnded(currentSnapshot)) {
+          writeBadRequest(response, "live_sip_call_not_started");
+          return;
+        }
+        const conversationMode = currentSnapshot.scenario.conversationMode;
+        if (isOpenAiLiveSipAutomationStopped(currentSnapshot)) {
+          await rejectHeldLiveSipCallerTurn(
+            response,
+            ingress,
+            callId,
+            text,
+            timestamp,
+            getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+            "/api/live-sip/events",
+            "openai_fail_closed_handoff_active",
+            { eventType, sipCallId },
+            voiceSessionScope,
+          );
+          return;
+        }
+        const currentOperatorHoldReason = getLiveSipCallerTurnHoldReason(currentSnapshot, conversationMode);
+        if (currentOperatorHoldReason) {
+          await rejectHeldLiveSipCallerTurn(
+            response,
+            ingress,
+            callId,
+            text,
+            timestamp,
+            getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+            "/api/live-sip/events",
+            currentOperatorHoldReason,
+            { eventType, sipCallId },
+            voiceSessionScope,
+          );
+          return;
+        }
+        if (conversationMode === "openai_llm") {
+          await withLiveSipOpenAiGenerationLock(liveSipOpenAiGenerationLocks, callId, async () => {
+            const lockedSnapshot = await ingress.getSnapshot(callId);
+            if (!lockedSnapshot || isLiveSipCallEnded(lockedSnapshot)) {
+              writeBadRequest(response, "live_sip_call_not_started");
+              return;
+            }
+            if (isOpenAiLiveSipAutomationStopped(lockedSnapshot)) {
+              await rejectHeldLiveSipCallerTurn(
+                response,
+                ingress,
+                callId,
+                text,
+                timestamp,
+                getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+                "/api/live-sip/events",
+                "openai_fail_closed_handoff_active",
+                { eventType, sipCallId },
+                voiceSessionScope,
+              );
+              return;
+            }
+            const lockedOperatorHoldReason = getLiveSipCallerTurnHoldReason(lockedSnapshot, conversationMode);
+            if (lockedOperatorHoldReason) {
+              await rejectHeldLiveSipCallerTurn(
+                response,
+                ingress,
+                callId,
+                text,
+                timestamp,
+                getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+                "/api/live-sip/events",
+                lockedOperatorHoldReason,
+                { eventType, sipCallId },
+                voiceSessionScope,
+              );
+              return;
+            }
+            const openAiLlm = await generateOpenAiLiveSipResponse(lockedSnapshot, text, timestamp);
+            let latestSnapshot = await ingress.getSnapshot(callId);
+            if (openAiLlm?.ok && latestSnapshot && latestSnapshot.events.length === lockedSnapshot.events.length) {
+              await new Promise<void>((resolve) => setImmediate(resolve));
+              const recheckedSnapshot = await ingress.getSnapshot(callId);
+              if (recheckedSnapshot) latestSnapshot = recheckedSnapshot;
+            }
+            if (!latestSnapshot || isLiveSipCallEnded(latestSnapshot)) {
+              writeBadRequest(response, "live_sip_call_not_started");
+              return;
+            }
+            if (isOpenAiLiveSipAutomationStopped(latestSnapshot)) {
+              await rejectHeldLiveSipCallerTurn(
+                response,
+                ingress,
+                callId,
+                text,
+                timestamp,
+                getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+                "/api/live-sip/events",
+                "openai_fail_closed_handoff_active",
+                { eventType, sipCallId },
+                voiceSessionScope,
+              );
+              return;
+            }
+            const latestOperatorHoldReason = getLiveSipCallerTurnHoldReason(latestSnapshot, conversationMode);
+            if (latestOperatorHoldReason) {
+              await rejectHeldLiveSipCallerTurn(
+                response,
+                ingress,
+                callId,
+                text,
+                timestamp,
+                getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+                "/api/live-sip/events",
+                latestOperatorHoldReason,
+                { eventType, sipCallId },
+                voiceSessionScope,
+              );
+              return;
+            }
+            await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config, {
+              ...voiceSessionScope,
+              conversationMode,
+              openAiLlm,
+            });
+            const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+              eventType: "rtc_asr_transcript",
+              timestamp,
+              detail: {
+                provider: "rtc-asr",
+                transcriptText: text,
+                evidencePath: getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+                ...voiceSessionScope,
+              },
+            });
+            writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+          });
+          return;
+        }
+        await ingress.appendCallerTurn(callId, { speaker: "caller", text, timestamp }, config, {
+          ...voiceSessionScope,
+          conversationMode,
+        });
         const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
           eventType: "rtc_asr_transcript",
           timestamp,
@@ -5474,11 +6524,18 @@ async function routeRequest(
           durationSeconds,
         },
       });
-      liveSipCallMap.delete(sipCallId);
-      writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, call: buildCallPayload(snapshot) });
+      purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, snapshot.session.callId);
+      const endedAliases = uniqueLiveSipCallIds(
+        ...liveSipCallAliasesForCall(liveSipCallMap, snapshot.session.callId),
+        ...liveSipCorrelationIds,
+      );
+      deleteLiveSipCallAliasesForCall(liveSipCallMap, snapshot.session.callId);
+      setLiveSipEndedCallAliases(liveSipEndedCallMap, endedAliases, snapshot.session.callId);
+      writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(snapshot) });
     } catch {
       writeNotFound(response);
     }
+    });
     return;
   }
 
@@ -5590,6 +6647,7 @@ async function routeRequest(
       }
 
       const snapshot = await ingress.applyOperatorSteer(callId, "end_call", timestamp, "signalwire_call_ended");
+      purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, snapshot.session.callId);
       if (signalWireCallId) {
         signalWireCallMap.delete(signalWireCallId);
       }
@@ -5911,11 +6969,7 @@ async function routeRequest(
     }
 
     const conversationMode = body.conversationMode;
-    if (
-      conversationMode !== undefined &&
-      conversationMode !== "scripted" &&
-      conversationMode !== "free_caller"
-    ) {
+    if (conversationMode !== undefined && !isConversationMode(conversationMode)) {
       writeBadRequest(response, "caller_turn_conversation_mode_invalid");
       return;
     }
@@ -5938,37 +6992,345 @@ async function routeRequest(
       timestamp,
     };
 
+    let deliveryAckPreviewReservationKey: string | undefined;
     try {
+      let currentSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
+      if (!currentSnapshot) {
+        writeNotFound(response);
+        return;
+      }
+      if (isLiveSipCallEnded(currentSnapshot)) {
+        writeJson(response, 409, {
+          ok: false,
+          route: "/api/calls/:callId/caller-turn",
+          error: "live_sip_call_ended",
+          call: buildCallPayload(currentSnapshot),
+        });
+        return;
+      }
+      const effectiveConversationMode = conversationMode ?? currentSnapshot.scenario.conversationMode;
+      if (isOpenAiLiveSipAutomationStopped(currentSnapshot)) {
+        await rejectHeldLiveSipCallerTurn(
+          response,
+          ingress,
+          callerTurnMatch[1],
+          text,
+          timestamp,
+          getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+          "/api/calls/:callId/caller-turn",
+          "openai_fail_closed_handoff_active",
+        );
+        return;
+      }
+      const currentOperatorHoldReason = getLiveSipCallerTurnHoldReason(currentSnapshot, effectiveConversationMode);
+      if (currentOperatorHoldReason) {
+        await rejectHeldLiveSipCallerTurn(
+          response,
+          ingress,
+          callerTurnMatch[1],
+          text,
+          timestamp,
+          getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+          "/api/calls/:callId/caller-turn",
+          currentOperatorHoldReason,
+        );
+        return;
+      }
       if (commitMode === "delivery_ack") {
-        const currentSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
-        if (!currentSnapshot) {
-          writeNotFound(response);
+        const snapshotVersion = buildDeliveryAckSnapshotVersion(currentSnapshot);
+        deliveryAckPreviewReservationKey = buildCallerTurnDeliveryAckKey(callerTurnMatch[1], snapshotVersion);
+        const pendingPreview = getCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
+        if (pendingPreview) {
+          if (isCallerTurnDeliveryAckPreviewForTurn(pendingPreview, text, timestamp, effectiveConversationMode)) {
+            writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, pendingPreview.createdAtMs);
+            return;
+          }
+          if (callerTurnDeliveryAckPreviewReservations.has(deliveryAckPreviewReservationKey)) {
+            writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, pendingPreview.createdAtMs);
+            return;
+          }
+          deleteCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
+        }
+        if (callerTurnDeliveryAckPreviewReservations.has(deliveryAckPreviewReservationKey)) {
+          writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, Date.now());
           return;
         }
-        const snapshotVersion = buildDeliveryAckSnapshotVersion(currentSnapshot);
-        const snapshot = await ingress.previewCallerTurn(callerTurnMatch[1], turn, config, {
-          conversationMode,
+        callerTurnDeliveryAckPreviewReservations.add(deliveryAckPreviewReservationKey);
+      }
+      let deliveryAckOpenAiResponseHandled = false;
+      const openAiLlm = commitMode === "delivery_ack" && effectiveConversationMode === "openai_llm"
+        ? await withLiveSipOpenAiGenerationLock(liveSipOpenAiGenerationLocks, callerTurnMatch[1], async () => {
+            const lockedSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
+            if (!lockedSnapshot) {
+              writeNotFound(response);
+              deliveryAckOpenAiResponseHandled = true;
+              return undefined;
+            }
+            if (isLiveSipCallEnded(lockedSnapshot)) {
+              writeJson(response, 409, {
+                ok: false,
+                route: "/api/calls/:callId/caller-turn",
+                error: "live_sip_call_ended",
+                call: buildCallPayload(lockedSnapshot),
+              });
+              deliveryAckOpenAiResponseHandled = true;
+              return undefined;
+            }
+            if (isOpenAiLiveSipAutomationStopped(lockedSnapshot)) {
+              await rejectHeldLiveSipCallerTurn(
+                response,
+                ingress,
+                callerTurnMatch[1],
+                text,
+                timestamp,
+                getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+                "/api/calls/:callId/caller-turn",
+                "openai_fail_closed_handoff_active",
+              );
+              deliveryAckOpenAiResponseHandled = true;
+              return undefined;
+            }
+            const lockedOperatorHoldReason = getLiveSipCallerTurnHoldReason(lockedSnapshot, effectiveConversationMode);
+            if (lockedOperatorHoldReason) {
+              await rejectHeldLiveSipCallerTurn(
+                response,
+                ingress,
+                callerTurnMatch[1],
+                text,
+                timestamp,
+                getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+                "/api/calls/:callId/caller-turn",
+                lockedOperatorHoldReason,
+              );
+              deliveryAckOpenAiResponseHandled = true;
+              return undefined;
+            }
+            currentSnapshot = lockedSnapshot;
+            return generateOpenAiLiveSipResponse(lockedSnapshot, text, timestamp);
+          })
+        : undefined;
+      if (deliveryAckOpenAiResponseHandled) return;
+      let latestSnapshot = openAiLlm ? await ingress.getSnapshot(callerTurnMatch[1]) : currentSnapshot;
+      if (!latestSnapshot) {
+        writeNotFound(response);
+        return;
+      }
+      if (isLiveSipCallEnded(latestSnapshot)) {
+        writeJson(response, 409, {
+          ok: false,
+          route: "/api/calls/:callId/caller-turn",
+          error: "live_sip_call_ended",
+          call: buildCallPayload(latestSnapshot),
         });
-        writeJson(response, 200, {
-          ...buildCallPayload(snapshot),
-          callerTurnCommit: {
-            mode: "delivery_ack",
-            status: "pending",
+        return;
+      }
+      if (isOpenAiLiveSipAutomationStopped(latestSnapshot)) {
+        await rejectHeldLiveSipCallerTurn(
+          response,
+          ingress,
+          callerTurnMatch[1],
+          text,
+          timestamp,
+          getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+          "/api/calls/:callId/caller-turn",
+          "openai_fail_closed_handoff_active",
+        );
+        return;
+      }
+      const latestOperatorHoldReason = getLiveSipCallerTurnHoldReason(latestSnapshot, effectiveConversationMode);
+      if (latestOperatorHoldReason) {
+        await rejectHeldLiveSipCallerTurn(
+          response,
+          ingress,
+          callerTurnMatch[1],
+          text,
+          timestamp,
+          getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+          "/api/calls/:callId/caller-turn",
+          latestOperatorHoldReason,
+        );
+        return;
+      }
+      let openAiFailClosedAlreadyPersisted = false;
+      if (commitMode === "delivery_ack" && openAiLlm && !openAiLlm.ok) {
+        latestSnapshot = await ingress.recordOpenAiLlmFailClosedState(callerTurnMatch[1], turn, openAiLlm);
+        openAiFailClosedAlreadyPersisted = true;
+      }
+      if (commitMode === "delivery_ack") {
+        const snapshotVersion = buildDeliveryAckSnapshotVersion(latestSnapshot);
+        const previewKey = buildCallerTurnDeliveryAckKey(callerTurnMatch[1], snapshotVersion);
+        const pendingPreview = getCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
+        if (pendingPreview) {
+          if (isCallerTurnDeliveryAckPreviewForTurn(pendingPreview, text, timestamp, effectiveConversationMode)) {
+            writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, pendingPreview.createdAtMs);
+            return;
+          }
+          if (callerTurnDeliveryAckPreviewReservations.has(previewKey)) {
+            writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, pendingPreview.createdAtMs);
+            return;
+          }
+          deleteCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
+        }
+        if (callerTurnDeliveryAckPreviewReservations.has(previewKey) && previewKey !== deliveryAckPreviewReservationKey) {
+          writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, Date.now());
+          return;
+        }
+        if (previewKey !== deliveryAckPreviewReservationKey) callerTurnDeliveryAckPreviewReservations.add(previewKey);
+        try {
+          const snapshot = await ingress.previewCallerTurn(callerTurnMatch[1], turn, config, {
+            conversationMode: effectiveConversationMode,
+            openAiLlm,
+            openAiFailClosedAlreadyPersisted,
+          });
+          const expectedAgentText = snapshot.transcript.at(-1)?.speaker === "agent" ? snapshot.transcript.at(-1)?.text : undefined;
+          if (!expectedAgentText) {
+            writeBadRequest(response, "caller_turn_preview_agent_text_missing");
+            return;
+          }
+          const concurrentPendingPreview = getCallerTurnDeliveryAckPreview(callerTurnDeliveryAckPreviews, callerTurnMatch[1], snapshotVersion);
+          if (concurrentPendingPreview) {
+            writeCallerTurnDeliveryAckPreviewPending(response, callerTurnMatch[1], snapshotVersion, concurrentPendingPreview.createdAtMs);
+            return;
+          }
+          callerTurnDeliveryAckPreviews.set(previewKey, {
             callId: callerTurnMatch[1],
-            callerTranscript: text,
             snapshotVersion,
+            callerTranscript: text,
             timestamp,
-            conversationMode: conversationMode ?? null,
-          },
+            createdAtMs: Date.now(),
+            conversationMode: effectiveConversationMode,
+            expectedAgentText,
+            openAiLlm,
+            openAiFailClosedAlreadyPersisted,
+          });
+          writeJson(response, 200, {
+            ...buildCallPayload(snapshot),
+            callerTurnCommit: {
+              mode: "delivery_ack",
+              status: "pending",
+              callId: callerTurnMatch[1],
+              callerTranscript: text,
+              expectedAgentText,
+              snapshotVersion,
+              timestamp,
+              conversationMode: effectiveConversationMode,
+              openAiResponseId: openAiLlm?.ok ? openAiLlm.responseId : null,
+            },
+          });
+          return;
+        } finally {
+          if (previewKey !== deliveryAckPreviewReservationKey) callerTurnDeliveryAckPreviewReservations.delete(previewKey);
+        }
+      }
+      if (effectiveConversationMode === "openai_llm") {
+        await withLiveSipOpenAiGenerationLock(liveSipOpenAiGenerationLocks, callerTurnMatch[1], async () => {
+          const lockedSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
+          if (!lockedSnapshot) {
+            writeNotFound(response);
+            return;
+          }
+          if (isLiveSipCallEnded(lockedSnapshot)) {
+            writeJson(response, 409, {
+              ok: false,
+              route: "/api/calls/:callId/caller-turn",
+              error: "live_sip_call_ended",
+              call: buildCallPayload(lockedSnapshot),
+            });
+            return;
+          }
+          if (isOpenAiLiveSipAutomationStopped(lockedSnapshot)) {
+            await rejectHeldLiveSipCallerTurn(
+              response,
+              ingress,
+              callerTurnMatch[1],
+              text,
+              timestamp,
+              getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+              "/api/calls/:callId/caller-turn",
+              "openai_fail_closed_handoff_active",
+            );
+            return;
+          }
+          const lockedOperatorHoldReason = getLiveSipCallerTurnHoldReason(lockedSnapshot, effectiveConversationMode);
+          if (lockedOperatorHoldReason) {
+            await rejectHeldLiveSipCallerTurn(
+              response,
+              ingress,
+              callerTurnMatch[1],
+              text,
+              timestamp,
+              getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+              "/api/calls/:callId/caller-turn",
+              lockedOperatorHoldReason,
+            );
+            return;
+          }
+          const openAiLlm = await generateOpenAiLiveSipResponse(lockedSnapshot, text, timestamp);
+          let latestSnapshot = openAiLlm ? await ingress.getSnapshot(callerTurnMatch[1]) : lockedSnapshot;
+          if (!latestSnapshot) {
+            writeNotFound(response);
+            return;
+          }
+          if (openAiLlm?.ok && latestSnapshot.events.length === lockedSnapshot.events.length) {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            const recheckedSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
+            if (recheckedSnapshot) latestSnapshot = recheckedSnapshot;
+          }
+          if (isLiveSipCallEnded(latestSnapshot)) {
+            writeJson(response, 409, {
+              ok: false,
+              route: "/api/calls/:callId/caller-turn",
+              error: "live_sip_call_ended",
+              call: buildCallPayload(latestSnapshot),
+            });
+            return;
+          }
+          if (isOpenAiLiveSipAutomationStopped(latestSnapshot)) {
+            await rejectHeldLiveSipCallerTurn(
+              response,
+              ingress,
+              callerTurnMatch[1],
+              text,
+              timestamp,
+              getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+              "/api/calls/:callId/caller-turn",
+              "openai_fail_closed_handoff_active",
+            );
+            return;
+          }
+          const latestOperatorHoldReason = getLiveSipCallerTurnHoldReason(latestSnapshot, effectiveConversationMode);
+          if (latestOperatorHoldReason) {
+            await rejectHeldLiveSipCallerTurn(
+              response,
+              ingress,
+              callerTurnMatch[1],
+              text,
+              timestamp,
+              getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+              "/api/calls/:callId/caller-turn",
+              latestOperatorHoldReason,
+            );
+            return;
+          }
+          const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config, {
+            conversationMode: effectiveConversationMode,
+            openAiLlm,
+          });
+          writeJson(response, 200, buildCallPayload(snapshot));
         });
         return;
       }
       const snapshot = await ingress.appendCallerTurn(callerTurnMatch[1], turn, config, {
-        conversationMode,
+        conversationMode: effectiveConversationMode,
+        openAiLlm,
       });
       writeJson(response, 200, buildCallPayload(snapshot));
     } catch {
       writeNotFound(response);
+    } finally {
+      if (deliveryAckPreviewReservationKey) {
+        callerTurnDeliveryAckPreviewReservations.delete(deliveryAckPreviewReservationKey);
+      }
     }
     return;
   }
@@ -5990,11 +7352,7 @@ async function routeRequest(
     }
 
     const conversationMode = body.conversationMode;
-    if (
-      conversationMode !== undefined &&
-      conversationMode !== "scripted" &&
-      conversationMode !== "free_caller"
-    ) {
+    if (conversationMode !== undefined && !isConversationMode(conversationMode)) {
       writeBadRequest(response, "caller_turn_conversation_mode_invalid");
       return;
     }
@@ -6029,34 +7387,84 @@ async function routeRequest(
         writeNotFound(response);
         return;
       }
+      if (isLiveSipCallEnded(currentSnapshot)) {
+        purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callerTurnCommitMatch[1]);
+        writeJson(response, 409, {
+          ok: false,
+          route: "/api/calls/:callId/caller-turn/commit",
+          error: "live_sip_call_ended",
+          call: buildCallPayload(currentSnapshot),
+        });
+        return;
+      }
       if (buildDeliveryAckSnapshotVersion(currentSnapshot) !== expectedSnapshotVersion) {
         writeBadRequest(response, "caller_turn_commit_stale");
         return;
       }
-      const preview = await ingress.previewCallerTurn(callerTurnCommitMatch[1], turn, config, {
-        conversationMode,
-      });
-      const previewAgentText = preview.transcript.at(-1)?.speaker === "agent" ? preview.transcript.at(-1)?.text : undefined;
-      if (previewAgentText !== expectedAgentText) {
+      const effectiveConversationMode = conversationMode ?? currentSnapshot.scenario.conversationMode;
+      const previewKey = buildCallerTurnDeliveryAckKey(callerTurnCommitMatch[1], expectedSnapshotVersion);
+      const pendingPreview = callerTurnDeliveryAckPreviews.get(previewKey);
+      if (pendingPreview && Date.now() - pendingPreview.createdAtMs >= callerTurnDeliveryAckPreviewTtlMs) {
+        callerTurnDeliveryAckPreviews.delete(previewKey);
         writeBadRequest(response, "caller_turn_commit_stale");
         return;
       }
-      const snapshot = await ingress.appendCallerTurn(callerTurnCommitMatch[1], turn, config, {
-        conversationMode,
-      });
-      writeJson(response, 200, {
-        ...buildCallPayload(snapshot),
-        callerTurnCommit: {
-          mode: "delivery_ack",
-          status: "committed",
-          callId: callerTurnCommitMatch[1],
-          callerTranscript: text,
-          expectedAgentText,
+      if (
+        !pendingPreview
+        || pendingPreview.callerTranscript !== text
+        || pendingPreview.timestamp !== timestamp
+        || pendingPreview.conversationMode !== effectiveConversationMode
+        || pendingPreview.expectedAgentText !== expectedAgentText
+      ) {
+        writeBadRequest(response, "caller_turn_commit_stale");
+        return;
+      }
+      if (callerTurnDeliveryAckPreviewReservations.has(previewKey)) {
+        writeCallerTurnDeliveryAckPreviewPending(
+          response,
+          callerTurnCommitMatch[1],
           expectedSnapshotVersion,
-          timestamp,
-          conversationMode: conversationMode ?? null,
-        },
-      });
+          pendingPreview.createdAtMs,
+          "/api/calls/:callId/caller-turn/commit",
+        );
+        return;
+      }
+      callerTurnDeliveryAckPreviewReservations.add(previewKey);
+      try {
+        const openAiLlm = pendingPreview.openAiLlm;
+        const openAiFailClosedAlreadyPersisted = pendingPreview.openAiFailClosedAlreadyPersisted;
+        const preview = await ingress.previewCallerTurn(callerTurnCommitMatch[1], turn, config, {
+          conversationMode: effectiveConversationMode,
+          openAiLlm,
+          openAiFailClosedAlreadyPersisted,
+        });
+        const previewAgentText = preview.transcript.at(-1)?.speaker === "agent" ? preview.transcript.at(-1)?.text : undefined;
+        if (previewAgentText !== expectedAgentText) {
+          writeBadRequest(response, "caller_turn_commit_stale");
+          return;
+        }
+        const snapshot = await ingress.appendCallerTurn(callerTurnCommitMatch[1], turn, config, {
+          conversationMode: effectiveConversationMode,
+          openAiLlm,
+          openAiFailClosedAlreadyPersisted,
+        });
+        callerTurnDeliveryAckPreviews.delete(previewKey);
+        writeJson(response, 200, {
+          ...buildCallPayload(snapshot),
+          callerTurnCommit: {
+            mode: "delivery_ack",
+            status: "committed",
+            callId: callerTurnCommitMatch[1],
+            callerTranscript: text,
+            expectedAgentText,
+            expectedSnapshotVersion,
+            timestamp,
+            conversationMode: effectiveConversationMode,
+          },
+        });
+      } finally {
+        callerTurnDeliveryAckPreviewReservations.delete(previewKey);
+      }
     } catch {
       writeNotFound(response);
     }
@@ -6169,6 +7577,9 @@ async function routeRequest(
         parsedSteer.timestamp,
         parsedSteer.reason,
       );
+      if (parsedSteer.action === "end_call") {
+        purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, snapshot.session.callId);
+      }
       writeJson(response, 200, buildCallPayload(snapshot));
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Call is not awaiting operator steer")) {
@@ -6540,10 +7951,15 @@ export function buildHttpServer(config: PocConfig) {
   const ingress = new InMemoryTelephonyIngress();
   const signalWireCallMap = new Map<string, string>();
   const liveSipCallMap = new Map<string, string>();
+  const liveSipEndedCallMap = new Map<string, LiveSipEndedCallAlias>();
+  const liveSipCallLocks = new Map<string, Promise<void>>();
+  const liveSipOpenAiGenerationLocks = new Map<string, Promise<void>>();
+  const callerTurnDeliveryAckPreviews = new Map<string, CallerTurnDeliveryAckPreview>();
+  const callerTurnDeliveryAckPreviewReservations = new Set<string>();
   const voiceSessions = new RealtimeVoiceSessionStore();
 
   const server = createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, voiceSessions).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;

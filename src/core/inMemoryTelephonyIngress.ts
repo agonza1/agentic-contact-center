@@ -1,4 +1,7 @@
 import {
+  type OpenAiLlmTurnResult,
+  applyOpenAiLlmFailClosedState,
+  applyOpenAiLlmPipecatFlow,
   applyFreeCallerPipecatFlow,
   applyDeterministicPipecatFlow,
   applyOperatorSteer,
@@ -9,6 +12,7 @@ import { compareTimestamps, getAttentionMetadata } from "./attention";
 import type {
   AttentionSource,
   CallSnapshot,
+  ConversationMode,
   FlowState,
   LatencyMark,
   LatencyBudgetStage,
@@ -51,12 +55,44 @@ function cloneSnapshot(snapshot: CallSnapshot): CallSnapshot {
 }
 
 interface CallerTurnOptions {
-  conversationMode?: "scripted" | "free_caller";
+  conversationMode?: ConversationMode;
   voiceSessionId?: string | null;
   realtimeVoiceSessionId?: string | null;
+  openAiLlm?: OpenAiLlmTurnResult;
+  openAiFailClosedAlreadyPersisted?: boolean;
 }
 
 type VoiceSessionScope = Pick<CallerTurnOptions, "voiceSessionId" | "realtimeVoiceSessionId">;
+
+const terminalOperatorSteerActions = new Set(["escalate_to_human", "transfer", "end_call"]);
+const operatorSteerReleaseActions = new Set(["resume"]);
+
+function getOperatorSteerAction(event: CallSnapshot["events"][number]): string | null {
+  return typeof event.detail.action === "string" ? event.detail.action : null;
+}
+
+function isOperatorSteerReleaseEvent(event: CallSnapshot["events"][number]): boolean {
+  if (event.type === "demo_fallback_disarmed") return true;
+  if (event.type !== "operator_steer_applied") return false;
+  const action = getOperatorSteerAction(event);
+  return action !== null && operatorSteerReleaseActions.has(action);
+}
+
+function hasActiveTerminalOperatorStop(snapshot: CallSnapshot): boolean {
+  const stopIndex = snapshot.events.reduce((latest, event, index) => {
+    const action = getOperatorSteerAction(event);
+    const terminalAction = event.type === "operator_steer_applied" && action !== null && terminalOperatorSteerActions.has(action);
+    const terminalEvent =
+      event.type === "operator_transfer_started" ||
+      event.type === "operator_call_ended" ||
+      (event.type === "human_handoff_started" && event.detail.source === "operator_steer");
+    return terminalAction || terminalEvent ? index : latest;
+  }, -1);
+  const releaseIndex = snapshot.events.reduce((latest, event, index) => {
+    return isOperatorSteerReleaseEvent(event) ? index : latest;
+  }, -1);
+  return stopIndex >= 0 && releaseIndex <= stopIndex;
+}
 
 function buildOpenClawArtifactLinks(callId: string) {
   const basePath = `/api/calls/${callId}`;
@@ -211,6 +247,9 @@ export class InMemoryTelephonyIngress {
     const openclawAttachStatus = openclawAttachFailed ? "degraded" : "attached";
     const openclawArtifactLinks = buildOpenClawArtifactLinks(callId);
     const openclawSessionRef = buildOpenClawSessionRef(openclawSessionId);
+    const conversationMode =
+      options.conversationMode
+      ?? (openclawSessionLabel === "pipecat-local-voice" ? "free_caller" : "scripted");
 
     const snapshot: CallSnapshot = {
       session: {
@@ -254,6 +293,8 @@ export class InMemoryTelephonyIngress {
         defaultSupervisorSteer: config.policy.defaultSupervisorSteer,
         fallbackMode: config.policy.fallbackMode,
         operatorChannel: config.operator.channel,
+        conversationMode,
+        sipExtension: options.sipExtension ?? null,
       },
       demoFallback: {
         armed: false,
@@ -286,6 +327,8 @@ export class InMemoryTelephonyIngress {
             pipecatRuntimeMode: "pipecat_local_runtime",
             credentialsMode: runtimeModeLabels.credentialsMode,
             ingressSource: options.source ?? "mock_http_route",
+            conversationMode,
+            sipExtension: options.sipExtension ?? null,
           },
         },
         {
@@ -331,7 +374,9 @@ export class InMemoryTelephonyIngress {
 
   private applyCallerTurn(snapshot: CallSnapshot, turn: TranscriptTurn, config: PocConfig, options: CallerTurnOptions): void {
     const conversationMode =
-      options.conversationMode ?? (snapshot.session.openclawSession.label === "pipecat-local-voice" ? "free_caller" : "scripted");
+      options.conversationMode
+      ?? snapshot.scenario.conversationMode
+      ?? (snapshot.session.openclawSession.label === "pipecat-local-voice" ? "free_caller" : "scripted");
 
     snapshot.transcript.push({ ...turn });
     snapshot.events.push({
@@ -361,7 +406,11 @@ export class InMemoryTelephonyIngress {
       },
     });
 
-    if (conversationMode === "free_caller") {
+    if (conversationMode === "openai_llm") {
+      applyOpenAiLlmPipecatFlow(snapshot, turn, options.openAiLlm, {
+        failClosedAlreadyPersisted: options.openAiFailClosedAlreadyPersisted,
+      });
+    } else if (conversationMode === "free_caller") {
       applyFreeCallerPipecatFlow(snapshot, turn);
     } else {
       applyDeterministicPipecatFlow(snapshot, config, turn);
@@ -412,6 +461,47 @@ export class InMemoryTelephonyIngress {
     }
 
     this.applyCallerTurn(snapshot, turn, config, options);
+    return cloneSnapshot(snapshot);
+  }
+
+  async recordOpenAiLlmFailClosedState(
+    callId: string,
+    turn: TranscriptTurn,
+    llm: OpenAiLlmTurnResult | undefined,
+  ): Promise<CallSnapshot> {
+    const snapshot = this.calls.get(callId);
+
+    if (!snapshot) {
+      throw new Error(`Unknown call id: ${callId}`);
+    }
+
+    applyOpenAiLlmFailClosedState(snapshot, turn, llm);
+    recordLatencyMark(snapshot, "operator_notified", turn.timestamp, "operatorNotification");
+    refreshOpenClawSessionEvidence(snapshot, turn.timestamp);
+    return cloneSnapshot(snapshot);
+  }
+
+  async recordInitialAgentGreeting(callId: string, text: string, timestamp: string): Promise<CallSnapshot> {
+    const snapshot = this.calls.get(callId);
+    if (!snapshot) {
+      throw new Error(`Unknown call id: ${callId}`);
+    }
+    if (snapshot.transcript.some((turn) => turn.speaker === "agent")) {
+      return cloneSnapshot(snapshot);
+    }
+    snapshot.transcript.push({ speaker: "agent", text, timestamp });
+    snapshot.flowState = "greet";
+    snapshot.events.push({
+      type: "agent_turn_appended",
+      at: timestamp,
+      detail: { speaker: "agent", text, transcriptLength: snapshot.transcript.length, source: "pipecat_prerecorded_intro", prerecorded: true },
+    });
+    snapshot.events.push({
+      type: "flow_state_transition",
+      at: timestamp,
+      detail: { from: "call_started", to: "greet", reason: "prerecorded_intro_delivered" },
+    });
+    refreshOpenClawSessionEvidence(snapshot, timestamp);
     return cloneSnapshot(snapshot);
   }
 
@@ -494,7 +584,15 @@ export class InMemoryTelephonyIngress {
 
     const requiresPendingState =
       action === "approve_offer" || action === "deny_offer" || action === "escalate_to_human" || action === "resume";
-    if (requiresPendingState && snapshot.flowState !== "policy_hold" && snapshot.flowState !== "operator_steer") {
+    const resumesArmedFallback = action === "resume" && snapshot.demoFallback.armed;
+    const resumesTerminalOperatorStop = action === "resume" && hasActiveTerminalOperatorStop(snapshot);
+    if (
+      requiresPendingState &&
+      snapshot.flowState !== "policy_hold" &&
+      snapshot.flowState !== "operator_steer" &&
+      !resumesArmedFallback &&
+      !resumesTerminalOperatorStop
+    ) {
       throw new Error(`Call is not awaiting operator steer: ${callId}`);
     }
 

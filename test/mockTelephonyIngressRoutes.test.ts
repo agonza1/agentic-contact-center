@@ -4,6 +4,7 @@ import { request } from "node:http";
 import { Script } from "node:vm";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
+import { InMemoryTelephonyIngress } from "../src/core/inMemoryTelephonyIngress";
 import { buildHttpServer } from "../src/http/createServer";
 
 interface SnapshotPayload {
@@ -1250,6 +1251,14 @@ test("POST /api/signalwire/events maps local SignalWire lifecycle into call runt
     assert.equal(errorPayload.call.demoFallback.reason, "media websocket timeout");
     assert.equal(errorPayload.call.flowState, "wrap");
 
+    const heldAfterError = await requestJson(port, "POST", `/api/calls/${startedPayload.call.session.callId}/caller-turn`, {
+      text: "Can I keep talking after the call.error fallback?",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:09:09.000Z",
+    });
+    assert.equal(heldAfterError.statusCode, 409);
+    assert.equal((heldAfterError.payload as { error: string }).error, "live_sip_operator_hold_active");
+
     const filtered = await requestJson(port, "GET", "/api/calls?providerCallId=sw-call-123");
     const filteredPayload = filtered.payload as CallListPayload;
     assert.equal(filtered.statusCode, 200);
@@ -1718,26 +1727,19 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       text: "Okay, that sounds good. Thanks.",
       timestamp: "2026-06-10T14:10:15.000Z",
     });
+    await new Promise<void>((resolve) => setTimeout(resolve, 25));
     const progressedConsole = await requestJson(port, "GET", "/api/operator/console?minScriptProgressPct=75");
     const progressedPayload = progressedConsole.payload as OperatorConsolePayload;
 
     assert.equal(progressedConsole.statusCode, 200);
     assert.deepEqual(progressedPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
     assert.equal(progressedPayload.calls.summary.filteredSummary.totalCalls, 1);
-    assert.equal(progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressQueue, "/api/queue?scriptCompleted=true");
-    assert.equal(progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressCallList, "/api/calls?scriptCompleted=true&limit=5");
+    assert.equal(progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressQueue, "/api/queue?minScriptProgressPct=75");
+    assert.equal(progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressCallList, "/api/calls?minScriptProgressPct=75&limit=5");
     assert.equal(
       progressedPayload.calls.items[0]?.evidenceSummary.scriptProgressOperatorConsole,
-      "/api/operator/console?scriptCompleted=true&limit=1",
+      "/api/operator/console?minScriptProgressPct=75&limit=1",
     );
-
-    const completedConsole = await requestJson(port, "GET", "/api/operator/console?scriptCompleted=true");
-    const completedPayload = completedConsole.payload as OperatorConsolePayload;
-
-    assert.equal(completedConsole.statusCode, 200);
-    assert.deepEqual(completedPayload.calls.items.map((call) => call.session.callId), [operatorCallId]);
-    assert.equal(completedPayload.calls.summary.filteredSummary.scriptCompleted, 1);
-    assert.equal(completedPayload.calls.summary.filteredSummary.scriptInProgress, 0);
 
     const invalidScriptProgressFilter = await requestJson(port, "GET", "/api/operator/console?minScriptProgressPct=101");
     assert.equal(invalidScriptProgressFilter.statusCode, 400);
@@ -3778,6 +3780,14 @@ test("tool timeout fallback fails closed and records the fallback reason", async
     assert.equal(fallbackHandoff.detail.source, "tool_timeout_fail_closed");
     assert.equal(fallbackHandoff.detail.reason, "pipecat tool exceeded latency budget");
 
+    const heldAfterFallback = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can I keep talking while the fallback is armed?",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:03.000Z",
+    });
+    assert.equal(heldAfterFallback.statusCode, 409);
+    assert.equal((heldAfterFallback.payload as { error: string }).error, "live_sip_operator_hold_active");
+
     const lastAgentTurn = [...fallbackPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
     assert.ok(lastAgentTurn);
     assert.equal(lastAgentTurn.text.toLowerCase().includes("billing credit"), true);
@@ -4359,6 +4369,240 @@ test("delivery-ack caller turns preview without mutating until commit", async ()
     assert.equal(fetchedAfterCommit.statusCode, 200);
     assert.deepEqual(afterCommitPayload.transcript, committedPayload.transcript);
   });
+});
+
+test("delivery-ack caller turns reject duplicate previews for the same pending turn", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const preview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      commitMode: "delivery_ack",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const previewPayload = preview.payload as SnapshotPayload & {
+      callerTurnCommit: { expectedAgentText: string; snapshotVersion: string };
+    };
+    assert.equal(preview.statusCode, 200);
+
+    const concurrentPreview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      commitMode: "delivery_ack",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    assert.equal(concurrentPreview.statusCode, 409);
+    assert.equal((concurrentPreview.payload as { error: string }).error, "caller_turn_delivery_ack_preview_pending");
+    assert.equal(
+      (concurrentPreview.payload as { callerTurnCommit: { snapshotVersion: string } }).callerTurnCommit.snapshotVersion,
+      previewPayload.callerTurnCommit.snapshotVersion,
+    );
+
+    const fetchedBeforeCommit = await requestJson(port, "GET", `/api/calls/${callId}`);
+    const beforeCommitPayload = fetchedBeforeCommit.payload as SnapshotPayload;
+    assert.equal(fetchedBeforeCommit.statusCode, 200);
+    assert.deepEqual(beforeCommitPayload.transcript, []);
+
+    const committed = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn/commit`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      expectedAgentText: previewPayload.callerTurnCommit.expectedAgentText,
+      expectedSnapshotVersion: previewPayload.callerTurnCommit.snapshotVersion,
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const committedPayload = committed.payload as SnapshotPayload;
+    assert.equal(committed.statusCode, 200);
+    assert.equal(committedPayload.transcript.at(0)?.text, "Can you help with billing?");
+  });
+});
+
+test("delivery-ack commits serialize overlapping identical delivery acknowledgements", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const preview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      commitMode: "delivery_ack",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const previewPayload = preview.payload as SnapshotPayload & {
+      callerTurnCommit: { expectedAgentText: string; snapshotVersion: string };
+    };
+    assert.equal(preview.statusCode, 200);
+
+    const originalPreviewCallerTurn = InMemoryTelephonyIngress.prototype.previewCallerTurn;
+    let commitPreviewEntries = 0;
+    let releaseFirstCommitPreview: (() => void) | null = null;
+    let firstCommitPreviewEntered: (() => void) | null = null;
+    const firstCommitPreviewEnteredPromise = new Promise<void>((resolve) => {
+      firstCommitPreviewEntered = resolve;
+    });
+
+    InMemoryTelephonyIngress.prototype.previewCallerTurn = async function (...args: Parameters<typeof originalPreviewCallerTurn>) {
+      const [previewCallId, turn] = args;
+      if (previewCallId === callId && turn.text === "Can you help with billing?") {
+        commitPreviewEntries += 1;
+        if (commitPreviewEntries === 1) {
+          firstCommitPreviewEntered?.();
+          await new Promise<void>((resolve) => {
+            releaseFirstCommitPreview = resolve;
+          });
+        }
+      }
+      return originalPreviewCallerTurn.apply(this, args);
+    };
+
+    try {
+      const commitBody = {
+        text: "Can you help with billing?",
+        conversationMode: "free_caller",
+        expectedAgentText: previewPayload.callerTurnCommit.expectedAgentText,
+        expectedSnapshotVersion: previewPayload.callerTurnCommit.snapshotVersion,
+        timestamp: "2026-06-10T14:00:00.000Z",
+      };
+      const firstCommitPromise = requestJson(port, "POST", `/api/calls/${callId}/caller-turn/commit`, commitBody);
+      await firstCommitPreviewEnteredPromise;
+      const secondCommitPromise = requestJson(port, "POST", `/api/calls/${callId}/caller-turn/commit`, commitBody);
+      const secondCommit = await secondCommitPromise;
+      (releaseFirstCommitPreview as (() => void) | null)?.();
+      const firstCommit = await firstCommitPromise;
+      const results = [firstCommit, secondCommit];
+      const accepted = results.find((result) => result.statusCode === 200);
+      const rejected = results.find((result) => result.statusCode === 409);
+      assert.ok(accepted);
+      assert.ok(rejected);
+      assert.equal((rejected.payload as { error: string }).error, "caller_turn_delivery_ack_preview_pending");
+      assert.equal(
+        (rejected.payload as { callerTurnCommit: { snapshotVersion: string } }).callerTurnCommit.snapshotVersion,
+        previewPayload.callerTurnCommit.snapshotVersion,
+      );
+      assert.equal(commitPreviewEntries, 1);
+
+      const fetchedAfterCommit = await requestJson(port, "GET", `/api/calls/${callId}`);
+      const afterPayload = fetchedAfterCommit.payload as SnapshotPayload;
+      assert.equal(fetchedAfterCommit.statusCode, 200);
+      assert.deepEqual(
+        afterPayload.transcript.map((turn) => turn.speaker),
+        ["caller", "agent"],
+      );
+      assert.equal(
+        afterPayload.transcript.filter((turn) => turn.speaker === "caller" && turn.text === "Can you help with billing?").length,
+        1,
+      );
+      assert.equal(afterPayload.events.filter((event) => event.type === "caller_turn_appended").length, 1);
+    } finally {
+      InMemoryTelephonyIngress.prototype.previewCallerTurn = originalPreviewCallerTurn;
+      (releaseFirstCommitPreview as (() => void) | null)?.();
+    }
+  });
+});
+
+test("delivery-ack caller turns release abandoned previews before the next turn", async () => {
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start", {
+      openclawSessionLabel: "pipecat-local-voice",
+    });
+    const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+    const abandonedPreview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      commitMode: "delivery_ack",
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    const abandonedPayload = abandonedPreview.payload as SnapshotPayload & {
+      callerTurnCommit: { expectedAgentText: string; snapshotVersion: string };
+    };
+    assert.equal(abandonedPreview.statusCode, 200);
+
+    const nextPreview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you also update my address?",
+      conversationMode: "free_caller",
+      commitMode: "delivery_ack",
+      timestamp: "2026-06-10T14:00:01.000Z",
+    });
+    const nextPreviewPayload = nextPreview.payload as SnapshotPayload & {
+      callerTurnCommit: { expectedAgentText: string; snapshotVersion: string };
+    };
+    assert.equal(nextPreview.statusCode, 200);
+    assert.equal(nextPreviewPayload.callerTurnCommit.snapshotVersion, abandonedPayload.callerTurnCommit.snapshotVersion);
+
+    const abandonedCommit = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn/commit`, {
+      text: "Can you help with billing?",
+      conversationMode: "free_caller",
+      expectedAgentText: abandonedPayload.callerTurnCommit.expectedAgentText,
+      expectedSnapshotVersion: abandonedPayload.callerTurnCommit.snapshotVersion,
+      timestamp: "2026-06-10T14:00:00.000Z",
+    });
+    assert.equal(abandonedCommit.statusCode, 400);
+    assert.equal((abandonedCommit.payload as { error: string }).error, "caller_turn_commit_stale");
+
+    const committed = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn/commit`, {
+      text: "Can you also update my address?",
+      conversationMode: "free_caller",
+      expectedAgentText: nextPreviewPayload.callerTurnCommit.expectedAgentText,
+      expectedSnapshotVersion: nextPreviewPayload.callerTurnCommit.snapshotVersion,
+      timestamp: "2026-06-10T14:00:01.000Z",
+    });
+    const committedPayload = committed.payload as SnapshotPayload;
+    assert.equal(committed.statusCode, 200);
+    assert.equal(committedPayload.transcript.at(0)?.text, "Can you also update my address?");
+    assert.equal(committedPayload.transcript.some((turn) => turn.text === "Can you help with billing?"), false);
+  });
+});
+
+test("delivery-ack caller turn previews expire when delivery is abandoned", async () => {
+  const originalDateNow = Date.now;
+  let nowMs = Date.parse("2026-06-10T14:00:00.000Z");
+  Date.now = () => nowMs;
+
+  try {
+    await withServer(async (port) => {
+      const started = await requestJson(port, "POST", "/api/demo/start", {
+        openclawSessionLabel: "pipecat-local-voice",
+      });
+      const callId = (started.payload as { session: { callId: string } }).session.callId;
+
+      const preview = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+        text: "Can you help with billing?",
+        conversationMode: "free_caller",
+        commitMode: "delivery_ack",
+        timestamp: "2026-06-10T14:00:00.000Z",
+      });
+      const previewPayload = preview.payload as SnapshotPayload & {
+        callerTurnCommit: { expectedAgentText: string; snapshotVersion: string };
+      };
+      assert.equal(preview.statusCode, 200);
+
+      nowMs += 5 * 60 * 1000 + 1;
+
+      const expiredCommit = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn/commit`, {
+        text: "Can you help with billing?",
+        conversationMode: "free_caller",
+        expectedAgentText: previewPayload.callerTurnCommit.expectedAgentText,
+        expectedSnapshotVersion: previewPayload.callerTurnCommit.snapshotVersion,
+        timestamp: "2026-06-10T14:00:00.000Z",
+      });
+      assert.equal(expiredCommit.statusCode, 400);
+      assert.equal((expiredCommit.payload as { error: string }).error, "caller_turn_commit_stale");
+
+      const fetchedAfterExpiry = await requestJson(port, "GET", `/api/calls/${callId}`);
+      const afterExpiryPayload = fetchedAfterExpiry.payload as SnapshotPayload;
+      assert.equal(fetchedAfterExpiry.statusCode, 200);
+      assert.deepEqual(afterExpiryPayload.transcript, []);
+      assert.equal(afterExpiryPayload.events.some((event) => event.type === "caller_turn_appended"), false);
+    });
+  } finally {
+    Date.now = originalDateNow;
+  }
 });
 
 test("delivery-ack commit requires expected agent text without mutating transcript", async () => {

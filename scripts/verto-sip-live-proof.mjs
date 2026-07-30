@@ -184,6 +184,44 @@ function pcm16Rms(pcm) {
   return Math.round(Math.sqrt(sumSquares / Math.max(sampleCount, 1)));
 }
 
+function playbackAfterTimestamp(chunks, timestamp) {
+  const thresholdMs = Date.parse(timestamp || "");
+  const matchedChunks = Number.isFinite(thresholdMs)
+    ? chunks.filter((chunk) => chunk.receivedAtMs >= thresholdMs)
+    : [];
+  const pcm = Buffer.concat(matchedChunks.map((chunk) => chunk.pcm));
+  const packetCount = matchedChunks.length;
+  const rms = pcm16Rms(pcm);
+  return {
+    timestamp: Number.isFinite(thresholdMs) ? new Date(thresholdMs).toISOString() : null,
+    packetCount,
+    rms,
+    audioBytes: pcm.length,
+    confirmed: packetCount >= 10 && rms >= 50,
+  };
+}
+
+function playbackBeforeTimestamp(chunks, timestamp) {
+  const thresholdMs = Date.parse(timestamp || "");
+  const matchedChunks = Number.isFinite(thresholdMs)
+    ? chunks.filter((chunk) => chunk.receivedAtMs < thresholdMs)
+    : chunks;
+  const pcm = Buffer.concat(matchedChunks.map((chunk) => chunk.pcm));
+  return {
+    timestamp: Number.isFinite(thresholdMs) ? new Date(thresholdMs).toISOString() : null,
+    packetCount: matchedChunks.length,
+    rms: pcm16Rms(pcm),
+    audioBytes: pcm.length,
+  };
+}
+
+function latestTimestamp(...timestamps) {
+  const parsed = timestamps
+    .map((timestamp) => Date.parse(timestamp || ""))
+    .filter((timestamp) => Number.isFinite(timestamp));
+  return parsed.length ? new Date(Math.max(...parsed)).toISOString() : null;
+}
+
 function pcm16MonoFromWav(wav, targetSampleRate = 8000) {
   if (wav.toString("ascii", 0, 4) !== "RIFF" || wav.toString("ascii", 8, 12) !== "WAVE") {
     throw new Error("caller audio must be a RIFF/WAVE file");
@@ -233,45 +271,121 @@ function pcm16MonoFromWav(wav, targetSampleRate = 8000) {
   return pcm;
 }
 
+function extractVertoCallId(snapshot) {
+  const explicit = String(snapshot?.vertoCallId || "").trim();
+  if (explicit) return explicit;
+  const correlationId = String(snapshot?.correlationId || snapshot?.lastEvidence?.acc?.correlationId || "").trim();
+  const match = correlationId.match(/^acc-pipecat-(.+)$/);
+  if (match?.[1]) return match[1];
+  return String(snapshot?.callId || "").trim();
+}
+
+function evidenceCorrelationIds(snapshot) {
+  return new Set([
+    extractVertoCallId(snapshot),
+    snapshot?.vertoCallId,
+    snapshot?.sipCallId,
+    snapshot?.linkedSipCallId,
+    snapshot?.proofSipCallId,
+    snapshot?.harnessSipCallId,
+    snapshot?.accCallId,
+    snapshot?.callId,
+  ].map((value) => String(value || "").trim()).filter(Boolean));
+}
+
 async function readEvidenceCallIds(evidencePath) {
   if (!evidencePath) return new Set();
   try {
     const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
     const snapshots = Array.isArray(evidence.pipelineEvidence) ? evidence.pipelineEvidence : [evidence];
-    return new Set(snapshots.map((snapshot) => String(snapshot?.callId || "")).filter(Boolean));
+    return new Set(snapshots.flatMap((snapshot) => [...evidenceCorrelationIds(snapshot)]));
   } catch {
     return new Set();
   }
 }
 
-async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds }) {
+async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds, expectedSipCallId }) {
   if (!evidencePath) return { ready: false, transcript: "", ttsReady: false, evidence: null };
   try {
     const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
     const snapshots = Array.isArray(evidence.pipelineEvidence) ? evidence.pipelineEvidence : [evidence];
+    const expectedCorrelationId = String(expectedSipCallId || "").trim();
+    let fallbackReadyEvidence = null;
     for (const snapshot of snapshots) {
-      const evidenceCallId = String(snapshot?.callId || "");
+      const evidenceCallId = extractVertoCallId(snapshot);
       if (!evidenceCallId || baselineCallIds.has(evidenceCallId)) continue;
+      const correlationIds = evidenceCorrelationIds(snapshot);
+      const matchesExpectedCall = !expectedCorrelationId || correlationIds.has(expectedCorrelationId);
+      const accCallId = String(snapshot?.accCallId || snapshot?.callId || "");
+      const sipCallId = String(snapshot?.sipCallId || evidenceCallId);
+      const linkedSipCallId = String(snapshot?.linkedSipCallId || "");
+      const proofSipCallId = String(snapshot?.proofSipCallId || snapshot?.harnessSipCallId || "");
       const stages = Array.isArray(snapshot?.stageEvents) ? snapshot.stageEvents : [];
       const isCurrentCallEvent = (event) => Number.isFinite(Date.parse(event?.timestamp)) && Date.parse(event.timestamp) >= startedAtMs;
-      const finalTranscript = [...stages].reverse().find((event) => isCurrentCallEvent(event) && event?.stage === "stt.transcript_final" && event?.ok !== false && String(event?.transcript || "").trim());
-      const ttsReadyEvent = stages.find((event) => isCurrentCallEvent(event) && event?.stage === "tts.audio_ready" && event?.ok !== false);
+      const finalTranscriptSource = String(snapshot?.lastEvidence?.stt?.finalTranscriptSource || "");
+      const lastEvidenceTranscriptIsValidated = finalTranscriptSource === "rtc_asr_final"
+        || (
+          finalTranscriptSource === "rtc_asr_interim_fallback"
+          && snapshot?.lastEvidence?.stt?.finalEventObserved === true
+        );
+      const finalTranscript = [...stages].reverse().find((event) => isCurrentCallEvent(event) && event?.stage === "stt.transcript_final" && event?.ok !== false && String(event?.transcript || "").trim())
+        || (String(snapshot?.lastEvidence?.callerTranscript || "").trim()
+          && snapshot?.lastEvidence?.stt?.engine === "rtc-asr"
+          && lastEvidenceTranscriptIsValidated
+          && isCurrentCallEvent(snapshot?.lastEvidence?.acc)
+          ? {
+              transcript: String(snapshot.lastEvidence.callerTranscript).trim(),
+              timestamp: snapshot.lastEvidence.acc.timestamp,
+            }
+          : null);
+      const finalTranscriptMs = Date.parse(finalTranscript?.timestamp || "");
+      const isResponseTtsEvent = (event) => isCurrentCallEvent(event)
+        && (!Number.isFinite(finalTranscriptMs) || Date.parse(event.timestamp) >= finalTranscriptMs);
+      const responseStartedEvent = stages.find((event) => isResponseTtsEvent(event) && (event?.stage === "tts.stream_started" || event?.stage === "tts.audio_chunk") && event?.ok !== false)
+        || null;
+      const ttsReadyEvent = stages.find((event) => isResponseTtsEvent(event) && (event?.stage === "tts.audio_ready" || event?.stage === "tts.stream_completed") && event?.ok !== false)
+        || (isCurrentCallEvent(snapshot?.lastTtsEvidence)
+          && (!Number.isFinite(finalTranscriptMs) || Date.parse(snapshot.lastTtsEvidence.timestamp) >= finalTranscriptMs)
+          && snapshot?.lastTtsEvidence?.stage === "tts.stream_completed"
+          && snapshot?.lastTtsEvidence?.ok !== false
+          && Number(snapshot?.lastTtsEvidence?.audioBytesEnqueued || 0) > 0
+          ? snapshot.lastTtsEvidence
+          : null);
       if (finalTranscript && ttsReadyEvent) {
-        return {
+        const readyEvidence = {
           ready: true,
           transcript: String(finalTranscript.transcript).trim(),
           transcriptAt: finalTranscript.timestamp,
           ttsReady: true,
           ttsReadyAt: ttsReadyEvent.timestamp,
+          responseStartedAt: responseStartedEvent?.timestamp || ttsReadyEvent.timestamp,
+          responseStartedStage: responseStartedEvent?.stage || ttsReadyEvent.stage || null,
           evidenceCallId,
+          accCallId,
+          sipCallId,
+          linkedSipCallId,
+          proofSipCallId,
           evidence,
         };
+        if (matchesExpectedCall) return readyEvidence;
+        fallbackReadyEvidence ??= readyEvidence;
       }
     }
+    if (!expectedCorrelationId && fallbackReadyEvidence) return fallbackReadyEvidence;
     return { ready: false, transcript: "", ttsReady: false, evidence };
   } catch {
     return { ready: false, transcript: "", ttsReady: false, evidence: null };
   }
+}
+
+async function waitForRtcAsrEvidence(evidencePath, options, { timeoutMs = 8_000, intervalMs = 500 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let latest = await loadRtcAsrEvidence(evidencePath, options);
+  while (!latest.ready && evidencePath && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    latest = await loadRtcAsrEvidence(evidencePath, options);
+  }
+  return latest;
 }
 
 function ulawPacketsFromPcm(pcm, { payloadSamples = 160, ssrc = 0xacc222 }) {
@@ -305,6 +419,7 @@ class SipProofCall {
     this.options = options;
     this.events = [];
     this.returnPcmChunks = [];
+    this.returnRtpChunks = [];
     this.returnPacketCount = 0;
     this.callId = `acc-proof-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     this.fromTag = `acc${Date.now()}`;
@@ -316,6 +431,10 @@ class SipProofCall {
     this.authInviteSent = false;
     this.challengeAckSent = false;
     this.mediaTasks = new Set();
+    this.callerAudioStartedAtMs = null;
+    this.introNonSilentPacketCount = 0;
+    this.introConsecutiveSilentPacketCount = 0;
+    this.observableIntroCompletedAt = null;
   }
 
   async run() {
@@ -375,6 +494,7 @@ class SipProofCall {
       `Call-ID: ${this.callId}`,
       `CSeq: ${cseq} INVITE`,
       `Contact: <sip:${this.options.username}@${this.options.localHost}:${this.options.localSipPort}>`,
+      `X-ACC-Proof-Call-ID: ${this.callId}`,
       ...(authorization ? [`Proxy-Authorization: ${authorization}`] : []),
       "Content-Type: application/sdp",
       `Content-Length: ${Buffer.byteLength(sdp)}`,
@@ -486,6 +606,8 @@ class SipProofCall {
       this.record("rtp.caller_audio_waiting", { mediaDelayMs: this.options.mediaDelayMs });
       await new Promise((resolve) => setTimeout(resolve, this.options.mediaDelayMs));
     }
+    await this.waitForObservableIntroCompletion();
+    this.callerAudioStartedAtMs = Date.now();
     const packets = ulawPacketsFromPcm(this.callerPcm, { ssrc: this.options.ssrc });
     this.record("rtp.caller_audio_started", { packetCount: packets.length, remoteRtp: this.remoteRtp, audioBytes: this.callerPcm.length });
     for (const packet of packets) {
@@ -497,16 +619,51 @@ class SipProofCall {
     this.record("rtp.caller_audio_finished", { packetCount: packets.length });
   }
 
+  async waitForObservableIntroCompletion() {
+    const deadline = Date.now() + this.options.introWaitTimeoutMs;
+    while (!this.observableIntroCompletedAt && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    if (!this.observableIntroCompletedAt) {
+      this.record("rtp.prerecorded_intro_completion_timeout", {
+        timeoutMs: this.options.introWaitTimeoutMs,
+        nonSilentPacketCount: this.introNonSilentPacketCount,
+        consecutiveSilentPacketCount: this.introConsecutiveSilentPacketCount,
+      });
+    }
+    return this.observableIntroCompletedAt;
+  }
+
   handleRtp(msg, rinfo) {
     if (msg.length < 12) return;
     const payloadType = msg[1] & 0x7f;
     if (payloadType !== 0) return;
+    const receivedAtMs = Date.now();
     const payload = msg.subarray(12);
     const pcm = Buffer.alloc(payload.length * 2);
     for (let index = 0; index < payload.length; index += 1) pcm.writeInt16LE(ulawToPcm16(payload[index]), index * 2);
     this.returnPcmChunks.push(pcm);
+    this.returnRtpChunks.push({ pcm, receivedAtMs, receivedAt: new Date(receivedAtMs).toISOString() });
     this.returnPacketCount += 1;
     if (this.returnPacketCount === 1) this.record("rtp.return_audio_started", { remote: `${rinfo.address}:${rinfo.port}` });
+    if (!this.callerAudioStartedAtMs && !this.observableIntroCompletedAt) {
+      const packetRms = pcm16Rms(pcm);
+      if (packetRms >= 50) {
+        this.introNonSilentPacketCount += 1;
+        this.introConsecutiveSilentPacketCount = 0;
+      } else if (this.introNonSilentPacketCount >= 10) {
+        this.introConsecutiveSilentPacketCount += 1;
+        if (this.introConsecutiveSilentPacketCount >= 12) {
+          this.observableIntroCompletedAt = new Date(receivedAtMs).toISOString();
+          this.record("rtp.prerecorded_intro_completed", {
+            observedAt: this.observableIntroCompletedAt,
+            method: "caller_rtp_non_silent_then_240ms_silence",
+            nonSilentPacketCount: this.introNonSilentPacketCount,
+            consecutiveSilentPacketCount: this.introConsecutiveSilentPacketCount,
+          });
+        }
+      }
+    }
   }
 
   async writeArtifacts() {
@@ -523,8 +680,21 @@ class SipProofCall {
     await writeFile(callerWavPath, callerWav);
     await writeFile(playbackWavPath, playbackWav);
     await writeFile(sipLogPath, `${JSON.stringify(this.events, null, 2)}\n`, "utf8");
+    const rtcAsrEvidence = await waitForRtcAsrEvidence(rtcAsrEvidencePath, {
+      startedAtMs: this.startedAtMs,
+      baselineCallIds: this.rtcAsrBaselineCallIds,
+      expectedSipCallId: this.callId,
+    });
+    const rtcAsrReady = rtcAsrEvidence.ready;
     const playbackRms = pcm16Rms(playbackPcm);
-    const callerPlaybackConfirmed = this.returnPacketCount >= 10 && playbackRms >= 50;
+    const responsePlaybackBoundaryAt = latestTimestamp(
+      rtcAsrEvidence.responseStartedAt || rtcAsrEvidence.ttsReadyAt,
+      this.observableIntroCompletedAt,
+    );
+    const introPlayback = playbackBeforeTimestamp(this.returnRtpChunks, responsePlaybackBoundaryAt);
+    const responsePlayback = playbackAfterTimestamp(this.returnRtpChunks, responsePlaybackBoundaryAt);
+    const anyPlaybackConfirmed = this.returnPacketCount >= 10 && playbackRms >= 50;
+    const callerPlaybackConfirmed = rtcAsrReady && Boolean(this.observableIntroCompletedAt) && responsePlayback.confirmed;
     await writeFile(
       playbackEvidencePath,
       `${JSON.stringify({
@@ -534,17 +704,26 @@ class SipProofCall {
         callId: this.callId,
         packetCount: this.returnPacketCount,
         playbackRms,
+        anyPlaybackConfirmed,
         playbackWavPath,
         playbackAudioBytes: playbackPcm.length,
+        responsePlaybackBoundaryAt: responsePlayback.timestamp,
+        responsePlaybackBoundaryStage: rtcAsrEvidence.responseStartedStage || null,
+        observableIntroCompletedAt: this.observableIntroCompletedAt,
+        observableIntroCompletionMethod: "caller_rtp_non_silent_then_240ms_silence",
+        responseTtsStartedAt: rtcAsrEvidence.responseStartedAt || null,
+        responseTtsReadyAt: rtcAsrEvidence.ttsReadyAt || null,
+        responsePlaybackConfirmed: responsePlayback.confirmed,
+        responsePlaybackPacketCount: responsePlayback.packetCount,
+        responsePlaybackRms: responsePlayback.rms,
+        responsePlaybackAudioBytes: responsePlayback.audioBytes,
+        introPlaybackPacketCount: introPlayback.packetCount,
+        introPlaybackRms: introPlayback.rms,
+        introPlaybackAudioBytes: introPlayback.audioBytes,
         generatedAt: nowIso(),
       }, null, 2)}\n`,
       "utf8",
     );
-    const rtcAsrEvidence = await loadRtcAsrEvidence(rtcAsrEvidencePath, {
-      startedAtMs: this.startedAtMs,
-      baselineCallIds: this.rtcAsrBaselineCallIds,
-    });
-    const rtcAsrReady = rtcAsrEvidence.ready;
     await writeFile(
       normalizedRtcAsrEvidencePath,
       `${JSON.stringify({
@@ -555,10 +734,16 @@ class SipProofCall {
         callId: this.callId,
         sipCallId: this.callId,
         vertoCallId: rtcAsrEvidence.evidenceCallId || null,
+        accCallId: rtcAsrEvidence.accCallId || null,
+        evidenceSipCallId: rtcAsrEvidence.sipCallId || null,
+        proofSipCallId: rtcAsrEvidence.proofSipCallId || null,
+        linkedSipCallId: rtcAsrEvidence.linkedSipCallId || null,
         transcript: rtcAsrEvidence.transcript,
         transcriptAt: rtcAsrEvidence.transcriptAt || null,
         ttsAudioReady: rtcAsrEvidence.ttsReady,
         ttsAudioReadyAt: rtcAsrEvidence.ttsReadyAt || null,
+        ttsResponseStartedAt: rtcAsrEvidence.responseStartedAt || null,
+        ttsResponseStartedStage: rtcAsrEvidence.responseStartedStage || null,
         currentCallWindowStartedAt: new Date(this.startedAtMs).toISOString(),
         sourcePipecatEvidence: rtcAsrEvidencePath,
         generatedAt: nowIso(),
@@ -567,7 +752,9 @@ class SipProofCall {
     );
     const blockers = [];
     if (!this.remoteRtp) blockers.push("FreeSWITCH did not return an RTP target in the accepted INVITE SDP.");
-    if (!callerPlaybackConfirmed) blockers.push("No caller-side return RTP audio was captured.");
+    if (!anyPlaybackConfirmed) blockers.push("No caller-side return RTP audio was captured.");
+    if (!this.observableIntroCompletedAt) blockers.push("Caller-side RTP did not expose a non-silent intro followed by 240 ms of silence before caller audio.");
+    if (rtcAsrReady && !responsePlayback.confirmed) blockers.push("No caller-side return RTP audio was captured after the response TTS start event.");
     if (!rtcAsrReady) blockers.push("rtc-asr transcript evidence path was not attached or is empty.");
     const manifest = {
       schemaVersion: 1,
@@ -593,6 +780,10 @@ class SipProofCall {
         callerInputPacketCount: Math.ceil(this.callerPcm.length / 320),
         callerPlaybackPacketCount: this.returnPacketCount,
         callerPlaybackRms: playbackRms,
+        introPlaybackPacketCount: introPlayback.packetCount,
+        introPlaybackRms: introPlayback.rms,
+        responsePlaybackPacketCount: responsePlayback.packetCount,
+        responsePlaybackRms: responsePlayback.rms,
       },
       artifacts: {
         audioWav: callerWavPath,
@@ -627,12 +818,29 @@ class SipProofCall {
         packetCount: this.returnPacketCount,
         playbackRms,
         playbackWavPath,
+        anyPlaybackConfirmed,
+        responsePlaybackBoundaryAt: responsePlayback.timestamp,
+        responsePlaybackBoundaryStage: rtcAsrEvidence.responseStartedStage || null,
+        observableIntroCompletedAt: this.observableIntroCompletedAt,
+        responseTtsStartedAt: rtcAsrEvidence.responseStartedAt || null,
+        responseTtsReadyAt: rtcAsrEvidence.ttsReadyAt || null,
+        responsePlaybackConfirmed: responsePlayback.confirmed,
+        responsePlaybackPacketCount: responsePlayback.packetCount,
+        responsePlaybackRms: responsePlayback.rms,
+        introPlaybackPacketCount: introPlayback.packetCount,
+        introPlaybackRms: introPlayback.rms,
       },
       rtcAsrEvidence: {
         transcriptCaptured: rtcAsrReady,
         transcript: rtcAsrEvidence.transcript,
         ttsAudioReady: rtcAsrEvidence.ttsReady,
+        ttsResponseStartedAt: rtcAsrEvidence.responseStartedAt || null,
+        ttsResponseStartedStage: rtcAsrEvidence.responseStartedStage || null,
         vertoCallId: rtcAsrEvidence.evidenceCallId || null,
+        accCallId: rtcAsrEvidence.accCallId || null,
+        sipCallId: rtcAsrEvidence.sipCallId || null,
+        proofSipCallId: rtcAsrEvidence.proofSipCallId || null,
+        linkedSipCallId: rtcAsrEvidence.linkedSipCallId || null,
         currentCallWindowStartedAt: new Date(this.startedAtMs).toISOString(),
       },
       blockers,
@@ -655,6 +863,22 @@ function runSelfTest() {
   const sdpTarget = parseRtpTargetFromSdp("v=0\r\nc=IN IP4 127.0.0.1\r\nm=audio 29790 RTP/AVP 0\r\n", "fallback");
   const pcm = tonePcm16({ durationMs: 40 });
   const packets = ulawPacketsFromPcm(pcm, { ssrc: 1 });
+  const loudIntroPcm = Buffer.alloc(160 * 2 * 10);
+  for (let offset = 0; offset < loudIntroPcm.length; offset += 2) loudIntroPcm.writeInt16LE(5000, offset);
+  const introObserver = new SipProofCall({});
+  for (const packet of ulawPacketsFromPcm(loudIntroPcm, { ssrc: 2 })) {
+    introObserver.handleRtp(packet, { address: "127.0.0.1", port: 1234 });
+  }
+  for (const packet of ulawPacketsFromPcm(Buffer.alloc(160 * 2 * 12), { ssrc: 2 })) {
+    introObserver.handleRtp(packet, { address: "127.0.0.1", port: 1234 });
+  }
+  const responsePlayback = playbackAfterTimestamp([
+    { receivedAtMs: Date.parse("2026-07-27T10:00:00.000Z"), pcm: Buffer.alloc(160 * 2) },
+    ...Array.from({ length: 10 }, (_, index) => ({
+      receivedAtMs: Date.parse("2026-07-27T10:00:01.000Z") + index * 20,
+      pcm,
+    })),
+  ], "2026-07-27T10:00:00.500Z");
   const inferredLocalHost = resolveLocalHost({
     interfaces: {
       lo0: [{ address: "127.0.0.1", family: "IPv4", internal: true }],
@@ -673,6 +897,11 @@ function runSelfTest() {
     && authorizationUriReady
     && sdpTarget?.port === 29790
     && packets.length > 0
+    && responsePlayback.packetCount === 10
+    && responsePlayback.confirmed === true
+    && Boolean(introObserver.observableIntroCompletedAt)
+    && introObserver.introNonSilentPacketCount === 10
+    && introObserver.introConsecutiveSilentPacketCount === 12
     && inferredLocalHost.host === "192.168.86.28"
     && loopbackRejected;
   console.log(JSON.stringify({
@@ -681,6 +910,12 @@ function runSelfTest() {
     authorizationUriReady,
     sdpTarget,
     packetCount: packets.length,
+    responsePlayback,
+    observableIntroCompletion: {
+      completedAt: introObserver.observableIntroCompletedAt,
+      nonSilentPacketCount: introObserver.introNonSilentPacketCount,
+      consecutiveSilentPacketCount: introObserver.introConsecutiveSilentPacketCount,
+    },
     inferredLocalHost,
     loopbackRejected,
   }, null, 2));
@@ -712,6 +947,7 @@ async function main() {
     toneMs: Number(argValue("--tone-ms", "1800")),
     tailSilenceMs: Number(argValue("--tail-silence-ms", process.env.ACC_SIP_PROOF_TAIL_SILENCE_MS || "10000")),
     mediaDelayMs: Number(argValue("--media-delay-ms", process.env.ACC_SIP_PROOF_MEDIA_DELAY_MS || "1000")),
+    introWaitTimeoutMs: Number(argValue("--intro-wait-timeout-ms", process.env.ACC_SIP_PROOF_INTRO_WAIT_TIMEOUT_MS || "8000")),
     callMs: Number(argValue("--call-ms", "10000")),
     frequency: Number(argValue("--frequency", "440")),
     callerAudioPath: argValue("--caller-audio", process.env.ACC_SIP_PROOF_CALLER_AUDIO),

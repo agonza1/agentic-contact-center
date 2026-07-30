@@ -1,5 +1,6 @@
 import type {
   CallSnapshot,
+  ConversationMode,
   EventTrailEntry,
   OperatorSteerAction,
   PocConfig,
@@ -12,7 +13,7 @@ export interface TelephonyIngress {
     callId: string,
     turn: TranscriptTurn,
     config: PocConfig,
-    options?: { conversationMode?: "scripted" | "free_caller" },
+    options?: { conversationMode?: ConversationMode },
   ): Promise<CallSnapshot>;
 }
 

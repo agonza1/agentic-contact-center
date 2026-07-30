@@ -51,6 +51,14 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(sharedPipeline, /TTSStoppedFrame/);
   assert.match(sharedPipeline, /ACC_TTS_OUTPUT_CHUNK_MS/);
   assert.match(sharedPipeline, /ACC_TTS_OUTPUT_CHUNK_YIELD_MS/);
+  assert.match(sharedPipeline, /ACC_TTS_EVIDENCE_EVERY_N_CHUNKS/);
+  assert.match(sharedPipeline, /pacing_deadline = pacing_started_monotonic \+ \(configured_yield_ms \/ 1000\.0 \* paced_chunk_count\)/);
+  assert.match(sharedPipeline, /ACC_TTS_CACHE_DIR/);
+  assert.match(sharedPipeline, /cacheHit/);
+  assert.match(sharedPipeline, /async def prewarm_tts_cache/);
+  assert.match(sharedPipeline, /async def prewarm_conversation_tts_cache/);
+  assert.match(sharedPipeline, /Is this billing, cancellation, an account update, or a human handoff\?/);
+  assert.match(sharedPipeline, /temporary_path\.replace/);
   assert.match(sharedPipeline, /speech_started_barge_in/);
   assert.match(sharedPipeline, /output\.transport_flushed/);
   assert.match(sharedPipeline, /transportFlushLatencyMs/);
@@ -92,6 +100,24 @@ test("persistent rtc-asr session repeats utterance lifecycle and closes promptly
   assert.equal(payload.ok, true);
   assert.equal(payload.twoTurnLifecycle, "one_connection_two_starts_two_finalizes_two_transcripts");
   assert.equal(payload.promptClose, true);
+  assert.equal(payload.emptyFinalFallback, "current_utterance_interim");
+});
+
+test("deterministic Kokoro responses persist PCM while OpenAI responses bypass the cache", { skip: !hasOptionalPipecatRuntime }, () => {
+  const payload = JSON.parse(execFileSync("python3", [
+    "test/fixtures/tts_cache_regression.py",
+  ], { encoding: "utf8" }).trim().split("\n").at(-1) ?? "{}");
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.providerCalls, 5);
+  assert.equal(payload.firstCacheHit, false);
+  assert.equal(payload.secondCacheHit, true);
+  assert.deepEqual(payload.openAiCacheHits, [false, false]);
+  assert.equal(payload.cacheFiles, 3);
+  assert.equal(payload.cacheLocks, 4);
+  assert.ok(payload.streamingMissFirstWaitMs < 150);
+  assert.equal(payload.missLockHeldDuringFill, true);
+  assert.equal(payload.lockStillOwnedByProbe, true);
 });
 
 test("Pipecat transport output streams chunks and flushes on barge-in", { skip: !hasOptionalPipecatRuntime }, () => {
@@ -134,7 +160,7 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
     cancellationWaitedForCleanup: true,
     prepareCancelled: true,
     fallbackCalls: 1,
-    previewCalls: 0,
+    previewCalls: 1,
     currentNode: "wrap",
     pendingTransition: null,
     previewFlowState: "wrap",
@@ -156,6 +182,11 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
     cancelled: true,
     outputChunksAtCancel: 0,
     pendingCommit: false,
+  });
+  assert.deepEqual(payload.prerecordedIntroBargeIn, {
+    gateReleasedBeforeCancel: false,
+    gateReleasedAfterCancel: true,
+    outputStreamId: "prerecorded-intro-prerecorded-intro-gate",
   });
   assert.deepEqual(payload.flowManagerFallbackFailure.requests, ["fallback", "caller-turn"]);
   assert.equal(payload.flowManagerFallbackFailure.audioChunks, 0);
@@ -209,12 +240,13 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.checks.slowCommitBargeInPreservesDeliveredCommit, true);
   assert.equal(payload.checks.followupTurnWaitsForPriorDeliveryAck, true);
   assert.equal(payload.checks.followupTurnStagesWithoutFallback, true);
-  assert.equal(payload.checks.queuedPreviewWaitsForFailClosedTerminalState, true);
+  assert.equal(payload.checks.queuedPreviewRevalidatesFailClosedTerminalState, true);
   assert.equal(payload.checks.failClosedWrapPreservesRuntimeFailureEvidence, true);
   assert.equal(payload.checks.rolledBackPreparedTransitionIsRemovedFromTraceEvidence, true);
   assert.equal(payload.checks.successfulTurnPublishesFinalizedFlowManagerEvidence, true);
   assert.equal(payload.checks.failedCommitAfterCancellationCleansPendingDelivery, true);
   assert.equal(payload.checks.stalePriorAudioCounterDoesNotPreservePreAudioCommit, true);
+  assert.equal(payload.checks.prerecordedIntroBargeInReleasesCallerGateImmediately, true);
   assert.equal(payload.checks.flowManagerActivationFailureClosesTtsLifecycle, true);
   assert.equal(payload.checks.flowManagerActivationFailureRecordsNoCommittedDelivery, true);
   assert.equal(payload.checks.flowManagerActivationFailureRetainsTerminalEvidence, true);
