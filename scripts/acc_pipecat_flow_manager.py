@@ -47,6 +47,7 @@ HELD_CALLER_TURN_ERRORS = {
     "live_sip_operator_hold_active": "caller_turn_held",
     "live_sip_openai_automation_stopped": "caller_turn_stopped",
     "caller_turn_delivery_ack_preview_pending": "caller_turn_held",
+    "live_sip_call_ended": "caller_turn_terminal",
 }
 FLOW_MANAGER_TERMINAL_OPERATOR_ACTIONS = {"escalate_to_human", "transfer", "end_call"}
 FLOW_MANAGER_OPERATOR_RELEASE_ACTIONS = {"resume", "disarm_fallback"}
@@ -511,6 +512,7 @@ class AccPipecatFlowManagerAdapter:
             "commitPolicy": commit_policy,
             "callerTranscript": text,
             "held": True,
+            "terminal": error_code == "live_sip_call_ended",
             "error": error_code,
             "httpStatus": error.code,
             "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],

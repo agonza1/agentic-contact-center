@@ -215,6 +215,37 @@ async def run_regression() -> dict[str, Any]:
         conversation_mode="openai_llm",
     )
 
+    ended_requests: list[dict[str, Any]] = []
+
+    def ended_http(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        ended_requests.append({"method": method, "url": url, "payload": payload})
+        if url.endswith("/fallback"):
+            return {
+                "flowState": "wrap",
+                "transcript": [{"speaker": "agent", "text": "This should not be reached after SIP termination."}],
+            }
+        body = json.dumps(
+            {
+                "ok": False,
+                "error": "live_sip_call_ended",
+                "call": {
+                    "flowState": "wrap",
+                    "transcript": [{"speaker": "agent", "text": "Call already ended."}],
+                    "endedAt": "2026-07-17T00:00:01.000Z",
+                },
+            }
+        ).encode("utf-8")
+        raise urllib.error.HTTPError(url, 409, "Conflict", {}, io.BytesIO(body))
+
+    ended_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-ended",
+        request_json=ended_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    ended_result = await ended_adapter.preview_caller_turn(text="after hangup", conversation_mode="openai_llm")
+
     recovered_requests: list[dict[str, Any]] = []
     recovered_nodes = iter(["wrap", "diagnose"])
 
@@ -442,6 +473,14 @@ async def run_regression() -> dict[str, Any]:
             and delivery_ack_pending_adapter.pending_transition is None
             and not any(item["url"].endswith("/fallback") for item in delivery_ack_pending_requests)
         ),
+        "endedCallRejectionDoesNotFailClosed": (
+            ended_result["flowState"] == "wrap"
+            and ended_result["flowManagerRuntime"]["commitPolicy"] == "caller_turn_terminal"
+            and ended_result["flowManagerRuntime"]["terminal"] is True
+            and ended_adapter.manager.current_node == "call_started"
+            and ended_adapter.pending_transition is None
+            and not any(item["url"].endswith("/fallback") for item in ended_requests)
+        ),
         "releasedFailClosedResynchronizesFlowManager": (
             recovered_fail_closed["flowState"] == "wrap"
             and recovered_preview["flowState"] == "diagnose"
@@ -483,6 +522,7 @@ async def run_regression() -> dict[str, Any]:
         "missingRuntimeEvidence": missing_result["flowManagerRuntime"],
         "heldEvidence": held_result["flowManagerRuntime"],
         "deliveryAckPendingEvidence": delivery_ack_pending_result["flowManagerRuntime"],
+        "endedEvidence": ended_result["flowManagerRuntime"],
         "recoveredEvidence": recovered_preview["flowManagerRuntime"],
         "terminalRevalidatedEvidence": terminal_revalidated["flowManagerRuntime"],
         "terminalReleaseFromHeldNodeEvidence": terminal_release_from_hold_preview["flowManagerRuntime"],
