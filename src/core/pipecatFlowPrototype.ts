@@ -693,12 +693,19 @@ export function applyOperatorSteer(
   }
 
   if (action === "disarm_fallback") {
-    setDemoFallback(snapshot, false, timestamp, null, snapshot.demoFallback.mode);
-    transitionFlowState(snapshot, "steered_response", timestamp, "operator_disarmed_manual_fallback");
-    recordEvent(snapshot, "demo_fallback_disarmed", timestamp, {
-      operatorChannel: snapshot.scenario.operatorChannel,
-    });
-    appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
+    if (snapshot.demoFallback.armed) {
+      setDemoFallback(snapshot, false, timestamp, null, snapshot.demoFallback.mode);
+      transitionFlowState(snapshot, "steered_response", timestamp, "operator_disarmed_manual_fallback");
+      recordEvent(snapshot, "demo_fallback_disarmed", timestamp, {
+        operatorChannel: snapshot.scenario.operatorChannel,
+      });
+      appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
+    } else {
+      recordEvent(snapshot, "demo_fallback_disarm_ignored", timestamp, {
+        operatorChannel: snapshot.scenario.operatorChannel,
+        reason: "fallback_not_armed",
+      });
+    }
     snapshot.pipecatFlow.activeTool = "ask_operator";
     return;
   }

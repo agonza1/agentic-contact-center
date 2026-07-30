@@ -65,7 +65,7 @@ interface CallerTurnOptions {
 type VoiceSessionScope = Pick<CallerTurnOptions, "voiceSessionId" | "realtimeVoiceSessionId">;
 
 const terminalOperatorSteerActions = new Set(["escalate_to_human", "transfer", "end_call"]);
-const operatorSteerReleaseActions = new Set(["resume", "disarm_fallback"]);
+const operatorSteerReleaseActions = new Set(["resume"]);
 
 function getOperatorSteerAction(event: CallSnapshot["events"][number]): string | null {
   return typeof event.detail.action === "string" ? event.detail.action : null;

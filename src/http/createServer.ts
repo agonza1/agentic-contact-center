@@ -2112,7 +2112,7 @@ function getLatestEvent(snapshot: CallSnapshot, eventType: string) {
   return [...snapshot.events].reverse().find((event) => event.type === eventType) ?? null;
 }
 
-const liveSipOperatorReleaseActions = new Set(["resume", "disarm_fallback"]);
+const liveSipOperatorReleaseActions = new Set(["resume"]);
 const liveSipTerminalOperatorActions = new Set(["escalate_to_human", "transfer", "end_call"]);
 const liveSipExplicitOperatorHoldReasons = new Map([
   ["pause", "operator_policy_hold_active"],

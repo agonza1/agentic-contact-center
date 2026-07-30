@@ -2306,6 +2306,22 @@ test("live SIP terminal operator actions stop OpenAI automation until operator r
       assert.equal(terminal.statusCode, 200);
       assert.equal(terminal.payload.flowState, "wrap");
 
+      const disarmed = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+        action: "disarm_fallback",
+        timestamp: "2026-07-27T23:04:01.500Z",
+        reason: "operator tried to clear fallback without arming it",
+      });
+      assert.equal(disarmed.statusCode, 200);
+      assert.equal(disarmed.payload.flowState, "wrap");
+      assert.equal(disarmed.payload.demoFallback.armed, false);
+      assert.equal(disarmed.payload.events.some((event: any) => event.type === "demo_fallback_disarmed"), false);
+      assert.equal(
+        disarmed.payload.events.some(
+          (event: any) => event.type === "demo_fallback_disarm_ignored" && event.detail.reason === "fallback_not_armed",
+        ),
+        true,
+      );
+
       const heldTurn = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
         timestamp: "2026-07-27T23:04:02.000Z",
         text: `Do not automate after ${action}.`,
