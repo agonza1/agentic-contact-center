@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -84,6 +84,9 @@ test("SignalWire FreeSWITCH readiness renders ignored config without leaking sec
     assert.match(gateway, /example\.sip\.signalwire\.com/);
     assert.match(dialplan, /agentic_contact_center_signalwire_pstn/);
     assert.match(dialplan, /acc_route=signalwire_live/);
+    assert.match(dialplan, /acc_destination_number=8600/);
+    assert.match(dialplan, /acc_conversation_mode=openai_llm/);
+    assert.match(dialplan, /sip_h_X-ACC-Telephony-Mode=signalwire_live/);
     assert.match(dialplan, /\\\+?12029687351|2029687351/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -197,6 +200,50 @@ esac
   }
 });
 
+test("SignalWire FreeSWITCH readiness preserves bracketed IPv6 endpoint hosts", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 2001:4860:4860::8888" ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><action application="set" data="acc_route=signalwire_live"/></condition></extension>' ;;
+  *) printf '%s\\n' "0 total registrations" ;;
+esac
+`,
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      "scripts/signalwire-freeswitch-readiness.mjs",
+      "--fs-cli-bin",
+      fsCliBin,
+      "--manifest",
+      path.join(tempDir, "readiness.json"),
+    ], {
+      cwd: repoRoot,
+      env: {
+        PATH: process.env.PATH ?? "",
+        SIGNALWIRE_TRUNK_MODE: "ip_auth",
+        SIGNALWIRE_FROM_NUMBER: "+12029687351",
+        FREESWITCH_PUBLIC_SIP_HOST: "[2001:4860:4860::8888]:5060",
+      },
+      encoding: "utf8",
+    });
+
+    const payload = JSON.parse(stdout);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.manualCallReady, true);
+    assert.equal(payload.status, "ready_for_manual_pstn_call");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("SignalWire FreeSWITCH readiness renders only the inbound dialplan for IP-auth trunks", async () => {
   const tempDir = await mkArtifactTempDir("acc-signalwire-fs-");
 
@@ -275,6 +322,51 @@ test("SignalWire FreeSWITCH readiness rejects render output outside ignored arti
     await assert.rejects(readFile(path.join(tempDir, "sip_profiles/external/signalwire.xml"), "utf8"));
   } finally {
     await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("SignalWire FreeSWITCH readiness rejects symlinked artifact output dirs", async () => {
+  const outsideDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-outside-"));
+  const symlinkPath = path.join(artifactsRoot, `acc-signalwire-link-${Date.now()}`);
+
+  try {
+    await mkdir(artifactsRoot, { recursive: true });
+    await symlink(outsideDir, symlinkPath, "dir");
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--render",
+        "--skip-fs-cli",
+        "--out-dir",
+        path.join(symlinkPath, "conf"),
+        "--manifest",
+        path.join(outsideDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_SPACE_URL: "https://example.signalwire.com",
+          SIGNALWIRE_SIP_USERNAME: "acc-sip-user",
+          SIGNALWIRE_SIP_PASSWORD: "example-rendered-sip-password",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "sip-public-host.example.test",
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const result = error as { stdout?: string; code?: number };
+        assert.equal(result.code, 2);
+        const payload = JSON.parse(result.stdout ?? "{}");
+        assert.equal(payload.generatedConfig, null);
+        assert.ok(payload.blockers.includes("unsafe_freeswitch_output_dir"));
+        return true;
+      },
+    );
+    await assert.rejects(readFile(path.join(outsideDir, "conf/sip_profiles/external/signalwire.xml"), "utf8"));
+  } finally {
+    await rm(symlinkPath, { recursive: true, force: true });
+    await rm(outsideDir, { recursive: true, force: true });
   }
 });
 

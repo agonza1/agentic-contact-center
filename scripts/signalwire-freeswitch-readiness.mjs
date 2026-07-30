@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { lookup } from "node:dns/promises";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { isIP } from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -144,7 +144,7 @@ function normalizeSipEndpointHost(value) {
   try {
     return new URL(raw.includes("://") ? raw : `sip://${raw}`).hostname.replace(/^\[|\]$/g, "");
   } catch {
-    return raw.replace(/^\[|\]$/g, "").replace(/:\d+$/, "");
+    return removeEndpointPort(raw);
   }
 }
 
@@ -165,11 +165,42 @@ function isPathInside(parent, child) {
   return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
+async function hasSymlinkedAncestor(parent, child) {
+  if (!isPathInside(parent, child)) return true;
+  try {
+    if ((await lstat(parent)).isSymbolicLink()) return true;
+  } catch (error) {
+    if (!(error && error.code === "ENOENT")) throw error;
+  }
+  const relativeParts = path.relative(parent, child).split(path.sep).filter(Boolean);
+  let current = parent;
+  for (const part of relativeParts) {
+    current = path.join(current, part);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) return true;
+    } catch (error) {
+      if (error && error.code === "ENOENT") return false;
+      throw error;
+    }
+  }
+  return false;
+}
+
+function removeEndpointPort(value) {
+  const raw = clean(value);
+  if (!raw) return "";
+  const bracketed = raw.match(/^\[([^\]]+)\](?::\d+)?$/);
+  if (bracketed) return bracketed[1];
+  const colonCount = (raw.match(/:/g) ?? []).length;
+  if (colonCount === 1) return raw.replace(/:\d+$/, "");
+  return raw;
+}
+
 function isIpAuthEndpointAdvertised(entry, expectedAddresses) {
   if (!entry || expectedAddresses.length === 0) return false;
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
   const advertised = [...output.matchAll(/^\s*(?:ext-)?sip-ip(?:\s*[:=]\s*|\s+)(\S+)/gim)]
-    .map((match) => match[1].replace(/^\[|\]$/g, "").replace(/:\d+$/, ""));
+    .map((match) => removeEndpointPort(match[1]));
   return expectedAddresses.some((address) => advertised.includes(address));
 }
 
@@ -220,7 +251,8 @@ const signalwireDidPattern = didPattern(env.SIGNALWIRE_FROM_NUMBER);
 const outputDir = path.resolve(repoRoot, argValue("--out-dir", "artifacts/freeswitch-signalwire/conf"));
 const manifestPath = path.resolve(repoRoot, argValue("--manifest", "artifacts/freeswitch-signalwire/readiness.json"));
 const artifactsRoot = path.resolve(repoRoot, "artifacts");
-const outputDirIsArtifact = isPathInside(artifactsRoot, outputDir);
+const outputDirIsArtifact = isPathInside(artifactsRoot, outputDir)
+  && !(await hasSymlinkedAncestor(artifactsRoot, outputDir));
 const redactor = buildRedactor([
   ...Object.values(env),
   signalwireRealm,
