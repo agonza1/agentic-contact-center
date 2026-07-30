@@ -1425,6 +1425,112 @@ test("live SIP media transcript OpenAI generation serializes with immediate call
   }
 });
 
+test("live SIP media transcript OpenAI generation does not block hangup lifecycle events", async () => {
+  const originalEnv = {
+    ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
+  };
+  const mediaTranscriptOpenAiGate: { release?: () => void } = {};
+  let resolveMediaTranscriptOpenAiSeen!: () => void;
+  const mediaTranscriptOpenAiSeen = new Promise<void>((resolve) => {
+    resolveMediaTranscriptOpenAiSeen = resolve;
+  });
+  const openAiServer = createTestServer((req, res) => {
+    let collected = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      collected += chunk;
+    });
+    req.on("end", () => {
+      void (async () => {
+        resolveMediaTranscriptOpenAiSeen();
+        await new Promise<void>((release) => {
+          mediaTranscriptOpenAiGate.release = release;
+        });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          id: "resp-media-transcript-hangup",
+          output_text: "This response should not be appended after hangup.",
+        }));
+      })().catch((error) => {
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: String(error) }));
+      });
+    });
+  });
+  await new Promise<void>((resolve) => openAiServer.listen(0, "127.0.0.1", resolve));
+  const openAiAddress = openAiServer.address();
+  assert.ok(openAiAddress && typeof openAiAddress !== "string");
+
+  process.env.ACC_OPENAI_API_KEY = "test-openai-key";
+  delete process.env.OPENAI_API_KEY;
+  process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${openAiAddress.port}/v1`;
+  delete process.env.OPENAI_BASE_URL;
+  delete process.env.ACC_OPENAI_AUTH_MODE;
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENCLAW_AGENT_ID;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T23:01:40.000Z",
+      sipCallId: "sip-openai-media-transcript-hangup",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+
+    const mediaTranscriptRequest = requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-27T23:01:41.000Z",
+      sipCallId: "sip-openai-media-transcript-hangup",
+      text: "Slow legacy media transcript",
+    });
+    await mediaTranscriptOpenAiSeen;
+
+    const endedRequest = requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.ended",
+      timestamp: "2026-07-27T23:01:42.000Z",
+      sipCallId: "sip-openai-media-transcript-hangup",
+    });
+	    const endedBeforeRelease = await Promise.race([
+	      endedRequest,
+	      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 50)),
+	    ]);
+	    if (endedBeforeRelease === "timeout") {
+	      assert.fail("call.ended was blocked behind pending media.transcript OpenAI generation");
+	    }
+	    assert.equal(endedBeforeRelease.statusCode, 200);
+    mediaTranscriptOpenAiGate.release?.();
+
+    const mediaTranscript = await mediaTranscriptRequest;
+    assert.equal(mediaTranscript.statusCode, 400);
+    assert.equal(mediaTranscript.payload.error, "live_sip_call_not_started");
+  } finally {
+    mediaTranscriptOpenAiGate.release?.();
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => openAiServer.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("live SIP delivery-ack OpenAI previews serialize with immediate caller turns", async () => {
   const originalEnv = {
     ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
