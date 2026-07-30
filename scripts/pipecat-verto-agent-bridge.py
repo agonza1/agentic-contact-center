@@ -950,23 +950,33 @@ class VertoAgentBridge:
                     and session.output_generation == intro_output_generation
                 ):
                     session.finish_output_stream()
-                    await asyncio.to_thread(
-                        json_http,
-                        "POST",
-                        f"{self.acc_url.rstrip('/')}/api/live-sip/events",
-                        {
-                            "eventType": "agent.greeting",
-                            "timestamp": now_iso(),
-                            "sipCallId": linked_sip_call_id or call_id,
-                            "vertoCallId": call_id,
-                            **({"linkedSipCallId": linked_sip_call_id} if linked_sip_call_id else {}),
-                            **({"proofSipCallId": proof_sip_call_id} if proof_sip_call_id else {}),
-                            **({"destinationNumber": destination_number} if destination_number else {}),
-                            "conversationMode": conversation_mode,
-                            "text": greeting_text,
-                        },
-                    )
-                    session.release_caller_turns("prerecorded_greeting_evidence_posted")
+                    try:
+                        await asyncio.to_thread(
+                            json_http,
+                            "POST",
+                            f"{self.acc_url.rstrip('/')}/api/live-sip/events",
+                            {
+                                "eventType": "agent.greeting",
+                                "timestamp": now_iso(),
+                                "sipCallId": linked_sip_call_id or call_id,
+                                "vertoCallId": call_id,
+                                **({"linkedSipCallId": linked_sip_call_id} if linked_sip_call_id else {}),
+                                **({"proofSipCallId": proof_sip_call_id} if proof_sip_call_id else {}),
+                                **({"destinationNumber": destination_number} if destination_number else {}),
+                                "conversationMode": conversation_mode,
+                                "text": greeting_text,
+                            },
+                        )
+                    except Exception as exc:
+                        session.record_stage(
+                            "greeting.evidence_post_failed",
+                            ok=False,
+                            error=str(exc),
+                            streamId=intro_context_id,
+                            outputGeneration=session.output_generation,
+                        )
+                    finally:
+                        session.release_caller_turns("prerecorded_greeting_evidence_finished")
                     session.record_stage(
                         "tts.prerecorded_intro_completed",
                         streamId=intro_context_id,

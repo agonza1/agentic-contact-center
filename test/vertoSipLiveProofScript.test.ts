@@ -108,7 +108,8 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.match(bridge, /session\.finish_output_stream\(\)/);
   assert.match(bridge, /"tts\.prerecorded_intro_interrupted"/);
   assert.match(bridge, /session\.release_caller_turns\("prerecorded_greeting_interrupted"\)/);
-  assert.match(bridge, /session\.release_caller_turns\("prerecorded_greeting_evidence_posted"\)/);
+  assert.match(bridge, /except Exception as exc:\n\s+session\.record_stage\(\n\s+"greeting\.evidence_post_failed"/);
+  assert.match(bridge, /finally:\n\s+session\.release_caller_turns\("prerecorded_greeting_evidence_finished"\)/);
   assert.match(bridge, /session\.record_agent_track\(/);
   assert.match(bridge, /"source": "freeswitch_verto"/);
   assert.match(bridge, /"rtcAsrMode": "rtc_asr_live" if readiness\.ok else "rtc_asr_blocked"/);
