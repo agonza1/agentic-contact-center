@@ -182,6 +182,11 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
     outputChunksAtCancel: 0,
     pendingCommit: false,
   });
+  assert.deepEqual(payload.prerecordedIntroBargeIn, {
+    gateReleasedBeforeCancel: false,
+    gateReleasedAfterCancel: true,
+    outputStreamId: "prerecorded-intro-prerecorded-intro-gate",
+  });
   assert.deepEqual(payload.flowManagerFallbackFailure.requests, ["fallback", "caller-turn"]);
   assert.equal(payload.flowManagerFallbackFailure.audioChunks, 0);
   assert.equal(payload.flowManagerFallbackFailure.ttsStarted, 1);
@@ -240,6 +245,7 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
   assert.equal(payload.checks.successfulTurnPublishesFinalizedFlowManagerEvidence, true);
   assert.equal(payload.checks.failedCommitAfterCancellationCleansPendingDelivery, true);
   assert.equal(payload.checks.stalePriorAudioCounterDoesNotPreservePreAudioCommit, true);
+  assert.equal(payload.checks.prerecordedIntroBargeInReleasesCallerGateImmediately, true);
   assert.equal(payload.checks.flowManagerActivationFailureClosesTtsLifecycle, true);
   assert.equal(payload.checks.flowManagerActivationFailureRecordsNoCommittedDelivery, true);
   assert.equal(payload.checks.flowManagerActivationFailureRetainsTerminalEvidence, true);

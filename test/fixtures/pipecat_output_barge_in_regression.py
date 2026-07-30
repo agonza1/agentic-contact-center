@@ -862,6 +862,15 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
     finally:
         pipeline.json_http = original_json_http
 
+    intro_gate_session = build_session("prerecorded-intro-gate")
+    intro_gate_session.hold_caller_turns("prerecorded_greeting_evidence_pending")
+    intro_gate_session.begin_output_stream(stream_id="prerecorded-intro-prerecorded-intro-gate")
+    intro_gate_session.extend_output_window(audio_bytes=CHUNK_BYTES, sample_rate=SAMPLE_RATE)
+    intro_gate_session.record_output_chunk(CHUNK_BYTES)
+    intro_gate_released_before_cancel = intro_gate_session.caller_turn_gate.is_set()
+    intro_gate_cancellation = intro_gate_session.cancel_output("fixture_prerecorded_intro_barge_in")
+    intro_gate_released_after_cancel = intro_gate_session.caller_turn_gate.is_set()
+
     normal_started = [frame for frame in normal_processor.frames if isinstance(frame, TTSStartedFrame)]
     normal_stopped = [frame for frame in normal_processor.frames if isinstance(frame, TTSStoppedFrame)]
     interrupted_stopped = [frame for frame in interrupted_processor.frames if isinstance(frame, TTSStoppedFrame)]
@@ -1054,6 +1063,16 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             and stale_pre_audio_cancellation.get("outputChunksEnqueued") == 0
             and stale_pre_audio_session.pending_caller_turn_commit is None
         ),
+        "prerecordedIntroBargeInReleasesCallerGateImmediately": (
+            intro_gate_released_before_cancel is False
+            and intro_gate_released_after_cancel is True
+            and intro_gate_cancellation.get("outputStreamId") == "prerecorded-intro-prerecorded-intro-gate"
+            and any(
+                event["stage"] == "acc.caller_turn_gate_released"
+                and event.get("reason") == "prerecorded_greeting_interrupted"
+                for event in intro_gate_session.stage_events
+            )
+        ),
     }
     return {
         "ok": all(checks.values()),
@@ -1079,6 +1098,11 @@ async def run_regression(*, live_kokoro: bool = False) -> dict[str, Any]:
             "deliveryAckCommits": len(delivery_commit_calls),
             "cancelledDeliveryAckCommits": len(cancelled_commit_calls),
             "cancelledTasks": cancellation_before_delivery.get("cancelledTasks"),
+        },
+        "prerecordedIntroBargeIn": {
+            "gateReleasedBeforeCancel": intro_gate_released_before_cancel,
+            "gateReleasedAfterCancel": intro_gate_released_after_cancel,
+            "outputStreamId": intro_gate_cancellation.get("outputStreamId"),
         },
         "flowManagerActivationFailure": {
             "requests": failed_delivery_requests,

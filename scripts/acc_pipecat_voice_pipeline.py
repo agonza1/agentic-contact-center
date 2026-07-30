@@ -762,6 +762,11 @@ class AccVoicePipelineSession:
             }
             print(json.dumps({"type": "browser_webrtc_output_cancel_skipped", **self.last_barge_in_evidence}), flush=True)
             return self.last_barge_in_evidence
+        intro_gate_was_held = (
+            self.caller_turn_gate_reason == "prerecorded_greeting_evidence_pending"
+            and isinstance(self.output_stream_id, str)
+            and self.output_stream_id.startswith("prerecorded-intro-")
+        )
         requested_at = time.monotonic()
         self.output_generation += 1
         if self.output_stream_chunk_count == 0:
@@ -791,6 +796,8 @@ class AccVoicePipelineSession:
             "stopRequestedMonotonicMs": round(requested_at * 1000, 3),
             "timestamp": datetime.now(UTC).isoformat(timespec="milliseconds"),
         }
+        if intro_gate_was_held:
+            self.release_caller_turns("prerecorded_greeting_interrupted")
         print(json.dumps({"type": "browser_webrtc_output_cancelled", **self.last_barge_in_evidence}), flush=True)
         return self.last_barge_in_evidence
 
