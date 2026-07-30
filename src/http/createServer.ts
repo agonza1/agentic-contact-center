@@ -6730,7 +6730,7 @@ async function routeRequest(
 
     let deliveryAckPreviewReservationKey: string | undefined;
     try {
-      const currentSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
+      let currentSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
       if (!currentSnapshot) {
         writeNotFound(response);
         return;
@@ -6793,9 +6793,59 @@ async function routeRequest(
         }
         callerTurnDeliveryAckPreviewReservations.add(deliveryAckPreviewReservationKey);
       }
+      let deliveryAckOpenAiResponseHandled = false;
       const openAiLlm = commitMode === "delivery_ack" && effectiveConversationMode === "openai_llm"
-        ? await generateOpenAiLiveSipResponse(currentSnapshot, text, timestamp)
+        ? await withLiveSipOpenAiGenerationLock(liveSipOpenAiGenerationLocks, callerTurnMatch[1], async () => {
+            const lockedSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
+            if (!lockedSnapshot) {
+              writeNotFound(response);
+              deliveryAckOpenAiResponseHandled = true;
+              return undefined;
+            }
+            if (isLiveSipCallEnded(lockedSnapshot)) {
+              writeJson(response, 409, {
+                ok: false,
+                route: "/api/calls/:callId/caller-turn",
+                error: "live_sip_call_ended",
+                call: buildCallPayload(lockedSnapshot),
+              });
+              deliveryAckOpenAiResponseHandled = true;
+              return undefined;
+            }
+            if (isOpenAiLiveSipAutomationStopped(lockedSnapshot)) {
+              await rejectHeldLiveSipCallerTurn(
+                response,
+                ingress,
+                callerTurnMatch[1],
+                text,
+                timestamp,
+                getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+                "/api/calls/:callId/caller-turn",
+                "openai_fail_closed_handoff_active",
+              );
+              deliveryAckOpenAiResponseHandled = true;
+              return undefined;
+            }
+            const lockedOperatorHoldReason = getLiveSipCallerTurnHoldReason(lockedSnapshot, effectiveConversationMode);
+            if (lockedOperatorHoldReason) {
+              await rejectHeldLiveSipCallerTurn(
+                response,
+                ingress,
+                callerTurnMatch[1],
+                text,
+                timestamp,
+                getOptionalTrimmedString(body.rtcAsrEvidencePath) ?? null,
+                "/api/calls/:callId/caller-turn",
+                lockedOperatorHoldReason,
+              );
+              deliveryAckOpenAiResponseHandled = true;
+              return undefined;
+            }
+            currentSnapshot = lockedSnapshot;
+            return generateOpenAiLiveSipResponse(lockedSnapshot, text, timestamp);
+          })
         : undefined;
+      if (deliveryAckOpenAiResponseHandled) return;
       let latestSnapshot = openAiLlm ? await ingress.getSnapshot(callerTurnMatch[1]) : currentSnapshot;
       if (!latestSnapshot) {
         writeNotFound(response);

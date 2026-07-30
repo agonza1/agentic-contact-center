@@ -1294,6 +1294,132 @@ test("live SIP immediate OpenAI caller turns serialize concurrent generation per
   }
 });
 
+test("live SIP delivery-ack OpenAI previews serialize with immediate caller turns", async () => {
+  const originalEnv = {
+    ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ACC_OPENAI_BASE_URL: process.env.ACC_OPENAI_BASE_URL,
+    OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_AUTH_TOKEN: process.env.ACC_OPENAI_AUTH_TOKEN,
+    OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
+    ACC_OPENCLAW_AGENT_ID: process.env.ACC_OPENCLAW_AGENT_ID,
+  };
+  const deliveryAckOpenAiGate: { release?: () => void } = {};
+  let deliveryAckOpenAiReleased = false;
+  let secondOpenAiRequestSeenBeforeRelease = false;
+  let resolveDeliveryAckOpenAiSeen!: () => void;
+  const deliveryAckOpenAiSeen = new Promise<void>((resolve) => {
+    resolveDeliveryAckOpenAiSeen = resolve;
+  });
+  const openAiServer = createTestServer((req, res) => {
+    let collected = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      collected += chunk;
+    });
+    req.on("end", () => {
+      void (async () => {
+        const payload = JSON.parse(collected) as { input?: unknown };
+        const input = payload.input;
+        const userPromptText = Array.isArray(input)
+          ? input.find((entry): entry is { role?: string; content?: Array<{ type?: string; text?: string }> } => {
+              return typeof entry === "object" && entry !== null && "role" in entry && (entry as { role?: unknown }).role === "user";
+            })?.content?.[0]?.text ?? ""
+          : typeof input === "string"
+            ? input
+            : "";
+        const latestCallerTurn = userPromptText.match(/Latest caller turn:\s*([^\n]+)/)?.[1]?.trim() ?? "";
+        if (latestCallerTurn === "Can you help with billing?") {
+          resolveDeliveryAckOpenAiSeen();
+          await new Promise<void>((release) => {
+            deliveryAckOpenAiGate.release = release;
+          });
+          deliveryAckOpenAiReleased = true;
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({
+            id: "resp-delivery-ack-serial-preview",
+            output_text: "Delivery ack preview response.",
+          }));
+          return;
+        }
+        if (!deliveryAckOpenAiReleased) secondOpenAiRequestSeenBeforeRelease = true;
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          id: "resp-delivery-ack-serial-immediate",
+          output_text: "Immediate response after delivery ack preview.",
+        }));
+      })().catch((error) => {
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: String(error) }));
+      });
+    });
+  });
+  await new Promise<void>((resolve) => openAiServer.listen(0, "127.0.0.1", resolve));
+  const openAiAddress = openAiServer.address();
+  assert.ok(openAiAddress && typeof openAiAddress !== "string");
+
+  process.env.ACC_OPENAI_API_KEY = "test-openai-key";
+  delete process.env.OPENAI_API_KEY;
+  process.env.ACC_OPENAI_BASE_URL = `http://127.0.0.1:${openAiAddress.port}/v1`;
+  delete process.env.OPENAI_BASE_URL;
+  delete process.env.ACC_OPENAI_AUTH_MODE;
+  delete process.env.ACC_OPENAI_AUTH_TOKEN;
+  delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  delete process.env.ACC_OPENCLAW_AGENT_ID;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T23:02:00.000Z",
+      sipCallId: "sip-openai-delivery-ack-serial",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+    const callId = started.payload.call.session.callId;
+
+    const previewRequest = requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you help with billing?",
+      timestamp: "2026-07-27T23:02:01.000Z",
+      commitMode: "delivery_ack",
+    });
+    await deliveryAckOpenAiSeen;
+    const immediateRequest = requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Can you also update my address?",
+      timestamp: "2026-07-27T23:02:02.000Z",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.equal(secondOpenAiRequestSeenBeforeRelease, false);
+    deliveryAckOpenAiGate.release?.();
+
+    const [preview, immediate] = await Promise.all([previewRequest, immediateRequest]);
+    assert.equal(preview.statusCode, 200);
+    assert.equal(preview.payload.callerTurnCommit.status, "pending");
+    assert.equal(preview.payload.callerTurnCommit.expectedAgentText, "Delivery ack preview response.");
+    assert.equal(immediate.statusCode, 200);
+    assert.deepEqual(
+      immediate.payload.transcript.map((turn: { text: string }) => turn.text),
+      ["Can you also update my address?", "Immediate response after delivery ack preview."],
+    );
+  } finally {
+    deliveryAckOpenAiGate.release?.();
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => openAiServer.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("delivery-ack OpenAI failures persist fail-closed state before audible commit", async () => {
   const originalEnv = {
     ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
