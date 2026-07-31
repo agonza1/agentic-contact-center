@@ -110,8 +110,15 @@ function regexpEscape(value) {
   return clean(value).replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
 }
 
+function signalwireDidDigits(value) {
+  const raw = clean(value);
+  if (!/^\+?[\d\s().-]+$/.test(raw)) return "";
+  const digits = raw.replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15 ? digits : "";
+}
+
 function didPattern(value) {
-  const digits = clean(value).replace(/\D/g, "");
+  const digits = signalwireDidDigits(value);
   if (!digits) return "NO_SIGNALWIRE_DID_CONFIGURED";
   const withOptionalPlus = `\\+?${regexpEscape(digits)}`;
   const withoutCountry = digits.length === 11 && digits.startsWith("1") ? regexpEscape(digits.slice(1)) : "";
@@ -294,9 +301,9 @@ const env = Object.fromEntries(ALL_ENV.map((name) => [name, clean(process.env[na
 const missing = requiredEnv.filter((name) => !env[name]);
 const signalwireRealm = clean(process.env.SIGNALWIRE_SIP_REALM) || signalwireSipHostFromSpaceUrl(env.SIGNALWIRE_SPACE_URL);
 const signalwireProxy = clean(process.env.SIGNALWIRE_SIP_PROXY) || signalwireRealm;
-const signalwireDidDigits = env.SIGNALWIRE_FROM_NUMBER.replace(/\D/g, "");
-const signalwireDidNational = signalwireDidDigits.length === 11 && signalwireDidDigits.startsWith("1")
-  ? signalwireDidDigits.slice(1)
+const signalwireDid = signalwireDidDigits(env.SIGNALWIRE_FROM_NUMBER);
+const signalwireDidNational = signalwireDid.length === 11 && signalwireDid.startsWith("1")
+  ? signalwireDid.slice(1)
   : "";
 const signalwireDidPattern = didPattern(env.SIGNALWIRE_FROM_NUMBER);
 const outputDir = path.resolve(repoRoot, argValue("--out-dir", "artifacts/freeswitch-signalwire/conf"));
@@ -309,7 +316,7 @@ const redactor = buildRedactor([
   signalwireRealm,
   signalwireProxy,
   signalwireDidPattern,
-  signalwireDidDigits,
+  signalwireDid,
   signalwireDidNational,
   process.env.SIGNALWIRE_PROJECT_ID,
   process.env.SIGNALWIRE_TOKEN,
@@ -341,7 +348,7 @@ if (!["registration", "ip_auth"].includes(trunkMode)) {
   summary.blockers.push("invalid_signalwire_trunk_mode");
 } else if (missing.length) {
   summary.blockers.push("missing_signalwire_or_freeswitch_env");
-} else if (!signalwireDidDigits) {
+} else if (!signalwireDid) {
   summary.blockers.push("invalid_signalwire_from_number");
 } else if (trunkMode === "registration" && (!signalwireRealm || !signalwireProxy)) {
   summary.missingEnv.push("SIGNALWIRE_SIP_REALM_OR_PROXY");

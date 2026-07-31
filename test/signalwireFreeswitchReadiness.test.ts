@@ -75,6 +75,48 @@ test("SignalWire FreeSWITCH readiness rejects digitless SignalWire numbers befor
   }
 });
 
+for (const invalidDid of ["abc123", "1"]) {
+  test(`SignalWire FreeSWITCH readiness rejects malformed SignalWire number before rendering: ${invalidDid}`, async () => {
+    const tempDir = await mkArtifactTempDir("acc-signalwire-fs-");
+
+    try {
+      await assert.rejects(
+        execFileAsync(process.execPath, [
+          "scripts/signalwire-freeswitch-readiness.mjs",
+          "--render",
+          "--skip-fs-cli",
+          "--out-dir",
+          tempDir,
+          "--manifest",
+          path.join(tempDir, "readiness.json"),
+        ], {
+          cwd: repoRoot,
+          env: {
+            PATH: process.env.PATH ?? "",
+            SIGNALWIRE_SPACE_URL: "https://example.signalwire.com",
+            SIGNALWIRE_SIP_USERNAME: "acc-sip-user",
+            SIGNALWIRE_SIP_PASSWORD: "example-rendered-sip-password",
+            SIGNALWIRE_FROM_NUMBER: invalidDid,
+            FREESWITCH_PUBLIC_SIP_HOST: "sip-public-host.example.test",
+          },
+          encoding: "utf8",
+        }),
+        (error: unknown) => {
+          const result = error as { stdout?: string; code?: number };
+          assert.equal(result.code, 2);
+          const payload = JSON.parse(result.stdout ?? "{}");
+          assert.equal(payload.generatedConfig, null);
+          assert.ok(payload.blockers.includes("invalid_signalwire_from_number"));
+          return true;
+        },
+      );
+      await assert.rejects(readFile(path.join(tempDir, "dialplan/public/signalwire_inbound.xml"), "utf8"));
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+}
+
 test("SignalWire FreeSWITCH readiness renders ignored config without leaking secrets to stdout", async () => {
   const tempDir = await mkArtifactTempDir("acc-signalwire-fs-");
   const renderedPassword = "example-rendered-sip-password";
