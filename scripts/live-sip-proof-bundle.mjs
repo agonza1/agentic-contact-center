@@ -287,6 +287,108 @@ function requiresCurrentRtcAsrCallId() {
   return hasArg("--require-review-ready") || hasArg("--require-rtc-asr-live");
 }
 
+function requiresStrictSourceEvidence() {
+  return hasArg("--require-review-ready") || hasArg("--require-rtc-asr-live");
+}
+
+function sourceRevisionEvidence(liveManifest, bundleRevision, { strict = false } = {}) {
+  const sourceRevision = liveManifest.sourceRevision ?? null;
+  const sourceCommit = typeof sourceRevision?.commit === "string" ? sourceRevision.commit.trim() : "";
+  const bundleCommit = typeof bundleRevision?.commit === "string" ? bundleRevision.commit.trim() : "";
+  if (!strict || hasArg("--allow-unversioned-source")) {
+    return { required: strict, ready: true, sourceRevision, bundleRevision, reason: null, waived: strict && hasArg("--allow-unversioned-source") };
+  }
+  if (!sourceCommit) {
+    return { required: true, ready: false, sourceRevision, bundleRevision, reason: "source manifest is missing sourceRevision.commit provenance." };
+  }
+  if (sourceRevision?.dirty === true) {
+    return { required: true, ready: false, sourceRevision, bundleRevision, reason: "source manifest was captured from a dirty checkout." };
+  }
+  if (!bundleCommit || sourceCommit !== bundleCommit) {
+    return {
+      required: true,
+      ready: false,
+      sourceRevision,
+      bundleRevision,
+      reason: `source manifest commit ${sourceCommit} does not match bundle checkout commit ${bundleCommit || "unknown"}.`,
+    };
+  }
+  return { required: true, ready: true, sourceRevision, bundleRevision, reason: null };
+}
+
+function rtcAsrCorrelationEvidence(liveManifest, { strict = false } = {}) {
+  const rtc = liveManifest.rtcAsrEvidence ?? {};
+  const expectedSipCallId = String(liveManifest.sipCallId || "").trim();
+  const correlationMode = String(rtc.correlationMode || "").trim();
+  const proofSipCallId = String(rtc.proofSipCallId || "").trim();
+  const linkedSipCallId = String(rtc.linkedSipCallId || "").trim();
+  const evidenceSipCallId = String(rtc.sipCallId || "").trim();
+  const explicitLinkIds = [proofSipCallId, linkedSipCallId].filter(Boolean);
+  const relatedIds = [proofSipCallId, linkedSipCallId, evidenceSipCallId].filter(Boolean);
+  if (!strict || hasArg("--allow-fallback-rtc-asr-correlation")) {
+    return {
+      required: strict,
+      ready: true,
+      correlationMode: correlationMode || null,
+      expectedSipCallId: expectedSipCallId || null,
+      proofSipCallId: proofSipCallId || null,
+      linkedSipCallId: linkedSipCallId || null,
+      evidenceSipCallId: evidenceSipCallId || null,
+      reason: null,
+      waived: strict && hasArg("--allow-fallback-rtc-asr-correlation"),
+    };
+  }
+  if (!expectedSipCallId) {
+    return { required: true, ready: false, correlationMode: correlationMode || null, expectedSipCallId: null, proofSipCallId: proofSipCallId || null, linkedSipCallId: linkedSipCallId || null, evidenceSipCallId: evidenceSipCallId || null, reason: "source manifest is missing the proof SIP call identifier." };
+  }
+  if (correlationMode !== "expected_sip_call_id") {
+    return {
+      required: true,
+      ready: false,
+      correlationMode: correlationMode || null,
+      expectedSipCallId,
+      proofSipCallId: proofSipCallId || null,
+      linkedSipCallId: linkedSipCallId || null,
+      evidenceSipCallId: evidenceSipCallId || null,
+      reason: `rtc-asr evidence correlationMode must be expected_sip_call_id for strict review; got ${correlationMode || "missing"}.`,
+    };
+  }
+  if (explicitLinkIds.length === 0) {
+    return {
+      required: true,
+      ready: false,
+      correlationMode,
+      expectedSipCallId,
+      proofSipCallId: null,
+      linkedSipCallId: null,
+      evidenceSipCallId: evidenceSipCallId || null,
+      reason: "rtc-asr evidence is missing explicit proofSipCallId or linkedSipCallId linkage.",
+    };
+  }
+  if (!relatedIds.includes(expectedSipCallId)) {
+    return {
+      required: true,
+      ready: false,
+      correlationMode,
+      expectedSipCallId,
+      proofSipCallId: proofSipCallId || null,
+      linkedSipCallId: linkedSipCallId || null,
+      evidenceSipCallId: evidenceSipCallId || null,
+      reason: `rtc-asr evidence is linked to ${relatedIds.join(", ")} instead of proof SIP call ${expectedSipCallId}.`,
+    };
+  }
+  return {
+    required: true,
+    ready: true,
+    correlationMode,
+    expectedSipCallId,
+    proofSipCallId: proofSipCallId || null,
+    linkedSipCallId: linkedSipCallId || null,
+    evidenceSipCallId: evidenceSipCallId || null,
+    reason: null,
+  };
+}
+
 function requiredReviewChecksPassed(bundleManifest) {
   const checks = requiredReviewChecks();
   if (checks.length === 0) return true;
@@ -531,7 +633,7 @@ function reviewNextActions(liveManifest) {
   return actions;
 }
 
-function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, callerPlaybackEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult) {
+function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, callerPlaybackEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult, sourceRevisionEvidenceResult, rtcAsrCorrelationEvidenceResult) {
   const checks = {
     localSipMode: liveManifest.runtimeModeLabels?.telephony === "local_sip",
     acceptedInvite: liveManifest.localSip?.acceptedInvite === true,
@@ -546,6 +648,8 @@ function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidence
     artifactsPresent: artifactIntegrity.every((artifact) => artifact.readiness === "ready"),
     sourceArtifactIntegrityReady: sourceArtifactIntegrityResult.ready === true,
     sourceManifestReviewReady: liveManifest.reviewReady === true,
+    sourceRevisionCurrent: sourceRevisionEvidenceResult.ready === true,
+    rtcAsrSameCallCorrelation: rtcAsrCorrelationEvidenceResult.ready === true,
   };
   const requiredLabels = ["local_sip", "live_capture", "rtc_asr_live"];
   const labels = [
@@ -558,7 +662,12 @@ function reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidence
     requiredLabels,
     missingLabels: requiredLabels.filter((label) => !labels.includes(label)),
     checks,
-    failureReasons: reviewGateFailureReasons(checks, { rtcAsrEvidence: rtcAsrEvidenceResult, callerPlaybackEvidence: callerPlaybackEvidenceResult }),
+    failureReasons: reviewGateFailureReasons(checks, {
+      rtcAsrEvidence: rtcAsrEvidenceResult,
+      callerPlaybackEvidence: callerPlaybackEvidenceResult,
+      sourceRevisionEvidence: sourceRevisionEvidenceResult,
+      rtcAsrCorrelationEvidence: rtcAsrCorrelationEvidenceResult,
+    }),
   };
 }
 
@@ -581,6 +690,12 @@ function reviewGateFailureReasons(checks, details = {}) {
     artifactsPresent: "One or more required proof artifacts are missing or empty.",
     sourceArtifactIntegrityReady: "Source live proof manifest reports blocked, missing, or changed artifacts.",
     sourceManifestReviewReady: "Source live proof manifest is not review-ready; inspect its blockers before submitting the bundle.",
+    sourceRevisionCurrent: details.sourceRevisionEvidence?.reason
+      ? `source revision provenance failed validation: ${details.sourceRevisionEvidence.reason}`
+      : "Source live proof manifest is missing exact-head provenance.",
+    rtcAsrSameCallCorrelation: details.rtcAsrCorrelationEvidence?.reason
+      ? `rtc-asr call correlation failed validation: ${details.rtcAsrCorrelationEvidence.reason}`
+      : "rtc-asr evidence is not explicitly correlated to the proof SIP call.",
   };
   return Object.fromEntries(Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => [name, reasons[name]]));
 }
@@ -661,6 +776,8 @@ function reviewGateReportJson(bundleManifest) {
       rtcAsr: bundleManifest.validationSummary.rtcAsrEvidence,
       callerPlayback: bundleManifest.validationSummary.callerPlaybackEvidence,
       sourceArtifactIntegrity: bundleManifest.validationSummary.sourceArtifactIntegrityEvidence,
+      sourceRevision: bundleManifest.validationSummary.sourceRevisionEvidence,
+      rtcAsrCorrelation: bundleManifest.validationSummary.rtcAsrCorrelationEvidence,
     },
     blockers: bundleManifest.validationSummary.blockers,
     nextActions: bundleManifest.validationSummary.nextActions,
@@ -702,8 +819,8 @@ async function main() {
     liveManifest.runtimeModeLabels.rtcAsr,
     liveManifest.runtimeModeLabels.credentialsMode === "signalwire_live" ? "signalwire_live" : "mocked_telephony",
   ];
-  const sourceRevision = liveManifest.sourceRevision ?? gitRevision();
   const bundleRevision = gitRevision();
+  const sourceRevision = liveManifest.sourceRevision ?? gitRevision();
   const runtimeTrace = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
@@ -776,7 +893,9 @@ async function main() {
   const rtcAsrEvidenceResult = await rtcAsrEvidence(rtcAsrEvidencePath, liveManifest, { requireCurrentCallId: requiresCurrentRtcAsrCallId() });
   const wavEvidenceResult = await wavEvidence(audioPath);
   const sourceArtifactIntegrityResult = await sourceArtifactIntegrityEvidence(liveManifest);
-  const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, callerPlaybackEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult);
+  const sourceRevisionEvidenceResult = sourceRevisionEvidence(liveManifest, bundleRevision, { strict: requiresStrictSourceEvidence() });
+  const rtcAsrCorrelationEvidenceResult = rtcAsrCorrelationEvidence(liveManifest, { strict: requiresStrictSourceEvidence() });
+  const gate = reviewGate(liveManifest, artifactIntegrity, sipEvidence, rtcAsrEvidenceResult, callerPlaybackEvidenceResult, wavEvidenceResult, sourceArtifactIntegrityResult, sourceRevisionEvidenceResult, rtcAsrCorrelationEvidenceResult);
   const validationSummary = {
     status: gate.passed ? "ready_for_review" : "blocked_before_review",
     checks: gate.checks,
@@ -787,6 +906,8 @@ async function main() {
     rtcAsrEvidence: rtcAsrEvidenceResult,
     callerPlaybackEvidence: callerPlaybackEvidenceResult,
     sourceArtifactIntegrityEvidence: sourceArtifactIntegrityResult,
+    sourceRevisionEvidence: sourceRevisionEvidenceResult,
+    rtcAsrCorrelationEvidence: rtcAsrCorrelationEvidenceResult,
   };
   const bundleManifest = {
     schemaVersion: 1,

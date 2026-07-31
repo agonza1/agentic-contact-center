@@ -1,12 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+
+function currentSourceRevision(repoRoot: string) {
+  return {
+    repo: "agonza1/agentic-contact-center",
+    commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim(),
+    shortCommit: execFileSync("git", ["rev-parse", "--short=12", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim(),
+    branch: "test",
+    dirty: false,
+  };
+}
 
 function validWavFixture() {
   const buffer = Buffer.alloc(48);
@@ -358,6 +368,73 @@ test("live SIP proof bundle requires current-call rtc-asr evidence for strict ac
   }
 });
 
+test("live SIP proof bundle rejects fallback-correlated or unversioned evidence in strict mode", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-fallback-correlation-"));
+  const audioPath = path.join(tempDir, "caller-capture.wav");
+  const sipLogPath = path.join(tempDir, "sip.log.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+  const callerPlaybackEvidencePath = path.join(tempDir, "caller-playback-proof.json");
+  const manifestPath = path.join(tempDir, "local-sip-live-proof-manifest.json");
+
+  try {
+    await writeFile(audioPath, validWavFixture());
+    await writeFile(
+      rtcAsrEvidencePath,
+      JSON.stringify({ callId: "sip-proof-current", transcript: "I need billing help.", final: true }) + "\n",
+      "utf8",
+    );
+    await writeFile(
+      callerPlaybackEvidencePath,
+      JSON.stringify({ callerAudiblePlaybackConfirmed: true, evidence: { kind: "wav_capture", path: audioPath } }) + "\n",
+      "utf8",
+    );
+    await writeFile(sipLogPath, JSON.stringify([{ startLine: "INVITE sip:8600@127.0.0.1 SIP/2.0" }, { startLine: "SIP/2.0 200 OK" }]) + "\n", "utf8");
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        generatedAt: "2026-06-30T10:00:00.000Z",
+        callId: "call-live-sip-current",
+        sipCallId: "sip-proof-current",
+        runtimeModeLabels: { telephony: "local_sip", media: "live_capture", rtcAsr: "rtc_asr_live", credentialsMode: "mocked" },
+        localSip: { acceptedInvite: true, rtpPacketCount: 4 },
+        pipecatMediaEngine: { bidirectionalPlaybackReady: true },
+        artifacts: { audioWav: audioPath, sipLog: sipLogPath, rtcAsrEvidence: rtcAsrEvidencePath, callerPlaybackEvidence: callerPlaybackEvidencePath },
+        artifactIntegrity: [],
+        rtcAsrEvidence: {
+          correlationMode: "fresh_non_baseline_current_window",
+          proofSipCallId: null,
+          linkedSipCallId: null,
+          sipCallId: "other-verto-sip-id",
+        },
+        reviewGate: { requiredLabels: ["local_sip", "live_capture", "rtc_asr_live"], missingLabels: [], nextActions: [] },
+        reviewReady: true,
+        blockers: [],
+      }, null, 2) + "\n",
+      "utf8",
+    );
+
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        ["scripts/live-sip-proof-bundle.mjs", "--live-manifest", manifestPath, "--out-dir", path.join(tempDir, "bundle"), "--require-review-ready"],
+        { cwd: repoRoot, encoding: "utf8" },
+      ),
+      (error: any) => {
+        assert.equal(error.code, 2);
+        const summary = JSON.parse(error.stdout) as { reviewGatePassed: boolean; failedChecks: string[] };
+        assert.equal(summary.reviewGatePassed, false);
+        assert.ok(summary.failedChecks.includes("sourceRevisionCurrent"));
+        assert.ok(summary.failedChecks.includes("rtcAsrSameCallCorrelation"));
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("live SIP proof bundle fails the review gate when caller playback proof is missing", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-missing-playback-"));
@@ -480,6 +557,7 @@ test("live SIP proof bundle accepts copied live proof playback evidence", async 
       JSON.stringify({
         schemaVersion: 1,
         generatedAt: "2026-06-30T10:00:00.000Z",
+        sourceRevision: currentSourceRevision(repoRoot),
         callId: "call-live-sip-copied-playback",
         sipCallId: "sip-proof-copied-playback",
         runtimeModeLabels: { telephony: "local_sip", media: "live_capture", rtcAsr: "rtc_asr_live", credentialsMode: "mocked" },
@@ -487,6 +565,12 @@ test("live SIP proof bundle accepts copied live proof playback evidence", async 
         pipecatMediaEngine: { bidirectionalPlaybackReady: true },
         artifacts: { audioWav: audioPath, sipLog: sipLogPath, rtcAsrEvidence: rtcAsrEvidencePath, callerPlaybackEvidence: callerPlaybackEvidencePath },
         artifactIntegrity: [],
+        rtcAsrEvidence: {
+          correlationMode: "expected_sip_call_id",
+          proofSipCallId: "sip-proof-copied-playback",
+          linkedSipCallId: "sip-proof-copied-playback",
+          sipCallId: "sip-proof-copied-playback",
+        },
         reviewGate: { requiredLabels: ["local_sip", "live_capture", "rtc_asr_live"], missingLabels: [], nextActions: [] },
         reviewReady: true,
         blockers: [],
@@ -536,6 +620,7 @@ test("live SIP proof bundle accepts caller-audible playback confirmation evidenc
       JSON.stringify({
         schemaVersion: 1,
         generatedAt: "2026-06-30T10:00:00.000Z",
+        sourceRevision: currentSourceRevision(repoRoot),
         callId: "call-live-sip-caller-audible-playback",
         sipCallId: "sip-proof-caller-audible-playback",
         runtimeModeLabels: { telephony: "local_sip", media: "live_capture", rtcAsr: "rtc_asr_live", credentialsMode: "mocked" },
@@ -543,6 +628,12 @@ test("live SIP proof bundle accepts caller-audible playback confirmation evidenc
         pipecatMediaEngine: { bidirectionalPlaybackReady: true },
         artifacts: { audioWav: audioPath, sipLog: sipLogPath, rtcAsrEvidence: rtcAsrEvidencePath, callerPlaybackEvidence: callerPlaybackEvidencePath },
         artifactIntegrity: [],
+        rtcAsrEvidence: {
+          correlationMode: "expected_sip_call_id",
+          proofSipCallId: "sip-proof-caller-audible-playback",
+          linkedSipCallId: "sip-proof-caller-audible-playback",
+          sipCallId: "sip-proof-caller-audible-playback",
+        },
         reviewGate: { requiredLabels: ["local_sip", "live_capture", "rtc_asr_live"], missingLabels: [], nextActions: [] },
         reviewReady: true,
         blockers: [],
