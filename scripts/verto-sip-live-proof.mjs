@@ -322,22 +322,117 @@ async function readEvidenceCallIds(evidencePath) {
   }
 }
 
-async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds, expectedSipCallId }) {
+function sanitizeLogLine(line) {
+  return String(line || "").replace(/(password|authorization|token|secret)=([^,\s)]+)/gi, "$1=<redacted>");
+}
+
+async function loadFreeSwitchCallLinkage(logPath, { proofSipCallId }) {
+  const expectedProofSipCallId = String(proofSipCallId || "").trim();
+  if (!logPath || !expectedProofSipCallId) {
+    return {
+      ready: false,
+      status: "blocked",
+      reason: "FreeSWITCH log path or expected proof SIP Call-ID was not provided.",
+    };
+  }
+
+  try {
+    const text = await readFile(logPath, "utf8");
+    const lines = text.split(/\r?\n/);
+    let aLegUuid = "";
+    let proofLine = null;
+    let peerUuid = "";
+    let peerLine = null;
+    const uuidPattern = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s/i;
+    const peerPattern = /Peer UUID:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const line = lines[index];
+      if (!line.includes(expectedProofSipCallId)) continue;
+      const uuid = line.match(uuidPattern)?.[1] || "";
+      if (!uuid) continue;
+      aLegUuid = uuid;
+      proofLine = { lineNumber: index + 1, text: sanitizeLogLine(line) };
+      break;
+    }
+
+    if (aLegUuid) {
+      for (let index = proofLine.lineNumber; index < lines.length; index += 1) {
+        const line = lines[index];
+        if (!line.startsWith(`${aLegUuid} `)) continue;
+        const match = line.match(peerPattern);
+        if (match?.[1]) {
+          peerUuid = match[1];
+          peerLine = { lineNumber: index + 1, text: sanitizeLogLine(line) };
+          break;
+        }
+      }
+    }
+
+    if (!aLegUuid || !peerUuid) {
+      return {
+        ready: false,
+        status: "blocked",
+        reason: "FreeSWITCH log did not expose an exact proof SIP Call-ID to Verto peer UUID bridge.",
+        proofSipCallId: expectedProofSipCallId,
+        source: "freeswitch_log",
+        logPath,
+      };
+    }
+
+    return {
+      ready: true,
+      status: "linked",
+      source: "freeswitch_log",
+      method: "proof_sip_call_id_to_aleg_uuid_to_verto_peer_uuid",
+      logPath,
+      proofSipCallId: expectedProofSipCallId,
+      linkedSipCallId: aLegUuid,
+      vertoCallId: peerUuid,
+      evidenceLines: {
+        proofSipCallId: proofLine,
+        vertoPeerUuid: peerLine,
+      },
+    };
+  } catch (error) {
+    return {
+      ready: false,
+      status: "blocked",
+      reason: `FreeSWITCH log was unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      proofSipCallId: expectedProofSipCallId,
+      source: "freeswitch_log",
+      logPath,
+    };
+  }
+}
+
+function expectedCallCorrelationIds(expectedSipCallId, callLinkage) {
+  return new Set([
+    expectedSipCallId,
+    callLinkage?.proofSipCallId,
+    callLinkage?.linkedSipCallId,
+    callLinkage?.vertoCallId,
+  ].map((value) => String(value || "").trim()).filter(Boolean));
+}
+
+async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds, expectedSipCallId, callLinkage = null }) {
   if (!evidencePath) return { ready: false, transcript: "", ttsReady: false, evidence: null };
   try {
     const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
     const snapshots = Array.isArray(evidence.pipelineEvidence) ? evidence.pipelineEvidence : [evidence];
     const expectedCorrelationId = String(expectedSipCallId || "").trim();
+    const exactCorrelationIds = expectedCallCorrelationIds(expectedCorrelationId, callLinkage?.ready ? callLinkage : null);
     let fallbackReadyEvidence = null;
     for (const snapshot of snapshots) {
       const evidenceCallId = extractVertoCallId(snapshot);
       if (!evidenceCallId || baselineCallIds.has(evidenceCallId)) continue;
       const correlationIds = evidenceCorrelationIds(snapshot);
-      const matchesExpectedCall = Boolean(expectedCorrelationId) && correlationIds.has(expectedCorrelationId);
+      const matchesExpectedCall = Boolean(expectedCorrelationId)
+        && [...exactCorrelationIds].some((callId) => correlationIds.has(callId));
       const accCallId = String(snapshot?.accCallId || snapshot?.callId || "");
       const sipCallId = String(snapshot?.sipCallId || evidenceCallId);
-      const linkedSipCallId = String(snapshot?.linkedSipCallId || "");
-      const proofSipCallId = String(snapshot?.proofSipCallId || snapshot?.harnessSipCallId || "");
+      const linkedSipCallId = String(snapshot?.linkedSipCallId || (matchesExpectedCall ? callLinkage?.linkedSipCallId : "") || "");
+      const proofSipCallId = String(snapshot?.proofSipCallId || snapshot?.harnessSipCallId || (matchesExpectedCall ? callLinkage?.proofSipCallId : "") || "");
       const stages = Array.isArray(snapshot?.stageEvents) ? snapshot.stageEvents : [];
       const isCurrentCallEvent = (event) => Number.isFinite(Date.parse(event?.timestamp)) && Date.parse(event.timestamp) >= startedAtMs;
       const finalTranscriptSource = String(snapshot?.lastEvidence?.stt?.finalTranscriptSource || "");
@@ -384,6 +479,7 @@ async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds, 
           linkedSipCallId,
           proofSipCallId,
           correlationMode: matchesExpectedCall ? "expected_sip_call_id" : "fresh_non_baseline_current_window",
+          callLinkage: matchesExpectedCall && callLinkage?.ready ? callLinkage : null,
           evidence,
         };
         if (matchesExpectedCall) return readyEvidence;
@@ -691,6 +787,7 @@ class SipProofCall {
     const sipLogPath = path.join(this.options.outDir, "sip-events.json");
     const playbackEvidencePath = path.join(this.options.outDir, "caller-playback-evidence.json");
     const normalizedRtcAsrEvidencePath = path.join(this.options.outDir, "rtc-asr-transcript-evidence.json");
+    const freeSwitchCallLinkagePath = path.join(this.options.outDir, "freeswitch-call-linkage-evidence.json");
     const rtcAsrEvidencePath = this.options.rtcAsrEvidencePath ? path.resolve(this.options.rtcAsrEvidencePath) : null;
     const manifestPath = path.join(this.options.outDir, "verto-sip-live-proof-manifest.json");
     const callerWav = Buffer.concat([wavHeader(this.callerPcm.length), this.callerPcm]);
@@ -699,10 +796,22 @@ class SipProofCall {
     await writeFile(callerWavPath, callerWav);
     await writeFile(playbackWavPath, playbackWav);
     await writeFile(sipLogPath, `${JSON.stringify(this.events, null, 2)}\n`, "utf8");
+    const freeSwitchCallLinkage = await loadFreeSwitchCallLinkage(this.options.freeSwitchLogPath, {
+      proofSipCallId: this.callId,
+    });
+    await writeFile(
+      freeSwitchCallLinkagePath,
+      `${JSON.stringify({
+        ...freeSwitchCallLinkage,
+        generatedAt: nowIso(),
+      }, null, 2)}\n`,
+      "utf8",
+    );
     const rtcAsrEvidence = await waitForRtcAsrEvidence(rtcAsrEvidencePath, {
       startedAtMs: this.startedAtMs,
       baselineCallIds: this.rtcAsrBaselineCallIds,
       expectedSipCallId: this.callId,
+      callLinkage: freeSwitchCallLinkage,
     });
     const rtcAsrReady = rtcAsrEvidence.ready;
     const playbackRms = pcm16Rms(playbackPcm);
@@ -758,6 +867,7 @@ class SipProofCall {
         proofSipCallId: rtcAsrEvidence.proofSipCallId || null,
         linkedSipCallId: rtcAsrEvidence.linkedSipCallId || null,
         correlationMode: rtcAsrEvidence.correlationMode || null,
+        callLinkage: rtcAsrEvidence.callLinkage || null,
         transcript: rtcAsrEvidence.transcript,
         transcriptAt: rtcAsrEvidence.transcriptAt || null,
         ttsAudioReady: rtcAsrEvidence.ttsReady,
@@ -814,11 +924,16 @@ class SipProofCall {
         rtcAsrEvidence: normalizedRtcAsrEvidencePath,
         pipecatVertoEvidence: rtcAsrEvidencePath,
         callerPlaybackEvidence: playbackEvidencePath,
+        freeSwitchCallLinkage: freeSwitchCallLinkagePath,
       },
+      freeSwitchCallLinkage,
       artifactIntegrity: [
         { artifactId: "caller-input-wav", kind: "call_media", path: callerWavPath, sha256: await sha256File(callerWavPath), sizeBytes: callerWav.length, readiness: "ready" },
         { artifactId: "caller-playback-capture-wav", kind: "playback_media", path: playbackWavPath, sha256: await sha256File(playbackWavPath), sizeBytes: playbackWav.length, readiness: callerPlaybackConfirmed ? "ready" : "blocked" },
         { artifactId: "sip-events", kind: "sip_log", path: sipLogPath, sha256: await sha256File(sipLogPath), sizeBytes: (await stat(sipLogPath)).size, readiness: "ready" },
+        ...(freeSwitchCallLinkage.ready ? [
+          { artifactId: "freeswitch-call-linkage", kind: "call_linkage", path: freeSwitchCallLinkagePath, sha256: await sha256File(freeSwitchCallLinkagePath), sizeBytes: (await stat(freeSwitchCallLinkagePath)).size, readiness: "ready" },
+        ] : []),
         { artifactId: "rtc-asr-transcript-evidence", kind: "transcript_evidence", path: normalizedRtcAsrEvidencePath, sha256: await sha256File(normalizedRtcAsrEvidencePath), sizeBytes: (await stat(normalizedRtcAsrEvidencePath)).size, readiness: rtcAsrReady ? "ready" : "blocked" },
         { artifactId: "caller-audible-playback-proof", kind: "playback_evidence", path: playbackEvidencePath, sha256: await sha256File(playbackEvidencePath), sizeBytes: (await stat(playbackEvidencePath)).size, readiness: callerPlaybackConfirmed ? "ready" : "blocked" },
       ],
@@ -863,6 +978,7 @@ class SipProofCall {
         proofSipCallId: rtcAsrEvidence.proofSipCallId || null,
         linkedSipCallId: rtcAsrEvidence.linkedSipCallId || null,
         correlationMode: rtcAsrEvidence.correlationMode || null,
+        callLinkage: rtcAsrEvidence.callLinkage || null,
         currentCallWindowStartedAt: new Date(this.startedAtMs).toISOString(),
       },
       blockers,
@@ -981,9 +1097,38 @@ async function runCorrelationSelfTest() {
       },
     ],
   };
+  const bridgedExpected = {
+    callId: "22222222-2222-4222-8222-222222222222",
+    sipCallId: "22222222-2222-4222-8222-222222222222",
+    stageEvents: [
+      {
+        stage: "stt.transcript_final",
+        ok: true,
+        transcript: "linked through freeswitch",
+        timestamp: "2026-07-31T10:00:05.000Z",
+      },
+      {
+        stage: "tts.stream_completed",
+        ok: true,
+        timestamp: "2026-07-31T10:00:06.000Z",
+      },
+    ],
+  };
   const dir = await mkdtemp(path.join(process.cwd(), ".tmp-verto-correlation-"));
   const evidencePath = path.join(dir, "evidence.json");
+  const freeSwitchLogPath = path.join(dir, "freeswitch.log");
   try {
+    await writeFile(
+      freeSwitchLogPath,
+      [
+        "11111111-1111-4111-8111-111111111111 2026-07-31 10:00:00.000000 [INFO] sofia.c:10472 receiving invite call-id: bridged-proof",
+        "11111111-1111-4111-8111-111111111111 2026-07-31 10:00:01.000000 [DEBUG] switch_ivr_originate.c:3913 Originate Resulted in Success: [verto.rtc/test] Peer UUID: 22222222-2222-4222-8222-222222222222",
+      ].join("\n"),
+      "utf8",
+    );
+    const callLinkage = await loadFreeSwitchCallLinkage(freeSwitchLogPath, {
+      proofSipCallId: "bridged-proof",
+    });
     await writeFile(evidencePath, `${JSON.stringify({ pipelineEvidence: [unrelated] })}\n`, "utf8");
     const blocked = await loadRtcAsrEvidence(evidencePath, {
       startedAtMs,
@@ -996,6 +1141,13 @@ async function runCorrelationSelfTest() {
       baselineCallIds: new Set(),
       expectedSipCallId: "expected-sip",
     });
+    await writeFile(evidencePath, `${JSON.stringify({ pipelineEvidence: [unrelated, bridgedExpected] })}\n`, "utf8");
+    const bridged = await loadRtcAsrEvidence(evidencePath, {
+      startedAtMs,
+      baselineCallIds: new Set(),
+      expectedSipCallId: "bridged-proof",
+      callLinkage,
+    });
     const fallback = await loadRtcAsrEvidence(evidencePath, {
       startedAtMs,
       baselineCallIds: new Set(["baseline-call"]),
@@ -1005,10 +1157,18 @@ async function runCorrelationSelfTest() {
       && correlated.ready === true
       && correlated.transcript === "right call"
       && correlated.correlationMode === "expected_sip_call_id"
+      && callLinkage.ready === true
+      && callLinkage.linkedSipCallId === "11111111-1111-4111-8111-111111111111"
+      && callLinkage.vertoCallId === "22222222-2222-4222-8222-222222222222"
+      && bridged.ready === true
+      && bridged.transcript === "linked through freeswitch"
+      && bridged.proofSipCallId === "bridged-proof"
+      && bridged.linkedSipCallId === "11111111-1111-4111-8111-111111111111"
+      && bridged.correlationMode === "expected_sip_call_id"
       && fallback.ready === true
       && fallback.transcript === "wrong call"
       && fallback.correlationMode === "fresh_non_baseline_current_window";
-    console.log(JSON.stringify({ ok, blocked, correlated, fallback }, null, 2));
+    console.log(JSON.stringify({ ok, blocked, correlated, callLinkage, bridged, fallback }, null, 2));
     return ok ? 0 : 2;
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -1047,6 +1207,7 @@ async function main() {
     callerAudioPath: argValue("--caller-audio", process.env.ACC_SIP_PROOF_CALLER_AUDIO),
     ssrc: Number(argValue("--ssrc", "11324962")),
     rtcAsrEvidencePath: argValue("--rtc-asr-evidence", process.env.RTC_ASR_EVIDENCE_PATH),
+    freeSwitchLogPath: argValue("--freeswitch-log", process.env.FREESWITCH_LOG_PATH || "/opt/homebrew/Cellar/freeswitch/1.11.1/var/log/freeswitch/freeswitch.log"),
     accCallId: argValue("--acc-call-id", process.env.ACC_CALL_ID),
   });
   const manifest = await call.run();
