@@ -21,6 +21,7 @@ for (const [address, prefix] of [
   ["2001:2::", 48],
   ["2001:db8::", 32],
   ["2002::", 16],
+  ["3fff::", 20],
   ["fc00::", 7],
   ["fe80::", 10],
   ["ff00::", 8],
@@ -225,6 +226,13 @@ function isIpAuthEndpointAdvertised(entry, expectedAddresses) {
   const advertised = [...output.matchAll(/^\s*(?:ext-)?sip-ip(?:\s*[:=]\s*|\s+)(\S+)/gim)]
     .map((match) => removeEndpointPort(match[1]));
   return expectedAddresses.some((address) => advertised.includes(address));
+}
+
+function isVertoAgentContactRegistered(entry) {
+  if (!entry) return false;
+  const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
+  if (/\b0\s+total\s+registrations\b/i.test(output)) return false;
+  return /\bacc-pipecat@/i.test(output);
 }
 
 async function renderTemplate(templatePath, outputPath, replacements) {
@@ -445,6 +453,13 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
   const dialplan = rawFsCli.get("xml_locate dialplan extension name agentic_contact_center_signalwire_pstn");
   if (!isInboundDialplanActive(dialplan, signalwireDidPattern)) {
     summary.blockers.push("signalwire_inbound_dialplan_not_proven");
+  }
+}
+
+if (summary.blockers.length === 0 && !fsCliSkipped) {
+  const registrations = rawFsCli.get("show registrations");
+  if (!isVertoAgentContactRegistered(registrations)) {
+    summary.blockers.push("verto_agent_contact_not_proven");
   }
 }
 

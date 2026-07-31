@@ -107,7 +107,7 @@ case "$2" in
   "sofia status profile external") printf '%s\\n' "external profile RUNNING" "SIP-IP 192.168.50.4" "RTP-IP 10.0.0.8" "Ext-SIP-IP fd00::1234" ;;
   "sofia status gateway signalwire") printf '%s\\n' "gateway signalwire REGED example.sip.signalwire.com" ;;
   "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="verto_contact(acc-pipecat@example.test)"/></condition></extension>' ;;
-  *) printf '%s\\n' "0 total registrations" ;;
+  *) printf '%s\\n' "acc-pipecat@127.0.0.1 REGED" ;;
 esac
 `,
       "utf8",
@@ -157,7 +157,7 @@ test("SignalWire FreeSWITCH readiness supports IP-auth trunks without REGED", as
 case "$2" in
   "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
   "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="verto_contact(acc-pipecat@example.test)"/></condition></extension>' ;;
-  *) printf '%s\\n' "0 total registrations" ;;
+  *) printf '%s\\n' "acc-pipecat@127.0.0.1 REGED" ;;
 esac
 `,
       "utf8",
@@ -213,7 +213,7 @@ test("SignalWire FreeSWITCH readiness preserves bracketed IPv6 endpoint hosts", 
 case "$2" in
   "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 2001:4860:4860::8888" ;;
   "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="verto_contact(acc-pipecat@example.test)"/></condition></extension>' ;;
-  *) printf '%s\\n' "0 total registrations" ;;
+  *) printf '%s\\n' "acc-pipecat@127.0.0.1 REGED" ;;
 esac
 `,
       "utf8",
@@ -510,7 +510,7 @@ test("SignalWire FreeSWITCH readiness rejects an inactive inbound dialplan", asy
 case "$2" in
   "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
   "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' "Can't find extension." ;;
-  *) printf '%s\\n' "0 total registrations" ;;
+  *) printf '%s\\n' "acc-pipecat@127.0.0.1 REGED" ;;
 esac
 `,
       "utf8",
@@ -559,7 +559,7 @@ test("SignalWire FreeSWITCH readiness rejects a stale inbound DID", async () => 
 case "$2" in
   "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
   "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?13125550100)$"><action application="set" data="acc_route=signalwire_live"/></condition></extension>' ;;
-  *) printf '%s\\n' "0 total registrations" ;;
+  *) printf '%s\\n' "acc-pipecat@127.0.0.1 REGED" ;;
 esac
 `,
       "utf8",
@@ -606,7 +606,7 @@ test("SignalWire FreeSWITCH readiness rejects active dialplan without Verto agen
 case "$2" in
   "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
   "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/></condition></extension>' ;;
-  *) printf '%s\\n' "0 total registrations" ;;
+  *) printf '%s\\n' "acc-pipecat@127.0.0.1 REGED" ;;
 esac
 `,
       "utf8",
@@ -634,6 +634,53 @@ esac
         const payload = JSON.parse((error as { stdout?: string }).stdout ?? "{}");
         assert.equal(payload.manualCallReady, false);
         assert.ok(payload.blockers.includes("signalwire_inbound_dialplan_not_proven"));
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("SignalWire FreeSWITCH readiness rejects an inactive Verto agent registration", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="verto_contact(acc-pipecat@example.test)"/></condition></extension>' ;;
+  *) printf '%s\\n' "0 total registrations" ;;
+esac
+`,
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_TRUNK_MODE: "ip_auth",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const payload = JSON.parse((error as { stdout?: string }).stdout ?? "{}");
+        assert.equal(payload.manualCallReady, false);
+        assert.ok(payload.blockers.includes("verto_agent_contact_not_proven"));
         return true;
       },
     );
@@ -683,7 +730,7 @@ test("SignalWire FreeSWITCH readiness rejects an unadvertised IP-auth endpoint",
   }
 });
 
-for (const unroutableHost of ["192.0.2.10", "198.51.100.7", "203.0.113.9", "2001:db8::10", "2001:2::1", "::ffff:192.0.2.10"]) {
+for (const unroutableHost of ["192.0.2.10", "198.51.100.7", "203.0.113.9", "2001:db8::10", "2001:2::1", "3fff::10", "::ffff:192.0.2.10"]) {
   test(`SignalWire FreeSWITCH readiness rejects non-routable IP-auth endpoint: ${unroutableHost}`, async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
     const fsCliBin = path.join(tempDir, "fs_cli");
@@ -695,7 +742,7 @@ for (const unroutableHost of ["192.0.2.10", "198.51.100.7", "203.0.113.9", "2001
 case "$2" in
   "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP ${unroutableHost}" ;;
   "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="verto_contact(acc-pipecat@example.test)"/></condition></extension>' ;;
-  *) printf '%s\\n' "0 total registrations" ;;
+  *) printf '%s\\n' "acc-pipecat@127.0.0.1 REGED" ;;
 esac
 `,
         "utf8",
