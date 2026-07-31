@@ -275,12 +275,16 @@ async function rtcAsrEvidence(filePath, liveManifest = {}, options = {}) {
 }
 
 function requiredReviewChecks() {
-  return [
+  const checks = [
     ["--require-review-ready", ["reviewGate"]],
     ["--require-live-capture", ["liveCapture"]],
     ["--require-rtc-asr-live", ["rtcAsrLive", "rtcAsrEvidenceValid"]],
     ["--require-caller-playback", ["callerPlaybackEvidenceValid"]],
   ].filter(([flag]) => hasArg(flag)).flatMap(([, checks]) => checks);
+  if (requiresStrictSourceEvidence() && !checks.includes("reviewGate")) {
+    checks.push("sourceRevisionCurrent", "rtcAsrSameCallCorrelation");
+  }
+  return checks;
 }
 
 function requiresCurrentRtcAsrCallId() {
