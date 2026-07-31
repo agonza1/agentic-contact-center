@@ -170,6 +170,40 @@ function isPublicIpAddress(address) {
   return false;
 }
 
+function canonicalizeIpAddress(address) {
+  const raw = clean(address).toLowerCase();
+  const ipVersion = isIP(raw);
+  if (ipVersion === 4) return raw;
+  if (ipVersion !== 6) return "";
+
+  const ipv4Suffix = raw.match(/^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/);
+  let ipv6 = raw;
+  let suffixGroups = [];
+  if (ipv4Suffix) {
+    const octets = ipv4Suffix[2].split(".").map(Number);
+    if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return "";
+    ipv6 = ipv4Suffix[1];
+    suffixGroups = [
+      ((octets[0] << 8) | octets[1]).toString(16),
+      ((octets[2] << 8) | octets[3]).toString(16),
+    ];
+  }
+
+  const [head = "", tail = ""] = ipv6.split("::");
+  const headGroups = head.split(":").filter(Boolean);
+  const tailGroups = tail.split(":").filter(Boolean);
+  const missingGroups = 8 - headGroups.length - tailGroups.length - suffixGroups.length;
+  if (missingGroups < 0 || (!ipv6.includes("::") && missingGroups !== 0)) return "";
+  const groups = [
+    ...headGroups,
+    ...Array(missingGroups).fill("0"),
+    ...tailGroups,
+    ...suffixGroups,
+  ];
+  if (groups.length !== 8 || groups.some((group) => !/^[0-9a-f]{1,4}$/.test(group))) return "";
+  return groups.map((group) => Number.parseInt(group, 16).toString(16).padStart(4, "0")).join(":");
+}
+
 function normalizeSipEndpointHost(value) {
   const raw = clean(value);
   if (!raw) return "";
@@ -183,10 +217,10 @@ function normalizeSipEndpointHost(value) {
 async function resolvePublicEndpointAddresses(value) {
   const host = normalizeSipEndpointHost(value);
   if (!host) return [];
-  if (isIP(host)) return isPublicIpAddress(host) ? [host] : [];
+  if (isIP(host)) return isPublicIpAddress(host) ? [canonicalizeIpAddress(host)] : [];
   try {
     const addresses = (await lookup(host, { all: true })).map((entry) => entry.address);
-    return addresses.filter(isPublicIpAddress);
+    return addresses.filter(isPublicIpAddress).map(canonicalizeIpAddress);
   } catch {
     return [];
   }
@@ -232,7 +266,8 @@ function isIpAuthEndpointAdvertised(entry, expectedAddresses) {
   if (!entry || expectedAddresses.length === 0) return false;
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
   const advertised = [...output.matchAll(/^\s*(?:ext-)?sip-ip(?:\s*[:=]\s*|\s+)(\S+)/gim)]
-    .map((match) => removeEndpointPort(match[1]));
+    .map((match) => canonicalizeIpAddress(removeEndpointPort(match[1])))
+    .filter(Boolean);
   return expectedAddresses.some((address) => advertised.includes(address));
 }
 
