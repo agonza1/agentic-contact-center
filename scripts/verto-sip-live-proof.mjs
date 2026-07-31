@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import dgram from "node:dgram";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { isIP } from "node:net";
 import { networkInterfaces } from "node:os";
 import path from "node:path";
@@ -315,7 +315,7 @@ async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds, 
       const evidenceCallId = extractVertoCallId(snapshot);
       if (!evidenceCallId || baselineCallIds.has(evidenceCallId)) continue;
       const correlationIds = evidenceCorrelationIds(snapshot);
-      const matchesExpectedCall = !expectedCorrelationId || correlationIds.has(expectedCorrelationId);
+      const matchesExpectedCall = Boolean(expectedCorrelationId) && correlationIds.has(expectedCorrelationId);
       const accCallId = String(snapshot?.accCallId || snapshot?.callId || "");
       const sipCallId = String(snapshot?.sipCallId || evidenceCallId);
       const linkedSipCallId = String(snapshot?.linkedSipCallId || "");
@@ -372,7 +372,7 @@ async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds, 
         fallbackReadyEvidence ??= readyEvidence;
       }
     }
-    if (fallbackReadyEvidence) return fallbackReadyEvidence;
+    if (!expectedCorrelationId && fallbackReadyEvidence) return fallbackReadyEvidence;
     return { ready: false, transcript: "", ttsReady: false, evidence };
   } catch {
     return { ready: false, transcript: "", ttsReady: false, evidence: null };
@@ -925,8 +925,80 @@ function runSelfTest() {
   return ok ? 0 : 2;
 }
 
+async function runCorrelationSelfTest() {
+  const startedAtMs = Date.parse("2026-07-31T10:00:00.000Z");
+  const unrelated = {
+    callId: "other-call",
+    sipCallId: "other-sip",
+    stageEvents: [
+      {
+        stage: "stt.transcript_final",
+        ok: true,
+        transcript: "wrong call",
+        timestamp: "2026-07-31T10:00:01.000Z",
+      },
+      {
+        stage: "tts.stream_completed",
+        ok: true,
+        timestamp: "2026-07-31T10:00:02.000Z",
+      },
+    ],
+  };
+  const expected = {
+    callId: "expected-verto",
+    sipCallId: "expected-verto",
+    linkedSipCallId: "expected-sip",
+    stageEvents: [
+      {
+        stage: "stt.transcript_final",
+        ok: true,
+        transcript: "right call",
+        timestamp: "2026-07-31T10:00:03.000Z",
+      },
+      {
+        stage: "tts.stream_completed",
+        ok: true,
+        timestamp: "2026-07-31T10:00:04.000Z",
+      },
+    ],
+  };
+  const dir = await mkdtemp(path.join(process.cwd(), ".tmp-verto-correlation-"));
+  const evidencePath = path.join(dir, "evidence.json");
+  try {
+    await writeFile(evidencePath, `${JSON.stringify({ pipelineEvidence: [unrelated] })}\n`, "utf8");
+    const blocked = await loadRtcAsrEvidence(evidencePath, {
+      startedAtMs,
+      baselineCallIds: new Set(),
+      expectedSipCallId: "expected-sip",
+    });
+    await writeFile(evidencePath, `${JSON.stringify({ pipelineEvidence: [unrelated, expected] })}\n`, "utf8");
+    const correlated = await loadRtcAsrEvidence(evidencePath, {
+      startedAtMs,
+      baselineCallIds: new Set(),
+      expectedSipCallId: "expected-sip",
+    });
+    const fallback = await loadRtcAsrEvidence(evidencePath, {
+      startedAtMs,
+      baselineCallIds: new Set(["baseline-call"]),
+      expectedSipCallId: "",
+    });
+    const ok = blocked.ready === false
+      && correlated.ready === true
+      && correlated.transcript === "right call"
+      && correlated.correlationMode === "expected_sip_call_id"
+      && fallback.ready === true
+      && fallback.transcript === "wrong call"
+      && fallback.correlationMode === "fresh_non_baseline_current_window";
+    console.log(JSON.stringify({ ok, blocked, correlated, fallback }, null, 2));
+    return ok ? 0 : 2;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   if (hasFlag("--self-test")) return runSelfTest();
+  if (hasFlag("--correlation-self-test")) return runCorrelationSelfTest();
   const remoteHost = argValue("--remote-host", process.env.FREESWITCH_SIP_HOST || "127.0.0.1");
   const remoteSipPort = Number(argValue("--remote-sip-port", process.env.FREESWITCH_SIP_PORT || "5060"));
   const localHostResolution = resolveLocalHost({
