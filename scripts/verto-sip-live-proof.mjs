@@ -365,13 +365,14 @@ async function loadRtcAsrEvidence(evidencePath, { startedAtMs, baselineCallIds, 
           sipCallId,
           linkedSipCallId,
           proofSipCallId,
+          correlationMode: matchesExpectedCall ? "expected_sip_call_id" : "fresh_non_baseline_current_window",
           evidence,
         };
         if (matchesExpectedCall) return readyEvidence;
         fallbackReadyEvidence ??= readyEvidence;
       }
     }
-    if (!expectedCorrelationId && fallbackReadyEvidence) return fallbackReadyEvidence;
+    if (fallbackReadyEvidence) return fallbackReadyEvidence;
     return { ready: false, transcript: "", ttsReady: false, evidence };
   } catch {
     return { ready: false, transcript: "", ttsReady: false, evidence: null };
@@ -738,6 +739,7 @@ class SipProofCall {
         evidenceSipCallId: rtcAsrEvidence.sipCallId || null,
         proofSipCallId: rtcAsrEvidence.proofSipCallId || null,
         linkedSipCallId: rtcAsrEvidence.linkedSipCallId || null,
+        correlationMode: rtcAsrEvidence.correlationMode || null,
         transcript: rtcAsrEvidence.transcript,
         transcriptAt: rtcAsrEvidence.transcriptAt || null,
         ttsAudioReady: rtcAsrEvidence.ttsReady,
@@ -841,6 +843,7 @@ class SipProofCall {
         sipCallId: rtcAsrEvidence.sipCallId || null,
         proofSipCallId: rtcAsrEvidence.proofSipCallId || null,
         linkedSipCallId: rtcAsrEvidence.linkedSipCallId || null,
+        correlationMode: rtcAsrEvidence.correlationMode || null,
         currentCallWindowStartedAt: new Date(this.startedAtMs).toISOString(),
       },
       blockers,

@@ -72,7 +72,6 @@ function getOperatorSteerAction(event: CallSnapshot["events"][number]): string |
 }
 
 function isOperatorSteerReleaseEvent(event: CallSnapshot["events"][number]): boolean {
-  if (event.type === "demo_fallback_disarmed") return true;
   if (event.type !== "operator_steer_applied") return false;
   const action = getOperatorSteerAction(event);
   return action !== null && operatorSteerReleaseActions.has(action);

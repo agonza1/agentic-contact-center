@@ -2129,11 +2129,14 @@ function getOperatorSteerAction(event: CallSnapshot["events"][number]): string |
   return typeof event.detail.action === "string" ? event.detail.action : null;
 }
 
-function isLiveSipOperatorReleaseEvent(event: CallSnapshot["events"][number]): boolean {
-  if (event.type === "demo_fallback_disarmed") return true;
+function isLiveSipExplicitOperatorReleaseEvent(event: CallSnapshot["events"][number]): boolean {
   if (event.type !== "operator_steer_applied") return false;
   const action = getOperatorSteerAction(event);
   return action !== null && liveSipOperatorReleaseActions.has(action);
+}
+
+function isLiveSipFallbackReleaseEvent(event: CallSnapshot["events"][number]): boolean {
+  return event.type === "demo_fallback_disarmed" || isLiveSipExplicitOperatorReleaseEvent(event);
 }
 
 function isLiveSipTerminalOperatorStopEvent(event: CallSnapshot["events"][number]): boolean {
@@ -2148,19 +2151,27 @@ function isLiveSipTerminalOperatorStopEvent(event: CallSnapshot["events"][number
 function isOpenAiLiveSipAutomationStopped(snapshot: CallSnapshot): boolean {
   if (snapshot.scenario.conversationMode !== "openai_llm") return false;
 
-  const stopIndex = snapshot.events.reduce((latest, event, index) => {
+  const fallbackStopIndex = snapshot.events.reduce((latest, event, index) => {
     const failClosedHandoff = event.type === "human_handoff_started"
       && typeof event.detail.source === "string"
       && event.detail.source.includes("fail_closed");
-    return event.type === "demo_fallback_triggered" || failClosedHandoff || isLiveSipTerminalOperatorStopEvent(event)
+    return event.type === "demo_fallback_triggered" || failClosedHandoff
       ? index
       : latest;
   }, -1);
-  const releaseIndex = snapshot.events.reduce((latest, event, index) => {
-    return isLiveSipOperatorReleaseEvent(event) ? index : latest;
+  const fallbackReleaseIndex = snapshot.events.reduce((latest, event, index) => {
+    return isLiveSipFallbackReleaseEvent(event) ? index : latest;
   }, -1);
+  const terminalStopIndex = snapshot.events.reduce((latest, event, index) => {
+    return isLiveSipTerminalOperatorStopEvent(event) ? index : latest;
+  }, -1);
+  const terminalReleaseIndex = snapshot.events.reduce((latest, event, index) => {
+    return isLiveSipExplicitOperatorReleaseEvent(event) ? index : latest;
+  }, -1);
+  const fallbackStopped = snapshot.demoFallback.armed || (fallbackStopIndex >= 0 && fallbackReleaseIndex <= fallbackStopIndex);
+  const terminalStopped = terminalStopIndex >= 0 && terminalReleaseIndex <= terminalStopIndex;
 
-  return (snapshot.demoFallback.armed || stopIndex >= 0) && releaseIndex <= stopIndex;
+  return fallbackStopped || terminalStopped;
 }
 
 function getLiveSipOperatorHoldReason(snapshot: CallSnapshot): string | null {
@@ -2172,20 +2183,22 @@ function getLiveSipOperatorHoldReason(snapshot: CallSnapshot): string | null {
 
 function getExplicitLiveSipOperatorHoldReason(snapshot: CallSnapshot): string | null {
   if (snapshot.demoFallback.armed) return "demo_fallback_active";
-  let latestHoldIndex = -1;
   let latestHoldReason: string | null = null;
-  const releaseIndex = snapshot.events.reduce((latest, event, index) => {
-    return isLiveSipOperatorReleaseEvent(event) ? index : latest;
-  }, -1);
 
-  snapshot.events.forEach((event, index) => {
+  snapshot.events.forEach((event) => {
+    if (isLiveSipExplicitOperatorReleaseEvent(event)) {
+      latestHoldReason = null;
+      return;
+    }
+    if (event.type === "demo_fallback_disarmed" && latestHoldReason === "demo_fallback_active") {
+      latestHoldReason = null;
+      return;
+    }
     if (event.type === "operator_demo_paused") {
-      latestHoldIndex = index;
       latestHoldReason = "operator_policy_hold_active";
       return;
     }
     if (event.type === "demo_fallback_armed" || event.type === "demo_fallback_triggered") {
-      latestHoldIndex = index;
       latestHoldReason = "demo_fallback_active";
       return;
     }
@@ -2193,12 +2206,10 @@ function getExplicitLiveSipOperatorHoldReason(snapshot: CallSnapshot): string | 
     const action = getOperatorSteerAction(event);
     const reason = action === null ? undefined : liveSipExplicitOperatorHoldReasons.get(action);
     if (reason) {
-      latestHoldIndex = index;
       latestHoldReason = reason;
     }
   });
 
-  if (latestHoldReason === null || releaseIndex > latestHoldIndex) return null;
   return latestHoldReason;
 }
 
