@@ -278,11 +278,13 @@ function requiredReviewChecks() {
   const checks = [
     ["--require-review-ready", ["reviewGate"]],
     ["--require-live-capture", ["liveCapture"]],
-    ["--require-rtc-asr-live", ["rtcAsrLive", "rtcAsrEvidenceValid"]],
+    ["--require-rtc-asr-live", ["rtcAsrLive", "rtcAsrEvidenceValid", "sourceRevisionCurrent", "rtcAsrSameCallCorrelation"]],
     ["--require-caller-playback", ["callerPlaybackEvidenceValid"]],
   ].filter(([flag]) => hasArg(flag)).flatMap(([, checks]) => checks);
   if (requiresStrictSourceEvidence() && !checks.includes("reviewGate")) {
-    checks.push("sourceRevisionCurrent", "rtcAsrSameCallCorrelation");
+    for (const check of ["sourceRevisionCurrent", "rtcAsrSameCallCorrelation"]) {
+      if (!checks.includes(check)) checks.push(check);
+    }
   }
   return checks;
 }
@@ -307,6 +309,9 @@ function sourceRevisionEvidence(liveManifest, bundleRevision, { strict = false }
   }
   if (sourceRevision?.dirty === true) {
     return { required: true, ready: false, sourceRevision, bundleRevision, reason: "source manifest was captured from a dirty checkout." };
+  }
+  if (bundleRevision?.dirty === true) {
+    return { required: true, ready: false, sourceRevision, bundleRevision, reason: "bundle checkout has uncommitted changes." };
   }
   if (!bundleCommit || sourceCommit !== bundleCommit) {
     return {

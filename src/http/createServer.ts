@@ -2183,34 +2183,40 @@ function getLiveSipOperatorHoldReason(snapshot: CallSnapshot): string | null {
 
 function getExplicitLiveSipOperatorHoldReason(snapshot: CallSnapshot): string | null {
   if (snapshot.demoFallback.armed) return "demo_fallback_active";
-  let latestHoldReason: string | null = null;
+  let latestFallbackHoldReason: string | null = null;
+  let latestOperatorHoldReason: string | null = null;
 
   snapshot.events.forEach((event) => {
     if (isLiveSipExplicitOperatorReleaseEvent(event)) {
-      latestHoldReason = null;
+      latestFallbackHoldReason = null;
+      latestOperatorHoldReason = null;
       return;
     }
-    if (event.type === "demo_fallback_disarmed" && latestHoldReason === "demo_fallback_active") {
-      latestHoldReason = null;
+    if (event.type === "demo_fallback_disarmed") {
+      latestFallbackHoldReason = null;
       return;
     }
     if (event.type === "operator_demo_paused") {
-      latestHoldReason = "operator_policy_hold_active";
+      latestOperatorHoldReason = "operator_policy_hold_active";
       return;
     }
     if (event.type === "demo_fallback_armed" || event.type === "demo_fallback_triggered") {
-      latestHoldReason = "demo_fallback_active";
+      latestFallbackHoldReason = "demo_fallback_active";
       return;
     }
     if (event.type !== "operator_steer_applied") return;
     const action = getOperatorSteerAction(event);
     const reason = action === null ? undefined : liveSipExplicitOperatorHoldReasons.get(action);
     if (reason) {
-      latestHoldReason = reason;
+      if (reason === "demo_fallback_active") {
+        latestFallbackHoldReason = reason;
+      } else {
+        latestOperatorHoldReason = reason;
+      }
     }
   });
 
-  return latestHoldReason;
+  return latestOperatorHoldReason ?? latestFallbackHoldReason;
 }
 
 function getLiveSipCallerTurnHoldReason(snapshot: CallSnapshot, conversationMode: ConversationMode): string | null {

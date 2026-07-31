@@ -435,6 +435,13 @@ test("live SIP proof bundle rejects fallback-correlated or unversioned evidence 
   }
 });
 
+test("live SIP proof bundle strict provenance rejects dirty bundle checkouts", async () => {
+  const script = await readFile("scripts/live-sip-proof-bundle.mjs", "utf8");
+
+  assert.match(script, /bundleRevision\?\.dirty === true/);
+  assert.match(script, /bundle checkout has uncommitted changes/);
+});
+
 test("live SIP proof bundle require-rtc-asr-live exits nonzero for strict correlation failures", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-require-rtc-strict-"));

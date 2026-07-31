@@ -1802,6 +1802,68 @@ test("delivery-ack OpenAI failures persist fail-closed state before audible comm
   }
 });
 
+test("live SIP fallback disarm preserves an earlier explicit operator hold", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-31T20:00:00.000Z",
+      sipCallId: "sip-scripted-pause-fallback-disarm",
+      destination: "8611",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+    const callId = started.payload.call.session.callId;
+
+    const paused = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "pause",
+      timestamp: "2026-07-31T20:00:01.000Z",
+      reason: "operator paused before fallback",
+    });
+    assert.equal(paused.statusCode, 200);
+    assert.equal(paused.payload.flowState, "policy_hold");
+
+    const fallback = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "arm_fallback",
+      timestamp: "2026-07-31T20:00:02.000Z",
+      reason: "operator temporarily took over fallback",
+    });
+    assert.equal(fallback.statusCode, 200);
+    assert.equal(fallback.payload.demoFallback.armed, true);
+
+    const disarmed = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "disarm_fallback",
+      timestamp: "2026-07-31T20:00:03.000Z",
+      reason: "operator cleared only fallback",
+    });
+    assert.equal(disarmed.statusCode, 200);
+    assert.equal(disarmed.payload.demoFallback.armed, false);
+
+    const heldTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-31T20:00:04.000Z",
+      sipCallId: "sip-scripted-pause-fallback-disarm",
+      text: "This must wait for explicit resume.",
+    });
+    assert.equal(heldTranscript.statusCode, 409);
+    assert.equal(heldTranscript.payload.error, "live_sip_operator_hold_active");
+    assert.equal(
+      heldTranscript.payload.call.events.some(
+        (event: any) => event.type === "rtc_asr_transcript" && event.detail.holdReason === "operator_policy_hold_active",
+      ),
+      true,
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("live SIP 8600 fails closed when OpenAI stalls", async () => {
   const originalEnv = {
     ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,

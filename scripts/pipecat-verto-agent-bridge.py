@@ -87,10 +87,15 @@ def safe_artifact_id(value: Any) -> str | None:
     return safe_value[:160] or None
 
 
+SECRET_PARAM_KEY_PATTERN = re.compile(r"(authorization|password|passwd|token|secret|credential|api[_-]?key|access[_-]?key)", re.IGNORECASE)
+
+
 def sanitize_verto_params(params: dict[str, Any]) -> dict[str, Any]:
     sanitized: dict[str, Any] = {}
     for key, value in params.items():
-        if key == "sdp":
+        if SECRET_PARAM_KEY_PATTERN.search(str(key)):
+            sanitized[key] = "<redacted secret>"
+        elif key == "sdp":
             sanitized[key] = f"<redacted sdp bytes={len(value.encode('utf8'))}>" if isinstance(value, str) else "<redacted sdp>"
         elif isinstance(value, dict):
             sanitized[key] = sanitize_verto_params(value)
