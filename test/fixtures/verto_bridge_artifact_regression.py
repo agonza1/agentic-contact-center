@@ -38,6 +38,16 @@ def main() -> None:
             acc_url="http://127.0.0.1:8026",
             proof_out=str(proof_out),
         )
+        nested_params = {
+            "dialogParams": {
+                "variables": {
+                    "sip_h_X-ACC-Proof-Call-ID": "proof-call-1",
+                    "acc_linked_sip_call_id": "linked-call-1",
+                    "acc_destination_number": "8600",
+                    "acc_conversation_mode": "openai_llm",
+                }
+            }
+        }
         bridge.last_login = {"ok": True}
         bridge.last_invite = {"callId": "call-a", "vertoCallId": "call-a", "sipCallId": "sip-a"}
         bridge.last_answer = {"callId": "call-a", "vertoCallId": "call-a", "sipCallId": "sip-a"}
@@ -63,11 +73,17 @@ def main() -> None:
                 and call_a.get("lastError") == {}
                 and call_b.get("lastError", {}).get("error") == "call b failed"
                 and call_b.get("pipelineEvidence", [{}])[0].get("stage") == "updated"
+                and bridge.proof_sip_call_id(nested_params) == "proof-call-1"
+                and bridge.linked_sip_call_id(nested_params) == "linked-call-1"
+                and bridge.destination_number(nested_params) == "8600"
+                and bridge.conversation_mode(nested_params, "8600") == "openai_llm"
             ),
             "callARewritten": call_a_path.read_text(encoding="utf8") != before_call_a,
             "callALastError": call_a.get("lastError"),
             "callBLastError": call_b.get("lastError"),
             "callBStage": call_b.get("pipelineEvidence", [{}])[0].get("stage"),
+            "nestedProofSipCallId": bridge.proof_sip_call_id(nested_params),
+            "nestedLinkedSipCallId": bridge.linked_sip_call_id(nested_params),
         }
         print(json.dumps(result))
 
