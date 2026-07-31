@@ -87,6 +87,43 @@ def safe_artifact_id(value: Any) -> str | None:
     return safe_value[:160] or None
 
 
+SECRET_PARAM_KEY_PATTERN = re.compile(r"(authorization|password|passwd|token|secret|credential|api[_-]?key|access[_-]?key)", re.IGNORECASE)
+
+
+def sanitize_verto_params(params: dict[str, Any]) -> dict[str, Any]:
+    sanitized: dict[str, Any] = {}
+    for key, value in params.items():
+        if SECRET_PARAM_KEY_PATTERN.search(str(key)):
+            sanitized[key] = "<redacted secret>"
+        elif key == "sdp":
+            sanitized[key] = f"<redacted sdp bytes={len(value.encode('utf8'))}>" if isinstance(value, str) else "<redacted sdp>"
+        elif isinstance(value, dict):
+            sanitized[key] = sanitize_verto_params(value)
+        elif isinstance(value, list):
+            sanitized[key] = [sanitize_verto_params(item) if isinstance(item, dict) else item for item in value[:20]]
+        else:
+            sanitized[key] = value
+    return sanitized
+
+
+def nested_param_value(params: Any, keys: tuple[str, ...]) -> str | None:
+    if isinstance(params, dict):
+        for key in keys:
+            value = params.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        for value in params.values():
+            matched = nested_param_value(value, keys)
+            if matched:
+                return matched
+    elif isinstance(params, list):
+        for value in params:
+            matched = nested_param_value(value, keys)
+            if matched:
+                return matched
+    return None
+
+
 def normalize_verto_answer_sdp(sdp: str) -> str:
     """Trim browser-oriented aiortc SDP details that native FreeSWITCH Verto rejects."""
     lines = sdp.replace("\r\n", "\n").strip().split("\n")
@@ -394,18 +431,17 @@ class VertoAgentBridge:
         return str(path)
 
     def linked_sip_call_id(self, params: dict[str, Any]) -> str | None:
-        for key in (
-            "acc_linked_sip_call_id",
-            "variable_acc_linked_sip_call_id",
-            "linkedSipCallId",
-            "linked_sip_call_id",
-            "aleg_uuid",
-            "variable_originating_leg_uuid",
-        ):
-            value = params.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        return None
+        return nested_param_value(
+            params,
+            (
+                "acc_linked_sip_call_id",
+                "variable_acc_linked_sip_call_id",
+                "linkedSipCallId",
+                "linked_sip_call_id",
+                "aleg_uuid",
+                "variable_originating_leg_uuid",
+            ),
+        )
 
     def proof_sip_call_id(self, params: dict[str, Any]) -> str | None:
         return self.first_param_string(params, (
@@ -608,6 +644,7 @@ class VertoAgentBridge:
             "offerSdpPath": offer_sdp_path,
             "offerSdpArtifactPersisted": offer_sdp_path is not None,
             "offerSdpArtifactError": offer_artifact_error,
+            "vertoParams": sanitize_verto_params(params),
             "nextAction": "Answer the Verto WebRTC dialog with the shared Pipecat pipeline and then rerun the strict live SIP bundle for caller-audible proof.",
         }
         self.last_invite = proof

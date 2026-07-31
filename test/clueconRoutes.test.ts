@@ -814,7 +814,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /\["flow", "realtime-problem", "two-machines", "map", "integration", "vad-interruption", "asr", "security", "agent", "demo", "tts", "ecosystem", "proof", "finale"\]/);
   assert.match(narrative.body, /Two realtime ingress paths\. One streaming Pipecat runtime/);
   assert.match(narrative.body, /SmallWebRTC \/ aiortc/);
-  assert.match(narrative.body, /FreeSWITCH ↔ Pipecat/);
+  assert.match(narrative.body, /FreeSWITCH → Pipecat/);
   assert.match(narrative.body, /SIP\/RTP \u2192 FreeSWITCH/);
   assert.match(narrative.body, /persistent WebSocket \u00b7 16 kHz PCM16/);
   assert.match(narrative.body, /20 ms \/ 640 B \u00b7 interim events/);

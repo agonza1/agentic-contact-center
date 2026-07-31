@@ -59,8 +59,9 @@ test("Verto SIP proof requires transcript-backed non-silent caller playback", ()
   assert.match(script, /baselineCallIds\.has\(evidenceCallId\)/);
   assert.match(script, /fallbackReadyEvidence/);
   assert.match(script, /if \(matchesExpectedCall\) return readyEvidence/);
+  assert.match(script, /correlationMode: matchesExpectedCall \? "expected_sip_call_id" : "fresh_non_baseline_current_window"/);
   assert.match(script, /if \(!expectedCorrelationId && fallbackReadyEvidence\) return fallbackReadyEvidence/);
-  assert.doesNotMatch(script, /if \(fallbackReadyEvidence\) return fallbackReadyEvidence/);
+  assert.match(script, /correlationMode: rtcAsrEvidence\.correlationMode \|\| null/);
   assert.match(script, /waitForRtcAsrEvidence/);
   assert.match(script, /Date\.parse\(event\.timestamp\) >= startedAtMs/);
   assert.match(script, /rtc-asr-transcript-evidence\.json/);
@@ -82,6 +83,30 @@ test("Verto SIP proof requires transcript-backed non-silent caller playback", ()
   assert.match(script, /networkInterfaces\(\)/);
   assert.match(script, /localBindHost: argValue\("--local-bind-host"/);
   assert.match(script, /this\.rtpSocket\.bind\(this\.options\.localRtpPort, this\.options\.localBindHost/);
+});
+
+test("Verto SIP proof does not accept unrelated rtc-asr evidence while waiting for the proof call", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    ["scripts/verto-sip-live-proof.mjs", "--correlation-self-test"],
+    { cwd: repoRoot, timeout: 10_000, encoding: "utf8" },
+  );
+  const summary = JSON.parse(stdout) as {
+    ok: boolean;
+    blocked: { ready: boolean };
+    correlated: { ready: boolean; transcript: string; correlationMode: string };
+    fallback: { ready: boolean; transcript: string; correlationMode: string };
+  };
+
+  assert.equal(summary.ok, true);
+  assert.equal(summary.blocked.ready, false);
+  assert.equal(summary.correlated.ready, true);
+  assert.equal(summary.correlated.transcript, "right call");
+  assert.equal(summary.correlated.correlationMode, "expected_sip_call_id");
+  assert.equal(summary.fallback.ready, true);
+  assert.equal(summary.fallback.transcript, "wrong call");
+  assert.equal(summary.fallback.correlationMode, "fresh_non_baseline_current_window");
 });
 
 test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and call cleanup evidence", () => {

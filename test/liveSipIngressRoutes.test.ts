@@ -1802,6 +1802,68 @@ test("delivery-ack OpenAI failures persist fail-closed state before audible comm
   }
 });
 
+test("live SIP fallback disarm preserves an earlier explicit operator hold", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-31T20:00:00.000Z",
+      sipCallId: "sip-scripted-pause-fallback-disarm",
+      destination: "8611",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+    const callId = started.payload.call.session.callId;
+
+    const paused = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "pause",
+      timestamp: "2026-07-31T20:00:01.000Z",
+      reason: "operator paused before fallback",
+    });
+    assert.equal(paused.statusCode, 200);
+    assert.equal(paused.payload.flowState, "policy_hold");
+
+    const fallback = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "arm_fallback",
+      timestamp: "2026-07-31T20:00:02.000Z",
+      reason: "operator temporarily took over fallback",
+    });
+    assert.equal(fallback.statusCode, 200);
+    assert.equal(fallback.payload.demoFallback.armed, true);
+
+    const disarmed = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "disarm_fallback",
+      timestamp: "2026-07-31T20:00:03.000Z",
+      reason: "operator cleared only fallback",
+    });
+    assert.equal(disarmed.statusCode, 200);
+    assert.equal(disarmed.payload.demoFallback.armed, false);
+
+    const heldTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-31T20:00:04.000Z",
+      sipCallId: "sip-scripted-pause-fallback-disarm",
+      text: "This must wait for explicit resume.",
+    });
+    assert.equal(heldTranscript.statusCode, 409);
+    assert.equal(heldTranscript.payload.error, "live_sip_operator_hold_active");
+    assert.equal(
+      heldTranscript.payload.call.events.some(
+        (event: any) => event.type === "rtc_asr_transcript" && event.detail.holdReason === "operator_policy_hold_active",
+      ),
+      true,
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("live SIP 8600 fails closed when OpenAI stalls", async () => {
   const originalEnv = {
     ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
@@ -2336,6 +2398,58 @@ test("live SIP terminal operator actions stop OpenAI automation until operator r
     }
     assert.equal(openAiRequests.length, 0);
 
+    for (const action of ["escalate_to_human", "transfer", "end_call"]) {
+      const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+        eventType: "call.started",
+        timestamp: "2026-07-27T23:04:10.000Z",
+        sipCallId: `sip-openai-terminal-fallback-${action}`,
+        destination: "8600",
+        source: "freeswitch_verto",
+        telephonyMode: "local_sip",
+        rtcAsrMode: "rtc_asr_live",
+      });
+      assert.equal(started.statusCode, 201);
+      const callId = started.payload.call.session.callId;
+
+      const fallback = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+        action: "arm_fallback",
+        timestamp: "2026-07-27T23:04:10.500Z",
+        reason: "operator armed manual fallback before terminal stop",
+      });
+      assert.equal(fallback.statusCode, 200);
+      assert.equal(fallback.payload.demoFallback.armed, true);
+
+      const terminal = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+        action,
+        timestamp: "2026-07-27T23:04:11.000Z",
+        reason: `${action} requested by operator after fallback was armed`,
+      });
+      assert.equal(terminal.statusCode, 200);
+      assert.equal(terminal.payload.flowState, "wrap");
+
+      const disarmed = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
+        action: "disarm_fallback",
+        timestamp: "2026-07-27T23:04:11.500Z",
+        reason: "operator cleared only the fallback path",
+      });
+      assert.equal(disarmed.statusCode, 200);
+      assert.equal(disarmed.payload.demoFallback.armed, false);
+      assert.equal(disarmed.payload.events.some((event: any) => event.type === "demo_fallback_disarmed"), true);
+
+      const heldTurn = await requestJson(address.port, "POST", `/api/calls/${callId}/caller-turn`, {
+        timestamp: "2026-07-27T23:04:12.000Z",
+        text: `Do not automate after fallback disarm and ${action}.`,
+        conversationMode: "openai_llm",
+      });
+      assert.equal(heldTurn.statusCode, 409);
+      assert.equal(heldTurn.payload.error, "live_sip_openai_automation_stopped");
+      assert.equal(
+        heldTurn.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === `Do not automate after fallback disarm and ${action}.`),
+        false,
+      );
+    }
+    assert.equal(openAiRequests.length, 0);
+
     const releaseStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "call.started",
       timestamp: "2026-07-27T23:05:00.000Z",
@@ -2520,6 +2634,58 @@ test("live SIP scripted caller turns stay held after terminal operator stops", a
         heldMediaTranscript.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === `Media must not continue after ${action}.`),
         false,
       );
+
+      if (action !== "takeover") {
+        const fallbackStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
+          eventType: "call.started",
+          timestamp: "2026-07-27T23:07:10.000Z",
+          sipCallId: `sip-scripted-terminal-fallback-${action}`,
+          destination: "8611",
+          source: "freeswitch_verto",
+          telephonyMode: "local_sip",
+          rtcAsrMode: "rtc_asr_live",
+        });
+        assert.equal(fallbackStarted.statusCode, 201);
+        const fallbackCallId = fallbackStarted.payload.call.session.callId;
+
+        const fallback = await requestJson(address.port, "POST", `/api/calls/${fallbackCallId}/operator-steer`, {
+          action: "arm_fallback",
+          timestamp: "2026-07-27T23:07:10.500Z",
+          reason: "operator armed scripted fallback before terminal stop",
+        });
+        assert.equal(fallback.statusCode, 200);
+        assert.equal(fallback.payload.demoFallback.armed, true);
+
+        const stoppedAfterFallback = await requestJson(address.port, "POST", `/api/calls/${fallbackCallId}/operator-steer`, {
+          action,
+          timestamp: "2026-07-27T23:07:11.000Z",
+          reason: `${action} stops scripted automation after fallback was armed`,
+        });
+        assert.equal(stoppedAfterFallback.statusCode, 200);
+        assert.equal(stoppedAfterFallback.payload.flowState, "wrap");
+
+        const disarmed = await requestJson(address.port, "POST", `/api/calls/${fallbackCallId}/operator-steer`, {
+          action: "disarm_fallback",
+          timestamp: "2026-07-27T23:07:11.500Z",
+          reason: "operator cleared only scripted fallback",
+        });
+        assert.equal(disarmed.statusCode, 200);
+        assert.equal(disarmed.payload.demoFallback.armed, false);
+        assert.equal(disarmed.payload.events.some((event: any) => event.type === "demo_fallback_disarmed"), true);
+
+        const stillHeld = await requestJson(address.port, "POST", "/api/live-sip/events", {
+          eventType: "media.transcript",
+          timestamp: "2026-07-27T23:07:12.000Z",
+          sipCallId: `sip-scripted-terminal-fallback-${action}`,
+          text: `Media must not continue after fallback disarm and ${action}.`,
+        });
+        assert.equal(stillHeld.statusCode, 409);
+        assert.equal(stillHeld.payload.error, "live_sip_operator_hold_active");
+        assert.equal(
+          stillHeld.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === `Media must not continue after fallback disarm and ${action}.`),
+          false,
+        );
+      }
 
       const released = await requestJson(address.port, "POST", `/api/calls/${callId}/operator-steer`, {
         action: "resume",
