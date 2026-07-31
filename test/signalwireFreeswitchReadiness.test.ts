@@ -35,6 +35,46 @@ test("SignalWire FreeSWITCH readiness fails closed when required env is missing"
   );
 });
 
+test("SignalWire FreeSWITCH readiness rejects digitless SignalWire numbers before rendering", async () => {
+  const tempDir = await mkArtifactTempDir("acc-signalwire-fs-");
+
+  try {
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--render",
+        "--skip-fs-cli",
+        "--out-dir",
+        tempDir,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_SPACE_URL: "https://example.signalwire.com",
+          SIGNALWIRE_SIP_USERNAME: "acc-sip-user",
+          SIGNALWIRE_SIP_PASSWORD: "example-rendered-sip-password",
+          SIGNALWIRE_FROM_NUMBER: "+",
+          FREESWITCH_PUBLIC_SIP_HOST: "sip-public-host.example.test",
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const result = error as { stdout?: string; code?: number };
+        assert.equal(result.code, 2);
+        const payload = JSON.parse(result.stdout ?? "{}");
+        assert.equal(payload.generatedConfig, null);
+        assert.ok(payload.blockers.includes("invalid_signalwire_from_number"));
+        return true;
+      },
+    );
+    await assert.rejects(readFile(path.join(tempDir, "dialplan/public/signalwire_inbound.xml"), "utf8"));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("SignalWire FreeSWITCH readiness renders ignored config without leaking secrets to stdout", async () => {
   const tempDir = await mkArtifactTempDir("acc-signalwire-fs-");
   const renderedPassword = "example-rendered-sip-password";
@@ -730,7 +770,7 @@ test("SignalWire FreeSWITCH readiness rejects an unadvertised IP-auth endpoint",
   }
 });
 
-for (const unroutableHost of ["192.0.2.10", "198.51.100.7", "203.0.113.9", "2001:db8::10", "2001:2::1", "3fff::10", "::ffff:192.0.2.10"]) {
+for (const unroutableHost of ["192.0.2.10", "198.51.100.7", "203.0.113.9", "2001:db8::10", "2001:2::1", "3fff::10", "5f00::10", "::ffff:192.0.2.10"]) {
   test(`SignalWire FreeSWITCH readiness rejects non-routable IP-auth endpoint: ${unroutableHost}`, async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
     const fsCliBin = path.join(tempDir, "fs_cli");

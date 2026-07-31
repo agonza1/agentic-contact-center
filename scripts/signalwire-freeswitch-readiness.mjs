@@ -22,6 +22,7 @@ for (const [address, prefix] of [
   ["2001:db8::", 32],
   ["2002::", 16],
   ["3fff::", 20],
+  ["5f00::", 16],
   ["fc00::", 7],
   ["fe80::", 10],
   ["ff00::", 8],
@@ -340,6 +341,8 @@ if (!["registration", "ip_auth"].includes(trunkMode)) {
   summary.blockers.push("invalid_signalwire_trunk_mode");
 } else if (missing.length) {
   summary.blockers.push("missing_signalwire_or_freeswitch_env");
+} else if (!signalwireDidDigits) {
+  summary.blockers.push("invalid_signalwire_from_number");
 } else if (trunkMode === "registration" && (!signalwireRealm || !signalwireProxy)) {
   summary.missingEnv.push("SIGNALWIRE_SIP_REALM_OR_PROXY");
   summary.blockers.push("missing_signalwire_sip_realm_or_proxy");
