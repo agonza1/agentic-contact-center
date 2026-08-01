@@ -937,10 +937,13 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /slug-voice-ai-security-webrtc-livekit-guardrails/);
   assert.match(narrative.body, /renderSecurityPanel/);
   assert.match(narrative.body, /State is the control plane/);
-  assert.match(narrative.body, /The model proposes\. Structured state authorizes\. Tools execute\. Events reconcile/);
-  assert.match(narrative.body, /Dynamic call state/);
+  assert.match(narrative.body, /The model proposes\. FlowManager focuses the conversation\. ACC authorizes actions\. Events reconcile state/);
+  assert.match(narrative.body, /Pipecat Flows \/ FlowManager ↗/);
+  assert.match(narrative.body, /breaks the dialogue into focused nodes/);
+  assert.match(narrative.body, /handler returns the next <code>NodeConfig<\/code>/);
+  assert.match(narrative.body, /ACC authority plane/);
   assert.match(narrative.body, /Structured call state/);
-  assert.match(narrative.body, /Tools \+ telephony APIs/);
+  assert.match(narrative.body, /ACC policy \+ tools/);
   assert.match(narrative.body, /The LLM is never the system of record/);
   assert.match(narrative.body, /ToolHive \+ Cedar/);
   assert.match(narrative.body, /planned · issue #322/);
