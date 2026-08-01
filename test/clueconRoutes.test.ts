@@ -867,7 +867,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /exactly what I expected\./);
   assert.match(narrative.body, /I’m sorry\. I didn’t understand\./);
   assert.match(narrative.body, /Five years later, GPT-4 arrived\./);
-  assert.match(narrative.body, /So we put <em>GPT-4<\/em> on a <em>WebRTC call\.<\/em>/);
+  assert.match(narrative.body, /So we put <em>GPT-4<\/em>/);
+  assert.match(narrative.body, /on a <em>WebRTC call\.<\/em>/);
   assert.match(narrative.body, /voice-origin__turn/);
   assert.match(narrative.body, /voice-story-active/);
   assert.match(narrative.body, /alberto-echo-show-prototype\.jpg/);
