@@ -1059,7 +1059,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /renderDemoTranscript\(payload\.call\.transcript\)/);
   assert.match(narrative.body, /class="scroll"/);
   assert.match(narrative.body, /RTF = processing time ÷ audio duration/);
-  assert.match(narrative.body, /\.present #asr, \.present #demo, \.present #tts \{ align-content: start; padding-top: clamp\(16px, 2\.4vh, 24px\); \}/);
+  assert.match(narrative.body, /\.present #asr \{ align-content: center; \}/);
+  assert.match(narrative.body, /\.present #demo, \.present #tts \{ align-content: start; padding-top: clamp\(16px, 2\.4vh, 24px\); \}/);
   assert.match(narrative.body, /\.voice-pipeline__detail \{ display: none; \}/);
   assert.match(narrative.body, /class="readiness-more"/);
   assert.match(narrative.body, /class="card proof-field"/);
