@@ -978,6 +978,13 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Start realtime/);
   assert.match(narrative.body, /local-stt\.v1/);
   assert.match(narrative.body, /handleAsrRealtimeMessage/);
+  assert.match(narrative.body, /function updateAsrRealtimeTranscript/);
+  assert.match(narrative.body, /LIVE TRANSCRIPT/);
+  assert.match(narrative.body, /committedText/);
+  assert.match(narrative.body, /captureClosePromise/);
+  assert.match(narrative.body, /stopPromise/);
+  assert.match(narrative.body, /context\.state !== "closed"/);
+  assert.match(narrative.body, /function renderAsrRealtimeError/);
   assert.match(narrative.body, /id="asr-record"/);
   assert.match(narrative.body, /Source ↗/);
   assert.match(narrative.body, /rtc-asr\/tree\/main\/examples\/browser_pipecat_demo/);
