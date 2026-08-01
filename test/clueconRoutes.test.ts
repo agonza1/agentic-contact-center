@@ -1057,6 +1057,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /#demo \.event strong, #demo \.event \.muted \{ overflow-wrap: anywhere/);
   assert.match(narrative.body, /class="transcript-turn transcript-turn--/);
   assert.match(narrative.body, /renderDemoTranscript\(payload\.call\.transcript\)/);
+  assert.match(narrative.body, /renderDemoTranscript\(turns\).*evidence\.open = true;/);
+  assert.match(narrative.body, /renderOperatorDrill\(payload\).*evidence\.open = true;/);
   assert.match(narrative.body, /class="scroll"/);
   assert.match(narrative.body, /RTF = processing time ÷ audio duration/);
   assert.match(narrative.body, /\.present #asr \{ align-content: center; \}/);
