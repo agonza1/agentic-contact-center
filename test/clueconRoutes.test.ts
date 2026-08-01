@@ -966,6 +966,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Audio in\. Transcript events out\./);
   assert.match(narrative.body, /80–160 ms PCM16/);
   assert.match(narrative.body, /partial · final · cancel/);
+  assert.match(narrative.body, /FreeSWITCH · any WebRTC media server/);
+  assert.match(narrative.body, /PCM → WebSocket/);
   assert.match(narrative.body, /Local[\s\S]*Swappable[\s\S]*Realtime[\s\S]*Measurable/);
   assert.match(narrative.body, /Mic → Local STT → transcript/);
   assert.match(narrative.body, /id="asr-model-select"/);
