@@ -1155,7 +1155,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .voice-origin__fallback p { margin: 0; color: rgba(255,255,255,.86); font-family: Georgia, "Times New Roman", serif; font-size: clamp(21px,2.05vw,32px); font-style: italic; line-height: 1.16; text-shadow: 0 2px 18px rgba(0,0,0,.54); }
     .voice-origin__turn { display: grid; gap: 3px; max-width: 760px; opacity: 0; transform: translateY(16px); }
     .voice-origin__turn span { color: #a5f3fc; font-size: clamp(11px,.95vw,14px); font-weight: 850; letter-spacing: .14em; text-transform: uppercase; text-shadow: 0 2px 16px rgba(0,0,0,.6); }
-    .voice-origin__turn strong { max-width: 620px; color: #fff; font-family: "Arial Narrow", "Aptos Narrow", Inter, ui-sans-serif, system-ui, sans-serif; font-size: clamp(25px,2.45vw,38px); font-weight: 800; line-height: 1.02; letter-spacing: -.03em; text-shadow: 0 3px 24px rgba(0,0,0,.72); }
+    .voice-origin__turn strong { max-width: 760px; color: #fff; font-family: "Arial Narrow", "Aptos Narrow", Inter, ui-sans-serif, system-ui, sans-serif; font-size: clamp(25px,2.45vw,38px); font-weight: 800; line-height: 1.02; letter-spacing: -.03em; text-wrap: balance; text-shadow: 0 3px 24px rgba(0,0,0,.72); }
     .voice-origin__turn em { color: #cffafe; font-style: normal; }
     .voice-origin.active .voice-origin__photo { animation: voiceOriginDrift 15s ease-out both; }
     .voice-origin.active .voice-origin__eyebrow { animation: voiceOriginReveal .72s .12s cubic-bezier(.2,.7,.2,1) forwards; }
