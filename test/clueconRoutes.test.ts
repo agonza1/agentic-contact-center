@@ -183,6 +183,37 @@ async function startKokoroServer(
   return { server, baseUrl: `http://127.0.0.1:${address.port}`, requests };
 }
 
+async function startPocketTtsServer(): Promise<{
+  server: Server;
+  baseUrl: string;
+  requests: Array<{ contentType: string; body: string }>;
+}> {
+  const requests: Array<{ contentType: string; body: string }> = [];
+  const server = createServer(async (request, response) => {
+    if (request.method === "GET" && request.url === "/health") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ status: "healthy", service: "pocket-tts" }));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/tts") {
+      let rawBody = "";
+      for await (const chunk of request) rawBody += chunk.toString("utf8");
+      requests.push({ contentType: String(request.headers["content-type"] ?? ""), body: rawBody });
+      response.writeHead(200, { "content-type": "audio/wav" });
+      response.write("RIFF");
+      await new Promise<void>((resolve) => setTimeout(resolve, 5));
+      response.end("audio");
+      return;
+    }
+    response.writeHead(404, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: false }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Expected fake Pocket TTS server to listen on TCP");
+  return { server, baseUrl: `http://127.0.0.1:${address.port}`, requests };
+}
+
 async function closeServer(server: Server): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {
@@ -230,7 +261,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
       benchmarkProfiles: Record<string, { firstPartial: string; finalization: string; rtf: string; referenceWer: string; detailUrl: string }>;
       noiseGuidance: { sourceUrl: string; findings: string[]; caveat: string };
     };
-    ttsPanel: { provider: string; model: string; voice: string; synthesizeRoute: string; candidates: Array<{ name: string; latency: string; sourceLabel: string; sourceUrl: string }>; comparisonCaveat: string; harness: { sourceUrl: string; latency: string } };
+    ttsPanel: { provider: string; model: string; voice: string; defaultProvider: string; providers: Array<{ id: string; label: string; voice: string; status: string; setup: string }>; synthesizeRoute: string; candidates: Array<{ name: string; latency: string; sourceLabel: string; sourceUrl: string }>; comparisonCaveat: string; harness: { sourceUrl: string; latency: string } };
     brainBlocks: Array<{ file: string; affects: string[] }>;
     brainPanel: { previewRoute: string; applyRoute: string; resetRoute: string; safeMutation: string; activeFiles: string[] };
     securityPanel: { articleUrl: string; referenceRepoUrl: string; trustBoundary: string; controls: string[]; scenarios: Array<{ id: string; action: string; llmInput: string | null }> };
@@ -310,6 +341,10 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.match(payload.asrPanel.noiseGuidance.caveat, /complete turn/);
   assert.doesNotMatch(JSON.stringify(payload.asrPanel.noiseGuidance), /Twilio|Flux passed/);
   assert.equal(payload.ttsPanel.provider, "Kokoro-82M");
+  assert.equal(payload.ttsPanel.defaultProvider, "kokoro");
+  assert.deepEqual(payload.ttsPanel.providers.map((provider) => provider.id), ["kokoro", "pocket"]);
+  assert.equal(payload.ttsPanel.providers.find((provider) => provider.id === "pocket")?.voice, "alba");
+  assert.match(payload.ttsPanel.providers.find((provider) => provider.id === "pocket")?.setup ?? "", /uvx pocket-tts serve/);
   assert.equal(payload.ttsPanel.synthesizeRoute, "/api/cluecon/tts/synthesize");
   assert.deepEqual(payload.ttsPanel.candidates.map((candidate) => candidate.name), ["Kokoro 82M", "Pocket TTS", "VoXtream2", "Qwen3-TTS 0.6B"]);
   assert.deepEqual(payload.ttsPanel.candidates.map((candidate) => candidate.latency), ["~300 ms first chunk", "~200 ms first chunk", "63 ms first packet", "97 ms first packet"]);
@@ -552,12 +587,14 @@ test("GET /api/cluecon upgrades readiness when live sidecar health probes pass",
     service: "kokoro",
     voices: ["af_heart"],
   });
+  const pocket = await startHealthServer({ status: "healthy", service: "pocket-tts" });
 
   try {
     await withEnv(
       {
         RTC_ASR_BASE_URL: rtcAsr.baseUrl,
         KOKORO_BASE_URL: kokoro.baseUrl,
+        POCKET_TTS_BASE_URL: pocket.baseUrl,
         PIPECAT_VOICE_WS_URL: "ws://127.0.0.1:8765",
       },
       async () => {
@@ -575,6 +612,7 @@ test("GET /api/cluecon upgrades readiness when live sidecar health probes pass",
         assert.ok(payload.readiness.some((item) => item.id === "pipecat" && item.status === "configured"));
         assert.ok(payload.liveProbes.some((probe) => probe.id === "rtc_asr" && probe.configured && probe.ok && probe.metadata.backend === "faster-whisper"));
         assert.ok(payload.liveProbes.some((probe) => probe.id === "kokoro" && probe.configured && probe.ok && probe.metadata.service === "kokoro"));
+        assert.ok(payload.liveProbes.some((probe) => probe.id === "pocket_tts" && probe.configured && probe.ok && probe.metadata.service === "pocket-tts"));
         assert.equal(payload.asrPanel.status, "live_ready");
         assert.equal(payload.asrPanel.liveProbe.ok, true);
       },
@@ -582,6 +620,7 @@ test("GET /api/cluecon upgrades readiness when live sidecar health probes pass",
   } finally {
     await closeServer(rtcAsr.server);
     await closeServer(kokoro.server);
+    await closeServer(pocket.server);
   }
 });
 
@@ -681,6 +720,34 @@ test("ClueCon TTS route streams Kokoro audio using the configured local model an
   }
 });
 
+test("ClueCon TTS route streams Pocket TTS audio using its official multipart endpoint", async () => {
+  const pocket = await startPocketTtsServer();
+  try {
+    await withEnv(
+      {
+        POCKET_TTS_BASE_URL: pocket.baseUrl,
+        POCKET_TTS_VOICE: "alba",
+      },
+      async () => {
+        const response = await post("/api/cluecon/tts/synthesize", {
+          provider: "pocket",
+          text: "Measure the first byte and the first sound.",
+          voice: "alba",
+        });
+        assert.equal(response.statusCode, 200);
+        assert.match(response.contentType, /audio\/wav/);
+        assert.equal(response.body, "RIFFaudio");
+        assert.equal(pocket.requests.length, 1);
+        assert.match(pocket.requests[0].contentType, /^multipart\/form-data; boundary=/);
+        assert.match(pocket.requests[0].body, /name="text"[\s\S]*Measure the first byte and the first sound\./);
+        assert.match(pocket.requests[0].body, /name="voice_url"[\s\S]*alba/);
+      },
+    );
+  } finally {
+    await closeServer(pocket.server);
+  }
+});
+
 test("ClueCon TTS route refreshes its idle timeout while audio keeps arriving", async () => {
   const kokoro = await startKokoroServer([
     { delayMs: 60, value: "audio-1" },
@@ -708,6 +775,15 @@ test("ClueCon TTS route fails clearly when Kokoro is not configured", async () =
     const response = await post("/api/cluecon/tts/synthesize", { text: "Test the local voice." });
     assert.equal(response.statusCode, 503);
     assert.match(response.body, /kokoro_not_configured/);
+  });
+});
+
+test("ClueCon TTS route fails clearly when Pocket TTS is not configured", async () => {
+  await withEnv({ POCKET_TTS_BASE_URL: undefined }, async () => {
+    const response = await post("/api/cluecon/tts/synthesize", { provider: "pocket", text: "Test Pocket TTS." });
+    assert.equal(response.statusCode, 503);
+    assert.match(response.body, /pocket_tts_not_configured/);
+    assert.match(response.body, /uvx pocket-tts serve/);
   });
 });
 
@@ -915,6 +991,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.doesNotMatch(narrative.body, /Twilio|Flux passed/);
   assert.match(narrative.body, /id="tts"/);
   assert.match(narrative.body, /Run Kokoro/);
+  assert.match(narrative.body, /id="tts-provider"/);
+  assert.match(narrative.body, /value="pocket"/);
+  assert.match(narrative.body, /function renderTtsProviderSelection\(\)/);
+  assert.match(narrative.body, /provider: provider\.id/);
   assert.match(narrative.body, /id="tts-ttfb"/);
   assert.match(narrative.body, /id=\"tts-playback\"/);
   assert.match(narrative.body, /Main OSS recommendations/);
@@ -927,7 +1007,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /97 ms first packet/);
   assert.match(narrative.body, /MediaSource\.isTypeSupported/);
   assert.match(narrative.body, /addEventListener\(\"playing\"/);
-  assert.doesNotMatch(narrative.body, /new Blob\(chunks/);
+  assert.match(narrative.body, /new Blob\(chunks/);
+  assert.match(narrative.body, /buffered \" \+ contentType \+ \" before playback/);
   assert.match(narrative.body, /2607\.17900/);
   assert.match(narrative.body, /function runTtsLab\(\)/);
   assert.match(narrative.body, /Minimize sensitive data crossing the LLM boundary/);
@@ -1043,7 +1124,7 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /Open CAE scenarios ↗/);
   assert.match(html, /Simulate voice call in CAE ↗/);
   assert.match(html, /Have fun with them\. Make them better/);
-  assert.match(html, /Live Kokoro TTFB requires the local ACC \+ Kokoro stack/);
+  assert.match(html, /Live \"\+provider\+\" TTFB requires the local ACC \+ selected TTS sidecar/);
   assert.match(html, /prerecorded system-unavailable prompt/i);
   assert.match(html, /human-support/);
   assert.match(html, /href="\.\/present\/"/);

@@ -24,6 +24,10 @@ Environment variables:
 - `KOKORO_HEALTH_PATH`: Kokoro health path; defaults to `/health`.
 - `KOKORO_SPEECH_PATH`: Kokoro speech endpoint; defaults to `/v1/audio/speech`.
 - `KOKORO_VOICE`: Kokoro voice id; defaults to `af_heart`.
+- `POCKET_TTS_BASE_URL`: optional Pocket TTS HTTP base URL for the ClueCon latency lab; start the official server with `uvx pocket-tts serve` and normally use `http://127.0.0.1:8000`.
+- `POCKET_TTS_HEALTH_PATH`: Pocket TTS health path; defaults to `/health`.
+- `POCKET_TTS_SPEECH_PATH`: Pocket TTS multipart streaming endpoint; defaults to `/tts`.
+- `POCKET_TTS_VOICE`: Pocket TTS built-in voice; defaults to `alba`.
 
 There is no `.env` file in the current Node app.
 

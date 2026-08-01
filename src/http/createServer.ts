@@ -146,8 +146,21 @@ function getKokoroSpeechTarget(): { url: string; model: string; voice: string } 
   };
 }
 
-function getKokoroTtsIdleTimeoutMs(): number {
-  const parsed = Number(process.env.KOKORO_TTS_IDLE_TIMEOUT_MS ?? "");
+function getPocketTtsSpeechTarget(): { url: string; model: string; voice: string } | null {
+  const baseUrl = process.env.POCKET_TTS_BASE_URL?.trim().replace(/\/+$/, "");
+  if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) return null;
+  const speechPath = (process.env.POCKET_TTS_SPEECH_PATH ?? "/tts").trim();
+  const normalizedPath = speechPath.startsWith("/") ? speechPath : `/${speechPath}`;
+  return {
+    url: `${baseUrl}${normalizedPath}`,
+    model: process.env.POCKET_TTS_MODEL?.trim() || "pocket-tts",
+    voice: process.env.POCKET_TTS_VOICE?.trim() || "alba",
+  };
+}
+
+function getClueConTtsIdleTimeoutMs(provider: "kokoro" | "pocket"): number {
+  const providerTimeout = provider === "pocket" ? process.env.POCKET_TTS_IDLE_TIMEOUT_MS : process.env.KOKORO_TTS_IDLE_TIMEOUT_MS;
+  const parsed = Number(process.env.CLUECON_TTS_IDLE_TIMEOUT_MS ?? providerTimeout ?? "");
   if (!Number.isFinite(parsed) || parsed <= 0) return defaultKokoroTtsIdleTimeoutMs;
   return Math.min(Math.max(Math.trunc(parsed), 50), 300_000);
 }
@@ -5468,22 +5481,30 @@ async function routeRequest(
     }
     const text = getOptionalTrimmedString(body.text);
     if (!text || text.length > 500) {
-      writeBadRequest(response, "kokoro_text_invalid");
+      writeBadRequest(response, "tts_text_invalid");
       return;
     }
-    const target = getKokoroSpeechTarget();
+    const requestedProvider = (getOptionalTrimmedString(body.provider) ?? "kokoro").toLowerCase();
+    if (requestedProvider !== "kokoro" && requestedProvider !== "pocket") {
+      writeBadRequest(response, "tts_provider_invalid");
+      return;
+    }
+    const provider = requestedProvider as "kokoro" | "pocket";
+    const target = provider === "pocket" ? getPocketTtsSpeechTarget() : getKokoroSpeechTarget();
     if (!target) {
       writeJson(response, 503, {
         ok: false,
-        error: "kokoro_not_configured",
-        nextStep: "Set KOKORO_BASE_URL, start the local Kokoro sidecar, and retry.",
+        error: provider === "pocket" ? "pocket_tts_not_configured" : "kokoro_not_configured",
+        nextStep: provider === "pocket"
+          ? "Set POCKET_TTS_BASE_URL, run uvx pocket-tts serve, and retry."
+          : "Set KOKORO_BASE_URL, start the local Kokoro sidecar, and retry.",
       });
       return;
     }
     const requestedVoice = getOptionalTrimmedString(body.voice);
     const voice = requestedVoice && /^[a-z0-9_-]{1,64}$/i.test(requestedVoice) ? requestedVoice : target.voice;
     const startedAt = performance.now();
-    const idleTimeoutMs = getKokoroTtsIdleTimeoutMs();
+    const idleTimeoutMs = getClueConTtsIdleTimeoutMs(provider);
     const controller = new AbortController();
     let idleTimeout = setTimeout(() => controller.abort(), idleTimeoutMs);
     const refreshIdleTimeout = () => {
@@ -5491,19 +5512,23 @@ async function routeRequest(
       idleTimeout = setTimeout(() => controller.abort(), idleTimeoutMs);
     };
     try {
+      const pocketForm = new FormData();
+      pocketForm.set("text", text);
+      pocketForm.set("voice_url", voice);
       const upstream = await fetch(target.url, {
         method: "POST",
-        headers: {
-          accept: "audio/mpeg",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          model: target.model,
-          voice,
-          input: text,
-          response_format: "mp3",
-          stream: true,
-        }),
+        headers: provider === "pocket"
+          ? { accept: "audio/wav" }
+          : { accept: "audio/mpeg", "content-type": "application/json" },
+        body: provider === "pocket"
+          ? pocketForm
+          : JSON.stringify({
+              model: target.model,
+              voice,
+              input: text,
+              response_format: "mp3",
+              stream: true,
+            }),
         signal: controller.signal,
       });
       refreshIdleTimeout();
@@ -5511,7 +5536,7 @@ async function routeRequest(
         const detail = await upstream.text().catch(() => "");
         writeJson(response, 502, {
           ok: false,
-          error: "kokoro_synthesis_failed",
+          error: provider === "pocket" ? "pocket_tts_synthesis_failed" : "kokoro_synthesis_failed",
           upstreamStatus: upstream.status,
           detail: detail.slice(0, 500),
         });
@@ -5523,7 +5548,7 @@ async function routeRequest(
       if (first.done || !first.value?.byteLength) {
         writeJson(response, 502, {
           ok: false,
-          error: "kokoro_returned_no_audio",
+          error: provider === "pocket" ? "pocket_tts_returned_no_audio" : "kokoro_returned_no_audio",
         });
         return;
       }
@@ -5532,7 +5557,8 @@ async function routeRequest(
       const upstreamContentType = upstream.headers.get("content-type");
       response.writeHead(200, {
         "cache-control": "no-store",
-        "content-type": upstreamContentType?.startsWith("audio/") ? upstreamContentType : "audio/mpeg",
+        "content-type": upstreamContentType?.startsWith("audio/") ? upstreamContentType : provider === "pocket" ? "audio/wav" : "audio/mpeg",
+        "x-acc-tts-provider": provider,
         "x-acc-tts-model": target.model,
         "x-acc-tts-voice": voice,
         "x-acc-upstream-ttfb-ms": String(upstreamTtfbMs),
@@ -5552,9 +5578,11 @@ async function routeRequest(
       if (!response.headersSent) {
         writeJson(response, 502, {
           ok: false,
-          error: "kokoro_unreachable",
+          error: provider === "pocket" ? "pocket_tts_unreachable" : "kokoro_unreachable",
           detail: error instanceof Error ? error.message : String(error),
-          nextStep: "Confirm KOKORO_BASE_URL points to a warmed Kokoro OpenAI-compatible speech endpoint.",
+          nextStep: provider === "pocket"
+            ? "Confirm POCKET_TTS_BASE_URL points to a warmed Pocket TTS serve endpoint."
+            : "Confirm KOKORO_BASE_URL points to a warmed Kokoro OpenAI-compatible speech endpoint.",
         });
       } else {
         response.destroy(error instanceof Error ? error : new Error(String(error)));

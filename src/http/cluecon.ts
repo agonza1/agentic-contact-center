@@ -30,6 +30,8 @@ interface ClueConProbeOptions {
   rtcAsrHealthPath?: string;
   kokoroBaseUrl?: string;
   kokoroHealthPath?: string;
+  pocketTtsBaseUrl?: string;
+  pocketTtsHealthPath?: string;
   pipecatVoiceUrl?: string;
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
@@ -292,6 +294,7 @@ function buildBasePayload(
   const probeById = new Map(liveProbes.map((probe) => [probe.id, probe]));
   const rtcAsrProbe = probeById.get("rtc_asr");
   const kokoroProbe = probeById.get("kokoro");
+  const pocketTtsProbe = probeById.get("pocket_tts");
   const pipecatVoice = probeById.get("pipecat_voice");
 
   return {
@@ -506,6 +509,29 @@ function buildBasePayload(
       provider: "Kokoro-82M",
       model: process.env.KOKORO_MODEL ?? "kokoro",
       voice: process.env.KOKORO_VOICE ?? "af_heart",
+      defaultProvider: "kokoro",
+      providers: [
+        {
+          id: "kokoro",
+          label: "Kokoro-82M",
+          shortLabel: "Kokoro",
+          model: process.env.KOKORO_MODEL ?? "kokoro",
+          voice: process.env.KOKORO_VOICE ?? "af_heart",
+          status: kokoroProbe?.ok ? "live_ready" : "local_sidecar_required",
+          setup: "Set KOKORO_BASE_URL and start the local Kokoro sidecar.",
+          liveProbe: kokoroProbe ?? null,
+        },
+        {
+          id: "pocket",
+          label: "Pocket TTS",
+          shortLabel: "Pocket",
+          model: process.env.POCKET_TTS_MODEL ?? "pocket-tts",
+          voice: process.env.POCKET_TTS_VOICE ?? "alba",
+          status: pocketTtsProbe?.ok ? "live_ready" : "local_sidecar_required",
+          setup: "Set POCKET_TTS_BASE_URL and run uvx pocket-tts serve.",
+          liveProbe: pocketTtsProbe ?? null,
+        },
+      ],
       synthesizeRoute: "/api/cluecon/tts/synthesize",
       status: kokoroProbe?.ok ? "live_ready" : "local_sidecar_required",
       liveProbe: kokoroProbe ?? null,
@@ -644,6 +670,7 @@ export async function buildClueConPayloadWithLiveProbes(
   const fetchImpl = options.fetchImpl ?? fetch;
   const rtcAsrBaseUrl = options.rtcAsrBaseUrl ?? trimEnv(env.RTC_ASR_BASE_URL);
   const kokoroBaseUrl = options.kokoroBaseUrl ?? trimEnv(env.KOKORO_BASE_URL);
+  const pocketTtsBaseUrl = options.pocketTtsBaseUrl ?? trimEnv(env.POCKET_TTS_BASE_URL);
   const pipecatVoiceUrl = options.pipecatVoiceUrl ?? trimEnv(env.PIPECAT_VOICE_WS_URL) ?? trimEnv(env.ACC_PIPECAT_VOICE_WS_URL);
 
   const liveProbes = await Promise.all([
@@ -664,6 +691,16 @@ export async function buildClueConPayloadWithLiveProbes(
       healthPath: normalizeHealthPath(options.kokoroHealthPath ?? env.KOKORO_HEALTH_PATH, "/health"),
       configuredDetail: "Kokoro health probe is reachable for local TTS readiness.",
       missingDetail: "KOKORO_BASE_URL is not set; TTS panel stays in text/local fallback mode.",
+      timeoutMs,
+      fetchImpl,
+    }),
+    probeHttpSidecar({
+      id: "pocket_tts",
+      label: "Pocket TTS",
+      baseUrl: pocketTtsBaseUrl,
+      healthPath: normalizeHealthPath(options.pocketTtsHealthPath ?? env.POCKET_TTS_HEALTH_PATH, "/health"),
+      configuredDetail: "Pocket TTS health probe is reachable for the live latency lab.",
+      missingDetail: "POCKET_TTS_BASE_URL is not set; Pocket remains selectable with a visible setup blocker.",
       timeoutMs,
       fetchImpl,
     }),
@@ -1141,6 +1178,9 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .tts-lab-head > div { display: grid; gap: 3px; }
     .tts-lab-head strong { font-size: 18px; }
     .tts-lab-head span:not(.badge), .tts-lab label { color: #9dbab4; font-size: 11px; }
+    .tts-provider-choice label { color: #6ee7b7; font-size: 9px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
+    .tts-provider-choice select { min-width: 190px; padding: 2px 28px 2px 0; border: 0; background: transparent; color: #f0fdfa; font: 850 18px/1.25 system-ui,sans-serif; }
+    .tts-provider-choice select:focus-visible { outline: 2px solid #5eead4; outline-offset: 3px; }
     .tts-lab textarea { min-height: 92px; resize: none; border-color: rgba(110,231,183,.25); background: rgba(2,8,20,.62); color: #e8fdf4; }
     .tts-lab .actions { align-items: center; }
     .tts-lab .actions .muted { flex: 1; color: #9dbab4; }
@@ -1440,7 +1480,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     </section>
     <section class="section-band slide" data-slide="5" id="demo"><span class="kicker">Failure-control demo</span><h2>Cancellation rescue, end to end.</h2><p class="subhead">Policy hold → operator approval → safe wrap → evidence.</p><div class="demo-shell"><div class="demo-commandbar"><button class="primary" id="run-demo" type="button">Run cancellation scenario</button><div class="demo-drill-picker"><label for="demo-drill-select">Try another control</label><select id="demo-drill-select"><optgroup label="Fail closed"><option value="tool_timeout">Tool timeout</option><option value="runtime_failure">Runtime failure</option><option value="rtc_asr_unavailable">ASR unavailable</option><option value="tts_unavailable">TTS unavailable</option></optgroup><optgroup label="Call control"><option value="transfer">Transfer</option><option value="takeover">Takeover</option><option value="end_call">End call</option></optgroup></select><button id="run-demo-drill" type="button">Run selected drill</button></div></div><div class="demo-control-story" id="demo-control-story" aria-label="Cancellation rescue control sequence"><div class="demo-control-step" data-step="1"><small>Detect</small><strong>Policy boundary</strong><span>Stop before an unapproved offer.</span></div><div class="demo-control-step" data-step="2"><small>Approve</small><strong>Operator steer</strong><span>A human selects the allowed path.</span></div><div class="demo-control-step" data-step="3"><small>Execute</small><strong>Safe wrap</strong><span>Give approved next steps only.</span></div><div class="demo-control-step" data-step="4"><small>Prove</small><strong>State + events</strong><span>Record the outcome for review.</span></div></div><div class="screen" id="demo-screen"><div class="demo-result-head"><small>Ready</small><strong>One boundary. One human decision. One safe result.</strong><p>Run the scenario to watch deterministic control take over when the conversation reaches a consequential action.</p></div></div><details class="demo-evidence" id="demo-evidence"><summary><span><strong>Transcript + event evidence</strong><small id="demo-evidence-count">Available after the run</small></span><b id="demo-evidence-toggle">Expand</b></summary><div class="demo-evidence-grid"><div><h3>Conversation</h3><div class="demo-transcript-detail" id="demo-transcript-detail"></div></div><div><h3>Audit events</h3><div class="timeline" id="timeline"></div></div></div></details></div></section>
     <section class="section-band slide" data-slide="6" id="asr"><span class="kicker">Live ASR lab</span><div class="asr-heading"><h2>rtc-asr is measurable and swappable.</h2><div class="actions"><a class="mode-link" href="${payload.asrPanel.pipecatDemoUrl}" target="_blank" rel="noreferrer">Source ↗</a><a class="mode-link" href="${payload.asrPanel.benchmarkUrl}" target="_blank" rel="noreferrer">Benchmarks ↗</a></div></div><p class="subhead">Watch partials evolve or record a six-second batch.</p><p class="asr-rtf-note muted">RTF = processing time ÷ audio duration. Lower is better; &lt;1× is faster than realtime.</p><div class="two"><div><div class="asr-live-lab"><div class="asr-live-head"><strong>Mic → Local STT → transcript</strong><span class="badge fixture" id="asr-live-badge">checking sidecar</span></div><div class="asr-live-controls"><label><span class="muted">Model</span><select id="asr-model-select" aria-label="rtc-asr model target" disabled><option>Loading models…</option></select></label><button class="primary" id="asr-realtime" type="button" disabled>Start realtime</button><button id="asr-record" type="button" disabled>Batch 6 seconds</button></div><div class="asr-live-wave" id="asr-live-wave" aria-hidden="true"><span style="--wave-i:0;height:12px"></span><span style="--wave-i:1;height:28px"></span><span style="--wave-i:2;height:18px"></span><span style="--wave-i:3;height:42px"></span><span style="--wave-i:4;height:22px"></span><span style="--wave-i:5;height:34px"></span><span style="--wave-i:6;height:16px"></span><span style="--wave-i:7;height:38px"></span><span style="--wave-i:8;height:24px"></span><span style="--wave-i:9;height:46px"></span><span style="--wave-i:10;height:20px"></span><span style="--wave-i:11;height:32px"></span><span style="--wave-i:12;height:14px"></span><span style="--wave-i:13;height:36px"></span><span style="--wave-i:14;height:26px"></span><span style="--wave-i:15;height:40px"></span></div><span class="asr-live-status" id="asr-live-status" aria-live="polite">Waiting for rtc-asr.</span><pre class="asr-live-result" id="asr-live-result">Partial and final transcripts appear here.</pre></div><div class="asr-events" id="asr-events"></div></div><div class="grid" id="asr-benchmarks"></div></div><aside class="asr-noise-guidance"><div><strong>Noise changes more than WER.</strong><span>Test recognition, false interruption, backchannels, and end-of-turn together.</span></div><ul>${payload.asrPanel.noiseGuidance.findings.map((finding) => `<li>${escapeHtml(finding)}</li>`).join("")}</ul><div class="asr-noise-foot"><span>${escapeHtml(payload.asrPanel.noiseGuidance.caveat)}</span><a href="${payload.asrPanel.noiseGuidance.sourceUrl}" target="_blank" rel="noreferrer">${escapeHtml(payload.asrPanel.noiseGuidance.sourceLabel)} ↗</a></div></aside></section>
-    <section class="section-band slide" data-slide="7" id="tts"><span class="kicker">Live TTS latency lab</span><h2>Measure playback start—not request completion.</h2><p class="subhead">Stream local Kokoro into the browser and separate HTTP first-byte latency from the moment audio actually starts playing.</p><div class="tts-layout"><div class="tts-lab"><div class="tts-lab-head"><div><strong>${escapeHtml(payload.ttsPanel.provider)}</strong><span>${escapeHtml(payload.ttsPanel.model)} · ${escapeHtml(payload.ttsPanel.voice)}</span></div><span class="badge ${payload.ttsPanel.status === "live_ready" ? "ready" : "fixture"}" id="tts-badge">${payload.ttsPanel.status === "live_ready" ? "sidecar ready" : "local sidecar required"}</span></div><label for="tts-text">Text to synthesize</label><textarea id="tts-text" rows="4">AI may be probabilistic, but the system around it does not have to be.</textarea><div class="actions"><button class="primary" id="tts-run" type="button">Run Kokoro</button><span class="muted" id="tts-status">${escapeHtml(payload.ttsPanel.metricDefinition)}</span></div><audio id="tts-audio" controls hidden></audio><div class="tts-metrics"><div class="plain metric"><span class="kicker">HTTP TTFB</span><strong id="tts-ttfb">—</strong></div><div class="plain metric"><span class="kicker">Playback</span><strong id="tts-playback">—</strong></div><div class="plain metric"><span class="kicker">Total stream</span><strong id="tts-total">—</strong></div><div class="plain metric"><span class="kicker">Audio</span><strong id="tts-bytes">—</strong></div></div></div><div class="tts-candidates"><div class="tts-candidates-head"><strong>Main OSS recommendations</strong><span>Published conditions—not a universal ranking</span></div>${payload.ttsPanel.candidates.map((candidate) => `<article class="tts-candidate"><span><strong>${escapeHtml(candidate.name)}</strong><b>${escapeHtml(candidate.latency)}</b></span><small>${escapeHtml(candidate.condition)}</small><a href="${candidate.sourceUrl}" target="_blank" rel="noreferrer">${escapeHtml(candidate.sourceLabel)} ↗</a></article>`).join("")}<p>${escapeHtml(payload.ttsPanel.comparisonCaveat)}</p></div></div><aside class="tts-harness"><div><span class="kicker">Expression as a governed layer</span><strong>${escapeHtml(payload.ttsPanel.harness.title)}</strong><p>${escapeHtml(payload.ttsPanel.harness.summary)}</p></div><div><span>${escapeHtml(payload.ttsPanel.harness.latency)}</span><a href="${payload.ttsPanel.harness.sourceUrl}" target="_blank" rel="noreferrer">Paper ↗</a></div></aside></section>
+    <section class="section-band slide" data-slide="7" id="tts"><span class="kicker">Live TTS latency lab</span><h2>Measure playback start—not request completion.</h2><p class="subhead">Run Kokoro or Pocket TTS locally, then separate HTTP first-byte latency from the moment audio actually starts playing.</p><div class="tts-layout"><div class="tts-lab"><div class="tts-lab-head"><div class="tts-provider-choice"><label for="tts-provider">Local engine</label><select id="tts-provider">${payload.ttsPanel.providers.map((provider) => `<option value="${escapeHtml(provider.id)}"${provider.id === payload.ttsPanel.defaultProvider ? " selected" : ""}>${escapeHtml(provider.label)}</option>`).join("")}</select><span id="tts-provider-meta">${escapeHtml(payload.ttsPanel.model)} · ${escapeHtml(payload.ttsPanel.voice)}</span></div><span class="badge ${payload.ttsPanel.status === "live_ready" ? "ready" : "fixture"}" id="tts-badge">${payload.ttsPanel.status === "live_ready" ? "sidecar ready" : "local sidecar required"}</span></div><label for="tts-text">Text to synthesize</label><textarea id="tts-text" rows="4">AI may be probabilistic, but the system around it does not have to be.</textarea><div class="actions"><button class="primary" id="tts-run" type="button">Run Kokoro</button><span class="muted" id="tts-status">${escapeHtml(payload.ttsPanel.metricDefinition)}</span></div><audio id="tts-audio" controls hidden></audio><div class="tts-metrics"><div class="plain metric"><span class="kicker">HTTP TTFB</span><strong id="tts-ttfb">—</strong></div><div class="plain metric"><span class="kicker">Playback</span><strong id="tts-playback">—</strong></div><div class="plain metric"><span class="kicker">Total stream</span><strong id="tts-total">—</strong></div><div class="plain metric"><span class="kicker">Audio</span><strong id="tts-bytes">—</strong></div></div></div><div class="tts-candidates"><div class="tts-candidates-head"><strong>Main OSS recommendations</strong><span>Published conditions—not a universal ranking</span></div>${payload.ttsPanel.candidates.map((candidate) => `<article class="tts-candidate"><span><strong>${escapeHtml(candidate.name)}</strong><b>${escapeHtml(candidate.latency)}</b></span><small>${escapeHtml(candidate.condition)}</small><a href="${candidate.sourceUrl}" target="_blank" rel="noreferrer">${escapeHtml(candidate.sourceLabel)} ↗</a></article>`).join("")}<p>${escapeHtml(payload.ttsPanel.comparisonCaveat)}</p></div></div><aside class="tts-harness"><div><span class="kicker">Expression as a governed layer</span><strong>${escapeHtml(payload.ttsPanel.harness.title)}</strong><p>${escapeHtml(payload.ttsPanel.harness.summary)}</p></div><div><span>${escapeHtml(payload.ttsPanel.harness.latency)}</span><a href="${payload.ttsPanel.harness.sourceUrl}" target="_blank" rel="noreferrer">Paper ↗</a></div></aside></section>
     <section class="section-band slide" data-slide="8" id="agent"><span class="kicker">Agent control stack</span><h2>State is the control plane.</h2><p class="subhead">The model proposes. FlowManager focuses the conversation. ACC authorizes actions. Events reconcile state.</p><div class="agent-control-layout"><article class="flow-manager-panel"><div class="flow-manager-head"><div><small>Structured conversation layer</small><a href="https://docs.pipecat.ai/overview/flows" target="_blank" rel="noreferrer">Pipecat Flows / FlowManager ↗</a></div><span>open source</span></div><p>Pipecat Flows breaks the dialogue into focused nodes. FlowManager gives the active node its task, context strategy, and functions, then moves forward when a handler returns the next <code>NodeConfig</code>.</p><div class="flow-node-path" aria-label="Dynamic Pipecat Flow nodes"><span>cancellation_rescue</span><b>→</b><span class="active">policy_hold</span><b>→</b><span>operator_review</span></div><div class="flow-node-spec"><div><small>Active task</small><strong>Explain the hold; request approval</strong></div><div><small>Scoped context</small><code>structured facts + relevant turns</code></div><div><small>Available function</small><code>operator.request_approval</code></div><div><small>Transition contract</small><code>handler result + next NodeConfig</code></div></div></article><aside class="authority-panel"><small>Deterministic boundary</small><strong>ACC authority plane</strong><p>Conversation structure guides the model. Application state and policy decide what the system may actually do.</p><div class="authority-stack"><div class="authority-surface"><small>System of record</small><strong>Structured call state</strong><code>policy_hold · approval_status · final_state</code></div><div class="authority-surface authority-surface--execution"><small>Execution boundary</small><strong>ACC policy + tools</strong><span>Direct mode or ToolHive + Cedar · consequential actions fail closed.</span></div><div class="authority-surface"><small>Human + supervised work</small><strong>Operator UI and jobs</strong><code>approve · transfer · takeover · accepted(jobId) → completed | failed | canceled</code></div></div></aside></div><div class="agent-event-loop" aria-label="FlowManager and ACC event loop"><div class="agent-event-step"><b>1</b><span><strong>Scope</strong>Active node narrows task, context, and functions.</span></div><div class="agent-event-step"><b>2</b><span><strong>Propose</strong>Handler returns a result and the next node.</span></div><div class="agent-event-step"><b>3</b><span><strong>Authorize</strong>ACC policy gates tools, telephony, and humans.</span></div><div class="agent-event-step"><b>4</b><span><strong>Reconcile</strong>Execution result updates state before the next turn.</span></div></div><div class="state-principle"><strong>The LLM is never the system of record.</strong><span>It reasons inside the active node; deterministic state authorizes and records every consequential action.</span></div></section>
     <section class="section-band slide" data-slide="11" id="ecosystem"><span class="kicker">WebRTC.ventures open source</span><h2>Three projects. One reliability loop.</h2><p class="subhead">Execution, speech, evidence, and evaluation stay independently useful—and integrate through explicit contracts.</p><div class="ecosystem-diagram"><div class="ecosystem-lane"><article class="ecosystem-card ecosystem-card--primary"><small>Orchestration + evidence</small><strong>ConversationAgentEvals</strong><span>Runs scenarios, normalizes proof, and compares regressions.</span></article><div class="ecosystem-arrow-down"><span>canonical evaluation</span><b>↓</b></div><article class="ecosystem-card"><small>Upstream engine</small><strong>ASSERT</strong><span>Generates and judges requirement-driven evaluations.</span></article></div><div class="ecosystem-handoff" aria-label="Bidirectional test and evidence handoff"><span>test scenarios →</span><span>← proof bundle</span></div><div class="ecosystem-lane"><article class="ecosystem-card ecosystem-card--target"><small>Reference target</small><strong>Agentic Contact Center</strong><span>Demonstrates the realtime voice-agent path and deterministic failure controls.</span></article><div class="ecosystem-arrow-down"><span>optional local STT</span><b>↓</b></div><article class="ecosystem-card"><small>Speech sidecar</small><strong>rtc-asr</strong><span>Streams transcripts and publishes reproducible ASR benchmarks.</span></article></div></div><div class="ecosystem-foot">Open components connected by explicit adapters and reviewable evidence.</div></section>
     <section class="section-band slide" data-slide="12" id="proof"><span class="kicker">ConversationAgentEvals demo</span><h2>The talk ends at proof.</h2><p class="subhead">Define the scenario, simulate the voice call, inspect the run, and prove the final state.</p><div class="cae-actions"><button id="run-eval" type="button" class="primary">Run ACC proof</button><a class="mode-link" href="${escapeHtml(joinUrl(payload.caePanel.webBaseUrl, payload.caePanel.scenariosPath))}" target="_blank" rel="noreferrer">Open CAE scenarios ↗</a><a class="mode-link" href="${escapeHtml(joinUrl(payload.caePanel.webBaseUrl, payload.caePanel.runsPath))}" target="_blank" rel="noreferrer">Simulate voice call in CAE ↗</a><a class="mode-link" href="${payload.caePanel.repoUrl}" target="_blank" rel="noreferrer">CAE source ↗</a></div><div class="cae-note">${escapeHtml(payload.caePanel.relationship)} Configure <code>CAE_WEB_URL</code> for the hosted or local CAE web application.</div><div class="two"><div><div class="grid" id="proof-cards"></div><div class="timeline" id="eval-scorecard"></div></div><pre class="proof-pre" id="proof-json">Run the demo to generate proof.</pre></div></section>
@@ -1527,14 +1567,16 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
         }
       });
     }
+    function selectedTtsProvider() { const id = document.getElementById("tts-provider").value; return data.ttsPanel.providers.find(provider => provider.id === id) || data.ttsPanel.providers[0]; }
+    function renderTtsProviderSelection() { const provider = selectedTtsProvider(); const badge = document.getElementById("tts-badge"); document.getElementById("tts-provider-meta").textContent = provider.model + " · " + provider.voice; document.getElementById("tts-run").textContent = "Run " + provider.shortLabel; badge.textContent = provider.status === "live_ready" ? "sidecar ready" : "local sidecar required"; badge.className = "badge " + (provider.status === "live_ready" ? "ready" : "fixture"); document.getElementById("tts-status").textContent = provider.status === "live_ready" ? data.ttsPanel.metricDefinition : provider.setup; }
     async function runTtsLab() {
       const button = document.getElementById("tts-run");
       const badge = document.getElementById("tts-badge");
       const status = document.getElementById("tts-status");
       const audio = document.getElementById("tts-audio");
+      const provider = selectedTtsProvider();
       const text = document.getElementById("tts-text").value.trim();
-      if (!text) { status.textContent = "Enter text before running Kokoro."; return; }
-      if (typeof MediaSource === "undefined") { status.textContent = "This browser does not support Media Source streaming."; return; }
+      if (!text) { status.textContent = "Enter text before running " + provider.label + "."; return; }
       if (state.ttsPlayingHandler) {
         audio.removeEventListener("playing", state.ttsPlayingHandler);
         state.ttsPlayingHandler = null;
@@ -1559,23 +1601,25 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
         const response = await fetch(data.ttsPanel.synthesizeRoute, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ text, voice: data.ttsPanel.voice }),
+          body: JSON.stringify({ provider: provider.id, text, voice: provider.voice }),
         });
         if (!response.ok) {
           const failure = await response.json().catch(() => ({ error: "HTTP " + response.status }));
-          throw new Error(failure.detail || failure.nextStep || failure.error || "Kokoro synthesis failed.");
+          throw new Error(failure.detail || failure.nextStep || failure.error || provider.label + " synthesis failed.");
         }
         if (!response.body) throw new Error("The browser did not expose the streaming response body.");
-        const contentType = response.headers.get("content-type") || "audio/mpeg";
-        if (!MediaSource.isTypeSupported(contentType)) {
-          throw new Error("This browser cannot progressively play " + contentType + " with Media Source.");
+        const contentType = (response.headers.get("content-type") || "audio/mpeg").split(";")[0];
+        const canAppendLive = typeof MediaSource !== "undefined" && MediaSource.isTypeSupported(contentType);
+        const mediaSource = canAppendLive ? new MediaSource() : null;
+        let sourceBuffer = null;
+        const chunks = [];
+        if (mediaSource) {
+          state.ttsAudioUrl = URL.createObjectURL(mediaSource);
+          audio.src = state.ttsAudioUrl;
+          audio.hidden = false;
+          await waitForTtsMediaSource(mediaSource);
+          sourceBuffer = mediaSource.addSourceBuffer(contentType);
         }
-        const mediaSource = new MediaSource();
-        state.ttsAudioUrl = URL.createObjectURL(mediaSource);
-        audio.src = state.ttsAudioUrl;
-        audio.hidden = false;
-        await waitForTtsMediaSource(mediaSource);
-        const sourceBuffer = mediaSource.addSourceBuffer(contentType);
         const reader = response.body.getReader();
         let bytes = 0;
         let firstByteMs = null;
@@ -1587,7 +1631,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
           document.getElementById("tts-playback").textContent = Math.round(playbackMs) + " ms";
           badge.textContent = "playing";
           badge.className = "badge ready";
-          status.textContent = "Playback event measured after " + Math.round(playbackMs) + " ms" + (firstByteMs === null ? "." : "; HTTP first bytes arrived after " + Math.round(firstByteMs) + " ms.");
+          status.textContent = provider.label + " playback started after " + Math.round(playbackMs) + " ms" + (firstByteMs === null ? "." : "; HTTP first bytes arrived after " + Math.round(firstByteMs) + " ms.");
           state.ttsPlayingHandler = null;
         };
         audio.addEventListener("playing", state.ttsPlayingHandler, { once: true });
@@ -1600,8 +1644,9 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
             document.getElementById("tts-ttfb").textContent = Math.round(firstByteMs) + " ms";
           }
           bytes += chunk.value.byteLength;
-          await appendTtsMediaChunk(sourceBuffer, chunk.value);
-          if (playbackMs === null && !playPending) {
+          if (sourceBuffer) await appendTtsMediaChunk(sourceBuffer, chunk.value);
+          else chunks.push(chunk.value);
+          if (sourceBuffer && playbackMs === null && !playPending) {
             playPending = true;
             audio.play().catch(() => {
               playPending = false;
@@ -1609,13 +1654,21 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
             });
           }
         }
-        if (!bytes || firstByteMs === null) throw new Error("Kokoro returned no audio bytes.");
-        if (mediaSource.readyState === "open" && !sourceBuffer.updating) mediaSource.endOfStream();
+        if (!bytes || firstByteMs === null) throw new Error(provider.label + " returned no audio bytes.");
+        if (mediaSource && sourceBuffer && mediaSource.readyState === "open" && !sourceBuffer.updating) mediaSource.endOfStream();
+        if (!sourceBuffer) {
+          state.ttsAudioUrl = URL.createObjectURL(new Blob(chunks, { type: contentType }));
+          audio.src = state.ttsAudioUrl;
+          audio.hidden = false;
+          audio.load();
+          status.textContent = provider.label + " streamed " + new Intl.NumberFormat().format(bytes) + " bytes. This browser buffered " + contentType + " before playback.";
+          audio.play().catch(() => { status.textContent = provider.label + " audio is ready. Press play to record the actual playback-start event."; });
+        }
         const totalMs = performance.now() - started;
         document.getElementById("tts-total").textContent = Math.round(totalMs) + " ms";
         document.getElementById("tts-bytes").textContent = new Intl.NumberFormat().format(bytes) + " B";
         if (playbackMs === null) {
-          status.textContent = "HTTP first-byte includes ACC proxy overhead" + (upstreamTtfb ? "; Kokoro-side first bytes took " + upstreamTtfb + " ms." : ".") + " Waiting for the browser playing event.";
+          if (sourceBuffer) status.textContent = "HTTP first-byte includes ACC proxy overhead" + (upstreamTtfb ? "; " + provider.label + "-side first bytes took " + upstreamTtfb + " ms." : ".") + " Waiting for the browser playing event.";
           badge.textContent = "audio ready";
           badge.className = "badge ready";
         }
@@ -1644,7 +1697,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     function summarizeProof(proof) { return { compatibleRequest: data.proofPreview.compatibleRequest, callId: proof.callId, outcome: proof.outcome, summary: proof.summary, transcriptTurns: Array.isArray(proof.transcript) ? proof.transcript.length : 0, eventCount: Array.isArray(proof.events) ? proof.events.length : 0, latencyMarks: Array.isArray(proof.latencyMarks) ? proof.latencyMarks.length : 0, fallback: proof.demoFallback, caveats: proof.pii, artifactLinks: proof.artifacts }; }
     function renderScorecard(scorecard) { document.getElementById("eval-scorecard").innerHTML = scorecard.checks.map(check => '<div class="event"><strong>' + esc(check.label) + '</strong><span class="muted"><span class="badge ' + (check.passed ? 'ready' : 'blocked') + '">' + (check.passed ? 'pass' : 'fail') + '</span> ' + esc(check.evidence) + '</span></div>').join(""); }
     async function runEvalProof() { const buttons = document.querySelectorAll("button"); buttons.forEach(button => button.disabled = true); document.getElementById("proof-json").textContent = "Running ClueCon ASSERT-style eval proof..."; try { const response = await fetch(data.proofPreview.runRoute, { method: "POST" }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "eval proof failed"); renderScorecard(payload.scorecard); document.getElementById("proof-json").textContent = JSON.stringify({ compatibleRequest: payload.compatibleRequest, summary: payload.summary, scorecard: payload.scorecard, assertRequestPreview: payload.assertRequestPreview, proofLinks: payload.proofLinks }, null, 2); goToNamedSlide("proof"); } catch (error) { document.getElementById("proof-json").textContent = "Eval proof failed: " + String(error.message || error); goToNamedSlide("proof"); } finally { buttons.forEach(button => button.disabled = false); renderSlides(); } }
-    async function refreshLiveProbes() { try { const response = await fetch("/api/cluecon"); if (!response.ok) return; data = await response.json(); window.__CLUECON__ = data; renderReadiness(); renderAsrPanel(); await loadAsrModels(); } catch (error) { console.warn("ClueCon live probe refresh failed", error); } }
+    async function refreshLiveProbes() { try { const response = await fetch("/api/cluecon"); if (!response.ok) return; data = await response.json(); window.__CLUECON__ = data; renderReadiness(); renderAsrPanel(); renderTtsProviderSelection(); await loadAsrModels(); } catch (error) { console.warn("ClueCon live probe refresh failed", error); } }
     async function runDemo() { const buttons = document.querySelectorAll("button"); buttons.forEach(button => button.disabled = true); goToNamedSlide("demo"); const screen = document.getElementById("demo-screen"); const evidence = document.getElementById("demo-evidence"); const transcript = document.getElementById("demo-transcript-detail"); screen.classList.remove("has-transcript", "has-drill"); screen.innerHTML = '<div class="demo-result-head"><small>Running</small><strong>Following the cancellation-rescue control path…</strong><p>Waiting for the policy hold, operator decision, safe wrap, and proof bundle.</p></div>'; evidence.open = false; transcript.dataset.turns = "0"; transcript.innerHTML = ""; setDemoStages(false); renderTimeline(null); document.getElementById("proof-json").textContent = "Waiting for scenario proof..."; try { const response = await fetch(data.routes.scriptedDemo, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ openclawSessionLabel: "cluecon/2026-presentation" }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "demo failed"); state.proof = payload.proof; renderDemoTranscript(payload.call.transcript); document.getElementById("proof-json").textContent = JSON.stringify({ status: "control_scenario_ok", ...summarizeProof(payload.proof) }, null, 2); renderTimeline(payload.call); } catch (error) { const message = String(error.message || error); screen.classList.remove("has-transcript", "has-drill"); screen.innerHTML = '<div class="demo-result-head"><small>Scenario blocked</small><strong>Control scenario could not complete.</strong><p>' + esc(message) + '</p></div>'; setDemoStages(false); document.getElementById("proof-json").textContent = JSON.stringify({ status: "control_scenario_failed", error: message, nextStep: "Confirm npm start is serving /api/demo/run-end-to-end, then retry Run cancellation scenario." }, null, 2); } finally { buttons.forEach(button => button.disabled = false); renderSlides(); } }
     async function previewBrain() { const response = await fetch(data.brainPanel.previewRoute, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ blocks: state.brain }) }); const payload = await response.json(); document.getElementById("proof-json").textContent = JSON.stringify(payload, null, 2); goToNamedSlide("proof"); }
     async function applyBrain() { const response = await fetch(data.brainPanel.applyRoute, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ blocks: state.brain }) }); const payload = await response.json(); document.getElementById("proof-json").textContent = JSON.stringify(payload, null, 2); if (!response.ok) return; data.brainBlocks = payload.activeBrainBlocks; data.brainPanel = payload.brainPanel; state.brain = JSON.parse(JSON.stringify(payload.activeBrainBlocks)); renderBrain(); }
@@ -1655,6 +1708,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     document.getElementById("run-eval").addEventListener("click", () => runEvalProof().catch(error => { document.getElementById("proof-json").textContent = String(error.message || error); }));
     document.getElementById("run-demo").addEventListener("click", () => runDemo().catch(error => { document.getElementById("demo-screen").textContent = String(error.message || error); }));
     document.getElementById("demo-evidence").addEventListener("toggle", event => { document.getElementById("demo-evidence-toggle").textContent = event.currentTarget.open ? "Collapse" : "Expand"; });
+    document.getElementById("tts-provider").addEventListener("change", renderTtsProviderSelection);
     document.getElementById("tts-run").addEventListener("click", runTtsLab);
     document.getElementById("vad-mic").addEventListener("click", () => toggleVadMic().catch(error => { vadStatus("mic error", "blocked"); vadLog("MIC_ERROR", String(error.message || error)); }));
     document.getElementById("vad-agent").addEventListener("click", startVadBot);
@@ -1668,7 +1722,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     document.getElementById("prev").addEventListener("click", () => goToSlide(state.slide - 1));
     document.addEventListener("keydown", event => { if (event.key === "ArrowRight" || event.key === "PageDown") goToSlide(state.slide + 1); if (event.key === "ArrowLeft" || event.key === "PageUp") goToSlide(state.slide - 1); });
     window.addEventListener("pagehide", () => { stopVadMic(true); stopVadBot(false); if (state.failureAudio) state.failureAudio.pause(); if (state.ttsAudioUrl) URL.revokeObjectURL(state.ttsAudioUrl); });
-    updateVadThreshold(); renderReadiness(); renderAsrPanel(); renderBrain(); renderSecurityPanel(); renderProofCards(); renderTimeline(null); goToSlide(0); refreshLiveProbes();
+    updateVadThreshold(); renderReadiness(); renderAsrPanel(); renderTtsProviderSelection(); renderBrain(); renderSecurityPanel(); renderProofCards(); renderTimeline(null); goToSlide(0); refreshLiveProbes();
   </script>
 </body>
 </html>`;
