@@ -408,7 +408,7 @@ class VertoAgentBridge:
         return None
 
     def proof_sip_call_id(self, params: dict[str, Any]) -> str | None:
-        for key in (
+        return self.first_param_string(params, (
             "sip_h_X-ACC-Proof-Call-ID",
             "variable_sip_h_X-ACC-Proof-Call-ID",
             "sip_h_X_ACC_Proof_Call_ID",
@@ -417,14 +417,23 @@ class VertoAgentBridge:
             "x-acc-proof-call-id",
             "proofSipCallId",
             "harnessSipCallId",
-        ):
+        ))
+
+    def first_param_string(self, params: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+        case_insensitive = {
+            str(key).lower(): value
+            for key, value in params.items()
+        }
+        for key in keys:
             value = params.get(key)
+            if not isinstance(value, str):
+                value = case_insensitive.get(key.lower())
             if isinstance(value, str) and value.strip():
                 return value.strip()
         return None
 
     def destination_number(self, params: dict[str, Any]) -> str | None:
-        for key in (
+        value = self.first_param_string(params, (
             "sip_h_X-ACC-Destination",
             "variable_sip_h_X-ACC-Destination",
             "sip_h_X_ACC_Destination",
@@ -436,15 +445,14 @@ class VertoAgentBridge:
             "variable_destination_number",
             "destinationNumber",
             "destination",
-        ):
-            value = params.get(key)
-            if isinstance(value, str) and value.strip():
-                destination = value.strip()
-                return "8600" if destination.lower() == "acc" else destination
+        ))
+        if value:
+            destination = value.strip()
+            return "8600" if destination.lower() == "acc" else destination
         return None
 
     def conversation_mode(self, params: dict[str, Any], destination_number: str | None) -> str:
-        for key in (
+        value = self.first_param_string(params, (
             "sip_h_X-ACC-Conversation-Mode",
             "variable_sip_h_X-ACC-Conversation-Mode",
             "sip_h_X_ACC_Conversation_Mode",
@@ -453,14 +461,13 @@ class VertoAgentBridge:
             "acc_conversation_mode",
             "variable_acc_conversation_mode",
             "conversationMode",
-        ):
-            value = params.get(key)
-            if isinstance(value, str) and value.strip() in {"scripted", "free_caller", "openai_llm"}:
-                return value.strip()
+        ))
+        if value and value in {"scripted", "free_caller", "openai_llm"}:
+            return value
         return "openai_llm" if destination_number == "8600" else "scripted"
 
     def telephony_mode(self, params: dict[str, Any]) -> str:
-        for key in (
+        value = self.first_param_string(params, (
             "sip_h_X-ACC-Telephony-Mode",
             "variable_sip_h_X-ACC-Telephony-Mode",
             "sip_h_X_ACC_Telephony_Mode",
@@ -469,10 +476,9 @@ class VertoAgentBridge:
             "acc_route",
             "variable_acc_route",
             "telephonyMode",
-        ):
-            value = params.get(key)
-            if isinstance(value, str) and value.strip() == "signalwire_live":
-                return "signalwire_live"
+        ))
+        if value == "signalwire_live":
+            return "signalwire_live"
         return "local_sip"
 
     async def end_acc_call(self, call_id: str, *, reason: str, timestamp: str | None = None, timeout: float = 2.0, linked_sip_call_id: str | None = None) -> bool:

@@ -40,6 +40,7 @@ const REGISTRATION_REQUIRED_ENV = [
   "SIGNALWIRE_SIP_PASSWORD",
 ];
 const ALL_ENV = [...COMMON_REQUIRED_ENV, ...REGISTRATION_REQUIRED_ENV];
+const DEFAULT_SIGNALWIRE_SOURCE_ACL_NAME = "signalwire_trunk";
 
 function hasFlag(name) {
   return args.includes(name);
@@ -132,12 +133,18 @@ function isExternalProfileRunning(entry) {
   return /\bRUNNING\b/i.test(output);
 }
 
-function isInboundDialplanActive(entry, expectedDidPattern) {
+function regexpLiteral(value) {
+  return clean(value).replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+}
+
+function isInboundDialplanActive(entry, expectedDidPattern, sourceAclName) {
   if (!entry) return false;
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
   if (/can't\s+find|not\s+found|invalid/i.test(output)) return false;
+  const aclPattern = new RegExp(`acl\\(\\$\\{network_addr\\}\\s+${regexpLiteral(sourceAclName)}\\)`, "i");
   return /agentic_contact_center_signalwire_pstn/i.test(output)
     && /acc_route=signalwire_live/i.test(output)
+    && aclPattern.test(output)
     && /acc_destination_number=8600/i.test(output)
     && /acc_conversation_mode=openai_llm/i.test(output)
     && /(?:sip_h_X-ACC-Telephony-Mode|X-ACC-Telephony-Mode)=signalwire_live/i.test(output)
@@ -308,16 +315,27 @@ async function isMultiplyLinkedDestination(outputPath) {
 }
 
 async function runFsCli(command, redactor) {
+  const explicitFsCliBin = args.includes("--fs-cli-bin") || Boolean(clean(process.env.FS_CLI_BIN));
   const fsCliBin = argValue("--fs-cli-bin", process.env.FS_CLI_BIN || "fs_cli");
-  const { stdout, stderr } = await execFileAsync(fsCliBin, ["-x", command], {
+  const options = {
     cwd: repoRoot,
     encoding: "utf8",
     timeout: Number(argValue("--fs-cli-timeout-ms", "5000")),
     maxBuffer: 1024 * 1024,
-  });
+  };
+  let stdout;
+  let stderr;
+  let proofCommand = `fs_cli -x '${command}'`;
+  try {
+    ({ stdout, stderr } = await execFileAsync(fsCliBin, ["-x", command], options));
+  } catch (error) {
+    if (explicitFsCliBin || !(error && error.code === "ENOENT")) throw error;
+    ({ stdout, stderr } = await execFileAsync("docker", ["compose", "exec", "-T", "freeswitch", "fs_cli", "-x", command], options));
+    proofCommand = `docker compose exec -T freeswitch fs_cli -x '${command}'`;
+  }
   return {
     proof: {
-      command: `fs_cli -x '${command}'`,
+      command: proofCommand,
       stdout: redactor(stdout.trim()),
       stderr: redactor(stderr.trim()),
     },
@@ -337,6 +355,7 @@ const missing = requiredEnv.filter((name) => !env[name]);
 const signalwireRealm = clean(process.env.SIGNALWIRE_SIP_REALM) || signalwireSipHostFromSpaceUrl(env.SIGNALWIRE_SPACE_URL);
 const signalwireProxy = clean(process.env.SIGNALWIRE_SIP_PROXY) || signalwireRealm;
 const signalwireDid = signalwireDidDigits(env.SIGNALWIRE_FROM_NUMBER);
+const signalwireSourceAclName = clean(process.env.SIGNALWIRE_SOURCE_ACL_NAME) || DEFAULT_SIGNALWIRE_SOURCE_ACL_NAME;
 const signalwireDidNational = signalwireDid.length === 11 && signalwireDid.startsWith("1")
   ? signalwireDid.slice(1)
   : "";
@@ -374,6 +393,10 @@ const summary = {
     fromNumber: env.SIGNALWIRE_FROM_NUMBER ? redact(env.SIGNALWIRE_FROM_NUMBER) : null,
     freeswitchPublicSipHost: env.FREESWITCH_PUBLIC_SIP_HOST ? redact(env.FREESWITCH_PUBLIC_SIP_HOST) : null,
   },
+  sourceRestriction: {
+    type: "freeswitch_acl",
+    aclName: signalwireSourceAclName,
+  },
   generatedConfig: null,
   freeswitchCli: [],
   blockers: [],
@@ -389,6 +412,9 @@ if (!["registration", "ip_auth"].includes(trunkMode)) {
   summary.missingEnv.push("SIGNALWIRE_SIP_REALM_OR_PROXY");
   summary.blockers.push("missing_signalwire_sip_realm_or_proxy");
 }
+if (!/^[A-Za-z0-9_.:-]+$/.test(signalwireSourceAclName)) {
+  summary.blockers.push("invalid_signalwire_source_acl_name");
+}
 
 if (hasFlag("--render") && !outputDirIsArtifact) {
   summary.blockers.push("unsafe_freeswitch_output_dir");
@@ -402,6 +428,7 @@ const replacements = {
   SIGNALWIRE_TO_NUMBER_PATTERN: signalwireDidPattern,
   SIGNALWIRE_FROM_NUMBER_SAFE: xmlEscape(env.SIGNALWIRE_FROM_NUMBER),
   FREESWITCH_PUBLIC_SIP_HOST_SAFE: xmlEscape(env.FREESWITCH_PUBLIC_SIP_HOST),
+  SIGNALWIRE_SOURCE_ACL_NAME: xmlEscape(signalwireSourceAclName),
 };
 
 if (hasFlag("--render") && summary.blockers.length === 0) {
@@ -496,7 +523,7 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
 
 if (summary.blockers.length === 0 && !fsCliSkipped) {
   const dialplan = rawFsCli.get("xml_locate dialplan extension name agentic_contact_center_signalwire_pstn");
-  if (!isInboundDialplanActive(dialplan, signalwireDidPattern)) {
+  if (!isInboundDialplanActive(dialplan, signalwireDidPattern, signalwireSourceAclName)) {
     summary.blockers.push("signalwire_inbound_dialplan_not_proven");
   }
 }
@@ -510,7 +537,13 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
 
 summary.ok = summary.blockers.length === 0;
 summary.manualCallReady = summary.ok && !fsCliSkipped;
-summary.status = summary.manualCallReady ? "ready_for_manual_pstn_call" : summary.ok ? "config_rendered_pending_freeswitch_cli" : "blocked";
+summary.status = summary.manualCallReady
+  ? "ready_for_manual_pstn_call"
+  : summary.ok && summary.generatedConfig
+    ? "config_rendered_pending_freeswitch_cli"
+    : summary.ok
+      ? "config_validated_pending_render_or_freeswitch_cli"
+      : "blocked";
 
 await mkdir(path.dirname(manifestPath), { recursive: true });
 await writeFile(manifestPath, `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600 });

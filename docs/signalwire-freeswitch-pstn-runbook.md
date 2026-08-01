@@ -22,6 +22,7 @@ export SIGNALWIRE_SIP_USERNAME="SIP_USERNAME_PLACEHOLDER"
 export SIGNALWIRE_SIP_PASSWORD="SIP_PASSWORD_PLACEHOLDER"
 export SIGNALWIRE_FROM_NUMBER="+12029687351"
 export FREESWITCH_PUBLIC_SIP_HOST="PUBLIC_SIP_HOST_OR_TUNNEL_PLACEHOLDER"
+export SIGNALWIRE_SOURCE_ACL_NAME="signalwire_trunk"
 ```
 
 IP-auth trunks require only `SIGNALWIRE_TRUNK_MODE=ip_auth`, `SIGNALWIRE_FROM_NUMBER`, and `FREESWITCH_PUBLIC_SIP_HOST`; they do not require a Space URL or SIP registration credentials.
@@ -35,6 +36,8 @@ export SIGNALWIRE_TRUNK_MODE="registration"
 ```
 
 When `SIGNALWIRE_SIP_REALM` and `SIGNALWIRE_SIP_PROXY` are omitted, the readiness script derives `SPACE.sip.signalwire.com` from `SIGNALWIRE_SPACE_URL=https://SPACE.signalwire.com`. Set `SIGNALWIRE_TRUNK_MODE=ip_auth` only for documented IP-auth trunking where SignalWire routes directly to `sip:8600@FREESWITCH_PUBLIC_SIP_HOST` and no FreeSWITCH gateway registration is expected.
+
+`SIGNALWIRE_SOURCE_ACL_NAME` defaults to `signalwire_trunk`. The public dialplan is gated by `${acl(${network_addr} SIGNALWIRE_SOURCE_ACL_NAME)}` so an arbitrary Internet SIP sender cannot reach the live agent by guessing the DID. Configure that FreeSWITCH ACL with the approved SignalWire source ranges or an equivalent authenticated trunk predicate before opening the manual-call gate.
 
 ## Generate FreeSWITCH config
 
@@ -86,6 +89,8 @@ Start the accepted local voice path:
 npm run docker:sip-verto
 ```
 
+The documented Docker Compose path keeps SIP and Verto ports bound to `127.0.0.1` for local readiness. It does not expose FreeSWITCH to SignalWire over the public Internet. For a real PSTN ingress test, use an already-approved public SIP endpoint, an approved tunnel, or a separately configured native FreeSWITCH host; do not change firewall, NAT, router, provider routing, or public port exposure from this runbook without Alberto approval.
+
 Run the SignalWire readiness probe:
 
 ```sh
@@ -100,6 +105,8 @@ Expected proof:
 - For registration trunks, `freeswitchCli` includes redacted output for `sofia status profile external`, `sofia status gateway signalwire`, and `show registrations`.
 - For IP-auth trunks, `freeswitchCli` includes redacted output for `sofia status profile external` and `show registrations`; `REGED` is not required because there is no outbound gateway registration.
 - Both modes include `xml_locate` proof that the active `agentic_contact_center_signalwire_pstn` extension routes to `acc_route=signalwire_live`.
+- The active dialplan proof includes the SignalWire source ACL predicate and the Verto lane fields (`acc_destination_number=8600`, `acc_conversation_mode=openai_llm`, `sip_h_X-ACC-Telephony-Mode=signalwire_live`).
+- `show registrations` proves the `acc-pipecat` Verto contact is active before the manual-call gate opens.
 - `artifacts/freeswitch-signalwire/readiness.json` contains no live tokens, SIP passwords, project IDs, or private host values.
 
 If FreeSWITCH is down, the registration gateway is unregistered, the selected trunk mode is wrong, or the public SIP endpoint is unavailable, the probe exits non-zero with an actionable blocker. Do not ask for the live PSTN call until this is ready and QA has confirmed the ACC voice path is listening.
