@@ -5578,7 +5578,7 @@ async function routeRequest(
         "x-acc-tts-model": target.model,
         "x-acc-tts-voice": voice,
         "x-acc-tts-streaming": "true",
-        "x-acc-tts-through": "pipecat",
+        "x-acc-tts-through": "acc_provider_proxy",
         "x-acc-upstream-ttfb-ms": String(upstreamTtfbMs),
         "x-acc-tts-idle-timeout-ms": String(idleTimeoutMs),
       });

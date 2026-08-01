@@ -116,7 +116,7 @@ cd ../agentic-contact-center
 export RTC_ASR_BASE_URL=http://127.0.0.1:8080
 export RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream
 export RTC_ASR_MODEL=mlx-community/parakeet-tdt_ctc-110m
-export ACC_TTS_PROVIDER=pocket
+unset ACC_TTS_PROVIDER
 export POCKET_TTS_BASE_URL=http://127.0.0.1:8881
 export POCKET_TTS_VOICE=alloy
 export KOKORO_BASE_URL=http://127.0.0.1:8880
@@ -134,14 +134,14 @@ npm run pipecat:webrtc
 Use this smoke path when preparing PR notes for #333:
 
 ```bash
-export ACC_TTS_PROVIDER=pocket
+unset ACC_TTS_PROVIDER
 export POCKET_TTS_BASE_URL=http://127.0.0.1:8881
 export POCKET_TTS_VOICE=alloy
 npm start
 open http://127.0.0.1:8026/cluecon#tts
 ```
 
-In the TTS section, click `Run Pocket`. Passing smoke evidence should include the HTTP status, `x-acc-tts-provider: pocket`, `x-acc-tts-through: pipecat`, non-zero audio bytes in the browser lab, first-byte timing, and whether the audio element emitted `playing`. For full realtime voice, also run the browser WebRTC bridge and confirm the session proof contains rtc-asr final transcript evidence plus Pocket/Pipecat TTS chunk evidence.
+In the TTS section, click `Run Pocket`. Passing smoke evidence should include the HTTP status, `x-acc-tts-provider: pocket`, `x-acc-tts-through: acc_provider_proxy`, non-zero audio bytes in the browser lab, first-byte timing, and whether the audio element emitted `playing`. This lab route directly proxies the configured provider so the browser can verify stream start. For full realtime Pipecat voice evidence, also run the browser WebRTC bridge and confirm the session proof contains rtc-asr final transcript evidence plus Pocket/Pipecat TTS chunk evidence.
 
 ## Unified Pipecat media-engine readiness
 

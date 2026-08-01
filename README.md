@@ -87,7 +87,7 @@ flowchart LR
   acc --> evidence
 ```
 
-Browser WebRTC, fixture/tester, and SIP/Verto are adapters into the same rtc-asr -> ACC caller-turn/FlowManager -> Pocket/Kokoro streaming TTS pipeline. Set `ACC_TTS_PROVIDER=pocket` and `POCKET_TTS_BASE_URL` for the ClueCon Pocket/Pipecat TTS lane; Kokoro remains the compatible fallback. The strict local SIP/Verto proof lane is accepted and closed; do not reopen it for normal documentation work. Future #307 slices should focus on the reliability-lab integration surface and guided workflow.
+Browser WebRTC, fixture/tester, and SIP/Verto are adapters into the same rtc-asr -> ACC caller-turn/FlowManager -> Pocket/Kokoro streaming TTS pipeline. Leave `ACC_TTS_PROVIDER` unset and set `POCKET_TTS_BASE_URL` for Pocket auto-selection, or set `ACC_TTS_PROVIDER=pocket` explicitly for the ClueCon Pocket/Pipecat TTS lane; Kokoro remains the compatible fallback when Pocket is not configured. The strict local SIP/Verto proof lane is accepted and closed; do not reopen it for normal documentation work. Future #307 slices should focus on the reliability-lab integration surface and guided workflow.
 
 ## Quick starts
 

@@ -726,12 +726,12 @@ test("ClueCon TTS route streams Kokoro audio using the configured local model an
   }
 });
 
-test("ClueCon TTS route streams Pocket audio through the Pipecat TTS contract", async () => {
+test("ClueCon TTS route auto-selects Pocket by URL and streams audio through the ACC provider proxy", async () => {
   const pocket = await startPocketTtsServer();
   try {
     await withEnv(
       {
-        ACC_TTS_PROVIDER: "pocket",
+        ACC_TTS_PROVIDER: undefined,
         POCKET_TTS_BASE_URL: pocket.baseUrl,
         POCKET_TTS_MODEL: "pocket-tts",
         POCKET_TTS_VOICE: "alloy",
@@ -749,7 +749,7 @@ test("ClueCon TTS route streams Pocket audio through the Pipecat TTS contract", 
             pipecatStreaming: { enabled: boolean; provider: string; preservesAgentBrain: boolean; outputContract: string };
           };
         };
-        assert.equal(payload.ttsPanel.provider, "Pocket TTS via Pipecat");
+        assert.equal(payload.ttsPanel.provider, "Pocket TTS");
         assert.equal(payload.ttsPanel.engine, "pocket");
         assert.equal(payload.ttsPanel.status, "streaming_ready");
         assert.equal(payload.ttsPanel.pipecatStreaming.enabled, true);
@@ -767,7 +767,7 @@ test("ClueCon TTS route streams Pocket audio through the Pipecat TTS contract", 
         assert.match(response.contentType, /audio\/mpeg/);
         assert.equal(response.body, "ID3audio");
         assert.equal(response.headers["x-acc-tts-provider"], "pocket");
-        assert.equal(response.headers["x-acc-tts-through"], "pipecat");
+        assert.equal(response.headers["x-acc-tts-through"], "acc_provider_proxy");
         assert.equal(response.headers["x-acc-tts-streaming"], "true");
         assert.deepEqual(pocket.requests[0], {
           model: "pocket-tts",
