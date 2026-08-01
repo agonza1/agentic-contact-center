@@ -859,7 +859,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /xform-carrier/);
   assert.match(narrative.body, /media-wave/);
   assert.match(narrative.body, /media-tokens/);
-  assert.equal((narrative.body.match(/data-slide="\d+"/g) ?? []).length, 14);
+  assert.equal((narrative.body.match(/data-slide="\d+"/g) ?? []).length, 15);
   assert.match(narrative.body, /January 2018 · My first voice prototype/);
   assert.match(narrative.body, /My first voice AI/);
   assert.match(narrative.body, /could do anything—/);
@@ -927,7 +927,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Starting microphone…/);
   assert.match(narrative.body, /MIC_START_CANCELLED/);
   assert.match(narrative.body, /slideCount: slideOrder\.length/);
-  assert.match(narrative.body, /\["flow", "voice-evolution", "realtime-problem", "map", "integration", "vad-interruption", "asr", "security", "agent", "demo", "tts", "ecosystem", "proof", "finale"\]/);
+  assert.match(narrative.body, /\["flow", "voice-evolution", "realtime-problem", "map", "integration", "vad-interruption", "asr-architecture", "asr", "security", "agent", "demo", "tts", "ecosystem", "proof", "finale"\]/);
   assert.match(narrative.body, /orient="auto-start-reverse"/);
   assert.match(narrative.body, /markerUnits="userSpaceOnUse"/);
   assert.equal((narrative.body.match(/class="line line--bidirectional"/g) ?? []).length, 6);
@@ -962,6 +962,11 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Run ACC proof/);
   assert.match(narrative.body, /window\.__CLUECON__/);
   assert.match(narrative.body, /rtc-asr is measurable and swappable/);
+  assert.match(narrative.body, /id="asr-architecture"/);
+  assert.match(narrative.body, /Audio in\. Transcript events out\./);
+  assert.match(narrative.body, /80–160 ms PCM16/);
+  assert.match(narrative.body, /partial · final · cancel/);
+  assert.match(narrative.body, /Local[\s\S]*Swappable[\s\S]*Realtime[\s\S]*Measurable/);
   assert.match(narrative.body, /Mic → Local STT → transcript/);
   assert.match(narrative.body, /id="asr-model-select"/);
   assert.match(narrative.body, /id="asr-realtime"/);
@@ -1046,7 +1051,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /\.flow-brand img \{[^}]*width: min\(250px, 62vw\)/);
   assert.match(narrative.body, /runEvalProof/);
   assert.match(narrative.body, /goToSlide/);
-  assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 14'));
+  assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 15'));
   assert.match(narrative.body, /aria-label="Previous slide"/);
   assert.ok(narrative.body.includes('status.textContent = String(state.slide + 1) + " / " + String(state.slideCount)'));
   assert.match(narrative.body, /@media \(max-width: 1100px\) \{ \.demo-control-step/);
@@ -1122,7 +1127,7 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.doesNotMatch(html, /15 min system story/);
   assert.doesNotMatch(html, /10 min live demo/);
   assert.doesNotMatch(html, /5 min proof \+ close/);
-  assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 14);
+  assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 15);
   assert.match(html, /Open CAE scenarios ↗/);
   assert.match(html, /Simulate voice call in CAE ↗/);
   assert.match(html, /Have fun with them\. Make them better/);
