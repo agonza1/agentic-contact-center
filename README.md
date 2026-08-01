@@ -19,8 +19,9 @@ Primary actions:
 | Mode | Command | Media | External services | Evidence level |
 | --- | --- | --- | --- | --- |
 | Scripted fixture demo | `npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json` | Seeded fixture turns | None | Deterministic proof bundle |
-| Browser voice | `npm run docker:browser-webrtc` | Browser WebRTC | rtc-asr + Kokoro + Pipecat bridge | Live local media proof when `browser-webrtc:live-proof` passes |
-| SIP/Verto | `npm run docker:sip-verto` | SIP/RTP caller + Verto/WebRTC agent leg | FreeSWITCH + rtc-asr + Kokoro + Pipecat Verto bridge | Caller-audible live proof when `pipecat:verto:live-proof` passes |
+| Browser voice | `npm run docker:browser-webrtc` | Browser WebRTC | rtc-asr + Pocket/Kokoro TTS + Pipecat bridge | Live local media proof when `browser-webrtc:live-proof` passes |
+| SIP/Verto | `npm run docker:sip-verto` | SIP/RTP caller + Verto/WebRTC agent leg | FreeSWITCH + rtc-asr + Pocket/Kokoro TTS + Pipecat Verto bridge | Caller-audible live proof when `pipecat:verto:live-proof` passes |
+| SignalWire PSTN ingress | `npm run signalwire:freeswitch:readiness -- --render` | PSTN -> SignalWire SIP -> FreeSWITCH | SignalWire SIP trunk + reachable FreeSWITCH SIP endpoint | Redacted FreeSWITCH gateway/reachability proof before manual PSTN call |
 | Reliability lab status | `npm run reliability:lab` | Selected target mode | Optional CAE/ASSERT endpoints | Honest ready/blocked/not-required report for Phase 2 lab wiring |
 
 The default scripted fixture demo does not require ConversationAgentEvals, rtc-asr, Kokoro, FreeSWITCH, ASSERT, production credentials, or live telephony.
@@ -75,7 +76,7 @@ flowchart LR
   input["transport.input"]
   stt["rtc-asr STT"]
   acc["ACC policy/tools + FlowManager adapter"]
-  tts["Kokoro TTS"]
+  tts["Pocket/Kokoro TTS"]
   output["transport.output"]
   evidence["ACC proof bundle"]
 
@@ -86,7 +87,7 @@ flowchart LR
   acc --> evidence
 ```
 
-Browser WebRTC, fixture/tester, and SIP/Verto are adapters into the same rtc-asr -> ACC caller-turn/FlowManager -> Kokoro pipeline. The strict local SIP/Verto proof lane is accepted and closed; do not reopen it for normal documentation work. Future #307 slices should focus on the reliability-lab integration surface and guided workflow.
+Browser WebRTC, fixture/tester, and SIP/Verto are adapters into the same rtc-asr -> ACC caller-turn/FlowManager -> Pocket/Kokoro streaming TTS pipeline. Set `ACC_TTS_PROVIDER=pocket` and `POCKET_TTS_BASE_URL` for the ClueCon Pocket/Pipecat TTS lane; Kokoro remains the compatible fallback. The strict local SIP/Verto proof lane is accepted and closed; do not reopen it for normal documentation work. Future #307 slices should focus on the reliability-lab integration surface and guided workflow.
 
 ## Quick starts
 

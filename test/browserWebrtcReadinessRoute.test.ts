@@ -457,7 +457,7 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
     assert.deepEqual(
       Object.fromEntries(payload.acceptanceProgress.map((criterion) => [criterion.criterion, criterion.passed])),
       {
-        readiness_distinguishes_acc_pipecat_webrtc_rtc_asr_kokoro: true,
+        readiness_distinguishes_acc_pipecat_webrtc_rtc_asr_tts: true,
         normal_browser_voice_does_not_require_mediarecorder_or_ffmpeg: true,
         browser_offer_answer_signaling: true,
         live_webrtc_media_turn: false,
@@ -468,7 +468,7 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
     assert.deepEqual(payload.liveMedia.requiredProof, [
       "Pipecat WebRTC bridge started at BROWSER_WEBRTC_BRIDGE_URL",
       "rtc-asr Local STT v1 sidecar captured a final browser transcript",
-      "Kokoro produced agent TTS audio",
+      "Kokoro TTS produced agent TTS audio",
       "browser received and played a remote WebRTC audio track",
     ]);
     assert.ok(payload.liveMedia.setupCommands.some((command) => command.includes("BROWSER_WEBRTC_BRIDGE_URL")));

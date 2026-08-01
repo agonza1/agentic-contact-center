@@ -11,6 +11,10 @@ services:
       RTC_ASR_BASE_URL: http://rtc-asr:8080
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
       RTC_ASR_MODEL: ${RTC_ASR_MODEL:-mlx-community/parakeet-tdt_ctc-110m}
+      ACC_TTS_PROVIDER: ${ACC_TTS_PROVIDER:-kokoro}
+      POCKET_TTS_BASE_URL: ${POCKET_TTS_BASE_URL:-}
+      POCKET_TTS_VOICE: ${POCKET_TTS_VOICE:-alloy}
+      POCKET_TTS_MODEL: ${POCKET_TTS_MODEL:-pocket-tts}
       KOKORO_BASE_URL: http://kokoro:8880
       BROWSER_WEBRTC_BRIDGE_URL: http://browser-webrtc-bridge:8766
       ACC_OPENAI_CONVERSATION_MODEL: ${ACC_OPENAI_CONVERSATION_MODEL:-GPT-5.4-mini}
@@ -163,6 +167,10 @@ services:
       RTC_ASR_BASE_URL: http://rtc-asr:8080
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
       RTC_ASR_MODEL: ${RTC_ASR_MODEL:-mlx-community/parakeet-tdt_ctc-110m}
+      ACC_TTS_PROVIDER: ${ACC_TTS_PROVIDER:-kokoro}
+      POCKET_TTS_BASE_URL: ${POCKET_TTS_BASE_URL:-}
+      POCKET_TTS_VOICE: ${POCKET_TTS_VOICE:-alloy}
+      POCKET_TTS_MODEL: ${POCKET_TTS_MODEL:-pocket-tts}
       KOKORO_BASE_URL: http://kokoro:8880
       KOKORO_VOICE: ${KOKORO_VOICE:-af_heart}
     healthcheck:
@@ -236,6 +244,10 @@ services:
       ACC_URL: http://app:8026
       RTC_ASR_BASE_URL: http://rtc-asr:8080
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
+      ACC_TTS_PROVIDER: ${ACC_TTS_PROVIDER:-kokoro}
+      POCKET_TTS_BASE_URL: ${POCKET_TTS_BASE_URL:-}
+      POCKET_TTS_VOICE: ${POCKET_TTS_VOICE:-alloy}
+      POCKET_TTS_MODEL: ${POCKET_TTS_MODEL:-pocket-tts}
       KOKORO_BASE_URL: http://kokoro:8880
       ACC_TTS_CACHE_DIR: ${ACC_TTS_CACHE_DIR:-/app/artifacts/tts-cache}
       FREESWITCH_VERTO_URL: ws://freeswitch:8081

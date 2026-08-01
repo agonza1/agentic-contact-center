@@ -152,7 +152,7 @@ export function buildPipecatFlowManagerContractPayload() {
     runtimeHarnessCommand: "npm run pipecat:flows:runtime",
     currentOwner: "Pipecat Flows/FlowManager transition adapter",
     targetOwner: "Pipecat Flows/FlowManager transition adapter",
-    runtimePackages: ["pipecat-ai[webrtc]==1.4.0", "pipecat-ai-flows==1.4.0"],
+    runtimePackages: ["pipecat-ai[webrtc]==1.7.0"],
     requiredNodes: PIPECAT_FLOW_MANAGER_REQUIRED_NODES,
     nodeSpecs: PIPECAT_FLOW_MANAGER_NODE_SPECS,
     requiredGuards: PIPECAT_FLOW_MANAGER_REQUIRED_GUARDS,

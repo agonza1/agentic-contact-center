@@ -28,7 +28,7 @@ export interface PipecatFlowManagerNodeHandlerPlan {
 export interface PipecatFlowManagerAdapterInvocation {
   id: string;
   source: "acc_pipecat_voice_pipeline";
-  target: "pipecat_flows.FlowManager";
+  target: "pipecat.flows.FlowManager";
   inputFrame: string;
   handlerResult: string;
   commitPolicy: "preview_until_output_delivery_ack" | "terminal_handoff";
@@ -73,7 +73,7 @@ const FLOW_MANAGER_CUTOVER_SEQUENCE: readonly PipecatFlowManagerCutoverStep[] = 
     id: "route_caller_turns_through_flowmanager",
     status: "complete",
     owner: "Pipecat FlowManager adapter",
-    evidence: "AccCallerTurnProcessor delegates delivery-ack previews to AccPipecatFlowManagerAdapter, which guards a pending real pipecat_flows.FlowManager node before TTS and activates it only on output delivery acknowledgement.",
+    evidence: "AccCallerTurnProcessor delegates delivery-ack previews to AccPipecatFlowManagerAdapter, which guards a pending real pipecat.flows.FlowManager node before TTS and activates it only on output delivery acknowledgement.",
     verificationCommand: "npm run pipecat:flows:runtime",
   },
 ] as const;
@@ -93,7 +93,7 @@ const FLOW_MANAGER_CUTOVER_PRECONDITIONS = [
   },
   {
     id: "caller_turn_adapter_cutover",
-    evidence: "ACC caller turns are routed through pipecat_flows.FlowManager while ACC retains product state, operator controls, proof artifacts, and queue state.",
+    evidence: "ACC caller turns are routed through pipecat.flows.FlowManager while ACC retains product state, operator controls, proof artifacts, and queue state.",
     verificationCommand: "npm run pipecat:flows:runtime",
     satisfied: true,
   },
@@ -113,7 +113,7 @@ const FLOW_MANAGER_ADAPTER_INVOCATIONS: readonly PipecatFlowManagerAdapterInvoca
   {
     id: "caller_transcript_to_flowmanager_node",
     source: "acc_pipecat_voice_pipeline",
-    target: "pipecat_flows.FlowManager",
+    target: "pipecat.flows.FlowManager",
     inputFrame: "TranscriptionFrame",
     handlerResult: "ACC caller-turn preview with flowState, agentText, events, and snapshotVersion",
     commitPolicy: "preview_until_output_delivery_ack",
@@ -122,7 +122,7 @@ const FLOW_MANAGER_ADAPTER_INVOCATIONS: readonly PipecatFlowManagerAdapterInvoca
   {
     id: "runtime_failure_to_flowmanager_wrap",
     source: "acc_pipecat_voice_pipeline",
-    target: "pipecat_flows.FlowManager",
+    target: "pipecat.flows.FlowManager",
     inputFrame: "FlowManager initialization or transition failure",
     handlerResult: "ACC runtime_failure fallback with terminal wrap/handoff evidence",
     commitPolicy: "terminal_handoff",
@@ -227,10 +227,10 @@ export function buildPipecatFlowManagerRuntimePlan(input: {
 
   return {
     status: "runtime_adapter_wired",
-    runtimeAdapter: "pipecat_flows.FlowManager",
+    runtimeAdapter: "pipecat.flows.FlowManager",
     adapterCutoverPending: false,
     implementationEntryPoint: "scripts/acc_pipecat_flow_manager.py",
-    runtimePackageRequirement: "pipecat-ai-flows==1.4.0",
+    runtimePackageRequirement: "pipecat-ai[webrtc]==1.7.0",
     runtimeVerificationCommand: "npm run pipecat:flows:runtime",
     retainedAccOwnership: ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
     adapterInvocations: FLOW_MANAGER_ADAPTER_INVOCATIONS,
