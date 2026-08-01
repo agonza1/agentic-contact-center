@@ -45,6 +45,12 @@ DEFAULT_KOKORO_HEALTH_PATH = os.environ.get("KOKORO_HEALTH_PATH", "/health")
 DEFAULT_KOKORO_SPEECH_PATH = os.environ.get("KOKORO_SPEECH_PATH") or os.environ.get("KOKORO_TTS_PATH", "/v1/audio/speech")
 DEFAULT_KOKORO_VOICE = os.environ.get("KOKORO_VOICE", "af_heart")
 DEFAULT_KOKORO_MODEL = os.environ.get("KOKORO_MODEL", "kokoro")
+DEFAULT_POCKET_TTS_BASE_URL = os.environ.get("POCKET_TTS_BASE_URL", "http://127.0.0.1:8881")
+DEFAULT_POCKET_TTS_HEALTH_PATH = os.environ.get("POCKET_TTS_HEALTH_PATH", "/health")
+DEFAULT_POCKET_TTS_SPEECH_PATH = os.environ.get("POCKET_TTS_SPEECH_PATH", "/v1/audio/speech")
+DEFAULT_POCKET_TTS_VOICE = os.environ.get("POCKET_TTS_VOICE", "alloy")
+DEFAULT_POCKET_TTS_MODEL = os.environ.get("POCKET_TTS_MODEL", "pocket-tts")
+DEFAULT_TTS_PROVIDER = os.environ.get("ACC_TTS_PROVIDER", "pocket" if os.environ.get("POCKET_TTS_BASE_URL") else "kokoro").strip().lower()
 INPUT_SAMPLE_RATE = 16000
 WEBRTC_SAMPLE_RATE = 48000
 WEBRTC_FRAME_MS = 20
@@ -62,6 +68,35 @@ DEFAULT_TTS_PREWARM_TEXTS = (
     "I’ll prepare a handoff summary for a human operator. What is the one thing you want them to solve first?",
 )
 TTS_CACHE_LOCKS: dict[Path, asyncio.Lock] = {}
+
+
+def active_tts_provider() -> str:
+    return DEFAULT_TTS_PROVIDER if DEFAULT_TTS_PROVIDER in {"pocket", "kokoro"} else "kokoro"
+
+
+def active_tts_config() -> dict[str, str]:
+    provider = active_tts_provider()
+    if provider == "pocket":
+        return {
+            "provider": "pocket",
+            "engine": "pocket",
+            "base_url": DEFAULT_POCKET_TTS_BASE_URL,
+            "health_path": DEFAULT_POCKET_TTS_HEALTH_PATH,
+            "speech_path": DEFAULT_POCKET_TTS_SPEECH_PATH,
+            "voice": DEFAULT_POCKET_TTS_VOICE,
+            "model": DEFAULT_POCKET_TTS_MODEL,
+            "response_format": "pcm",
+        }
+    return {
+        "provider": "kokoro",
+        "engine": "kokoro",
+        "base_url": DEFAULT_KOKORO_BASE_URL,
+        "health_path": DEFAULT_KOKORO_HEALTH_PATH,
+        "speech_path": DEFAULT_KOKORO_SPEECH_PATH,
+        "voice": DEFAULT_KOKORO_VOICE,
+        "model": DEFAULT_KOKORO_MODEL,
+        "response_format": "pcm",
+    }
 
 
 class CallerTurnDeliveryCommitError(RuntimeError):
@@ -117,11 +152,12 @@ def tts_cache_path(text: str, sample_rate: int) -> Path | None:
     cache_dir = os.environ.get("ACC_TTS_CACHE_DIR", "").strip()
     if not cache_dir:
         return None
+    tts_config = active_tts_config()
     cache_key = json.dumps(
         {
-            "engine": "kokoro",
-            "model": DEFAULT_KOKORO_MODEL,
-            "voice": DEFAULT_KOKORO_VOICE,
+            "engine": tts_config["engine"],
+            "model": tts_config["model"],
+            "voice": tts_config["voice"],
             "sampleRate": sample_rate,
             "format": "pcm_s16le",
             "text": text,
@@ -180,8 +216,9 @@ def pick_model_metadata(health: dict[str, Any], models_payload: dict[str, Any] |
 
 
 def check_readiness(acc_url: str = DEFAULT_ACC_URL, skip_acc: bool = False) -> BridgeReadiness:
+    tts_config = active_tts_config()
     rtc_probe = probe_json(join_url(DEFAULT_RTC_ASR_BASE_URL, DEFAULT_RTC_ASR_HEALTH_PATH), "rtc-asr")
-    kokoro_probe = probe_json(join_url(DEFAULT_KOKORO_BASE_URL, DEFAULT_KOKORO_HEALTH_PATH), "kokoro")
+    kokoro_probe = probe_json(join_url(tts_config["base_url"], tts_config["health_path"]), tts_config["engine"])
     acc_probe = ProbeResult(
         id="acc",
         ok=True,
@@ -215,6 +252,7 @@ def check_readiness(acc_url: str = DEFAULT_ACC_URL, skip_acc: bool = False) -> B
 
 
 def ready_payload(readiness: BridgeReadiness, host: str, port: int) -> dict[str, Any]:
+    tts_config = active_tts_config()
     return {
         "ok": readiness.ok,
         "status": readiness.status,
@@ -227,7 +265,7 @@ def ready_payload(readiness: BridgeReadiness, host: str, port: int) -> dict[str,
             "browserCapture": "browser_microphone_live_when_connected",
             "pipecat": "pipecat_webrtc_bridge",
             "rtcAsr": "rtc_asr_live_when_sidecar_ready",
-            "tts": "kokoro_live_when_sidecar_ready",
+            "tts": f"{tts_config['engine']}_live_when_sidecar_ready",
             "browserPlayback": "remote_audio_track",
         },
         "normalOperation": {
@@ -241,7 +279,7 @@ def ready_payload(readiness: BridgeReadiness, host: str, port: int) -> dict[str,
             "runtimeEngine": "pipecat-ai",
             "pipecatVersion": readiness.pipecat_version,
             "aiortcVersion": readiness.aiortc_version,
-            "mediaFlow": "WebRTC audio track -> InputAudioRawFrame -> rtc-asr transcript -> TextFrame -> Kokoro -> TTSAudioRawFrame -> WebRTC audio track",
+            "mediaFlow": f"WebRTC audio track -> InputAudioRawFrame -> rtc-asr transcript -> TextFrame -> {tts_config['engine']} -> TTSAudioRawFrame -> WebRTC audio track",
         },
         "stt": {
             "engine": "rtc-asr",
@@ -252,15 +290,17 @@ def ready_payload(readiness: BridgeReadiness, host: str, port: int) -> dict[str,
             "sidecar": readiness.rtc_asr.__dict__,
         },
         "tts": {
-            "engine": "kokoro",
-            "baseUrl": DEFAULT_KOKORO_BASE_URL,
-            "speechUrl": join_url(DEFAULT_KOKORO_BASE_URL, DEFAULT_KOKORO_SPEECH_PATH),
-            "voice": DEFAULT_KOKORO_VOICE,
-            "model": DEFAULT_KOKORO_MODEL,
+            "engine": tts_config["engine"],
+            "provider": tts_config["provider"],
+            "baseUrl": tts_config["base_url"],
+            "speechUrl": join_url(tts_config["base_url"], tts_config["speech_path"]),
+            "voice": tts_config["voice"],
+            "model": tts_config["model"],
+            "through": "pipecat",
             "sidecar": readiness.kokoro.__dict__,
         },
         "acc": readiness.acc.__dict__,
-        "nextAction": "start ACC, rtc-asr, and Kokoro locally, then open /operator/console and click Connect Voice",
+        "nextAction": f"start ACC, rtc-asr, and {tts_config['engine']} locally, then open /operator/console and click Connect Voice",
     }
 
 
@@ -1000,9 +1040,10 @@ class AccVoicePipelineSession:
         self.record_stage("stt.session_closed", connectionId=self.rtc_asr_connection_id, reason=reason, persistentSession=True)
 
     async def stream_synthesize(self, frame: TextFrame, *, chunk_bytes: int) -> Any:
-        """Yield raw Kokoro PCM chunks, reusing persistent deterministic audio."""
+        """Yield raw provider PCM chunks, reusing persistent deterministic audio."""
         started = time.perf_counter()
-        sample_rate = int(os.environ.get("KOKORO_OUTPUT_SAMPLE_RATE", "24000"))
+        tts_config = active_tts_config()
+        sample_rate = int(os.environ.get("ACC_TTS_OUTPUT_SAMPLE_RATE", os.environ.get("KOKORO_OUTPUT_SAMPLE_RATE", "24000")))
         # OpenAI responses are effectively unbounded and usually unique. Caching
         # them would grow both the on-disk PCM artifact set and the process-wide
         # lock map for the lifetime of the bridge. Keep persistence for the
@@ -1023,9 +1064,10 @@ class AccVoicePipelineSession:
                 first_audio_ms = round((time.perf_counter() - started) * 1000)
                 for offset in range(0, len(cached_audio), chunk_bytes):
                     yield cached_audio[offset : offset + chunk_bytes], sample_rate, {
-                        "engine": "kokoro",
-                        "voice": DEFAULT_KOKORO_VOICE,
-                        "model": DEFAULT_KOKORO_MODEL,
+                        "engine": tts_config["engine"],
+                        "provider": tts_config["provider"],
+                        "voice": tts_config["voice"],
+                        "model": tts_config["model"],
                         "format": "pcm_s16le",
                         "providerStream": False,
                         "cacheHit": True,
@@ -1066,17 +1108,18 @@ class AccVoicePipelineSession:
         cache_path: Path | None,
         started: float,
     ) -> Any:
+        tts_config = active_tts_config()
         payload = {
-            "model": DEFAULT_KOKORO_MODEL,
-            "voice": DEFAULT_KOKORO_VOICE,
+            "model": tts_config["model"],
+            "voice": tts_config["voice"],
             "input": frame.text,
-            "response_format": "pcm",
+            "response_format": tts_config["response_format"],
             "stream": True,
         }
         response = await asyncio.to_thread(
             open_http_stream,
             "POST",
-            join_url(DEFAULT_KOKORO_BASE_URL, DEFAULT_KOKORO_SPEECH_PATH),
+            join_url(tts_config["base_url"], tts_config["speech_path"]),
             payload,
             30,
         )
@@ -1102,9 +1145,10 @@ class AccVoicePipelineSession:
                 if first_audio_ms is None:
                     first_audio_ms = elapsed_ms
                 yield chunk, sample_rate, {
-                    "engine": "kokoro",
-                    "voice": DEFAULT_KOKORO_VOICE,
-                    "model": DEFAULT_KOKORO_MODEL,
+                    "engine": tts_config["engine"],
+                    "provider": tts_config["provider"],
+                    "voice": tts_config["voice"],
+                    "model": tts_config["model"],
                     "format": "pcm_s16le",
                     "providerStream": True,
                     "cacheHit": False,
@@ -1604,10 +1648,11 @@ class KokoroTtsProcessor(FrameProcessor):
         turn_output_generation = self.session.output_generation
         tts_task = asyncio.current_task()
         if tts_task is None:
-            raise RuntimeError("Kokoro TTS processor requires an active asyncio task")
+            raise RuntimeError("TTS processor requires an active asyncio task")
         self.session.register_response_task("tts", tts_task)
+        tts_config = active_tts_config()
         context_id = str(uuid4())
-        sample_rate = int(os.environ.get("KOKORO_OUTPUT_SAMPLE_RATE", "24000"))
+        sample_rate = int(os.environ.get("ACC_TTS_OUTPUT_SAMPLE_RATE", os.environ.get("KOKORO_OUTPUT_SAMPLE_RATE", "24000")))
         chunk_ms = max(int(os.environ.get("ACC_TTS_OUTPUT_CHUNK_MS", "20")), 10)
         chunk_bytes = max(sample_rate * SAMPLE_WIDTH_BYTES * chunk_ms // 1000, SAMPLE_WIDTH_BYTES)
         output_cancelled = False
@@ -1617,11 +1662,13 @@ class KokoroTtsProcessor(FrameProcessor):
         paced_chunk_count = 0
         evidence_every_n_chunks = max(int(os.environ.get("ACC_TTS_EVIDENCE_EVERY_N_CHUNKS", "50")), 1)
         tts_meta: dict[str, Any] = {
-            "engine": "kokoro",
-            "voice": DEFAULT_KOKORO_VOICE,
-            "model": DEFAULT_KOKORO_MODEL,
+            "engine": tts_config["engine"],
+            "provider": tts_config["provider"],
+            "voice": tts_config["voice"],
+            "model": tts_config["model"],
             "format": "pcm_s16le",
             "providerStream": True,
+            "through": "pipecat",
             "streamId": context_id,
             "chunkMs": chunk_ms,
             "chunkBytes": chunk_bytes,
@@ -1715,7 +1762,7 @@ class KokoroTtsProcessor(FrameProcessor):
                 )
                 return
             if not stream_started:
-                raise RuntimeError("Kokoro streaming response produced no PCM audio")
+                raise RuntimeError(f"{tts_config['engine']} streaming response produced no PCM audio")
             await self.push_frame(TTSStoppedFrame(context_id=context_id), FrameDirection.DOWNSTREAM)
             self.session.record_stage(
                 "tts.stream_completed",

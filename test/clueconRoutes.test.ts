@@ -10,7 +10,7 @@ async function requestPath(
   path: string,
   method = "GET",
   body?: unknown,
-): Promise<{ statusCode: number; body: string; contentType: string }> {
+): Promise<{ statusCode: number; body: string; contentType: string; headers: Record<string, string | string[] | undefined> }> {
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const address = server.address();
@@ -40,6 +40,7 @@ async function requestPath(
             statusCode: response.statusCode ?? 0,
             body,
             contentType: response.headers["content-type"] ?? "",
+            headers: response.headers,
           });
         });
       });
@@ -54,11 +55,11 @@ async function requestPath(
   }
 }
 
-async function get(path: string): Promise<{ statusCode: number; body: string; contentType: string }> {
+async function get(path: string): Promise<{ statusCode: number; body: string; contentType: string; headers: Record<string, string | string[] | undefined> }> {
   return requestPath(path);
 }
 
-async function post(path: string, body?: unknown): Promise<{ statusCode: number; body: string; contentType: string }> {
+async function post(path: string, body?: unknown): Promise<{ statusCode: number; body: string; contentType: string; headers: Record<string, string | string[] | undefined> }> {
   return requestPath(path, "POST", body);
 }
 
@@ -183,6 +184,42 @@ async function startKokoroServer(
   return { server, baseUrl: `http://127.0.0.1:${address.port}`, requests };
 }
 
+async function startPocketTtsServer(
+  chunks: Array<{ delayMs: number; value: string }> = [{ delayMs: 5, value: "audio" }],
+): Promise<{
+  server: Server;
+  baseUrl: string;
+  requests: Array<Record<string, unknown>>;
+}> {
+  const requests: Array<Record<string, unknown>> = [];
+  const server = createServer(async (request, response) => {
+    if (request.method === "GET" && request.url === "/health") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true, status: "ready", service: "pocket", voices: ["alloy"] }));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/v1/audio/speech") {
+      let rawBody = "";
+      for await (const chunk of request) rawBody += chunk.toString();
+      requests.push(JSON.parse(rawBody) as Record<string, unknown>);
+      response.writeHead(200, { "content-type": "audio/mpeg" });
+      response.write("ID3");
+      for (const chunk of chunks) {
+        await new Promise<void>((resolve) => setTimeout(resolve, chunk.delayMs));
+        response.write(chunk.value);
+      }
+      response.end();
+      return;
+    }
+    response.writeHead(404, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: false }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Expected fake Pocket TTS server to listen on TCP");
+  return { server, baseUrl: `http://127.0.0.1:${address.port}`, requests };
+}
+
 async function closeServer(server: Server): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {
@@ -230,7 +267,18 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
       benchmarkProfiles: Record<string, { firstPartial: string; finalization: string; rtf: string; detailUrl: string }>;
       noiseGuidance: { sourceUrl: string; findings: string[]; caveat: string };
     };
-    ttsPanel: { provider: string; model: string; voice: string; synthesizeRoute: string; candidates: Array<{ name: string; latency: string; sourceLabel: string; sourceUrl: string }>; comparisonCaveat: string; harness: { sourceUrl: string; latency: string } };
+    ttsPanel: {
+      provider: string;
+      engine: string;
+      model: string;
+      voice: string;
+      synthesizeRoute: string;
+      status: string;
+      candidates: Array<{ name: string; latency: string; sourceLabel: string; sourceUrl: string }>;
+      comparisonCaveat: string;
+      harness: { sourceUrl: string; latency: string };
+      pipecatStreaming: { enabled: boolean; provider: string; preservesAgentBrain: boolean; sttContract: string; outputContract: string; requiredEnv: string[] };
+    };
     brainBlocks: Array<{ file: string; affects: string[] }>;
     brainPanel: { previewRoute: string; applyRoute: string; resetRoute: string; safeMutation: string; activeFiles: string[] };
     securityPanel: { articleUrl: string; referenceRepoUrl: string; trustBoundary: string; controls: string[]; scenarios: Array<{ id: string; action: string; llmInput: string | null }> };
@@ -290,6 +338,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.ok(payload.readiness.some((item) => item.id === "rtc_asr" && item.repoUrl === "https://github.com/agonza1/rtc-asr" && /Optional for this scripted presentation/.test(item.caveat)));
   assert.ok(payload.liveProbes.some((probe) => probe.id === "rtc_asr" && probe.configured === false && probe.status === "fixture"));
   assert.ok(payload.liveProbes.some((probe) => probe.id === "kokoro" && probe.configured === false && probe.status === "fixture"));
+  assert.ok(payload.liveProbes.some((probe) => probe.id === "pocket_tts" && probe.configured === false && probe.status === "fixture"));
   assert.equal(payload.scenario.callerTurns.length, 4);
   assert.ok(payload.scenario.failureDrills.includes("tts_unavailable"));
   assert.equal(payload.asrPanel.contract, "PCM16 16 kHz mono in; transcript events out");
@@ -307,7 +356,12 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.match(payload.asrPanel.noiseGuidance.caveat, /complete turn/);
   assert.doesNotMatch(JSON.stringify(payload.asrPanel.noiseGuidance), /Twilio|Flux passed/);
   assert.equal(payload.ttsPanel.provider, "Kokoro-82M");
+  assert.equal(payload.ttsPanel.engine, "kokoro");
   assert.equal(payload.ttsPanel.synthesizeRoute, "/api/cluecon/tts/synthesize");
+  assert.equal(payload.ttsPanel.pipecatStreaming.enabled, false);
+  assert.equal(payload.ttsPanel.pipecatStreaming.preservesAgentBrain, true);
+  assert.match(payload.ttsPanel.pipecatStreaming.sttContract, /rtc-asr/);
+  assert.match(payload.ttsPanel.pipecatStreaming.outputContract, /TTSAudioRawFrame/);
   assert.deepEqual(payload.ttsPanel.candidates.map((candidate) => candidate.name), ["Kokoro 82M", "Pocket TTS", "VoXtream2", "Qwen3-TTS 0.6B"]);
   assert.deepEqual(payload.ttsPanel.candidates.map((candidate) => candidate.latency), ["~300 ms first chunk", "~200 ms first chunk", "63 ms first packet", "97 ms first packet"]);
   assert.ok(payload.ttsPanel.candidates.every((candidate) => candidate.sourceLabel && /^https:/.test(candidate.sourceUrl)));
@@ -643,6 +697,8 @@ test("ClueCon TTS route streams Kokoro audio using the configured local model an
   try {
     await withEnv(
       {
+        ACC_TTS_PROVIDER: "kokoro",
+        POCKET_TTS_BASE_URL: undefined,
         KOKORO_BASE_URL: kokoro.baseUrl,
         KOKORO_MODEL: "kokoro",
         KOKORO_VOICE: "af_heart",
@@ -670,6 +726,63 @@ test("ClueCon TTS route streams Kokoro audio using the configured local model an
   }
 });
 
+test("ClueCon TTS route streams Pocket audio through the Pipecat TTS contract", async () => {
+  const pocket = await startPocketTtsServer();
+  try {
+    await withEnv(
+      {
+        ACC_TTS_PROVIDER: "pocket",
+        POCKET_TTS_BASE_URL: pocket.baseUrl,
+        POCKET_TTS_MODEL: "pocket-tts",
+        POCKET_TTS_VOICE: "alloy",
+        KOKORO_BASE_URL: undefined,
+      },
+      async () => {
+        const payloadResponse = await get("/api/cluecon");
+        const payload = JSON.parse(payloadResponse.body) as {
+          demoGoal: { chain: string[] };
+          readiness: Array<{ id: string; status: string }>;
+          ttsPanel: {
+            provider: string;
+            engine: string;
+            status: string;
+            pipecatStreaming: { enabled: boolean; provider: string; preservesAgentBrain: boolean; outputContract: string };
+          };
+        };
+        assert.equal(payload.ttsPanel.provider, "Pocket TTS via Pipecat");
+        assert.equal(payload.ttsPanel.engine, "pocket");
+        assert.equal(payload.ttsPanel.status, "streaming_ready");
+        assert.equal(payload.ttsPanel.pipecatStreaming.enabled, true);
+        assert.equal(payload.ttsPanel.pipecatStreaming.provider, "pocket");
+        assert.equal(payload.ttsPanel.pipecatStreaming.preservesAgentBrain, true);
+        assert.match(payload.ttsPanel.pipecatStreaming.outputContract, /TTSAudioRawFrame/);
+        assert.deepEqual(payload.demoGoal.chain, ["caller", "freeswitch", "pipecat_pipeline", "rtc_asr", "acc_policy_tools", "pocket_tts", "evidence"]);
+        assert.ok(payload.readiness.some((item) => item.id === "pocket_tts" && item.status === "ready"));
+
+        const response = await post("/api/cluecon/tts/synthesize", {
+          text: "Pocket should stream through the same Pipecat playback contract.",
+          voice: "alloy",
+        });
+        assert.equal(response.statusCode, 200);
+        assert.match(response.contentType, /audio\/mpeg/);
+        assert.equal(response.body, "ID3audio");
+        assert.equal(response.headers["x-acc-tts-provider"], "pocket");
+        assert.equal(response.headers["x-acc-tts-through"], "pipecat");
+        assert.equal(response.headers["x-acc-tts-streaming"], "true");
+        assert.deepEqual(pocket.requests[0], {
+          model: "pocket-tts",
+          voice: "alloy",
+          input: "Pocket should stream through the same Pipecat playback contract.",
+          response_format: "mp3",
+          stream: true,
+        });
+      },
+    );
+  } finally {
+    await closeServer(pocket.server);
+  }
+});
+
 test("ClueCon TTS route refreshes its idle timeout while audio keeps arriving", async () => {
   const kokoro = await startKokoroServer([
     { delayMs: 60, value: "audio-1" },
@@ -678,6 +791,8 @@ test("ClueCon TTS route refreshes its idle timeout while audio keeps arriving", 
   try {
     await withEnv(
       {
+        ACC_TTS_PROVIDER: "kokoro",
+        POCKET_TTS_BASE_URL: undefined,
         KOKORO_BASE_URL: kokoro.baseUrl,
         KOKORO_TTS_IDLE_TIMEOUT_MS: "100",
       },
@@ -693,7 +808,7 @@ test("ClueCon TTS route refreshes its idle timeout while audio keeps arriving", 
 });
 
 test("ClueCon TTS route fails clearly when Kokoro is not configured", async () => {
-  await withEnv({ KOKORO_BASE_URL: undefined }, async () => {
+  await withEnv({ ACC_TTS_PROVIDER: "kokoro", POCKET_TTS_BASE_URL: undefined, KOKORO_BASE_URL: undefined }, async () => {
     const response = await post("/api/cluecon/tts/synthesize", { text: "Test the local voice." });
     assert.equal(response.statusCode, 503);
     assert.match(response.body, /kokoro_not_configured/);
