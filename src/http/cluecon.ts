@@ -1223,8 +1223,10 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .security-node small { color: #a5f3fc; font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
     .security-node strong, .security-pane > strong { color: #f8fafc; }
     .security-node strong { font-size: 12px; line-height: 1.3; }
-    .security-node--guard { border-color: rgba(52,211,153,.55); background: rgba(6,78,59,.25); }
-    .security-node--provider { border-color: rgba(168,85,247,.48); background: rgba(88,28,135,.17); }
+    .security-node--guard { border-color: rgba(52,211,153,.66); background: rgba(4,52,40,.78); }
+    .security-node--provider { border-color: rgba(192,132,252,.58); background: rgba(55,18,92,.72); }
+    .security-node--guard small, .security-node--provider small { font-size: 10px; }
+    .security-node--guard strong, .security-node--provider strong { font-size: 13px; }
     .security-gate { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 10px; }
     .security-pane { display: grid; align-content: start; gap: 8px; min-height: 190px; padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: rgba(2,6,18,.7); }
     .security-pane pre { margin: 0; color: #dbeafe; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
