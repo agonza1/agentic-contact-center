@@ -261,7 +261,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
       benchmarkProfiles: Record<string, { firstPartial: string; finalization: string; rtf: string; referenceWer: string; detailUrl: string }>;
       noiseGuidance: { sourceUrl: string; findings: string[]; caveat: string };
     };
-    ttsPanel: { provider: string; model: string; voice: string; defaultProvider: string; providers: Array<{ id: string; label: string; voice: string; status: string; setup: string }>; synthesizeRoute: string; candidates: Array<{ name: string; latency: string; sourceLabel: string; sourceUrl: string }>; comparisonCaveat: string; harness: { sourceUrl: string; latency: string } };
+    ttsPanel: { provider: string; model: string; voice: string; defaultProvider: string; providers: Array<{ id: string; label: string; voice: string; status: string; setup: string }>; synthesizeRoute: string; candidates: Array<{ name: string; latency: string; sourceLabel: string; sourceUrl: string }>; comparisonCaveat: string };
     brainBlocks: Array<{ file: string; affects: string[] }>;
     brainPanel: { previewRoute: string; applyRoute: string; resetRoute: string; safeMutation: string; activeFiles: string[] };
     securityPanel: { articleUrl: string; referenceRepoUrl: string; trustBoundary: string; controls: string[]; scenarios: Array<{ id: string; action: string; llmInput: string | null }> };
@@ -350,8 +350,6 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.deepEqual(payload.ttsPanel.candidates.map((candidate) => candidate.latency), ["~300 ms first chunk", "~200 ms first chunk", "63 ms first packet", "97 ms first packet"]);
   assert.ok(payload.ttsPanel.candidates.every((candidate) => candidate.sourceLabel && /^https:/.test(candidate.sourceUrl)));
   assert.match(payload.ttsPanel.comparisonCaveat, /not a universal ranking/);
-  assert.match(payload.ttsPanel.harness.sourceUrl, /2607\.17900/);
-  assert.match(payload.ttsPanel.harness.latency, /planner overhead, not total TTS TTFB/);
   assert.ok(payload.brainBlocks.some((block) => block.file === "policy.md" && block.affects.includes("policy hold")));
   assert.equal(payload.brainPanel.previewRoute, "/api/cluecon/brain/preview");
   assert.equal(payload.brainPanel.applyRoute, "/api/cluecon/brain/apply");
@@ -1009,7 +1007,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /addEventListener\(\"playing\"/);
   assert.match(narrative.body, /new Blob\(chunks/);
   assert.match(narrative.body, /buffered \" \+ contentType \+ \" before playback/);
-  assert.match(narrative.body, /2607\.17900/);
+  assert.doesNotMatch(narrative.body, /Expression as a governed layer|Harness TTS|2607\.17900/);
   assert.match(narrative.body, /function runTtsLab\(\)/);
   assert.match(narrative.body, /Minimize sensitive data crossing the LLM boundary/);
   assert.match(narrative.body, /id="security"/);
