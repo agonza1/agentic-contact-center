@@ -1197,6 +1197,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .present .topbar { position: fixed; width: 100%; }
     .present main { padding-top: 62px; }
     .present .slide, .present .hero { min-height: calc(100vh - 62px); }
+    .present #asr, .present #demo, .present #tts { align-content: start; padding-top: clamp(16px, 2.4vh, 24px); }
     .present #demo { height: calc(100vh - 62px); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
     .present .section-band:not(.active), .present .hero:not(.active) { display: none; }
 
