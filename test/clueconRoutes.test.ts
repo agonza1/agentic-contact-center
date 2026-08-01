@@ -227,7 +227,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
       streamStates: string[];
       fixtureEvents: Array<{ state: string }>;
       benchmarks: Array<{ label: string }>;
-      benchmarkProfiles: Record<string, { firstPartial: string; finalization: string; rtf: string; detailUrl: string }>;
+      benchmarkProfiles: Record<string, { firstPartial: string; finalization: string; rtf: string; referenceWer: string; detailUrl: string }>;
       noiseGuidance: { sourceUrl: string; findings: string[]; caveat: string };
     };
     ttsPanel: { provider: string; model: string; voice: string; synthesizeRoute: string; candidates: Array<{ name: string; latency: string; sourceLabel: string; sourceUrl: string }>; comparisonCaveat: string; harness: { sourceUrl: string; latency: string } };
@@ -299,9 +299,12 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.ok(payload.asrPanel.streamStates.includes("partial"));
   assert.ok(payload.asrPanel.fixtureEvents.some((event) => event.state === "error"));
   assert.ok(payload.asrPanel.benchmarks.some((benchmark) => benchmark.label === "first partial"));
+  assert.ok(payload.asrPanel.benchmarks.some((benchmark) => benchmark.label === "Reference WER"));
   assert.equal(payload.asrPanel.benchmarkProfiles["parakeet-mlx|mlx-community/parakeet-tdt_ctc-110m"].firstPartial, "250.7 ms");
   assert.equal(payload.asrPanel.benchmarkProfiles["parakeet-mlx|mlx-community/parakeet-tdt_ctc-110m"].finalization, "251.8 ms");
+  assert.equal(payload.asrPanel.benchmarkProfiles["parakeet-mlx|mlx-community/parakeet-tdt_ctc-110m"].referenceWer, "2.4% / 5.2%");
   assert.equal(payload.asrPanel.benchmarkProfiles["faster-whisper|base.en"].rtf, "0.066x");
+  assert.equal(payload.asrPanel.benchmarkProfiles["faster-whisper|base.en"].referenceWer, "4.25% / 10.35%");
   assert.equal(payload.asrPanel.noiseGuidance.sourceUrl, "https://agonza1.github.io/rtc-asr/docs/");
   assert.ok(payload.asrPanel.noiseGuidance.findings.some((finding) => /false interruptions/.test(finding)));
   assert.match(payload.asrPanel.noiseGuidance.caveat, /complete turn/);
@@ -363,6 +366,13 @@ test("GET /cluecon/system-unavailable.mp3 serves the prerecorded failover prompt
   assert.equal(response.statusCode, 200);
   assert.match(response.contentType, /audio\/mpeg/);
   assert.ok(response.body.length > 1_000);
+});
+
+test("GET /cluecon/alberto-echo-show-prototype.jpg serves the personal-story photograph", async () => {
+  const response = await get("/cluecon/alberto-echo-show-prototype.jpg");
+  assert.equal(response.statusCode, 200);
+  assert.match(response.contentType, /image\/jpeg/);
+  assert.ok(response.body.length > 100_000);
 });
 
 test("POST /api/cluecon/brain preview, apply, and reset keep edits session-scoped", async () => {
@@ -775,12 +785,36 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /media-wave/);
   assert.match(narrative.body, /media-tokens/);
   assert.equal((narrative.body.match(/data-slide="\d+"/g) ?? []).length, 14);
+  assert.match(narrative.body, /An early Echo Show prototype/);
+  assert.match(narrative.body, /My first voice AI/);
+  assert.match(narrative.body, /could do anything—/);
+  assert.match(narrative.body, /as long as you said/);
+  assert.match(narrative.body, /exactly what I expected\./);
+  assert.match(narrative.body, /I’m sorry\. I didn’t understand\./);
+  assert.match(narrative.body, /alberto-echo-show-prototype\.jpg/);
+  assert.match(narrative.body, /voiceOriginDrift/);
+  assert.match(narrative.body, /prefers-reduced-motion: reduce/);
+  assert.doesNotMatch(narrative.body, /We spent decades teaching machines to carry a conversation/);
+  assert.doesNotMatch(narrative.body, /Switchboard/);
   assert.match(narrative.body, /Deterministic telephony meets probabilistic inference/);
+  assert.match(narrative.body, /Telephony \/ WebRTC/);
   assert.match(narrative.body, /INVITE → 18x → 200 → ACK … BYE → 200/);
   assert.match(narrative.body, /Sequence-numbered RTP on a media deadline/);
-  assert.match(narrative.body, /conceal loss · reroute · end/);
-  assert.match(narrative.body, /Illustrative local latency targets/);
-  assert.match(narrative.body, /One runs on clocks\. One runs on confidence/);
+  assert.match(narrative.body, /0 ms/);
+  assert.match(narrative.body, /seq 8041/);
+  assert.match(narrative.body, /80 ms/);
+  assert.match(narrative.body, /seq 8045/);
+  assert.match(narrative.body, /probability-curve--asr/);
+  assert.match(narrative.body, /probability-curve--llm/);
+  assert.doesNotMatch(narrative.body, /Illustrative distributions—not measured results/);
+  assert.match(narrative.body, /Never block media/);
+  assert.match(narrative.body, /Run call control independently/);
+  assert.match(narrative.body, /contract boundary/);
+  assert.match(narrative.body, /Never hide uncertainty/);
+  assert.match(narrative.body, /Expose partial, timeout, cancel, and fallback/);
+  assert.doesNotMatch(narrative.body, /id="two-machines"/);
+  assert.doesNotMatch(narrative.body, /One runs on clocks\. One runs on confidence/);
+  assert.doesNotMatch(narrative.body, /Illustrative local latency targets/);
   assert.match(narrative.body, /id="vad-interruption"/);
   assert.match(narrative.body, /id="vad-mic"/);
   assert.match(narrative.body, /id="vad-threshold"/);
@@ -793,14 +827,16 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Agent audio cannot start while the 2 s end-of-turn gate/);
   assert.match(narrative.body, /End-of-turn timing diagram/);
   assert.match(narrative.body, /ACC policy \+ turn wait: 2 s/);
-  assert.match(narrative.body, /Policy runs early/);
+  assert.doesNotMatch(narrative.body, /Start is urgent/);
+  assert.doesNotMatch(narrative.body, /Policy runs early/);
+  assert.doesNotMatch(narrative.body, /End is guarded/);
   assert.match(narrative.body, /MinWordsUserTurnStartStrategy/);
   assert.match(narrative.body, /https:\/\/docs\.pipecat\.ai\/api-reference\/server\/utilities\/turn-management\/user-turn-strategies#minwordsuserturnstartstrategy/);
   assert.match(narrative.body, /https:\/\/github\.com\/pipecat-ai\/smart-turn/);
   assert.match(narrative.body, /https:\/\/github\.com\/TEN-framework\/ten-vad/);
   assert.match(narrative.body, /https:\/\/github\.com\/snakers4\/silero-vad/);
   assert.match(narrative.body, /https:\/\/github\.com\/livekit\/agents\/tree\/main\/livekit-plugins\/livekit-plugins-turn-detector/);
-  assert.match(narrative.body, /Audio output waits for 2 s of silence/);
+  assert.doesNotMatch(narrative.body, /Audio output waits for 2 s of silence/);
   assert.match(narrative.body, /InterruptionFrame clears queue/);
   assert.match(narrative.body, /function vadLoop\(\)/);
   assert.match(narrative.body, /navigator\.mediaDevices\.getUserMedia/);
@@ -811,16 +847,25 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Starting microphone…/);
   assert.match(narrative.body, /MIC_START_CANCELLED/);
   assert.match(narrative.body, /slideCount: slideOrder\.length/);
-  assert.match(narrative.body, /\["flow", "realtime-problem", "two-machines", "map", "integration", "vad-interruption", "asr", "security", "agent", "demo", "tts", "ecosystem", "proof", "finale"\]/);
+  assert.match(narrative.body, /\["flow", "voice-evolution", "realtime-problem", "map", "integration", "vad-interruption", "asr", "security", "agent", "demo", "tts", "ecosystem", "proof", "finale"\]/);
+  assert.match(narrative.body, /orient="auto-start-reverse"/);
+  assert.match(narrative.body, /markerUnits="userSpaceOnUse"/);
+  assert.equal((narrative.body.match(/class="line line--bidirectional"/g) ?? []).length, 6);
+  assert.equal((narrative.body.match(/class="line line--forward"/g) ?? []).length, 3);
+  assert.match(narrative.body, /\.line--bidirectional \{ marker-start: url\(#arrow\); marker-end: url\(#arrow\); \}/);
   assert.match(narrative.body, /Two realtime ingress paths\. One streaming Pipecat runtime/);
   assert.match(narrative.body, /SmallWebRTC \/ aiortc/);
-  assert.match(narrative.body, /FreeSWITCH → Pipecat/);
-  assert.match(narrative.body, /SIP\/RTP \u2192 FreeSWITCH/);
+  assert.match(narrative.body, /FreeSWITCH ↔ Pipecat/);
+  assert.match(narrative.body, /SIP\/RTP \u2194 FreeSWITCH/);
+  assert.equal((narrative.body.match(/class="transport-arrow" aria-label="bidirectional">↔<\/div>/g) ?? []).length, 2);
   assert.match(narrative.body, /persistent WebSocket \u00b7 16 kHz PCM16/);
   assert.match(narrative.body, /20 ms \/ 640 B \u00b7 interim events/);
   assert.match(narrative.body, /Pipecat Flows \/ FlowManager \u2197/);
   assert.match(narrative.body, /ACC reference application/);
   assert.match(narrative.body, /Commit after delivery/);
+  assert.doesNotMatch(narrative.body, /rtc-asr keeps one socket session open and emits evolving partials/);
+  assert.doesNotMatch(narrative.body, /FlowManager validates node transitions; ACC demonstrates bounded state/);
+  assert.doesNotMatch(narrative.body, /Forward the first playable TTS chunk immediately/);
   assert.doesNotMatch(narrative.body, /Run scripted demo/);
   assert.match(narrative.body, /Run cancellation scenario/);
   assert.match(narrative.body, /ACC emits auditable JSON and FreeSWITCH executes playback, transfer/);
@@ -849,6 +894,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /676\.5 ms/);
   assert.match(narrative.body, /0\.021x/);
   assert.match(narrative.body, /0\.066x/);
+  assert.match(narrative.body, /Reference WER/);
+  assert.match(narrative.body, /2\.4% \/ 5\.2%/);
+  assert.match(narrative.body, /LibriSpeech clean \/ other/);
+  assert.match(narrative.body, /huggingface\.co\/nvidia\/parakeet-tdt_ctc-110m/);
   assert.match(narrative.body, /https:\/\/github\.com\/agonza1\/rtc-asr/);
   assert.match(narrative.body, /renderAsrPanel/);
   assert.match(narrative.body, /Noise changes more than WER/);
@@ -883,7 +932,12 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /realtime-voice-ai-guardrails/);
   assert.match(narrative.body, /slug-voice-ai-security-webrtc-livekit-guardrails/);
   assert.match(narrative.body, /renderSecurityPanel/);
-  assert.match(narrative.body, /Deterministic flow\. Bounded agent\. Policy-gated actions/);
+  assert.match(narrative.body, /State is the control plane/);
+  assert.match(narrative.body, /The model proposes\. Structured state authorizes\. Tools execute\. Events reconcile/);
+  assert.match(narrative.body, /Dynamic call state/);
+  assert.match(narrative.body, /Structured call state/);
+  assert.match(narrative.body, /Tools \+ telephony APIs/);
+  assert.match(narrative.body, /The LLM is never the system of record/);
   assert.match(narrative.body, /ToolHive \+ Cedar/);
   assert.match(narrative.body, /planned · issue #322/);
   assert.match(narrative.body, /operator\.request_approval/);
@@ -978,6 +1032,7 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /prerecorded system-unavailable prompt/i);
   assert.match(html, /human-support/);
   assert.match(html, /href="\.\/present\/"/);
+  assert.match(html, /src="\.\/alberto-echo-show-prototype\.jpg"/);
   assert.doesNotMatch(html, /href="\/cluecon"/);
   for (const [, script] of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
     assert.doesNotThrow(() => new Function(script));
@@ -986,8 +1041,10 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   const presentHtml = readFileSync(presentPath, "utf8");
   assert.match(presentHtml, /href="\.\/"/);
   assert.match(presentHtml, /href="\.\.\/"/);
+  assert.match(presentHtml, /src="\.\.\/alberto-echo-show-prototype\.jpg"/);
   assert.doesNotMatch(presentHtml, /href="\.\/present\/"/);
   assert.equal(existsSync("site/cluecon-pages/system-unavailable.mp3"), true);
+  assert.equal(existsSync("site/cluecon-pages/alberto-echo-show-prototype.jpg"), true);
 
   const fallbackHtml = readFileSync(fallbackPath, "utf8");
   assert.match(fallbackHtml, /Static GitHub Pages snapshot/);

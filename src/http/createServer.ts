@@ -69,6 +69,7 @@ const defaultKokoroTtsIdleTimeoutMs = 30_000;
 const maxVoiceSessionPlayAudioBytes = 2 * 1024 * 1024;
 const supportedVoiceSessionPlayMimeTypes = new Set(["audio/l16", "audio/pcm", "audio/wav", "audio/wave", "audio/x-wav"]);
 const clueConSystemUnavailableAudio = readFileSync(resolve(process.cwd(), "assets/cluecon/system-unavailable.mp3"));
+const clueConVoiceOriginPhoto = readFileSync(resolve(process.cwd(), "assets/cluecon/alberto-echo-show-prototype.jpg"));
 
 interface BrowserWebrtcBridgeRuntimeProbe {
   ok: boolean;
@@ -5734,12 +5735,24 @@ async function routeRequest(
     return;
   }
 
+  if (request.method === "GET" && pathname === "/cluecon/alberto-echo-show-prototype.jpg") {
+    response.writeHead(200, {
+      "content-type": "image/jpeg",
+      "content-length": clueConVoiceOriginPhoto.byteLength,
+      "cache-control": "public, max-age=86400",
+    });
+    response.end(clueConVoiceOriginPhoto);
+    return;
+  }
+
   if (request.method === "GET" && pathname === "/cluecon") {
+    response.setHeader("cache-control", "no-store, max-age=0");
     writeHtml(response, 200, buildClueConHtml(config, "scroll", activeClueConBrainBlocks));
     return;
   }
 
   if (request.method === "GET" && pathname === "/cluecon/present") {
+    response.setHeader("cache-control", "no-store, max-age=0");
     writeHtml(response, 200, buildClueConHtml(config, "present", activeClueConBrainBlocks));
     return;
   }

@@ -45,7 +45,8 @@ function pagesHtml(mode) {
     .replaceAll('href="/cluecon"', 'href="' + narrativeHref + '"')
     .replaceAll('href="/operator/console"', 'href="https://github.com/agonza1/agentic-contact-center#readme"')
     .replaceAll('href="/assert"', 'href="https://github.com/agonza1/agentic-contact-center#readme"')
-    .replaceAll('"/cluecon/system-unavailable.mp3"', '"' + (mode === "present" ? "../system-unavailable.mp3" : "./system-unavailable.mp3") + '"');
+    .replaceAll('"/cluecon/system-unavailable.mp3"', '"' + (mode === "present" ? "../system-unavailable.mp3" : "./system-unavailable.mp3") + '"')
+    .replaceAll('"/cluecon/alberto-echo-show-prototype.jpg"', '"' + (mode === "present" ? "../alberto-echo-show-prototype.jpg" : "./alberto-echo-show-prototype.jpg") + '"');
 }
 
 await rm(outDir, { recursive: true, force: true });
@@ -53,6 +54,7 @@ await mkdir(path.join(outDir, "present"), { recursive: true });
 await writeFile(path.join(outDir, "index.html"), pagesHtml("scroll"));
 await writeFile(path.join(outDir, "present", "index.html"), pagesHtml("present"));
 await copyFile(path.join(repoRoot, "assets", "cluecon", "system-unavailable.mp3"), path.join(outDir, "system-unavailable.mp3"));
+await copyFile(path.join(repoRoot, "assets", "cluecon", "alberto-echo-show-prototype.jpg"), path.join(outDir, "alberto-echo-show-prototype.jpg"));
 await copyFile(path.join(outDir, "index.html"), path.join(outDir, "404.html"));
 await writeFile(path.join(outDir, ".nojekyll"), "");
 
