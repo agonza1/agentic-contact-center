@@ -351,11 +351,12 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.match(payload.contactPanel.logoUrl, /logo-main-light\.svg/);
 });
 
-test("GET /cluecon renders each transcript turn as a separate block", async () => {
+test("GET /cluecon keeps the detailed transcript behind expandable evidence", async () => {
   const response = await get("/cluecon");
   assert.equal(response.statusCode, 200);
   assert.match(response.contentType, /text\/html/);
-  assert.match(response.body, /#demo \.screen\.has-transcript \{[^}]*display: grid;/);
+  assert.match(response.body, /class="demo-evidence" id="demo-evidence"/);
+  assert.match(response.body, /id="demo-transcript-detail"/);
   assert.match(response.body, /class="transcript-turn transcript-turn--/);
   assert.match(response.body, /renderDemoTranscript\(payload\.call\.transcript\)/);
   assert.match(response.body, /const VAD_END_OF_TURN_MS = Number\(data\.turnTiming\?\.endOfTurnSilenceMs\) \|\| 2000;/);
@@ -872,12 +873,16 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.doesNotMatch(narrative.body, /Forward the first playable TTS chunk immediately/);
   assert.doesNotMatch(narrative.body, /Run scripted demo/);
   assert.match(narrative.body, /Run cancellation scenario/);
-  assert.match(narrative.body, /ACC emits auditable JSON and FreeSWITCH executes playback, transfer/);
-  assert.match(narrative.body, /Control plane → media plane/);
+  assert.match(narrative.body, /Try another control/);
+  assert.match(narrative.body, /One boundary\. One human decision\. One safe result\./);
+  assert.match(narrative.body, /Policy boundary/);
+  assert.match(narrative.body, /Transcript \+ event evidence/);
+  assert.match(narrative.body, /id="demo-drill-select"/);
+  assert.doesNotMatch(narrative.body, /id="drill-tool"/);
   assert.match(narrative.body, /renderOperatorDrill\(payload\)/);
   assert.match(narrative.body, /integration\.controlSequence \|\| integration\.controlMessage/);
   assert.match(narrative.body, /system-unavailable\.mp3/);
-  assert.match(narrative.body, /runMediaFailureDrill\("rtc_asr_unavailable"\)/);
+  assert.match(narrative.body, /kind === "rtc_asr_unavailable"/);
   assert.doesNotMatch(narrative.body, /id="run-demo-top"/);
   assert.match(narrative.body, /Run ACC proof/);
   assert.match(narrative.body, /window\.__CLUECON__/);
@@ -964,10 +969,12 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 14'));
   assert.match(narrative.body, /aria-label="Previous slide"/);
   assert.ok(narrative.body.includes('status.textContent = String(state.slide + 1) + " / " + String(state.slideCount)'));
-  assert.match(narrative.body, /@media \(max-width: 1100px\) \{ #demo \.two/);
+  assert.match(narrative.body, /@media \(max-width: 1100px\) \{ \.demo-control-step/);
+  assert.match(narrative.body, /@media \(max-width: 920px\) \{ \.demo-commandbar/);
   assert.match(narrative.body, /\.present #demo \{ height: calc\(100vh - 62px\)/);
   assert.match(narrative.body, /\.present \.topbar \{ position: static/);
-  assert.match(narrative.body, /#demo \.actions \{ display: grid/);
+  assert.match(narrative.body, /\.demo-commandbar \{ display: grid/);
+  assert.match(narrative.body, /\.demo-drill-picker \{ display: grid/);
   assert.match(narrative.body, /#demo \.event strong, #demo \.event \.muted \{ overflow-wrap: anywhere/);
   assert.match(narrative.body, /class="transcript-turn transcript-turn--/);
   assert.match(narrative.body, /renderDemoTranscript\(payload\.call\.transcript\)/);
