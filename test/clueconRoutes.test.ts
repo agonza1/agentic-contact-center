@@ -785,15 +785,16 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /media-wave/);
   assert.match(narrative.body, /media-tokens/);
   assert.equal((narrative.body.match(/data-slide="\d+"/g) ?? []).length, 14);
-  assert.match(narrative.body, /An early Echo Show prototype/);
+  assert.match(narrative.body, /January 2018 · My first voice prototype/);
   assert.match(narrative.body, /My first voice AI/);
   assert.match(narrative.body, /could do anything—/);
   assert.match(narrative.body, /as long as you said/);
   assert.match(narrative.body, /exactly what I expected\./);
   assert.match(narrative.body, /I’m sorry\. I didn’t understand\./);
   assert.match(narrative.body, /Five years later, GPT-4 arrived\./);
-  assert.match(narrative.body, /So we put it on a WebRTC call\./);
+  assert.match(narrative.body, /So we put <em>GPT-4<\/em> on a <em>WebRTC call\.<\/em>/);
   assert.match(narrative.body, /voice-origin__turn/);
+  assert.match(narrative.body, /voice-story-active/);
   assert.match(narrative.body, /alberto-echo-show-prototype\.jpg/);
   assert.match(narrative.body, /voiceOriginDrift/);
   assert.match(narrative.body, /prefers-reduced-motion: reduce/);
