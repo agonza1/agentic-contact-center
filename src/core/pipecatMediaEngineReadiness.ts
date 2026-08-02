@@ -15,7 +15,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       { id: "freeswitch_verto", defaultUrl: "ws://127.0.0.1:8081", evidence: "FreeSWITCH Verto accepts the registered acc-pipecat WebRTC agent leg." },
       { id: "pipecat_verto_bridge", defaultUrl: "http://127.0.0.1:8770/health", evidence: "Pipecat Verto sidecar is registered and ready to answer the FreeSWITCH WebRTC dialog." },
       { id: "rtc_asr_ws", env: "RTC_ASR_WS_URL", evidence: "The current call audio is transcribed into fresh rtc_asr_live final transcript evidence." },
-      { id: "kokoro_http", env: "KOKORO_BASE_URL", evidence: "Kokoro returns TTS audio that is packetized and played back to the caller." },
+      { id: "tts_http", env: "POCKET_TTS_BASE_URL or KOKORO_BASE_URL", evidence: "The configured streaming TTS provider returns audio that is packetized and played back to the caller." },
     ],
     rejectedShortcuts: [
       "generated_media_without_live_capture",
@@ -28,7 +28,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
   const nextUnblockedSlice = {
     id: "flow_manager_runtime_qa",
     title: "Validate the Pipecat FlowManager runtime cutover",
-    adapter: "pipecat_flows",
+    adapter: "pipecat.flows",
     entryPoint: "scripts/acc_pipecat_flow_manager.py",
     targetContract: "FlowManager nodes own cancellation-rescue state transitions while ACC TypeScript retains product state, operator controls, proof artifacts, and queue state.",
     verification: "Run the real-package FlowManager runtime check plus deterministic adapter, delivery-ack, barge-in, and route regressions before accepting #222.",
@@ -70,13 +70,13 @@ export function buildPipecatMediaEngineReadinessPayload() {
     issueUrl: issue214Url,
     status: "shared_media_and_flowmanager_runtime_complete",
     reviewReady: true,
-    pipecat14Alignment: {
+    pipecat17Alignment: {
       issue: issue222,
       issueUrl: issue222Url,
       status: "small_webrtc_pipeline_primary",
-      packageRequirement: "pipecat-ai[webrtc]==1.4.0 + pipecat-ai-flows==1.4.0",
+      packageRequirement: "pipecat-ai[webrtc]==1.7.0",
       primaryTransportTarget: "SmallWebRTCTransport",
-      targetPipeline: ["transport.input", "rtc-asr STT", "Pipecat FlowManager", "ACC product-state adapter", "Kokoro TTS", "transport.output"],
+      targetPipeline: ["transport.input", "rtc-asr STT", "Pipecat FlowManager", "ACC product-state adapter", "Pocket/Kokoro streaming TTS", "transport.output"],
       browserPrimaryBridge: {
         current: "scripts/pipecat-browser-webrtc-bridge.py",
         target: "Pipecat SmallWebRTCTransport offer route backed by a Pipeline",
@@ -90,10 +90,10 @@ export function buildPipecatMediaEngineReadinessPayload() {
         liveMediaProofComplete: true,
         preferredRoute: "Linphone SIP 1000 -> FreeSWITCH 8600 -> registered Verto user acc-pipecat -> Pipecat Verto/WebRTC sidecar",
         legacyFallback: "scripts/freeswitch-acc-bridge.mjs remains a proof/debug bridge and must not be used as the acceptance route for #222.",
-        note: "SIP is targeted at a FreeSWITCH-owned WebRTC/Verto leg and has strict local proof for accepted SIP/RTP, current-call rtc-asr final transcript evidence, and caller-audible Kokoro/Pipecat playback.",
+        note: "SIP is targeted at a FreeSWITCH-owned WebRTC/Verto leg and has strict local proof for accepted SIP/RTP, current-call rtc-asr final transcript evidence, and caller-audible Pipecat TTS playback.",
         pipelineUnificationDelta: [
           "Answer incoming Verto dialogs with a Pipecat media transport that calls build_acc_voice_pipeline().",
-          "Reuse the same RtcAsrTurnProcessor, AccCallerTurnProcessor, and KokoroTtsProcessor stage-event contract as the browser SmallWebRTC path.",
+          "Reuse the same RtcAsrTurnProcessor, AccCallerTurnProcessor, and provider-aware TTS stage-event contract as the browser SmallWebRTC path.",
           "Keep SIP/RTP and WebRTC DTLS-SRTP/Opus ownership inside FreeSWITCH; Pipecat should only see decoded PCM frames.",
         ],
       },
@@ -101,7 +101,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
         owner: "Pipecat Flows/FlowManager runtime transition adapter",
         flowManagerRequiredNow: true,
         runtimeImplemented: true,
-        rationale: "AccCallerTurnProcessor now delegates cancellation-rescue transition validation and delivery-ack node activation to the pinned Pipecat 1.4 FlowManager adapter; ACC retains product state, operator controls, response content, proof artifacts, queue state, and snapshot commits.",
+        rationale: "AccCallerTurnProcessor delegates cancellation-rescue transition validation and delivery-ack node activation to the compatible Pipecat FlowManager adapter; ACC retains product state, operator controls, response content, proof artifacts, queue state, and snapshot commits.",
       },
       deprecatedBridges: [
         {
@@ -114,7 +114,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
     },
     sharedEngineContract: {
       engine: "pipecat-ai",
-      callTurnEngine: "rtc-asr -> Pipecat FlowManager -> ACC product-state adapter -> Kokoro",
+      callTurnEngine: "rtc-asr -> Pipecat FlowManager -> ACC product-state adapter -> Pocket/Kokoro streaming TTS",
       normalizedAudioFrame: {
         format: "pcm_s16le",
         browserInputSampleRateHz: 16000,
@@ -129,7 +129,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
           transport: "browser WebRTC bridge; target is Pipecat SmallWebRTCTransport",
           implementedNow: true,
           currentEntryPoint: "scripts/pipecat-browser-webrtc-bridge.py",
-          path: "browser mic -> Pipecat InputAudioRawFrame -> rtc-asr -> ACC caller-turn -> Kokoro -> browser playback",
+          path: "browser mic -> Pipecat InputAudioRawFrame -> rtc-asr -> ACC caller-turn -> Pocket/Kokoro TTS -> browser playback",
         },
         {
           id: "sip_freeswitch_verto",
@@ -140,7 +140,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
           liveMediaProofComplete: true,
           currentEntryPoint: "scripts/pipecat-verto-agent-bridge.py",
           freeswitchDialplan: "freeswitch/conf/dialplan/default/acc_local_sip.xml bridges 8600 to ${verto_contact(acc-pipecat@$${domain})}",
-          path: "SIP/FreeSWITCH RTP -> Verto/WebRTC agent leg -> Pipecat PCM frames -> rtc-asr -> ACC caller-turn -> Kokoro -> same Verto/WebRTC leg -> SIP caller",
+          path: "SIP/FreeSWITCH RTP -> Verto/WebRTC agent leg -> Pipecat PCM frames -> rtc-asr -> ACC caller-turn -> Pocket/Kokoro TTS -> same Verto/WebRTC leg -> SIP caller",
           pipelineUnificationDelta: "Verto WebRTC dialog answers are routed through build_acc_voice_pipeline(); strict local acceptance now has same-call rtc-asr final transcript evidence plus caller-side return audio proof.",
           blocker: null,
         },
@@ -152,7 +152,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
           processorContractAligned: true,
           liveMediaProofComplete: false,
           currentEntryPoint: "scripts/freeswitch-acc-bridge.mjs",
-          path: "SIP/FreeSWITCH RTP -> Node proof bridge -> rtc-asr -> ACC caller-turn -> Kokoro -> uuid_broadcast/RTP playback",
+          path: "SIP/FreeSWITCH RTP -> Node proof bridge -> rtc-asr -> ACC caller-turn -> Pocket/Kokoro TTS -> uuid_broadcast/RTP playback",
           blocker: "This lane is retained for proof diagnostics only and is no longer the preferred #222 SIP acceptance route.",
         },
         {
@@ -162,8 +162,8 @@ export function buildPipecatMediaEngineReadinessPayload() {
           implementedNow: true,
           currentEntryPoint: "scripts/pipecat-fixture-pipeline-smoke.py --input-wav <mono-pcm16.wav>",
           contractEntryPoint: "scripts/pipecat-fixture-pipeline-smoke.py --contract-only",
-          path: "fixture PCM/WAV -> Pipecat InputAudioRawFrame -> rtc-asr -> ACC caller-turn -> Kokoro -> captured OutputAudioRawFrame proof",
-          blocker: "Live fixture execution now feeds build_acc_voice_pipeline() through in-process Pipecat source/sink processors; full success still requires ACC, rtc-asr, and Kokoro sidecars to be running.",
+          path: "fixture PCM/WAV -> Pipecat InputAudioRawFrame -> rtc-asr -> ACC caller-turn -> Pocket/Kokoro TTS -> captured OutputAudioRawFrame proof",
+          blocker: "Live fixture execution now feeds build_acc_voice_pipeline() through in-process Pipecat source/sink processors; full success still requires ACC, rtc-asr, and configured TTS sidecars to be running.",
         },
         {
           id: "signalwire_sip_trunk",
@@ -171,18 +171,18 @@ export function buildPipecatMediaEngineReadinessPayload() {
           transport: "SignalWire SIP trunk -> FreeSWITCH RTP",
           implementedNow: false,
           currentEntryPoint: "/api/signalwire/events and scripts/freeswitch-acc-bridge.mjs",
-          path: "SignalWire SIP trunk -> FreeSWITCH/Pipecat -> rtc-asr -> ACC caller-turn -> Kokoro -> SignalWire caller",
+          path: "SignalWire SIP trunk -> FreeSWITCH/Pipecat -> rtc-asr -> ACC caller-turn -> Pocket/Kokoro TTS -> SignalWire caller",
           blocker: "SignalWire live path depends on the same FreeSWITCH/Pipecat bridge plus trunk routing proof; past-call import remains out of scope for the realtime trunk path.",
         },
       ],
     },
     implementedNow: [
-      "Browser voice turns use scripts/pipecat-browser-webrtc-bridge.py with Pipecat SmallWebRTCTransport and a Pipeline of rtc-asr, ACC caller-turn, Kokoro, and transport output processors.",
+      "Browser voice turns use scripts/pipecat-browser-webrtc-bridge.py with Pipecat SmallWebRTCTransport and a Pipeline of rtc-asr, ACC caller-turn, configured streaming TTS, and transport output processors.",
       "Local SIP extension 8600 now targets a registered FreeSWITCH Verto/WebRTC user (acc-pipecat) and a Pipecat Verto sidecar health surface; the older ESL/RTP bridge remains proof/debug support, not the preferred acceptance path.",
       "Fixture/tester audio can now be injected through an in-process Pipecat source/sink around build_acc_voice_pipeline(), with sidecar-free contract mode retained for CI.",
       "SignalWire readiness is explicit through local webhook labels and the future SIP trunk-to-FreeSWITCH route.",
       "Operator console payloads label local_sip, signalwire_live, live_capture, generated_media, rtc_asr_live, and rtc_asr_blocked modes.",
-      "The shared caller-turn processor invokes pipecat_flows.FlowManager through scripts/acc_pipecat_flow_manager.py, guards a pending node before agent text reaches Kokoro, and activates that node on first-audio delivery acknowledgement; missing or invalid Flows runtime state fails closed through the ACC runtime-failure handoff.",
+      "The shared caller-turn processor invokes pipecat.flows.FlowManager through scripts/acc_pipecat_flow_manager.py, guards a pending node before agent text reaches the configured streaming TTS provider, and activates that node on first-audio delivery acknowledgement; missing or invalid Flows runtime state fails closed through the ACC runtime-failure handoff.",
     ],
     remainingWork: [
       "Route SignalWire DIDs through the same FreeSWITCH/Pipecat trunk path and add a separate past-call importer if historical call ingestion is required.",
@@ -193,9 +193,9 @@ export function buildPipecatMediaEngineReadinessPayload() {
     reviewBlockers: [],
     acceptanceCriteria: [
       {
-        name: "browser_webrtc_uses_pipecat_rtc_asr_kokoro",
+        name: "browser_webrtc_uses_pipecat_rtc_asr_configured_tts",
         passed: true,
-        evidence: "scripts/pipecat-browser-webrtc-bridge.py builds SmallWebRTCTransport plus Pipeline([transport.input(), RtcAsrTurnProcessor, AccCallerTurnProcessor, KokoroTtsProcessor, transport.output()]).",
+        evidence: "scripts/pipecat-browser-webrtc-bridge.py builds SmallWebRTCTransport plus Pipeline([transport.input(), RtcAsrTurnProcessor, AccCallerTurnProcessor, provider-aware TTS processor, transport.output()]) and emits selected Pocket/Kokoro TTS evidence for the browser proof gate.",
       },
       {
         name: "sip_freeswitch_verto_route_configured",
@@ -205,7 +205,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       {
         name: "sip_caller_audible_playback_live_proof",
         passed: true,
-        evidence: "Merged PR #274 and QA rerun proved authenticated local SIP 1000 -> 8600, accepted RTP, same-call rtc-asr final transcript evidence, and non-silent caller-side Kokoro/Pipecat return audio through the FreeSWITCH Verto/WebRTC leg.",
+        evidence: "Merged PR #274 and QA rerun proved authenticated local SIP 1000 -> 8600, accepted RTP, same-call rtc-asr final transcript evidence, and non-silent caller-side Pipecat return audio through the FreeSWITCH Verto/WebRTC leg.",
       },
       {
         name: "shared_media_engine_contract_documented",
@@ -215,7 +215,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       {
         name: "fixture_tester_pipeline_adapter_present",
         passed: true,
-        evidence: "scripts/pipecat-fixture-pipeline-smoke.py supports --contract-only and --input-wav live in-process modes; the live mode calls build_acc_voice_pipeline() with fixture source/sink processors and captures OutputAudioRawFrame proof when ACC, rtc-asr, and Kokoro are available.",
+        evidence: "scripts/pipecat-fixture-pipeline-smoke.py supports --contract-only and --input-wav live in-process modes; the live mode calls build_acc_voice_pipeline() with fixture source/sink processors and captures OutputAudioRawFrame proof when ACC, rtc-asr, and the configured TTS provider are available.",
       },
       {
         name: "operator_console_runtime_labels",
@@ -240,12 +240,12 @@ export function buildPipecatMediaEngineReadinessPayload() {
       {
         name: "pipecat_14_small_webrtc_migration_recorded",
         passed: true,
-        evidence: "requirements-pipecat-voice.txt pins pipecat-ai[webrtc]==1.4.0 and pipecat-ai-flows==1.4.0; the browser sidecar imports SmallWebRTCTransport/Pipeline and the caller-turn processor invokes the matching standalone Flows runtime.",
+        evidence: "requirements-pipecat-voice.txt pins pipecat-ai[webrtc]==1.7.0 and pipecat-ai[webrtc]==1.7.0; the browser sidecar imports SmallWebRTCTransport/Pipeline and the caller-turn processor invokes the matching standalone Flows runtime.",
       },
       {
         name: "pipecat_flows_flowmanager_owns_conversation_flow",
         passed: true,
-        evidence: "scripts/acc_pipecat_flow_manager.py initializes pipecat_flows.FlowManager, guards pending cancellation-rescue nodes during preview, activates them only on delivery acknowledgement, discards them on pre-output barge-in, and fails closed to ACC runtime_failure/wrap when the runtime is missing, incompatible, or rejects a transition. ACC retains product state, operator controls, response content, proof artifacts, queue state, and snapshot-version commits.",
+        evidence: "scripts/acc_pipecat_flow_manager.py initializes pipecat.flows.FlowManager, guards pending cancellation-rescue nodes during preview, activates them only on delivery acknowledgement, discards them on pre-output barge-in, and fails closed to ACC runtime_failure/wrap when the runtime is missing, incompatible, or rejects a transition. ACC retains product state, operator controls, response content, proof artifacts, queue state, and snapshot-version commits.",
       },
     ],
     validationCommands: [

@@ -1,23 +1,35 @@
 #!/usr/bin/env python3
-"""Verify the pinned Pipecat 1.4 FlowManager runtime and ACC adapter cutover."""
+"""Verify the pinned Pipecat 1.7 FlowManager runtime and ACC adapter cutover."""
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
+if not sys.flags.safe_path:
+    os.execv(sys.executable, [sys.executable, "-P", *sys.argv])
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SCRIPT_DIR = REPO_ROOT / "scripts"
 LOCAL_RUNTIME_PATH = REPO_ROOT / ".pipecat-runtime"
+
+for unsafe_path in ("", str(Path.cwd()), str(REPO_ROOT)):
+    while unsafe_path in sys.path:
+        sys.path.remove(unsafe_path)
+
 if LOCAL_RUNTIME_PATH.exists():
     sys.path.insert(0, str(LOCAL_RUNTIME_PATH))
+sys.path.insert(0, str(SCRIPT_DIR))
 
 from acc_pipecat_flow_manager import AccPipecatFlowManagerAdapter
 
 
 async def run_check() -> dict[str, Any]:
+    cwd_before_import = Path.cwd()
     nodes = iter(["greet", "diagnose"])
 
     def fake_acc_request(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -54,11 +66,10 @@ async def run_check() -> dict[str, Any]:
     second_pending_node = second["flowManagerRuntime"].get("pendingNode")
     second_commit = await adapter.commit_pending_transition()
     checks = {
-        "realFlowManagerImported": type(adapter.manager).__module__ == "pipecat_flows.manager",
+        "realFlowManagerImported": type(adapter.manager).__module__ == "pipecat.flows.manager",
         "pinnedVersionsLoaded": first["flowManagerRuntime"]["runtimeVersions"] == {
-            "pipecat-ai": "1.4.0",
-            "pipecat-ai-flows": "1.4.0",
-        },
+            "pipecat-ai": "1.7.0",
+            },
         "nodeTransitionsApplied": [step["to"] for step in adapter.transition_trace] == ["greet", "diagnose"],
         "deliveryAckPreserved": (
             first_pending_node == "greet"
@@ -74,6 +85,7 @@ async def run_check() -> dict[str, Any]:
             "LLMMessagesAppendFrame",
             "LLMSetToolsFrame",
         ],
+        "cwdPreservedDuringFlowManagerImport": Path.cwd() == cwd_before_import,
     }
     return {
         "ok": all(checks.values()),

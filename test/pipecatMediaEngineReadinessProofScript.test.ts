@@ -33,7 +33,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.match(stdout, /Acceptance criteria: 11\/11/);
     assert.match(stdout, /Failing criteria: none/);
     assert.match(stdout, /Next slice: flow_manager_runtime_qa/);
-    assert.match(stdout, /Runtime prerequisites: acc_http, freeswitch_sip, freeswitch_esl, freeswitch_verto, pipecat_verto_bridge, rtc_asr_ws, kokoro_http/);
+    assert.match(stdout, /Runtime prerequisites: acc_http, freeswitch_sip, freeswitch_esl, freeswitch_verto, pipecat_verto_bridge, rtc_asr_ws, tts_http/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
       ok: boolean;
@@ -87,7 +87,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
       nextUnblockedSlice: {
         id: "flow_manager_runtime_qa",
         title: "Validate the Pipecat FlowManager runtime cutover",
-        adapter: "pipecat_flows",
+        adapter: "pipecat.flows",
         entryPoint: "scripts/acc_pipecat_flow_manager.py",
         migrationStages: [
           { id: "sidecar_free_contract_lock", verificationCommand: "npm run pipecat:flows:contract" },
@@ -104,7 +104,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
           { id: "freeswitch_verto", defaultUrl: "ws://127.0.0.1:8081", evidence: "FreeSWITCH Verto accepts the registered acc-pipecat WebRTC agent leg." },
           { id: "pipecat_verto_bridge", defaultUrl: "http://127.0.0.1:8770/health", evidence: "Pipecat Verto sidecar is registered and ready to answer the FreeSWITCH WebRTC dialog." },
           { id: "rtc_asr_ws", env: "RTC_ASR_WS_URL", evidence: "The current call audio is transcribed into fresh rtc_asr_live final transcript evidence." },
-          { id: "kokoro_http", env: "KOKORO_BASE_URL", evidence: "Kokoro returns TTS audio that is packetized and played back to the caller." },
+          { id: "tts_http", env: "POCKET_TTS_BASE_URL or KOKORO_BASE_URL", evidence: "The configured streaming TTS provider returns audio that is packetized and played back to the caller." },
         ],
         rejectedShortcuts: [
           "generated_media_without_live_capture",
@@ -130,7 +130,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         { id: "freeswitch_verto", defaultUrl: "ws://127.0.0.1:8081", evidence: "FreeSWITCH Verto accepts the registered acc-pipecat WebRTC agent leg." },
         { id: "pipecat_verto_bridge", defaultUrl: "http://127.0.0.1:8770/health", evidence: "Pipecat Verto sidecar is registered and ready to answer the FreeSWITCH WebRTC dialog." },
         { id: "rtc_asr_ws", env: "RTC_ASR_WS_URL", evidence: "The current call audio is transcribed into fresh rtc_asr_live final transcript evidence." },
-        { id: "kokoro_http", env: "KOKORO_BASE_URL", evidence: "Kokoro returns TTS audio that is packetized and played back to the caller." },
+        { id: "tts_http", env: "POCKET_TTS_BASE_URL or KOKORO_BASE_URL", evidence: "The configured streaming TTS provider returns audio that is packetized and played back to the caller." },
       ],
     });
     assert.equal(artifact.readiness.ok, true);

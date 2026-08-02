@@ -18,10 +18,9 @@ test("Pipecat FlowManager adapter owns guarded runtime transitions and fails clo
   ], { encoding: "utf8" }));
 
   assert.equal(payload.ok, true);
-  assert.equal(payload.runtimeAdapter, "pipecat_flows.FlowManager");
+  assert.equal(payload.runtimeAdapter, "pipecat.flows.FlowManager");
   assert.deepEqual(payload.requiredVersions, {
-    "pipecat-ai": "1.4.0",
-    "pipecat-ai-flows": "1.4.0",
+    "pipecat-ai": "1.7.0",
   });
   assert.deepEqual(payload.normalTransitionTrace.map((step: any) => step.to), [
     "greet",
@@ -74,7 +73,7 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
   assert.equal(contract.requiredGuards.every((guard) => guard.failClosed), true);
   assert.equal(contract.runtimePlan.status, "runtime_adapter_wired");
   assert.equal(contract.runtimePlan.adapterCutoverPending, false);
-  assert.equal(contract.runtimePlan.runtimePackageRequirement, "pipecat-ai-flows==1.4.0");
+  assert.equal(contract.runtimePlan.runtimePackageRequirement, "pipecat-ai[webrtc]==1.7.0");
   assert.equal(contract.runtimeHarnessCommand, "npm run pipecat:flows:runtime");
   assert.deepEqual(
     contract.adapterCutoverPreconditions.map((precondition) => [precondition.id, precondition.satisfied]),
@@ -108,14 +107,14 @@ test("Pipecat FlowManager contract records required nodes and fail-closed guards
       [
         "caller_transcript_to_flowmanager_node",
         "acc_pipecat_voice_pipeline",
-        "pipecat_flows.FlowManager",
+        "pipecat.flows.FlowManager",
         "preview_until_output_delivery_ack",
         "wrap",
       ],
       [
         "runtime_failure_to_flowmanager_wrap",
         "acc_pipecat_voice_pipeline",
-        "pipecat_flows.FlowManager",
+        "pipecat.flows.FlowManager",
         "terminal_handoff",
         "wrap",
       ],
@@ -184,7 +183,7 @@ test("Pipecat FlowManager runtime plan mirrors node handlers and guarded transit
     requiredGuards: PIPECAT_FLOW_MANAGER_REQUIRED_GUARDS,
   });
 
-  assert.equal(runtimePlan.runtimeAdapter, "pipecat_flows.FlowManager");
+  assert.equal(runtimePlan.runtimeAdapter, "pipecat.flows.FlowManager");
   assert.equal(runtimePlan.adapterCutoverPending, false);
   assert.deepEqual(runtimePlan.missingRequiredNodes, []);
   assert.deepEqual(

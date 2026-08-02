@@ -4,7 +4,7 @@
 This is the CI-friendly entry point for issue #222's fixture adapter lane. The
 default contract check is intentionally sidecar-free: it proves this adapter is
 wired to the same `build_acc_voice_pipeline()` boundary as browser WebRTC before
-live rtc-asr/Kokoro execution is enabled.
+live rtc-asr and configured TTS execution is enabled.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def build_contract_payload() -> dict[str, object]:
         "rtc_asr_connection_reuse": "persistentSession",
         "acc_turn_processor": "AccCallerTurnProcessor(session)",
         "flow_manager_adapter": "AccPipecatFlowManagerAdapter",
-        "flow_manager_runtime": "pipecat_flows.FlowManager",
+        "flow_manager_runtime": "pipecat.flows.FlowManager",
         "kokoro_tts_processor": "KokoroTtsProcessor(session)",
         "transport_input_boundary": "transport_input",
         "transport_output_boundary": "transport_output",
@@ -85,9 +85,9 @@ def build_contract_payload() -> dict[str, object]:
         "targetPipelineBuilder": "scripts/acc_pipecat_voice_pipeline.py:build_acc_voice_pipeline",
         "targetPipelineSha256": hashlib.sha256(pipeline_source.encode("utf-8")).hexdigest(),
         "targetFlowManagerSha256": hashlib.sha256(flow_manager_source.encode("utf-8")).hexdigest(),
-        "targetContract": "fixture PCM/WAV -> InputAudioRawFrame -> rtc-asr -> Pipecat FlowManager -> ACC product-state adapter -> Kokoro -> captured OutputAudioRawFrame proof",
+        "targetContract": "fixture PCM/WAV -> InputAudioRawFrame -> rtc-asr -> Pipecat FlowManager -> ACC product-state adapter -> Pocket/Kokoro TTS -> captured OutputAudioRawFrame proof",
         "sidecarsRequired": False,
-        "normalOperationSidecars": ["ACC", "rtc-asr", "Kokoro"],
+        "normalOperationSidecars": ["ACC", "rtc-asr", "configured TTS"],
         "fixtureInput": {
             "frameType": "InputAudioRawFrame",
             "audioFormat": "pcm_s16le",
@@ -109,7 +109,7 @@ def build_contract_payload() -> dict[str, object]:
         ],
         "contractChecks": contract_checks,
         "missingContractTokens": missing,
-        "nextAction": "Run --input-wav with ACC, rtc-asr, and Kokoro sidecars to capture live fixture OutputAudioRawFrame proof.",
+        "nextAction": "Run --input-wav with ACC, rtc-asr, and the configured TTS sidecar to capture live fixture OutputAudioRawFrame proof.",
     }
 
 

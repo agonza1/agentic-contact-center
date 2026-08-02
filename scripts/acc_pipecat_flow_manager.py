@@ -3,7 +3,7 @@
 
 The adapter deliberately keeps customer/product state in ACC. It owns the
 conversation-node activation and transition guard around ACC's delivery-ack
-preview response, using the real ``pipecat_flows.FlowManager`` runtime.
+preview response, using the real ``pipecat.flows.FlowManager`` runtime.
 """
 
 from __future__ import annotations
@@ -15,12 +15,12 @@ import json
 import urllib.error
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Callable
 
 
 FLOW_MANAGER_REQUIRED_VERSIONS = {
-    "pipecat-ai": "1.4.0",
-    "pipecat-ai-flows": "1.4.0",
+    "pipecat-ai": "1.7.0",
 }
 
 FLOW_MANAGER_ALLOWED_TRANSITIONS: dict[str, set[str]] = {
@@ -151,11 +151,14 @@ class AccPipecatFlowManagerAdapter:
         if self.manager_factory is not None:
             return self.manager_factory
         try:
-            module = importlib.import_module("pipecat_flows")
+            # NLTK's import guard blocks dependency lookups under the repo cwd;
+            # priming regex keeps the Pipecat import local without changing cwd.
+            importlib.import_module("regex")
+            module = importlib.import_module("pipecat.flows")
             factory = getattr(module, "FlowManager")
         except (ImportError, AttributeError) as exc:
             raise FlowManagerRuntimeError(
-                "pipecat_flows.FlowManager is unavailable; install pipecat-ai-flows==1.4.0"
+                "pipecat.flows.FlowManager is unavailable; install pipecat-ai[webrtc]==1.7.0"
             ) from exc
         return factory
 
@@ -176,7 +179,7 @@ class AccPipecatFlowManagerAdapter:
             self.initialized = True
             self.last_evidence = {
                 "ok": True,
-                "runtimeAdapter": "pipecat_flows.FlowManager",
+                "runtimeAdapter": "pipecat.flows.FlowManager",
                 "runtimeVersions": versions,
                 "currentNode": self.manager.current_node,
                 "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
@@ -548,7 +551,7 @@ class AccPipecatFlowManagerAdapter:
                 fallback_error = exc
             evidence_base = {
                 "ok": False,
-                "runtimeAdapter": "pipecat_flows.FlowManager",
+                "runtimeAdapter": "pipecat.flows.FlowManager",
                 "currentNode": getattr(self.manager, "current_node", None),
                 "fallbackNode": "wrap",
                 "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],

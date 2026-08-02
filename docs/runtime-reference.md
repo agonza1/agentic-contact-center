@@ -24,6 +24,13 @@ Environment variables:
 - `KOKORO_HEALTH_PATH`: Kokoro health path; defaults to `/health`.
 - `KOKORO_SPEECH_PATH`: Kokoro speech endpoint; defaults to `/v1/audio/speech`.
 - `KOKORO_VOICE`: Kokoro voice id; defaults to `af_heart`.
+- `ACC_TTS_PROVIDER`: `pocket` or `kokoro`; defaults to `pocket` when `POCKET_TTS_BASE_URL` is set, otherwise `kokoro`.
+- `POCKET_TTS_BASE_URL`: Pocket TTS HTTP base URL for the ClueCon/Pipecat streaming TTS lane when running ACC/bridges on the host, commonly `http://127.0.0.1:8881`.
+- `POCKET_TTS_CONTAINER_BASE_URL`: optional Pocket TTS HTTP base URL for Docker Compose app/voice bridge containers, for example `http://host.docker.internal:8881` when a host-local Pocket service should be used.
+- `POCKET_TTS_HEALTH_PATH`: Pocket TTS health path; defaults to `/health`.
+- `POCKET_TTS_SPEECH_PATH`: Pocket OpenAI-compatible speech endpoint; defaults to `/v1/audio/speech`.
+- `POCKET_TTS_MODEL`: Pocket model id; defaults to `pocket-tts`.
+- `POCKET_TTS_VOICE`: Pocket voice id; defaults to `alloy`.
 
 There is no `.env` file in the current Node app.
 
@@ -41,10 +48,10 @@ This verifies the local `pipecat-ai` package boundary only. It does not open mic
 Issue #222 is the architectural center for realtime voice. Do not add new standalone demo paths. Every realtime input should become an adapter into the same Pipecat media Pipeline:
 
 ```text
-transport.input -> rtc-asr STT -> ACC caller-turn + FlowManager adapter -> Kokoro TTS -> transport.output
+transport.input -> rtc-asr STT -> ACC caller-turn + FlowManager adapter -> Pocket/Kokoro streaming TTS -> transport.output
 ```
 
-`requirements-pipecat-voice.txt` pins `pipecat-ai[webrtc]==1.4.0` and the matching standalone `pipecat-ai-flows==1.4.0` release. Pipecat 1.5 folds Flows into `pipecat.flows`, but this repository stays on the version-matched 1.4 import `pipecat_flows.FlowManager`. `scripts/acc_pipecat_voice_pipeline.py` owns the reusable media processors and `build_acc_voice_pipeline()`; `scripts/acc_pipecat_flow_manager.py` owns the conversation-node activation and transition guard around ACC delivery-ack previews. `scripts/pipecat-browser-webrtc-bridge.py` is the browser `SmallWebRTCTransport` offer adapter around that shared Pipeline, while preserving the existing ACC `POST /api/browser-webrtc/session` contract.
+`requirements-pipecat-voice.txt` pins `pipecat-ai[webrtc]==1.7.0`, where Flows is loaded from the bundled `pipecat.flows.FlowManager` runtime. `scripts/acc_pipecat_voice_pipeline.py` owns the reusable media processors and `build_acc_voice_pipeline()`; `scripts/acc_pipecat_flow_manager.py` owns the conversation-node activation and transition guard around ACC delivery-ack previews. `scripts/pipecat-browser-webrtc-bridge.py` is the browser `SmallWebRTCTransport` offer adapter around that shared Pipeline, while preserving the existing ACC `POST /api/browser-webrtc/session` contract. TTS provider selection is runtime configuration only; ACC remains the agent brain and there is no new local LLM lane.
 
 Adapter rule for #222:
 
@@ -71,7 +78,7 @@ Current gaps to keep visible:
 - The presentation should describe #222 as the center, not OpenClaw/demo paths as the architecture.
 - SignalWire remains a future SIP trunk route into the same FreeSWITCH/Pipecat path; historical/past-call import is separate.
 
-Flows decision for the current MVP: `AccCallerTurnProcessor` now routes each delivery-ack preview through `AccPipecatFlowManagerAdapter`. The adapter initializes the real `pipecat_flows.FlowManager`, guards pending transitions across `call_started`, `greet`, `diagnose`, `policy_hold`, `operator_steer`, `steered_response`, and `wrap`, and rejects transitions outside the fail-closed graph before agent text reaches Kokoro. ACC TypeScript still owns product state, operator controls, proof artifacts, queue state, deterministic response content, and the snapshot-version commit check; it no longer has sole ownership of runtime conversation transitions. Missing/incompatible Flows packages or an invalid node transition call ACC's existing `runtime_failure` fallback and enter the terminal `wrap`/human-handoff path. Normal turns remain previews until the first Kokoro audio frame triggers delivery acknowledgement; that acknowledgement commits both the ACC snapshot and the pending FlowManager node, while pre-output barge-in discards both, so unheard text cannot advance either state machine. Run `npm run pipecat:flows:runtime` after `npm run pipecat:webrtc:install` for the real-package check and `python3 test/fixtures/pipecat_flowmanager_adapter_regression.py` for deterministic normal/failure coverage. The older `scripts/pipecat-local-voice-bridge.py` path is legacy proof-only and should not be used as the normal browser voice path.
+Flows decision for the current MVP: `AccCallerTurnProcessor` now routes each delivery-ack preview through `AccPipecatFlowManagerAdapter`. The adapter initializes the real `pipecat.flows.FlowManager`, guards pending transitions across `call_started`, `greet`, `diagnose`, `policy_hold`, `operator_steer`, `steered_response`, and `wrap`, and rejects transitions outside the fail-closed graph before agent text reaches the configured streaming TTS provider. ACC TypeScript still owns product state, operator controls, proof artifacts, queue state, deterministic response content, and the snapshot-version commit check; it no longer has sole ownership of runtime conversation transitions. Missing/incompatible Flows packages or an invalid node transition call ACC's existing `runtime_failure` fallback and enter the terminal `wrap`/human-handoff path. Normal turns remain previews until the first provider audio frame triggers delivery acknowledgement; that acknowledgement commits both the ACC snapshot and the pending FlowManager node, while pre-output barge-in discards both, so unheard text cannot advance either state machine. Run `npm run pipecat:flows:runtime` after `npm run pipecat:webrtc:install` for the real-package check and `python3 test/fixtures/pipecat_flowmanager_adapter_regression.py` for deterministic normal/failure coverage. The older `scripts/pipecat-local-voice-bridge.py` path is legacy proof-only and should not be used as the normal browser voice path.
 
 ## Browser WebRTC voice readiness
 
@@ -110,6 +117,7 @@ cd ../agentic-contact-center
 export RTC_ASR_BASE_URL=http://127.0.0.1:8080
 export RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream
 export RTC_ASR_MODEL=mlx-community/parakeet-tdt_ctc-110m
+export ACC_TTS_PROVIDER=kokoro
 export KOKORO_BASE_URL=http://127.0.0.1:8880
 export BROWSER_WEBRTC_BRIDGE_URL=http://127.0.0.1:8766
 npm run pipecat:webrtc:install
@@ -118,7 +126,30 @@ npm run pipecat:webrtc:check
 npm run pipecat:webrtc
 ```
 
-`npm run pipecat:webrtc` starts `scripts/pipecat-browser-webrtc-bridge.py` on `http://127.0.0.1:8766`. Its offer endpoint is `POST /api/webrtc/offer`; ACC proxies browser SDP offers to it from `POST /api/browser-webrtc/session`. The bridge accepts offers through Pipecat `SmallWebRTCRequestHandler`, creates `SmallWebRTCTransport`, and calls `build_acc_voice_pipeline(transport.input(), transport.output(), session)` from `scripts/acc_pipecat_voice_pipeline.py`. The shared processors stream browser PCM to rtc-asr Local STT v1, post the final transcript to `/api/calls/:callId/caller-turn`, request Kokoro's streaming raw-PCM response, and emit `TTSStartedFrame`, playable `TTSAudioRawFrame` chunks, and `TTSStoppedFrame` through the adapter's `transport.output()` as provider audio arrives. `ACC_TTS_OUTPUT_CHUNK_MS` controls the read/output chunk size and defaults to 20 ms. When caller speech starts during an active agent/TTS/output response, the pipeline cancels the active response task, broadcasts Pipecat `InterruptionFrame` to clear the transport audio queue, records `output.transport_flushed`, and measures `transportFlushLatencyMs`; later output from the interrupted generation is discarded. This normal path has no `ffmpeg` dependency.
+This default browser WebRTC setup intentionally selects Kokoro. If a Pocket proof is needed instead, start the Pocket TTS service first in a separate shell, confirm it is listening at `POCKET_TTS_BASE_URL`, then replace the Kokoro exports with:
+
+```bash
+export ACC_TTS_PROVIDER=pocket
+export POCKET_TTS_BASE_URL=http://127.0.0.1:8881
+export POCKET_TTS_VOICE=alloy
+export POCKET_TTS_MODEL=pocket-tts
+```
+
+`npm run pipecat:webrtc` starts `scripts/pipecat-browser-webrtc-bridge.py` on `http://127.0.0.1:8766`. Its offer endpoint is `POST /api/webrtc/offer`; ACC proxies browser SDP offers to it from `POST /api/browser-webrtc/session`. The bridge accepts offers through Pipecat `SmallWebRTCRequestHandler`, creates `SmallWebRTCTransport`, and calls `build_acc_voice_pipeline(transport.input(), transport.output(), session)` from `scripts/acc_pipecat_voice_pipeline.py`. The shared processors stream browser PCM to rtc-asr Local STT v1, post the final transcript to `/api/calls/:callId/caller-turn`, request the configured provider's streaming raw-PCM response, and emit `TTSStartedFrame`, playable `TTSAudioRawFrame` chunks, and `TTSStoppedFrame` through the adapter's `transport.output()` as provider audio arrives. `ACC_TTS_PROVIDER=pocket` uses `POCKET_TTS_BASE_URL`; `ACC_TTS_PROVIDER=kokoro` uses `KOKORO_BASE_URL`. `ACC_TTS_OUTPUT_CHUNK_MS` controls the read/output chunk size and defaults to 20 ms. When caller speech starts during an active agent/TTS/output response, the pipeline cancels the active response task, broadcasts Pipecat `InterruptionFrame` to clear the transport audio queue, records `output.transport_flushed`, and measures `transportFlushLatencyMs`; later output from the interrupted generation is discarded. This normal path has no `ffmpeg` dependency.
+
+## ClueCon Pocket streaming TTS smoke
+
+Use this smoke path when preparing PR notes for #333:
+
+```bash
+unset ACC_TTS_PROVIDER
+export POCKET_TTS_BASE_URL=http://127.0.0.1:8881
+export POCKET_TTS_VOICE=alloy
+npm start
+open http://127.0.0.1:8026/cluecon#tts
+```
+
+In the TTS section, click `Run Pocket`. Passing smoke evidence should include the HTTP status, `x-acc-tts-provider: pocket`, `x-acc-tts-through: acc_provider_proxy`, non-zero audio bytes in the browser lab, first-byte timing, and whether the audio element emitted `playing`. This lab route directly proxies the configured provider so the browser can verify stream start. For full realtime Pipecat voice evidence, also run the browser WebRTC bridge and confirm the session proof contains rtc-asr final transcript evidence plus Pocket/Pipecat TTS chunk evidence.
 
 ## Unified Pipecat media-engine readiness
 
@@ -293,6 +324,8 @@ The default Compose path only starts `app` unless another service is requested. 
 - `sip`: legacy proof/debug lane with FreeSWITCH plus `freeswitch-bridge`, writes SIP/media proof artifacts under `artifacts/freeswitch-live`, and points the bridge at Docker-network rtc-asr/Kokoro URLs.
 - `eval`: runs `assert-viewer`, exporting ACC ASSERT artifacts before starting the upstream ASSERT viewer on `5174`.
 - `full`: enables every optional service above for an end-to-end local lab stack.
+
+Compose starts Kokoro, not Pocket, by default. When the Compose app or voice bridge containers should use Pocket against a host-local service, set `POCKET_TTS_CONTAINER_BASE_URL=http://host.docker.internal:8881` or another container-reachable URL. Compose also forwards `POCKET_TTS_HEALTH_PATH` and `POCKET_TTS_SPEECH_PATH` so non-default Pocket deployments use the same endpoint paths inside app, browser WebRTC, and SIP/Verto containers. The host-run `POCKET_TTS_BASE_URL=http://127.0.0.1:8881` form is intentionally not copied into containers because container loopback would point at the container itself.
 
 The `rtc-asr` service defaults to `RTC_ASR_IMAGE=rtc-asr:local` because the ASR server is owned by the sibling `rtc-asr` project. Build that image from the `rtc-asr` checkout or override `RTC_ASR_IMAGE` with a compatible image before using `voice`, `browser-webrtc`, `sip`, or `full`. Kokoro defaults to `KOKORO_IMAGE=ghcr.io/remsky/kokoro-fastapi-cpu:latest`; override it if the lab uses a different Kokoro FastAPI image.
 
