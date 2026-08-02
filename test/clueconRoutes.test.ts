@@ -1148,6 +1148,9 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Start realtime/);
   assert.match(narrative.body, /local-stt\.v1/);
   assert.match(narrative.body, /handleAsrRealtimeMessage/);
+  assert.match(narrative.body, /handleAsrRealtimeMessage\(event, live\)/);
+  assert.match(narrative.body, /state\.asrLive !== live/);
+  assert.match(narrative.body, /event => handleAsrRealtimeMessage\(event, live\)/);
   assert.match(narrative.body, /function updateAsrRealtimeTranscript/);
   assert.doesNotMatch(narrative.body, /function appendAsrRealtimeText/);
   assert.match(narrative.body, /function asrStablePrefixCount/);

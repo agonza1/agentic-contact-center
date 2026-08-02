@@ -2475,6 +2475,17 @@ test("retention approval requires its exact pending request and the console foll
     assert.equal(afterInvalidResumeCall.operatorSteer.lastAction, "approve_retention_review");
     assert.equal(afterInvalidResumeCall.events.some((event) => event.type === "retention_review_approved"), false);
 
+    const invalidPause = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "pause",
+    });
+    assert.equal(invalidPause.statusCode, 400);
+    assert.deepEqual(invalidPause.payload, { ok: false, error: "operator_steer_not_pending" });
+    const afterInvalidPause = await requestJson(port, "GET", `/api/calls/${callId}`);
+    const afterInvalidPauseCall = afterInvalidPause.payload as SnapshotPayload;
+    assert.equal(afterInvalidPauseCall.operatorSteer.pending, true);
+    assert.equal(afterInvalidPauseCall.operatorSteer.lastAction, "approve_retention_review");
+    assert.equal(afterInvalidPauseCall.events.some((event) => event.type === "operator_demo_paused"), false);
+
     const wrongApproval = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
       action: "approve_offer",
     });

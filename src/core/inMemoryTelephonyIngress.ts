@@ -607,12 +607,12 @@ export class InMemoryTelephonyIngress {
     }
 
     if (
-      action === "resume" &&
+      (action === "pause" || action === "resume") &&
       snapshot.operatorSteer.pending &&
       (snapshot.operatorSteer.lastAction === "approve_offer" ||
         snapshot.operatorSteer.lastAction === "approve_retention_review")
     ) {
-      throw new Error(`Call is not awaiting operator steer for resume while an approval decision is pending: ${callId}`);
+      throw new Error(`Call is not awaiting operator steer for ${action} while an approval decision is pending: ${callId}`);
     }
 
     const requiresPendingState =
