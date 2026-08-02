@@ -117,15 +117,22 @@ cd ../agentic-contact-center
 export RTC_ASR_BASE_URL=http://127.0.0.1:8080
 export RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream
 export RTC_ASR_MODEL=mlx-community/parakeet-tdt_ctc-110m
-unset ACC_TTS_PROVIDER
-export POCKET_TTS_BASE_URL=http://127.0.0.1:8881
-export POCKET_TTS_VOICE=alloy
+export ACC_TTS_PROVIDER=kokoro
 export KOKORO_BASE_URL=http://127.0.0.1:8880
 export BROWSER_WEBRTC_BRIDGE_URL=http://127.0.0.1:8766
 npm run pipecat:webrtc:install
 npm start
 npm run pipecat:webrtc:check
 npm run pipecat:webrtc
+```
+
+This default browser WebRTC setup intentionally selects Kokoro. If a Pocket proof is needed instead, start the Pocket TTS service first in a separate shell, confirm it is listening at `POCKET_TTS_BASE_URL`, then replace the Kokoro exports with:
+
+```bash
+export ACC_TTS_PROVIDER=pocket
+export POCKET_TTS_BASE_URL=http://127.0.0.1:8881
+export POCKET_TTS_VOICE=alloy
+export POCKET_TTS_MODEL=pocket-tts
 ```
 
 `npm run pipecat:webrtc` starts `scripts/pipecat-browser-webrtc-bridge.py` on `http://127.0.0.1:8766`. Its offer endpoint is `POST /api/webrtc/offer`; ACC proxies browser SDP offers to it from `POST /api/browser-webrtc/session`. The bridge accepts offers through Pipecat `SmallWebRTCRequestHandler`, creates `SmallWebRTCTransport`, and calls `build_acc_voice_pipeline(transport.input(), transport.output(), session)` from `scripts/acc_pipecat_voice_pipeline.py`. The shared processors stream browser PCM to rtc-asr Local STT v1, post the final transcript to `/api/calls/:callId/caller-turn`, request the configured provider's streaming raw-PCM response, and emit `TTSStartedFrame`, playable `TTSAudioRawFrame` chunks, and `TTSStoppedFrame` through the adapter's `transport.output()` as provider audio arrives. `ACC_TTS_PROVIDER=pocket` uses `POCKET_TTS_BASE_URL`; `ACC_TTS_PROVIDER=kokoro` uses `KOKORO_BASE_URL`. `ACC_TTS_OUTPUT_CHUNK_MS` controls the read/output chunk size and defaults to 20 ms. When caller speech starts during an active agent/TTS/output response, the pipeline cancels the active response task, broadcasts Pipecat `InterruptionFrame` to clear the transport audio queue, records `output.transport_flushed`, and measures `transportFlushLatencyMs`; later output from the interrupted generation is discarded. This normal path has no `ffmpeg` dependency.
