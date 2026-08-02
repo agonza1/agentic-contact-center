@@ -1149,8 +1149,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /local-stt\.v1/);
   assert.match(narrative.body, /handleAsrRealtimeMessage/);
   assert.match(narrative.body, /function updateAsrRealtimeTranscript/);
-  assert.match(narrative.body, /else \{ live\.partialText = nextText; \}/);
-  assert.doesNotMatch(narrative.body, /else \{ live\.committedText = appendAsrRealtimeText\(live\.committedText, previous\)/);
+  assert.match(narrative.body, /else \{ live\.committedText = appendAsrRealtimeText\(live\.committedText, previous\); live\.partialText = nextText; \}/);
   assert.match(narrative.body, /LIVE TRANSCRIPT/);
   assert.match(narrative.body, /committedText/);
   assert.match(narrative.body, /captureClosePromise/);
@@ -1163,7 +1162,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Benchmarks ↗/);
   assert.match(narrative.body, /https:\/\/agonza1\.github\.io\/rtc-asr\/docs\//);
   assert.match(narrative.body, /renderAsrBenchmarks\(model\)/);
-  assert.match(narrative.body, /return profiles\[key\] \|\| targetFallback \|\| null/);
+  assert.match(narrative.body, /identity\.includes\("parakeet"\) && identity\.includes\("110m"\)/);
+  assert.match(narrative.body, /return profiles\[key\] \|\| compatibleFallback \|\| null/);
   assert.match(narrative.body, /250\.7 ms/);
   assert.match(narrative.body, /676\.5 ms/);
   assert.match(narrative.body, /0\.021x/);
