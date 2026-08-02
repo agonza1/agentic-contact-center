@@ -127,6 +127,16 @@ def main() -> None:
     )
     assert no_pocket_url.active_tts_provider() == "kokoro"
 
+    explicit_pocket_missing_url = load_pipeline_module(
+        "acc_pipecat_voice_pipeline_explicit_pocket_missing_url",
+        {
+            "ACC_TTS_PROVIDER": "pocket",
+            "POCKET_TTS_BASE_URL": None,
+        },
+    )
+    assert explicit_pocket_missing_url.active_tts_provider() == "pocket"
+    assert explicit_pocket_missing_url.active_tts_config()["base_url"] == ""
+
     print({"ok": True, "composeEmptyProvider": "pocket"})
 
 

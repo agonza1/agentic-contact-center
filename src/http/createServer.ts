@@ -143,6 +143,17 @@ function getPocketTtsBaseUrlForSetup(): string {
   return process.env.POCKET_TTS_BASE_URL?.trim() || "http://127.0.0.1:8881";
 }
 
+function getPocketTtsSetupCommands(): string[] {
+  return [
+    "export ACC_TTS_PROVIDER=pocket",
+    `export POCKET_TTS_BASE_URL=${getPocketTtsBaseUrlForSetup()}`,
+    `export POCKET_TTS_HEALTH_PATH=${process.env.POCKET_TTS_HEALTH_PATH?.trim() || "/health"}`,
+    `export POCKET_TTS_SPEECH_PATH=${process.env.POCKET_TTS_SPEECH_PATH?.trim() || "/v1/audio/speech"}`,
+    `export POCKET_TTS_MODEL=${process.env.POCKET_TTS_MODEL?.trim() || "pocket-tts"}`,
+    `export POCKET_TTS_VOICE=${process.env.POCKET_TTS_VOICE?.trim() || "alloy"}`,
+  ];
+}
+
 function getTtsSpeechTarget(): { provider: "pocket" | "kokoro"; url: string; model: string; voice: string; responseFormat: string; contentType: string } | null {
   const provider = getConfiguredTtsProvider();
   if (provider === "pocket") {
@@ -252,10 +263,7 @@ function buildBrowserWebrtcReadinessPayload(bridgeRuntime: BrowserWebrtcBridgeRu
   const ttsProvider = getConfiguredTtsProvider();
   const ttsLabel = ttsProvider === "pocket" ? "Pocket TTS" : "Kokoro TTS";
   const ttsSetupCommands = ttsProvider === "pocket"
-    ? [
-      "export ACC_TTS_PROVIDER=pocket",
-      `export POCKET_TTS_BASE_URL=${getPocketTtsBaseUrlForSetup()}`,
-    ]
+    ? getPocketTtsSetupCommands()
     : [
       "export ACC_TTS_PROVIDER=kokoro",
       "export KOKORO_BASE_URL=http://127.0.0.1:8880",

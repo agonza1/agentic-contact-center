@@ -39,6 +39,10 @@ function ttsConfigForProvider(provider) {
       provider,
       label: "Pocket",
       baseUrl: process.env.POCKET_TTS_BASE_URL?.trim() || "http://127.0.0.1:8881",
+      healthPath: process.env.POCKET_TTS_HEALTH_PATH?.trim() || "/health",
+      speechPath: process.env.POCKET_TTS_SPEECH_PATH?.trim() || "/v1/audio/speech",
+      model: process.env.POCKET_TTS_MODEL?.trim() || "pocket-tts",
+      voice: process.env.POCKET_TTS_VOICE?.trim() || "alloy",
     };
   }
   return {
@@ -57,6 +61,10 @@ function buildSetupCommands(config) {
     ? [
       "export ACC_TTS_PROVIDER=pocket",
       `export POCKET_TTS_BASE_URL=${config.baseUrl}`,
+      `export POCKET_TTS_HEALTH_PATH=${config.healthPath}`,
+      `export POCKET_TTS_SPEECH_PATH=${config.speechPath}`,
+      `export POCKET_TTS_MODEL=${config.model}`,
+      `export POCKET_TTS_VOICE=${config.voice}`,
     ]
     : [
       "export ACC_TTS_PROVIDER=kokoro",
@@ -365,9 +373,17 @@ function ttsProviderFromRecord(record) {
 function hasTtsAudioEvidence(record) {
   const audioUrl = typeof record.audioUrl === "string" ? record.audioUrl : typeof record.url === "string" ? record.url : "";
   const audioSha256 = typeof record.audioSha256 === "string" ? record.audioSha256 : typeof record.sha256 === "string" ? record.sha256 : "";
+  const tts = nestedRecord(record, "tts");
   return (
     (textIncludes(record, "audio") || textIncludes(record, "tts")) &&
-    (hasPositiveNumber(record.audioBytes) || (audioUrl.trim().length > 0 && !hasPlaceholderText(audioUrl)) || hasSha256(audioSha256))
+    (
+      hasPositiveNumber(record.audioBytes) ||
+      hasPositiveNumber(record.audioBytesEnqueued) ||
+      hasPositiveNumber(tts.audioBytes) ||
+      hasPositiveNumber(tts.audioBytesEnqueued) ||
+      (audioUrl.trim().length > 0 && !hasPlaceholderText(audioUrl)) ||
+      hasSha256(audioSha256)
+    )
   );
 }
 

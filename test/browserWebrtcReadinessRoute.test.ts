@@ -536,10 +536,18 @@ test("GET /api/browser-webrtc/readiness preserves custom Pocket URL in setup com
   const previousBridgeUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL;
   const previousTtsProvider = process.env.ACC_TTS_PROVIDER;
   const previousPocketUrl = process.env.POCKET_TTS_BASE_URL;
+  const previousPocketHealthPath = process.env.POCKET_TTS_HEALTH_PATH;
+  const previousPocketSpeechPath = process.env.POCKET_TTS_SPEECH_PATH;
+  const previousPocketModel = process.env.POCKET_TTS_MODEL;
+  const previousPocketVoice = process.env.POCKET_TTS_VOICE;
   const previousKokoroUrl = process.env.KOKORO_BASE_URL;
   process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
   process.env.ACC_TTS_PROVIDER = "pocket";
   process.env.POCKET_TTS_BASE_URL = "https://pocket.example.test:9443";
+  process.env.POCKET_TTS_HEALTH_PATH = "/readyz";
+  process.env.POCKET_TTS_SPEECH_PATH = "/custom/speech";
+  process.env.POCKET_TTS_MODEL = "pocket-low-latency";
+  process.env.POCKET_TTS_VOICE = "marin";
   delete process.env.KOKORO_BASE_URL;
 
   const server = buildHttpServer(loadPocConfig());
@@ -572,6 +580,10 @@ test("GET /api/browser-webrtc/readiness preserves custom Pocket URL in setup com
     assert.ok(payload.liveMedia.requiredProof.includes("Pocket TTS produced agent TTS audio"));
     assert.ok(payload.liveMedia.setupCommands.includes("export ACC_TTS_PROVIDER=pocket"));
     assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_BASE_URL=https://pocket.example.test:9443"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_HEALTH_PATH=/readyz"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_SPEECH_PATH=/custom/speech"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_MODEL=pocket-low-latency"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_VOICE=marin"));
     assert.equal(payload.liveMedia.setupCommands.includes("export POCKET_TTS_BASE_URL=http://127.0.0.1:8881"), false);
     assert.equal(payload.liveMedia.setupCommands.some((command) => command.includes("KOKORO_BASE_URL")), false);
   } finally {
@@ -591,6 +603,26 @@ test("GET /api/browser-webrtc/readiness preserves custom Pocket URL in setup com
       delete process.env.POCKET_TTS_BASE_URL;
     } else {
       process.env.POCKET_TTS_BASE_URL = previousPocketUrl;
+    }
+    if (previousPocketHealthPath === undefined) {
+      delete process.env.POCKET_TTS_HEALTH_PATH;
+    } else {
+      process.env.POCKET_TTS_HEALTH_PATH = previousPocketHealthPath;
+    }
+    if (previousPocketSpeechPath === undefined) {
+      delete process.env.POCKET_TTS_SPEECH_PATH;
+    } else {
+      process.env.POCKET_TTS_SPEECH_PATH = previousPocketSpeechPath;
+    }
+    if (previousPocketModel === undefined) {
+      delete process.env.POCKET_TTS_MODEL;
+    } else {
+      process.env.POCKET_TTS_MODEL = previousPocketModel;
+    }
+    if (previousPocketVoice === undefined) {
+      delete process.env.POCKET_TTS_VOICE;
+    } else {
+      process.env.POCKET_TTS_VOICE = previousPocketVoice;
     }
     if (previousKokoroUrl === undefined) {
       delete process.env.KOKORO_BASE_URL;
