@@ -522,6 +522,85 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
 });
 
 
+test("GET /api/browser-webrtc/readiness preserves custom Pocket URL in setup commands", async () => {
+  const bridge = createServer((_request, response) => {
+    response.statusCode = 200;
+    response.setHeader("content-type", "application/json; charset=utf-8");
+    response.end(JSON.stringify({ ok: true, status: "ready", detail: "test bridge ready" }));
+  });
+  await new Promise<void>((resolve) => bridge.listen(0, "127.0.0.1", resolve));
+  const bridgeAddress = bridge.address();
+  if (!bridgeAddress || typeof bridgeAddress === "string") {
+    throw new Error("Expected an ephemeral bridge TCP port");
+  }
+  const previousBridgeUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL;
+  const previousTtsProvider = process.env.ACC_TTS_PROVIDER;
+  const previousPocketUrl = process.env.POCKET_TTS_BASE_URL;
+  const previousKokoroUrl = process.env.KOKORO_BASE_URL;
+  process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
+  process.env.ACC_TTS_PROVIDER = "pocket";
+  process.env.POCKET_TTS_BASE_URL = "https://pocket.example.test:9443";
+  delete process.env.KOKORO_BASE_URL;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const responseBody = await new Promise<string>((resolve, reject) => {
+      const req = request(
+        { host: "127.0.0.1", port: address.port, path: "/api/browser-webrtc/readiness", method: "GET" },
+        (response) => {
+          let body = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => { body += chunk; });
+          response.on("end", () => resolve(body));
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+    const payload = JSON.parse(responseBody) as {
+      contract: { sidecars: { tts: string } };
+      liveMedia: { setupCommands: string[]; requiredProof: string[] };
+    };
+
+    assert.equal(payload.contract.sidecars.tts, "Pocket");
+    assert.ok(payload.liveMedia.requiredProof.includes("Pocket TTS produced agent TTS audio"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export ACC_TTS_PROVIDER=pocket"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_BASE_URL=https://pocket.example.test:9443"));
+    assert.equal(payload.liveMedia.setupCommands.includes("export POCKET_TTS_BASE_URL=http://127.0.0.1:8881"), false);
+    assert.equal(payload.liveMedia.setupCommands.some((command) => command.includes("KOKORO_BASE_URL")), false);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => bridge.close((error) => error ? reject(error) : resolve()));
+    if (previousBridgeUrl === undefined) {
+      delete process.env.BROWSER_WEBRTC_BRIDGE_URL;
+    } else {
+      process.env.BROWSER_WEBRTC_BRIDGE_URL = previousBridgeUrl;
+    }
+    if (previousTtsProvider === undefined) {
+      delete process.env.ACC_TTS_PROVIDER;
+    } else {
+      process.env.ACC_TTS_PROVIDER = previousTtsProvider;
+    }
+    if (previousPocketUrl === undefined) {
+      delete process.env.POCKET_TTS_BASE_URL;
+    } else {
+      process.env.POCKET_TTS_BASE_URL = previousPocketUrl;
+    }
+    if (previousKokoroUrl === undefined) {
+      delete process.env.KOKORO_BASE_URL;
+    } else {
+      process.env.KOKORO_BASE_URL = previousKokoroUrl;
+    }
+  }
+});
+
+
 test("GET /api/browser-webrtc/readiness reports bridge offline before live media proof", async () => {
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
