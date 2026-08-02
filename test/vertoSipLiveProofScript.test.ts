@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -185,8 +186,8 @@ test("Verto bridge scopes call artifact rewrites and lastError", { skip: !exists
   const repoRoot = path.resolve(__dirname, "..", "..");
   const { stdout } = await execFileAsync(
     "python3",
-    ["test/fixtures/verto_bridge_artifact_regression.py"],
-    { cwd: repoRoot, timeout: 20_000, encoding: "utf8" },
+    ["-P", path.join(repoRoot, "test/fixtures/verto_bridge_artifact_regression.py")],
+    { cwd: tmpdir(), timeout: 20_000, encoding: "utf8" },
   );
   const summary = JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}") as {
     ok: boolean;
@@ -203,8 +204,8 @@ test("Verto bridge normalizes FreeSWITCH ICE, DTLS, and G.711 RTP", { skip: !exi
   const repoRoot = path.resolve(__dirname, "..", "..");
   const { stdout } = await execFileAsync(
     "python3",
-    ["scripts/pipecat-verto-agent-bridge.py", "--sdp-normalization-self-test"],
-    { cwd: repoRoot, timeout: 20_000, encoding: "utf8" },
+    ["-P", path.join(repoRoot, "scripts/pipecat-verto-agent-bridge.py"), "--sdp-normalization-self-test"],
+    { cwd: tmpdir(), timeout: 20_000, encoding: "utf8" },
   );
   const summary = JSON.parse(stdout.trim().split("\n").slice(-16).join("\n")) as {
     ok: boolean;
