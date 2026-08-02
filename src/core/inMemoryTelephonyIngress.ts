@@ -311,7 +311,7 @@ export class InMemoryTelephonyIngress {
         respondedAt: null,
         source: null,
       },
-      pipecatFlow: buildPipecatFlowPrototypeStatus(),
+      pipecatFlow: buildPipecatFlowPrototypeStatus(config.policy.defaultSupervisorSteer),
       flowState: "call_started",
       transcript: [],
       events: [
@@ -579,6 +579,13 @@ export class InMemoryTelephonyIngress {
 
     if (!snapshot) {
       throw new Error(`Unknown call id: ${callId}`);
+    }
+
+    if (
+      action === "approve_retention_review" &&
+      (!snapshot.operatorSteer.pending || snapshot.operatorSteer.lastAction !== "approve_retention_review")
+    ) {
+      throw new Error(`Call is not awaiting operator steer for the requested retention review: ${callId}`);
     }
 
     const requiresPendingState =

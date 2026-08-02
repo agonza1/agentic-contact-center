@@ -327,6 +327,8 @@ test("operator console polls browser WebRTC session proof for turn diagnostics",
   assert.match(serverSource, /requestedApprovalAction = call\.actionState\.pendingApprovalDetails\?\.recommendedAction \|\| "approve_offer"/);
   assert.match(serverSource, /approvalPending \? \[requestedApprovalAction, "deny_offer"\]/);
   assert.match(serverSource, /approve-retention-review/);
+  assert.match(serverSource, /scriptedState\.turnTexts \|\| state\.scriptedCallerTurns/);
+  assert.match(serverSource, /snapshot\.pipecatFlow\.script\.expectedCallerTurns/);
   assert.match(serverSource, /callOnHold \? "resume" : "pause"/);
   assert.match(serverSource, /primaryActions\.push\("takeover", "transfer", "end_call"\)/);
   assert.doesNotMatch(serverSource, /const actions = \[[^\]]*"ask_operator"/);

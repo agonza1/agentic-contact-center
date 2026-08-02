@@ -221,6 +221,7 @@ interface OperatorConsolePayload {
           fallbackArmed: boolean;
           nextRecommendedAction: string;
           scriptedCallerTurnState: {
+            turnTexts: string[];
             matchedTurns: number;
             totalTurns: number;
             remainingTurns: number;
@@ -369,8 +370,10 @@ interface LatencyPayload {
   };
 }
 
-async function withServer<T>(run: (port: number) => Promise<T>): Promise<T> {
-  const config = loadPocConfig();
+async function withServer<T>(
+  run: (port: number) => Promise<T>,
+  config = loadPocConfig(),
+): Promise<T> {
   const server = buildHttpServer(config);
 
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -1482,6 +1485,12 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       fallbackArmed: false,
       nextRecommendedAction: "approve_offer",
       scriptedCallerTurnState: {
+        turnTexts: [
+          "I'm thinking about canceling my policy.",
+          "My renewal went up a lot, and I can't afford it.",
+          "Is there anything you can do before I cancel?",
+          "Okay, that sounds good. Thanks.",
+        ],
         matchedTurns: 3,
         totalTurns: 4,
         remainingTurns: 1,
@@ -1649,6 +1658,12 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(idleConsoleCall?.actionState.pendingApprovalDetails, null);
     assert.equal(idleConsoleCall?.actionState.nextRecommendedAction, "pause");
     assert.deepEqual(idleConsoleCall?.actionState.scriptedCallerTurnState, {
+      turnTexts: [
+        "I'm thinking about canceling my policy.",
+        "My renewal went up a lot, and I can't afford it.",
+        "Is there anything you can do before I cancel?",
+        "Okay, that sounds good. Thanks.",
+      ],
       matchedTurns: 0,
       totalTurns: 4,
       remainingTurns: 4,
@@ -2377,6 +2392,96 @@ test("POST /api/operator/console/scripted-turn submits only the next scripted ca
     const consolePayload = consoleResponse.payload as OperatorConsolePayload;
     assert.equal(consolePayload.calls.items[0]?.actionState.scriptedCallerTurnState.nextTurnIndex, 1);
   });
+});
+
+test("retention approval requires its exact pending request and the console follows the five-turn script", async () => {
+  const defaultConfig = loadPocConfig();
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as SnapshotPayload).session.callId;
+    for (let index = 0; index < 3; index += 1) {
+      const submitted = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
+        callId,
+        expectedTurnIndex: index,
+      });
+      assert.equal(submitted.statusCode, 200);
+    }
+
+    const mismatchedApproval = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "approve_retention_review",
+    });
+    assert.equal(mismatchedApproval.statusCode, 400);
+    assert.deepEqual(mismatchedApproval.payload, { ok: false, error: "operator_steer_not_pending" });
+    const unchanged = await requestJson(port, "GET", `/api/calls/${callId}`);
+    const unchangedCall = unchanged.payload as SnapshotPayload;
+    assert.equal(unchangedCall.operatorSteer.pending, true);
+    assert.equal(unchangedCall.operatorSteer.lastAction, "approve_offer");
+    assert.equal(unchangedCall.events.some((event) => event.type === "retention_review_approved"), false);
+  }, defaultConfig);
+
+  const retentionConfig = loadPocConfig();
+  retentionConfig.policy.defaultSupervisorSteer = "approve_retention_review";
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as SnapshotPayload).session.callId;
+    const initialConsole = await requestJson(port, "GET", `/api/operator/console?callId=${callId}`);
+    const initialCall = (initialConsole.payload as OperatorConsolePayload).calls.items[0];
+    assert.deepEqual(initialCall?.actionState.scriptedCallerTurnState.turnTexts, [
+      "I'm thinking about canceling my policy.",
+      "My renewal went up a lot, and I can't afford it.",
+      "Yes, please check.",
+      "Yes.",
+      "Keep it active until the review.",
+    ]);
+    assert.equal(initialCall?.actionState.scriptedCallerTurnState.totalTurns, 5);
+
+    for (let index = 0; index < 2; index += 1) {
+      const submitted = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
+        callId,
+        expectedTurnIndex: index,
+      });
+      assert.equal(submitted.statusCode, 200);
+    }
+    const prematureApproval = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "approve_retention_review",
+    });
+    assert.equal(prematureApproval.statusCode, 400);
+    assert.deepEqual(prematureApproval.payload, { ok: false, error: "operator_steer_not_pending" });
+
+    for (let index = 2; index < 4; index += 1) {
+      const submitted = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
+        callId,
+        expectedTurnIndex: index,
+      });
+      assert.equal(submitted.statusCode, 200);
+    }
+    const pendingConsole = await requestJson(port, "GET", `/api/operator/console?callId=${callId}`);
+    const pendingCall = (pendingConsole.payload as OperatorConsolePayload).calls.items[0];
+    assert.equal(pendingCall?.actionState.pendingApprovalDetails?.recommendedAction, "approve_retention_review");
+    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnIndex, 4);
+    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnText, "Keep it active until the review.");
+    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.progressLabel, "4/5 scripted turns sent");
+
+    const approved = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "approve_retention_review",
+    });
+    assert.equal(approved.statusCode, 200);
+    const approvedCall = approved.payload as SnapshotPayload;
+    assert.equal(approvedCall.events.some((event) => event.type === "retention_review_approved"), true);
+
+    const finalTurn = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
+      callId,
+      expectedTurnIndex: 4,
+    });
+    assert.equal(finalTurn.statusCode, 200);
+    const finalPayload = finalTurn.payload as {
+      scriptCompleted: boolean;
+      call: OperatorConsolePayload["calls"]["items"][number];
+    };
+    assert.equal(finalPayload.scriptCompleted, true);
+    assert.equal(finalPayload.call.actionState.scriptedCallerTurnState.progressLabel, "5/5 scripted turns sent");
+    assert.equal(finalPayload.call.actionState.scriptedCallerTurnState.nextTurnText, null);
+  }, retentionConfig);
 });
 
 test("POST /api/calls/:callId/operator-note records operator notes and dispositions", async () => {
@@ -5761,6 +5866,10 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
         noteCall: string;
         consoleAction: string;
       };
+      scriptedCallerTurnSets: {
+        approve_offer: string[];
+        approve_retention_review: string[];
+      };
       actions: Array<{
         action: string;
         requiresPendingCall: boolean;
@@ -5792,6 +5901,14 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
       noteCall: "/api/calls/{callId}/operator-note",
       consoleAction: "/api/operator/console/action",
     });
+    assert.equal(payload.scriptedCallerTurnSets.approve_offer.length, 4);
+    assert.deepEqual(payload.scriptedCallerTurnSets.approve_retention_review, [
+      "I'm thinking about canceling my policy.",
+      "My renewal went up a lot, and I can't afford it.",
+      "Yes, please check.",
+      "Yes.",
+      "Keep it active until the review.",
+    ]);
     assert.deepEqual(
       payload.actions.map((action) => action.action),
       [

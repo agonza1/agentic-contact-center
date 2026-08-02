@@ -104,9 +104,7 @@ function appendOperatorTurn(snapshot: CallSnapshot, text: string, timestamp: str
 
 function computeScriptProgress(snapshot: CallSnapshot): ScriptProgress {
   const callerTurns = snapshot.transcript.filter((turn) => turn.speaker === "caller");
-  const expectedTurns = snapshot.scenario.defaultSupervisorSteer === "approve_retention_review"
-    ? CLUECON_CANCELLATION_CALLER_TURNS
-    : SCRIPTED_CALLER_TURNS;
+  const expectedTurns = snapshot.pipecatFlow.script.expectedCallerTurns;
   let matchedCallerTurns = 0;
 
   for (const [index, expectedTurn] of expectedTurns.entries()) {
@@ -196,7 +194,13 @@ function setOperatorSteerState(
   };
 }
 
-export function buildPipecatFlowPrototypeStatus(): PipecatFlowPrototypeStatus {
+export function buildPipecatFlowPrototypeStatus(
+  defaultSupervisorSteer?: OperatorSteerAction,
+): PipecatFlowPrototypeStatus {
+  const expectedCallerTurns = defaultSupervisorSteer === "approve_retention_review"
+    ? CLUECON_CANCELLATION_CALLER_TURNS
+    : SCRIPTED_CALLER_TURNS;
+
   return {
     ready: true,
     prototypeMode: "pipecat_local_runtime",
@@ -212,7 +216,7 @@ export function buildPipecatFlowPrototypeStatus(): PipecatFlowPrototypeStatus {
     toolCoverage: [...PIPECAT_TOOL_COVERAGE],
     script: {
       name: "cancellation_rescue_seeded_script",
-      expectedCallerTurns: [...SCRIPTED_CALLER_TURNS],
+      expectedCallerTurns: [...expectedCallerTurns],
       matchedCallerTurns: 0,
       completed: false,
     },

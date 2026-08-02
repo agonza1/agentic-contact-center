@@ -1620,7 +1620,7 @@ function buildOperatorConsoleHtml(): string {
       const evidenceHtml = '<div class="evidence" aria-label="Evidence markers"><div class="metric"><span class="meta">Latest Event</span><strong>' + escapeHtml(evidence.latestEventType || "none") + '</strong><span class="meta">' + escapeHtml(evidence.latestEventAt || "not recorded") + '</span><a href="' + escapeHtml(latestEventLink) + '">Event Trail</a></div><div class="metric"><span class="meta">Transcript Turns</span><strong>' + evidence.transcriptTurns + '</strong><a href="' + escapeHtml(evidenceLinks.transcript) + '">Transcript</a></div><div class="metric"><span class="meta">Latency Marks</span><strong>' + evidence.latencyMarkCount + '</strong><span class="meta">Over budget: ' + evidence.overBudgetLatencyMarkCount + '</span><a href="' + escapeHtml(latencyLink) + '">Latency</a></div><div class="metric"><span class="meta">Fallback</span><strong>' + escapeHtml(fallbackLabel) + '</strong><span class="meta">' + escapeHtml(fallbackDetail) + '</span><a href="' + escapeHtml(fallbackTrailLink) + '">Event Trail</a><a href="' + escapeHtml(fallbackQueueLink) + '">Fallback Queue</a>' + reasonTrailHtml + '</div><div class="metric"><span class="meta">Operator Notes</span><strong>' + evidence.operatorNoteCount + '</strong><span class="meta">' + escapeHtml(evidence.latestDisposition || evidence.latestOperatorNoteText || "none") + '</span><a href="' + escapeHtml(operatorNoteTrailLink) + '">Note Trail</a></div><div class="metric"><span class="meta">Proof Bundle</span><strong>' + evidence.eventCount + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Proof</a><a href="' + escapeHtml(evidenceLinks.artifacts) + '">Artifacts</a></div></div>';
       const assertHtml = '<section class="proof-panel" aria-label="Assert UI"><div class="proof-header"><h3>Assert UI</h3><div class="badges"><a class="badge" href="/assert/full">Full ASSERT</a><a class="badge" href="/assert">ACC Artifacts</a><a class="badge" href="/assert/spec">Eval Spec</a><span class="badge ok">' + escapeHtml(call.flowState === "wrap" && call.pipecatFlow.script.completed ? "call complete" : "collecting evidence") + '</span><span class="badge">' + escapeHtml(call.pipecatFlow.prototypeMode) + '</span></div></div><div class="proof-grid"><div class="metric"><span class="meta">Call State</span><strong>' + escapeHtml(call.flowState) + '</strong><span class="meta">Script: ' + escapeHtml(call.pipecatFlow.script.completed ? "complete" : "in progress") + '</span><span class="meta">Attention: ' + escapeHtml(call.attention.required ? "required" : "clear") + '</span></div><div class="metric"><span class="meta">Evidence Counts</span><strong>' + evidence.eventCount + ' events</strong><span class="meta">' + evidence.transcriptTurns + ' transcript turns</span><span class="meta">' + evidence.latencyMarkCount + ' latency marks</span></div><div class="metric"><span class="meta">Artifacts</span><strong>' + escapeHtml(evidence.operatorNoteCount > 0 ? "Disposition captured" : "No disposition yet") + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Open Proof JSON</a><a href="' + escapeHtml(evidenceLinks.artifacts) + '">Open Artifact Manifest</a><a href="' + escapeHtml(evidenceLinks.transcript) + '">Open Transcript JSON</a></div><div class="metric"><span class="meta">Assert Inputs</span><strong>' + escapeHtml(liveProof.eval && liveProof.eval.status ? liveProof.eval.status : "local proof bundle") + '</strong><span class="meta">Use npm run assert:export to write official ASSERT viewer artifacts, then npm run assert:viewer to browse them.</span></div></div></section>';
       const scriptedState = call.actionState.scriptedCallerTurnState || { matchedTurns: 0, totalTurns: (state.scriptedCallerTurns || []).length, remainingTurns: (state.scriptedCallerTurns || []).length, progressPct: 0, nextTurnIndex: 0, nextTurnText: null, completed: false };
-      const scriptedTurns = (state.scriptedCallerTurns || []).map(function(text, index) {
+      const scriptedTurns = (scriptedState.turnTexts || state.scriptedCallerTurns || []).map(function(text, index) {
         const isCompleted = index < scriptedState.matchedTurns;
         const isNext = index === scriptedState.nextTurnIndex;
         const disabled = (isCompleted || !isNext) ? "disabled" : "";
@@ -2683,14 +2683,15 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
             : "Review the held call context before applying operator guidance.",
       }
     : null;
-  const totalScriptedCallerTurns: number = SCRIPTED_CALLER_TURNS.length;
+  const scriptedCallerTurns = [...snapshot.pipecatFlow.script.expectedCallerTurns];
+  const totalScriptedCallerTurns = scriptedCallerTurns.length;
   const matchedScriptedCallerTurns = Math.min(
     snapshot.pipecatFlow.script.matchedCallerTurns,
     totalScriptedCallerTurns,
   );
   const remainingScriptedCallerTurns = totalScriptedCallerTurns - matchedScriptedCallerTurns;
-  const nextScriptedCallerTurn = SCRIPTED_CALLER_TURNS[matchedScriptedCallerTurns] ?? null;
-  const remainingScriptedCallerTurnTexts = SCRIPTED_CALLER_TURNS.slice(matchedScriptedCallerTurns);
+  const nextScriptedCallerTurn = scriptedCallerTurns[matchedScriptedCallerTurns] ?? null;
+  const remainingScriptedCallerTurnTexts = scriptedCallerTurns.slice(matchedScriptedCallerTurns);
   const scriptProgressPct = totalScriptedCallerTurns === 0
     ? 100
     : Math.round((matchedScriptedCallerTurns / totalScriptedCallerTurns) * 100);
@@ -2749,6 +2750,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       fallbackArmed: snapshot.demoFallback.armed,
       nextRecommendedAction,
       scriptedCallerTurnState: {
+        turnTexts: scriptedCallerTurns,
         matchedTurns: matchedScriptedCallerTurns,
         totalTurns: totalScriptedCallerTurns,
         remainingTurns: remainingScriptedCallerTurns,
@@ -3320,6 +3322,10 @@ function buildOperatorActionsPayload() {
       completeError: "operator_console_scripted_turn_complete",
     },
     scriptedCallerTurns: [...SCRIPTED_CALLER_TURNS],
+    scriptedCallerTurnSets: {
+      approve_offer: [...SCRIPTED_CALLER_TURNS],
+      approve_retention_review: [...CLUECON_CANCELLATION_CALLER_TURNS],
+    },
     actions: operatorActionCatalog.map((entry) => ({
       ...entry,
       reasonPrompt: getOperatorActionReasonPrompt(entry.action),
