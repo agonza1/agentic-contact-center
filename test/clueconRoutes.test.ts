@@ -1257,11 +1257,15 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Simulate voice call in CAE ↗/);
   assert.match(narrative.body, /http:\/\/127\.0\.0\.1:3010\/scenarios/);
   assert.match(narrative.body, /http:\/\/127\.0\.0\.1:3010\/runs/);
-  assert.match(narrative.body, /Say what you mean\./);
-  assert.match(narrative.body, /2017 · “exactly what I expected”/);
+  assert.match(narrative.body, /Every enterprise workflow can now begin with a conversation\./);
+  assert.match(narrative.body, /2017 · People adapted to systems\./);
+  assert.match(narrative.body, /Now · Systems can adapt to people\./);
   assert.match(narrative.body, /\.finale-callback \{[^}]*font-size: 18px/);
   assert.match(narrative.body, /\.finale-callback strong \{[^}]*font-size: 22px/);
-  assert.match(narrative.body, /The conversation can be unexpected\. Action still needs a contract\./);
+  assert.match(narrative.body, /The conversation can be open-ended\./);
+  assert.match(narrative.body, /Identity, authority, and outcomes cannot be\./);
+  assert.match(narrative.body, /Let AI handle the unexpected\./);
+  assert.match(narrative.body, /Engineer everything that happens next\./);
   assert.match(narrative.body, /Run it\. Break it\. Make it better\./);
   assert.match(narrative.body, /Connect on LinkedIn/);
   assert.match(narrative.body, /quickchart\.io\/qr\?text=https%3A%2F%2Fwww\.linkedin\.com%2Fin%2Falbertogonzaleztrastoy%2F/);
@@ -1353,7 +1357,7 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 15);
   assert.match(html, /Open CAE scenarios ↗/);
   assert.match(html, /Simulate voice call in CAE ↗/);
-  assert.match(html, /Say what you mean\./);
+  assert.match(html, /Every enterprise workflow can now begin with a conversation\./);
   assert.match(html, /Open source projects to try below:/);
   assert.doesNotMatch(html, /Bring back evidence\. Let’s compare notes after the talk\./);
   assert.match(html, /Live \"\+provider\+\" TTFB requires the local ACC \+ selected TTS sidecar/);
