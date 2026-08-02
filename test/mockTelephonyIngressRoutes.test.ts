@@ -667,6 +667,17 @@ test("the risky offer boundary parks the flow in policy hold without promising a
     const lastAgentTurn = [...secondPayload.transcript].reverse().find((turn) => turn.speaker === "agent");
     assert.ok(lastAgentTurn);
     assert.equal(lastAgentTurn.text.toLowerCase().includes("credit"), false);
+
+    const thirdTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Is there anything you can do before I cancel?",
+      timestamp: "2026-06-10T14:00:10.000Z",
+    });
+    const thirdPayload = thirdTurn.payload as SnapshotPayload;
+    assert.equal(thirdPayload.flowState, "operator_steer");
+    assert.equal(thirdPayload.events.some((event) => event.type === "customer_consent_recorded"), false);
+    const guidanceRequest = thirdPayload.events.find((event) => event.type === "operator_steer_requested");
+    assert.equal(guidanceRequest?.detail.operation, "safe_options_guidance");
+    assert.match(thirdPayload.transcript.at(-1)?.text ?? "", /will not change your policy/i);
   });
 });
 
@@ -1391,7 +1402,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(operatorConsoleCall.evidenceSummary.latestTranscriptSpeaker, "agent");
     assert.equal(operatorConsoleCall.evidenceSummary.latestEvidenceAt, "2026-06-10T14:10:10.000Z");
     assert.equal(operatorConsoleCall.evidenceSummary.transcriptTurns, 6);
-    assert.equal(operatorConsoleCall.evidenceSummary.eventCount, 21);
+    assert.equal(operatorConsoleCall.evidenceSummary.eventCount, 20);
     assert.equal(operatorConsoleCall.evidenceSummary.latencyMarkCount, 9);
     assert.equal(operatorConsoleCall.evidenceSummary.operatorNoteCount, 0);
     assert.equal(operatorConsoleCall.evidenceSummary.latestOperatorNoteText, null);
@@ -5652,7 +5663,7 @@ test("GET /api/calls/:callId/transcript returns filterable transcript pages", as
     assert.equal(newestAgentTurn.statusCode, 200);
     assert.equal(newestAgentPayload.transcript.length, 1);
     assert.equal(newestAgentPayload.transcript[0]?.speaker, "agent");
-    assert.match(newestAgentPayload.transcript[0]?.text ?? "", /requesting the retention review/);
+    assert.match(newestAgentPayload.transcript[0]?.text ?? "", /will not change your policy/);
 
     const sincePage = await requestJson(port, "GET", `/api/calls/${callId}/transcript?since=2026-06-10T14:00:05.000Z`);
     const sincePayload = sincePage.payload as {

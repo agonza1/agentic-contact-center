@@ -352,18 +352,14 @@ export function applyDeterministicPipecatFlow(
     const approvalReason = "safe_offer_review_requested";
     setOperatorSteerState(snapshot, true, turn.timestamp, config.policy.defaultSupervisorSteer, approvalReason);
     transitionFlowState(snapshot, "operator_steer", turn.timestamp, approvalReason);
-    recordEvent(snapshot, "customer_consent_recorded", turn.timestamp, {
-      consent: "request_retention_review",
-      explicit: true,
-    });
     recordEvent(snapshot, "operator_steer_requested", turn.timestamp, {
       recommendation: config.policy.defaultSupervisorSteer,
       operatorChannel: snapshot.scenario.operatorChannel,
-      operation: "retention_specialist_review",
+      operation: "safe_options_guidance",
     });
     appendAgentTurn(
       snapshot,
-      "Thank you. I am requesting the retention review now. This does not guarantee a discount.",
+      "Let me check which approved options I can discuss. This will not change your policy or guarantee a discount.",
       turn.timestamp,
     );
     return;
