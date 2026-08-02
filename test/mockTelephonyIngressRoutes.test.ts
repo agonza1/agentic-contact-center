@@ -1377,7 +1377,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.equal(operatorConsoleCall.evidenceSummary.latestTranscriptSpeaker, "agent");
     assert.equal(operatorConsoleCall.evidenceSummary.latestEvidenceAt, "2026-06-10T14:10:10.000Z");
     assert.equal(operatorConsoleCall.evidenceSummary.transcriptTurns, 6);
-    assert.equal(operatorConsoleCall.evidenceSummary.eventCount, 18);
+    assert.equal(operatorConsoleCall.evidenceSummary.eventCount, 21);
     assert.equal(operatorConsoleCall.evidenceSummary.latencyMarkCount, 9);
     assert.equal(operatorConsoleCall.evidenceSummary.operatorNoteCount, 0);
     assert.equal(operatorConsoleCall.evidenceSummary.latestOperatorNoteText, null);
@@ -2116,27 +2116,31 @@ test("POST /api/demo/run-end-to-end executes a complete usable call flow", async
         "caller_turn_1",
         "caller_turn_2",
         "caller_turn_3",
-        "operator_approve_offer",
+        "caller_turn_4",
+        "operator_approve_retention_review",
         "caller_wrap",
-        "operator_disposition",
+        "final_policy_state",
       ],
     );
     assert.equal(payload.steps.every((step) => step.ok && step.callId === payload.call.session.callId), true);
     assert.equal(payload.call.flowState, "wrap");
     assert.equal(payload.call.pipecatFlow.script.completed, true);
-    assert.equal(payload.call.operatorSteer.lastAction, "approve_offer");
+    assert.equal(payload.call.operatorSteer.lastAction, "approve_retention_review");
+    assert.equal(payload.call.transcript.some((turn) => turn.speaker === "operator"), false);
+    assert.equal(payload.call.events.some((event) => event.type === "retention_review_approved"), true);
+    assert.equal(payload.call.events.some((event) => event.type === "final_policy_state_recorded"), true);
     assert.equal(payload.call.session.openclawSession.label, "operator-console/end-to-end-test");
     const startedAtMs = Date.parse(payload.call.session.startedAt);
     const callerOffsets = payload.call.transcript
       .filter((turn) => turn.speaker === "caller")
       .map((turn) => Date.parse(turn.timestamp ?? "") - startedAtMs);
-    assert.deepEqual(callerOffsets, [1_000, 5_000, 9_000, 15_000]);
-    assert.equal(Date.parse(payload.call.operatorSteer.respondedAt ?? "") - startedAtMs, 11_000);
+    assert.deepEqual(callerOffsets, [1_000, 5_000, 9_000, 12_000, 18_000]);
+    assert.equal(Date.parse(payload.call.operatorSteer.respondedAt ?? "") - startedAtMs, 14_000);
     assert.equal(payload.operatorConsoleCall.actionState.scriptedCallerTurnState.completed, true);
     assert.equal(payload.operatorConsoleCall.actionState.scriptedCallerTurnState.progressPct, 100);
     assert.equal(payload.proof.outcome.flowState, "wrap");
     assert.equal(payload.proof.outcome.scriptCompleted, true);
-    assert.equal(payload.proof.summary.operatorNoteCount, 1);
+    assert.equal(payload.proof.summary.operatorNoteCount, 0);
     assert.equal(payload.proof.summary.transcriptTurns >= 8, true);
   });
 });
@@ -5620,7 +5624,7 @@ test("GET /api/calls/:callId/transcript returns filterable transcript pages", as
     assert.equal(newestAgentTurn.statusCode, 200);
     assert.equal(newestAgentPayload.transcript.length, 1);
     assert.equal(newestAgentPayload.transcript[0]?.speaker, "agent");
-    assert.match(newestAgentPayload.transcript[0]?.text ?? "", /operator approves/);
+    assert.match(newestAgentPayload.transcript[0]?.text ?? "", /requesting the retention review/);
 
     const sincePage = await requestJson(port, "GET", `/api/calls/${callId}/transcript?since=2026-06-10T14:00:05.000Z`);
     const sincePayload = sincePage.payload as {
@@ -5669,7 +5673,7 @@ test("GET /api/calls/:callId/transcript returns filterable transcript pages", as
     assert.equal(textFilteredPayload.summary.page.totalFilteredTurns, 2);
     assert.deepEqual(textFilteredPayload.transcript.map((turn) => turn.text), [
       "My renewal went up a lot, and I can't afford it.",
-      "I heard the renewal increase concern. I am pausing before I discuss any retention offer so I stay within approved options.",
+      "I understand the renewal increase. I found an option to review your coverage and deductible. I can also request a retention specialist review, but that requires supervisor approval and does not guarantee a discount. Would you like me to request it? You can still proceed with cancellation.",
     ]);
 
     const invalidText = await requestJson(port, "GET", `/api/calls/${callId}/transcript?text=%20%20`);

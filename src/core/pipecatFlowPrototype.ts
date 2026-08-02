@@ -31,6 +31,14 @@ export const SCRIPTED_CALLER_TURNS = [
   "Okay, that sounds good. Thanks.",
 ] as const;
 
+export const CLUECON_CANCELLATION_CALLER_TURNS = [
+  "I'm thinking about canceling my policy.",
+  "My renewal went up a lot, and I can't afford it.",
+  "Yes, please check.",
+  "Yes.",
+  "Keep it active until the review.",
+] as const;
+
 export const PIPECAT_TOOL_COVERAGE = [
   "get_current_slide",
   "goto_slide",
@@ -96,9 +104,12 @@ function appendOperatorTurn(snapshot: CallSnapshot, text: string, timestamp: str
 
 function computeScriptProgress(snapshot: CallSnapshot): ScriptProgress {
   const callerTurns = snapshot.transcript.filter((turn) => turn.speaker === "caller");
+  const expectedTurns = snapshot.scenario.defaultSupervisorSteer === "approve_retention_review"
+    ? CLUECON_CANCELLATION_CALLER_TURNS
+    : SCRIPTED_CALLER_TURNS;
   let matchedCallerTurns = 0;
 
-  for (const [index, expectedTurn] of SCRIPTED_CALLER_TURNS.entries()) {
+  for (const [index, expectedTurn] of expectedTurns.entries()) {
     const actualTurn = callerTurns[index];
     if (!actualTurn) {
       break;
@@ -113,13 +124,17 @@ function computeScriptProgress(snapshot: CallSnapshot): ScriptProgress {
 
   return {
     name: "cancellation_rescue_seeded_script",
-    expectedCallerTurns: [...SCRIPTED_CALLER_TURNS],
+    expectedCallerTurns: [...expectedTurns],
     matchedCallerTurns,
-    completed: matchedCallerTurns === SCRIPTED_CALLER_TURNS.length,
+    completed: matchedCallerTurns === expectedTurns.length,
   };
 }
 
 function buildSteeredResponse(action: OperatorSteerAction): string {
+  if (action === "approve_retention_review") {
+    return "The review has been approved. I can arrange a follow-up with a retention specialist. Would you like to keep the policy active until that review, or continue with cancellation now?";
+  }
+
   if (action === "deny_offer") {
     return "Thanks for waiting. The operator did not approve a retention offer, so I cannot discuss a billing credit; I can document the concern or connect you with a licensed retention specialist.";
   }
@@ -263,7 +278,7 @@ export function applyDeterministicPipecatFlow(
   snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
 
   if (snapshot.pipecatFlow.script.matchedCallerTurns !== callerTurnCount) {
-    const expectedTurn = SCRIPTED_CALLER_TURNS[snapshot.pipecatFlow.script.matchedCallerTurns] ?? null;
+    const expectedTurn = snapshot.pipecatFlow.script.expectedCallerTurns[snapshot.pipecatFlow.script.matchedCallerTurns] ?? null;
 
     snapshot.pipecatFlow.activeTool = "ask_operator";
     setOperatorSteerState(snapshot, true, turn.timestamp, "ask_operator", "script_diverged");
@@ -286,7 +301,7 @@ export function applyDeterministicPipecatFlow(
     transitionFlowState(snapshot, "greet", turn.timestamp, "caller_connected");
     appendAgentTurn(
       snapshot,
-      "I can help with that. Before I review options, what is pushing you to cancel today?",
+      "I can help with that. May I ask what is prompting the cancellation?",
       turn.timestamp,
     );
     transitionFlowState(snapshot, "diagnose", turn.timestamp, "cancellation_intent_captured");
@@ -296,40 +311,108 @@ export function applyDeterministicPipecatFlow(
   if (callerTurnCount === 2) {
     snapshot.pipecatFlow.activeTool = "goto_slide";
     transitionFlowState(snapshot, "policy_hold", turn.timestamp, "risky_retention_boundary");
+    recordEvent(snapshot, "cancellation_concern_captured", turn.timestamp, {
+      concern: "renewal_increase_affordability",
+      source: "caller",
+    });
     recordEvent(snapshot, "policy_hold_entered", turn.timestamp, {
       reason: "renewal_increase_requires_safe_offer_review",
       toolScope: config.policy.toolScope,
     });
+    if (config.policy.defaultSupervisorSteer !== "approve_retention_review") {
+      recordEvent(snapshot, "eligible_options_retrieved", turn.timestamp, {
+        options: "coverage_and_deductible_review,retention_specialist_review",
+        discountGuaranteed: false,
+      });
+    }
     appendAgentTurn(
       snapshot,
-      "I heard the renewal increase concern. I am pausing before I discuss any retention offer so I stay within approved options.",
+      config.policy.defaultSupervisorSteer === "approve_retention_review"
+        ? "I understand. I can check whether you're eligible for lower-cost coverage options or a retention review. You can still proceed with cancellation if those options don't help."
+        : "I understand the renewal increase. I found an option to review your coverage and deductible. I can also request a retention specialist review, but that requires supervisor approval and does not guarantee a discount. Would you like me to request it? You can still proceed with cancellation.",
       turn.timestamp,
     );
     return;
   }
 
   if (callerTurnCount === 3) {
+    if (config.policy.defaultSupervisorSteer === "approve_retention_review") {
+      recordEvent(snapshot, "eligible_options_retrieved", turn.timestamp, {
+        options: "coverage_and_deductible_review,retention_specialist_review",
+        discountGuaranteed: false,
+      });
+      appendAgentTurn(
+        snapshot,
+        "I found an option to review your coverage and deductible. I can also request a retention specialist review, but that requires supervisor approval and does not guarantee a discount. Would you like me to request it?",
+        turn.timestamp,
+      );
+      return;
+    }
     snapshot.pipecatFlow.activeTool = "ask_operator";
-    setOperatorSteerState(snapshot, true, turn.timestamp, config.policy.defaultSupervisorSteer, "safe_offer_review_requested");
-    transitionFlowState(snapshot, "operator_steer", turn.timestamp, "safe_offer_review_requested");
+    const approvalReason = "safe_offer_review_requested";
+    setOperatorSteerState(snapshot, true, turn.timestamp, config.policy.defaultSupervisorSteer, approvalReason);
+    transitionFlowState(snapshot, "operator_steer", turn.timestamp, approvalReason);
+    recordEvent(snapshot, "customer_consent_recorded", turn.timestamp, {
+      consent: "request_retention_review",
+      explicit: true,
+    });
     recordEvent(snapshot, "operator_steer_requested", turn.timestamp, {
       recommendation: config.policy.defaultSupervisorSteer,
       operatorChannel: snapshot.scenario.operatorChannel,
+      operation: "retention_specialist_review",
     });
     appendAgentTurn(
       snapshot,
-      "I can review safe next steps once an operator approves the guidance path. I am holding here for supervisor steer.",
+      "Thank you. I am requesting the retention review now. This does not guarantee a discount.",
       turn.timestamp,
     );
     return;
   }
 
   if (callerTurnCount === 4) {
+    if (config.policy.defaultSupervisorSteer === "approve_retention_review") {
+      snapshot.pipecatFlow.activeTool = "ask_operator";
+      setOperatorSteerState(snapshot, true, turn.timestamp, "approve_retention_review", "retention_review_requested");
+      transitionFlowState(snapshot, "operator_steer", turn.timestamp, "retention_review_requested");
+      recordEvent(snapshot, "customer_consent_recorded", turn.timestamp, {
+        consent: "request_retention_review",
+        explicit: true,
+      });
+      recordEvent(snapshot, "operator_steer_requested", turn.timestamp, {
+        recommendation: "approve_retention_review",
+        operatorChannel: snapshot.scenario.operatorChannel,
+        operation: "retention_specialist_review",
+      });
+      return;
+    }
     snapshot.pipecatFlow.activeTool = "pause_presentation";
     transitionFlowState(snapshot, "wrap", turn.timestamp, "caller_confirmed_next_step");
     appendAgentTurn(
       snapshot,
       "I have documented the follow-up request and closed the demo call safely. Thank you for calling today.",
+      turn.timestamp,
+    );
+    snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
+  }
+
+  if (callerTurnCount === 5 && config.policy.defaultSupervisorSteer === "approve_retention_review") {
+    snapshot.pipecatFlow.activeTool = "pause_presentation";
+    recordEvent(snapshot, "customer_final_path_selected", turn.timestamp, {
+      selection: "keep_policy_active_pending_review",
+    });
+    recordEvent(snapshot, "retention_followup_created", turn.timestamp, {
+      status: "requested",
+      pricingChangeApplied: false,
+    });
+    recordEvent(snapshot, "final_policy_state_recorded", turn.timestamp, {
+      policyStatus: "active",
+      pendingOperation: "retention_review",
+      pricingChangeApplied: false,
+    });
+    transitionFlowState(snapshot, "wrap", turn.timestamp, "customer_kept_policy_active_pending_review");
+    appendAgentTurn(
+      snapshot,
+      "Done. Your policy remains active, and I've requested the retention follow-up. No pricing change has been promised or applied. You'll receive confirmation of the request.",
       turn.timestamp,
     );
     snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
@@ -654,7 +737,9 @@ export function applyOperatorSteer(
   snapshot.pipecatFlow.activeTool = "ask_operator";
   const wasPending = snapshot.operatorSteer.pending;
   setOperatorSteerState(snapshot, false, timestamp, action, reason ?? null);
-  appendOperatorTurn(snapshot, `operator steer: ${action}`, timestamp);
+  if (action !== "approve_retention_review") {
+    appendOperatorTurn(snapshot, `operator steer: ${action}`, timestamp);
+  }
   recordEvent(snapshot, "operator_steer_applied", timestamp, {
     action,
     reason: reason ?? null,
@@ -663,6 +748,17 @@ export function applyOperatorSteer(
     sourceRoute: audit.sourceRoute ?? null,
     confirmationAcknowledged: audit.confirmationAcknowledged ?? null,
   });
+
+  if (action === "approve_retention_review") {
+    recordEvent(snapshot, "retention_review_approved", timestamp, {
+      reviewType: "retention_specialist_followup",
+      discountGuaranteed: false,
+      source: "operator_steer",
+    });
+    transitionFlowState(snapshot, "steered_response", timestamp, "retention_review_approved");
+    appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
+    return;
+  }
 
   if (action === "pause") {
     transitionFlowState(snapshot, "policy_hold", timestamp, "operator_paused_demo_flow");

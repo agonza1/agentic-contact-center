@@ -582,7 +582,11 @@ export class InMemoryTelephonyIngress {
     }
 
     const requiresPendingState =
-      action === "approve_offer" || action === "deny_offer" || action === "escalate_to_human" || action === "resume";
+      action === "approve_offer" ||
+      action === "approve_retention_review" ||
+      action === "deny_offer" ||
+      action === "escalate_to_human" ||
+      action === "resume";
     const resumesArmedFallback = action === "resume" && snapshot.demoFallback.armed;
     const resumesTerminalOperatorStop = action === "resume" && hasActiveTerminalOperatorStop(snapshot);
     if (

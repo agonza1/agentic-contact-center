@@ -29,6 +29,7 @@ import { buildPipecatFlowManagerContractPayload } from "../core/pipecatFlowManag
 import { buildPipecatMediaEngineReadinessPayload } from "../core/pipecatMediaEngineReadiness";
 import { RealtimeVoiceSessionStore, buildRealtimeVoiceSessionEndpoints } from "../core/realtimeVoiceSessions";
 import {
+  CLUECON_CANCELLATION_CALLER_TURNS,
   getPipecatPrototypeHealth,
   isConversationMode,
   SCRIPTED_CALLER_TURNS,
@@ -3311,7 +3312,14 @@ async function runEndToEndDemoFlow(
   config: PocConfig,
   options: StartCallOptions,
 ) {
-  const started = await ingress.startCall(config, options);
+  const scenarioConfig: PocConfig = {
+    ...config,
+    policy: {
+      ...config.policy,
+      defaultSupervisorSteer: "approve_retention_review",
+    },
+  };
+  const started = await ingress.startCall(scenarioConfig, options);
   const callId = started.session.callId;
   const steps: Array<{
     step: string;
@@ -3332,13 +3340,13 @@ async function runEndToEndDemoFlow(
   let latest = started;
   const startedAtMs = new Date(started.session.startedAt).getTime();
   const timestampAfter = (offsetMs: number) => new Date(startedAtMs + offsetMs).toISOString();
-  const scriptedTimestamps = [timestampAfter(1_000), timestampAfter(5_000), timestampAfter(9_000)];
+  const scriptedTimestamps = [timestampAfter(1_000), timestampAfter(5_000), timestampAfter(9_000), timestampAfter(12_000)];
 
-  for (const [index, text] of SCRIPTED_CALLER_TURNS.slice(0, 3).entries()) {
+  for (const [index, text] of CLUECON_CANCELLATION_CALLER_TURNS.slice(0, 4).entries()) {
     latest = await ingress.appendCallerTurn(
       callId,
       { speaker: "caller", text, timestamp: scriptedTimestamps[index] },
-      config,
+      scenarioConfig,
     );
     steps.push({
       step: `caller_turn_${index + 1}`,
@@ -3349,40 +3357,34 @@ async function runEndToEndDemoFlow(
     });
   }
 
-  latest = await ingress.applyOperatorSteer(callId, "approve_offer", timestampAfter(11_000));
+  latest = await ingress.applyOperatorSteer(callId, "approve_retention_review", timestampAfter(14_000));
   steps.push({
-    step: "operator_approve_offer",
+    step: "operator_approve_retention_review",
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: "Operator approved the safe retention response.",
+    detail: "Operator approved the retention specialist review; no discount was approved.",
   });
 
   latest = await ingress.appendCallerTurn(
     callId,
-    { speaker: "caller", text: SCRIPTED_CALLER_TURNS[3], timestamp: timestampAfter(15_000) },
-    config,
+    { speaker: "caller", text: CLUECON_CANCELLATION_CALLER_TURNS[4], timestamp: timestampAfter(18_000) },
+    scenarioConfig,
   );
   steps.push({
     step: "caller_wrap",
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: SCRIPTED_CALLER_TURNS[3],
+    detail: CLUECON_CANCELLATION_CALLER_TURNS[4],
   });
 
-  latest = await ingress.recordOperatorNote(
-    callId,
-    "Demo completed end to end: policy hold, operator approval, safe retention wrap, and proof bundle are available.",
-    timestampAfter(16_000),
-    "demo_completed",
-  );
   steps.push({
-    step: "operator_disposition",
+    step: "final_policy_state",
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: "Disposition recorded as demo_completed.",
+    detail: "Policy remains active; retention review requested; no pricing change promised or applied.",
   });
 
   return { latest, steps };
@@ -3612,7 +3614,7 @@ function buildClueConEvalScorecard(snapshot: CallSnapshot) {
     {
       id: "task_completion",
       label: "Task completion",
-      passed: snapshot.flowState === "wrap" && eventTypes.has("operator_note_recorded"),
+      passed: snapshot.flowState === "wrap" && eventTypes.has("final_policy_state_recorded"),
       evidence: `Call ${snapshot.session.callId} reached ${snapshot.flowState} with ${snapshot.transcript.length} transcript turns.`,
     },
     {
@@ -3624,14 +3626,14 @@ function buildClueConEvalScorecard(snapshot: CallSnapshot) {
     {
       id: "operator_approval",
       label: "Operator approval captured",
-      passed: eventTypes.has("operator_steer_applied") && snapshot.operatorSteer.lastAction === "approve_offer",
-      evidence: snapshot.operatorSteer.lastReason ?? "approve_offer recorded in the event trail.",
+      passed: eventTypes.has("retention_review_approved") && snapshot.operatorSteer.lastAction === "approve_retention_review",
+      evidence: snapshot.operatorSteer.lastReason ?? "Retention review approval recorded in the event trail.",
     },
     {
       id: "final_state",
       label: "Safe final state",
-      passed: transcriptText.includes("offer"),
-      evidence: "Final transcript contains the seeded safe retention offer path.",
+      passed: eventTypes.has("final_policy_state_recorded") && transcriptText.includes("policy remains active"),
+      evidence: "The final event and transcript record an active policy with a retention review pending.",
     },
     {
       id: "latency_evidence",
