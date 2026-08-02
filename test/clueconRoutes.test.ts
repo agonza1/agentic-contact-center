@@ -1066,6 +1066,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /signaling \/ control \/ evidence/);
   assert.match(narrative.body, /Two realtime ingress paths\. One streaming Pipecat runtime/);
   assert.match(narrative.body, /SmallWebRTC \/ aiortc/);
+  assert.match(narrative.body, /\.transport-node code \{ color: var\(--blue\); font-size: clamp\(13px,1vw,14px\); line-height: 1\.4;/);
   assert.match(narrative.body, /FreeSWITCH ↔ Pipecat/);
   assert.match(narrative.body, /SIP\/RTP \u2194 FreeSWITCH/);
   assert.equal((narrative.body.match(/class="transport-arrow" aria-label="bidirectional">↔<\/div>/g) ?? []).length, 2);

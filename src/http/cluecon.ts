@@ -1219,7 +1219,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .transport-node { display: grid; align-content: center; gap: 5px; min-width: 0; padding: 13px; border: 1px solid var(--line); border-radius: 11px; background: #f8fafc; }
     .transport-node small { color: var(--muted); font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
     .transport-node strong { font-size: clamp(16px,1.8vw,22px); line-height: 1.12; }
-    .transport-node code { color: var(--blue); font-size: 11px; overflow-wrap: anywhere; }
+    .transport-node code { color: var(--blue); font-size: clamp(13px,1vw,14px); line-height: 1.4; overflow-wrap: anywhere; }
     .transport-arrow { display: grid; place-items: center; color: var(--blue); font-size: 24px; font-weight: 900; }
     .shared-pipeline { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; padding: 15px; border: 1px solid rgba(15,118,110,.28); border-radius: 14px; background: linear-gradient(135deg,rgba(15,118,110,.08),rgba(36,87,166,.06)); }
     .shared-stage { display: grid; gap: 5px; min-width: 0; padding: 12px; border: 1px solid rgba(15,118,110,.2); border-radius: 10px; background: #fff; text-align: center; }
