@@ -1149,9 +1149,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /local-stt\.v1/);
   assert.match(narrative.body, /handleAsrRealtimeMessage/);
   assert.match(narrative.body, /function updateAsrRealtimeTranscript/);
-  assert.match(narrative.body, /else \{ live\.committedText = appendAsrRealtimeText\(live\.committedText, previous\); live\.partialText = nextText; \}/);
-  assert.match(narrative.body, /LIVE TRANSCRIPT/);
-  assert.match(narrative.body, /committedText/);
+  assert.doesNotMatch(narrative.body, /function appendAsrRealtimeText/);
+  assert.match(narrative.body, /LIVE · REVISING LAST/);
+  assert.match(narrative.body, /FINAL · FULL UTTERANCE/);
+  assert.match(narrative.body, /interim text is a rolling hypothesis/);
   assert.match(narrative.body, /captureClosePromise/);
   assert.match(narrative.body, /stopPromise/);
   assert.match(narrative.body, /context\.state !== "closed"/);
