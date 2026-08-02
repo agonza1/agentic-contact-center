@@ -1115,9 +1115,15 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.doesNotMatch(narrative.body, /ASRModel\.transcribe\(\[wav\]\)/);
   assert.match(narrative.body, /preloaded · same process/);
   assert.match(narrative.body, /Local[\s\S]*Swappable[\s\S]*Realtime[\s\S]*Measurable/);
-  assert.match(narrative.body, /\.asr-benefit b[^}]*width: 40px; height: 40px/);
-  assert.match(narrative.body, /\.asr-benefit strong \{ font-size: 18px/);
-  assert.match(narrative.body, /\.asr-benefit small[^}]*font-size: 14px/);
+  assert.match(narrative.body, /#asr-architecture > \.kicker \{ font-size: 14px/);
+  assert.match(narrative.body, /\.asr-app-node small[^}]*font-size: 12px/);
+  assert.match(narrative.body, /\.asr-app-node span[^}]*font-size: 14px/);
+  assert.match(narrative.body, /\.asr-app-node code[^}]*font-size: 13px/);
+  assert.match(narrative.body, /\.asr-app-link span, \.asr-app-link em[^}]*font-size: 13px/);
+  assert.match(narrative.body, /\.asr-app-link code[^}]*font: 12px\/1\.3/);
+  assert.match(narrative.body, /\.asr-benefit b[^}]*width: 44px; height: 44px/);
+  assert.match(narrative.body, /\.asr-benefit strong \{ font-size: 20px/);
+  assert.match(narrative.body, /\.asr-benefit small[^}]*font-size: 16px/);
   assert.match(narrative.body, /Mic → Local STT → transcript/);
   assert.match(narrative.body, /id="asr-model-select"/);
   assert.match(narrative.body, /id="asr-realtime"/);
