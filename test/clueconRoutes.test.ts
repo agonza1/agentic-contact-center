@@ -891,13 +891,13 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /media-wave/);
   assert.match(narrative.body, /media-tokens/);
   assert.equal((narrative.body.match(/data-slide="\d+"/g) ?? []).length, 15);
-  assert.match(narrative.body, /January 2018 · My first voice prototype/);
+  assert.match(narrative.body, /January 2017 · My first voice prototype/);
   assert.match(narrative.body, /My first voice AI/);
   assert.match(narrative.body, /could do anything—/);
   assert.match(narrative.body, /as long as you said/);
   assert.match(narrative.body, /exactly what I expected\./);
   assert.match(narrative.body, /I’m sorry\. I didn’t understand\./);
-  assert.match(narrative.body, /Five years later, GPT-4 arrived\./);
+  assert.match(narrative.body, /Six years later, GPT-4 arrived\./);
   assert.match(narrative.body, /So we put <em>GPT-4<\/em>/);
   assert.match(narrative.body, /on a <em>WebRTC call\.<\/em>/);
   assert.match(narrative.body, /voice-origin__turn/);
@@ -1126,7 +1126,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Simulate voice call in CAE ↗/);
   assert.match(narrative.body, /http:\/\/127\.0\.0\.1:3010\/scenarios/);
   assert.match(narrative.body, /http:\/\/127\.0\.0\.1:3010\/runs/);
-  assert.match(narrative.body, /Have fun with them\. Make them better/);
+  assert.match(narrative.body, /Say what you mean\./);
+  assert.match(narrative.body, /2017 · “exactly what I expected”/);
+  assert.match(narrative.body, /The conversation can be unexpected\. Action still needs a contract\./);
+  assert.match(narrative.body, /Run it\. Break it\. Make it better\./);
   assert.match(narrative.body, /alberto@webrtc\.ventures/);
   assert.match(narrative.body, /logo-main-light\.svg/);
   assert.match(narrative.body, /class="flow-brand"[^>]*aria-label="Visit WebRTC\.ventures"/);
@@ -1214,7 +1217,8 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 15);
   assert.match(html, /Open CAE scenarios ↗/);
   assert.match(html, /Simulate voice call in CAE ↗/);
-  assert.match(html, /Have fun with them\. Make them better/);
+  assert.match(html, /Say what you mean\./);
+  assert.match(html, /Bring back evidence\. Let’s compare notes after the talk\./);
   assert.match(html, /Live \"\+provider\+\" TTFB requires the local ACC \+ selected TTS sidecar/);
   assert.match(html, /prerecorded system-unavailable prompt/i);
   assert.match(html, /human-support/);
