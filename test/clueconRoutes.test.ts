@@ -1354,7 +1354,7 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /Open CAE scenarios ↗/);
   assert.match(html, /Simulate voice call in CAE ↗/);
   assert.match(html, /Say what you mean\./);
-  assert.match(html, /open source projects to try below:/);
+  assert.match(html, /Open source projects to try below:/);
   assert.doesNotMatch(html, /Bring back evidence\. Let’s compare notes after the talk\./);
   assert.match(html, /Live \"\+provider\+\" TTFB requires the local ACC \+ selected TTS sidecar/);
   assert.match(html, /prerecorded system-unavailable prompt/i);
