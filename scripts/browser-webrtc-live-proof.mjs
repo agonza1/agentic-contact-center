@@ -44,11 +44,23 @@ function activeTtsConfig() {
 
 const ttsConfig = activeTtsConfig();
 
+function ttsSetupCommands(config) {
+  if (config.provider === "pocket") {
+    return [
+      "export ACC_TTS_PROVIDER=pocket",
+      `export POCKET_TTS_BASE_URL=${config.baseUrl}`,
+    ];
+  }
+  return [
+    "export ACC_TTS_PROVIDER=kokoro",
+    `export KOKORO_BASE_URL=${config.baseUrl}`,
+  ];
+}
+
 const setupCommands = [
   "export RTC_ASR_BASE_URL=${RTC_ASR_BASE_URL:-http://127.0.0.1:8080}",
   "export RTC_ASR_WS_URL=${RTC_ASR_WS_URL:-ws://127.0.0.1:8080/v1/stt/stream}",
-  "export POCKET_TTS_BASE_URL=${POCKET_TTS_BASE_URL:-http://127.0.0.1:8881}",
-  "export ACC_TTS_PROVIDER=${ACC_TTS_PROVIDER:-}",
+  ...ttsSetupCommands(ttsConfig),
   "export BROWSER_WEBRTC_BRIDGE_URL=${BROWSER_WEBRTC_BRIDGE_URL:-http://127.0.0.1:8766}",
   "npm start",
   "npm run pipecat:webrtc:check",
