@@ -989,6 +989,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /on a <em>WebRTC call\.<\/em>/);
   assert.match(narrative.body, /voice-origin__turn/);
   assert.match(narrative.body, /voice-story-active/);
+  assert.match(narrative.body, /\.present \.voice-origin__content \{ padding-top: clamp\(60px,7\.5vh,84px\); \}/);
   assert.match(narrative.body, /alberto-echo-show-prototype\.jpg/);
   assert.match(narrative.body, /voiceOriginDrift/);
   assert.match(narrative.body, /prefers-reduced-motion: reduce/);
