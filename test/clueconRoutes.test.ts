@@ -294,7 +294,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
     };
     proofPreview: { workboardCard: string; previewRoute: string; runRoute: string; compatibleRequest: string; includes: string[]; scorecardChecks: string[] };
     caePanel: { webBaseUrl: string; scenariosPath: string; runsPath: string; repoUrl: string; relationship: string };
-    contactPanel: { name: string; role: string; email: string; websiteUrl: string; logoUrl: string };
+    contactPanel: { name: string; role: string; email: string; linkedinUrl: string; websiteUrl: string; logoUrl: string };
   };
 
   assert.equal(payload.ok, true);
@@ -406,6 +406,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.caePanel.runsPath, "/runs");
   assert.match(payload.caePanel.relationship, /ACC remains an optional target adapter/);
   assert.equal(payload.contactPanel.email, "alberto@webrtc.ventures");
+  assert.equal(payload.contactPanel.linkedinUrl, "https://www.linkedin.com/in/albertogonzaleztrastoy/");
   assert.match(payload.contactPanel.logoUrl, /logo-main-light\.svg/);
 });
 
@@ -1240,6 +1241,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /2017 · “exactly what I expected”/);
   assert.match(narrative.body, /The conversation can be unexpected\. Action still needs a contract\./);
   assert.match(narrative.body, /Run it\. Break it\. Make it better\./);
+  assert.match(narrative.body, /Connect on LinkedIn/);
+  assert.match(narrative.body, /quickchart\.io\/qr\?text=https%3A%2F%2Fwww\.linkedin\.com%2Fin%2Falbertogonzaleztrastoy%2F/);
   assert.match(narrative.body, /alberto@webrtc\.ventures/);
   assert.match(narrative.body, /logo-main-light\.svg/);
   assert.match(narrative.body, /class="flow-brand"[^>]*aria-label="Visit WebRTC\.ventures"/);
