@@ -1185,6 +1185,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /value="pocket"/);
   assert.match(narrative.body, /function renderTtsProviderSelection\(\)/);
   assert.match(narrative.body, /function resetTtsMeasurements\(\)/);
+  assert.match(narrative.body, /controller: new AbortController\(\)/);
+  assert.match(narrative.body, /signal: stream\.controller\.signal/);
+  assert.match(narrative.body, /if \(token !== state\.ttsStreamToken\) return;\s+if \(firstByteMs === null\)/);
+  assert.match(narrative.body, /if \(token !== state\.ttsStreamToken\) return;\s+stopTtsStream\(\);/);
   assert.match(narrative.body, /providerSelect\.disabled = true/);
   assert.match(narrative.body, /renderTtsProviderSelection\(\); resetTtsMeasurements\(\)/);
   assert.match(narrative.body, /tts-text[^\n]+input[^\n]+stopTtsStream\(\); renderTtsProviderSelection\(\); resetTtsMeasurements\(\)/);

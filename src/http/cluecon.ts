@@ -1817,9 +1817,12 @@ def collect_identity_node() -> NodeConfig:
       const stream = state.ttsStream;
       state.ttsStream = null;
       if (!stream) return;
+      if (stream.controller) stream.controller.abort();
       stream.timers.forEach(timer => clearTimeout(timer));
       stream.sources.forEach(source => { try { source.stop(); } catch {} });
       if (stream.context && stream.context.state !== "closed") stream.context.close().catch(() => undefined);
+      document.getElementById("tts-run").disabled = false;
+      document.getElementById("tts-provider").disabled = false;
     }
     async function readTtsAudioResponse(response, onChunk) {
       if (!response.body) throw new Error("The browser did not expose the streaming response body.");
@@ -1973,9 +1976,10 @@ def collect_identity_node() -> NodeConfig:
       const segments = renderTtsTextProgress();
       const token = state.ttsStreamToken;
       const context = new AudioContextClass();
-      await context.resume();
-      const stream = { context, sources: [], timers: [] };
+      const stream = { context, controller: new AbortController(), sources: [], timers: [] };
       state.ttsStream = stream;
+      await context.resume();
+      if (token !== state.ttsStreamToken) return;
       button.disabled = true;
       providerSelect.disabled = true;
       badge.textContent = "streaming";
@@ -1999,12 +2003,15 @@ def collect_identity_node() -> NodeConfig:
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ provider: provider.id, text: segments[index], voice: provider.voice }),
+            signal: stream.controller.signal,
           });
+          if (token !== state.ttsStreamToken) return;
           if (!response.ok) {
             const failure = await response.json().catch(() => ({ error: "HTTP " + response.status }));
             throw new Error(failure.detail || failure.nextStep || failure.error || provider.label + " synthesis failed.");
           }
           const audioBytes = await readTtsAudioResponse(response, byteLength => {
+            if (token !== state.ttsStreamToken) return;
             if (firstByteMs === null) {
               firstByteMs = performance.now() - started;
               document.getElementById("tts-ttfb").textContent = Math.round(firstByteMs) + " ms";
@@ -2047,17 +2054,21 @@ def collect_identity_node() -> NodeConfig:
           document.getElementById("tts-bytes").textContent = completedSegments + " / " + segments.length + " · " + new Intl.NumberFormat().format(bytes) + " B";
           if (index + 1 < segments.length) status.textContent = "Chunk " + (index + 1) + " queued; synthesizing chunk " + (index + 2) + " while playback continues.";
         }
+        if (token !== state.ttsStreamToken) return;
         const totalMs = performance.now() - started;
         document.getElementById("tts-total").textContent = Math.round(totalMs) + " ms";
         status.textContent = "All " + segments.length + " chunks received in " + Math.round(totalMs) + " ms; queued audio is still playing.";
       } catch (error) {
+        if (token !== state.ttsStreamToken) return;
         stopTtsStream();
         badge.textContent = "blocked";
         badge.className = "badge blocked";
         status.textContent = String(error.message || error);
       } finally {
-        button.disabled = false;
-        providerSelect.disabled = false;
+        if (token === state.ttsStreamToken) {
+          button.disabled = false;
+          providerSelect.disabled = false;
+        }
       }
     }
     function renderProofCards() { document.getElementById("proof-cards").innerHTML = data.proofPreview.includes.map(item => '<article class="card proof-field"><strong>' + esc(item) + '</strong></article>').join(""); document.getElementById("eval-scorecard").innerHTML = data.proofPreview.scorecardChecks.map(item => '<div class="event"><strong>' + esc(item) + '</strong><span class="badge fixture">pending</span></div>').join(""); }
