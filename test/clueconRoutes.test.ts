@@ -1154,6 +1154,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /function updateAsrRealtimeTranscript/);
   assert.doesNotMatch(narrative.body, /function appendAsrRealtimeText/);
   assert.match(narrative.body, /function asrStablePrefixCount/);
+  assert.match(narrative.body, /normalizedBackend\.includes\("whisper"\) && normalizedModel === "base\.en"/);
+  assert.doesNotMatch(narrative.body, /identity\.includes\("faster-whisper"\) \|\|/);
   assert.match(narrative.body, /history\.slice\(-3\)/);
   assert.match(narrative.body, /LIVE · GROWING TRANSCRIPT/);
   assert.match(narrative.body, /Bright = stable across 3 revisions · cyan = may change/);

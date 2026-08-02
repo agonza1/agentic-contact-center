@@ -780,6 +780,7 @@ export function applyOperatorSteer(
   snapshot.pipecatFlow.activeTool = "ask_operator";
   const wasPending = snapshot.operatorSteer.pending;
   const pendingAction = snapshot.operatorSteer.lastAction;
+  const pendingOperatorSteer = { ...snapshot.operatorSteer };
   setOperatorSteerState(snapshot, false, timestamp, action, reason ?? null);
   if (action !== "approve_retention_review") {
     appendOperatorTurn(snapshot, `operator steer: ${action}`, timestamp);
@@ -820,7 +821,7 @@ export function applyOperatorSteer(
 
   if (action === "arm_fallback") {
     setDemoFallback(snapshot, true, timestamp, reason ?? "operator_requested_manual_takeover", null);
-    setOperatorSteerState(snapshot, wasPending, timestamp, action, reason ?? null);
+    if (wasPending) snapshot.operatorSteer = pendingOperatorSteer;
     transitionFlowState(snapshot, "policy_hold", timestamp, "operator_armed_manual_fallback");
     recordEvent(snapshot, "demo_fallback_armed", timestamp, {
       operatorChannel: snapshot.scenario.operatorChannel,
@@ -835,7 +836,7 @@ export function applyOperatorSteer(
   if (action === "disarm_fallback") {
     if (snapshot.demoFallback.armed) {
       setDemoFallback(snapshot, false, timestamp, null, snapshot.demoFallback.mode);
-      transitionFlowState(snapshot, "steered_response", timestamp, "operator_disarmed_manual_fallback");
+      if (!wasPending) transitionFlowState(snapshot, "steered_response", timestamp, "operator_disarmed_manual_fallback");
       recordEvent(snapshot, "demo_fallback_disarmed", timestamp, {
         operatorChannel: snapshot.scenario.operatorChannel,
       });
@@ -846,6 +847,7 @@ export function applyOperatorSteer(
         reason: "fallback_not_armed",
       });
     }
+    if (wasPending) snapshot.operatorSteer = pendingOperatorSteer;
     snapshot.pipecatFlow.activeTool = "ask_operator";
     return;
   }

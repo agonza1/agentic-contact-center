@@ -2486,6 +2486,26 @@ test("retention approval requires its exact pending request and the console foll
     assert.equal(afterInvalidPauseCall.operatorSteer.lastAction, "approve_retention_review");
     assert.equal(afterInvalidPauseCall.events.some((event) => event.type === "operator_demo_paused"), false);
 
+    const armedFallback = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "arm_fallback",
+      reason: "presentation safety net",
+    });
+    const armedFallbackCall = armedFallback.payload as SnapshotPayload;
+    assert.equal(armedFallback.statusCode, 200);
+    assert.equal(armedFallbackCall.operatorSteer.pending, true);
+    assert.equal(armedFallbackCall.operatorSteer.lastAction, "approve_retention_review");
+    assert.equal(armedFallbackCall.demoFallback.armed, true);
+    const disarmedFallback = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "disarm_fallback",
+    });
+    const disarmedFallbackCall = disarmedFallback.payload as SnapshotPayload;
+    assert.equal(disarmedFallback.statusCode, 200);
+    assert.equal(disarmedFallbackCall.operatorSteer.pending, true);
+    assert.equal(disarmedFallbackCall.operatorSteer.lastAction, "approve_retention_review");
+    assert.equal(disarmedFallbackCall.demoFallback.armed, false);
+    assert.equal(disarmedFallbackCall.events.some((event) => event.type === "demo_fallback_armed"), true);
+    assert.equal(disarmedFallbackCall.events.some((event) => event.type === "demo_fallback_disarmed"), true);
+
     const wrongApproval = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
       action: "approve_offer",
     });
@@ -3511,7 +3531,6 @@ test("GET /api/calls and /api/queue can filter by attention source", async () =>
       reason: "supervisor asked for dual-track demo",
       timestamp: "2026-06-10T14:00:15.000Z",
     });
-
     const operatorOnlyCalls = await requestJson(port, "GET", "/api/calls?attentionSource=operator_steer");
     const operatorOnlyCallsPayload = operatorOnlyCalls.payload as CallListPayload;
     assert.equal(operatorOnlyCalls.statusCode, 200);
@@ -3533,7 +3552,7 @@ test("GET /api/calls and /api/queue can filter by attention source", async () =>
       required: true,
       source: "operator_steer+fallback",
       reason: "supervisor asked for dual-track demo",
-      startedAt: "2026-06-10T14:00:15.000Z",
+      startedAt: "2026-06-10T14:00:14.000Z",
       ageMs: combinedCallsPayload.calls[0]?.attention?.ageMs,
     });
     assert.equal(typeof combinedCallsPayload.calls[0]?.attention?.ageMs, "number");
