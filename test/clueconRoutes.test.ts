@@ -1080,6 +1080,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.doesNotMatch(narrative.body, /FlowManager validates node transitions; ACC demonstrates bounded state/);
   assert.doesNotMatch(narrative.body, /Forward the first playable TTS chunk immediately/);
   assert.doesNotMatch(narrative.body, /Run scripted demo/);
+  assert.match(narrative.body, /Failure-control example/);
+  assert.doesNotMatch(narrative.body, /Failure-control demo/);
   assert.match(narrative.body, /Run cancellation scenario/);
   assert.match(narrative.body, /Try another control/);
   assert.match(narrative.body, /The caller chooses\. The application authorizes\./);
