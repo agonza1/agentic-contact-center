@@ -783,6 +783,36 @@ test("ClueCon TTS route auto-selects Pocket by URL and streams audio through the
   }
 });
 
+test("GET /api/cluecon blocks explicitly selected Pocket when its base URL is missing", async () => {
+  await withEnv(
+    {
+      ACC_TTS_PROVIDER: "pocket",
+      POCKET_TTS_BASE_URL: undefined,
+      KOKORO_BASE_URL: undefined,
+    },
+    async () => {
+      const payloadResponse = await get("/api/cluecon");
+      assert.equal(payloadResponse.statusCode, 200);
+      const payload = JSON.parse(payloadResponse.body) as {
+        readiness: Array<{ id: string; status: string; detail: string }>;
+        liveProbes: Array<{ id: string; configured: boolean; status: string }>;
+        ttsPanel: { engine: string; status: string; liveProbe: { configured: boolean; status: string } | null };
+      };
+      const pocketReadiness = payload.readiness.find((item) => item.id === "pocket_tts");
+      assert.equal(pocketReadiness?.status, "blocked");
+      assert.match(pocketReadiness?.detail ?? "", /POCKET_TTS_BASE_URL/);
+      assert.ok(payload.liveProbes.some((probe) => probe.id === "pocket_tts" && probe.configured === false && probe.status === "fixture"));
+      assert.equal(payload.ttsPanel.engine, "pocket");
+      assert.equal(payload.ttsPanel.status, "local_sidecar_required");
+      assert.equal(payload.ttsPanel.liveProbe?.configured, false);
+
+      const synthesizeResponse = await post("/api/cluecon/tts/synthesize", { text: "Pocket must be configured." });
+      assert.equal(synthesizeResponse.statusCode, 503);
+      assert.match(synthesizeResponse.body, /pocket_not_configured/);
+    },
+  );
+});
+
 test("ClueCon TTS route refreshes its idle timeout while audio keeps arriving", async () => {
   const kokoro = await startKokoroServer([
     { delayMs: 60, value: "audio-1" },

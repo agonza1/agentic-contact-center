@@ -305,6 +305,15 @@ function buildBasePayload(
   const ttsProvider = getClueConTtsProvider();
   const activeTtsProbe = ttsProvider === "pocket" ? pocketTtsProbe : kokoroProbe;
   const activeTtsLabel = ttsProvider === "pocket" ? "Pocket TTS" : "Kokoro TTS";
+  const selectedPocketWithoutBaseUrl = ttsProvider === "pocket" && pocketTtsProbe?.configured === false;
+  const pocketTtsReadinessStatus: ClueConReadinessStatus = selectedPocketWithoutBaseUrl
+    ? "blocked"
+    : pocketTtsProbe?.status ?? (ttsProvider === "pocket" ? "blocked" : "fixture");
+  const pocketTtsReadinessDetail = selectedPocketWithoutBaseUrl
+    ? "ACC_TTS_PROVIDER is pocket, but POCKET_TTS_BASE_URL is not ready for local streaming TTS."
+    : pocketTtsProbe?.detail ?? (ttsProvider === "pocket"
+      ? "ACC_TTS_PROVIDER is pocket, but POCKET_TTS_BASE_URL is not ready for local streaming TTS."
+      : "Pocket is the preferred Pipecat TTS lane when POCKET_TTS_BASE_URL is configured.");
 
   return {
     ok: true,
@@ -439,10 +448,8 @@ function buildBasePayload(
       {
         id: "pocket_tts",
         label: "Pocket streaming TTS",
-        status: pocketTtsProbe?.status ?? (ttsProvider === "pocket" ? "blocked" : "fixture"),
-        detail: pocketTtsProbe?.detail ?? (ttsProvider === "pocket"
-          ? "ACC_TTS_PROVIDER is pocket, but POCKET_TTS_BASE_URL is not ready for local streaming TTS."
-          : "Pocket is the preferred Pipecat TTS lane when POCKET_TTS_BASE_URL is configured."),
+        status: pocketTtsReadinessStatus,
+        detail: pocketTtsReadinessDetail,
         caveat: pocketTtsProbe?.configured
           ? `Probe ${pocketTtsProbe.ok ? "passed" : "failed"} at ${pocketTtsProbe.url}.`
           : "Set POCKET_TTS_BASE_URL for Pocket auto-selection; ACC_TTS_PROVIDER=pocket remains available as an explicit override.",

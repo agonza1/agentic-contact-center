@@ -139,6 +139,10 @@ function getConfiguredTtsProvider(): "pocket" | "kokoro" {
   return process.env.POCKET_TTS_BASE_URL?.trim() ? "pocket" : "kokoro";
 }
 
+function getPocketTtsBaseUrlForSetup(): string {
+  return process.env.POCKET_TTS_BASE_URL?.trim() || "http://127.0.0.1:8881";
+}
+
 function getTtsSpeechTarget(): { provider: "pocket" | "kokoro"; url: string; model: string; voice: string; responseFormat: string; contentType: string } | null {
   const provider = getConfiguredTtsProvider();
   if (provider === "pocket") {
@@ -250,7 +254,7 @@ function buildBrowserWebrtcReadinessPayload(bridgeRuntime: BrowserWebrtcBridgeRu
   const ttsSetupCommands = ttsProvider === "pocket"
     ? [
       "export ACC_TTS_PROVIDER=pocket",
-      "export POCKET_TTS_BASE_URL=http://127.0.0.1:8881",
+      `export POCKET_TTS_BASE_URL=${getPocketTtsBaseUrlForSetup()}`,
     ]
     : [
       "export ACC_TTS_PROVIDER=kokoro",
