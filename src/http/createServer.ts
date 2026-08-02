@@ -24,7 +24,7 @@ import {
   type AssertEvaluationSpec,
 } from "../core/assertEvaluationSpec";
 import { compareTimestamps, getAttentionMetadata } from "../core/attention";
-import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
+import { hasActiveTerminalOperatorStop, InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
 import { buildPipecatFlowManagerContractPayload } from "../core/pipecatFlowManagerContract";
 import { buildPipecatMediaEngineReadinessPayload } from "../core/pipecatMediaEngineReadiness";
 import { RealtimeVoiceSessionStore, buildRealtimeVoiceSessionEndpoints } from "../core/realtimeVoiceSessions";
@@ -2764,9 +2764,10 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
     snapshot.pipecatFlow.script.matchedCallerTurns,
     totalScriptedCallerTurns,
   );
-  const remainingScriptedCallerTurns = totalScriptedCallerTurns - matchedScriptedCallerTurns;
-  const nextScriptedCallerTurn = scriptedCallerTurns[matchedScriptedCallerTurns] ?? null;
-  const remainingScriptedCallerTurnTexts = scriptedCallerTurns.slice(matchedScriptedCallerTurns);
+  const terminalOperatorStopActive = hasActiveTerminalOperatorStop(snapshot);
+  const remainingScriptedCallerTurns = terminalOperatorStopActive ? 0 : totalScriptedCallerTurns - matchedScriptedCallerTurns;
+  const nextScriptedCallerTurn = terminalOperatorStopActive ? null : scriptedCallerTurns[matchedScriptedCallerTurns] ?? null;
+  const remainingScriptedCallerTurnTexts = terminalOperatorStopActive ? [] : scriptedCallerTurns.slice(matchedScriptedCallerTurns);
   const scriptProgressPct = totalScriptedCallerTurns === 0
     ? 100
     : Math.round((matchedScriptedCallerTurns / totalScriptedCallerTurns) * 100);
@@ -6960,6 +6961,11 @@ async function routeRequest(
       return;
     }
 
+    if (hasActiveTerminalOperatorStop(snapshot)) {
+      writeJson(response, 409, { ok: false, error: "operator_console_scripted_turn_terminal" });
+      return;
+    }
+
     const expectedTurnIndex = parseOptionalNonNegativeInteger(
       body.expectedTurnIndex,
       "operator_console_scripted_turn_index_invalid",
@@ -7021,6 +7027,10 @@ async function routeRequest(
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Retention review approval is required")) {
         writeJson(response, 409, { ok: false, error: "retention_review_approval_required" });
+        return;
+      }
+      if (error instanceof Error && error.message.startsWith("Scripted caller turn is not allowed after a terminal operator stop")) {
+        writeJson(response, 409, { ok: false, error: "operator_console_scripted_turn_terminal" });
         return;
       }
       writeNotFound(response);
@@ -7545,6 +7555,10 @@ async function routeRequest(
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Retention review approval is required")) {
         writeJson(response, 409, { ok: false, error: "retention_review_approval_required" });
+        return;
+      }
+      if (error instanceof Error && error.message.startsWith("Scripted caller turn is not allowed after a terminal operator stop")) {
+        writeJson(response, 409, { ok: false, error: "caller_turn_terminal_operator_stop" });
         return;
       }
       writeNotFound(response);

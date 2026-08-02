@@ -2608,6 +2608,51 @@ test("a denied retention review lets the caller continue cancellation through a 
   }, config);
 });
 
+test("terminal operator actions suppress and reject the remaining scripted caller turn", async () => {
+  const config = loadPocConfig();
+  config.policy.defaultSupervisorSteer = "approve_retention_review";
+  await withServer(async (port) => {
+    for (const action of ["escalate_to_human", "transfer", "takeover", "end_call"] as const) {
+      const started = await requestJson(port, "POST", "/api/demo/start");
+      const callId = (started.payload as SnapshotPayload).session.callId;
+      for (let index = 0; index < 4; index += 1) {
+        const submitted = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
+          callId,
+          expectedTurnIndex: index,
+        });
+        assert.equal(submitted.statusCode, 200);
+      }
+
+      const stopped = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, { action });
+      const stoppedCall = stopped.payload as SnapshotPayload;
+      assert.equal(stopped.statusCode, 200);
+      assert.equal(stoppedCall.flowState, "wrap");
+      const transcriptLength = stoppedCall.transcript.length;
+
+      const consoleResponse = await requestJson(port, "GET", `/api/operator/console?callId=${callId}`);
+      const consoleCall = (consoleResponse.payload as OperatorConsolePayload).calls.items[0];
+      assert.equal(consoleCall?.actionState.scriptedCallerTurnState.nextTurnIndex, null);
+      assert.equal(consoleCall?.actionState.scriptedCallerTurnState.nextTurnText, null);
+      assert.equal(consoleCall?.actionState.scriptedCallerTurnState.remainingTurns, 0);
+      assert.deepEqual(consoleCall?.actionState.scriptedCallerTurnState.remainingTurnTexts, []);
+      assert.equal(consoleCall?.actionState.scriptedCallerTurnState.completed, true);
+
+      const rejectedScriptedTurn = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
+        callId,
+        expectedTurnIndex: 4,
+      });
+      assert.equal(rejectedScriptedTurn.statusCode, 409);
+      assert.deepEqual(rejectedScriptedTurn.payload, { ok: false, error: "operator_console_scripted_turn_terminal" });
+
+      const unchanged = await requestJson(port, "GET", `/api/calls/${callId}`);
+      const unchangedCall = unchanged.payload as SnapshotPayload;
+      assert.equal(unchangedCall.flowState, "wrap");
+      assert.equal(unchangedCall.transcript.length, transcriptLength);
+      assert.equal(unchangedCall.events.some((event) => event.type === "retention_followup_created"), false);
+    }
+  }, config);
+});
+
 test("POST /api/calls/:callId/operator-note records operator notes and dispositions", async () => {
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start");

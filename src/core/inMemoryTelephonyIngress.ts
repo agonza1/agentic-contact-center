@@ -64,7 +64,7 @@ interface CallerTurnOptions {
 
 type VoiceSessionScope = Pick<CallerTurnOptions, "voiceSessionId" | "realtimeVoiceSessionId">;
 
-const terminalOperatorSteerActions = new Set(["escalate_to_human", "transfer", "end_call"]);
+const terminalOperatorSteerActions = new Set(["escalate_to_human", "transfer", "takeover", "end_call"]);
 const operatorSteerReleaseActions = new Set(["resume"]);
 
 function getOperatorSteerAction(event: CallSnapshot["events"][number]): string | null {
@@ -77,7 +77,7 @@ function isOperatorSteerReleaseEvent(event: CallSnapshot["events"][number]): boo
   return action !== null && operatorSteerReleaseActions.has(action);
 }
 
-function hasActiveTerminalOperatorStop(snapshot: CallSnapshot): boolean {
+export function hasActiveTerminalOperatorStop(snapshot: CallSnapshot): boolean {
   const stopIndex = snapshot.events.reduce((latest, event, index) => {
     const action = getOperatorSteerAction(event);
     const terminalAction = event.type === "operator_steer_applied" && action !== null && terminalOperatorSteerActions.has(action);
@@ -376,6 +376,10 @@ export class InMemoryTelephonyIngress {
       options.conversationMode
       ?? snapshot.scenario.conversationMode
       ?? (snapshot.session.openclawSession.label === "pipecat-local-voice" ? "free_caller" : "scripted");
+
+    if (conversationMode === "scripted" && hasActiveTerminalOperatorStop(snapshot)) {
+      throw new Error(`Scripted caller turn is not allowed after a terminal operator stop: ${snapshot.session.callId}`);
+    }
 
     const retentionReviewApprovalRequired =
       conversationMode === "scripted"
