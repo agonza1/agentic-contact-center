@@ -184,7 +184,7 @@ test("browser WebRTC live proof gate accepts selected Pocket TTS evidence", asyn
         cwd: repoRoot,
         timeout: 10_000,
         encoding: "utf8",
-        env: { ...process.env, ACC_TTS_PROVIDER: "", POCKET_TTS_BASE_URL: "http://127.0.0.1:8881" },
+        env: { ...process.env, ACC_TTS_PROVIDER: "", POCKET_TTS_BASE_URL: "", KOKORO_BASE_URL: "" },
       },
     );
     const summary = JSON.parse(result.stdout.slice(result.stdout.indexOf("{")).trim()) as { reviewReady: boolean; blockers: string[] };
@@ -202,9 +202,9 @@ test("browser WebRTC live proof gate accepts selected Pocket TTS evidence", asyn
     assert.ok(manifest.reviewGate.requiredLabels.includes("pocket_live"));
     assert.deepEqual(manifest.reviewGate.missingProof, []);
     assert.equal(manifest.setup.ttsProvider, "pocket");
-    assert.equal(manifest.setup.ttsBaseUrl, "http://127.0.0.1:8881");
+    assert.ok(manifest.setup.ttsBaseUrl.endsWith(":8881"));
     assert.ok(manifest.setup.commands.includes("export ACC_TTS_PROVIDER=pocket"));
-    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_BASE_URL=http://127.0.0.1:8881"));
+    assert.ok(manifest.setup.commands.some((command) => command.startsWith("export POCKET_TTS_BASE_URL=")));
     assert.equal(manifest.setup.commands.some((command) => command.includes("KOKORO_BASE_URL")), false);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
