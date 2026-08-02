@@ -1023,11 +1023,12 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /UserStoppedSpeakingFrame/);
   assert.match(narrative.body, /VAD_END_OF_TURN_MS = Number\(data\.turnTiming\?\.endOfTurnSilenceMs\) \|\| 2000/);
   assert.match(narrative.body, /turn wait: 2\.0 s/);
-  assert.match(narrative.body, /ACC policy \+ tools can process now; only audio output waits for 2\.0 s/);
+  assert.match(narrative.body, /LLM, policy, and tools can process now; only audio output waits for 2\.0 s/);
   assert.match(narrative.body, /Audio output starts after the 2 s end-of-turn gate/);
   assert.match(narrative.body, /Agent audio cannot start while the 2 s end-of-turn gate/);
   assert.match(narrative.body, /End-of-turn timing diagram/);
-  assert.match(narrative.body, /ACC policy \+ turn wait: 2 s/);
+  assert.match(narrative.body, /turn wait: 0\.5–2 s/);
+  assert.match(narrative.body, /LLM \+ policy can run/);
   assert.doesNotMatch(narrative.body, /Start is urgent/);
   assert.doesNotMatch(narrative.body, /Policy runs early/);
   assert.doesNotMatch(narrative.body, /End is guarded/);
@@ -1305,7 +1306,8 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /Browser microphone VAD/);
   assert.match(html, /Simulate barge-in/);
   assert.match(html, /turn wait: 2\.0 s/);
-  assert.match(html, /ACC policy \+ turn wait: 2 s/);
+  assert.match(html, /turn wait: 0\.5–2 s/);
+  assert.match(html, /LLM \+ policy can run/);
   assert.match(html, /MinWordsUserTurnStartStrategy/);
   assert.match(html, /https:\/\/github\.com\/TEN-framework\/ten-vad/);
   assert.match(html, /https:\/\/github\.com\/snakers4\/silero-vad/);
