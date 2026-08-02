@@ -39,7 +39,7 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
       reviewReady: boolean;
       runtimeModeLabels: { browserTransport: string; browserCapture: string; pipecat: string; rtcAsr: string; tts: string; browserPlayback: string };
       checks: Record<string, boolean>;
-      setup: { commands: string[]; evidenceTemplateCommand: string; gitHead: string; pipecatWebrtcBridgeUrl: string; rtcAsrWsUrl: string; kokoroBaseUrl: string };
+      setup: { commands: string[]; evidenceTemplateCommand: string; gitHead: string; pipecatWebrtcBridgeUrl: string; rtcAsrWsUrl: string; ttsProvider: string; ttsBaseUrl: string };
       reviewGate: { missingProof: string[]; nextActions: string[] };
     };
     assert.equal(manifest.reviewReady, false);
@@ -57,7 +57,7 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
       browserMicrophoneUplink: false,
       pipecatWebrtcBridge: false,
       rtcAsrFinalTranscript: false,
-      kokoroAudio: false,
+      ttsAudio: false,
       browserRemoteAudio: false,
     });
     assert.deepEqual(manifest.reviewGate.missingProof, [
@@ -65,7 +65,7 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
       "browserMicrophoneUplink",
       "pipecatWebrtcBridge",
       "rtcAsrFinalTranscript",
-      "kokoroAudio",
+      "ttsAudio",
       "browserRemoteAudio",
     ]);
     assert.match(manifest.setup.gitHead, /^[a-f0-9]{40}$/);
@@ -141,6 +141,65 @@ test("browser WebRTC live proof gate accepts captured media-turn evidence", asyn
     assert.ok(typeof evidenceArtifact.sha256 === "string");
     const evidenceSha256 = evidenceArtifact.sha256;
     assert.match(evidenceSha256, /^[a-f0-9]{64}$/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("browser WebRTC live proof gate accepts selected Pocket TTS evidence", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-browser-webrtc-pocket-ready-"));
+  const evidencePath = path.join(tempDir, "browser-webrtc-pocket-evidence.json");
+
+  try {
+    const gitHead = await currentGitHead(repoRoot);
+    await writeFile(
+      evidencePath,
+      JSON.stringify({
+        gitHead,
+        events: [
+          { type: "browser.microphone.uplink", target: "browser", track: "local microphone audio", outboundRtpAudio: { packetsSent: 10, bytesSent: 2048 }, audioTrack: { enabled: true } },
+          { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-pocket-session" },
+          { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "I need a retention option.", final: true },
+          { type: "pocket.tts.audio", engine: "pocket", provider: "pocket", audioBytes: 4096 },
+          {
+            type: "browser.remote.audio.played",
+            target: "browser",
+            track: "remote audio",
+            inboundRtpAudio: { packetsReceived: 12, bytesReceived: 4096 },
+            audioElement: { currentTime: 1.2, paused: false },
+          },
+        ],
+      }, null, 2),
+      "utf8",
+    );
+
+    const result = await execFileAsync(
+      process.execPath,
+      ["scripts/browser-webrtc-live-proof.mjs", "--require-review-ready", "--evidence", evidencePath, "--out-dir", tempDir],
+      {
+        cwd: repoRoot,
+        timeout: 10_000,
+        encoding: "utf8",
+        env: { ...process.env, ACC_TTS_PROVIDER: "", POCKET_TTS_BASE_URL: "http://127.0.0.1:8881" },
+      },
+    );
+    const summary = JSON.parse(result.stdout.slice(result.stdout.indexOf("{")).trim()) as { reviewReady: boolean; blockers: string[] };
+    assert.equal(summary.reviewReady, true);
+    assert.deepEqual(summary.blockers, []);
+
+    const manifest = JSON.parse(await readFile(path.join(tempDir, "browser-webrtc-live-proof-manifest.json"), "utf8")) as {
+      runtimeModeLabels: { tts: string };
+      checks: Record<string, boolean>;
+      reviewGate: { requiredLabels: string[]; missingProof: string[] };
+      setup: { ttsProvider: string; ttsBaseUrl: string };
+    };
+    assert.equal(manifest.runtimeModeLabels.tts, "pocket_live");
+    assert.equal(manifest.checks.ttsAudio, true);
+    assert.ok(manifest.reviewGate.requiredLabels.includes("pocket_live"));
+    assert.deepEqual(manifest.reviewGate.missingProof, []);
+    assert.equal(manifest.setup.ttsProvider, "pocket");
+    assert.equal(manifest.setup.ttsBaseUrl, "http://127.0.0.1:8881");
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -545,7 +604,7 @@ test("browser WebRTC live proof gate rejects placeholder Kokoro audio references
         assert.equal(error.code, 2);
         const summary = JSON.parse(error.stdout.slice(error.stdout.indexOf("{")).trim()) as { reviewReady: boolean; blockers: string[] };
         assert.equal(summary.reviewReady, false);
-        assert.ok(summary.blockers.some((blocker) => blocker.includes("kokoroAudio")));
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("ttsAudio")));
         return true;
       },
     );
@@ -556,8 +615,8 @@ test("browser WebRTC live proof gate rejects placeholder Kokoro audio references
       reviewGate: { missingProof: string[] };
     };
     assert.equal(manifest.reviewReady, false);
-    assert.equal(manifest.checks.kokoroAudio, false);
-    assert.deepEqual(manifest.reviewGate.missingProof, ["kokoroAudio"]);
+    assert.equal(manifest.checks.ttsAudio, false);
+    assert.deepEqual(manifest.reviewGate.missingProof, ["ttsAudio"]);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -732,7 +791,7 @@ test("browser WebRTC live proof gate rejects the unfilled template as evidence",
         assert.ok(summary.blockers.some((blocker) => blocker.includes("browserMicrophoneUplink")));
         assert.ok(summary.blockers.some((blocker) => blocker.includes("pipecatWebrtcBridge")));
         assert.ok(summary.blockers.some((blocker) => blocker.includes("rtcAsrFinalTranscript")));
-        assert.ok(summary.blockers.some((blocker) => blocker.includes("kokoroAudio")));
+        assert.ok(summary.blockers.some((blocker) => blocker.includes("ttsAudio")));
         assert.ok(summary.blockers.some((blocker) => blocker.includes("browserRemoteAudio")));
         return true;
       },
@@ -750,14 +809,14 @@ test("browser WebRTC live proof gate rejects the unfilled template as evidence",
       browserMicrophoneUplink: false,
       pipecatWebrtcBridge: false,
       rtcAsrFinalTranscript: false,
-      kokoroAudio: false,
+      ttsAudio: false,
       browserRemoteAudio: false,
     });
     assert.deepEqual(manifest.reviewGate.missingProof, [
       "browserMicrophoneUplink",
       "pipecatWebrtcBridge",
       "rtcAsrFinalTranscript",
-      "kokoroAudio",
+      "ttsAudio",
       "browserRemoteAudio",
     ]);
   } finally {

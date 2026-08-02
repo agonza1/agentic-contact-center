@@ -50,7 +50,16 @@ DEFAULT_POCKET_TTS_HEALTH_PATH = os.environ.get("POCKET_TTS_HEALTH_PATH", "/heal
 DEFAULT_POCKET_TTS_SPEECH_PATH = os.environ.get("POCKET_TTS_SPEECH_PATH", "/v1/audio/speech")
 DEFAULT_POCKET_TTS_VOICE = os.environ.get("POCKET_TTS_VOICE", "alloy")
 DEFAULT_POCKET_TTS_MODEL = os.environ.get("POCKET_TTS_MODEL", "pocket-tts")
-DEFAULT_TTS_PROVIDER = os.environ.get("ACC_TTS_PROVIDER", "pocket" if os.environ.get("POCKET_TTS_BASE_URL") else "kokoro").strip().lower()
+
+
+def configured_tts_provider() -> str:
+    configured = (os.environ.get("ACC_TTS_PROVIDER") or "").strip().lower()
+    if configured in {"pocket", "kokoro"}:
+        return configured
+    return "pocket" if (os.environ.get("POCKET_TTS_BASE_URL") or "").strip() else "kokoro"
+
+
+DEFAULT_TTS_PROVIDER = configured_tts_provider()
 INPUT_SAMPLE_RATE = 16000
 WEBRTC_SAMPLE_RATE = 48000
 WEBRTC_FRAME_MS = 20

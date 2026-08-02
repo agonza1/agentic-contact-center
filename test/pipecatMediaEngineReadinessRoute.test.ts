@@ -112,7 +112,7 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP and
 
     assert.deepEqual(payload.reviewBlockers, []);
     assert.equal(
-      payload.acceptanceCriteria.find((criterion: any) => criterion.name === "browser_webrtc_uses_pipecat_rtc_asr_kokoro").passed,
+      payload.acceptanceCriteria.find((criterion: any) => criterion.name === "browser_webrtc_uses_pipecat_rtc_asr_configured_tts").passed,
       true,
     );
     assert.equal(
