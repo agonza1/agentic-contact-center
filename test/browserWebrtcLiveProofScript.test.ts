@@ -164,7 +164,7 @@ test("browser WebRTC live proof gate accepts selected Pocket TTS evidence", asyn
           { type: "browser.microphone.uplink", target: "browser", track: "local microphone audio", outboundRtpAudio: { packetsSent: 10, bytesSent: 2048 }, audioTrack: { enabled: true } },
           { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-pocket-session" },
           { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "I need a retention option.", final: true },
-          { type: "pocket.tts.audio", engine: "pocket", provider: "pocket", audioBytes: 4096 },
+          { type: "pocket.tts.audio", tts: { engine: "pocket", provider: "pocket", audioBytesEnqueued: 4096 } },
           {
             type: "browser.remote.audio.played",
             target: "browser",
@@ -206,6 +206,67 @@ test("browser WebRTC live proof gate accepts selected Pocket TTS evidence", asyn
     assert.ok(manifest.setup.commands.includes("export ACC_TTS_PROVIDER=pocket"));
     assert.ok(manifest.setup.commands.some((command) => command.startsWith("export POCKET_TTS_BASE_URL=")));
     assert.equal(manifest.setup.commands.some((command) => command.includes("KOKORO_BASE_URL")), false);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("browser WebRTC live proof setup preserves Pocket endpoint and voice overrides", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-browser-webrtc-pocket-setup-"));
+  const evidencePath = path.join(tempDir, "browser-webrtc-pocket-evidence.json");
+
+  try {
+    const gitHead = await currentGitHead(repoRoot);
+    await writeFile(
+      evidencePath,
+      JSON.stringify({
+        gitHead,
+        events: [
+          { type: "browser.microphone.uplink", target: "browser", track: "local microphone audio", outboundRtpAudio: { packetsSent: 10, bytesSent: 2048 }, audioTrack: { enabled: true } },
+          { type: "pipecat.webrtc.offer_answer", transport: "webrtc", bridge: "pipecat", sessionId: "browser-webrtc-pocket-setup-session" },
+          { type: "rtc-asr.transcript.final", engine: "rtc-asr", transcript: "I need a retention option.", final: true },
+          { type: "pocket.tts.audio", tts: { engine: "pocket", provider: "pocket", audioBytesEnqueued: 4096 } },
+          {
+            type: "browser.remote.audio.played",
+            target: "browser",
+            track: "remote audio",
+            inboundRtpAudio: { packetsReceived: 12, bytesReceived: 4096 },
+            audioElement: { currentTime: 1.2, paused: false },
+          },
+        ],
+      }, null, 2),
+      "utf8",
+    );
+
+    await execFileAsync(
+      process.execPath,
+      ["scripts/browser-webrtc-live-proof.mjs", "--out-dir", tempDir, "--evidence", evidencePath, "--tts-provider", "pocket"],
+      {
+        cwd: repoRoot,
+        timeout: 10_000,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          POCKET_TTS_BASE_URL: "https://pocket.example.test:9443",
+          POCKET_TTS_HEALTH_PATH: "/readyz",
+          POCKET_TTS_SPEECH_PATH: "/custom/speech",
+          POCKET_TTS_MODEL: "pocket-low-latency",
+          POCKET_TTS_VOICE: "marin",
+        },
+      },
+    );
+
+    const manifest = JSON.parse(await readFile(path.join(tempDir, "browser-webrtc-live-proof-manifest.json"), "utf8")) as {
+      setup: { commands: string[]; ttsProvider: string; ttsBaseUrl: string };
+    };
+    assert.equal(manifest.setup.ttsProvider, "pocket");
+    assert.equal(manifest.setup.ttsBaseUrl, "https://pocket.example.test:9443");
+    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_BASE_URL=https://pocket.example.test:9443"));
+    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_HEALTH_PATH=/readyz"));
+    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_SPEECH_PATH=/custom/speech"));
+    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_MODEL=pocket-low-latency"));
+    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_VOICE=marin"));
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
