@@ -72,7 +72,7 @@ interface SnapshotPayload {
     activeTool: string | null;
     script: { matchedCallerTurns: number; completed: boolean };
   };
-  events: Array<{ type: string; detail: Record<string, string | number | boolean | null> }>;
+  events: Array<{ type: string; at: string; detail: Record<string, string | number | boolean | null> }>;
   latencyMarks: Array<{ stage: string; budgetMs: number | null }>;
 }
 
@@ -1356,6 +1356,20 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       confirmationMessage: null,
       commandExamples: ["/operator approve-offer", "/steer approve offer"],
     });
+    const approveRetentionReviewAction = consolePayload.controls.actions.find((entry) => entry.action === "approve_retention_review");
+    assert.deepEqual(approveRetentionReviewAction, {
+      action: "approve_retention_review",
+      method: "POST",
+      requiresPendingCall: true,
+      requiresReason: false,
+      postTemplate: "/api/calls/{callId}/operator-steer",
+      bodyTemplate: { action: "approve_retention_review" },
+      operatorOutcome: "resume",
+      reasonPrompt: null,
+      confirmationRequired: false,
+      confirmationMessage: null,
+      commandExamples: ["/operator approve-retention-review", "/steer approve retention review"],
+    });
     const takeoverAction = consolePayload.controls.actions.find((entry) => entry.action === "takeover");
     assert.equal(takeoverAction?.method, "POST");
     assert.deepEqual(takeoverAction?.bodyTemplate, { action: "takeover" });
@@ -1501,6 +1515,15 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
           reasonPrompt: null,
         },
         {
+          action: "approve_retention_review",
+          enabled: true,
+          disabledReason: null,
+          confirmationRequired: false,
+          confirmationMessage: null,
+          requiresReason: false,
+          reasonPrompt: null,
+        },
+        {
           action: "deny_offer",
           enabled: true,
           disabledReason: null,
@@ -1586,6 +1609,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
         "pause",
         "resume",
         "approve_offer",
+        "approve_retention_review",
         "deny_offer",
         "escalate_to_human",
         "transfer",
@@ -1641,6 +1665,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
       [
         { action: "resume", disabledReason: "pending_operator_steer_required" },
         { action: "approve_offer", disabledReason: "pending_operator_steer_required" },
+        { action: "approve_retention_review", disabledReason: "pending_operator_steer_required" },
         { action: "deny_offer", disabledReason: "pending_operator_steer_required" },
         { action: "escalate_to_human", disabledReason: "pending_operator_steer_required" },
       ],
@@ -1648,6 +1673,7 @@ test("GET /api/operator/console returns operator-ready controls and attention-so
     assert.deepEqual(idleConsoleCall?.actionState.unavailableActions, [
       { action: "resume", reason: "pending_operator_steer_required" },
       { action: "approve_offer", reason: "pending_operator_steer_required" },
+      { action: "approve_retention_review", reason: "pending_operator_steer_required" },
       { action: "deny_offer", reason: "pending_operator_steer_required" },
       { action: "escalate_to_human", reason: "pending_operator_steer_required" },
     ]);
@@ -2135,6 +2161,8 @@ test("POST /api/demo/run-end-to-end executes a complete usable call flow", async
       .filter((turn) => turn.speaker === "caller")
       .map((turn) => Date.parse(turn.timestamp ?? "") - startedAtMs);
     assert.deepEqual(callerOffsets, [1_000, 5_000, 9_000, 12_000, 18_000]);
+    const consentEvent = payload.call.events.find((event) => event.type === "customer_consent_recorded");
+    assert.equal(Date.parse(consentEvent?.at ?? "") - startedAtMs, 12_000);
     assert.equal(Date.parse(payload.call.operatorSteer.respondedAt ?? "") - startedAtMs, 14_000);
     assert.equal(payload.operatorConsoleCall.actionState.scriptedCallerTurnState.completed, true);
     assert.equal(payload.operatorConsoleCall.actionState.scriptedCallerTurnState.progressPct, 100);
@@ -5759,6 +5787,7 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
         "pause",
         "resume",
         "approve_offer",
+        "approve_retention_review",
         "deny_offer",
         "escalate_to_human",
         "transfer",

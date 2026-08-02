@@ -469,6 +469,7 @@ function buildBrowserWebrtcBridgeUnavailablePayload(error: unknown): object {
 
 const operatorSteerActions: OperatorSteerAction[] = [
   "approve_offer",
+  "approve_retention_review",
   "deny_offer",
   "escalate_to_human",
   "transfer",
@@ -521,6 +522,16 @@ const operatorActionCatalog: Array<{
     bodyTemplate: { action: "approve_offer" },
     operatorOutcome: "resume",
     commandExamples: ["/operator approve-offer", "/steer approve offer"],
+  },
+  {
+    action: "approve_retention_review",
+    method: "POST",
+    requiresPendingCall: true,
+    requiresReason: false,
+    postTemplate: "/api/calls/{callId}/operator-steer",
+    bodyTemplate: { action: "approve_retention_review" },
+    operatorOutcome: "resume",
+    commandExamples: ["/operator approve-retention-review", "/steer approve retention review"],
   },
   {
     action: "deny_offer",
@@ -884,7 +895,7 @@ function buildOperatorConsoleHtml(): string {
     const repoHeadEvidence = ${JSON.stringify(getRepoHeadEvidence())};
     const advancedActions = ["escalate_to_human", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
-    const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve", deny_offer: "Deny", takeover: "Take Over", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
+    const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve Offer", approve_retention_review: "Approve Retention Review", deny_offer: "Deny", takeover: "Take Over", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
     function setStatus(text) { document.getElementById("status").textContent = text; }
     function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { if (char === "&") return "&amp;"; if (char === "<") return "&lt;"; if (char === ">") return "&gt;"; return "&quot;"; }); }
     function humanLabel(value) { return String(value || "none").replace(/_/g, " "); }
@@ -1567,7 +1578,7 @@ function buildOperatorConsoleHtml(): string {
       const unavailableReasons = Object.fromEntries(call.actionState.unavailableActions.map(function(entry) { return [entry.action, entry.reason]; }));
       function actionButtonHtml(action) {
         const actionDetail = actionDetails[action] || {};
-        const cssClass = action === "end_call" ? "danger" : action === "approve_offer" ? "primary" : "";
+        const cssClass = action === "end_call" ? "danger" : action === "approve_offer" || action === "approve_retention_review" ? "primary" : "";
         const disabled = actionDetail.enabled === false || unavailable.has(action) ? "disabled" : "";
         const titleText = actionDetail.disabledReason || unavailableReasons[action];
         const title = titleText ? ' title="' + escapeHtml(titleText) + '"' : "";
@@ -1575,7 +1586,8 @@ function buildOperatorConsoleHtml(): string {
       }
       const approvalPending = Boolean(call.actionState.pendingApprovalDetails);
       const callOnHold = call.flowState === "policy_hold" || call.flowState === "operator_steer";
-      const primaryActions = approvalPending ? ["approve_offer", "deny_offer"] : [callOnHold ? "resume" : "pause"];
+      const requestedApprovalAction = call.actionState.pendingApprovalDetails?.recommendedAction || "approve_offer";
+      const primaryActions = approvalPending ? [requestedApprovalAction, "deny_offer"] : [callOnHold ? "resume" : "pause"];
       primaryActions.push("takeover", "transfer", "end_call");
       const actionHtml = primaryActions.map(actionButtonHtml).join("");
       const advancedActionHtml = advancedActions.map(actionButtonHtml).join("");
@@ -2630,7 +2642,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
     .at(-1) ?? null;
   const attention = getAttentionMetadata(snapshot);
   const nextRecommendedAction = snapshot.operatorSteer.pending
-    ? "approve_offer"
+    ? snapshot.operatorSteer.lastAction ?? "approve_offer"
     : snapshot.demoFallback.armed
       ? "disarm_fallback"
       : attention.required
@@ -2666,6 +2678,8 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
         approvalPrompt:
           snapshot.operatorSteer.lastAction === "approve_offer"
             ? "Review the held safe-offer guidance before approving or denying the response."
+            : snapshot.operatorSteer.lastAction === "approve_retention_review"
+              ? "Approve only the requested retention specialist review; this does not approve a discount or pricing change."
             : "Review the held call context before applying operator guidance.",
       }
     : null;
@@ -3097,7 +3111,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       markers: buildOperatorControlMarkers(snapshot),
       actionTrail: buildOperatorActionProofTrail(snapshot),
       availableActions: operatorActionCatalog.map((entry) => entry.action),
-      controls: ["pause", "resume", "approve_offer", "deny_offer", "takeover", "transfer", "end_call", "operator_note"],
+      controls: ["pause", "resume", "approve_offer", "approve_retention_review", "deny_offer", "takeover", "transfer", "end_call", "operator_note"],
     },
     artifacts: snapshot.session.openclawSession.artifactLinks,
     evidenceRoutes: {
@@ -3562,6 +3576,7 @@ async function runClueConOperatorDrill(
     return {
       latest,
       steps,
+      completedControlStages: ["understand", "prepare", "authorize", "record"],
       summary: "scripted_approve -> policy hold, operator approval, safe wrap, and proof bundle.",
       outcome: "scripted_wrap_complete",
       integration: buildClueConOperatorDrillIntegration(kind, latest.session.callId),
@@ -3624,6 +3639,7 @@ async function runClueConOperatorDrill(
     return {
       latest,
       steps,
+      completedControlStages: ["understand", "prepare"],
       summary: kind === "rtc_asr_unavailable" || kind === "tts_unavailable"
         ? `${kind} -> prerecorded error prompt -> fail-closed human handoff.`
         : `${kind} -> fail-closed human handoff; no improvised offer.`,
@@ -3646,6 +3662,7 @@ async function runClueConOperatorDrill(
   return {
     latest,
     steps,
+    completedControlStages: ["understand", "prepare"],
     summary: kind === "transfer"
       ? "Transfer requested: ACC emitted a JSON call-control command for a FreeSWITCH or SIP/media-server adapter to execute."
       : `${kind} -> operator cockpit applied bounded control and preserved evidence.`,
@@ -4166,6 +4183,10 @@ function parseOperatorSteerCommand(
 
   if (lowerCommand === "approve-offer" || lowerCommand === "approve offer") {
     return { action: "approve_offer" };
+  }
+
+  if (lowerCommand === "approve-retention-review" || lowerCommand === "approve retention review") {
+    return { action: "approve_retention_review" };
   }
 
   if (lowerCommand === "deny-offer" || lowerCommand === "deny offer") {
@@ -5787,6 +5808,7 @@ async function routeRequest(
       kind: body.kind,
       outcome: drill.outcome,
       summary: drill.summary,
+      completedControlStages: drill.completedControlStages,
       integration: drill.integration,
       simulatedEvents: drill.steps.map((step) => step.step),
       steps: drill.steps,

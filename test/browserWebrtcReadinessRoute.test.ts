@@ -324,7 +324,9 @@ test("operator console polls browser WebRTC session proof for turn diagnostics",
   assert.match(serverSource, /muteIcon/);
   assert.match(serverSource, /aria-label="' \+ muteTitle/);
   assert.match(serverSource, /const advancedActions = \["escalate_to_human", "arm_fallback", "disarm_fallback"\]/);
-  assert.match(serverSource, /approvalPending \? \["approve_offer", "deny_offer"\]/);
+  assert.match(serverSource, /requestedApprovalAction = call\.actionState\.pendingApprovalDetails\?\.recommendedAction \|\| "approve_offer"/);
+  assert.match(serverSource, /approvalPending \? \[requestedApprovalAction, "deny_offer"\]/);
+  assert.match(serverSource, /approve-retention-review/);
   assert.match(serverSource, /callOnHold \? "resume" : "pause"/);
   assert.match(serverSource, /primaryActions\.push\("takeover", "transfer", "end_call"\)/);
   assert.doesNotMatch(serverSource, /const actions = \[[^\]]*"ask_operator"/);

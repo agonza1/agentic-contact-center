@@ -491,6 +491,7 @@ test("POST /api/cluecon/operator/drill runs fail-closed and operator action dril
     outcome: string;
     summary: string;
     simulatedEvents: string[];
+    completedControlStages: string[];
     call: { flowState: string; demoFallback: { mode: string | null; reason: string | null }; session: { openclawSession: { label: string } } };
     proofLinks: { proof: string; operatorConsole: string };
   };
@@ -498,6 +499,7 @@ test("POST /api/cluecon/operator/drill runs fail-closed and operator action dril
   assert.equal(fallback.workboardCard, "3ea982b1-627a-4698-8b02-0c270b688237");
   assert.equal(fallback.kind, "runtime_failure");
   assert.equal(fallback.outcome, "fail_closed_handoff");
+  assert.deepEqual(fallback.completedControlStages, ["understand", "prepare"]);
   assert.match(fallback.summary, /fail-closed human handoff/);
   assert.ok(fallback.simulatedEvents.includes("call_error_fail_closed"));
   assert.equal(fallback.call.demoFallback.mode, "runtime_failure");
@@ -1021,6 +1023,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /local-stt\.v1/);
   assert.match(narrative.body, /handleAsrRealtimeMessage/);
   assert.match(narrative.body, /function updateAsrRealtimeTranscript/);
+  assert.match(narrative.body, /else \{ live\.partialText = nextText; \}/);
+  assert.doesNotMatch(narrative.body, /else \{ live\.committedText = appendAsrRealtimeText\(live\.committedText, previous\)/);
   assert.match(narrative.body, /LIVE TRANSCRIPT/);
   assert.match(narrative.body, /committedText/);
   assert.match(narrative.body, /captureClosePromise/);
@@ -1033,6 +1037,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Benchmarks ↗/);
   assert.match(narrative.body, /https:\/\/agonza1\.github\.io\/rtc-asr\/docs\//);
   assert.match(narrative.body, /renderAsrBenchmarks\(model\)/);
+  assert.match(narrative.body, /return profiles\[key\] \|\| targetFallback \|\| null/);
   assert.match(narrative.body, /250\.7 ms/);
   assert.match(narrative.body, /676\.5 ms/);
   assert.match(narrative.body, /0\.021x/);
@@ -1052,6 +1057,9 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /id="tts-provider"/);
   assert.match(narrative.body, /value="pocket"/);
   assert.match(narrative.body, /function renderTtsProviderSelection\(\)/);
+  assert.match(narrative.body, /function resetTtsMeasurements\(\)/);
+  assert.match(narrative.body, /providerSelect\.disabled = true/);
+  assert.match(narrative.body, /renderTtsProviderSelection\(\); resetTtsMeasurements\(\)/);
   assert.match(narrative.body, /provider: provider\.id/);
   assert.match(narrative.body, /id="tts-ttfb"/);
   assert.match(narrative.body, /id=\"tts-playback\"/);
@@ -1141,6 +1149,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /renderDemoTranscript\(turns\).*evidence\.open = true;/);
   assert.match(narrative.body, /renderOperatorDrill\(payload\).*evidence\.open = true;/);
   assert.match(narrative.body, /class="scroll"/);
+  assert.match(narrative.body, /\.scroll \.voice-origin__eyebrow/);
   assert.match(narrative.body, /RTF = processing time ÷ audio duration/);
   assert.match(narrative.body, /\.present #asr \{ align-content: center; \}/);
   assert.match(narrative.body, /\.present #demo, \.present #tts \{ align-content: start; padding-top: clamp\(16px, 2\.4vh, 24px\); \}/);
@@ -1209,6 +1218,10 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /Live \"\+provider\+\" TTFB requires the local ACC \+ selected TTS sidecar/);
   assert.match(html, /prerecorded system-unavailable prompt/i);
   assert.match(html, /human-support/);
+  assert.match(html, /intercept\("run-demo-drill"/);
+  assert.doesNotMatch(html, /intercept\("drill-tool"/);
+  assert.match(html, /turns\[4\]/);
+  assert.match(html, /retention_review_approved/);
   assert.match(html, /href="\.\/present\/"/);
   assert.match(html, /src="\.\/alberto-echo-show-prototype\.jpg"/);
   assert.doesNotMatch(html, /href="\/cluecon"/);
