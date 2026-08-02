@@ -17,56 +17,62 @@ function getArg(name, fallback = undefined) {
 const outDir = getArg("--out-dir", "artifacts/browser-webrtc-live-proof");
 const evidencePath = getArg("--evidence");
 const templatePath = getArg("--write-template");
+const explicitTtsProvider = normalizeTtsProvider(getArg("--tts-provider"));
 const requireReviewReady = args.includes("--require-review-ready");
 const probeSidecars = args.includes("--probe-sidecars");
 
+function normalizeTtsProvider(value) {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return normalized === "pocket" || normalized === "kokoro" ? normalized : null;
+}
+
 function activeTtsProvider() {
+  if (explicitTtsProvider) return explicitTtsProvider;
   const configured = process.env.ACC_TTS_PROVIDER?.trim().toLowerCase();
   if (configured === "pocket" || configured === "kokoro") return configured;
   return process.env.POCKET_TTS_BASE_URL?.trim() ? "pocket" : "kokoro";
 }
 
-function activeTtsConfig() {
-  const provider = activeTtsProvider();
+function ttsConfigForProvider(provider) {
   if (provider === "pocket") {
     return {
       provider,
       label: "Pocket",
-      baseUrl: process.env.POCKET_TTS_BASE_URL ?? "http://127.0.0.1:8881",
+      baseUrl: process.env.POCKET_TTS_BASE_URL?.trim() || "http://127.0.0.1:8881",
     };
   }
   return {
     provider,
     label: "Kokoro",
-    baseUrl: process.env.KOKORO_BASE_URL ?? "http://127.0.0.1:8880",
+    baseUrl: process.env.KOKORO_BASE_URL?.trim() || "http://127.0.0.1:8880",
   };
 }
 
-const ttsConfig = activeTtsConfig();
-
-function ttsSetupCommands(config) {
-  if (config.provider === "pocket") {
-    return [
-      "export ACC_TTS_PROVIDER=pocket",
-      `export POCKET_TTS_BASE_URL=${config.baseUrl}`,
-    ];
-  }
-  return [
-    "export ACC_TTS_PROVIDER=kokoro",
-    `export KOKORO_BASE_URL=${config.baseUrl}`,
-  ];
+function activeTtsConfig() {
+  return ttsConfigForProvider(activeTtsProvider());
 }
 
-const setupCommands = [
-  "export RTC_ASR_BASE_URL=${RTC_ASR_BASE_URL:-http://127.0.0.1:8080}",
-  "export RTC_ASR_WS_URL=${RTC_ASR_WS_URL:-ws://127.0.0.1:8080/v1/stt/stream}",
-  ...ttsSetupCommands(ttsConfig),
-  "export BROWSER_WEBRTC_BRIDGE_URL=${BROWSER_WEBRTC_BRIDGE_URL:-http://127.0.0.1:8766}",
-  "npm start",
-  "npm run pipecat:webrtc:check",
-  "npm run browser-webrtc:check -- --url http://127.0.0.1:${PORT:-8026}/health",
-  "npm run browser-webrtc:live-proof -- --evidence artifacts/browser-webrtc-live-proof/proof.json --require-review-ready",
-];
+function buildSetupCommands(config) {
+  const ttsSetupCommands = config.provider === "pocket"
+    ? [
+      "export ACC_TTS_PROVIDER=pocket",
+      `export POCKET_TTS_BASE_URL=${config.baseUrl}`,
+    ]
+    : [
+      "export ACC_TTS_PROVIDER=kokoro",
+      `export KOKORO_BASE_URL=${config.baseUrl}`,
+    ];
+  return [
+    "export RTC_ASR_BASE_URL=${RTC_ASR_BASE_URL:-http://127.0.0.1:8080}",
+    "export RTC_ASR_WS_URL=${RTC_ASR_WS_URL:-ws://127.0.0.1:8080/v1/stt/stream}",
+    ...ttsSetupCommands,
+    "export BROWSER_WEBRTC_BRIDGE_URL=${BROWSER_WEBRTC_BRIDGE_URL:-http://127.0.0.1:8766}",
+    "npm start",
+    "npm run pipecat:webrtc:check",
+    "npm run browser-webrtc:check -- --url http://127.0.0.1:${PORT:-8026}/health",
+    `npm run browser-webrtc:live-proof -- --evidence artifacts/browser-webrtc-live-proof/proof.json --tts-provider ${config.provider} --require-review-ready`,
+  ];
+}
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -342,7 +348,36 @@ function hasBrowserRemoteAudioStats(record) {
   );
 }
 
-function validateEvidence(payload, expectedGitHead) {
+function ttsProviderFromRecord(record) {
+  for (const key of ["ttsProvider", "provider", "engine"]) {
+    const provider = normalizeTtsProvider(record[key]);
+    if (provider) return provider;
+  }
+  for (const key of ["tts", "audio", "event", "metadata"]) {
+    const nestedProvider = normalizeTtsProvider(nestedRecord(record, key).provider) ?? normalizeTtsProvider(nestedRecord(record, key).engine);
+    if (nestedProvider) return nestedProvider;
+  }
+  if ((textIncludes(record, "audio") || textIncludes(record, "tts")) && textIncludes(record, "pocket")) return "pocket";
+  if ((textIncludes(record, "audio") || textIncludes(record, "tts")) && textIncludes(record, "kokoro")) return "kokoro";
+  return null;
+}
+
+function hasTtsAudioEvidence(record) {
+  const audioUrl = typeof record.audioUrl === "string" ? record.audioUrl : typeof record.url === "string" ? record.url : "";
+  const audioSha256 = typeof record.audioSha256 === "string" ? record.audioSha256 : typeof record.sha256 === "string" ? record.sha256 : "";
+  return (
+    (textIncludes(record, "audio") || textIncludes(record, "tts")) &&
+    (hasPositiveNumber(record.audioBytes) || (audioUrl.trim().length > 0 && !hasPlaceholderText(audioUrl)) || hasSha256(audioSha256))
+  );
+}
+
+function inferTtsProviderFromEvidence(payload) {
+  const records = flattenRecords(payload).filter((record) => hasTtsAudioEvidence(record));
+  const providers = [...new Set(records.map((record) => ttsProviderFromRecord(record)).filter(Boolean))];
+  return providers.length === 1 ? providers[0] : null;
+}
+
+function validateEvidence(payload, expectedGitHead, expectedTtsConfig) {
   const records = flattenRecords(payload);
   const expectedHead = typeof expectedGitHead === "string" ? expectedGitHead.toLowerCase() : null;
   const pipecatWebrtcAnswerSdp = records.some((record) => {
@@ -362,12 +397,9 @@ function validateEvidence(payload, expectedGitHead) {
       return textIncludes(record, "rtc-asr") && (type.includes("final") || record.final === true || record.isFinal === true || record.is_final === true) && transcript.trim().length > 0 && !hasPlaceholderText(transcript);
     }),
     ttsAudio: records.some((record) => {
-      const audioUrl = typeof record.audioUrl === "string" ? record.audioUrl : typeof record.url === "string" ? record.url : "";
-      const audioSha256 = typeof record.audioSha256 === "string" ? record.audioSha256 : typeof record.sha256 === "string" ? record.sha256 : "";
       return (
-        textIncludes(record, ttsConfig.provider) &&
-        (textIncludes(record, "audio") || textIncludes(record, "tts")) &&
-        (hasPositiveNumber(record.audioBytes) || (audioUrl.trim().length > 0 && !hasPlaceholderText(audioUrl)) || hasSha256(audioSha256))
+        textIncludes(record, expectedTtsConfig.provider) &&
+        hasTtsAudioEvidence(record)
       );
     }),
     browserRemoteAudio: records.some((record) => {
@@ -434,18 +466,18 @@ function probeTcp({ label, url, host, port, invalid }, timeoutMs = 250) {
   });
 }
 
-async function sidecarConnectivity() {
+async function sidecarConnectivity(config) {
   if (!probeSidecars) return null;
   const targets = [
     sidecarUrl("pipecatWebrtcBridge", process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766"),
     sidecarUrl("rtcAsrHttp", process.env.RTC_ASR_BASE_URL ?? "http://127.0.0.1:8080"),
     sidecarUrl("rtcAsrWebsocket", process.env.RTC_ASR_WS_URL ?? "ws://127.0.0.1:8080/v1/stt/stream"),
-    sidecarUrl(ttsConfig.provider, ttsConfig.baseUrl),
+    sidecarUrl(config.provider, config.baseUrl),
   ];
   return Promise.all(targets.map((target) => probeTcp(target)));
 }
 
-async function writeEvidenceTemplate(filePath) {
+async function writeEvidenceTemplate(filePath, config) {
   if (!filePath) return null;
   await mkdir(path.dirname(filePath), { recursive: true });
   const template = {
@@ -498,11 +530,11 @@ async function writeEvidenceTemplate(filePath) {
         source: process.env.RTC_ASR_WS_URL ?? "ws://127.0.0.1:8080/v1/stt/stream",
       },
       {
-        type: `${ttsConfig.provider}.tts.audio`,
-        engine: ttsConfig.provider,
-        provider: ttsConfig.provider,
+        type: `${config.provider}.tts.audio`,
+        engine: config.provider,
+        provider: config.provider,
         audioBytes: 0,
-        source: ttsConfig.baseUrl,
+        source: config.baseUrl,
       },
       {
         type: "browser.remote.audio.played",
@@ -534,11 +566,15 @@ async function writeEvidenceTemplate(filePath) {
 }
 
 await mkdir(outDir, { recursive: true });
-const evidenceTemplatePath = await writeEvidenceTemplate(templatePath);
+const templateTtsConfig = activeTtsConfig();
+const evidenceTemplatePath = await writeEvidenceTemplate(templatePath, templateTtsConfig);
 
 const expectedGitHead = currentGitHead();
 const evidence = await readEvidence(evidencePath);
-const validation = evidence.payload ? validateEvidence(evidence.payload, expectedGitHead) : {
+const inferredTtsProvider = evidence.payload ? inferTtsProviderFromEvidence(evidence.payload) : null;
+const ttsConfig = ttsConfigForProvider(explicitTtsProvider ?? inferredTtsProvider ?? activeTtsProvider());
+const setupCommands = buildSetupCommands(ttsConfig);
+const validation = evidence.payload ? validateEvidence(evidence.payload, expectedGitHead, ttsConfig) : {
   checks: {
     evidenceCorrelation: true,
     repoHeadEvidence: expectedGitHead ? false : true,
@@ -597,7 +633,7 @@ const manifest = {
   },
   checks: validation.checks,
   evidenceSummary: validation.evidenceSummary,
-  sidecarConnectivity: await sidecarConnectivity(),
+  sidecarConnectivity: await sidecarConnectivity(ttsConfig),
   artifactIntegrity: await artifactIntegrity(evidencePath),
   reviewGate: {
     requiredLabels: ["browser_microphone_live", "pipecat_webrtc_live", "rtc_asr_live", `${ttsConfig.provider}_live`, "remote_audio_live"],
