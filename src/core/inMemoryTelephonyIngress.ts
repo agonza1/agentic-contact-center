@@ -381,6 +381,8 @@ export class InMemoryTelephonyIngress {
       conversationMode === "scripted"
       && config.policy.defaultSupervisorSteer === "approve_retention_review"
       && snapshot.transcript.filter((entry) => entry.speaker === "caller").length >= 4
+      && snapshot.operatorSteer.pending
+      && snapshot.operatorSteer.lastAction === "approve_retention_review"
       && !snapshot.events.some((event) => event.type === "retention_review_approved");
     if (retentionReviewApprovalRequired) {
       throw new Error(`Retention review approval is required before the caller can select the final path: ${snapshot.session.callId}`);

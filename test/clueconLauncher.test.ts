@@ -17,6 +17,8 @@ test("ClueCon launcher makes rtc-asr readiness part of presentation startup", ()
   assert.match(launcher, /http:\/\/127\.0\.0\.1:8080/);
   assert.match(launcher, /\["compose", "up", "-d", "--build", "asr-service"\]/);
   assert.match(launcher, /RTC_ASR_BASE_URL: rtcAsrBaseUrl/);
+  assert.match(launcher, /payload\.ok !== false/);
+  assert.match(launcher, /payload\.ready !== false/);
   assert.match(launcher, /const rtcAsrWsUrl = process\.env\.RTC_ASR_WS_URL/);
   assert.match(launcher, /RTC_ASR_WS_URL: rtcAsrWsUrl/);
 });

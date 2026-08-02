@@ -20,7 +20,10 @@ async function probeJson(url, timeoutMs = 3_000) {
     const payload = await response.json().catch(() => ({}));
     const status = String(payload.status || "").toLowerCase();
     return {
-      ok: response.ok && payload.ready !== false && !["offline", "error", "failed", "degraded"].includes(status),
+      ok: response.ok
+        && payload.ok !== false
+        && payload.ready !== false
+        && !["offline", "error", "failed", "degraded"].includes(status),
       payload,
     };
   } catch (error) {

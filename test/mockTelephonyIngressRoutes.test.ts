@@ -2506,6 +2506,51 @@ test("retention approval requires its exact pending request and the console foll
   }, retentionConfig);
 });
 
+test("a denied retention review lets the caller continue cancellation through a safe handoff", async () => {
+  const config = loadPocConfig();
+  config.policy.defaultSupervisorSteer = "approve_retention_review";
+  await withServer(async (port) => {
+    const started = await requestJson(port, "POST", "/api/demo/start");
+    const callId = (started.payload as SnapshotPayload).session.callId;
+    for (let index = 0; index < 4; index += 1) {
+      const submitted = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
+        callId,
+        expectedTurnIndex: index,
+      });
+      assert.equal(submitted.statusCode, 200);
+    }
+
+    const denied = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "deny_offer",
+    });
+    const deniedCall = denied.payload as SnapshotPayload;
+    assert.equal(denied.statusCode, 200);
+    assert.equal(deniedCall.operatorSteer.pending, false);
+    assert.equal(deniedCall.events.some((event) => event.type === "retention_review_denied"), true);
+
+    const pendingConsole = await requestJson(port, "GET", `/api/operator/console?callId=${callId}`);
+    const pendingCall = (pendingConsole.payload as OperatorConsolePayload).calls.items[0];
+    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnText, "Continue with cancellation.");
+
+    const continued = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
+      callId,
+      expectedTurnIndex: 4,
+    });
+    assert.equal(continued.statusCode, 200);
+    const continuedPayload = continued.payload as {
+      scriptCompleted: boolean;
+      call: OperatorConsolePayload["calls"]["items"][number];
+    };
+    assert.equal(continuedPayload.scriptCompleted, true);
+    assert.equal(continuedPayload.call.flowState, "wrap");
+    assert.equal(continuedPayload.call.events.some((event) => event.type === "human_handoff_started"), true);
+    const finalState = continuedPayload.call.events.find((event) => event.type === "final_policy_state_recorded");
+    assert.equal(finalState?.detail.policyStatus, "active");
+    assert.equal(finalState?.detail.pendingOperation, "cancellation_handoff");
+    assert.equal(continuedPayload.call.events.some((event) => event.type === "retention_followup_created"), false);
+  }, config);
+});
+
 test("POST /api/calls/:callId/operator-note records operator notes and dispositions", async () => {
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start");

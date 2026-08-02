@@ -1186,6 +1186,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /function resetTtsMeasurements\(\)/);
   assert.match(narrative.body, /providerSelect\.disabled = true/);
   assert.match(narrative.body, /renderTtsProviderSelection\(\); resetTtsMeasurements\(\)/);
+  assert.match(narrative.body, /tts-text[^\n]+input[^\n]+stopTtsStream\(\); renderTtsProviderSelection\(\); resetTtsMeasurements\(\)/);
   assert.match(narrative.body, /provider: provider\.id/);
   assert.match(narrative.body, /id="tts-ttfb"/);
   assert.match(narrative.body, /id=\"tts-playback\"/);
@@ -1364,6 +1365,10 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /prerecorded system-unavailable prompt/i);
   assert.match(html, /human-support/);
   assert.match(html, /intercept\("run-demo-drill"/);
+  assert.match(html, /detail\.dataset\.turns=String\(transcript\.length\)/);
+  assert.match(html, /target\.dataset\.events=String\(items\.length\)/);
+  assert.match(html, /if\(evidence\)evidence\.open=true/);
+  assert.match(html, /demo-evidence-count/);
   assert.doesNotMatch(html, /intercept\("drill-tool"/);
   assert.match(html, /turns\[4\]/);
   assert.match(html, /retention_review_approved/);

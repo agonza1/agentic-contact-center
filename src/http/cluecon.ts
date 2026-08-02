@@ -2075,7 +2075,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     document.getElementById("run-demo").addEventListener("click", () => runDemo().catch(error => { document.getElementById("demo-screen").textContent = String(error.message || error); }));
     document.getElementById("demo-evidence").addEventListener("toggle", event => { document.getElementById("demo-evidence-toggle").textContent = event.currentTarget.open ? "Collapse" : "Expand"; });
     document.getElementById("tts-provider").addEventListener("change", () => { stopTtsStream(); renderTtsProviderSelection(); resetTtsMeasurements(); });
-    document.getElementById("tts-text").addEventListener("input", () => { stopTtsStream(); renderTtsTextProgress(); });
+    document.getElementById("tts-text").addEventListener("input", () => { stopTtsStream(); renderTtsProviderSelection(); resetTtsMeasurements(); });
     document.getElementById("tts-run").addEventListener("click", runTtsLab);
     document.getElementById("vad-mic").addEventListener("click", () => toggleVadMic().catch(error => { vadStatus("mic error", "blocked"); vadLog("MIC_ERROR", String(error.message || error)); }));
     document.getElementById("vad-agent").addEventListener("click", startVadBot);

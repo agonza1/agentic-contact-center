@@ -39,6 +39,8 @@ export const CLUECON_CANCELLATION_CALLER_TURNS = [
   "Keep it active until the review.",
 ] as const;
 
+export const CLUECON_CANCELLATION_AFTER_DENIAL_TURN = "Continue with cancellation.";
+
 export const PIPECAT_TOOL_COVERAGE = [
   "get_current_slide",
   "goto_slide",
@@ -402,6 +404,31 @@ export function applyDeterministicPipecatFlow(
 
   if (callerTurnCount === 5 && config.policy.defaultSupervisorSteer === "approve_retention_review") {
     const retentionReviewApproved = snapshot.events.some((event) => event.type === "retention_review_approved");
+    const retentionReviewDenied = snapshot.events.some((event) => event.type === "retention_review_denied");
+    if (retentionReviewDenied) {
+      snapshot.pipecatFlow.activeTool = "pause_presentation";
+      recordEvent(snapshot, "customer_final_path_selected", turn.timestamp, {
+        selection: "continue_cancellation_after_denied_review",
+      });
+      recordEvent(snapshot, "human_handoff_started", turn.timestamp, {
+        operatorChannel: snapshot.scenario.operatorChannel,
+        reason: "retention_review_denied_customer_continued_cancellation",
+        source: "scripted_flow",
+      });
+      recordEvent(snapshot, "final_policy_state_recorded", turn.timestamp, {
+        policyStatus: "active",
+        pendingOperation: "cancellation_handoff",
+        pricingChangeApplied: false,
+      });
+      transitionFlowState(snapshot, "wrap", turn.timestamp, "customer_continued_cancellation_after_denial");
+      appendAgentTurn(
+        snapshot,
+        "The retention review was not approved. Your policy remains active while I connect you with a licensed specialist to continue the cancellation. No pricing change has been applied.",
+        turn.timestamp,
+      );
+      snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
+      return;
+    }
     if (!retentionReviewApproved) {
       snapshot.pipecatFlow.activeTool = "ask_operator";
       transitionFlowState(snapshot, "operator_steer", turn.timestamp, "retention_review_approval_required");
@@ -752,6 +779,7 @@ export function applyOperatorSteer(
 ): void {
   snapshot.pipecatFlow.activeTool = "ask_operator";
   const wasPending = snapshot.operatorSteer.pending;
+  const pendingAction = snapshot.operatorSteer.lastAction;
   setOperatorSteerState(snapshot, false, timestamp, action, reason ?? null);
   if (action !== "approve_retention_review") {
     appendOperatorTurn(snapshot, `operator steer: ${action}`, timestamp);
@@ -859,12 +887,32 @@ export function applyOperatorSteer(
   }
 
   if (action === "deny_offer") {
+    const deniedRetentionReview = wasPending && pendingAction === "approve_retention_review";
     recordEvent(snapshot, "operator_offer_denied", timestamp, {
       operatorChannel: snapshot.scenario.operatorChannel,
       source: "operator_steer",
     });
+    if (deniedRetentionReview) {
+      recordEvent(snapshot, "retention_review_denied", timestamp, {
+        reviewType: "retention_specialist_followup",
+        source: "operator_steer",
+      });
+      snapshot.pipecatFlow.script = {
+        ...snapshot.pipecatFlow.script,
+        expectedCallerTurns: [
+          ...snapshot.pipecatFlow.script.expectedCallerTurns.slice(0, 4),
+          CLUECON_CANCELLATION_AFTER_DENIAL_TURN,
+        ],
+      };
+    }
     transitionFlowState(snapshot, "steered_response", timestamp, "operator_denied_retention_offer");
-    appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
+    appendAgentTurn(
+      snapshot,
+      deniedRetentionReview
+        ? "Thanks for waiting. The retention review was not approved. Your policy is unchanged, and you can continue with cancellation or ask to speak with a licensed specialist."
+        : buildSteeredResponse(action),
+      timestamp,
+    );
     snapshot.pipecatFlow.activeTool = "ask_operator";
     return;
   }
