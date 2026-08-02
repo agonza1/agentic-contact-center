@@ -1419,9 +1419,9 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .finale .kicker { color: #67e8f9; }
     .finale h2 { max-width: 980px; color: #f8fafc; font-size: clamp(34px,5vw,64px); }
     .finale .subhead { max-width: 920px; color: #bfdbfe; }
-    .finale-callback { display: flex; align-items: center; gap: 13px; width: fit-content; color: #8da9c7; font-size: 14px; }
-    .finale-callback b { color: #67e8f9; font-size: 22px; }
-    .finale-callback strong { color: #f8fafc; font-size: 16px; }
+    .finale-callback { display: flex; align-items: center; gap: 16px; width: fit-content; color: #a9bfd8; font-size: 18px; }
+    .finale-callback b { color: #67e8f9; font-size: 28px; line-height: 1; }
+    .finale-callback strong { color: #f8fafc; font-size: 22px; }
     .finale-invitation { display: flex; align-items: baseline; gap: 12px; color: #9db7d3; }
     .finale-invitation strong { color: #67e8f9; font-size: 21px; }
     .finale-invitation span { font-size: 13px; }

@@ -1239,6 +1239,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /http:\/\/127\.0\.0\.1:3010\/runs/);
   assert.match(narrative.body, /Say what you mean\./);
   assert.match(narrative.body, /2017 · “exactly what I expected”/);
+  assert.match(narrative.body, /\.finale-callback \{[^}]*font-size: 18px/);
+  assert.match(narrative.body, /\.finale-callback strong \{[^}]*font-size: 22px/);
   assert.match(narrative.body, /The conversation can be unexpected\. Action still needs a contract\./);
   assert.match(narrative.body, /Run it\. Break it\. Make it better\./);
   assert.match(narrative.body, /Connect on LinkedIn/);
