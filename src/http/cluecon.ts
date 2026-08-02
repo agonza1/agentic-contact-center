@@ -1488,7 +1488,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     <section class="section-band slide" data-slide="4" id="map">
       <span class="kicker">System map</span>
       <h2>Open Source Self-Hosted Agentic Call Center Architecture.</h2>
-      <p class="subhead">FreeSWITCH owns SIP and RTP. Pipecat coordinates decoded audio through rtc-asr, explicit agent policy, and Kokoro.</p>
+      <p class="subhead">FreeSWITCH owns SIP and RTP. Pipecat coordinates decoded audio through rtc-asr, explicit agent policy, and a TTS model.</p>
       <svg class="arch" viewBox="0 0 1120 420" role="img" aria-label="Open source self-hosted agentic call center architecture with a bidirectional caller, media, inference, and synthesis loop">
         <defs><marker id="arrow" viewBox="0 0 8 8" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2457a6"/></marker></defs>
         <rect class="nodeAccent" x="24" y="82" width="126" height="76" rx="8"/>

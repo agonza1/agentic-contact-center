@@ -1049,6 +1049,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /MIC_START_CANCELLED/);
   assert.match(narrative.body, /slideCount: slideOrder\.length/);
   assert.match(narrative.body, /\["flow", "voice-evolution", "realtime-problem", "map", "integration", "vad-interruption", "asr-architecture", "asr", "security", "agent", "demo", "tts", "ecosystem", "proof", "finale"\]/);
+  assert.match(narrative.body, /explicit agent policy, and a TTS model\./);
   assert.match(narrative.body, /orient="auto-start-reverse"/);
   assert.match(narrative.body, /markerUnits="userSpaceOnUse"/);
   assert.equal((narrative.body.match(/class="line line--bidirectional"/g) ?? []).length, 6);
