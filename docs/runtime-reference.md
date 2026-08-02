@@ -25,7 +25,8 @@ Environment variables:
 - `KOKORO_SPEECH_PATH`: Kokoro speech endpoint; defaults to `/v1/audio/speech`.
 - `KOKORO_VOICE`: Kokoro voice id; defaults to `af_heart`.
 - `ACC_TTS_PROVIDER`: `pocket` or `kokoro`; defaults to `pocket` when `POCKET_TTS_BASE_URL` is set, otherwise `kokoro`.
-- `POCKET_TTS_BASE_URL`: Pocket TTS HTTP base URL for the ClueCon/Pipecat streaming TTS lane, commonly `http://127.0.0.1:8881`.
+- `POCKET_TTS_BASE_URL`: Pocket TTS HTTP base URL for the ClueCon/Pipecat streaming TTS lane when running ACC/bridges on the host, commonly `http://127.0.0.1:8881`.
+- `POCKET_TTS_CONTAINER_BASE_URL`: Pocket TTS HTTP base URL for Docker Compose app/voice bridge containers; defaults to `http://host.docker.internal:8881` so a host-local Pocket service is reachable from containers.
 - `POCKET_TTS_HEALTH_PATH`: Pocket TTS health path; defaults to `/health`.
 - `POCKET_TTS_SPEECH_PATH`: Pocket OpenAI-compatible speech endpoint; defaults to `/v1/audio/speech`.
 - `POCKET_TTS_MODEL`: Pocket model id; defaults to `pocket-tts`.
@@ -316,6 +317,8 @@ The default Compose path only starts `app` unless another service is requested. 
 - `sip`: legacy proof/debug lane with FreeSWITCH plus `freeswitch-bridge`, writes SIP/media proof artifacts under `artifacts/freeswitch-live`, and points the bridge at Docker-network rtc-asr/Kokoro URLs.
 - `eval`: runs `assert-viewer`, exporting ACC ASSERT artifacts before starting the upstream ASSERT viewer on `5174`.
 - `full`: enables every optional service above for an end-to-end local lab stack.
+
+When the Compose app or voice bridge containers use Pocket against a host-local service, set `POCKET_TTS_CONTAINER_BASE_URL` only if the default `http://host.docker.internal:8881` is wrong for your Docker host. The host-run `POCKET_TTS_BASE_URL=http://127.0.0.1:8881` form is intentionally not copied into containers because container loopback would point at the container itself.
 
 The `rtc-asr` service defaults to `RTC_ASR_IMAGE=rtc-asr:local` because the ASR server is owned by the sibling `rtc-asr` project. Build that image from the `rtc-asr` checkout or override `RTC_ASR_IMAGE` with a compatible image before using `voice`, `browser-webrtc`, `sip`, or `full`. Kokoro defaults to `KOKORO_IMAGE=ghcr.io/remsky/kokoro-fastapi-cpu:latest`; override it if the lab uses a different Kokoro FastAPI image.
 

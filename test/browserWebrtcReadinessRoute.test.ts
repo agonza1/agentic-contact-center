@@ -342,7 +342,13 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
     throw new Error("Expected an ephemeral bridge TCP port");
   }
   const previousBridgeUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL;
+  const previousTtsProvider = process.env.ACC_TTS_PROVIDER;
+  const previousPocketUrl = process.env.POCKET_TTS_BASE_URL;
+  const previousKokoroUrl = process.env.KOKORO_BASE_URL;
   process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
+  delete process.env.ACC_TTS_PROVIDER;
+  delete process.env.POCKET_TTS_BASE_URL;
+  process.env.KOKORO_BASE_URL = "http://127.0.0.1:8880";
 
   const server = buildHttpServer(loadPocConfig());
 
@@ -471,6 +477,9 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
       "Kokoro TTS produced agent TTS audio",
       "browser received and played a remote WebRTC audio track",
     ]);
+    assert.ok(payload.liveMedia.setupCommands.includes("export ACC_TTS_PROVIDER=kokoro"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export KOKORO_BASE_URL=http://127.0.0.1:8880"));
+    assert.equal(payload.liveMedia.setupCommands.some((command) => command.includes("POCKET_TTS_BASE_URL")), false);
     assert.ok(payload.liveMedia.setupCommands.some((command) => command.includes("BROWSER_WEBRTC_BRIDGE_URL")));
     assert.deepEqual(payload.blockers, ["live_webrtc_media_turn_evidence_missing"]);
     assert.match(payload.nextActions[0] ?? "", /Capture one browser voice turn/);
@@ -493,6 +502,21 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
       delete process.env.BROWSER_WEBRTC_BRIDGE_URL;
     } else {
       process.env.BROWSER_WEBRTC_BRIDGE_URL = previousBridgeUrl;
+    }
+    if (previousTtsProvider === undefined) {
+      delete process.env.ACC_TTS_PROVIDER;
+    } else {
+      process.env.ACC_TTS_PROVIDER = previousTtsProvider;
+    }
+    if (previousPocketUrl === undefined) {
+      delete process.env.POCKET_TTS_BASE_URL;
+    } else {
+      process.env.POCKET_TTS_BASE_URL = previousPocketUrl;
+    }
+    if (previousKokoroUrl === undefined) {
+      delete process.env.KOKORO_BASE_URL;
+    } else {
+      process.env.KOKORO_BASE_URL = previousKokoroUrl;
     }
   }
 });
