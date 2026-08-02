@@ -103,11 +103,13 @@ async function main() {
   if (!existsSync(appEntry)) throw new Error("Build output is missing. Run npm run build before the ClueCon launcher.");
 
   const kokoroBaseUrl = await discoverKokoroBaseUrl();
+  const rtcAsrWsUrl = process.env.RTC_ASR_WS_URL
+    || `${rtcAsrBaseUrl.replace(/^http/i, "ws")}/v1/stt/stream`;
   const child = spawn(process.execPath, [appEntry], {
     env: {
       ...process.env,
       RTC_ASR_BASE_URL: rtcAsrBaseUrl,
-      RTC_ASR_WS_URL: `${rtcAsrBaseUrl.replace(/^http/i, "ws")}/v1/stt/stream`,
+      RTC_ASR_WS_URL: rtcAsrWsUrl,
       ...(kokoroBaseUrl ? { KOKORO_BASE_URL: kokoroBaseUrl } : {}),
     },
     stdio: "inherit",

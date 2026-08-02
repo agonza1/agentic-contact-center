@@ -85,6 +85,7 @@ interface RtcAsrModelTarget {
   id: string;
   label: string;
   baseUrl: string;
+  websocketUrl?: string;
 }
 
 function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
@@ -100,8 +101,14 @@ function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
           const id = typeof record.id === "string" ? record.id.trim() : "";
           const label = typeof record.label === "string" ? record.label.trim() : id;
           const baseUrl = typeof record.baseUrl === "string" ? record.baseUrl.trim().replace(/\/+$/, "") : "";
+          const websocketUrl = typeof record.websocketUrl === "string" ? record.websocketUrl.trim() : "";
           if (/^[a-z0-9_-]+$/i.test(id) && /^https?:\/\//i.test(baseUrl)) {
-            configured.push({ id, label: label || id, baseUrl });
+            configured.push({
+              id,
+              label: label || id,
+              baseUrl,
+              ...(/^wss?:\/\//i.test(websocketUrl) ? { websocketUrl } : {}),
+            });
           }
         }
       }
@@ -111,11 +118,27 @@ function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
   }
 
   const primaryBaseUrl = process.env.RTC_ASR_BASE_URL?.trim().replace(/\/+$/, "");
-  if (primaryBaseUrl && /^https?:\/\//i.test(primaryBaseUrl) && !configured.some((target) => target.baseUrl === primaryBaseUrl)) {
-    configured.unshift({ id: "primary", label: "Active local model", baseUrl: primaryBaseUrl });
+  const primaryWebsocketUrl = process.env.RTC_ASR_WS_URL?.trim();
+  if (primaryBaseUrl && /^https?:\/\//i.test(primaryBaseUrl)) {
+    const existingPrimary = configured.find((target) => target.baseUrl === primaryBaseUrl);
+    if (existingPrimary) {
+      if (/^wss?:\/\//i.test(primaryWebsocketUrl ?? "")) existingPrimary.websocketUrl = primaryWebsocketUrl;
+    } else {
+      configured.unshift({
+        id: "primary",
+        label: "Active local model",
+        baseUrl: primaryBaseUrl,
+        ...(/^wss?:\/\//i.test(primaryWebsocketUrl ?? "") ? { websocketUrl: primaryWebsocketUrl } : {}),
+      });
+    }
   }
 
   return configured;
+}
+
+function getRtcAsrWebsocketUrl(target: RtcAsrModelTarget): string {
+  return target.websocketUrl
+    ?? `${target.baseUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/v1/stt/stream`;
 }
 
 async function fetchRtcAsrJson(target: RtcAsrModelTarget, path: string, init?: RequestInit): Promise<{
@@ -5498,7 +5521,7 @@ async function routeRequest(
           return {
             targetId: target.id,
             targetLabel: target.label,
-            websocketUrl: `${target.baseUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/v1/stt/stream`,
+            websocketUrl: getRtcAsrWebsocketUrl(target),
             backend: typeof payload.backend === "string" ? payload.backend : "unknown",
             model: typeof payload.model === "string" ? payload.model : target.label,
             status: typeof payload.status === "string" ? payload.status : result.response.ok ? "ready" : "unavailable",
@@ -5513,7 +5536,7 @@ async function routeRequest(
           return {
             targetId: target.id,
             targetLabel: target.label,
-            websocketUrl: `${target.baseUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/v1/stt/stream`,
+            websocketUrl: getRtcAsrWebsocketUrl(target),
             backend: "unknown",
             model: target.label,
             status: "unavailable",
@@ -6995,7 +7018,11 @@ async function routeRequest(
         scriptCompleted: updatedSnapshot.pipecatFlow.script.completed,
         call: buildOperatorConsoleCallPayload(updatedSnapshot),
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Retention review approval is required")) {
+        writeJson(response, 409, { ok: false, error: "retention_review_approval_required" });
+        return;
+      }
       writeNotFound(response);
     }
     return;
@@ -7515,7 +7542,11 @@ async function routeRequest(
         openAiLlm,
       });
       writeJson(response, 200, buildCallPayload(snapshot));
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Retention review approval is required")) {
+        writeJson(response, 409, { ok: false, error: "retention_review_approval_required" });
+        return;
+      }
       writeNotFound(response);
     } finally {
       if (deliveryAckPreviewReservationKey) {

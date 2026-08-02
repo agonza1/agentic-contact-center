@@ -377,6 +377,15 @@ export class InMemoryTelephonyIngress {
       ?? snapshot.scenario.conversationMode
       ?? (snapshot.session.openclawSession.label === "pipecat-local-voice" ? "free_caller" : "scripted");
 
+    const retentionReviewApprovalRequired =
+      conversationMode === "scripted"
+      && config.policy.defaultSupervisorSteer === "approve_retention_review"
+      && snapshot.transcript.filter((entry) => entry.speaker === "caller").length >= 4
+      && !snapshot.events.some((event) => event.type === "retention_review_approved");
+    if (retentionReviewApprovalRequired) {
+      throw new Error(`Retention review approval is required before the caller can select the final path: ${snapshot.session.callId}`);
+    }
+
     snapshot.transcript.push({ ...turn });
     snapshot.events.push({
       type: "caller_turn_appended",
@@ -586,6 +595,13 @@ export class InMemoryTelephonyIngress {
       (!snapshot.operatorSteer.pending || snapshot.operatorSteer.lastAction !== "approve_retention_review")
     ) {
       throw new Error(`Call is not awaiting operator steer for the requested retention review: ${callId}`);
+    }
+
+    if (
+      action === "approve_offer" &&
+      (!snapshot.operatorSteer.pending || snapshot.operatorSteer.lastAction !== "approve_offer")
+    ) {
+      throw new Error(`Call is not awaiting operator steer for the requested offer: ${callId}`);
     }
 
     const requiresPendingState =

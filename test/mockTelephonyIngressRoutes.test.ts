@@ -2461,6 +2461,28 @@ test("retention approval requires its exact pending request and the console foll
     assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnIndex, 4);
     assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnText, "Keep it active until the review.");
     assert.equal(pendingCall?.actionState.scriptedCallerTurnState.progressLabel, "4/5 scripted turns sent");
+    assert.equal(pendingCall?.transcript.at(-1)?.speaker, "agent");
+    assert.match(pendingCall?.transcript.at(-1)?.text ?? "", /policy remains unchanged while I wait/i);
+
+    const wrongApproval = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+      action: "approve_offer",
+    });
+    assert.equal(wrongApproval.statusCode, 400);
+    assert.deepEqual(wrongApproval.payload, { ok: false, error: "operator_steer_not_pending" });
+
+    const prematureFinalTurn = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
+      callId,
+      expectedTurnIndex: 4,
+    });
+    assert.equal(prematureFinalTurn.statusCode, 409);
+    assert.deepEqual(prematureFinalTurn.payload, { ok: false, error: "retention_review_approval_required" });
+    const stillPending = await requestJson(port, "GET", `/api/calls/${callId}`);
+    const stillPendingCall = stillPending.payload as SnapshotPayload;
+    assert.equal(stillPendingCall.pipecatFlow.script.matchedCallerTurns, 4);
+    assert.equal(stillPendingCall.operatorSteer.pending, true);
+    assert.equal(stillPendingCall.operatorSteer.lastAction, "approve_retention_review");
+    assert.equal(stillPendingCall.events.some((event) => event.type === "retention_followup_created"), false);
+    assert.equal(stillPendingCall.events.some((event) => event.type === "final_policy_state_recorded"), false);
 
     const approved = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
       action: "approve_retention_review",

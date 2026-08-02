@@ -383,6 +383,11 @@ export function applyDeterministicPipecatFlow(
         operatorChannel: snapshot.scenario.operatorChannel,
         operation: "retention_specialist_review",
       });
+      appendAgentTurn(
+        snapshot,
+        "Thanks. I'll request that approval now. Your policy remains unchanged while I wait.",
+        turn.timestamp,
+      );
       return;
     }
     snapshot.pipecatFlow.activeTool = "pause_presentation";
@@ -396,6 +401,17 @@ export function applyDeterministicPipecatFlow(
   }
 
   if (callerTurnCount === 5 && config.policy.defaultSupervisorSteer === "approve_retention_review") {
+    const retentionReviewApproved = snapshot.events.some((event) => event.type === "retention_review_approved");
+    if (!retentionReviewApproved) {
+      snapshot.pipecatFlow.activeTool = "ask_operator";
+      transitionFlowState(snapshot, "operator_steer", turn.timestamp, "retention_review_approval_required");
+      appendAgentTurn(
+        snapshot,
+        "I still need approval before I can create the retention follow-up. Your policy remains unchanged while I wait.",
+        turn.timestamp,
+      );
+      return;
+    }
     snapshot.pipecatFlow.activeTool = "pause_presentation";
     recordEvent(snapshot, "customer_final_path_selected", turn.timestamp, {
       selection: "keep_policy_active_pending_review",

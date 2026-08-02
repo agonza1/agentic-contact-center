@@ -653,7 +653,7 @@ test("GET /api/cluecon upgrades readiness when live sidecar health probes pass",
 test("ClueCon ASR routes discover warmed models and proxy live transcription", async () => {
   const rtcAsr = await startRtcAsrServer();
   try {
-    await withEnv({ RTC_ASR_BASE_URL: rtcAsr.baseUrl }, async () => {
+    await withEnv({ RTC_ASR_BASE_URL: rtcAsr.baseUrl, RTC_ASR_WS_URL: undefined }, async () => {
       const modelsResponse = await get("/api/cluecon/asr/models");
       assert.equal(modelsResponse.statusCode, 200);
       const models = JSON.parse(modelsResponse.body) as {
@@ -700,7 +700,7 @@ test("ClueCon ASR routes discover warmed models and proxy live transcription", a
 });
 
 test("ClueCon ASR routes fail clearly when rtc-asr is not configured", async () => {
-  await withEnv({ RTC_ASR_BASE_URL: undefined, RTC_ASR_MODEL_ENDPOINTS: undefined }, async () => {
+  await withEnv({ RTC_ASR_BASE_URL: undefined, RTC_ASR_WS_URL: undefined, RTC_ASR_MODEL_ENDPOINTS: undefined }, async () => {
     const models = await get("/api/cluecon/asr/models");
     assert.equal(models.statusCode, 503);
     assert.match(models.body, /rtc_asr_not_configured/);
@@ -774,6 +774,21 @@ test("Kokoro startup warm-up performs a real configured synthesis", async () => 
     );
   } finally {
     await closeServer(kokoro.server);
+  }
+});
+
+test("ClueCon ASR model discovery preserves an explicit browser websocket endpoint", async () => {
+  const rtcAsr = await startRtcAsrServer();
+  const browserWebsocketUrl = "wss://speech.example.test/browser/stt";
+  try {
+    await withEnv({ RTC_ASR_BASE_URL: rtcAsr.baseUrl, RTC_ASR_WS_URL: browserWebsocketUrl }, async () => {
+      const response = await get("/api/cluecon/asr/models");
+      assert.equal(response.statusCode, 200);
+      const payload = JSON.parse(response.body) as { models: Array<{ websocketUrl: string }> };
+      assert.equal(payload.models[0]?.websocketUrl, browserWebsocketUrl);
+    });
+  } finally {
+    await closeServer(rtcAsr.server);
   }
 });
 
@@ -1186,6 +1201,11 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /natural-boundary chunks/);
   assert.match(narrative.body, /Here is the key\. AI may be probabilistic/);
   assert.match(narrative.body, /function segmentTtsText\(text\)/);
+  assert.match(narrative.body, /return segments;/);
+  assert.doesNotMatch(narrative.body, /segments\.slice\(0, 8\)/);
+  assert.match(narrative.body, /Stop the batch recording before starting realtime transcription/);
+  assert.match(narrative.body, /Stop realtime transcription before starting a batch recording/);
+  assert.match(narrative.body, /const failedLive = state\.asrLive \|\| live/);
   assert.match(narrative.body, /context\.decodeAudioData/);
   assert.match(narrative.body, /source\.start\(scheduledAt\)/);
   assert.match(narrative.body, /Playing queued audio while synthesizing/);
