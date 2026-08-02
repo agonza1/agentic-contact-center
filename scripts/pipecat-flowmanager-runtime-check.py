@@ -29,6 +29,7 @@ from acc_pipecat_flow_manager import AccPipecatFlowManagerAdapter
 
 
 async def run_check() -> dict[str, Any]:
+    cwd_before_import = Path.cwd()
     nodes = iter(["greet", "diagnose"])
 
     def fake_acc_request(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -84,6 +85,7 @@ async def run_check() -> dict[str, Any]:
             "LLMMessagesAppendFrame",
             "LLMSetToolsFrame",
         ],
+        "cwdPreservedDuringFlowManagerImport": Path.cwd() == cwd_before_import,
     }
     return {
         "ok": all(checks.values()),

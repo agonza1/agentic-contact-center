@@ -12,9 +12,6 @@ import asyncio
 import importlib
 import importlib.metadata
 import json
-import os
-import shutil
-import tempfile
 import urllib.error
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -153,19 +150,16 @@ class AccPipecatFlowManagerAdapter:
     def resolve_manager_factory(self) -> Callable[..., Any]:
         if self.manager_factory is not None:
             return self.manager_factory
-        previous_cwd = Path.cwd()
-        import_cwd = Path(tempfile.mkdtemp(prefix="acc-pipecat-flows-import-"))
         try:
-            os.chdir(import_cwd)
+            # NLTK's import guard blocks dependency lookups under the repo cwd;
+            # priming regex keeps the Pipecat import local without changing cwd.
+            importlib.import_module("regex")
             module = importlib.import_module("pipecat.flows")
             factory = getattr(module, "FlowManager")
         except (ImportError, AttributeError) as exc:
             raise FlowManagerRuntimeError(
                 "pipecat.flows.FlowManager is unavailable; install pipecat-ai[webrtc]==1.7.0"
             ) from exc
-        finally:
-            os.chdir(previous_cwd)
-            shutil.rmtree(import_cwd, ignore_errors=True)
         return factory
 
     async def initialize(self) -> None:
