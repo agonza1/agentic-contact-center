@@ -247,6 +247,15 @@ function buildBrowserWebrtcReadinessPayload(bridgeRuntime: BrowserWebrtcBridgeRu
   const blockers = runtimeReady ? ["live_webrtc_media_turn_evidence_missing"] : [...bridgeRuntime.blockers, "live_webrtc_media_turn_evidence_missing"];
   const ttsProvider = getConfiguredTtsProvider();
   const ttsLabel = ttsProvider === "pocket" ? "Pocket TTS" : "Kokoro TTS";
+  const ttsSetupCommands = ttsProvider === "pocket"
+    ? [
+      "export ACC_TTS_PROVIDER=pocket",
+      "export POCKET_TTS_BASE_URL=http://127.0.0.1:8881",
+    ]
+    : [
+      "export ACC_TTS_PROVIDER=kokoro",
+      "export KOKORO_BASE_URL=http://127.0.0.1:8880",
+    ];
 
   return {
     ok: contractReady && runtimeReady,
@@ -331,9 +340,7 @@ function buildBrowserWebrtcReadinessPayload(bridgeRuntime: BrowserWebrtcBridgeRu
         "export RTC_ASR_BASE_URL=http://127.0.0.1:8080",
         "export RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream",
         "export ASR_VAD_FILTER=false",
-        "export ACC_TTS_PROVIDER=pocket",
-        "export POCKET_TTS_BASE_URL=http://127.0.0.1:8881",
-        "export KOKORO_BASE_URL=http://127.0.0.1:8880",
+        ...ttsSetupCommands,
         "export BROWSER_WEBRTC_BRIDGE_URL=http://127.0.0.1:8766",
         "npm run pipecat:webrtc:install",
         "npm start",

@@ -34,6 +34,9 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /app:\n[\s\S]*provider_credentials_mocked/);
   assert.equal((compose.match(/ACC_TTS_PROVIDER: \$\{ACC_TTS_PROVIDER:-\}/g) ?? []).length, 3);
   assert.doesNotMatch(compose, /ACC_TTS_PROVIDER: \$\{ACC_TTS_PROVIDER:-kokoro\}/);
+  assert.equal((compose.match(/POCKET_TTS_BASE_URL: \$\{POCKET_TTS_CONTAINER_BASE_URL:-http:\/\/host\.docker\.internal:8881\}/g) ?? []).length, 3);
+  assert.equal((compose.match(/"host\.docker\.internal:host-gateway"/g) ?? []).length, 3);
+  assert.doesNotMatch(compose, /POCKET_TTS_BASE_URL: \$\{POCKET_TTS_BASE_URL:-http:\/\/127\.0\.0\.1:8881\}/);
   assert.match(compose, /proof:\n[\s\S]*profiles: \["proof"\]/);
   assert.match(compose, /proof:\n[\s\S]*scripts\/demo-proof\.mjs/);
   assert.match(compose, /proof:\n[\s\S]*artifacts\/demo-proof-docker\.json/);
