@@ -917,14 +917,21 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .fixture { color: var(--amber); background: #fff8e8; border-color: #f2c879; }
     .blocked { color: var(--red); background: #fff2f0; border-color: #f0b8b2; }
     .arch { width: 100%; min-height: 300px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .arch-boundary { fill: #f7fafc; stroke: #9fb3c8; stroke-width: 1.5; stroke-dasharray: 5 4; }
+    .arch-boundary-label { font: 850 12px system-ui,sans-serif; fill: #334155; letter-spacing: .08em; text-transform: uppercase; }
     .node { fill: #fff; stroke: #bac6d1; stroke-width: 2; }
     .nodeAccent { fill: #e8f5f2; stroke: #0f766e; stroke-width: 2; }
     .nodeWarn { fill: #fff8e8; stroke: #9a5b04; stroke-width: 2; }
     .label { font: 800 15px system-ui,sans-serif; fill: #17202a; }
     .small { font: 650 12px system-ui,sans-serif; fill: #5d6b78; }
-    .line { stroke: #2457a6; stroke-width: 2.35; fill: none; }
-    .line--forward { marker-end: url(#arrow); }
-    .line--bidirectional { marker-start: url(#arrow); marker-end: url(#arrow); }
+    .line { stroke-width: 2.35; fill: none; }
+    .line--media { stroke: #2457a6; }
+    .line--control { stroke: #9a5b04; stroke-width: 2.15; stroke-dasharray: 7 5; }
+    .line--media.line--forward { marker-end: url(#arrow-media); }
+    .line--media.line--bidirectional { marker-start: url(#arrow-media); marker-end: url(#arrow-media); }
+    .line--control.line--forward { marker-end: url(#arrow-control); }
+    .line--control.line--bidirectional { marker-start: url(#arrow-control); marker-end: url(#arrow-control); }
+    .arch-legend { font: 750 11px system-ui,sans-serif; fill: #5d6b78; }
     .flow-hero { align-content: start; min-height: calc(100vh - 62px); gap: 20px; }
     .flow-header { display: grid; gap: 8px; max-width: 920px; }
     .flow-header h1 { font-size: clamp(32px, 5vw, 58px); line-height: 1; margin-bottom: 0; }
@@ -1488,38 +1495,51 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     <section class="section-band slide" data-slide="4" id="map">
       <span class="kicker">System map</span>
       <h2>Open Source Self-Hosted Agentic Call Center Architecture.</h2>
-      <p class="subhead">FreeSWITCH owns SIP and RTP. Pipecat coordinates decoded audio through rtc-asr, explicit agent policy, and a TTS model.</p>
-      <svg class="arch" viewBox="0 0 1120 420" role="img" aria-label="Open source self-hosted agentic call center architecture with a bidirectional caller, media, inference, and synthesis loop">
-        <defs><marker id="arrow" viewBox="0 0 8 8" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2457a6"/></marker></defs>
-        <rect class="nodeAccent" x="24" y="82" width="126" height="76" rx="8"/>
-        <text class="label" x="87" y="113" text-anchor="middle">Caller</text><text class="small" x="87" y="135" text-anchor="middle">SIP + RTP</text>
-        <rect class="node" x="190" y="72" width="154" height="96" rx="8"/>
-        <text class="label" x="267" y="106" text-anchor="middle">FreeSWITCH</text><text class="small" x="267" y="128" text-anchor="middle">dialog + codec</text><text class="small" x="267" y="147" text-anchor="middle">media clock</text>
-        <rect class="nodeAccent" x="384" y="72" width="150" height="96" rx="8"/>
-        <text class="label" x="459" y="106" text-anchor="middle">Pipecat</text><text class="small" x="459" y="128" text-anchor="middle">Pipeline + turns</text><text class="small" x="459" y="147" text-anchor="middle">decoded PCM</text>
-        <rect class="nodeWarn" x="574" y="82" width="130" height="76" rx="8"/>
-        <text class="label" x="639" y="113" text-anchor="middle">rtc-asr</text><text class="small" x="639" y="135" text-anchor="middle">streaming STT</text>
-        <rect class="nodeAccent" x="744" y="72" width="152" height="96" rx="8"/>
-        <text class="label" x="820" y="106" text-anchor="middle">ACC Agent</text><text class="small" x="820" y="128" text-anchor="middle">policy + tools</text><text class="small" x="820" y="147" text-anchor="middle">FlowManager</text>
-        <rect class="nodeWarn" x="936" y="82" width="132" height="76" rx="8"/>
-        <text class="label" x="1002" y="113" text-anchor="middle">Kokoro</text><text class="small" x="1002" y="135" text-anchor="middle">streaming TTS</text>
-        <rect class="node" x="572" y="274" width="154" height="82" rx="8"/>
-        <text class="label" x="649" y="307" text-anchor="middle">Operator</text><text class="small" x="649" y="330" text-anchor="middle">approve / handoff</text>
-        <rect class="nodeAccent" x="770" y="274" width="154" height="82" rx="8"/>
-        <text class="label" x="847" y="307" text-anchor="middle">Proof bundle</text><text class="small" x="847" y="330" text-anchor="middle">events + latency</text>
-        <rect class="nodeAccent" x="968" y="274" width="128" height="82" rx="8"/>
-        <text class="label" x="1032" y="307" text-anchor="middle">ASSERT</text><text class="small" x="1032" y="330" text-anchor="middle">evaluation</text>
-        <path class="line line--bidirectional" d="M150 120 H190"/>
-        <path class="line line--bidirectional" d="M344 120 H384"/>
-        <path class="line line--bidirectional" d="M534 120 H574"/>
-        <path class="line line--bidirectional" d="M704 120 H744"/>
-        <path class="line line--bidirectional" d="M896 120 H936"/>
-        <path class="line line--bidirectional" d="M1002 158 C1002 214 338 214 267 168"/>
-        <path class="line line--forward" d="M649 274 C670 222 742 194 782 168"/>
-        <path class="line line--forward" d="M820 168 V274"/>
-        <path class="line line--forward" d="M924 315 H968"/>
+      <p class="subhead">Pipecat coordinates the realtime media and LLM loop. The Agentic Call Center app authorizes tools and telephony actions; FreeSWITCH keeps SIP and RTP deterministic.</p>
+      <svg class="arch" viewBox="0 0 1120 420" role="img" aria-label="Open source self-hosted agentic call center architecture separating realtime media and inference from signaling, policy, tools, and evidence">
+        <defs><marker id="arrow-media" viewBox="0 0 8 8" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2457a6"/></marker><marker id="arrow-control" viewBox="0 0 8 8" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#9a5b04"/></marker></defs>
+        <rect class="arch-boundary" x="340" y="34" width="750" height="220" rx="14"/>
+        <text class="arch-boundary-label" x="365" y="59">Pipecat-coordinated runtime</text>
+        <path class="line line--media line--bidirectional" d="M130 110 H165"/>
+        <path class="line line--control line--bidirectional" d="M130 145 H165"/>
+        <path class="line line--media line--bidirectional" d="M305 110 H365"/>
+        <path class="line line--control line--bidirectional" d="M305 145 H365"/>
+        <path class="line line--media line--bidirectional" d="M495 126 H535"/>
+        <path class="line line--media line--forward" d="M655 126 H695"/>
+        <path class="line line--media line--forward" d="M845 126 H885"/>
+        <path class="line line--media line--forward" d="M960 168 C960 222 478 222 430 174"/>
+        <path class="line line--control line--bidirectional" d="M770 174 V190"/>
+        <path class="line line--control line--bidirectional" d="M235 172 C235 252 500 260 570 300"/>
+        <path class="line line--control line--bidirectional" d="M720 174 C676 218 650 262 630 300"/>
+        <path class="line line--control line--bidirectional" d="M490 341 H530"/>
+        <path class="line line--control line--forward" d="M770 341 H810"/>
+        <path class="line line--control line--forward" d="M940 341 H980"/>
+        <line class="line line--media" x1="24" y1="24" x2="56" y2="24"/><text class="arch-legend" x="64" y="28">realtime media / transcript</text>
+        <line class="line line--control" x1="234" y1="24" x2="266" y2="24"/><text class="arch-legend" x="274" y="28">signaling / control / evidence</text>
+        <rect class="nodeAccent" x="20" y="92" width="110" height="70" rx="8"/>
+        <text class="label" x="75" y="122" text-anchor="middle">Caller</text><text class="small" x="75" y="144" text-anchor="middle">SIP + RTP</text>
+        <rect class="node" x="165" y="82" width="140" height="90" rx="8"/>
+        <text class="label" x="235" y="112" text-anchor="middle">FreeSWITCH</text><text class="small" x="235" y="134" text-anchor="middle">dialog + codec</text><text class="small" x="235" y="153" text-anchor="middle">media clock</text>
+        <rect class="nodeAccent" x="365" y="86" width="130" height="88" rx="8"/>
+        <text class="label" x="430" y="114" text-anchor="middle">Media pipeline</text><text class="small" x="430" y="136" text-anchor="middle">transport + turns</text><text class="small" x="430" y="155" text-anchor="middle">decoded PCM</text>
+        <rect class="nodeWarn" x="535" y="92" width="120" height="76" rx="8"/>
+        <text class="label" x="595" y="122" text-anchor="middle">rtc-asr</text><text class="small" x="595" y="144" text-anchor="middle">streaming STT</text>
+        <rect class="nodeAccent" x="695" y="78" width="150" height="96" rx="8"/>
+        <text class="label" x="770" y="107" text-anchor="middle">Flows / FlowManager</text><text class="small" x="770" y="130" text-anchor="middle">node graph</text><text class="small" x="770" y="149" text-anchor="middle">context + functions</text>
+        <rect class="nodeWarn" x="695" y="190" width="150" height="50" rx="8"/>
+        <text class="label" x="770" y="211" text-anchor="middle">LLM service</text><text class="small" x="770" y="230" text-anchor="middle">pluggable · reason + propose</text>
+        <rect class="nodeWarn" x="885" y="92" width="150" height="76" rx="8"/>
+        <text class="label" x="960" y="122" text-anchor="middle">TTS model</text><text class="small" x="960" y="144" text-anchor="middle">streaming audio</text>
+        <rect class="node" x="340" y="300" width="150" height="82" rx="8"/>
+        <text class="label" x="415" y="333" text-anchor="middle">Operator</text><text class="small" x="415" y="356" text-anchor="middle">approve / handoff</text>
+        <rect class="nodeAccent" x="530" y="300" width="240" height="82" rx="8"/>
+        <text class="label" x="650" y="328" text-anchor="middle">Agentic Call Center App</text><text class="small" x="650" y="350" text-anchor="middle">business state + policy + tools</text><text class="small" x="650" y="369" text-anchor="middle">telephony actions</text>
+        <rect class="nodeAccent" x="810" y="300" width="130" height="82" rx="8"/>
+        <text class="label" x="875" y="333" text-anchor="middle">Proof bundle</text><text class="small" x="875" y="356" text-anchor="middle">events + latency</text>
+        <rect class="nodeAccent" x="980" y="300" width="115" height="82" rx="8"/>
+        <text class="label" x="1037" y="333" text-anchor="middle">ASSERT</text><text class="small" x="1037" y="356" text-anchor="middle">evaluation</text>
       </svg>
-      <div class="architecture-note"><strong>Failure boundary:</strong> ASR, agent, or TTS can fail while FreeSWITCH keeps the call alive for prerecorded playback, transfer, or a controlled BYE.</div>
+      <div class="architecture-note"><strong>Failure boundary:</strong> ASR, LLM, application, or TTS can fail while FreeSWITCH keeps the call alive for prerecorded playback, transfer, or a controlled BYE.</div>
     </section>
     <section class="section-band slide" data-slide="5" id="integration">
       <span class="kicker">Voice AI integration</span>
