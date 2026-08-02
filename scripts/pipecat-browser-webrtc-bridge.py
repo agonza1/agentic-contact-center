@@ -4,7 +4,7 @@
 Normal media path:
 
 browser microphone -> WebRTC/Opus -> this Pipecat bridge -> rtc-asr Local STT v1
--> ACC caller-turn API -> Kokoro TTS -> WebRTC remote audio track in browser
+-> ACC caller-turn API -> configured streaming TTS -> WebRTC remote audio track in browser
 
 This sidecar intentionally does not use MediaRecorder webm chunks or ffmpeg.
 """
@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import importlib
 import json
 import os
 import sys
@@ -31,6 +32,9 @@ if LOCAL_RUNTIME_PATH.exists():
     os.environ.setdefault("NLTK_DATA", str(nltk_data_path))
 
 try:
+    # NLTK's dependency guard treats the repo cwd as unsafe while Pipecat imports
+    # regex from the local target runtime. Prime regex without changing cwd.
+    importlib.import_module("regex")
     from aiohttp import web
     from pipecat.pipeline.runner import PipelineRunner
     from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -40,11 +44,10 @@ try:
     from acc_pipecat_voice_pipeline import (
         ACC_VOICE_PIPELINE_CONTRACT,
         DEFAULT_ACC_URL,
-        DEFAULT_KOKORO_MODEL,
-        DEFAULT_KOKORO_VOICE,
         INPUT_SAMPLE_RATE,
         BridgeReadiness,
         AccVoicePipelineSession,
+        active_tts_config,
         build_acc_voice_pipeline,
         check_readiness,
         normalize_browser_answer_sdp,
@@ -179,6 +182,7 @@ class BrowserWebrtcBridge:
             self.remember_session_alias(session_id, session_record)
             self.remember_session_alias(pc_id, session_record)
 
+        tts_config = active_tts_config()
         evidence = {
             "source": "pipecat_small_webrtc_pipeline",
             "runtimeMode": "pipecat_small_webrtc_pipeline",
@@ -191,7 +195,12 @@ class BrowserWebrtcBridge:
             "ffmpegRequired": False,
             "bridgeUrl": f"http://{self.host}:{self.port}",
             "stt": {"engine": "rtc-asr", "contract": "local-stt.v1", "model": readiness.stt_model, "backend": readiness.stt_backend},
-            "tts": {"engine": "kokoro", "voice": DEFAULT_KOKORO_VOICE, "model": DEFAULT_KOKORO_MODEL},
+            "tts": {
+                "engine": tts_config["engine"],
+                "provider": tts_config["provider"],
+                "voice": tts_config["voice"],
+                "model": tts_config["model"],
+            },
             "pipecat": {
                 "runtimeEngine": "pipecat-ai",
                 "version": readiness.pipecat_version,

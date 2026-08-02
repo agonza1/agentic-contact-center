@@ -141,7 +141,7 @@ def build_session(call_id: str, *, manager_factory: type[FakeFlowManager] = Fake
         call_id=call_id,
         request_json=lambda method, url, payload: pipeline.json_http(method, url, payload),
         manager_factory=manager_factory,
-        version_provider=lambda _package: "1.4.0",
+        version_provider=lambda _package: "1.7.0",
     )
     return AccVoicePipelineSession(
         acc_url="http://127.0.0.1:8026",

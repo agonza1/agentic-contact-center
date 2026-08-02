@@ -346,7 +346,13 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
     throw new Error("Expected an ephemeral bridge TCP port");
   }
   const previousBridgeUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL;
+  const previousTtsProvider = process.env.ACC_TTS_PROVIDER;
+  const previousPocketUrl = process.env.POCKET_TTS_BASE_URL;
+  const previousKokoroUrl = process.env.KOKORO_BASE_URL;
   process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
+  delete process.env.ACC_TTS_PROVIDER;
+  delete process.env.POCKET_TTS_BASE_URL;
+  process.env.KOKORO_BASE_URL = "http://127.0.0.1:8880";
 
   const server = buildHttpServer(loadPocConfig());
 
@@ -461,7 +467,7 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
     assert.deepEqual(
       Object.fromEntries(payload.acceptanceProgress.map((criterion) => [criterion.criterion, criterion.passed])),
       {
-        readiness_distinguishes_acc_pipecat_webrtc_rtc_asr_kokoro: true,
+        readiness_distinguishes_acc_pipecat_webrtc_rtc_asr_tts: true,
         normal_browser_voice_does_not_require_mediarecorder_or_ffmpeg: true,
         browser_offer_answer_signaling: true,
         live_webrtc_media_turn: false,
@@ -472,9 +478,12 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
     assert.deepEqual(payload.liveMedia.requiredProof, [
       "Pipecat WebRTC bridge started at BROWSER_WEBRTC_BRIDGE_URL",
       "rtc-asr Local STT v1 sidecar captured a final browser transcript",
-      "Kokoro produced agent TTS audio",
+      "Kokoro TTS produced agent TTS audio",
       "browser received and played a remote WebRTC audio track",
     ]);
+    assert.ok(payload.liveMedia.setupCommands.includes("export ACC_TTS_PROVIDER='kokoro'"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export KOKORO_BASE_URL='http://127.0.0.1:8880'"));
+    assert.equal(payload.liveMedia.setupCommands.some((command) => command.includes("POCKET_TTS_BASE_URL")), false);
     assert.ok(payload.liveMedia.setupCommands.some((command) => command.includes("BROWSER_WEBRTC_BRIDGE_URL")));
     assert.deepEqual(payload.blockers, ["live_webrtc_media_turn_evidence_missing"]);
     assert.match(payload.nextActions[0] ?? "", /Capture one browser voice turn/);
@@ -497,6 +506,132 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
       delete process.env.BROWSER_WEBRTC_BRIDGE_URL;
     } else {
       process.env.BROWSER_WEBRTC_BRIDGE_URL = previousBridgeUrl;
+    }
+    if (previousTtsProvider === undefined) {
+      delete process.env.ACC_TTS_PROVIDER;
+    } else {
+      process.env.ACC_TTS_PROVIDER = previousTtsProvider;
+    }
+    if (previousPocketUrl === undefined) {
+      delete process.env.POCKET_TTS_BASE_URL;
+    } else {
+      process.env.POCKET_TTS_BASE_URL = previousPocketUrl;
+    }
+    if (previousKokoroUrl === undefined) {
+      delete process.env.KOKORO_BASE_URL;
+    } else {
+      process.env.KOKORO_BASE_URL = previousKokoroUrl;
+    }
+  }
+});
+
+
+test("GET /api/browser-webrtc/readiness preserves custom Pocket URL in setup commands", async () => {
+  const bridge = createServer((_request, response) => {
+    response.statusCode = 200;
+    response.setHeader("content-type", "application/json; charset=utf-8");
+    response.end(JSON.stringify({ ok: true, status: "ready", detail: "test bridge ready" }));
+  });
+  await new Promise<void>((resolve) => bridge.listen(0, "127.0.0.1", resolve));
+  const bridgeAddress = bridge.address();
+  if (!bridgeAddress || typeof bridgeAddress === "string") {
+    throw new Error("Expected an ephemeral bridge TCP port");
+  }
+  const previousBridgeUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL;
+  const previousTtsProvider = process.env.ACC_TTS_PROVIDER;
+  const previousPocketUrl = process.env.POCKET_TTS_BASE_URL;
+  const previousPocketHealthPath = process.env.POCKET_TTS_HEALTH_PATH;
+  const previousPocketSpeechPath = process.env.POCKET_TTS_SPEECH_PATH;
+  const previousPocketModel = process.env.POCKET_TTS_MODEL;
+  const previousPocketVoice = process.env.POCKET_TTS_VOICE;
+  const previousKokoroUrl = process.env.KOKORO_BASE_URL;
+  process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
+  process.env.ACC_TTS_PROVIDER = "pocket";
+  process.env.POCKET_TTS_BASE_URL = "https://pocket.example.test:9443?token=a&mode=b";
+  process.env.POCKET_TTS_HEALTH_PATH = "/readyz?probe=1&tenant=qa";
+  process.env.POCKET_TTS_SPEECH_PATH = "/custom/speech?format=pcm&stream=true";
+  process.env.POCKET_TTS_MODEL = "pocket low latency";
+  process.env.POCKET_TTS_VOICE = "marin's voice";
+  delete process.env.KOKORO_BASE_URL;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const responseBody = await new Promise<string>((resolve, reject) => {
+      const req = request(
+        { host: "127.0.0.1", port: address.port, path: "/api/browser-webrtc/readiness", method: "GET" },
+        (response) => {
+          let body = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => { body += chunk; });
+          response.on("end", () => resolve(body));
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+    const payload = JSON.parse(responseBody) as {
+      contract: { sidecars: { tts: string } };
+      liveMedia: { setupCommands: string[]; requiredProof: string[] };
+    };
+
+    assert.equal(payload.contract.sidecars.tts, "Pocket");
+    assert.ok(payload.liveMedia.requiredProof.includes("Pocket TTS produced agent TTS audio"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export ACC_TTS_PROVIDER='pocket'"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_BASE_URL='https://pocket.example.test:9443?token=a&mode=b'"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_HEALTH_PATH='/readyz?probe=1&tenant=qa'"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_SPEECH_PATH='/custom/speech?format=pcm&stream=true'"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_MODEL='pocket low latency'"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_VOICE='marin'\\''s voice'"));
+    assert.equal(payload.liveMedia.setupCommands.includes("export POCKET_TTS_BASE_URL=http://127.0.0.1:8881"), false);
+    assert.equal(payload.liveMedia.setupCommands.some((command) => command.includes("KOKORO_BASE_URL")), false);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => bridge.close((error) => error ? reject(error) : resolve()));
+    if (previousBridgeUrl === undefined) {
+      delete process.env.BROWSER_WEBRTC_BRIDGE_URL;
+    } else {
+      process.env.BROWSER_WEBRTC_BRIDGE_URL = previousBridgeUrl;
+    }
+    if (previousTtsProvider === undefined) {
+      delete process.env.ACC_TTS_PROVIDER;
+    } else {
+      process.env.ACC_TTS_PROVIDER = previousTtsProvider;
+    }
+    if (previousPocketUrl === undefined) {
+      delete process.env.POCKET_TTS_BASE_URL;
+    } else {
+      process.env.POCKET_TTS_BASE_URL = previousPocketUrl;
+    }
+    if (previousPocketHealthPath === undefined) {
+      delete process.env.POCKET_TTS_HEALTH_PATH;
+    } else {
+      process.env.POCKET_TTS_HEALTH_PATH = previousPocketHealthPath;
+    }
+    if (previousPocketSpeechPath === undefined) {
+      delete process.env.POCKET_TTS_SPEECH_PATH;
+    } else {
+      process.env.POCKET_TTS_SPEECH_PATH = previousPocketSpeechPath;
+    }
+    if (previousPocketModel === undefined) {
+      delete process.env.POCKET_TTS_MODEL;
+    } else {
+      process.env.POCKET_TTS_MODEL = previousPocketModel;
+    }
+    if (previousPocketVoice === undefined) {
+      delete process.env.POCKET_TTS_VOICE;
+    } else {
+      process.env.POCKET_TTS_VOICE = previousPocketVoice;
+    }
+    if (previousKokoroUrl === undefined) {
+      delete process.env.KOKORO_BASE_URL;
+    } else {
+      process.env.KOKORO_BASE_URL = previousKokoroUrl;
     }
   }
 });

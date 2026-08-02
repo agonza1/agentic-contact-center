@@ -6,11 +6,19 @@ services:
     image: agentic-contact-center:local
     ports:
       - "8026:8026"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       PORT: "8026"
       RTC_ASR_BASE_URL: http://rtc-asr:8080
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
       RTC_ASR_MODEL: ${RTC_ASR_MODEL:-mlx-community/parakeet-tdt_ctc-110m}
+      ACC_TTS_PROVIDER: ${ACC_TTS_PROVIDER:-}
+      POCKET_TTS_BASE_URL: ${POCKET_TTS_CONTAINER_BASE_URL:-}
+      POCKET_TTS_VOICE: ${POCKET_TTS_VOICE:-alloy}
+      POCKET_TTS_MODEL: ${POCKET_TTS_MODEL:-pocket-tts}
+      POCKET_TTS_HEALTH_PATH: ${POCKET_TTS_HEALTH_PATH:-/health}
+      POCKET_TTS_SPEECH_PATH: ${POCKET_TTS_SPEECH_PATH:-/v1/audio/speech}
       KOKORO_BASE_URL: http://kokoro:8880
       BROWSER_WEBRTC_BRIDGE_URL: http://browser-webrtc-bridge:8766
       ACC_OPENAI_CONVERSATION_MODEL: ${ACC_OPENAI_CONVERSATION_MODEL:-GPT-5.4-mini}
@@ -158,11 +166,19 @@ services:
       - http://app:8026
     ports:
       - "127.0.0.1:8766:8766"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       ACC_URL: http://app:8026
       RTC_ASR_BASE_URL: http://rtc-asr:8080
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
       RTC_ASR_MODEL: ${RTC_ASR_MODEL:-mlx-community/parakeet-tdt_ctc-110m}
+      ACC_TTS_PROVIDER: ${ACC_TTS_PROVIDER:-}
+      POCKET_TTS_BASE_URL: ${POCKET_TTS_CONTAINER_BASE_URL:-}
+      POCKET_TTS_VOICE: ${POCKET_TTS_VOICE:-alloy}
+      POCKET_TTS_MODEL: ${POCKET_TTS_MODEL:-pocket-tts}
+      POCKET_TTS_HEALTH_PATH: ${POCKET_TTS_HEALTH_PATH:-/health}
+      POCKET_TTS_SPEECH_PATH: ${POCKET_TTS_SPEECH_PATH:-/v1/audio/speech}
       KOKORO_BASE_URL: http://kokoro:8880
       KOKORO_VOICE: ${KOKORO_VOICE:-af_heart}
     healthcheck:
@@ -230,12 +246,20 @@ services:
       - local-verto-pass
     ports:
       - "127.0.0.1:8770:8770"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./artifacts:/app/artifacts
     environment:
       ACC_URL: http://app:8026
       RTC_ASR_BASE_URL: http://rtc-asr:8080
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
+      ACC_TTS_PROVIDER: ${ACC_TTS_PROVIDER:-}
+      POCKET_TTS_BASE_URL: ${POCKET_TTS_CONTAINER_BASE_URL:-}
+      POCKET_TTS_VOICE: ${POCKET_TTS_VOICE:-alloy}
+      POCKET_TTS_MODEL: ${POCKET_TTS_MODEL:-pocket-tts}
+      POCKET_TTS_HEALTH_PATH: ${POCKET_TTS_HEALTH_PATH:-/health}
+      POCKET_TTS_SPEECH_PATH: ${POCKET_TTS_SPEECH_PATH:-/v1/audio/speech}
       KOKORO_BASE_URL: http://kokoro:8880
       ACC_TTS_CACHE_DIR: ${ACC_TTS_CACHE_DIR:-/app/artifacts/tts-cache}
       FREESWITCH_VERTO_URL: ws://freeswitch:8081

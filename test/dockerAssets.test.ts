@@ -10,6 +10,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   const compose = readFileSync(join(repoRoot, "docker-compose.yml"), "utf8");
   const freeswitchDialplan = readFileSync(join(repoRoot, "freeswitch", "conf", "dialplan", "default", "acc_local_sip.xml"), "utf8");
   const readme = readFileSync(join(repoRoot, "README.md"), "utf8");
+  const runtimeReference = readFileSync(join(repoRoot, "docs", "runtime-reference.md"), "utf8");
   const packageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as {
     scripts?: Record<string, string>;
   };
@@ -32,6 +33,14 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /app:\n[\s\S]*npm run pipecat:check/);
   assert.match(compose, /app:\n[\s\S]*--expect-production-ready/);
   assert.match(compose, /app:\n[\s\S]*provider_credentials_mocked/);
+  assert.equal((compose.match(/ACC_TTS_PROVIDER: \$\{ACC_TTS_PROVIDER:-\}/g) ?? []).length, 3);
+  assert.doesNotMatch(compose, /ACC_TTS_PROVIDER: \$\{ACC_TTS_PROVIDER:-kokoro\}/);
+  assert.equal((compose.match(/POCKET_TTS_BASE_URL: \$\{POCKET_TTS_CONTAINER_BASE_URL:-\}/g) ?? []).length, 3);
+  assert.equal((compose.match(/POCKET_TTS_HEALTH_PATH: \$\{POCKET_TTS_HEALTH_PATH:-\/health\}/g) ?? []).length, 3);
+  assert.equal((compose.match(/POCKET_TTS_SPEECH_PATH: \$\{POCKET_TTS_SPEECH_PATH:-\/v1\/audio\/speech\}/g) ?? []).length, 3);
+  assert.equal((compose.match(/"host\.docker\.internal:host-gateway"/g) ?? []).length, 3);
+  assert.doesNotMatch(compose, /POCKET_TTS_BASE_URL: \$\{POCKET_TTS_BASE_URL:-http:\/\/127\.0\.0\.1:8881\}/);
+  assert.doesNotMatch(compose, /POCKET_TTS_BASE_URL: \$\{POCKET_TTS_CONTAINER_BASE_URL:-http:\/\/host\.docker\.internal:8881\}/);
   assert.match(compose, /proof:\n[\s\S]*profiles: \["proof"\]/);
   assert.match(compose, /proof:\n[\s\S]*scripts\/demo-proof\.mjs/);
   assert.match(compose, /proof:\n[\s\S]*artifacts\/demo-proof-docker\.json/);
@@ -108,4 +117,11 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(readme, /npm run docker:assert/);
   assert.match(readme, /npm run docker:full/);
   assert.match(readme, /npm run docker:freeswitch:only/);
+  const normalBrowserWebrtcSetup = runtimeReference
+    .slice(runtimeReference.indexOf("Normal browser WebRTC sidecar setup:"))
+    .split("```", 3)[1];
+  assert.match(normalBrowserWebrtcSetup, /export ACC_TTS_PROVIDER=kokoro/);
+  assert.match(normalBrowserWebrtcSetup, /export KOKORO_BASE_URL=http:\/\/127\.0\.0\.1:8880/);
+  assert.doesNotMatch(normalBrowserWebrtcSetup, /POCKET_TTS_BASE_URL/);
+  assert.match(runtimeReference, /If a Pocket proof is needed instead, start the Pocket TTS service first/);
 });

@@ -34,7 +34,7 @@ class FakeFlowManager:
 
 
 def matching_version(_package: str) -> str:
-    return "1.4.0"
+    return "1.7.0"
 
 
 async def run_regression() -> dict[str, Any]:
@@ -121,9 +121,9 @@ async def run_regression() -> dict[str, Any]:
     missing_requests: list[dict[str, Any]] = []
 
     def missing_version(package: str) -> str:
-        if package == "pipecat-ai-flows":
+        if package == "pipecat-ai":
             raise importlib.metadata.PackageNotFoundError(package)
-        return "1.4.0"
+        return "1.7.0"
 
     def missing_http(method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
         missing_requests.append({"method": method, "url": url, "payload": payload})
@@ -458,7 +458,7 @@ async def run_regression() -> dict[str, Any]:
         "accProductStateRemainsExternal": all(owner in adapter.last_evidence["retainedAccOwnership"] for owner in ["product_state", "operator_controls", "proof_artifacts", "queue_state"]),
         "unsafeTransitionFailsClosed": unsafe_result["flowState"] == "wrap" and unsafe_result["flowManagerRuntime"]["commitPolicy"] == "terminal_handoff",
         "unsafePreviewNeverBecomesDeliveryAckCommit": not any(item["url"].endswith("/caller-turn/commit") for item in unsafe_requests),
-        "missingRuntimeFailsClosed": missing_result["flowState"] == "wrap" and "pipecat-ai-flows is missing" in missing_result["flowManagerRuntime"]["detail"],
+        "missingRuntimeFailsClosed": missing_result["flowState"] == "wrap" and "pipecat-ai is missing" in missing_result["flowManagerRuntime"]["detail"],
         "missingRuntimeSkipsCallerTurnPreview": len(missing_requests) == 1 and missing_requests[0]["url"].endswith("/fallback"),
         "operatorHoldRemainsNonterminal": (
             held_result["flowState"] == "policy_hold"
@@ -510,12 +510,12 @@ async def run_regression() -> dict[str, Any]:
             == ["greet", "diagnose", "policy_hold", "steered_response", "diagnose"]
             and not any(item["url"].endswith("/fallback") for item in terminal_release_from_hold_requests)
         ),
-        "requiredVersionsRecorded": normal_results[0]["flowManagerRuntime"]["runtimeVersions"] == {"pipecat-ai": "1.4.0", "pipecat-ai-flows": "1.4.0"},
+        "requiredVersionsRecorded": normal_results[0]["flowManagerRuntime"]["runtimeVersions"] == {"pipecat-ai": "1.7.0", },
     }
     return {
         "ok": all(checks.values()),
-        "runtimeAdapter": "pipecat_flows.FlowManager",
-        "requiredVersions": {"pipecat-ai": "1.4.0", "pipecat-ai-flows": "1.4.0"},
+        "runtimeAdapter": "pipecat.flows.FlowManager",
+        "requiredVersions": {"pipecat-ai": "1.7.0", },
         "normalTransitionTrace": adapter.transition_trace,
         "normalPreviewRequests": len(requests),
         "unsafeEvidence": unsafe_result["flowManagerRuntime"],

@@ -148,6 +148,12 @@ function trimEnv(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function getClueConTtsProvider(): "pocket" | "kokoro" {
+  const configured = trimEnv(process.env.ACC_TTS_PROVIDER)?.toLowerCase();
+  if (configured === "pocket" || configured === "kokoro") return configured;
+  return trimEnv(process.env.POCKET_TTS_BASE_URL) ? "pocket" : "kokoro";
+}
+
 function joinUrl(baseUrl: string, path: string): string {
   const normalizedBase = baseUrl.replace(/\/+$/, "");
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
@@ -296,6 +302,18 @@ function buildBasePayload(
   const kokoroProbe = probeById.get("kokoro");
   const pocketTtsProbe = probeById.get("pocket_tts");
   const pipecatVoice = probeById.get("pipecat_voice");
+  const ttsProvider = getClueConTtsProvider();
+  const activeTtsProbe = ttsProvider === "pocket" ? pocketTtsProbe : kokoroProbe;
+  const activeTtsLabel = ttsProvider === "pocket" ? "Pocket TTS" : "Kokoro TTS";
+  const selectedPocketWithoutBaseUrl = ttsProvider === "pocket" && pocketTtsProbe?.configured === false;
+  const pocketTtsReadinessStatus: ClueConReadinessStatus = selectedPocketWithoutBaseUrl
+    ? "blocked"
+    : pocketTtsProbe?.status ?? (ttsProvider === "pocket" ? "blocked" : "fixture");
+  const pocketTtsReadinessDetail = selectedPocketWithoutBaseUrl
+    ? "ACC_TTS_PROVIDER is pocket, but POCKET_TTS_BASE_URL is not ready for local streaming TTS."
+    : pocketTtsProbe?.detail ?? (ttsProvider === "pocket"
+      ? "ACC_TTS_PROVIDER is pocket, but POCKET_TTS_BASE_URL is not ready for local streaming TTS."
+      : "Pocket is the preferred Pipecat TTS lane when POCKET_TTS_BASE_URL is configured.");
 
   return {
     ok: true,
@@ -327,7 +345,7 @@ function buildBasePayload(
     demoGoal: {
       issue: "agonza1/agentic-contact-center#307",
       statement: "Show deterministic telephony governing a measurable, interruptible, and fail-closed AI media path.",
-      chain: ["caller", "freeswitch", "pipecat_pipeline", "rtc_asr", "acc_policy_tools", "kokoro_tts", "evidence"],
+      chain: ["caller", "freeswitch", "pipecat_pipeline", "rtc_asr", "acc_policy_tools", `${ttsProvider}_tts`, "evidence"],
       successSignal: "The scorecard passes and the runtime copy separates fixture, optional live media, accepted SIP/Verto proof, and Phase 2 reliability-lab blockers.",
     },
     turnTiming: {
@@ -368,7 +386,7 @@ function buildBasePayload(
         {
           id: "tts",
           label: "Speech → caller",
-          detail: "Kokoro streams audio back through Pipecat and FreeSWITCH to the live RTP leg",
+          detail: `${activeTtsLabel} streams audio back through Pipecat and FreeSWITCH to the live RTP leg`,
           packet: "tokens → PCM → RTP",
         },
       ],
@@ -426,6 +444,15 @@ function buildBasePayload(
         caveat: kokoroProbe?.configured
           ? `Probe ${kokoroProbe.ok ? "passed" : "failed"} at ${kokoroProbe.url}.`
           : "Optional for this scripted presentation: set KOKORO_BASE_URL for live TTS readiness.",
+      },
+      {
+        id: "pocket_tts",
+        label: "Pocket streaming TTS",
+        status: pocketTtsReadinessStatus,
+        detail: pocketTtsReadinessDetail,
+        caveat: pocketTtsProbe?.configured
+          ? `Probe ${pocketTtsProbe.ok ? "passed" : "failed"} at ${pocketTtsProbe.url}.`
+          : "Set POCKET_TTS_BASE_URL for Pocket auto-selection; ACC_TTS_PROVIDER=pocket remains available as an explicit override.",
       },
       {
         id: "eval",
@@ -506,10 +533,11 @@ function buildBasePayload(
       },
     },
     ttsPanel: {
-      provider: "Kokoro-82M",
-      model: process.env.KOKORO_MODEL ?? "kokoro",
-      voice: process.env.KOKORO_VOICE ?? "af_heart",
-      defaultProvider: "kokoro",
+      provider: ttsProvider === "pocket" ? "Pocket TTS" : "Kokoro-82M",
+      engine: ttsProvider,
+      model: ttsProvider === "pocket" ? process.env.POCKET_TTS_MODEL ?? "pocket-tts" : process.env.KOKORO_MODEL ?? "kokoro",
+      voice: ttsProvider === "pocket" ? process.env.POCKET_TTS_VOICE ?? "alloy" : process.env.KOKORO_VOICE ?? "af_heart",
+      defaultProvider: ttsProvider,
       providers: [
         {
           id: "kokoro",
@@ -526,16 +554,25 @@ function buildBasePayload(
           label: "Pocket TTS",
           shortLabel: "Pocket",
           model: process.env.POCKET_TTS_MODEL ?? "pocket-tts",
-          voice: process.env.POCKET_TTS_VOICE ?? "alba",
+          voice: process.env.POCKET_TTS_VOICE ?? "alloy",
           status: pocketTtsProbe?.ok ? "live_ready" : "local_sidecar_required",
-          setup: "Set POCKET_TTS_BASE_URL and run uvx pocket-tts serve.",
+          setup: "Set POCKET_TTS_BASE_URL and start the local Pocket OpenAI-compatible speech service.",
           liveProbe: pocketTtsProbe ?? null,
         },
       ],
       synthesizeRoute: "/api/cluecon/tts/synthesize",
-      status: kokoroProbe?.ok ? "live_ready" : "local_sidecar_required",
-      liveProbe: kokoroProbe ?? null,
-      metricDefinition: "First audio measures the first segment bytes; playback measures when its decoded buffer is scheduled to start.",
+      status: activeTtsProbe?.ok ? "streaming_ready" : "local_sidecar_required",
+      liveProbe: activeTtsProbe ?? null,
+      pipecatStreaming: {
+        enabled: ttsProvider === "pocket",
+        provider: "pocket",
+        route: "/api/cluecon/tts/synthesize",
+        requiredEnv: ["POCKET_TTS_BASE_URL", "POCKET_TTS_VOICE", "ACC_TTS_PROVIDER=pocket optional override"],
+        preservesAgentBrain: true,
+        sttContract: "rtc-asr Local STT v1 remains the browser/WebRTC input contract",
+        outputContract: "provider stream -> Pipecat TTSStartedFrame/TTSAudioRawFrame/TTSStoppedFrame -> browser or FreeSWITCH playback",
+      },
+      metricDefinition: "First audio measures the first provider bytes; playback measures when the browser starts the first playable segment.",
       candidates: [
         {
           name: "Kokoro 82M",
@@ -690,10 +727,10 @@ export async function buildClueConPayloadWithLiveProbes(
     }),
     probeHttpSidecar({
       id: "pocket_tts",
-      label: "Pocket TTS",
+      label: "Pocket streaming TTS",
       baseUrl: pocketTtsBaseUrl,
       healthPath: normalizeHealthPath(options.pocketTtsHealthPath ?? env.POCKET_TTS_HEALTH_PATH, "/health"),
-      configuredDetail: "Pocket TTS health probe is reachable for the live latency lab.",
+      configuredDetail: "Pocket TTS health probe is reachable for the live latency lab and Pipecat streaming readiness.",
       missingDetail: "POCKET_TTS_BASE_URL is not set; Pocket remains selectable with a visible setup blocker.",
       timeoutMs,
       fetchImpl,
@@ -1828,6 +1865,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
           state.ttsPlayingHandler = null;
         };
         audio.addEventListener("playing", state.ttsPlayingHandler, { once: true });
+        const responseProvider = response.headers.get("x-acc-tts-provider") || provider.label;
         while (true) {
           const chunk = await reader.read();
           if (chunk.done) break;

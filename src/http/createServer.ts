@@ -66,7 +66,7 @@ const operatorConsoleRefreshIntervalMs = 5000;
 const operatorConsoleWorkboardCard = "82771d3a-de4d-4b6e-869c-328e8264d01e";
 const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
 const defaultBrowserWebrtcBridgeTimeoutMs = 5000;
-const defaultKokoroTtsIdleTimeoutMs = 30_000;
+const defaultTtsIdleTimeoutMs = 30_000;
 const maxVoiceSessionPlayAudioBytes = 2 * 1024 * 1024;
 const supportedVoiceSessionPlayMimeTypes = new Set(["audio/l16", "audio/pcm", "audio/wav", "audio/wave", "audio/x-wav"]);
 const clueConSystemUnavailableAudio = readFileSync(resolve(process.cwd(), "assets/cluecon/system-unavailable.mp3"));
@@ -135,15 +135,64 @@ async function fetchRtcAsrJson(target: RtcAsrModelTarget, path: string, init?: R
   }
 }
 
-function getKokoroSpeechTarget(): { url: string; model: string; voice: string } | null {
+function getConfiguredTtsProvider(): "pocket" | "kokoro" {
+  const configured = process.env.ACC_TTS_PROVIDER?.trim().toLowerCase();
+  if (configured === "pocket" || configured === "kokoro") return configured;
+  return process.env.POCKET_TTS_BASE_URL?.trim() ? "pocket" : "kokoro";
+}
+
+function getPocketTtsBaseUrlForSetup(): string {
+  return process.env.POCKET_TTS_BASE_URL?.trim() || "http://127.0.0.1:8881";
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function exportCommand(name: string, value: string): string {
+  return `export ${name}=${shellQuote(value)}`;
+}
+
+function getPocketTtsSetupCommands(): string[] {
+  return [
+    exportCommand("ACC_TTS_PROVIDER", "pocket"),
+    exportCommand("POCKET_TTS_BASE_URL", getPocketTtsBaseUrlForSetup()),
+    exportCommand("POCKET_TTS_HEALTH_PATH", process.env.POCKET_TTS_HEALTH_PATH?.trim() || "/health"),
+    exportCommand("POCKET_TTS_SPEECH_PATH", process.env.POCKET_TTS_SPEECH_PATH?.trim() || "/v1/audio/speech"),
+    exportCommand("POCKET_TTS_MODEL", process.env.POCKET_TTS_MODEL?.trim() || "pocket-tts"),
+    exportCommand("POCKET_TTS_VOICE", process.env.POCKET_TTS_VOICE?.trim() || "alloy"),
+  ];
+}
+
+function getTtsSpeechTarget(
+  provider: "pocket" | "kokoro" = getConfiguredTtsProvider(),
+): { provider: "pocket" | "kokoro"; url: string; model: string; voice: string; responseFormat: string; contentType: string } | null {
+  if (provider === "pocket") {
+    const baseUrl = process.env.POCKET_TTS_BASE_URL?.trim().replace(/\/+$/, "");
+    if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) return null;
+    const speechPath = (process.env.POCKET_TTS_SPEECH_PATH ?? "/v1/audio/speech").trim();
+    const normalizedPath = speechPath.startsWith("/") ? speechPath : `/${speechPath}`;
+    return {
+      provider,
+      url: `${baseUrl}${normalizedPath}`,
+      model: process.env.POCKET_TTS_MODEL?.trim() || "pocket-tts",
+      voice: process.env.POCKET_TTS_VOICE?.trim() || "alloy",
+      responseFormat: process.env.POCKET_TTS_RESPONSE_FORMAT?.trim() || "mp3",
+      contentType: "audio/mpeg",
+    };
+  }
+
   const baseUrl = process.env.KOKORO_BASE_URL?.trim().replace(/\/+$/, "");
   if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) return null;
   const speechPath = (process.env.KOKORO_SPEECH_PATH ?? process.env.KOKORO_TTS_PATH ?? "/v1/audio/speech").trim();
   const normalizedPath = speechPath.startsWith("/") ? speechPath : `/${speechPath}`;
   return {
+    provider,
     url: `${baseUrl}${normalizedPath}`,
     model: process.env.KOKORO_MODEL?.trim() || "kokoro",
     voice: process.env.KOKORO_VOICE?.trim() || "af_heart",
+    responseFormat: "mp3",
+    contentType: "audio/mpeg",
   };
 }
 
@@ -153,7 +202,7 @@ export type KokoroWarmupResult =
   | { status: "failed"; elapsedMs: number; error: string };
 
 export async function warmConfiguredKokoro(): Promise<KokoroWarmupResult> {
-  const target = getKokoroSpeechTarget();
+  const target = getTtsSpeechTarget("kokoro");
   if (!target) return { status: "skipped", reason: "not_configured" };
   if (["0", "false", "off", "no"].includes((process.env.KOKORO_WARMUP ?? "").trim().toLowerCase())) {
     return { status: "skipped", reason: "disabled" };
@@ -195,22 +244,10 @@ export async function warmConfiguredKokoro(): Promise<KokoroWarmupResult> {
   }
 }
 
-function getPocketTtsSpeechTarget(): { url: string; model: string; voice: string } | null {
-  const baseUrl = process.env.POCKET_TTS_BASE_URL?.trim().replace(/\/+$/, "");
-  if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) return null;
-  const speechPath = (process.env.POCKET_TTS_SPEECH_PATH ?? "/tts").trim();
-  const normalizedPath = speechPath.startsWith("/") ? speechPath : `/${speechPath}`;
-  return {
-    url: `${baseUrl}${normalizedPath}`,
-    model: process.env.POCKET_TTS_MODEL?.trim() || "pocket-tts",
-    voice: process.env.POCKET_TTS_VOICE?.trim() || "alba",
-  };
-}
-
-function getClueConTtsIdleTimeoutMs(provider: "kokoro" | "pocket"): number {
+function getTtsIdleTimeoutMs(provider: "kokoro" | "pocket" = getConfiguredTtsProvider()): number {
   const providerTimeout = provider === "pocket" ? process.env.POCKET_TTS_IDLE_TIMEOUT_MS : process.env.KOKORO_TTS_IDLE_TIMEOUT_MS;
-  const parsed = Number(process.env.CLUECON_TTS_IDLE_TIMEOUT_MS ?? providerTimeout ?? "");
-  if (!Number.isFinite(parsed) || parsed <= 0) return defaultKokoroTtsIdleTimeoutMs;
+  const parsed = Number(process.env.CLUECON_TTS_IDLE_TIMEOUT_MS ?? process.env.ACC_TTS_IDLE_TIMEOUT_MS ?? providerTimeout ?? "");
+  if (!Number.isFinite(parsed) || parsed <= 0) return defaultTtsIdleTimeoutMs;
   return Math.min(Math.max(Math.trunc(parsed), 50), 300_000);
 }
 
@@ -283,6 +320,14 @@ function buildBrowserWebrtcReadinessPayload(bridgeRuntime: BrowserWebrtcBridgeRu
   const liveMediaVerified = false;
   const runtimeReady = bridgeRuntime.ok;
   const blockers = runtimeReady ? ["live_webrtc_media_turn_evidence_missing"] : [...bridgeRuntime.blockers, "live_webrtc_media_turn_evidence_missing"];
+  const ttsProvider = getConfiguredTtsProvider();
+  const ttsLabel = ttsProvider === "pocket" ? "Pocket TTS" : "Kokoro TTS";
+  const ttsSetupCommands = ttsProvider === "pocket"
+    ? getPocketTtsSetupCommands()
+    : [
+      exportCommand("ACC_TTS_PROVIDER", "kokoro"),
+      exportCommand("KOKORO_BASE_URL", "http://127.0.0.1:8880"),
+    ];
 
   return {
     ok: contractReady && runtimeReady,
@@ -292,7 +337,7 @@ function buildBrowserWebrtcReadinessPayload(bridgeRuntime: BrowserWebrtcBridgeRu
     architectureIssue: "agonza1/agentic-contact-center#222",
     architectureIssueUrl: "https://github.com/agonza1/agentic-contact-center/issues/222",
     status: runtimeReady ? "contract_ready_pending_live_media_evidence" : "realtime_contract_blocked_bridge_offline",
-    intendedPath: "browser microphone -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC/browser playback",
+    intendedPath: `browser microphone -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> ${ttsLabel} -> WebRTC/browser playback`,
     normalOperation: {
       transport: "webrtc",
       browserCapture: "getUserMedia MediaStreamTrack",
@@ -324,6 +369,13 @@ function buildBrowserWebrtcReadinessPayload(bridgeRuntime: BrowserWebrtcBridgeRu
         status: "contract_ready",
         engine: "kokoro",
       },
+      tts: {
+        status: "contract_ready",
+        engine: ttsProvider,
+        provider: ttsLabel,
+        through: "pipecat",
+        preservesAgentBrain: true,
+      },
     },
     contract: {
       signalingRoute: `POST ${signalingRoute}`,
@@ -344,7 +396,7 @@ function buildBrowserWebrtcReadinessPayload(bridgeRuntime: BrowserWebrtcBridgeRu
       },
       sidecars: {
         stt: "rtc-asr Local STT v1",
-        tts: "Kokoro",
+        tts: ttsProvider === "pocket" ? "Pocket" : "Kokoro",
       },
     },
     liveMedia: {
@@ -353,14 +405,14 @@ function buildBrowserWebrtcReadinessPayload(bridgeRuntime: BrowserWebrtcBridgeRu
       requiredProof: [
         "Pipecat WebRTC bridge started at BROWSER_WEBRTC_BRIDGE_URL",
         "rtc-asr Local STT v1 sidecar captured a final browser transcript",
-        "Kokoro produced agent TTS audio",
+        `${ttsLabel} produced agent TTS audio`,
         "browser received and played a remote WebRTC audio track",
       ],
       setupCommands: [
         "export RTC_ASR_BASE_URL=http://127.0.0.1:8080",
         "export RTC_ASR_WS_URL=ws://127.0.0.1:8080/v1/stt/stream",
         "export ASR_VAD_FILTER=false",
-        "export KOKORO_BASE_URL=http://127.0.0.1:8880",
+        ...ttsSetupCommands,
         "export BROWSER_WEBRTC_BRIDGE_URL=http://127.0.0.1:8766",
         "npm run pipecat:webrtc:install",
         "npm start",
@@ -381,7 +433,7 @@ function buildBrowserWebrtcReadinessPayload(bridgeRuntime: BrowserWebrtcBridgeRu
     },
     acceptanceProgress: [
       {
-        criterion: "readiness_distinguishes_acc_pipecat_webrtc_rtc_asr_kokoro",
+        criterion: "readiness_distinguishes_acc_pipecat_webrtc_rtc_asr_tts",
         passed: true,
         evidence: "/api/browser-webrtc/readiness and /health expose separate readiness objects.",
       },
@@ -398,12 +450,12 @@ function buildBrowserWebrtcReadinessPayload(bridgeRuntime: BrowserWebrtcBridgeRu
       {
         criterion: "live_webrtc_media_turn",
         passed: liveMediaVerified,
-        evidence: "Pending local proof that a browser microphone turn reached the Pipecat WebRTC bridge, rtc-asr emitted a final transcript, Kokoro produced TTS, and the browser played the remote WebRTC audio track.",
+        evidence: `Pending local proof that a browser microphone turn reached the Pipecat WebRTC bridge, rtc-asr emitted a final transcript, ${ttsLabel} produced TTS, and the browser played the remote WebRTC audio track.`,
       },
     ],
     blockers,
     nextActions: [
-      runtimeReady ? "Capture one browser voice turn with transcript, Kokoro audio, and remote playback evidence attached to this PR commit." : `Run the Pipecat WebRTC bridge at ${browserWebrtcBridgeBaseUrl} before connecting browser voice, then confirm ${bridgeRuntime.checkedUrl} returns ok=true.`,
+      runtimeReady ? `Capture one browser voice turn with transcript, ${ttsLabel} audio, and remote playback evidence attached to this PR commit.` : `Run the Pipecat WebRTC bridge at ${browserWebrtcBridgeBaseUrl} before connecting browser voice, then confirm ${bridgeRuntime.checkedUrl} returns ok=true.`,
       "Open /operator/console, click Connect Voice, allow microphone access, and verify the remote WebRTC audio track plays agent audio.",
       "Keep issue #222 as the center: browser, fixture, tester, and SIP should become adapters over the same shared realtime Pipecat pipeline.",
     ],
@@ -5561,19 +5613,20 @@ async function routeRequest(
       writeBadRequest(response, "tts_text_invalid");
       return;
     }
-    const requestedProvider = (getOptionalTrimmedString(body.provider) ?? "kokoro").toLowerCase();
+    const requestedProvider = (getOptionalTrimmedString(body.provider) ?? getConfiguredTtsProvider()).toLowerCase();
     if (requestedProvider !== "kokoro" && requestedProvider !== "pocket") {
       writeBadRequest(response, "tts_provider_invalid");
       return;
     }
     const provider = requestedProvider as "kokoro" | "pocket";
-    const target = provider === "pocket" ? getPocketTtsSpeechTarget() : getKokoroSpeechTarget();
+    const target = getTtsSpeechTarget(provider);
     if (!target) {
       writeJson(response, 503, {
         ok: false,
-        error: provider === "pocket" ? "pocket_tts_not_configured" : "kokoro_not_configured",
+        provider,
+        error: `${provider}_not_configured`,
         nextStep: provider === "pocket"
-          ? "Set POCKET_TTS_BASE_URL, run uvx pocket-tts serve, and retry."
+          ? "Set POCKET_TTS_BASE_URL, start the local Pocket TTS service, and retry."
           : "Set KOKORO_BASE_URL, start the local Kokoro sidecar, and retry.",
       });
       return;
@@ -5581,7 +5634,7 @@ async function routeRequest(
     const requestedVoice = getOptionalTrimmedString(body.voice);
     const voice = requestedVoice && /^[a-z0-9_-]{1,64}$/i.test(requestedVoice) ? requestedVoice : target.voice;
     const startedAt = performance.now();
-    const idleTimeoutMs = getClueConTtsIdleTimeoutMs(provider);
+    const idleTimeoutMs = getTtsIdleTimeoutMs(provider);
     const controller = new AbortController();
     let idleTimeout = setTimeout(() => controller.abort(), idleTimeoutMs);
     const refreshIdleTimeout = () => {
@@ -5589,23 +5642,19 @@ async function routeRequest(
       idleTimeout = setTimeout(() => controller.abort(), idleTimeoutMs);
     };
     try {
-      const pocketForm = new FormData();
-      pocketForm.set("text", text);
-      pocketForm.set("voice_url", voice);
       const upstream = await fetch(target.url, {
         method: "POST",
-        headers: provider === "pocket"
-          ? { accept: "audio/wav" }
-          : { accept: "audio/mpeg", "content-type": "application/json" },
-        body: provider === "pocket"
-          ? pocketForm
-          : JSON.stringify({
-              model: target.model,
-              voice,
-              input: text,
-              response_format: "mp3",
-              stream: true,
-            }),
+        headers: {
+          accept: target.contentType,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: target.model,
+          voice,
+          input: text,
+          response_format: target.responseFormat,
+          stream: true,
+        }),
         signal: controller.signal,
       });
       refreshIdleTimeout();
@@ -5613,7 +5662,8 @@ async function routeRequest(
         const detail = await upstream.text().catch(() => "");
         writeJson(response, 502, {
           ok: false,
-          error: provider === "pocket" ? "pocket_tts_synthesis_failed" : "kokoro_synthesis_failed",
+          provider: target.provider,
+          error: `${target.provider}_synthesis_failed`,
           upstreamStatus: upstream.status,
           detail: detail.slice(0, 500),
         });
@@ -5625,7 +5675,8 @@ async function routeRequest(
       if (first.done || !first.value?.byteLength) {
         writeJson(response, 502, {
           ok: false,
-          error: provider === "pocket" ? "pocket_tts_returned_no_audio" : "kokoro_returned_no_audio",
+          provider: target.provider,
+          error: `${target.provider}_returned_no_audio`,
         });
         return;
       }
@@ -5634,10 +5685,12 @@ async function routeRequest(
       const upstreamContentType = upstream.headers.get("content-type");
       response.writeHead(200, {
         "cache-control": "no-store",
-        "content-type": upstreamContentType?.startsWith("audio/") ? upstreamContentType : provider === "pocket" ? "audio/wav" : "audio/mpeg",
-        "x-acc-tts-provider": provider,
+        "content-type": upstreamContentType?.startsWith("audio/") ? upstreamContentType : "audio/mpeg",
+        "x-acc-tts-provider": target.provider,
         "x-acc-tts-model": target.model,
         "x-acc-tts-voice": voice,
+        "x-acc-tts-streaming": "true",
+        "x-acc-tts-through": "acc_provider_proxy",
         "x-acc-upstream-ttfb-ms": String(upstreamTtfbMs),
         "x-acc-tts-idle-timeout-ms": String(idleTimeoutMs),
       });
@@ -5655,10 +5708,11 @@ async function routeRequest(
       if (!response.headersSent) {
         writeJson(response, 502, {
           ok: false,
-          error: provider === "pocket" ? "pocket_tts_unreachable" : "kokoro_unreachable",
+          provider: target.provider,
+          error: `${target.provider}_unreachable`,
           detail: error instanceof Error ? error.message : String(error),
-          nextStep: provider === "pocket"
-            ? "Confirm POCKET_TTS_BASE_URL points to a warmed Pocket TTS serve endpoint."
+          nextStep: target.provider === "pocket"
+            ? "Confirm POCKET_TTS_BASE_URL points to a warmed Pocket OpenAI-compatible speech endpoint."
             : "Confirm KOKORO_BASE_URL points to a warmed Kokoro OpenAI-compatible speech endpoint.",
         });
       } else {
