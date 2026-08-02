@@ -607,7 +607,7 @@ export class InMemoryTelephonyIngress {
     }
 
     if (
-      (action === "pause" || action === "resume") &&
+      (action === "pause" || action === "resume" || action === "goto_slide" || action === "ask_operator") &&
       snapshot.operatorSteer.pending &&
       (snapshot.operatorSteer.lastAction === "approve_offer" ||
         snapshot.operatorSteer.lastAction === "approve_retention_review")

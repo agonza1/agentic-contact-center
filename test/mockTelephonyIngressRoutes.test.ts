@@ -2486,6 +2486,21 @@ test("retention approval requires its exact pending request and the console foll
     assert.equal(afterInvalidPauseCall.operatorSteer.lastAction, "approve_retention_review");
     assert.equal(afterInvalidPauseCall.events.some((event) => event.type === "operator_demo_paused"), false);
 
+    for (const action of ["goto_slide", "ask_operator"] as const) {
+      const invalidRedirect = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
+        action,
+        reason: action === "goto_slide" ? "benchmark slide" : "confirm approval path",
+      });
+      assert.equal(invalidRedirect.statusCode, 400);
+      assert.deepEqual(invalidRedirect.payload, { ok: false, error: "operator_steer_not_pending" });
+    }
+    const afterInvalidRedirects = await requestJson(port, "GET", `/api/calls/${callId}`);
+    const afterInvalidRedirectsCall = afterInvalidRedirects.payload as SnapshotPayload;
+    assert.equal(afterInvalidRedirectsCall.operatorSteer.pending, true);
+    assert.equal(afterInvalidRedirectsCall.operatorSteer.lastAction, "approve_retention_review");
+    assert.equal(afterInvalidRedirectsCall.events.some((event) => event.type === "operator_slide_redirect_requested"), false);
+    assert.equal(afterInvalidRedirectsCall.events.some((event) => event.type === "operator_guidance_re_requested"), false);
+
     const armedFallback = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
       action: "arm_fallback",
       reason: "presentation safety net",
