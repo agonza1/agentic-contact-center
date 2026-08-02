@@ -24,6 +24,9 @@ Environment variables:
 - `KOKORO_HEALTH_PATH`: Kokoro health path; defaults to `/health`.
 - `KOKORO_SPEECH_PATH`: Kokoro speech endpoint; defaults to `/v1/audio/speech`.
 - `KOKORO_VOICE`: Kokoro voice id; defaults to `af_heart`.
+- `KOKORO_WARMUP`: startup inference warm-up; enabled by default when `KOKORO_BASE_URL` is configured. Set to `false` to disable.
+- `KOKORO_WARMUP_TEXT`: short warm-up utterance; defaults to `Ready.`.
+- `KOKORO_WARMUP_TIMEOUT_MS`: warm-up timeout; defaults to `10000`.
 - `POCKET_TTS_BASE_URL`: optional Pocket TTS HTTP base URL for the ClueCon latency lab; start the official server with `uvx pocket-tts serve` and normally use `http://127.0.0.1:8000`.
 - `POCKET_TTS_HEALTH_PATH`: Pocket TTS health path; defaults to `/health`.
 - `POCKET_TTS_SPEECH_PATH`: Pocket TTS multipart streaming endpoint; defaults to `/tts`.
@@ -298,7 +301,7 @@ The default Compose path only starts `app` unless another service is requested. 
 - `eval`: runs `assert-viewer`, exporting ACC ASSERT artifacts before starting the upstream ASSERT viewer on `5174`.
 - `full`: enables every optional service above for an end-to-end local lab stack.
 
-The `rtc-asr` service defaults to `RTC_ASR_IMAGE=rtc-asr:local` because the ASR server is owned by the sibling `rtc-asr` project. Build that image from the `rtc-asr` checkout or override `RTC_ASR_IMAGE` with a compatible image before using `voice`, `browser-webrtc`, `sip`, or `full`. Kokoro defaults to `KOKORO_IMAGE=ghcr.io/remsky/kokoro-fastapi-cpu:latest`; override it if the lab uses a different Kokoro FastAPI image.
+The `rtc-asr` service defaults to `RTC_ASR_IMAGE=rtc-asr:local` because the ASR server is owned by the sibling `rtc-asr` project. Build that image from the `rtc-asr` checkout or override `RTC_ASR_IMAGE` with a compatible image before using `voice`, `browser-webrtc`, `sip`, or `full`. Kokoro defaults to `KOKORO_IMAGE=ghcr.io/remsky/kokoro-fastapi-cpu:latest`. On an NVIDIA host with working Docker GPU passthrough, run `npm run docker:kokoro:gpu` or `npm run docker:voice:gpu`; the GPU override uses `ghcr.io/remsky/kokoro-fastapi-gpu:latest` and requests all available GPUs. The normal CPU commands remain unchanged for hosts without an exposed GPU.
 
 ## Local SIP live capture
 

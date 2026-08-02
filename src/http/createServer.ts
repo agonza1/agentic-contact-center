@@ -147,6 +147,54 @@ function getKokoroSpeechTarget(): { url: string; model: string; voice: string } 
   };
 }
 
+export type KokoroWarmupResult =
+  | { status: "warmed"; elapsedMs: number; bytes: number; text: string }
+  | { status: "skipped"; reason: "not_configured" | "disabled" }
+  | { status: "failed"; elapsedMs: number; error: string };
+
+export async function warmConfiguredKokoro(): Promise<KokoroWarmupResult> {
+  const target = getKokoroSpeechTarget();
+  if (!target) return { status: "skipped", reason: "not_configured" };
+  if (["0", "false", "off", "no"].includes((process.env.KOKORO_WARMUP ?? "").trim().toLowerCase())) {
+    return { status: "skipped", reason: "disabled" };
+  }
+
+  const text = process.env.KOKORO_WARMUP_TEXT?.trim().slice(0, 80) || "Ready.";
+  const configuredTimeout = Number(process.env.KOKORO_WARMUP_TIMEOUT_MS ?? "");
+  const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+    ? Math.min(Math.max(Math.trunc(configuredTimeout), 250), 30_000)
+    : 10_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = performance.now();
+  try {
+    const response = await fetch(target.url, {
+      method: "POST",
+      headers: { accept: "audio/mpeg", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: target.model,
+        voice: target.voice,
+        input: text,
+        response_format: "mp3",
+        stream: true,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Kokoro warm-up returned HTTP ${response.status}`);
+    const bytes = (await response.arrayBuffer()).byteLength;
+    if (!bytes) throw new Error("Kokoro warm-up returned no audio");
+    return { status: "warmed", elapsedMs: Math.round(performance.now() - startedAt), bytes, text };
+  } catch (error) {
+    return {
+      status: "failed",
+      elapsedMs: Math.round(performance.now() - startedAt),
+      error: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function getPocketTtsSpeechTarget(): { url: string; model: string; voice: string } | null {
   const baseUrl = process.env.POCKET_TTS_BASE_URL?.trim().replace(/\/+$/, "");
   if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) return null;

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createServer, request, type Server } from "node:http";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
-import { buildHttpServer } from "../src/http/createServer";
+import { buildHttpServer, warmConfiguredKokoro } from "../src/http/createServer";
 
 async function requestPath(
   path: string,
@@ -718,6 +718,35 @@ test("ClueCon TTS route streams Kokoro audio using the configured local model an
   }
 });
 
+test("Kokoro startup warm-up performs a real configured synthesis", async () => {
+  const kokoro = await startKokoroServer();
+  try {
+    await withEnv(
+      {
+        KOKORO_BASE_URL: kokoro.baseUrl,
+        KOKORO_MODEL: "kokoro",
+        KOKORO_VOICE: "af_heart",
+        KOKORO_WARMUP_TEXT: "Ready.",
+        KOKORO_WARMUP: undefined,
+      },
+      async () => {
+        const result = await warmConfiguredKokoro();
+        assert.equal(result.status, "warmed");
+        assert.equal(kokoro.requests.length, 1);
+        assert.deepEqual(kokoro.requests[0], {
+          model: "kokoro",
+          voice: "af_heart",
+          input: "Ready.",
+          response_format: "mp3",
+          stream: true,
+        });
+      },
+    );
+  } finally {
+    await closeServer(kokoro.server);
+  }
+});
+
 test("ClueCon TTS route streams Pocket TTS audio using its official multipart endpoint", async () => {
   const pocket = await startPocketTtsServer();
   try {
@@ -1036,6 +1065,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /97 ms first packet/);
   assert.match(narrative.body, /id="tts-text-progress"/);
   assert.match(narrative.body, /natural-boundary chunks/);
+  assert.match(narrative.body, /Here is the key\. AI may be probabilistic/);
   assert.match(narrative.body, /function segmentTtsText\(text\)/);
   assert.match(narrative.body, /context\.decodeAudioData/);
   assert.match(narrative.body, /source\.start\(scheduledAt\)/);
@@ -1058,8 +1088,12 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Conversation · guidance/);
   assert.match(narrative.body, /Business · authority/);
   assert.match(narrative.body, /Approval · authority/);
+  assert.match(narrative.body, /Pipecat Flows \+ LLM/);
+  assert.match(narrative.body, /Conversation flow graph/);
   assert.match(narrative.body, /Collect identity/);
   assert.match(narrative.body, /Understand request/);
+  assert.match(narrative.body, /1 · identity gate/);
+  assert.match(narrative.body, /2 · request intent/);
   assert.doesNotMatch(narrative.body, /click for code/);
   assert.match(narrative.body, /Policy \+ approval/);
   assert.match(narrative.body, /policy auto-approval → execute/);

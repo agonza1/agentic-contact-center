@@ -1,4 +1,4 @@
-import { buildHttpServer } from "./http/createServer";
+import { buildHttpServer, warmConfiguredKokoro } from "./http/createServer";
 import { loadPocConfig, resolvePocConfigPath } from "./config/loadPocConfig";
 
 const DEFAULT_PORT = 8026;
@@ -17,6 +17,12 @@ function resolvePort(): number {
 async function main(): Promise<void> {
   const config = loadPocConfig(resolvePocConfigPath());
   const port = resolvePort();
+  const kokoroWarmup = await warmConfiguredKokoro();
+  if (kokoroWarmup.status === "warmed") {
+    console.log(`Kokoro warmed with ${JSON.stringify(kokoroWarmup.text)} in ${kokoroWarmup.elapsedMs} ms`);
+  } else if (kokoroWarmup.status === "failed") {
+    console.warn(`Kokoro warm-up failed after ${kokoroWarmup.elapsedMs} ms: ${kokoroWarmup.error}`);
+  }
   const server = buildHttpServer(config);
 
   await new Promise<void>((resolve) => {
