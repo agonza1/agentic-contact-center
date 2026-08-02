@@ -193,9 +193,9 @@ export function buildPipecatMediaEngineReadinessPayload() {
     reviewBlockers: [],
     acceptanceCriteria: [
       {
-        name: "browser_webrtc_uses_pipecat_rtc_asr_kokoro",
+        name: "browser_webrtc_uses_pipecat_rtc_asr_configured_tts",
         passed: true,
-        evidence: "scripts/pipecat-browser-webrtc-bridge.py builds SmallWebRTCTransport plus Pipeline([transport.input(), RtcAsrTurnProcessor, AccCallerTurnProcessor, KokoroTtsProcessor, transport.output()]).",
+        evidence: "scripts/pipecat-browser-webrtc-bridge.py builds SmallWebRTCTransport plus Pipeline([transport.input(), RtcAsrTurnProcessor, AccCallerTurnProcessor, provider-aware TTS processor, transport.output()]) and emits selected Pocket/Kokoro TTS evidence for the browser proof gate.",
       },
       {
         name: "sip_freeswitch_verto_route_configured",

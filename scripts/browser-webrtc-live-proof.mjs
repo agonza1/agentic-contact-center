@@ -20,10 +20,35 @@ const templatePath = getArg("--write-template");
 const requireReviewReady = args.includes("--require-review-ready");
 const probeSidecars = args.includes("--probe-sidecars");
 
+function activeTtsProvider() {
+  const configured = process.env.ACC_TTS_PROVIDER?.trim().toLowerCase();
+  if (configured === "pocket" || configured === "kokoro") return configured;
+  return process.env.POCKET_TTS_BASE_URL?.trim() ? "pocket" : "kokoro";
+}
+
+function activeTtsConfig() {
+  const provider = activeTtsProvider();
+  if (provider === "pocket") {
+    return {
+      provider,
+      label: "Pocket",
+      baseUrl: process.env.POCKET_TTS_BASE_URL ?? "http://127.0.0.1:8881",
+    };
+  }
+  return {
+    provider,
+    label: "Kokoro",
+    baseUrl: process.env.KOKORO_BASE_URL ?? "http://127.0.0.1:8880",
+  };
+}
+
+const ttsConfig = activeTtsConfig();
+
 const setupCommands = [
   "export RTC_ASR_BASE_URL=${RTC_ASR_BASE_URL:-http://127.0.0.1:8080}",
   "export RTC_ASR_WS_URL=${RTC_ASR_WS_URL:-ws://127.0.0.1:8080/v1/stt/stream}",
-  "export KOKORO_BASE_URL=${KOKORO_BASE_URL:-http://127.0.0.1:8880}",
+  "export POCKET_TTS_BASE_URL=${POCKET_TTS_BASE_URL:-http://127.0.0.1:8881}",
+  "export ACC_TTS_PROVIDER=${ACC_TTS_PROVIDER:-}",
   "export BROWSER_WEBRTC_BRIDGE_URL=${BROWSER_WEBRTC_BRIDGE_URL:-http://127.0.0.1:8766}",
   "npm start",
   "npm run pipecat:webrtc:check",
@@ -324,11 +349,11 @@ function validateEvidence(payload, expectedGitHead) {
       const transcript = transcriptText(record);
       return textIncludes(record, "rtc-asr") && (type.includes("final") || record.final === true || record.isFinal === true || record.is_final === true) && transcript.trim().length > 0 && !hasPlaceholderText(transcript);
     }),
-    kokoroAudio: records.some((record) => {
+    ttsAudio: records.some((record) => {
       const audioUrl = typeof record.audioUrl === "string" ? record.audioUrl : typeof record.url === "string" ? record.url : "";
       const audioSha256 = typeof record.audioSha256 === "string" ? record.audioSha256 : typeof record.sha256 === "string" ? record.sha256 : "";
       return (
-        textIncludes(record, "kokoro") &&
+        textIncludes(record, ttsConfig.provider) &&
         (textIncludes(record, "audio") || textIncludes(record, "tts")) &&
         (hasPositiveNumber(record.audioBytes) || (audioUrl.trim().length > 0 && !hasPlaceholderText(audioUrl)) || hasSha256(audioSha256))
       );
@@ -403,7 +428,7 @@ async function sidecarConnectivity() {
     sidecarUrl("pipecatWebrtcBridge", process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766"),
     sidecarUrl("rtcAsrHttp", process.env.RTC_ASR_BASE_URL ?? "http://127.0.0.1:8080"),
     sidecarUrl("rtcAsrWebsocket", process.env.RTC_ASR_WS_URL ?? "ws://127.0.0.1:8080/v1/stt/stream"),
-    sidecarUrl("kokoro", process.env.KOKORO_BASE_URL ?? "http://127.0.0.1:8880"),
+    sidecarUrl(ttsConfig.provider, ttsConfig.baseUrl),
   ];
   return Promise.all(targets.map((target) => probeTcp(target)));
 }
@@ -461,10 +486,11 @@ async function writeEvidenceTemplate(filePath) {
         source: process.env.RTC_ASR_WS_URL ?? "ws://127.0.0.1:8080/v1/stt/stream",
       },
       {
-        type: "kokoro.tts.audio",
-        engine: "kokoro",
+        type: `${ttsConfig.provider}.tts.audio`,
+        engine: ttsConfig.provider,
+        provider: ttsConfig.provider,
         audioBytes: 0,
-        source: process.env.KOKORO_BASE_URL ?? "http://127.0.0.1:8880",
+        source: ttsConfig.baseUrl,
       },
       {
         type: "browser.remote.audio.played",
@@ -507,7 +533,7 @@ const validation = evidence.payload ? validateEvidence(evidence.payload, expecte
     browserMicrophoneUplink: false,
     pipecatWebrtcBridge: false,
     rtcAsrFinalTranscript: false,
-    kokoroAudio: false,
+    ttsAudio: false,
     browserRemoteAudio: false,
   },
   reviewReady: false,
@@ -519,7 +545,7 @@ const validation = evidence.payload ? validateEvidence(evidence.payload, expecte
     "browserMicrophoneUplink",
     "pipecatWebrtcBridge",
     "rtcAsrFinalTranscript",
-    "kokoroAudio",
+    "ttsAudio",
     "browserRemoteAudio",
   ],
 };
@@ -537,10 +563,10 @@ const manifest = {
     browserCapture: validation.checks.browserMicrophoneUplink ? "browser_microphone_live" : "browser_microphone_unproven",
     pipecat: validation.checks.pipecatWebrtcBridge ? "pipecat_webrtc_live" : "pipecat_webrtc_unproven",
     rtcAsr: validation.checks.rtcAsrFinalTranscript ? "rtc_asr_live" : "rtc_asr_unproven",
-    tts: validation.checks.kokoroAudio ? "kokoro_live" : "kokoro_unproven",
+    tts: validation.checks.ttsAudio ? `${ttsConfig.provider}_live` : `${ttsConfig.provider}_unproven`,
     browserPlayback: validation.checks.browserRemoteAudio ? "remote_audio_live" : "remote_audio_unproven",
   },
-  requiredPath: "browser microphone -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> Kokoro TTS -> WebRTC/browser playback",
+  requiredPath: `browser microphone -> WebRTC -> Pipecat bridge -> rtc-asr Local STT v1 -> ACC call API -> ${ttsConfig.label} TTS -> WebRTC/browser playback`,
   evidence: {
     path: evidencePath ?? null,
     readiness: evidence.readiness,
@@ -551,7 +577,8 @@ const manifest = {
     pipecatWebrtcBridgeUrl: process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766",
     rtcAsrBaseUrl: process.env.RTC_ASR_BASE_URL ?? "http://127.0.0.1:8080",
     rtcAsrWsUrl: process.env.RTC_ASR_WS_URL ?? "ws://127.0.0.1:8080/v1/stt/stream",
-    kokoroBaseUrl: process.env.KOKORO_BASE_URL ?? "http://127.0.0.1:8880",
+    ttsProvider: ttsConfig.provider,
+    ttsBaseUrl: ttsConfig.baseUrl,
     commands: setupCommands,
     evidenceTemplateCommand: "npm run browser-webrtc:live-proof -- --write-template artifacts/browser-webrtc-live-proof/proof.template.json",
     sidecarProbeCommand: "npm run browser-webrtc:live-proof -- --probe-sidecars --out-dir artifacts/browser-webrtc-live-proof/sidecar-preflight",
@@ -561,10 +588,10 @@ const manifest = {
   sidecarConnectivity: await sidecarConnectivity(),
   artifactIntegrity: await artifactIntegrity(evidencePath),
   reviewGate: {
-    requiredLabels: ["browser_microphone_live", "pipecat_webrtc_live", "rtc_asr_live", "kokoro_live", "remote_audio_live"],
+    requiredLabels: ["browser_microphone_live", "pipecat_webrtc_live", "rtc_asr_live", `${ttsConfig.provider}_live`, "remote_audio_live"],
     missingProof: validation.missingProof,
     nextActions: validation.reviewReady ? [] : [
-      "Start the Pipecat WebRTC bridge, rtc-asr, and Kokoro sidecars using manifest.setup.commands.",
+      `Start the Pipecat WebRTC bridge, rtc-asr, and ${ttsConfig.label} sidecars using manifest.setup.commands.`,
       "Optionally write a fill-in evidence template with manifest.setup.evidenceTemplateCommand.",
       "Open /operator/console, connect browser voice, speak one caller turn, and capture bridge/browser proof JSON from this exact git head.",
       "Rerun npm run browser-webrtc:live-proof -- --evidence <proof.json> --require-review-ready.",
