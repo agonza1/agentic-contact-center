@@ -14,7 +14,7 @@ services:
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
       RTC_ASR_MODEL: ${RTC_ASR_MODEL:-mlx-community/parakeet-tdt_ctc-110m}
       ACC_TTS_PROVIDER: ${ACC_TTS_PROVIDER:-}
-      POCKET_TTS_BASE_URL: ${POCKET_TTS_CONTAINER_BASE_URL:-http://host.docker.internal:8881}
+      POCKET_TTS_BASE_URL: ${POCKET_TTS_CONTAINER_BASE_URL:-}
       POCKET_TTS_VOICE: ${POCKET_TTS_VOICE:-alloy}
       POCKET_TTS_MODEL: ${POCKET_TTS_MODEL:-pocket-tts}
       KOKORO_BASE_URL: http://kokoro:8880
@@ -172,7 +172,7 @@ services:
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
       RTC_ASR_MODEL: ${RTC_ASR_MODEL:-mlx-community/parakeet-tdt_ctc-110m}
       ACC_TTS_PROVIDER: ${ACC_TTS_PROVIDER:-}
-      POCKET_TTS_BASE_URL: ${POCKET_TTS_CONTAINER_BASE_URL:-http://host.docker.internal:8881}
+      POCKET_TTS_BASE_URL: ${POCKET_TTS_CONTAINER_BASE_URL:-}
       POCKET_TTS_VOICE: ${POCKET_TTS_VOICE:-alloy}
       POCKET_TTS_MODEL: ${POCKET_TTS_MODEL:-pocket-tts}
       KOKORO_BASE_URL: http://kokoro:8880
@@ -251,7 +251,7 @@ services:
       RTC_ASR_BASE_URL: http://rtc-asr:8080
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
       ACC_TTS_PROVIDER: ${ACC_TTS_PROVIDER:-}
-      POCKET_TTS_BASE_URL: ${POCKET_TTS_CONTAINER_BASE_URL:-http://host.docker.internal:8881}
+      POCKET_TTS_BASE_URL: ${POCKET_TTS_CONTAINER_BASE_URL:-}
       POCKET_TTS_VOICE: ${POCKET_TTS_VOICE:-alloy}
       POCKET_TTS_MODEL: ${POCKET_TTS_MODEL:-pocket-tts}
       KOKORO_BASE_URL: http://kokoro:8880

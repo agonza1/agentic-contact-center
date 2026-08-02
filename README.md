@@ -87,7 +87,7 @@ flowchart LR
   acc --> evidence
 ```
 
-Browser WebRTC, fixture/tester, and SIP/Verto are adapters into the same rtc-asr -> ACC caller-turn/FlowManager -> Pocket/Kokoro streaming TTS pipeline. Leave `ACC_TTS_PROVIDER` unset and set `POCKET_TTS_BASE_URL` for host-run Pocket auto-selection, or set `ACC_TTS_PROVIDER=pocket` explicitly for the ClueCon Pocket/Pipecat TTS lane; Docker Compose containers use `POCKET_TTS_CONTAINER_BASE_URL` and default to `http://host.docker.internal:8881` for a host-local Pocket service. Kokoro remains the compatible fallback when Pocket is not configured. The strict local SIP/Verto proof lane is accepted and closed; do not reopen it for normal documentation work. Future #307 slices should focus on the reliability-lab integration surface and guided workflow.
+Browser WebRTC, fixture/tester, and SIP/Verto are adapters into the same rtc-asr -> ACC caller-turn/FlowManager -> Pocket/Kokoro streaming TTS pipeline. Leave `ACC_TTS_PROVIDER` unset and set `POCKET_TTS_BASE_URL` for host-run Pocket auto-selection, or set `ACC_TTS_PROVIDER=pocket` explicitly for the ClueCon Pocket/Pipecat TTS lane. Docker Compose defaults to Kokoro because it starts a Kokoro sidecar; opt into host-local Pocket for containers with `POCKET_TTS_CONTAINER_BASE_URL=http://host.docker.internal:8881`. The strict local SIP/Verto proof lane is accepted and closed; do not reopen it for normal documentation work. Future #307 slices should focus on the reliability-lab integration surface and guided workflow.
 
 ## Quick starts
 
