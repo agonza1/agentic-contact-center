@@ -28,11 +28,13 @@ from typing import Any
 from uuid import uuid4
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_PATH = REPO_ROOT / "scripts"
 LOCAL_RUNTIME_PATH = REPO_ROOT / ".pipecat-runtime"
 DEFAULT_INTRO_AUDIO_PATH = REPO_ROOT / "assets/audio/agilityfeat-intro.wav"
 DEFAULT_INTRO_TEXT = "Hello, you are calling AgilityFeat."
 if LOCAL_RUNTIME_PATH.exists():
     sys.path.insert(0, str(LOCAL_RUNTIME_PATH))
+sys.path.insert(0, str(SCRIPTS_PATH))
 
 try:
     import websockets
