@@ -1265,8 +1265,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /\.finale-callback strong \{[^}]*font-size: 22px/);
   assert.match(narrative.body, /The conversation can be open-ended\./);
   assert.match(narrative.body, /Identity, authority, and outcomes cannot be\./);
-  assert.match(narrative.body, /Let AI handle the unexpected\./);
-  assert.match(narrative.body, /Engineer everything that happens next\./);
+  assert.doesNotMatch(narrative.body, /Let AI handle the unexpected|Engineer everything that happens next/);
   assert.match(narrative.body, /Run it\. Break it\. Make it better\./);
   assert.match(narrative.body, /Connect on LinkedIn/);
   assert.match(narrative.body, /quickchart\.io\/qr\?text=https%3A%2F%2Fwww\.linkedin\.com%2Fin%2Falbertogonzaleztrastoy%2F/);
