@@ -318,7 +318,7 @@ The default Compose path only starts `app` unless another service is requested. 
 - `eval`: runs `assert-viewer`, exporting ACC ASSERT artifacts before starting the upstream ASSERT viewer on `5174`.
 - `full`: enables every optional service above for an end-to-end local lab stack.
 
-Compose starts Kokoro, not Pocket, by default. When the Compose app or voice bridge containers should use Pocket against a host-local service, set `POCKET_TTS_CONTAINER_BASE_URL=http://host.docker.internal:8881` or another container-reachable URL. The host-run `POCKET_TTS_BASE_URL=http://127.0.0.1:8881` form is intentionally not copied into containers because container loopback would point at the container itself.
+Compose starts Kokoro, not Pocket, by default. When the Compose app or voice bridge containers should use Pocket against a host-local service, set `POCKET_TTS_CONTAINER_BASE_URL=http://host.docker.internal:8881` or another container-reachable URL. Compose also forwards `POCKET_TTS_HEALTH_PATH` and `POCKET_TTS_SPEECH_PATH` so non-default Pocket deployments use the same endpoint paths inside app, browser WebRTC, and SIP/Verto containers. The host-run `POCKET_TTS_BASE_URL=http://127.0.0.1:8881` form is intentionally not copied into containers because container loopback would point at the container itself.
 
 The `rtc-asr` service defaults to `RTC_ASR_IMAGE=rtc-asr:local` because the ASR server is owned by the sibling `rtc-asr` project. Build that image from the `rtc-asr` checkout or override `RTC_ASR_IMAGE` with a compatible image before using `voice`, `browser-webrtc`, `sip`, or `full`. Kokoro defaults to `KOKORO_IMAGE=ghcr.io/remsky/kokoro-fastapi-cpu:latest`; override it if the lab uses a different Kokoro FastAPI image.
 
