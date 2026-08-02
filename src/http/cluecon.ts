@@ -1633,18 +1633,27 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
           <pre><code id="agent-code-content"></code></pre>
         </div>
       </div>
-      <template id="agent-code-identity">def collect_identity_node() -> NodeConfig:
+      <template id="agent-code-identity">from pipecat.flows import NodeConfig
+
+def collect_identity_node() -> NodeConfig:
     return NodeConfig(
         name="collect_identity",
+        role_message=(
+            "You are a concise voice support agent. "
+            "Never reveal account data before verification."
+        ),
+        # Node objective; Pipecat adapts this across LLM providers.
         task_messages=[{
             "role": "developer",
-            "content": """
-            Ask for the customer's full name and ZIP code.
-            Do not discuss account-specific information yet.
-            When both are available, call submit_identity.
-            """,
+            "content": (
+                "Collect the caller's full name and billing ZIP. "
+                "Treat them only as lookup inputs—not proof of identity. "
+                "Confirm both, then call submit_identity. "
+                "If the caller declines, offer a human handoff."
+            ),
         }],
         functions=[submit_identity, transfer_to_human],
+        respond_immediately=True,
     )</template>
       <template id="agent-code-request">def understand_request_node() -> NodeConfig:
     return NodeConfig(
@@ -1660,21 +1669,30 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
         }],
         functions=[route_request, transfer_to_human],
     )</template>
-      <template id="agent-code-verify">async def submit_identity(args, flow_manager):
-    identity = normalize_identity(
-        full_name=args["full_name"],
-        zip_code=args["zip_code"],
+      <template id="agent-code-verify">async def submit_identity(
+    flow_manager: FlowManager,
+    full_name: str,
+    zip_code: str,
+) -> ConsolidatedFunctionResult:
+    """Look up the caller and run the configured identity check."""
+    candidate = await customers.lookup(
+        full_name=normalize_name(full_name),
+        zip_code=normalize_zip(zip_code),
     )
-    customer = await customers.lookup(identity)
-
-    if customer is None:
-        return {"verified": False}, collect_identity_node()
-
-    await call_state.patch(
-        customer_id=customer.id,
-        identity_verified=True,
+    verification = await identity_service.verify(
+        call_id=flow_manager.state["call_id"],
+        candidate=candidate,
     )
-    return {"verified": True}, understand_request_node()</template>
+
+    if not verification.verified:
+        return {"status": "not_verified"}, identity_retry_or_handoff()
+
+    await call_state.bind_verified_customer(
+        call_id=flow_manager.state["call_id"],
+        customer_id=verification.customer_id,
+        expected_version=flow_manager.state["state_version"],
+    )
+    return {"status": "verified"}, understand_request_node()</template>
       <template id="agent-code-approval">async def authorize_operation(operation, call_state):
     decision = await approvals.resolve(
         customer_id=call_state.customer_id,
