@@ -985,11 +985,13 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /exactly what I expected\./);
   assert.match(narrative.body, /I’m sorry\. I didn’t understand\./);
   assert.match(narrative.body, /Six years later, GPT-4 arrived\./);
-  assert.match(narrative.body, /So we put <em>GPT-4<\/em>/);
-  assert.match(narrative.body, /on a <em>WebRTC call\.<\/em>/);
+  assert.match(narrative.body, /<b>1<\/b>January 2017/);
+  assert.match(narrative.body, /<b>2<\/b><span>Six years later, GPT-4 arrived\.<\/span>/);
+  assert.match(narrative.body, /<b>3<\/b><strong>So we put <em>GPT-4<\/em><br>on a <em>WebRTC call\.<\/em><\/strong>/);
   assert.match(narrative.body, /voice-origin__turn/);
   assert.match(narrative.body, /voice-story-active/);
-  assert.match(narrative.body, /\.present \.voice-origin__content \{ padding-top: clamp\(60px,7\.5vh,84px\); \}/);
+  assert.match(narrative.body, /\.present \.voice-origin__content \{ padding-top: clamp\(60px,7\.5vh,84px\); padding-bottom: clamp\(150px,18vh,190px\); \}/);
+  assert.match(narrative.body, /\.present \.voice-origin__turn \{ position: absolute;/);
   assert.match(narrative.body, /alberto-echo-show-prototype\.jpg/);
   assert.match(narrative.body, /voiceOriginDrift/);
   assert.match(narrative.body, /prefers-reduced-motion: reduce/);
