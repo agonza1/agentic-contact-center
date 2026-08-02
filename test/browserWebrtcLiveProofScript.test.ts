@@ -71,8 +71,8 @@ test("browser WebRTC live proof gate writes an honest blocked manifest without e
     assert.match(manifest.setup.gitHead, /^[a-f0-9]{40}$/);
     assert.equal(manifest.setup.pipecatWebrtcBridgeUrl, "http://127.0.0.1:8766");
     assert.equal(manifest.setup.rtcAsrWsUrl, "ws://127.0.0.1:8080/v1/stt/stream");
-    assert.ok(manifest.setup.commands.includes("export ACC_TTS_PROVIDER=kokoro"));
-    assert.ok(manifest.setup.commands.includes("export KOKORO_BASE_URL=http://127.0.0.1:8880"));
+    assert.ok(manifest.setup.commands.includes("export ACC_TTS_PROVIDER='kokoro'"));
+    assert.ok(manifest.setup.commands.includes("export KOKORO_BASE_URL='http://127.0.0.1:8880'"));
     assert.equal(manifest.setup.commands.some((command) => command.includes("POCKET_TTS_BASE_URL")), false);
     assert.ok(manifest.setup.commands.some((command) => command.includes("browser-webrtc:check")));
     assert.ok(manifest.setup.commands.some((command) => command.includes("browser-webrtc:live-proof")));
@@ -203,8 +203,8 @@ test("browser WebRTC live proof gate accepts selected Pocket TTS evidence", asyn
     assert.deepEqual(manifest.reviewGate.missingProof, []);
     assert.equal(manifest.setup.ttsProvider, "pocket");
     assert.ok(manifest.setup.ttsBaseUrl.endsWith(":8881"));
-    assert.ok(manifest.setup.commands.includes("export ACC_TTS_PROVIDER=pocket"));
-    assert.ok(manifest.setup.commands.some((command) => command.startsWith("export POCKET_TTS_BASE_URL=")));
+    assert.ok(manifest.setup.commands.includes("export ACC_TTS_PROVIDER='pocket'"));
+    assert.ok(manifest.setup.commands.some((command) => command.startsWith("export POCKET_TTS_BASE_URL='")));
     assert.equal(manifest.setup.commands.some((command) => command.includes("KOKORO_BASE_URL")), false);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -248,11 +248,11 @@ test("browser WebRTC live proof setup preserves Pocket endpoint and voice overri
         encoding: "utf8",
         env: {
           ...process.env,
-          POCKET_TTS_BASE_URL: "https://pocket.example.test:9443",
-          POCKET_TTS_HEALTH_PATH: "/readyz",
-          POCKET_TTS_SPEECH_PATH: "/custom/speech",
-          POCKET_TTS_MODEL: "pocket-low-latency",
-          POCKET_TTS_VOICE: "marin",
+          POCKET_TTS_BASE_URL: "https://pocket.example.test:9443?token=a&mode=b",
+          POCKET_TTS_HEALTH_PATH: "/readyz?probe=1&tenant=qa",
+          POCKET_TTS_SPEECH_PATH: "/custom/speech?format=pcm&stream=true",
+          POCKET_TTS_MODEL: "pocket low latency",
+          POCKET_TTS_VOICE: "marin's voice",
         },
       },
     );
@@ -261,12 +261,12 @@ test("browser WebRTC live proof setup preserves Pocket endpoint and voice overri
       setup: { commands: string[]; ttsProvider: string; ttsBaseUrl: string };
     };
     assert.equal(manifest.setup.ttsProvider, "pocket");
-    assert.equal(manifest.setup.ttsBaseUrl, "https://pocket.example.test:9443");
-    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_BASE_URL=https://pocket.example.test:9443"));
-    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_HEALTH_PATH=/readyz"));
-    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_SPEECH_PATH=/custom/speech"));
-    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_MODEL=pocket-low-latency"));
-    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_VOICE=marin"));
+    assert.equal(manifest.setup.ttsBaseUrl, "https://pocket.example.test:9443?token=a&mode=b");
+    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_BASE_URL='https://pocket.example.test:9443?token=a&mode=b'"));
+    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_HEALTH_PATH='/readyz?probe=1&tenant=qa'"));
+    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_SPEECH_PATH='/custom/speech?format=pcm&stream=true'"));
+    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_MODEL='pocket low latency'"));
+    assert.ok(manifest.setup.commands.includes("export POCKET_TTS_VOICE='marin'\\''s voice'"));
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

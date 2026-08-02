@@ -143,14 +143,22 @@ function getPocketTtsBaseUrlForSetup(): string {
   return process.env.POCKET_TTS_BASE_URL?.trim() || "http://127.0.0.1:8881";
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function exportCommand(name: string, value: string): string {
+  return `export ${name}=${shellQuote(value)}`;
+}
+
 function getPocketTtsSetupCommands(): string[] {
   return [
-    "export ACC_TTS_PROVIDER=pocket",
-    `export POCKET_TTS_BASE_URL=${getPocketTtsBaseUrlForSetup()}`,
-    `export POCKET_TTS_HEALTH_PATH=${process.env.POCKET_TTS_HEALTH_PATH?.trim() || "/health"}`,
-    `export POCKET_TTS_SPEECH_PATH=${process.env.POCKET_TTS_SPEECH_PATH?.trim() || "/v1/audio/speech"}`,
-    `export POCKET_TTS_MODEL=${process.env.POCKET_TTS_MODEL?.trim() || "pocket-tts"}`,
-    `export POCKET_TTS_VOICE=${process.env.POCKET_TTS_VOICE?.trim() || "alloy"}`,
+    exportCommand("ACC_TTS_PROVIDER", "pocket"),
+    exportCommand("POCKET_TTS_BASE_URL", getPocketTtsBaseUrlForSetup()),
+    exportCommand("POCKET_TTS_HEALTH_PATH", process.env.POCKET_TTS_HEALTH_PATH?.trim() || "/health"),
+    exportCommand("POCKET_TTS_SPEECH_PATH", process.env.POCKET_TTS_SPEECH_PATH?.trim() || "/v1/audio/speech"),
+    exportCommand("POCKET_TTS_MODEL", process.env.POCKET_TTS_MODEL?.trim() || "pocket-tts"),
+    exportCommand("POCKET_TTS_VOICE", process.env.POCKET_TTS_VOICE?.trim() || "alloy"),
   ];
 }
 
@@ -265,8 +273,8 @@ function buildBrowserWebrtcReadinessPayload(bridgeRuntime: BrowserWebrtcBridgeRu
   const ttsSetupCommands = ttsProvider === "pocket"
     ? getPocketTtsSetupCommands()
     : [
-      "export ACC_TTS_PROVIDER=kokoro",
-      "export KOKORO_BASE_URL=http://127.0.0.1:8880",
+      exportCommand("ACC_TTS_PROVIDER", "kokoro"),
+      exportCommand("KOKORO_BASE_URL", "http://127.0.0.1:8880"),
     ];
 
   return {

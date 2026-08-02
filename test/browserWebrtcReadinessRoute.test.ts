@@ -477,8 +477,8 @@ test("GET /api/browser-webrtc/readiness exposes issue 213 WebRTC route contract"
       "Kokoro TTS produced agent TTS audio",
       "browser received and played a remote WebRTC audio track",
     ]);
-    assert.ok(payload.liveMedia.setupCommands.includes("export ACC_TTS_PROVIDER=kokoro"));
-    assert.ok(payload.liveMedia.setupCommands.includes("export KOKORO_BASE_URL=http://127.0.0.1:8880"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export ACC_TTS_PROVIDER='kokoro'"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export KOKORO_BASE_URL='http://127.0.0.1:8880'"));
     assert.equal(payload.liveMedia.setupCommands.some((command) => command.includes("POCKET_TTS_BASE_URL")), false);
     assert.ok(payload.liveMedia.setupCommands.some((command) => command.includes("BROWSER_WEBRTC_BRIDGE_URL")));
     assert.deepEqual(payload.blockers, ["live_webrtc_media_turn_evidence_missing"]);
@@ -543,11 +543,11 @@ test("GET /api/browser-webrtc/readiness preserves custom Pocket URL in setup com
   const previousKokoroUrl = process.env.KOKORO_BASE_URL;
   process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
   process.env.ACC_TTS_PROVIDER = "pocket";
-  process.env.POCKET_TTS_BASE_URL = "https://pocket.example.test:9443";
-  process.env.POCKET_TTS_HEALTH_PATH = "/readyz";
-  process.env.POCKET_TTS_SPEECH_PATH = "/custom/speech";
-  process.env.POCKET_TTS_MODEL = "pocket-low-latency";
-  process.env.POCKET_TTS_VOICE = "marin";
+  process.env.POCKET_TTS_BASE_URL = "https://pocket.example.test:9443?token=a&mode=b";
+  process.env.POCKET_TTS_HEALTH_PATH = "/readyz?probe=1&tenant=qa";
+  process.env.POCKET_TTS_SPEECH_PATH = "/custom/speech?format=pcm&stream=true";
+  process.env.POCKET_TTS_MODEL = "pocket low latency";
+  process.env.POCKET_TTS_VOICE = "marin's voice";
   delete process.env.KOKORO_BASE_URL;
 
   const server = buildHttpServer(loadPocConfig());
@@ -578,12 +578,12 @@ test("GET /api/browser-webrtc/readiness preserves custom Pocket URL in setup com
 
     assert.equal(payload.contract.sidecars.tts, "Pocket");
     assert.ok(payload.liveMedia.requiredProof.includes("Pocket TTS produced agent TTS audio"));
-    assert.ok(payload.liveMedia.setupCommands.includes("export ACC_TTS_PROVIDER=pocket"));
-    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_BASE_URL=https://pocket.example.test:9443"));
-    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_HEALTH_PATH=/readyz"));
-    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_SPEECH_PATH=/custom/speech"));
-    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_MODEL=pocket-low-latency"));
-    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_VOICE=marin"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export ACC_TTS_PROVIDER='pocket'"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_BASE_URL='https://pocket.example.test:9443?token=a&mode=b'"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_HEALTH_PATH='/readyz?probe=1&tenant=qa'"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_SPEECH_PATH='/custom/speech?format=pcm&stream=true'"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_MODEL='pocket low latency'"));
+    assert.ok(payload.liveMedia.setupCommands.includes("export POCKET_TTS_VOICE='marin'\\''s voice'"));
     assert.equal(payload.liveMedia.setupCommands.includes("export POCKET_TTS_BASE_URL=http://127.0.0.1:8881"), false);
     assert.equal(payload.liveMedia.setupCommands.some((command) => command.includes("KOKORO_BASE_URL")), false);
   } finally {

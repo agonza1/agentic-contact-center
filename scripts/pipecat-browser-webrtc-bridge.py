@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import importlib
 import json
 import os
 import sys
@@ -31,6 +32,9 @@ if LOCAL_RUNTIME_PATH.exists():
     os.environ.setdefault("NLTK_DATA", str(nltk_data_path))
 
 try:
+    # NLTK's dependency guard treats the repo cwd as unsafe while Pipecat imports
+    # regex from the local target runtime. Prime regex without changing cwd.
+    importlib.import_module("regex")
     from aiohttp import web
     from pipecat.pipeline.runner import PipelineRunner
     from pipecat.pipeline.task import PipelineParams, PipelineTask

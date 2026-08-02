@@ -56,19 +56,27 @@ function activeTtsConfig() {
   return ttsConfigForProvider(activeTtsProvider());
 }
 
+function shellQuote(value) {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function exportCommand(name, value) {
+  return `export ${name}=${shellQuote(value)}`;
+}
+
 function buildSetupCommands(config) {
   const ttsSetupCommands = config.provider === "pocket"
     ? [
-      "export ACC_TTS_PROVIDER=pocket",
-      `export POCKET_TTS_BASE_URL=${config.baseUrl}`,
-      `export POCKET_TTS_HEALTH_PATH=${config.healthPath}`,
-      `export POCKET_TTS_SPEECH_PATH=${config.speechPath}`,
-      `export POCKET_TTS_MODEL=${config.model}`,
-      `export POCKET_TTS_VOICE=${config.voice}`,
+      exportCommand("ACC_TTS_PROVIDER", "pocket"),
+      exportCommand("POCKET_TTS_BASE_URL", config.baseUrl),
+      exportCommand("POCKET_TTS_HEALTH_PATH", config.healthPath),
+      exportCommand("POCKET_TTS_SPEECH_PATH", config.speechPath),
+      exportCommand("POCKET_TTS_MODEL", config.model),
+      exportCommand("POCKET_TTS_VOICE", config.voice),
     ]
     : [
-      "export ACC_TTS_PROVIDER=kokoro",
-      `export KOKORO_BASE_URL=${config.baseUrl}`,
+      exportCommand("ACC_TTS_PROVIDER", "kokoro"),
+      exportCommand("KOKORO_BASE_URL", config.baseUrl),
     ];
   return [
     "export RTC_ASR_BASE_URL=${RTC_ASR_BASE_URL:-http://127.0.0.1:8080}",
