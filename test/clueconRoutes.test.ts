@@ -1132,7 +1132,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /system-unavailable\.mp3/);
   assert.match(narrative.body, /kind === "rtc_asr_unavailable"/);
   assert.doesNotMatch(narrative.body, /id="run-demo-top"/);
-  assert.match(narrative.body, /Generate evaluation bundle/);
+  assert.match(narrative.body, /Run ACC target/);
   assert.match(narrative.body, /window\.__CLUECON__/);
   assert.match(narrative.body, /rtc-asr is measurable and swappable/);
   assert.match(narrative.body, /id="asr-architecture"/);
@@ -1300,8 +1300,11 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Conversational SLO/);
   assert.match(narrative.body, /Google SRE Workbook ↗/);
   assert.match(narrative.body, /ITU-T P\.851 ↗/);
-  assert.match(narrative.body, /ConversationAgentEvals · compatible handoff/);
-  assert.match(narrative.body, /One call becomes a repeatable safety test\./);
+  assert.match(narrative.body, /Different voice agents\. One evaluation contract\./);
+  assert.match(narrative.body, /CAE evaluates web voice agents and VoIP\/SIP agents through target adapters\./);
+  assert.match(narrative.body, /This demo uses the Agentic Call Center PoC\./);
+  assert.match(narrative.body, /ACC PoC in this demo/);
+  assert.match(narrative.body, /normalized evidence/);
   assert.match(narrative.body, /Approval to open retention review captured/);
   assert.doesNotMatch(narrative.body, /CAE_WEB_URL/);
   assert.doesNotMatch(narrative.body, /id="proof-cards"/);
@@ -1353,7 +1356,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(present.body, /From SIP to Tokens/);
   assert.match(present.body, /Alberto Gonzalez CTO @ WebRTC\.ventures/);
   assert.match(present.body, /ArrowRight/);
-  assert.match(present.body, /Generate evaluation bundle/);
+  assert.match(present.body, /Run ACC target/);
   assert.match(present.body, /eval-scorecard/);
   assert.match(present.body, /ClueCon 2026 presentation/);
   assert.match(present.body, /RTF = processing time ÷ audio duration/);
@@ -1404,7 +1407,7 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.doesNotMatch(html, /5 min proof \+ close/);
   assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 16);
   assert.match(html, /Reliable audio is necessary\. Reliable conversation is the outcome\./);
-  assert.match(html, /Generate evaluation bundle/);
+  assert.match(html, /Run ACC target/);
   assert.match(html, /Every enterprise workflow can now begin with a conversation\./);
   assert.match(html, /Open source projects to try below:/);
   assert.doesNotMatch(html, /Bring back evidence\. Let’s compare notes after the talk\./);
