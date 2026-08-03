@@ -1763,6 +1763,123 @@ test("live SIP proof bundle blocks source manifest artifact integrity failures",
   }
 });
 
+test("live SIP proof bundle writes blocked evidence when caller audio artifact is missing", async () => {
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-missing-audio-"));
+  const audioPath = path.join(tempDir, "caller-capture.wav");
+  const sipLogPath = path.join(tempDir, "sip.log.json");
+  const rtcAsrEvidencePath = path.join(tempDir, "rtc-asr-evidence.json");
+  const manifestPath = path.join(tempDir, "local-sip-live-proof-manifest.json");
+  const outDir = path.join(tempDir, "bundle");
+
+  try {
+    await writeFile(sipLogPath, `${JSON.stringify([{ startLine: "INVITE sip:8600@127.0.0.1 SIP/2.0" }, { startLine: "SIP/2.0 200 OK" }])}\n`, "utf8");
+    await writeFile(rtcAsrEvidencePath, `${JSON.stringify({ callId: "call-live-sip-1", transcript: "I need billing help.", final: true })}\n`, "utf8");
+    const manifest = {
+      schemaVersion: 1,
+      generatedAt: "2026-06-30T10:00:00.000Z",
+      workboardCard: "872af947-ef57-47bd-a4f3-3750f54e1948",
+      callId: "call-live-sip-1",
+      sipCallId: "sip-proof-1",
+      runtimeModeLabels: {
+        telephony: "local_sip",
+        media: "live_capture",
+        rtcAsr: "rtc_asr_live",
+        credentialsMode: "mocked",
+      },
+      localSip: {
+        bind: "sip:127.0.0.1:5066",
+        rtpPort: 40000,
+        acceptedInvite: true,
+        rtpPacketCount: 4,
+      },
+      artifacts: { audioWav: audioPath, sipLog: sipLogPath, rtcAsrEvidence: rtcAsrEvidencePath },
+      artifactIntegrity: [{ artifactId: "freeswitch-caller-capture-wav", path: audioPath, readiness: "ready" }],
+      reviewGate: {
+        requiredLabels: ["local_sip", "live_capture", "rtc_asr_live"],
+        missingLabels: [],
+        nextActions: [],
+      },
+      reviewReady: true,
+      blockers: [],
+    };
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        [
+          "scripts/live-sip-proof-bundle.mjs",
+          "--live-manifest",
+          manifestPath,
+          "--out-dir",
+          path.join(tempDir, "strict"),
+          "--require-review-ready",
+          "--allow-unversioned-source",
+          "--allow-fallback-rtc-asr-correlation",
+        ],
+        { cwd: repoRoot },
+      ),
+      (error: any) => {
+        const summary = JSON.parse(error.stdout);
+        assert.equal(summary.reviewReady, true);
+        assert.equal(summary.reviewGatePassed, false);
+        assert.deepEqual(summary.failedChecks.sort(), ["artifactsPresent", "callerAudioWavValid", "sourceArtifactIntegrityReady"].sort());
+        assert.equal(summary.validationStatus, "blocked_before_review");
+        return true;
+      },
+    );
+
+    const bundleManifest = JSON.parse(await readFile(path.join(tempDir, "strict", "proof-bundle-manifest.json"), "utf8")) as {
+      artifacts: { audioCapture: string };
+      artifactIntegrity: Array<{ artifactId: string; readiness: string; reason: string | null }>;
+      reviewGate: { checks: Record<string, boolean>; failureReasons: Record<string, string> };
+      validationSummary: {
+        callerAudioEvidence: { ready: boolean; reason: string };
+        sourceArtifactIntegrityEvidence: { ready: boolean; changed: Array<{ artifactId: string; exists: boolean }> };
+      };
+    };
+    assert.equal(bundleManifest.artifacts.audioCapture, path.relative(repoRoot, audioPath).replaceAll(path.sep, "/"));
+    assert.equal(bundleManifest.reviewGate.checks.callerAudioWavValid, false);
+    assert.equal(bundleManifest.reviewGate.checks.artifactsPresent, false);
+    assert.equal(bundleManifest.reviewGate.checks.sourceArtifactIntegrityReady, false);
+    assert.match(bundleManifest.reviewGate.failureReasons.callerAudioWavValid, /Caller audio artifact/);
+    assert.deepEqual(bundleManifest.validationSummary.callerAudioEvidence, {
+      ready: false,
+      hasRiffWaveHeader: false,
+      hasPcmFormat: false,
+      hasAudioPayload: false,
+      audioFormat: null,
+      channelCount: null,
+      sampleRateHz: null,
+      bitsPerSample: null,
+      declaredDataBytes: 0,
+      sizeBytes: 0,
+      reason: "caller audio WAV file is missing or unreadable.",
+    });
+    assert.ok(bundleManifest.artifactIntegrity.some((artifact) =>
+      artifact.artifactId === "local-sip-real-caller-audio-wav"
+      && artifact.readiness === "blocked"
+      && artifact.reason === "artifact_missing"
+    ));
+    assert.deepEqual(bundleManifest.validationSummary.sourceArtifactIntegrityEvidence.changed, [
+      {
+        artifactId: "freeswitch-caller-capture-wav",
+        path: audioPath,
+        exists: false,
+        expectedSha256: null,
+        currentSha256: null,
+        sha256Matches: true,
+        expectedSizeBytes: null,
+        currentSizeBytes: null,
+        sizeMatches: true,
+      },
+    ]);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("live SIP proof bundle blocks stale source artifact hash and size claims", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "agentic-contact-center-live-sip-stale-integrity-"));

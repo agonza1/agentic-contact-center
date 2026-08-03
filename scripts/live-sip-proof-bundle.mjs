@@ -46,34 +46,43 @@ async function fileExists(filePath) {
 }
 
 async function artifact(filePath, artifactId, kind, mimeType) {
-  const stats = await stat(filePath);
+  const stats = await stat(filePath).catch(() => null);
   return {
     artifact_id: artifactId,
     kind,
     role: "input",
     uri: rel(filePath),
     mime_type: mimeType,
-    sha256: await sha256File(filePath),
-    size_bytes: stats.size,
+    sha256: stats ? await sha256File(filePath) : null,
+    size_bytes: stats?.size ?? 0,
     source: "agentic-contact-center",
-    readiness: stats.size > 0 ? "ready" : "blocked",
+    readiness: stats && stats.size > 0 ? "ready" : "blocked",
+    reason: stats ? null : "artifact_missing",
   };
 }
 
 async function integrity(filePath, artifactId, kind) {
-  const stats = await stat(filePath);
+  const stats = await stat(filePath).catch(() => null);
   return {
     artifactId,
     kind,
     path: rel(filePath),
-    sha256: await sha256File(filePath),
-    sizeBytes: stats.size,
-    readiness: stats.size > 0 ? "ready" : "blocked",
+    sha256: stats ? await sha256File(filePath) : null,
+    sizeBytes: stats?.size ?? 0,
+    readiness: stats && stats.size > 0 ? "ready" : "blocked",
+    reason: stats ? null : "artifact_missing",
   };
 }
 
 async function sipLogEvidence(filePath) {
-  const raw = await readFile(filePath, "utf8");
+  const raw = await readFile(filePath, "utf8").catch(() => null);
+  if (raw === null) {
+    return {
+      entryCount: 0,
+      hasInvite: false,
+      hasAcceptedInviteResponse: false,
+    };
+  }
   let entries = [];
   try {
     const parsed = JSON.parse(raw);
@@ -535,7 +544,22 @@ function nestedEvidenceObjects(value, depth = 0) {
 }
 
 async function wavEvidence(filePath) {
-  const buffer = await readFile(filePath);
+  const buffer = await readFile(filePath).catch(() => null);
+  if (buffer === null) {
+    return {
+      ready: false,
+      hasRiffWaveHeader: false,
+      hasPcmFormat: false,
+      hasAudioPayload: false,
+      audioFormat: null,
+      channelCount: null,
+      sampleRateHz: null,
+      bitsPerSample: null,
+      declaredDataBytes: 0,
+      sizeBytes: 0,
+      reason: "caller audio WAV file is missing or unreadable.",
+    };
+  }
   const riffHeader = buffer.subarray(0, 4).toString("ascii");
   const waveHeader = buffer.subarray(8, 12).toString("ascii");
   const hasRiffWaveHeader = riffHeader === "RIFF" && waveHeader === "WAVE";
