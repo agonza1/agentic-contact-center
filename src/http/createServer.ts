@@ -2374,6 +2374,21 @@ function getLiveSipCallerTurnHoldReason(snapshot: CallSnapshot, conversationMode
   return getExplicitLiveSipOperatorHoldReason(snapshot);
 }
 
+function rejectTerminalOperatorStopCallerTurn(
+  response: ServerResponse,
+  snapshot: CallSnapshot,
+  route: "/api/calls/:callId/caller-turn",
+): boolean {
+  if (!hasActiveTerminalOperatorStop(snapshot)) return false;
+  writeJson(response, 409, {
+    ok: false,
+    route,
+    error: "caller_turn_terminal_operator_stop",
+    call: buildCallPayload(snapshot),
+  });
+  return true;
+}
+
 async function rejectHeldLiveSipCallerTurn(
   response: ServerResponse,
   ingress: InMemoryTelephonyIngress,
@@ -7029,7 +7044,7 @@ async function routeRequest(
         writeJson(response, 409, { ok: false, error: "retention_review_approval_required" });
         return;
       }
-      if (error instanceof Error && error.message.startsWith("Scripted caller turn is not allowed after a terminal operator stop")) {
+      if (error instanceof Error && error.message.startsWith("Caller turn is not allowed after a terminal operator stop")) {
         writeJson(response, 409, { ok: false, error: "operator_console_scripted_turn_terminal" });
         return;
       }
@@ -7226,6 +7241,7 @@ async function routeRequest(
         writeNotFound(response);
         return;
       }
+      if (rejectTerminalOperatorStopCallerTurn(response, currentSnapshot, "/api/calls/:callId/caller-turn")) return;
       if (isLiveSipCallEnded(currentSnapshot)) {
         writeJson(response, 409, {
           ok: false,
@@ -7293,6 +7309,10 @@ async function routeRequest(
               deliveryAckOpenAiResponseHandled = true;
               return undefined;
             }
+            if (rejectTerminalOperatorStopCallerTurn(response, lockedSnapshot, "/api/calls/:callId/caller-turn")) {
+              deliveryAckOpenAiResponseHandled = true;
+              return undefined;
+            }
             if (isLiveSipCallEnded(lockedSnapshot)) {
               writeJson(response, 409, {
                 ok: false,
@@ -7342,6 +7362,7 @@ async function routeRequest(
         writeNotFound(response);
         return;
       }
+      if (rejectTerminalOperatorStopCallerTurn(response, latestSnapshot, "/api/calls/:callId/caller-turn")) return;
       if (isLiveSipCallEnded(latestSnapshot)) {
         writeJson(response, 409, {
           ok: false,
@@ -7456,6 +7477,7 @@ async function routeRequest(
             writeNotFound(response);
             return;
           }
+          if (rejectTerminalOperatorStopCallerTurn(response, lockedSnapshot, "/api/calls/:callId/caller-turn")) return;
           if (isLiveSipCallEnded(lockedSnapshot)) {
             writeJson(response, 409, {
               ok: false,
@@ -7498,6 +7520,7 @@ async function routeRequest(
             writeNotFound(response);
             return;
           }
+          if (rejectTerminalOperatorStopCallerTurn(response, latestSnapshot, "/api/calls/:callId/caller-turn")) return;
           if (openAiLlm?.ok && latestSnapshot.events.length === lockedSnapshot.events.length) {
             await new Promise<void>((resolve) => setImmediate(resolve));
             const recheckedSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
@@ -7557,7 +7580,7 @@ async function routeRequest(
         writeJson(response, 409, { ok: false, error: "retention_review_approval_required" });
         return;
       }
-      if (error instanceof Error && error.message.startsWith("Scripted caller turn is not allowed after a terminal operator stop")) {
+      if (error instanceof Error && error.message.startsWith("Caller turn is not allowed after a terminal operator stop")) {
         writeJson(response, 409, { ok: false, error: "caller_turn_terminal_operator_stop" });
         return;
       }

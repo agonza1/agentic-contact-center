@@ -377,8 +377,8 @@ export class InMemoryTelephonyIngress {
       ?? snapshot.scenario.conversationMode
       ?? (snapshot.session.openclawSession.label === "pipecat-local-voice" ? "free_caller" : "scripted");
 
-    if (conversationMode === "scripted" && hasActiveTerminalOperatorStop(snapshot)) {
-      throw new Error(`Scripted caller turn is not allowed after a terminal operator stop: ${snapshot.session.callId}`);
+    if (hasActiveTerminalOperatorStop(snapshot)) {
+      throw new Error(`Caller turn is not allowed after a terminal operator stop: ${snapshot.session.callId}`);
     }
 
     const retentionReviewApprovalRequired =

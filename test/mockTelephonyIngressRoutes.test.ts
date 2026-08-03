@@ -2628,6 +2628,7 @@ test("terminal operator actions suppress and reject the remaining scripted calle
       assert.equal(stopped.statusCode, 200);
       assert.equal(stoppedCall.flowState, "wrap");
       const transcriptLength = stoppedCall.transcript.length;
+      const eventCount = stoppedCall.events.length;
 
       const consoleResponse = await requestJson(port, "GET", `/api/operator/console?callId=${callId}`);
       const consoleCall = (consoleResponse.payload as OperatorConsolePayload).calls.items[0];
@@ -2644,10 +2645,20 @@ test("terminal operator actions suppress and reject the remaining scripted calle
       assert.equal(rejectedScriptedTurn.statusCode, 409);
       assert.deepEqual(rejectedScriptedTurn.payload, { ok: false, error: "operator_console_scripted_turn_terminal" });
 
+      const rejectedModeOverride = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+        text: "Keep it active until the review.",
+        conversationMode: "openai_llm",
+      });
+      const rejectedModeOverridePayload = rejectedModeOverride.payload as { error: string; route: string };
+      assert.equal(rejectedModeOverride.statusCode, 409);
+      assert.equal(rejectedModeOverridePayload.error, "caller_turn_terminal_operator_stop");
+      assert.equal(rejectedModeOverridePayload.route, "/api/calls/:callId/caller-turn");
+
       const unchanged = await requestJson(port, "GET", `/api/calls/${callId}`);
       const unchangedCall = unchanged.payload as SnapshotPayload;
       assert.equal(unchangedCall.flowState, "wrap");
       assert.equal(unchangedCall.transcript.length, transcriptLength);
+      assert.equal(unchangedCall.events.length, eventCount);
       assert.equal(unchangedCall.events.some((event) => event.type === "retention_followup_created"), false);
     }
   }, config);
