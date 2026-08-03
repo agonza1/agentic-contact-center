@@ -1,0 +1,4 @@
+services:
+  kokoro:
+    image: ${KOKORO_GPU_IMAGE:-ghcr.io/remsky/kokoro-fastapi-gpu:latest}
+    gpus: all

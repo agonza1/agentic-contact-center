@@ -11,6 +11,7 @@ export type Speaker = "caller" | "agent" | "operator" | "system";
 
 export type OperatorSteerAction =
   | "approve_offer"
+  | "approve_retention_review"
   | "deny_offer"
   | "escalate_to_human"
   | "transfer"

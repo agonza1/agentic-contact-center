@@ -10,6 +10,7 @@ Primary actions:
 
 - Run the default deterministic proof: `npm install && npm test && npm run proof`
 - Start the local app: `npm start`
+- Start the live ClueCon presentation with rtc-asr readiness: `npm run cluecon`
 - Open the reliability guide: `http://127.0.0.1:8026/reliability`
 - Inspect the ClueCon walkthrough: `http://127.0.0.1:8026/cluecon`
 - Check the reliability-lab integration status: `npm run reliability:lab`
@@ -90,6 +91,14 @@ flowchart LR
 Browser WebRTC, fixture/tester, and SIP/Verto are adapters into the same rtc-asr -> ACC caller-turn/FlowManager -> Pocket/Kokoro streaming TTS pipeline. Leave `ACC_TTS_PROVIDER` unset and set `POCKET_TTS_BASE_URL` for host-run Pocket auto-selection, or set `ACC_TTS_PROVIDER=pocket` explicitly for the ClueCon Pocket/Pipecat TTS lane. Docker Compose defaults to Kokoro because it starts a Kokoro sidecar; opt into host-local Pocket for containers with `POCKET_TTS_CONTAINER_BASE_URL=http://host.docker.internal:8881`. The strict local SIP/Verto proof lane is accepted and closed; do not reopen it for normal documentation work. Future #307 slices should focus on the reliability-lab integration surface and guided workflow.
 
 ## Quick starts
+
+### ClueCon presentation
+
+```bash
+npm run cluecon
+```
+
+The ClueCon launcher requires a ready rtc-asr endpoint before it starts the presentation server. It uses `RTC_ASR_BASE_URL` when configured, otherwise probes `http://127.0.0.1:8080`; when that local endpoint is down and a sibling `../rtc-asr` checkout exists, it starts the `asr-service` Compose service and waits for `/health` and `/ready`. Override the sibling path with `RTC_ASR_REPO`.
 
 ### Scripted fixture demo
 

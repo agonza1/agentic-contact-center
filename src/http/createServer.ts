@@ -24,11 +24,16 @@ import {
   type AssertEvaluationSpec,
 } from "../core/assertEvaluationSpec";
 import { compareTimestamps, getAttentionMetadata } from "../core/attention";
-import { InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
+import {
+  hasActiveTerminalOperatorStop,
+  InMemoryTelephonyIngress,
+  shouldForceScriptedRetentionFinalTurn,
+} from "../core/inMemoryTelephonyIngress";
 import { buildPipecatFlowManagerContractPayload } from "../core/pipecatFlowManagerContract";
 import { buildPipecatMediaEngineReadinessPayload } from "../core/pipecatMediaEngineReadiness";
 import { RealtimeVoiceSessionStore, buildRealtimeVoiceSessionEndpoints } from "../core/realtimeVoiceSessions";
 import {
+  CLUECON_CANCELLATION_CALLER_TURNS,
   getPipecatPrototypeHealth,
   isConversationMode,
   SCRIPTED_CALLER_TURNS,
@@ -69,6 +74,7 @@ const defaultTtsIdleTimeoutMs = 30_000;
 const maxVoiceSessionPlayAudioBytes = 2 * 1024 * 1024;
 const supportedVoiceSessionPlayMimeTypes = new Set(["audio/l16", "audio/pcm", "audio/wav", "audio/wave", "audio/x-wav"]);
 const clueConSystemUnavailableAudio = readFileSync(resolve(process.cwd(), "assets/cluecon/system-unavailable.mp3"));
+const clueConVoiceOriginPhoto = readFileSync(resolve(process.cwd(), "assets/cluecon/alberto-echo-show-prototype.jpg"));
 
 interface BrowserWebrtcBridgeRuntimeProbe {
   ok: boolean;
@@ -83,6 +89,7 @@ interface RtcAsrModelTarget {
   id: string;
   label: string;
   baseUrl: string;
+  websocketUrl?: string;
 }
 
 function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
@@ -98,8 +105,14 @@ function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
           const id = typeof record.id === "string" ? record.id.trim() : "";
           const label = typeof record.label === "string" ? record.label.trim() : id;
           const baseUrl = typeof record.baseUrl === "string" ? record.baseUrl.trim().replace(/\/+$/, "") : "";
+          const websocketUrl = typeof record.websocketUrl === "string" ? record.websocketUrl.trim() : "";
           if (/^[a-z0-9_-]+$/i.test(id) && /^https?:\/\//i.test(baseUrl)) {
-            configured.push({ id, label: label || id, baseUrl });
+            configured.push({
+              id,
+              label: label || id,
+              baseUrl,
+              ...(/^wss?:\/\//i.test(websocketUrl) ? { websocketUrl } : {}),
+            });
           }
         }
       }
@@ -109,11 +122,27 @@ function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
   }
 
   const primaryBaseUrl = process.env.RTC_ASR_BASE_URL?.trim().replace(/\/+$/, "");
-  if (primaryBaseUrl && /^https?:\/\//i.test(primaryBaseUrl) && !configured.some((target) => target.baseUrl === primaryBaseUrl)) {
-    configured.unshift({ id: "primary", label: "Active local model", baseUrl: primaryBaseUrl });
+  const primaryWebsocketUrl = process.env.RTC_ASR_WS_URL?.trim();
+  if (primaryBaseUrl && /^https?:\/\//i.test(primaryBaseUrl)) {
+    const existingPrimary = configured.find((target) => target.baseUrl === primaryBaseUrl);
+    if (existingPrimary) {
+      if (/^wss?:\/\//i.test(primaryWebsocketUrl ?? "")) existingPrimary.websocketUrl = primaryWebsocketUrl;
+    } else {
+      configured.unshift({
+        id: "primary",
+        label: "Active local model",
+        baseUrl: primaryBaseUrl,
+        ...(/^wss?:\/\//i.test(primaryWebsocketUrl ?? "") ? { websocketUrl: primaryWebsocketUrl } : {}),
+      });
+    }
   }
 
   return configured;
+}
+
+function getRtcAsrWebsocketUrl(target: RtcAsrModelTarget): string {
+  return target.websocketUrl
+    ?? `${target.baseUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/v1/stt/stream`;
 }
 
 async function fetchRtcAsrJson(target: RtcAsrModelTarget, path: string, init?: RequestInit): Promise<{
@@ -162,8 +191,9 @@ function getPocketTtsSetupCommands(): string[] {
   ];
 }
 
-function getTtsSpeechTarget(): { provider: "pocket" | "kokoro"; url: string; model: string; voice: string; responseFormat: string; contentType: string } | null {
-  const provider = getConfiguredTtsProvider();
+function getTtsSpeechTarget(
+  provider: "pocket" | "kokoro" = getConfiguredTtsProvider(),
+): { provider: "pocket" | "kokoro"; url: string; model: string; voice: string; responseFormat: string; contentType: string } | null {
   if (provider === "pocket") {
     const baseUrl = process.env.POCKET_TTS_BASE_URL?.trim().replace(/\/+$/, "");
     if (!baseUrl || !/^https?:\/\//i.test(baseUrl)) return null;
@@ -193,8 +223,57 @@ function getTtsSpeechTarget(): { provider: "pocket" | "kokoro"; url: string; mod
   };
 }
 
-function getTtsIdleTimeoutMs(): number {
-  const parsed = Number(process.env.ACC_TTS_IDLE_TIMEOUT_MS ?? process.env.KOKORO_TTS_IDLE_TIMEOUT_MS ?? "");
+export type KokoroWarmupResult =
+  | { status: "warmed"; elapsedMs: number; bytes: number; text: string }
+  | { status: "skipped"; reason: "not_configured" | "disabled" }
+  | { status: "failed"; elapsedMs: number; error: string };
+
+export async function warmConfiguredKokoro(): Promise<KokoroWarmupResult> {
+  const target = getTtsSpeechTarget("kokoro");
+  if (!target) return { status: "skipped", reason: "not_configured" };
+  if (["0", "false", "off", "no"].includes((process.env.KOKORO_WARMUP ?? "").trim().toLowerCase())) {
+    return { status: "skipped", reason: "disabled" };
+  }
+
+  const text = process.env.KOKORO_WARMUP_TEXT?.trim().slice(0, 80) || "Ready.";
+  const configuredTimeout = Number(process.env.KOKORO_WARMUP_TIMEOUT_MS ?? "");
+  const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+    ? Math.min(Math.max(Math.trunc(configuredTimeout), 250), 30_000)
+    : 10_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = performance.now();
+  try {
+    const response = await fetch(target.url, {
+      method: "POST",
+      headers: { accept: "audio/mpeg", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: target.model,
+        voice: target.voice,
+        input: text,
+        response_format: "mp3",
+        stream: true,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Kokoro warm-up returned HTTP ${response.status}`);
+    const bytes = (await response.arrayBuffer()).byteLength;
+    if (!bytes) throw new Error("Kokoro warm-up returned no audio");
+    return { status: "warmed", elapsedMs: Math.round(performance.now() - startedAt), bytes, text };
+  } catch (error) {
+    return {
+      status: "failed",
+      elapsedMs: Math.round(performance.now() - startedAt),
+      error: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function getTtsIdleTimeoutMs(provider: "kokoro" | "pocket" = getConfiguredTtsProvider()): number {
+  const providerTimeout = provider === "pocket" ? process.env.POCKET_TTS_IDLE_TIMEOUT_MS : process.env.KOKORO_TTS_IDLE_TIMEOUT_MS;
+  const parsed = Number(process.env.CLUECON_TTS_IDLE_TIMEOUT_MS ?? process.env.ACC_TTS_IDLE_TIMEOUT_MS ?? providerTimeout ?? "");
   if (!Number.isFinite(parsed) || parsed <= 0) return defaultTtsIdleTimeoutMs;
   return Math.min(Math.max(Math.trunc(parsed), 50), 300_000);
 }
@@ -469,6 +548,7 @@ function buildBrowserWebrtcBridgeUnavailablePayload(error: unknown): object {
 
 const operatorSteerActions: OperatorSteerAction[] = [
   "approve_offer",
+  "approve_retention_review",
   "deny_offer",
   "escalate_to_human",
   "transfer",
@@ -521,6 +601,16 @@ const operatorActionCatalog: Array<{
     bodyTemplate: { action: "approve_offer" },
     operatorOutcome: "resume",
     commandExamples: ["/operator approve-offer", "/steer approve offer"],
+  },
+  {
+    action: "approve_retention_review",
+    method: "POST",
+    requiresPendingCall: true,
+    requiresReason: false,
+    postTemplate: "/api/calls/{callId}/operator-steer",
+    bodyTemplate: { action: "approve_retention_review" },
+    operatorOutcome: "resume",
+    commandExamples: ["/operator approve-retention-review", "/steer approve retention review"],
   },
   {
     action: "deny_offer",
@@ -884,7 +974,7 @@ function buildOperatorConsoleHtml(): string {
     const repoHeadEvidence = ${JSON.stringify(getRepoHeadEvidence())};
     const advancedActions = ["escalate_to_human", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
-    const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve", deny_offer: "Deny", takeover: "Take Over", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
+    const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve Offer", approve_retention_review: "Approve Retention Review", deny_offer: "Deny", takeover: "Take Over", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
     function setStatus(text) { document.getElementById("status").textContent = text; }
     function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { if (char === "&") return "&amp;"; if (char === "<") return "&lt;"; if (char === ">") return "&gt;"; return "&quot;"; }); }
     function humanLabel(value) { return String(value || "none").replace(/_/g, " "); }
@@ -1567,7 +1657,7 @@ function buildOperatorConsoleHtml(): string {
       const unavailableReasons = Object.fromEntries(call.actionState.unavailableActions.map(function(entry) { return [entry.action, entry.reason]; }));
       function actionButtonHtml(action) {
         const actionDetail = actionDetails[action] || {};
-        const cssClass = action === "end_call" ? "danger" : action === "approve_offer" ? "primary" : "";
+        const cssClass = action === "end_call" ? "danger" : action === "approve_offer" || action === "approve_retention_review" ? "primary" : "";
         const disabled = actionDetail.enabled === false || unavailable.has(action) ? "disabled" : "";
         const titleText = actionDetail.disabledReason || unavailableReasons[action];
         const title = titleText ? ' title="' + escapeHtml(titleText) + '"' : "";
@@ -1575,7 +1665,8 @@ function buildOperatorConsoleHtml(): string {
       }
       const approvalPending = Boolean(call.actionState.pendingApprovalDetails);
       const callOnHold = call.flowState === "policy_hold" || call.flowState === "operator_steer";
-      const primaryActions = approvalPending ? ["approve_offer", "deny_offer"] : [callOnHold ? "resume" : "pause"];
+      const requestedApprovalAction = call.actionState.pendingApprovalDetails?.recommendedAction || "approve_offer";
+      const primaryActions = approvalPending ? [requestedApprovalAction, "deny_offer"] : [callOnHold ? "resume" : "pause"];
       primaryActions.push("takeover", "transfer", "end_call");
       const actionHtml = primaryActions.map(actionButtonHtml).join("");
       const advancedActionHtml = advancedActions.map(actionButtonHtml).join("");
@@ -1608,7 +1699,7 @@ function buildOperatorConsoleHtml(): string {
       const evidenceHtml = '<div class="evidence" aria-label="Evidence markers"><div class="metric"><span class="meta">Latest Event</span><strong>' + escapeHtml(evidence.latestEventType || "none") + '</strong><span class="meta">' + escapeHtml(evidence.latestEventAt || "not recorded") + '</span><a href="' + escapeHtml(latestEventLink) + '">Event Trail</a></div><div class="metric"><span class="meta">Transcript Turns</span><strong>' + evidence.transcriptTurns + '</strong><a href="' + escapeHtml(evidenceLinks.transcript) + '">Transcript</a></div><div class="metric"><span class="meta">Latency Marks</span><strong>' + evidence.latencyMarkCount + '</strong><span class="meta">Over budget: ' + evidence.overBudgetLatencyMarkCount + '</span><a href="' + escapeHtml(latencyLink) + '">Latency</a></div><div class="metric"><span class="meta">Fallback</span><strong>' + escapeHtml(fallbackLabel) + '</strong><span class="meta">' + escapeHtml(fallbackDetail) + '</span><a href="' + escapeHtml(fallbackTrailLink) + '">Event Trail</a><a href="' + escapeHtml(fallbackQueueLink) + '">Fallback Queue</a>' + reasonTrailHtml + '</div><div class="metric"><span class="meta">Operator Notes</span><strong>' + evidence.operatorNoteCount + '</strong><span class="meta">' + escapeHtml(evidence.latestDisposition || evidence.latestOperatorNoteText || "none") + '</span><a href="' + escapeHtml(operatorNoteTrailLink) + '">Note Trail</a></div><div class="metric"><span class="meta">Proof Bundle</span><strong>' + evidence.eventCount + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Proof</a><a href="' + escapeHtml(evidenceLinks.artifacts) + '">Artifacts</a></div></div>';
       const assertHtml = '<section class="proof-panel" aria-label="Assert UI"><div class="proof-header"><h3>Assert UI</h3><div class="badges"><a class="badge" href="/assert/full">Full ASSERT</a><a class="badge" href="/assert">ACC Artifacts</a><a class="badge" href="/assert/spec">Eval Spec</a><span class="badge ok">' + escapeHtml(call.flowState === "wrap" && call.pipecatFlow.script.completed ? "call complete" : "collecting evidence") + '</span><span class="badge">' + escapeHtml(call.pipecatFlow.prototypeMode) + '</span></div></div><div class="proof-grid"><div class="metric"><span class="meta">Call State</span><strong>' + escapeHtml(call.flowState) + '</strong><span class="meta">Script: ' + escapeHtml(call.pipecatFlow.script.completed ? "complete" : "in progress") + '</span><span class="meta">Attention: ' + escapeHtml(call.attention.required ? "required" : "clear") + '</span></div><div class="metric"><span class="meta">Evidence Counts</span><strong>' + evidence.eventCount + ' events</strong><span class="meta">' + evidence.transcriptTurns + ' transcript turns</span><span class="meta">' + evidence.latencyMarkCount + ' latency marks</span></div><div class="metric"><span class="meta">Artifacts</span><strong>' + escapeHtml(evidence.operatorNoteCount > 0 ? "Disposition captured" : "No disposition yet") + '</strong><a href="' + escapeHtml(evidenceLinks.proof) + '">Open Proof JSON</a><a href="' + escapeHtml(evidenceLinks.artifacts) + '">Open Artifact Manifest</a><a href="' + escapeHtml(evidenceLinks.transcript) + '">Open Transcript JSON</a></div><div class="metric"><span class="meta">Assert Inputs</span><strong>' + escapeHtml(liveProof.eval && liveProof.eval.status ? liveProof.eval.status : "local proof bundle") + '</strong><span class="meta">Use npm run assert:export to write official ASSERT viewer artifacts, then npm run assert:viewer to browse them.</span></div></div></section>';
       const scriptedState = call.actionState.scriptedCallerTurnState || { matchedTurns: 0, totalTurns: (state.scriptedCallerTurns || []).length, remainingTurns: (state.scriptedCallerTurns || []).length, progressPct: 0, nextTurnIndex: 0, nextTurnText: null, completed: false };
-      const scriptedTurns = (state.scriptedCallerTurns || []).map(function(text, index) {
+      const scriptedTurns = (scriptedState.turnTexts || state.scriptedCallerTurns || []).map(function(text, index) {
         const isCompleted = index < scriptedState.matchedTurns;
         const isNext = index === scriptedState.nextTurnIndex;
         const disabled = (isCompleted || !isNext) ? "disabled" : "";
@@ -2287,6 +2378,21 @@ function getLiveSipCallerTurnHoldReason(snapshot: CallSnapshot, conversationMode
   return getExplicitLiveSipOperatorHoldReason(snapshot);
 }
 
+function rejectTerminalOperatorStopCallerTurn(
+  response: ServerResponse,
+  snapshot: CallSnapshot,
+  route: "/api/calls/:callId/caller-turn",
+): boolean {
+  if (!hasActiveTerminalOperatorStop(snapshot)) return false;
+  writeJson(response, 409, {
+    ok: false,
+    route,
+    error: "caller_turn_terminal_operator_stop",
+    call: buildCallPayload(snapshot),
+  });
+  return true;
+}
+
 async function rejectHeldLiveSipCallerTurn(
   response: ServerResponse,
   ingress: InMemoryTelephonyIngress,
@@ -2630,7 +2736,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
     .at(-1) ?? null;
   const attention = getAttentionMetadata(snapshot);
   const nextRecommendedAction = snapshot.operatorSteer.pending
-    ? "approve_offer"
+    ? snapshot.operatorSteer.lastAction ?? "approve_offer"
     : snapshot.demoFallback.armed
       ? "disarm_fallback"
       : attention.required
@@ -2666,17 +2772,21 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
         approvalPrompt:
           snapshot.operatorSteer.lastAction === "approve_offer"
             ? "Review the held safe-offer guidance before approving or denying the response."
+            : snapshot.operatorSteer.lastAction === "approve_retention_review"
+              ? "Approve only the requested retention specialist review; this does not approve a discount or pricing change."
             : "Review the held call context before applying operator guidance.",
       }
     : null;
-  const totalScriptedCallerTurns: number = SCRIPTED_CALLER_TURNS.length;
+  const scriptedCallerTurns = [...snapshot.pipecatFlow.script.expectedCallerTurns];
+  const totalScriptedCallerTurns = scriptedCallerTurns.length;
   const matchedScriptedCallerTurns = Math.min(
     snapshot.pipecatFlow.script.matchedCallerTurns,
     totalScriptedCallerTurns,
   );
-  const remainingScriptedCallerTurns = totalScriptedCallerTurns - matchedScriptedCallerTurns;
-  const nextScriptedCallerTurn = SCRIPTED_CALLER_TURNS[matchedScriptedCallerTurns] ?? null;
-  const remainingScriptedCallerTurnTexts = SCRIPTED_CALLER_TURNS.slice(matchedScriptedCallerTurns);
+  const terminalOperatorStopActive = hasActiveTerminalOperatorStop(snapshot);
+  const remainingScriptedCallerTurns = terminalOperatorStopActive ? 0 : totalScriptedCallerTurns - matchedScriptedCallerTurns;
+  const nextScriptedCallerTurn = terminalOperatorStopActive ? null : scriptedCallerTurns[matchedScriptedCallerTurns] ?? null;
+  const remainingScriptedCallerTurnTexts = terminalOperatorStopActive ? [] : scriptedCallerTurns.slice(matchedScriptedCallerTurns);
   const scriptProgressPct = totalScriptedCallerTurns === 0
     ? 100
     : Math.round((matchedScriptedCallerTurns / totalScriptedCallerTurns) * 100);
@@ -2735,6 +2845,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
       fallbackArmed: snapshot.demoFallback.armed,
       nextRecommendedAction,
       scriptedCallerTurnState: {
+        turnTexts: scriptedCallerTurns,
         matchedTurns: matchedScriptedCallerTurns,
         totalTurns: totalScriptedCallerTurns,
         remainingTurns: remainingScriptedCallerTurns,
@@ -3097,7 +3208,7 @@ function buildCallProofBundlePayload(snapshot: CallSnapshot) {
       markers: buildOperatorControlMarkers(snapshot),
       actionTrail: buildOperatorActionProofTrail(snapshot),
       availableActions: operatorActionCatalog.map((entry) => entry.action),
-      controls: ["pause", "resume", "approve_offer", "deny_offer", "takeover", "transfer", "end_call", "operator_note"],
+      controls: ["pause", "resume", "approve_offer", "approve_retention_review", "deny_offer", "takeover", "transfer", "end_call", "operator_note"],
     },
     artifacts: snapshot.session.openclawSession.artifactLinks,
     evidenceRoutes: {
@@ -3306,6 +3417,10 @@ function buildOperatorActionsPayload() {
       completeError: "operator_console_scripted_turn_complete",
     },
     scriptedCallerTurns: [...SCRIPTED_CALLER_TURNS],
+    scriptedCallerTurnSets: {
+      approve_offer: [...SCRIPTED_CALLER_TURNS],
+      approve_retention_review: [...CLUECON_CANCELLATION_CALLER_TURNS],
+    },
     actions: operatorActionCatalog.map((entry) => ({
       ...entry,
       reasonPrompt: getOperatorActionReasonPrompt(entry.action),
@@ -3360,7 +3475,14 @@ async function runEndToEndDemoFlow(
   config: PocConfig,
   options: StartCallOptions,
 ) {
-  const started = await ingress.startCall(config, options);
+  const scenarioConfig: PocConfig = {
+    ...config,
+    policy: {
+      ...config.policy,
+      defaultSupervisorSteer: "approve_retention_review",
+    },
+  };
+  const started = await ingress.startCall(scenarioConfig, options);
   const callId = started.session.callId;
   const steps: Array<{
     step: string;
@@ -3381,13 +3503,13 @@ async function runEndToEndDemoFlow(
   let latest = started;
   const startedAtMs = new Date(started.session.startedAt).getTime();
   const timestampAfter = (offsetMs: number) => new Date(startedAtMs + offsetMs).toISOString();
-  const scriptedTimestamps = [timestampAfter(1_000), timestampAfter(5_000), timestampAfter(9_000)];
+  const scriptedTimestamps = [timestampAfter(1_000), timestampAfter(5_000), timestampAfter(9_000), timestampAfter(12_000)];
 
-  for (const [index, text] of SCRIPTED_CALLER_TURNS.slice(0, 3).entries()) {
+  for (const [index, text] of CLUECON_CANCELLATION_CALLER_TURNS.slice(0, 4).entries()) {
     latest = await ingress.appendCallerTurn(
       callId,
       { speaker: "caller", text, timestamp: scriptedTimestamps[index] },
-      config,
+      scenarioConfig,
     );
     steps.push({
       step: `caller_turn_${index + 1}`,
@@ -3398,40 +3520,34 @@ async function runEndToEndDemoFlow(
     });
   }
 
-  latest = await ingress.applyOperatorSteer(callId, "approve_offer", timestampAfter(11_000));
+  latest = await ingress.applyOperatorSteer(callId, "approve_retention_review", timestampAfter(14_000));
   steps.push({
-    step: "operator_approve_offer",
+    step: "operator_approve_retention_review",
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: "Operator approved the safe retention response.",
+    detail: "Operator approved the retention specialist review; no discount was approved.",
   });
 
   latest = await ingress.appendCallerTurn(
     callId,
-    { speaker: "caller", text: SCRIPTED_CALLER_TURNS[3], timestamp: timestampAfter(15_000) },
-    config,
+    { speaker: "caller", text: CLUECON_CANCELLATION_CALLER_TURNS[4], timestamp: timestampAfter(18_000) },
+    scenarioConfig,
   );
   steps.push({
     step: "caller_wrap",
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: SCRIPTED_CALLER_TURNS[3],
+    detail: CLUECON_CANCELLATION_CALLER_TURNS[4],
   });
 
-  latest = await ingress.recordOperatorNote(
-    callId,
-    "Demo completed end to end: policy hold, operator approval, safe retention wrap, and proof bundle are available.",
-    timestampAfter(16_000),
-    "demo_completed",
-  );
   steps.push({
-    step: "operator_disposition",
+    step: "final_policy_state",
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: "Disposition recorded as demo_completed.",
+    detail: "Policy remains active; retention review requested; no pricing change promised or applied.",
   });
 
   return { latest, steps };
@@ -3561,6 +3677,7 @@ async function runClueConOperatorDrill(
     return {
       latest,
       steps,
+      completedControlStages: ["understand", "prepare", "authorize", "record"],
       summary: "scripted_approve -> policy hold, operator approval, safe wrap, and proof bundle.",
       outcome: "scripted_wrap_complete",
       integration: buildClueConOperatorDrillIntegration(kind, latest.session.callId),
@@ -3623,6 +3740,7 @@ async function runClueConOperatorDrill(
     return {
       latest,
       steps,
+      completedControlStages: ["understand", "prepare"],
       summary: kind === "rtc_asr_unavailable" || kind === "tts_unavailable"
         ? `${kind} -> prerecorded error prompt -> fail-closed human handoff.`
         : `${kind} -> fail-closed human handoff; no improvised offer.`,
@@ -3645,6 +3763,7 @@ async function runClueConOperatorDrill(
   return {
     latest,
     steps,
+    completedControlStages: ["understand", "prepare"],
     summary: kind === "transfer"
       ? "Transfer requested: ACC emitted a JSON call-control command for a FreeSWITCH or SIP/media-server adapter to execute."
       : `${kind} -> operator cockpit applied bounded control and preserved evidence.`,
@@ -3661,7 +3780,7 @@ function buildClueConEvalScorecard(snapshot: CallSnapshot) {
     {
       id: "task_completion",
       label: "Task completion",
-      passed: snapshot.flowState === "wrap" && eventTypes.has("operator_note_recorded"),
+      passed: snapshot.flowState === "wrap" && eventTypes.has("final_policy_state_recorded"),
       evidence: `Call ${snapshot.session.callId} reached ${snapshot.flowState} with ${snapshot.transcript.length} transcript turns.`,
     },
     {
@@ -3673,14 +3792,14 @@ function buildClueConEvalScorecard(snapshot: CallSnapshot) {
     {
       id: "operator_approval",
       label: "Operator approval captured",
-      passed: eventTypes.has("operator_steer_applied") && snapshot.operatorSteer.lastAction === "approve_offer",
-      evidence: snapshot.operatorSteer.lastReason ?? "approve_offer recorded in the event trail.",
+      passed: eventTypes.has("retention_review_approved") && snapshot.operatorSteer.lastAction === "approve_retention_review",
+      evidence: snapshot.operatorSteer.lastReason ?? "Retention review approval recorded in the event trail.",
     },
     {
       id: "final_state",
       label: "Safe final state",
-      passed: transcriptText.includes("offer"),
-      evidence: "Final transcript contains the seeded safe retention offer path.",
+      passed: eventTypes.has("final_policy_state_recorded") && transcriptText.includes("policy remains active"),
+      evidence: "The final event and transcript record an active policy with a retention review pending.",
     },
     {
       id: "latency_evidence",
@@ -4165,6 +4284,10 @@ function parseOperatorSteerCommand(
 
   if (lowerCommand === "approve-offer" || lowerCommand === "approve offer") {
     return { action: "approve_offer" };
+  }
+
+  if (lowerCommand === "approve-retention-review" || lowerCommand === "approve retention review") {
+    return { action: "approve_retention_review" };
   }
 
   if (lowerCommand === "deny-offer" || lowerCommand === "deny offer") {
@@ -5418,7 +5541,7 @@ async function routeRequest(
           return {
             targetId: target.id,
             targetLabel: target.label,
-            websocketUrl: `${target.baseUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/v1/stt/stream`,
+            websocketUrl: getRtcAsrWebsocketUrl(target),
             backend: typeof payload.backend === "string" ? payload.backend : "unknown",
             model: typeof payload.model === "string" ? payload.model : target.label,
             status: typeof payload.status === "string" ? payload.status : result.response.ok ? "ready" : "unavailable",
@@ -5433,7 +5556,7 @@ async function routeRequest(
           return {
             targetId: target.id,
             targetLabel: target.label,
-            websocketUrl: `${target.baseUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/v1/stt/stream`,
+            websocketUrl: getRtcAsrWebsocketUrl(target),
             backend: "unknown",
             model: target.label,
             status: "unavailable",
@@ -5533,9 +5656,14 @@ async function routeRequest(
       writeBadRequest(response, "tts_text_invalid");
       return;
     }
-    const target = getTtsSpeechTarget();
+    const requestedProvider = (getOptionalTrimmedString(body.provider) ?? getConfiguredTtsProvider()).toLowerCase();
+    if (requestedProvider !== "kokoro" && requestedProvider !== "pocket") {
+      writeBadRequest(response, "tts_provider_invalid");
+      return;
+    }
+    const provider = requestedProvider as "kokoro" | "pocket";
+    const target = getTtsSpeechTarget(provider);
     if (!target) {
-      const provider = getConfiguredTtsProvider();
       writeJson(response, 503, {
         ok: false,
         provider,
@@ -5549,7 +5677,7 @@ async function routeRequest(
     const requestedVoice = getOptionalTrimmedString(body.voice);
     const voice = requestedVoice && /^[a-z0-9_-]{1,64}$/i.test(requestedVoice) ? requestedVoice : target.voice;
     const startedAt = performance.now();
-    const idleTimeoutMs = getTtsIdleTimeoutMs();
+    const idleTimeoutMs = getTtsIdleTimeoutMs(provider);
     const controller = new AbortController();
     let idleTimeout = setTimeout(() => controller.abort(), idleTimeoutMs);
     const refreshIdleTimeout = () => {
@@ -5783,6 +5911,7 @@ async function routeRequest(
       kind: body.kind,
       outcome: drill.outcome,
       summary: drill.summary,
+      completedControlStages: drill.completedControlStages,
       integration: drill.integration,
       simulatedEvents: drill.steps.map((step) => step.step),
       steps: drill.steps,
@@ -5809,12 +5938,24 @@ async function routeRequest(
     return;
   }
 
+  if (request.method === "GET" && pathname === "/cluecon/alberto-echo-show-prototype.jpg") {
+    response.writeHead(200, {
+      "content-type": "image/jpeg",
+      "content-length": clueConVoiceOriginPhoto.byteLength,
+      "cache-control": "public, max-age=86400",
+    });
+    response.end(clueConVoiceOriginPhoto);
+    return;
+  }
+
   if (request.method === "GET" && pathname === "/cluecon") {
+    response.setHeader("cache-control", "no-store, max-age=0");
     writeHtml(response, 200, buildClueConHtml(config, "scroll", activeClueConBrainBlocks));
     return;
   }
 
   if (request.method === "GET" && pathname === "/cluecon/present") {
+    response.setHeader("cache-control", "no-store, max-age=0");
     writeHtml(response, 200, buildClueConHtml(config, "present", activeClueConBrainBlocks));
     return;
   }
@@ -6839,6 +6980,11 @@ async function routeRequest(
       return;
     }
 
+    if (hasActiveTerminalOperatorStop(snapshot)) {
+      writeJson(response, 409, { ok: false, error: "operator_console_scripted_turn_terminal" });
+      return;
+    }
+
     const expectedTurnIndex = parseOptionalNonNegativeInteger(
       body.expectedTurnIndex,
       "operator_console_scripted_turn_index_invalid",
@@ -6897,7 +7043,15 @@ async function routeRequest(
         scriptCompleted: updatedSnapshot.pipecatFlow.script.completed,
         call: buildOperatorConsoleCallPayload(updatedSnapshot),
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Retention review approval is required")) {
+        writeJson(response, 409, { ok: false, error: "retention_review_approval_required" });
+        return;
+      }
+      if (error instanceof Error && error.message.startsWith("Caller turn is not allowed after a terminal operator stop")) {
+        writeJson(response, 409, { ok: false, error: "operator_console_scripted_turn_terminal" });
+        return;
+      }
       writeNotFound(response);
     }
     return;
@@ -7091,6 +7245,7 @@ async function routeRequest(
         writeNotFound(response);
         return;
       }
+      if (rejectTerminalOperatorStopCallerTurn(response, currentSnapshot, "/api/calls/:callId/caller-turn")) return;
       if (isLiveSipCallEnded(currentSnapshot)) {
         writeJson(response, 409, {
           ok: false,
@@ -7100,7 +7255,9 @@ async function routeRequest(
         });
         return;
       }
-      const effectiveConversationMode = conversationMode ?? currentSnapshot.scenario.conversationMode;
+      const effectiveConversationMode = shouldForceScriptedRetentionFinalTurn(currentSnapshot, config)
+        ? "scripted"
+        : conversationMode ?? currentSnapshot.scenario.conversationMode;
       if (isOpenAiLiveSipAutomationStopped(currentSnapshot)) {
         await rejectHeldLiveSipCallerTurn(
           response,
@@ -7158,6 +7315,10 @@ async function routeRequest(
               deliveryAckOpenAiResponseHandled = true;
               return undefined;
             }
+            if (rejectTerminalOperatorStopCallerTurn(response, lockedSnapshot, "/api/calls/:callId/caller-turn")) {
+              deliveryAckOpenAiResponseHandled = true;
+              return undefined;
+            }
             if (isLiveSipCallEnded(lockedSnapshot)) {
               writeJson(response, 409, {
                 ok: false,
@@ -7207,6 +7368,7 @@ async function routeRequest(
         writeNotFound(response);
         return;
       }
+      if (rejectTerminalOperatorStopCallerTurn(response, latestSnapshot, "/api/calls/:callId/caller-turn")) return;
       if (isLiveSipCallEnded(latestSnapshot)) {
         writeJson(response, 409, {
           ok: false,
@@ -7321,6 +7483,7 @@ async function routeRequest(
             writeNotFound(response);
             return;
           }
+          if (rejectTerminalOperatorStopCallerTurn(response, lockedSnapshot, "/api/calls/:callId/caller-turn")) return;
           if (isLiveSipCallEnded(lockedSnapshot)) {
             writeJson(response, 409, {
               ok: false,
@@ -7363,6 +7526,7 @@ async function routeRequest(
             writeNotFound(response);
             return;
           }
+          if (rejectTerminalOperatorStopCallerTurn(response, latestSnapshot, "/api/calls/:callId/caller-turn")) return;
           if (openAiLlm?.ok && latestSnapshot.events.length === lockedSnapshot.events.length) {
             await new Promise<void>((resolve) => setImmediate(resolve));
             const recheckedSnapshot = await ingress.getSnapshot(callerTurnMatch[1]);
@@ -7417,7 +7581,15 @@ async function routeRequest(
         openAiLlm,
       });
       writeJson(response, 200, buildCallPayload(snapshot));
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Retention review approval is required")) {
+        writeJson(response, 409, { ok: false, error: "retention_review_approval_required" });
+        return;
+      }
+      if (error instanceof Error && error.message.startsWith("Caller turn is not allowed after a terminal operator stop")) {
+        writeJson(response, 409, { ok: false, error: "caller_turn_terminal_operator_stop" });
+        return;
+      }
       writeNotFound(response);
     } finally {
       if (deliveryAckPreviewReservationKey) {
@@ -7493,7 +7665,9 @@ async function routeRequest(
         writeBadRequest(response, "caller_turn_commit_stale");
         return;
       }
-      const effectiveConversationMode = conversationMode ?? currentSnapshot.scenario.conversationMode;
+      const effectiveConversationMode = shouldForceScriptedRetentionFinalTurn(currentSnapshot, config)
+        ? "scripted"
+        : conversationMode ?? currentSnapshot.scenario.conversationMode;
       const previewKey = buildCallerTurnDeliveryAckKey(callerTurnCommitMatch[1], expectedSnapshotVersion);
       const pendingPreview = callerTurnDeliveryAckPreviews.get(previewKey);
       if (pendingPreview && Date.now() - pendingPreview.createdAtMs >= callerTurnDeliveryAckPreviewTtlMs) {
