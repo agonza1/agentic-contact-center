@@ -2563,18 +2563,21 @@ test("retention approval requires its exact pending request and the console foll
     const approvedCall = approved.payload as SnapshotPayload;
     assert.equal(approvedCall.events.some((event) => event.type === "retention_review_approved"), true);
 
-    const finalTurn = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
-      callId,
-      expectedTurnIndex: 4,
+    const finalTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Keep it active until the review.",
+      conversationMode: "openai_llm",
+      timestamp: "2026-06-10T14:00:18.000Z",
     });
     assert.equal(finalTurn.statusCode, 200);
-    const finalPayload = finalTurn.payload as {
-      scriptCompleted: boolean;
-      call: OperatorConsolePayload["calls"]["items"][number];
-    };
-    assert.equal(finalPayload.scriptCompleted, true);
-    assert.equal(finalPayload.call.actionState.scriptedCallerTurnState.progressLabel, "5/5 scripted turns sent");
-    assert.equal(finalPayload.call.actionState.scriptedCallerTurnState.nextTurnText, null);
+    const finalCall = finalTurn.payload as SnapshotPayload;
+    assert.equal(finalCall.pipecatFlow.script.completed, true);
+    assert.equal(finalCall.events.some((event) => event.type === "retention_followup_created"), true);
+    assert.equal(finalCall.events.some((event) => event.type === "final_policy_state_recorded"), true);
+    assert.equal(finalCall.events.some((event) => event.detail.source === "openai_llm_fail_closed"), false);
+    const completedConsole = await requestJson(port, "GET", `/api/operator/console?callId=${callId}`);
+    const completedCall = (completedConsole.payload as OperatorConsolePayload).calls.items[0];
+    assert.equal(completedCall?.actionState.scriptedCallerTurnState.progressLabel, "5/5 scripted turns sent");
+    assert.equal(completedCall?.actionState.scriptedCallerTurnState.nextTurnText, null);
   }, retentionConfig);
 });
 
@@ -2604,22 +2607,20 @@ test("a denied retention review lets the caller continue cancellation through a 
     const pendingCall = (pendingConsole.payload as OperatorConsolePayload).calls.items[0];
     assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnText, "Continue with cancellation.");
 
-    const continued = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
-      callId,
-      expectedTurnIndex: 4,
+    const continued = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Continue with cancellation.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:18.000Z",
     });
     assert.equal(continued.statusCode, 200);
-    const continuedPayload = continued.payload as {
-      scriptCompleted: boolean;
-      call: OperatorConsolePayload["calls"]["items"][number];
-    };
-    assert.equal(continuedPayload.scriptCompleted, true);
-    assert.equal(continuedPayload.call.flowState, "wrap");
-    assert.equal(continuedPayload.call.events.some((event) => event.type === "human_handoff_started"), true);
-    const finalState = continuedPayload.call.events.find((event) => event.type === "final_policy_state_recorded");
+    const continuedCall = continued.payload as SnapshotPayload;
+    assert.equal(continuedCall.pipecatFlow.script.completed, true);
+    assert.equal(continuedCall.flowState, "wrap");
+    assert.equal(continuedCall.events.some((event) => event.type === "human_handoff_started"), true);
+    const finalState = continuedCall.events.find((event) => event.type === "final_policy_state_recorded");
     assert.equal(finalState?.detail.policyStatus, "active");
     assert.equal(finalState?.detail.pendingOperation, "cancellation_handoff");
-    assert.equal(continuedPayload.call.events.some((event) => event.type === "retention_followup_created"), false);
+    assert.equal(continuedCall.events.some((event) => event.type === "retention_followup_created"), false);
   }, config);
 });
 

@@ -24,7 +24,11 @@ import {
   type AssertEvaluationSpec,
 } from "../core/assertEvaluationSpec";
 import { compareTimestamps, getAttentionMetadata } from "../core/attention";
-import { hasActiveTerminalOperatorStop, InMemoryTelephonyIngress } from "../core/inMemoryTelephonyIngress";
+import {
+  hasActiveTerminalOperatorStop,
+  InMemoryTelephonyIngress,
+  shouldForceScriptedRetentionFinalTurn,
+} from "../core/inMemoryTelephonyIngress";
 import { buildPipecatFlowManagerContractPayload } from "../core/pipecatFlowManagerContract";
 import { buildPipecatMediaEngineReadinessPayload } from "../core/pipecatMediaEngineReadiness";
 import { RealtimeVoiceSessionStore, buildRealtimeVoiceSessionEndpoints } from "../core/realtimeVoiceSessions";
@@ -7251,7 +7255,9 @@ async function routeRequest(
         });
         return;
       }
-      const effectiveConversationMode = conversationMode ?? currentSnapshot.scenario.conversationMode;
+      const effectiveConversationMode = shouldForceScriptedRetentionFinalTurn(currentSnapshot, config)
+        ? "scripted"
+        : conversationMode ?? currentSnapshot.scenario.conversationMode;
       if (isOpenAiLiveSipAutomationStopped(currentSnapshot)) {
         await rejectHeldLiveSipCallerTurn(
           response,
@@ -7659,7 +7665,9 @@ async function routeRequest(
         writeBadRequest(response, "caller_turn_commit_stale");
         return;
       }
-      const effectiveConversationMode = conversationMode ?? currentSnapshot.scenario.conversationMode;
+      const effectiveConversationMode = shouldForceScriptedRetentionFinalTurn(currentSnapshot, config)
+        ? "scripted"
+        : conversationMode ?? currentSnapshot.scenario.conversationMode;
       const previewKey = buildCallerTurnDeliveryAckKey(callerTurnCommitMatch[1], expectedSnapshotVersion);
       const pendingPreview = callerTurnDeliveryAckPreviews.get(previewKey);
       if (pendingPreview && Date.now() - pendingPreview.createdAtMs >= callerTurnDeliveryAckPreviewTtlMs) {

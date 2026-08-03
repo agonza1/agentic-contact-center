@@ -93,6 +93,22 @@ export function hasActiveTerminalOperatorStop(snapshot: CallSnapshot): boolean {
   return stopIndex >= 0 && releaseIndex <= stopIndex;
 }
 
+export function shouldForceScriptedRetentionFinalTurn(snapshot: CallSnapshot, config: PocConfig): boolean {
+  const configuredConversationMode =
+    snapshot.scenario.conversationMode
+    ?? (snapshot.session.openclawSession.label === "pipecat-local-voice" ? "free_caller" : "scripted");
+  const retentionDecisionRecorded = snapshot.events.some((event) =>
+    event.type === "retention_review_approved" || event.type === "retention_review_denied",
+  );
+
+  return configuredConversationMode === "scripted"
+    && config.policy.defaultSupervisorSteer === "approve_retention_review"
+    && snapshot.transcript.filter((entry) => entry.speaker === "caller").length >= 4
+    && !snapshot.operatorSteer.pending
+    && retentionDecisionRecorded
+    && !snapshot.events.some((event) => event.type === "final_policy_state_recorded");
+}
+
 function buildOpenClawArtifactLinks(callId: string) {
   const basePath = `/api/calls/${callId}`;
 
@@ -372,10 +388,13 @@ export class InMemoryTelephonyIngress {
   }
 
   private applyCallerTurn(snapshot: CallSnapshot, turn: TranscriptTurn, config: PocConfig, options: CallerTurnOptions): void {
-    const conversationMode =
+    const requestedConversationMode =
       options.conversationMode
       ?? snapshot.scenario.conversationMode
       ?? (snapshot.session.openclawSession.label === "pipecat-local-voice" ? "free_caller" : "scripted");
+    const conversationMode = shouldForceScriptedRetentionFinalTurn(snapshot, config)
+      ? "scripted"
+      : requestedConversationMode;
 
     if (hasActiveTerminalOperatorStop(snapshot)) {
       throw new Error(`Caller turn is not allowed after a terminal operator stop: ${snapshot.session.callId}`);
