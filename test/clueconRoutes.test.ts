@@ -404,7 +404,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.caePanel.webBaseUrl, "http://127.0.0.1:3010");
   assert.equal(payload.caePanel.scenariosPath, "/scenarios");
   assert.equal(payload.caePanel.runsPath, "/runs");
-  assert.match(payload.caePanel.relationship, /ACC remains an optional target adapter/);
+  assert.match(payload.caePanel.relationship, /ACC runs the local scorecard/);
   assert.equal(payload.contactPanel.email, "alberto@webrtc.ventures");
   assert.equal(payload.contactPanel.linkedinUrl, "https://www.linkedin.com/in/albertogonzaleztrastoy/");
   assert.match(payload.contactPanel.logoUrl, /logo-main-light\.svg/);
@@ -930,6 +930,7 @@ test("GET/POST /api/cluecon/eval expose ASSERT handoff preview and scorecard", a
     compatibleRequest: string;
     runRoute: string;
     scorecardChecks: string[];
+    scorecardGroups: { safety: string[]; evidenceCoverage: string[]; performance: string };
     evidenceArtifacts: string[];
   };
   assert.equal(preview.ok, true);
@@ -938,6 +939,8 @@ test("GET/POST /api/cluecon/eval expose ASSERT handoff preview and scorecard", a
   assert.equal(preview.compatibleRequest, "conversation-agent-evals-assert-request.json");
   assert.equal(preview.runRoute, "/api/cluecon/eval/run");
   assert.ok(preview.scorecardChecks.includes("policy_hold"));
+  assert.deepEqual(preview.scorecardGroups.safety, ["task_completion", "policy_hold", "operator_approval", "final_state"]);
+  assert.equal(preview.scorecardGroups.performance, "reported_separately");
   assert.ok(preview.evidenceArtifacts.includes("action_trace"));
 
   const runResponse = await post("/api/cluecon/eval/run");
@@ -946,7 +949,15 @@ test("GET/POST /api/cluecon/eval expose ASSERT handoff preview and scorecard", a
     ok: boolean;
     workboardCard: string;
     compatibleRequest: string;
-    scorecard: { overallPassed: boolean; passed: number; total: number; checks: Array<{ id: string; passed: boolean; evidence: string }> };
+    scorecard: {
+      overallPassed: boolean;
+      passed: number;
+      total: number;
+      checks: Array<{ id: string; label: string; passed: boolean; evidence: string }>;
+      safety: { passed: number; total: number };
+      evidenceCoverage: { passed: number; total: number };
+      performance: { status: string; total: number; overBudget: number; evidence: string };
+    };
     assertRequestPreview: { spec_ref: { assert_project: string }; evidence: { transcript: { readiness: string }; proof_bundle: { routes: { transcript: string } } }; metadata: { compatible_file: string } };
     proofLinks: { proof: string; operatorConsole: string };
   };
@@ -955,7 +966,12 @@ test("GET/POST /api/cluecon/eval expose ASSERT handoff preview and scorecard", a
   assert.equal(run.compatibleRequest, "conversation-agent-evals-assert-request.json");
   assert.equal(run.scorecard.overallPassed, true);
   assert.equal(run.scorecard.passed, run.scorecard.total);
-  assert.ok(run.scorecard.checks.some((check) => check.id === "operator_approval" && check.passed));
+  assert.deepEqual({ passed: run.scorecard.safety.passed, total: run.scorecard.safety.total }, { passed: 4, total: 4 });
+  assert.deepEqual({ passed: run.scorecard.evidenceCoverage.passed, total: run.scorecard.evidenceCoverage.total }, { passed: 2, total: 2 });
+  assert.equal(run.scorecard.performance.status, "warning");
+  assert.ok(run.scorecard.performance.overBudget > 0);
+  assert.ok(run.scorecard.performance.total >= run.scorecard.performance.overBudget);
+  assert.ok(run.scorecard.checks.some((check) => check.id === "operator_approval" && check.passed && check.label === "Approval to open retention review captured"));
   assert.equal(run.assertRequestPreview.spec_ref.assert_project, "conversation-agent-evals");
   assert.equal(run.assertRequestPreview.evidence.transcript.readiness, "inline_preview");
   assert.match(run.assertRequestPreview.evidence.proof_bundle.routes.transcript, /\/api\/calls\/demo-call-\d+\/transcript/);
@@ -993,7 +1009,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /xform-carrier/);
   assert.match(narrative.body, /media-wave/);
   assert.match(narrative.body, /media-tokens/);
-  assert.equal((narrative.body.match(/data-slide="\d+"/g) ?? []).length, 15);
+  assert.equal((narrative.body.match(/data-slide="\d+"/g) ?? []).length, 16);
   assert.match(narrative.body, /January 2017 · My first voice prototype/);
   assert.match(narrative.body, /My first voice AI/);
   assert.match(narrative.body, /could do anything—/);
@@ -1065,7 +1081,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Starting microphone…/);
   assert.match(narrative.body, /MIC_START_CANCELLED/);
   assert.match(narrative.body, /slideCount: slideOrder\.length/);
-  assert.match(narrative.body, /\["flow", "voice-evolution", "realtime-problem", "map", "integration", "vad-interruption", "asr-architecture", "asr", "security", "agent", "demo", "tts", "ecosystem", "proof", "finale"\]/);
+  assert.match(narrative.body, /\["flow", "voice-evolution", "realtime-problem", "map", "integration", "vad-interruption", "asr-architecture", "asr", "security", "agent", "demo", "tts", "ecosystem", "slo", "proof", "finale"\]/);
   assert.match(narrative.body, /Pipecat coordinates the realtime media and LLM loop\./);
   assert.match(narrative.body, /Agentic Call Center app authorizes tools and telephony actions/);
   assert.match(narrative.body, /orient="auto-start-reverse"/);
@@ -1116,7 +1132,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /system-unavailable\.mp3/);
   assert.match(narrative.body, /kind === "rtc_asr_unavailable"/);
   assert.doesNotMatch(narrative.body, /id="run-demo-top"/);
-  assert.match(narrative.body, /Run ACC proof/);
+  assert.match(narrative.body, /Generate evaluation bundle/);
   assert.match(narrative.body, /window\.__CLUECON__/);
   assert.match(narrative.body, /rtc-asr is measurable and swappable/);
   assert.match(narrative.body, /id="asr-architecture"/);
@@ -1279,10 +1295,16 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Application \/ DB · authoritative handler/);
   assert.match(narrative.body, /function setupAgentCode\(\)/);
   assert.match(narrative.body, /A node defines what the model may discuss and propose/);
-  assert.match(narrative.body, /Open CAE scenarios ↗/);
-  assert.match(narrative.body, /Simulate voice call in CAE ↗/);
-  assert.match(narrative.body, /http:\/\/127\.0\.0\.1:3010\/scenarios/);
-  assert.match(narrative.body, /http:\/\/127\.0\.0\.1:3010\/runs/);
+  assert.match(narrative.body, /Reliable audio is necessary\. Reliable conversation is the outcome\./);
+  assert.match(narrative.body, /Traditional service SLO/);
+  assert.match(narrative.body, /Conversational SLO/);
+  assert.match(narrative.body, /Google SRE Workbook ↗/);
+  assert.match(narrative.body, /ITU-T P\.851 ↗/);
+  assert.match(narrative.body, /ConversationAgentEvals · compatible handoff/);
+  assert.match(narrative.body, /One call becomes a repeatable safety test\./);
+  assert.match(narrative.body, /Approval to open retention review captured/);
+  assert.doesNotMatch(narrative.body, /CAE_WEB_URL/);
+  assert.doesNotMatch(narrative.body, /id="proof-cards"/);
   assert.match(narrative.body, /Every enterprise workflow can now begin with a conversation\./);
   assert.match(narrative.body, /2017 · People adapted to systems\./);
   assert.match(narrative.body, /Now · Systems can adapt to people\./);
@@ -1301,7 +1323,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /\.flow-brand img \{[^}]*width: min\(250px, 62vw\)/);
   assert.match(narrative.body, /runEvalProof/);
   assert.match(narrative.body, /goToSlide/);
-  assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 15'));
+  assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 16'));
+  assert.match(narrative.body, /"ecosystem", "slo", "proof", "finale"/);
   assert.match(narrative.body, /aria-label="Previous slide"/);
   assert.ok(narrative.body.includes('status.textContent = String(state.slide + 1) + " / " + String(state.slideCount)'));
   assert.match(narrative.body, /@media \(max-width: 1100px\) \{ \.demo-control-step/);
@@ -1322,7 +1345,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /\.present #demo, \.present #tts \{ align-content: start; padding-top: clamp\(16px, 2\.4vh, 24px\); \}/);
   assert.match(narrative.body, /\.voice-pipeline__detail \{ display: none; \}/);
   assert.match(narrative.body, /class="readiness-more"/);
-  assert.match(narrative.body, /class="card proof-field"/);
+  assert.match(narrative.body, /class="eval-details"/);
 
   const present = await get("/cluecon/present");
   assert.equal(present.statusCode, 200);
@@ -1330,7 +1353,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(present.body, /From SIP to Tokens/);
   assert.match(present.body, /Alberto Gonzalez CTO @ WebRTC\.ventures/);
   assert.match(present.body, /ArrowRight/);
-  assert.match(present.body, /Run ACC proof/);
+  assert.match(present.body, /Generate evaluation bundle/);
   assert.match(present.body, /eval-scorecard/);
   assert.match(present.body, /ClueCon 2026 presentation/);
   assert.match(present.body, /RTF = processing time ÷ audio duration/);
@@ -1379,9 +1402,9 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.doesNotMatch(html, /15 min system story/);
   assert.doesNotMatch(html, /10 min live demo/);
   assert.doesNotMatch(html, /5 min proof \+ close/);
-  assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 15);
-  assert.match(html, /Open CAE scenarios ↗/);
-  assert.match(html, /Simulate voice call in CAE ↗/);
+  assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 16);
+  assert.match(html, /Reliable audio is necessary\. Reliable conversation is the outcome\./);
+  assert.match(html, /Generate evaluation bundle/);
   assert.match(html, /Every enterprise workflow can now begin with a conversation\./);
   assert.match(html, /Open source projects to try below:/);
   assert.doesNotMatch(html, /Bring back evidence\. Let’s compare notes after the talk\./);
