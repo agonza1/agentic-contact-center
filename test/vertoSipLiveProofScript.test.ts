@@ -1,12 +1,53 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const optionalPipecatRuntime = path.resolve(__dirname, "..", "..", ".pipecat-runtime");
+
+function pipecatRuntimeImportOk(repoRoot: string) {
+  if (!existsSync(path.join(repoRoot, ".pipecat-runtime"))) return false;
+  try {
+    execFileSync(
+      "python3",
+      [
+        "-P",
+        "-c",
+        [
+          "import sys",
+          "from pathlib import Path",
+          "root = Path(sys.argv[1])",
+          "sys.path.insert(0, str(root / '.pipecat-runtime'))",
+          "import regex",
+          "import regex._regex",
+          "import aiortc",
+          "import pipecat",
+          "print('ok')",
+        ].join("; "),
+        repoRoot,
+      ],
+      { cwd: tmpdir(), timeout: 20_000, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureUsablePipecatRuntime(repoRoot: string) {
+  if (pipecatRuntimeImportOk(repoRoot)) return true;
+  if (!existsSync(path.join(repoRoot, ".pipecat-runtime"))) return false;
+  await execFileAsync(
+    "npm",
+    ["run", "pipecat:webrtc:install"],
+    { cwd: repoRoot, timeout: 240_000, encoding: "utf8" },
+  );
+  return pipecatRuntimeImportOk(repoRoot);
+}
 
 test("Verto SIP live proof self-test validates digest, SDP, and RTP packet helpers", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
@@ -43,6 +84,9 @@ test("Verto SIP proof requires transcript-backed non-silent caller playback", ()
   const script = readFileSync("scripts/verto-sip-live-proof.mjs", "utf8");
 
   assert.match(script, /--caller-audio/);
+  assert.match(script, /--workboard-card/);
+  assert.match(script, /ACC_WORKBOARD_CARD/);
+  assert.match(script, /workboardCard: this\.options\.workboardCard/);
   assert.match(script, /--tail-silence-ms/);
   assert.match(script, /stt\.transcript_final/);
   assert.match(script, /snapshot\?\.lastEvidence\?\.callerTranscript/);
@@ -202,8 +246,9 @@ test("Verto bridge scopes FreeSWITCH WebRTC behavior without process-global patc
   assert.doesNotMatch(browserBridge, /FreeSwitchSmallWebRTCRequestHandler|FreeSwitchWebRTCConnection/);
 });
 
-test("Verto bridge scopes call artifact rewrites and lastError", { skip: !existsSync(".pipecat-runtime") }, async () => {
+test("Verto bridge scopes call artifact rewrites and lastError", { skip: !existsSync(optionalPipecatRuntime), timeout: 260_000 }, async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
+  assert.equal(await ensureUsablePipecatRuntime(repoRoot), true);
   const { stdout } = await execFileAsync(
     "python3",
     ["-P", path.join(repoRoot, "test/fixtures/verto_bridge_artifact_regression.py")],
@@ -220,8 +265,9 @@ test("Verto bridge scopes call artifact rewrites and lastError", { skip: !exists
   assert.equal(summary.callBStage, "updated");
 });
 
-test("Verto bridge normalizes FreeSWITCH ICE, DTLS, and G.711 RTP", { skip: !existsSync(".pipecat-runtime") }, async () => {
+test("Verto bridge normalizes FreeSWITCH ICE, DTLS, and G.711 RTP", { skip: !existsSync(optionalPipecatRuntime), timeout: 260_000 }, async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
+  assert.equal(await ensureUsablePipecatRuntime(repoRoot), true);
   const { stdout } = await execFileAsync(
     "python3",
     ["-P", path.join(repoRoot, "scripts/pipecat-verto-agent-bridge.py"), "--sdp-normalization-self-test"],

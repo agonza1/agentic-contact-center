@@ -33,6 +33,10 @@ function hasArg(flag) {
   return process.argv.includes(flag);
 }
 
+function configuredWorkboardCard(liveManifest) {
+  return argValue("--workboard-card", process.env.ACC_WORKBOARD_CARD || liveManifest.workboardCard || "872af947-ef57-47bd-a4f3-3750f54e1948");
+}
+
 function rel(filePath) {
   return path.relative(repoRoot, filePath).replaceAll(path.sep, "/");
 }
@@ -854,6 +858,7 @@ async function main() {
   ];
   const bundleRevision = gitRevision();
   const sourceRevision = liveManifest.sourceRevision ?? gitRevision();
+  const workboardCard = configuredWorkboardCard(liveManifest);
   const runtimeTrace = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
@@ -891,7 +896,7 @@ async function main() {
         source_repo: "agonza1/agentic-contact-center",
         source_revision: sourceRevision,
         bundle_revision: bundleRevision,
-        workboard_card: "872af947-ef57-47bd-a4f3-3750f54e1948",
+        workboard_card: workboardCard,
         live_manifest: rel(liveManifestPath),
       },
     },
@@ -903,7 +908,7 @@ async function main() {
     platform_metadata: {
       user_id: "alberto-local-sip-proof",
       project_id: "agentic-contact-center",
-      project_run_label: "workboard-872af947-local-sip-live-capture",
+      project_run_label: `workboard-${workboardCard.slice(0, 8)}-local-sip-live-capture`,
       initiated_by: "local-script",
       notes: liveManifest.reviewReady ? "Local SIP live capture bundle." : "Not review-ready; blockers list explains missing live proof requirements.",
       labels,
@@ -947,7 +952,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     sourceRevision,
     bundleRevision,
-    workboardCard: "872af947-ef57-47bd-a4f3-3750f54e1948",
+    workboardCard,
     reviewReady: liveManifest.reviewReady === true,
     runtimeModeLabels: liveManifest.runtimeModeLabels,
     labels,

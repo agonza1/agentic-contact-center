@@ -17,6 +17,10 @@ function hasFlag(flag) {
   return process.argv.includes(flag);
 }
 
+function configuredWorkboardCard() {
+  return argValue("--workboard-card", process.env.ACC_WORKBOARD_CARD || "e10f92c2-7b71-4956-9410-1f84f253dd3d");
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -890,7 +894,7 @@ class SipProofCall {
       schemaVersion: 1,
       generatedAt: nowIso(),
       sourceRevision: gitRevision(),
-      workboardCard: "e10f92c2-7b71-4956-9410-1f84f253dd3d",
+      workboardCard: this.options.workboardCard,
       callId: this.options.accCallId ?? null,
       sipCallId: this.callId,
       runtimeModeLabels: {
@@ -1209,6 +1213,7 @@ async function main() {
     rtcAsrEvidencePath: argValue("--rtc-asr-evidence", process.env.RTC_ASR_EVIDENCE_PATH),
     freeSwitchLogPath: argValue("--freeswitch-log", process.env.FREESWITCH_LOG_PATH || "/opt/homebrew/Cellar/freeswitch/1.11.1/var/log/freeswitch/freeswitch.log"),
     accCallId: argValue("--acc-call-id", process.env.ACC_CALL_ID),
+    workboardCard: configuredWorkboardCard(),
   });
   const manifest = await call.run();
   console.log(JSON.stringify({

@@ -42,6 +42,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
   const sipLogPath = path.join(tempDir, "sip.log.json");
   const manifestPath = path.join(tempDir, "local-sip-live-proof-manifest.json");
   const outDir = path.join(tempDir, "bundle");
+  const overrideWorkboardCard = "460f5326-5347-4eaa-9d49-b526f97324a2";
 
   try {
     await writeFile(audioPath, validWavFixture());
@@ -88,7 +89,7 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
 
     const { stdout } = await execFileAsync(
       process.execPath,
-      ["scripts/live-sip-proof-bundle.mjs", "--live-manifest", manifestPath, "--out-dir", outDir],
+      ["scripts/live-sip-proof-bundle.mjs", "--live-manifest", manifestPath, "--out-dir", outDir, "--workboard-card", overrideWorkboardCard],
       { cwd: repoRoot },
     );
 
@@ -105,12 +106,14 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
 
     const bundleManifest = JSON.parse(await readFile(path.join(outDir, "proof-bundle-manifest.json"), "utf8")) as {
       reviewReady: boolean;
+      workboardCard: string;
       labels: string[];
       artifactIntegrity: Array<{ artifactId: string; kind: string; sha256: string; sizeBytes: number; readiness: string }>;
       reviewGate: { passed: boolean; requiredLabels: string[]; missingLabels: string[]; checks: Record<string, boolean>; failureReasons: Record<string, string> };
       validationSummary: { status: string; checks: Record<string, boolean>; blockers: string[]; nextActions: string[]; callerAudioEvidence: { ready: boolean; hasRiffWaveHeader: boolean; hasPcmFormat: boolean; hasAudioPayload: boolean; audioFormat: number | null; channelCount: number | null; sampleRateHz: number | null; bitsPerSample: number | null; declaredDataBytes: number; sizeBytes: number }; sipLogEvidence: { entryCount: number; hasInvite: boolean; hasAcceptedInviteResponse: boolean } };
     };
     assert.equal(bundleManifest.reviewReady, false);
+    assert.equal(bundleManifest.workboardCard, overrideWorkboardCard);
     assert.ok(bundleManifest.labels.includes("generated_media"));
     assert.ok(bundleManifest.labels.includes("rtc_asr_blocked"));
     assert.equal(bundleManifest.artifactIntegrity.length, 6);
@@ -143,8 +146,11 @@ test("live SIP proof bundle carries integrity and honest review blockers", async
     ]);
 
     const assertRequest = JSON.parse(await readFile(path.join(outDir, "conversation-agent-evals-assert-request.json"), "utf8")) as {
-      platform_metadata: { notes: string; labels: string[] };
+      evidence: { provenance: { workboard_card: string } };
+      platform_metadata: { notes: string; labels: string[]; project_run_label: string };
     };
+    assert.equal(assertRequest.evidence.provenance.workboard_card, overrideWorkboardCard);
+    assert.equal(assertRequest.platform_metadata.project_run_label, "workboard-460f5326-local-sip-live-capture");
     assert.match(assertRequest.platform_metadata.notes, /Not review-ready/);
     assert.ok(assertRequest.platform_metadata.labels.includes("mocked_telephony"));
 
