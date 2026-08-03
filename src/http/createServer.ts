@@ -2384,6 +2384,7 @@ function rejectTerminalOperatorStopCallerTurn(
   route: "/api/calls/:callId/caller-turn",
 ): boolean {
   if (!hasActiveTerminalOperatorStop(snapshot)) return false;
+  if (snapshot.session.runtimeModeLabels.telephony !== "mocked_telephony") return false;
   writeJson(response, 409, {
     ok: false,
     route,

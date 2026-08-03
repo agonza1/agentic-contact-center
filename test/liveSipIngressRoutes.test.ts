@@ -734,7 +734,7 @@ test("live SIP separates 8611 scripted flow from 8600 OpenAI flow", async () => 
     assert.equal(scriptedTranscript.statusCode, 200);
     assert.equal(
       scriptedTranscript.payload.call.transcript.at(-1).text,
-      "I can help with that. Before I review options, what is pushing you to cancel today?",
+      "I can help with that. May I ask what is prompting the cancellation?",
     );
     assert.equal(openAiRequests.length, 0);
 
