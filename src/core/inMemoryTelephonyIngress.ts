@@ -64,7 +64,7 @@ interface CallerTurnOptions {
 
 type VoiceSessionScope = Pick<CallerTurnOptions, "voiceSessionId" | "realtimeVoiceSessionId">;
 
-const terminalOperatorSteerActions = new Set(["escalate_to_human", "transfer", "end_call"]);
+const terminalOperatorSteerActions = new Set(["escalate_to_human", "transfer", "takeover", "end_call"]);
 const operatorSteerReleaseActions = new Set(["resume"]);
 
 function getOperatorSteerAction(event: CallSnapshot["events"][number]): string | null {
@@ -77,7 +77,7 @@ function isOperatorSteerReleaseEvent(event: CallSnapshot["events"][number]): boo
   return action !== null && operatorSteerReleaseActions.has(action);
 }
 
-function hasActiveTerminalOperatorStop(snapshot: CallSnapshot): boolean {
+export function hasActiveTerminalOperatorStop(snapshot: CallSnapshot): boolean {
   const stopIndex = snapshot.events.reduce((latest, event, index) => {
     const action = getOperatorSteerAction(event);
     const terminalAction = event.type === "operator_steer_applied" && action !== null && terminalOperatorSteerActions.has(action);
@@ -91,6 +91,22 @@ function hasActiveTerminalOperatorStop(snapshot: CallSnapshot): boolean {
     return isOperatorSteerReleaseEvent(event) ? index : latest;
   }, -1);
   return stopIndex >= 0 && releaseIndex <= stopIndex;
+}
+
+export function shouldForceScriptedRetentionFinalTurn(snapshot: CallSnapshot, config: PocConfig): boolean {
+  const configuredConversationMode =
+    snapshot.scenario.conversationMode
+    ?? (snapshot.session.openclawSession.label === "pipecat-local-voice" ? "free_caller" : "scripted");
+  const retentionDecisionRecorded = snapshot.events.some((event) =>
+    event.type === "retention_review_approved" || event.type === "retention_review_denied",
+  );
+
+  return configuredConversationMode === "scripted"
+    && config.policy.defaultSupervisorSteer === "approve_retention_review"
+    && snapshot.transcript.filter((entry) => entry.speaker === "caller").length >= 4
+    && !snapshot.operatorSteer.pending
+    && retentionDecisionRecorded
+    && !snapshot.events.some((event) => event.type === "final_policy_state_recorded");
 }
 
 function buildOpenClawArtifactLinks(callId: string) {
@@ -311,7 +327,7 @@ export class InMemoryTelephonyIngress {
         respondedAt: null,
         source: null,
       },
-      pipecatFlow: buildPipecatFlowPrototypeStatus(),
+      pipecatFlow: buildPipecatFlowPrototypeStatus(config.policy.defaultSupervisorSteer),
       flowState: "call_started",
       transcript: [],
       events: [
@@ -372,10 +388,27 @@ export class InMemoryTelephonyIngress {
   }
 
   private applyCallerTurn(snapshot: CallSnapshot, turn: TranscriptTurn, config: PocConfig, options: CallerTurnOptions): void {
-    const conversationMode =
+    const requestedConversationMode =
       options.conversationMode
       ?? snapshot.scenario.conversationMode
       ?? (snapshot.session.openclawSession.label === "pipecat-local-voice" ? "free_caller" : "scripted");
+    const conversationMode = shouldForceScriptedRetentionFinalTurn(snapshot, config)
+      ? "scripted"
+      : requestedConversationMode;
+
+    if (hasActiveTerminalOperatorStop(snapshot)) {
+      throw new Error(`Caller turn is not allowed after a terminal operator stop: ${snapshot.session.callId}`);
+    }
+
+    const retentionReviewApprovalRequired =
+      config.policy.defaultSupervisorSteer === "approve_retention_review"
+      && snapshot.transcript.filter((entry) => entry.speaker === "caller").length >= 4
+      && snapshot.operatorSteer.pending
+      && snapshot.operatorSteer.lastAction === "approve_retention_review"
+      && !snapshot.events.some((event) => event.type === "retention_review_approved");
+    if (retentionReviewApprovalRequired) {
+      throw new Error(`Retention review approval is required before the caller can select the final path: ${snapshot.session.callId}`);
+    }
 
     snapshot.transcript.push({ ...turn });
     snapshot.events.push({
@@ -581,8 +614,35 @@ export class InMemoryTelephonyIngress {
       throw new Error(`Unknown call id: ${callId}`);
     }
 
+    if (
+      action === "approve_retention_review" &&
+      (!snapshot.operatorSteer.pending || snapshot.operatorSteer.lastAction !== "approve_retention_review")
+    ) {
+      throw new Error(`Call is not awaiting operator steer for the requested retention review: ${callId}`);
+    }
+
+    if (
+      action === "approve_offer" &&
+      (!snapshot.operatorSteer.pending || snapshot.operatorSteer.lastAction !== "approve_offer")
+    ) {
+      throw new Error(`Call is not awaiting operator steer for the requested offer: ${callId}`);
+    }
+
+    if (
+      (action === "pause" || action === "resume" || action === "goto_slide" || action === "ask_operator") &&
+      snapshot.operatorSteer.pending &&
+      (snapshot.operatorSteer.lastAction === "approve_offer" ||
+        snapshot.operatorSteer.lastAction === "approve_retention_review")
+    ) {
+      throw new Error(`Call is not awaiting operator steer for ${action} while an approval decision is pending: ${callId}`);
+    }
+
     const requiresPendingState =
-      action === "approve_offer" || action === "deny_offer" || action === "escalate_to_human" || action === "resume";
+      action === "approve_offer" ||
+      action === "approve_retention_review" ||
+      action === "deny_offer" ||
+      action === "escalate_to_human" ||
+      action === "resume";
     const resumesArmedFallback = action === "resume" && snapshot.demoFallback.armed;
     const resumesTerminalOperatorStop = action === "resume" && hasActiveTerminalOperatorStop(snapshot);
     if (
