@@ -382,8 +382,7 @@ export class InMemoryTelephonyIngress {
     }
 
     const retentionReviewApprovalRequired =
-      conversationMode === "scripted"
-      && config.policy.defaultSupervisorSteer === "approve_retention_review"
+      config.policy.defaultSupervisorSteer === "approve_retention_review"
       && snapshot.transcript.filter((entry) => entry.speaker === "caller").length >= 4
       && snapshot.operatorSteer.pending
       && snapshot.operatorSteer.lastAction === "approve_retention_review"

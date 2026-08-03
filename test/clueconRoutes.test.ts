@@ -1168,6 +1168,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /context\.state !== "closed"/);
   assert.match(narrative.body, /function renderAsrRealtimeError/);
   assert.match(narrative.body, /id="asr-record"/);
+  assert.match(narrative.body, /async function releaseAsrRecordingResources\(capture\)/);
+  assert.match(narrative.body, /capture\.stream\.getTracks\(\)\.forEach\(track => track\.stop\(\)\)/);
+  assert.match(narrative.body, /capture\.context && capture\.context\.state !== "closed"/);
+  assert.match(narrative.body, /catch \(error\) \{ await releaseAsrRecordingResources\(capture\); throw error; \}/);
   assert.match(narrative.body, /Source ↗/);
   assert.match(narrative.body, /rtc-asr\/tree\/main\/examples\/browser_pipecat_demo/);
   assert.match(narrative.body, /Benchmarks ↗/);

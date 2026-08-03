@@ -2541,6 +2541,21 @@ test("retention approval requires its exact pending request and the console foll
     assert.equal(stillPendingCall.events.some((event) => event.type === "retention_followup_created"), false);
     assert.equal(stillPendingCall.events.some((event) => event.type === "final_policy_state_recorded"), false);
 
+    const modeOverrideFinalTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
+      text: "Keep it active until the review.",
+      conversationMode: "free_caller",
+      timestamp: "2026-06-10T14:00:18.000Z",
+    });
+    assert.equal(modeOverrideFinalTurn.statusCode, 409);
+    assert.equal((modeOverrideFinalTurn.payload as { error: string }).error, "retention_review_approval_required");
+    const afterModeOverride = await requestJson(port, "GET", `/api/calls/${callId}`);
+    const afterModeOverrideCall = afterModeOverride.payload as SnapshotPayload;
+    assert.deepEqual(afterModeOverrideCall.transcript, stillPendingCall.transcript);
+    assert.deepEqual(afterModeOverrideCall.events, stillPendingCall.events);
+    assert.equal(afterModeOverrideCall.pipecatFlow.script.matchedCallerTurns, 4);
+    assert.equal(afterModeOverrideCall.operatorSteer.pending, true);
+    assert.equal(afterModeOverrideCall.operatorSteer.lastAction, "approve_retention_review");
+
     const approved = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
       action: "approve_retention_review",
     });
