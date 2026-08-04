@@ -1637,7 +1637,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
           <pre><code id="agent-code-content"></code></pre>
         </div>
       </div>
-      <template id="agent-code-identity">from pipecat.flows import NodeConfig
+      <template id="agent-code-identity">from pipecat.flows import ConsolidatedFunctionResult, FlowManager, NodeConfig
 
 def collect_identity_node() -> NodeConfig:
     return NodeConfig(
@@ -1646,30 +1646,25 @@ def collect_identity_node() -> NodeConfig:
             "You are a concise voice support agent. "
             "Never reveal account data before verification."
         ),
-        # Node objective; Pipecat adapts this across LLM providers.
         task_messages=[{
             "role": "developer",
             "content": (
-                "Collect the caller's full name and billing ZIP. "
-                "Treat them only as lookup inputs—not proof of identity. "
-                "Confirm both, then call submit_identity. "
-                "If the caller declines, offer a human handoff."
+                "Collect full name and billing ZIP as lookup inputs—not proof. "
+                "Confirm both, then call submit_identity; if declined, "
+                "offer a human handoff."
             ),
         }],
         functions=[submit_identity, transfer_to_human],
-        respond_immediately=True,
     )</template>
       <template id="agent-code-request">def understand_request_node() -> NodeConfig:
     return NodeConfig(
         name="understand_request",
         task_messages=[{
             "role": "developer",
-            "content": """
-            Ask how you can help.
-            Classify the request as account_information,
-            change_plan, cancellation, or other.
-            Call route_request after the request is clear.
-            """,
+            "content": (
+                "Ask how you can help. Classify as account_information, "
+                "change_plan, cancellation, or other; then call route_request."
+            ),
         }],
         functions=[route_request, transfer_to_human],
     )</template>
@@ -1678,54 +1673,57 @@ def collect_identity_node() -> NodeConfig:
     full_name: str,
     zip_code: str,
 ) -> ConsolidatedFunctionResult:
-    """Look up the caller and run the configured identity check."""
+    """Verify caller-provided lookup inputs.
+
+    Args:
+        full_name: Caller name.
+        zip_code: Billing ZIP.
+    """
+    call_id = flow_manager.state["call_id"]  # Seeded before initialize().
     candidate = await customers.lookup(
         full_name=normalize_name(full_name),
         zip_code=normalize_zip(zip_code),
     )
     verification = await identity_service.verify(
-        call_id=flow_manager.state["call_id"],
+        call_id=call_id,
         candidate=candidate,
     )
 
     if not verification.verified:
         return {"status": "not_verified"}, identity_retry_or_handoff()
 
+    state = await call_state.reload(call_id)
     await call_state.bind_verified_customer(
-        call_id=flow_manager.state["call_id"],
+        call_id=call_id,
         customer_id=verification.customer_id,
-        expected_version=flow_manager.state["state_version"],
+        expected_version=state.version,
     )
     return {"status": "verified"}, understand_request_node()</template>
-      <template id="agent-code-approval">async def authorize_operation(operation, call_state):
-    decision = await approvals.resolve(
-        customer_id=call_state.customer_id,
-        operation_id=operation.id,
-        state_version=call_state.version,
-    )
-
-    if decision.status != "approved":
-        return {"authorized": False}, transfer_to_human_node()
-
-    return {
-        "authorized": True,
-        "approval_id": decision.id,
-        "operation_id": operation.id,
-        "state_version": call_state.version,
-    }</template>
-      <template id="agent-code-execute">async def execute_approved_operation(call_id, operation, approval_id):
+      <template id="agent-code-approval">async def authorize_operation(call_id, operation_id):
     state = await call_state.reload(call_id)
-    approval = await approvals.get(approval_id)
-
-    if not approval.matches(operation.id, state.version):
-        return transfer_to_human_node()
-
-    result = await operations.execute_once(
-        operation,
-        idempotency_key=f"{call_id}:{operation.id}:{state.version}",
+    operation = await operations.get_confirmed(call_id, operation_id)
+    return await approvals.resolve(
+        customer_id=state.customer_id,
+        operation_id=operation.id,
+        operation_digest=operation.digest,
+        state_version=state.version,
     )
-    await events.record("operation_completed", result)
-    return explain_result_node(result)</template>
+</template>
+      <template id="agent-code-execute">async def execute_approved_operation(call_id, approval_id):
+    async with db.transaction():
+        state, approval = await reload_authoritative_inputs(call_id, approval_id)
+        operation = await operations.get_confirmed(call_id, approval.operation_id)
+        approval.require_valid_for(
+            customer_id=state.customer_id,
+            operation=operation,
+            state_version=state.version,
+        )  # Checks binding, status, expiry, and prior use.
+        result = await operations.execute_once(
+            operation,
+            idempotency_key=approval.id,
+        )
+        await events.record_in_transaction("operation_completed", result)
+        return result</template>
     </section>
     <section class="section-band slide" data-slide="11" id="ecosystem"><span class="kicker">WebRTC.ventures open source</span><h2>Three projects. One reliability loop.</h2><p class="subhead">Execution, speech, evidence, and evaluation stay independently useful—and integrate through explicit contracts.</p><div class="ecosystem-diagram"><div class="ecosystem-lane"><article class="ecosystem-card ecosystem-card--primary"><small>Orchestration + evidence</small><strong>ConversationAgentEvals</strong><span>Runs scenarios, normalizes proof, and compares regressions.</span></article><div class="ecosystem-arrow-down"><span>canonical evaluation</span><b>↓</b></div><article class="ecosystem-card"><small>Upstream engine</small><strong>ASSERT</strong><span>Generates and judges requirement-driven evaluations.</span></article></div><div class="ecosystem-handoff" aria-label="Bidirectional test and evidence handoff"><span>test scenarios →</span><span>← proof bundle</span></div><div class="ecosystem-lane"><article class="ecosystem-card ecosystem-card--target"><small>Reference target</small><strong>Agentic Contact Center</strong><span>Demonstrates the realtime voice-agent path and deterministic failure controls.</span></article><div class="ecosystem-arrow-down"><span>optional local STT</span><b>↓</b></div><article class="ecosystem-card"><small>Speech sidecar</small><strong>rtc-asr</strong><span>Streams transcripts and publishes reproducible ASR benchmarks.</span></article></div></div><div class="ecosystem-foot">Open components connected by explicit adapters and reviewable evidence.</div></section>
     <section class="section-band slide" data-slide="12" id="proof"><span class="kicker">ConversationAgentEvals demo</span><h2>The talk ends at proof.</h2><p class="subhead">Define the scenario, simulate the voice call, inspect the run, and prove the final state.</p><div class="cae-actions"><button id="run-eval" type="button" class="primary">Run ACC proof</button><a class="mode-link" href="${escapeHtml(joinUrl(payload.caePanel.webBaseUrl, payload.caePanel.scenariosPath))}" target="_blank" rel="noreferrer">Open CAE scenarios ↗</a><a class="mode-link" href="${escapeHtml(joinUrl(payload.caePanel.webBaseUrl, payload.caePanel.runsPath))}" target="_blank" rel="noreferrer">Simulate voice call in CAE ↗</a><a class="mode-link" href="${payload.caePanel.repoUrl}" target="_blank" rel="noreferrer">CAE source ↗</a></div><div class="cae-note">${escapeHtml(payload.caePanel.relationship)} Configure <code>CAE_WEB_URL</code> for the hosted or local CAE web application.</div><div class="two"><div><div class="grid" id="proof-cards"></div><div class="timeline" id="eval-scorecard"></div></div><pre class="proof-pre" id="proof-json">Run the demo to generate proof.</pre></div></section>
