@@ -52,11 +52,14 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(sharedPipeline, /ACC_TTS_OUTPUT_CHUNK_MS/);
   assert.match(sharedPipeline, /ACC_TTS_OUTPUT_CHUNK_YIELD_MS/);
   assert.match(sharedPipeline, /ACC_TTS_EVIDENCE_EVERY_N_CHUNKS/);
+  assert.match(sharedPipeline, /ACC_TTS_REQUEST_TIMEOUT_SEC/);
   assert.match(sharedPipeline, /pacing_deadline = pacing_started_monotonic \+ \(configured_yield_ms \/ 1000\.0 \* paced_chunk_count\)/);
   assert.match(sharedPipeline, /ACC_TTS_CACHE_DIR/);
   assert.match(sharedPipeline, /cacheHit/);
   assert.match(sharedPipeline, /async def prewarm_tts_cache/);
   assert.match(sharedPipeline, /async def prewarm_conversation_tts_cache/);
+  assert.match(sharedPipeline, /DEFAULT_RUNTIME_FAILURE_TEXT/);
+  assert.match(sharedPipeline, /DEFAULT_TOOL_TIMEOUT_TEXT/);
   assert.match(sharedPipeline, /Is this billing, cancellation, an account update, or a human handoff\?/);
   assert.match(sharedPipeline, /temporary_path\.replace/);
   assert.match(sharedPipeline, /speech_started_barge_in/);

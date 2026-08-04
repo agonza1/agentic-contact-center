@@ -76,6 +76,8 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*scripts\/pipecat-verto-agent-bridge\.py/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*working_dir: \/tmp/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_VERTO_AUDIO_OUT_SAMPLE_RATE: \$\{ACC_VERTO_AUDIO_OUT_SAMPLE_RATE:-8000\}/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_WEBRTC_SILENCE_RMS: \$\{ACC_WEBRTC_SILENCE_RMS:-120\}/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_TTS_REQUEST_TIMEOUT_SEC: \$\{ACC_TTS_REQUEST_TIMEOUT_SEC:-60\}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*\.\/artifacts:\/app\/artifacts/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_VERTO_OWNS_GREETING: \${ACC_VERTO_OWNS_GREETING:-true}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_SIP_GREETING_PREROLL_MS: \${ACC_SIP_GREETING_PREROLL_MS:-300}/);
