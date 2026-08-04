@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-04T05:53:54.966Z",
+  "sourceRevision": {
+    "repo": "agonza1/agentic-contact-center",
+    "commit": "bc6e2c00de0c0714de8df83b159593ae0bb8d6c5",
+    "shortCommit": "bc6e2c00de0c",
+    "branch": "acc-330-verto-smallwebrtc-refactor",
+    "dirty": false
+  },
+  "callId": null,
+  "sipCallId": "acc-proof-1785819423318-ef8962274184",
+  "localSip": {
+    "bind": "sip:1000@172.24.0.7:5094",
+    "socketBind": "0.0.0.0:5094",
+    "advertisedRtpHost": "172.24.0.7",
+    "destination": "8600",
+    "acceptedInvite": true,
+    "remoteRtp": {
+      "host": "172.24.0.5",
+      "port": 23882
+    },
+    "rtpPacketCount": 690,
+    "callerInputPacketCount": 690,
+    "callerPlaybackPacketCount": 2957,
+    "callerPlaybackRms": 547,
+    "introPlaybackPacketCount": 716,
+    "introPlaybackRms": 630,
+    "responsePlaybackPacketCount": 2241,
+    "responsePlaybackRms": 517
+  },
+  "runtimeModeLabels": {
+    "telephony": "local_sip",
+    "media": "live_capture",
+    "rtcAsr": "rtc_asr_live",
+    "pipecat": "pipecat_verto_webrtc",
+    "playback": "caller_audible_playback"
+  },
+  "callerPlaybackEvidence": {
+    "required": true,
+    "ready": true,
+    "path": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/caller-playback-evidence.json",
+    "confirmed": true,
+    "eventCount": 1,
+    "reason": null
+  },
+  "outboundPlayback": null,
+  "reviewReady": true,
+  "blockers": []
+}

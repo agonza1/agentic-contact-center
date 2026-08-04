@@ -1,0 +1,1849 @@
+{
+  "proofSipCallId": "acc-proof-1785819423318-ef8962274184",
+  "linkedSipCallId": "8a0291fb-f25f-4d89-bff8-32d383344d83",
+  "vertoCallId": "41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+  "sourceLog": "artifacts/freeswitch-live/freeswitch.log",
+  "redaction": "Only call-scoped linkage lines are included; generated FreeSWITCH passwords/tokens are omitted.",
+  "lines": [
+    {
+      "lineNumber": 9981,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.007338 98.10% [NOTICE] switch_channel.c:1142 New Channel sofia/internal/1000@127.0.0.1 [8a0291fb-f25f-4d89-bff8-32d383344d83]"
+    },
+    {
+      "lineNumber": 9982,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.007338 98.10% [DEBUG] switch_core_state_machine.c:581 (sofia/internal/1000@127.0.0.1) Running State Change CS_NEW (Cur 1 Tot 15)"
+    },
+    {
+      "lineNumber": 9983,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.007338 98.10% [INFO] sofia.c:10460 sofia/internal/1000@127.0.0.1 receiving invite from 172.24.0.7:5094 version: 1.10.12 -release-10222002881-a88d069d6fgit a88d069 2024-08-02 21:02:27Z 64bit call-id: acc-proof-1785819423318-ef8962274184"
+    },
+    {
+      "lineNumber": 9985,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.007338 98.10% [DEBUG] switch_core_state_machine.c:600 (sofia/internal/1000@127.0.0.1) State NEW"
+    },
+    {
+      "lineNumber": 9986,
+      "text": "2026-08-04 04:57:03.027346 98.10% [DEBUG] sofia.c:2419 detaching session 8a0291fb-f25f-4d89-bff8-32d383344d83"
+    },
+    {
+      "lineNumber": 9987,
+      "text": "2026-08-04 04:57:03.027346 98.10% [DEBUG] sofia.c:2532 Re-attaching to session 8a0291fb-f25f-4d89-bff8-32d383344d83"
+    },
+    {
+      "lineNumber": 9988,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.027346 98.10% [INFO] sofia.c:10460 sofia/internal/1000@127.0.0.1 receiving invite from 172.24.0.7:5094 version: 1.10.12 -release-10222002881-a88d069d6fgit a88d069 2024-08-02 21:02:27Z 64bit call-id: acc-proof-1785819423318-ef8962274184"
+    },
+    {
+      "lineNumber": 9990,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] sofia.c:7493 Channel sofia/internal/1000@127.0.0.1 entering state [received][100]"
+    },
+    {
+      "lineNumber": 9991,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] sofia.c:7503 Remote SDP:"
+    },
+    {
+      "lineNumber": 9992,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 v=0"
+    },
+    {
+      "lineNumber": 9993,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 o=acc-proof 0 0 IN IP4 172.24.0.7"
+    },
+    {
+      "lineNumber": 9994,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 s=ACC Verto SIP live proof"
+    },
+    {
+      "lineNumber": 9995,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 c=IN IP4 172.24.0.7"
+    },
+    {
+      "lineNumber": 9996,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 t=0 0"
+    },
+    {
+      "lineNumber": 9997,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 m=audio 6002 RTP/AVP 0"
+    },
+    {
+      "lineNumber": 9998,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 a=rtpmap:0 PCMU/8000"
+    },
+    {
+      "lineNumber": 9999,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 "
+    },
+    {
+      "lineNumber": 10000,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] sofia.c:7906 (sofia/internal/1000@127.0.0.1) State Change CS_NEW -> CS_INIT"
+    },
+    {
+      "lineNumber": 10001,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:581 (sofia/internal/1000@127.0.0.1) Running State Change CS_INIT (Cur 1 Tot 15)"
+    },
+    {
+      "lineNumber": 10002,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:624 (sofia/internal/1000@127.0.0.1) State INIT"
+    },
+    {
+      "lineNumber": 10003,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] mod_sofia.c:97 sofia/internal/1000@127.0.0.1 SOFIA INIT"
+    },
+    {
+      "lineNumber": 10004,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:40 sofia/internal/1000@127.0.0.1 Standard INIT"
+    },
+    {
+      "lineNumber": 10005,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:48 (sofia/internal/1000@127.0.0.1) State Change CS_INIT -> CS_ROUTING"
+    },
+    {
+      "lineNumber": 10006,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:624 (sofia/internal/1000@127.0.0.1) State INIT going to sleep"
+    },
+    {
+      "lineNumber": 10007,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:581 (sofia/internal/1000@127.0.0.1) Running State Change CS_ROUTING (Cur 1 Tot 15)"
+    },
+    {
+      "lineNumber": 10008,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_channel.c:2399 (sofia/internal/1000@127.0.0.1) Callstate Change DOWN -> RINGING"
+    },
+    {
+      "lineNumber": 10009,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:640 (sofia/internal/1000@127.0.0.1) State ROUTING"
+    },
+    {
+      "lineNumber": 10010,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] mod_sofia.c:158 sofia/internal/1000@127.0.0.1 SOFIA ROUTING"
+    },
+    {
+      "lineNumber": 10011,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:230 sofia/internal/1000@127.0.0.1 Standard ROUTING"
+    },
+    {
+      "lineNumber": 10012,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [INFO] mod_dialplan_xml.c:639 Processing ACC SIP Proof <1000>->8600 in context default"
+    },
+    {
+      "lineNumber": 10013,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->unloop] continue=false"
+    },
+    {
+      "lineNumber": 10014,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [unloop] ${unroll_loops}(true) =~ /^true$/ break=on-false"
+    },
+    {
+      "lineNumber": 10015,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [unloop] ${sip_looped_call}() =~ /^true$/ break=on-false"
+    },
+    {
+      "lineNumber": 10016,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->tod_example] continue=true"
+    },
+    {
+      "lineNumber": 10017,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Date/TimeMatch (FAIL) [tod_example] break=on-false"
+    },
+    {
+      "lineNumber": 10018,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->holiday_example] continue=true"
+    },
+    {
+      "lineNumber": 10019,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Date/TimeMatch (FAIL) [holiday_example] break=on-false"
+    },
+    {
+      "lineNumber": 10020,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->global-intercept] continue=false"
+    },
+    {
+      "lineNumber": 10021,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [global-intercept] destination_number(8600) =~ /^886$/ break=on-false"
+    },
+    {
+      "lineNumber": 10022,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->group-intercept] continue=false"
+    },
+    {
+      "lineNumber": 10023,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [group-intercept] destination_number(8600) =~ /^\\*8$/ break=on-false"
+    },
+    {
+      "lineNumber": 10024,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->intercept-ext] continue=false"
+    },
+    {
+      "lineNumber": 10025,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [intercept-ext] destination_number(8600) =~ /^\\*\\*(\\d+)$/ break=on-false"
+    },
+    {
+      "lineNumber": 10026,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->redial] continue=false"
+    },
+    {
+      "lineNumber": 10027,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [redial] destination_number(8600) =~ /^(redial|870)$/ break=on-false"
+    },
+    {
+      "lineNumber": 10028,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->global] continue=true"
+    },
+    {
+      "lineNumber": 10029,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [global] ${call_debug}(false) =~ /^true$/ break=never"
+    },
+    {
+      "lineNumber": 10031,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [global] ${rtp_has_crypto}() =~ /^(AEAD_AES_256_GCM_8|AEAD_AES_128_GCM_8|AES_CM_256_HMAC_SHA1_80|AES_CM_192_HMAC_SHA1_80|AES_CM_128_HMAC_SHA1_80|AES_CM_256_HMAC_SHA1_32|AES_CM_192_HMAC_SHA1_32|AES_CM_128_HMAC_SHA1_32|AES_CM_128_NULL_AUTH)$/ break=never"
+    },
+    {
+      "lineNumber": 10032,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [global] ${endpoint_disposition}(DELAYED NEGOTIATION) =~ /^(DELAYED NEGOTIATION)/ break=on-false"
+    },
+    {
+      "lineNumber": 10033,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [global] ${switch_r_sdp}(v=0"
+    },
+    {
+      "lineNumber": 10034,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 o=acc-proof 0 0 IN IP4 172.24.0.7"
+    },
+    {
+      "lineNumber": 10035,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 s=ACC Verto SIP live proof"
+    },
+    {
+      "lineNumber": 10036,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 c=IN IP4 172.24.0.7"
+    },
+    {
+      "lineNumber": 10037,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 t=0 0"
+    },
+    {
+      "lineNumber": 10038,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 m=audio 6002 RTP/AVP 0"
+    },
+    {
+      "lineNumber": 10039,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 a=rtpmap:0 PCMU/8000"
+    },
+    {
+      "lineNumber": 10040,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 ) =~ /(AES_CM_128_HMAC_SHA1_32|AES_CM_128_HMAC_SHA1_80)/ break=never"
+    },
+    {
+      "lineNumber": 10041,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Absolute Condition [global]"
+    },
+    {
+      "lineNumber": 10042,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action hash(insert/${domain_name}-spymap/${caller_id_number}/${uuid})"
+    },
+    {
+      "lineNumber": 10043,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action hash(insert/${domain_name}-last_dial/${caller_id_number}/${destination_number})"
+    },
+    {
+      "lineNumber": 10044,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action hash(insert/${domain_name}-last_dial/global/${uuid})"
+    },
+    {
+      "lineNumber": 10045,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action export(RFC2822_DATE=${strftime(%a, %d %b %Y %T %z)})"
+    },
+    {
+      "lineNumber": 10046,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->snom-demo-2] continue=false"
+    },
+    {
+      "lineNumber": 10047,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [snom-demo-2] destination_number(8600) =~ /^9001$/ break=on-false"
+    },
+    {
+      "lineNumber": 10048,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->snom-demo-1] continue=false"
+    },
+    {
+      "lineNumber": 10049,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [snom-demo-1] destination_number(8600) =~ /^9000$/ break=on-false"
+    },
+    {
+      "lineNumber": 10050,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->eavesdrop] continue=false"
+    },
+    {
+      "lineNumber": 10051,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [eavesdrop] destination_number(8600) =~ /^88(\\d{4})$|^\\*0(.*)$/ break=on-false"
+    },
+    {
+      "lineNumber": 10052,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->eavesdrop] continue=false"
+    },
+    {
+      "lineNumber": 10053,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [eavesdrop] destination_number(8600) =~ /^779$/ break=on-false"
+    },
+    {
+      "lineNumber": 10054,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->call_return] continue=false"
+    },
+    {
+      "lineNumber": 10055,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [call_return] destination_number(8600) =~ /^\\*69$|^869$|^lcr$/ break=on-false"
+    },
+    {
+      "lineNumber": 10056,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->del-group] continue=false"
+    },
+    {
+      "lineNumber": 10057,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [del-group] destination_number(8600) =~ /^80(\\d{2})$/ break=on-false"
+    },
+    {
+      "lineNumber": 10058,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->add-group] continue=false"
+    },
+    {
+      "lineNumber": 10059,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [add-group] destination_number(8600) =~ /^81(\\d{2})$/ break=on-false"
+    },
+    {
+      "lineNumber": 10060,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->call-group-simo] continue=false"
+    },
+    {
+      "lineNumber": 10061,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [call-group-simo] destination_number(8600) =~ /^82(\\d{2})$/ break=on-false"
+    },
+    {
+      "lineNumber": 10062,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->call-group-order] continue=false"
+    },
+    {
+      "lineNumber": 10063,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [call-group-order] destination_number(8600) =~ /^83(\\d{2})$/ break=on-false"
+    },
+    {
+      "lineNumber": 10064,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->extension-intercom] continue=false"
+    },
+    {
+      "lineNumber": 10065,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [extension-intercom] destination_number(8600) =~ /^8(10[01][0-9])$/ break=on-false"
+    },
+    {
+      "lineNumber": 10066,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->Local_Extension] continue=false"
+    },
+    {
+      "lineNumber": 10067,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [Local_Extension] destination_number(8600) =~ /^(10[01][0-9])$/ break=on-false"
+    },
+    {
+      "lineNumber": 10068,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->Local_Extension_Skinny] continue=false"
+    },
+    {
+      "lineNumber": 10069,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [Local_Extension_Skinny] destination_number(8600) =~ /^(11[01][0-9])$/ break=on-false"
+    },
+    {
+      "lineNumber": 10070,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->group_dial_sales] continue=false"
+    },
+    {
+      "lineNumber": 10071,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [group_dial_sales] destination_number(8600) =~ /^2000$/ break=on-false"
+    },
+    {
+      "lineNumber": 10072,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->group_dial_support] continue=false"
+    },
+    {
+      "lineNumber": 10073,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [group_dial_support] destination_number(8600) =~ /^2001$/ break=on-false"
+    },
+    {
+      "lineNumber": 10074,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->group_dial_billing] continue=false"
+    },
+    {
+      "lineNumber": 10075,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [group_dial_billing] destination_number(8600) =~ /^2002$/ break=on-false"
+    },
+    {
+      "lineNumber": 10076,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->operator] continue=false"
+    },
+    {
+      "lineNumber": 10077,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [operator] destination_number(8600) =~ /^(operator|0)$/ break=on-false"
+    },
+    {
+      "lineNumber": 10078,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->vmain] continue=false"
+    },
+    {
+      "lineNumber": 10079,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [vmain] destination_number(8600) =~ /^vmain$|^4000$|^\\*98$/ break=on-false"
+    },
+    {
+      "lineNumber": 10080,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->sip_uri] continue=false"
+    },
+    {
+      "lineNumber": 10081,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [sip_uri] destination_number(8600) =~ /^sip:(.*)$/ break=on-false"
+    },
+    {
+      "lineNumber": 10082,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->nb_conferences] continue=false"
+    },
+    {
+      "lineNumber": 10083,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [nb_conferences] destination_number(8600) =~ /^(30\\d{2})$/ break=on-false"
+    },
+    {
+      "lineNumber": 10084,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->wb_conferences] continue=false"
+    },
+    {
+      "lineNumber": 10085,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [wb_conferences] destination_number(8600) =~ /^(31\\d{2})$/ break=on-false"
+    },
+    {
+      "lineNumber": 10086,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->uwb_conferences] continue=false"
+    },
+    {
+      "lineNumber": 10087,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [uwb_conferences] destination_number(8600) =~ /^(32\\d{2})$/ break=on-false"
+    },
+    {
+      "lineNumber": 10088,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->cdquality_conferences] continue=false"
+    },
+    {
+      "lineNumber": 10089,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [cdquality_conferences] destination_number(8600) =~ /^(33\\d{2})$/ break=on-false"
+    },
+    {
+      "lineNumber": 10090,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->cdquality_stereo_conferences] continue=false"
+    },
+    {
+      "lineNumber": 10091,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [cdquality_stereo_conferences] destination_number(8600) =~ /^(35\\d{2}).*?-screen$/ break=on-false"
+    },
+    {
+      "lineNumber": 10092,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->conference-canvases] continue=true"
+    },
+    {
+      "lineNumber": 10093,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [conference-canvases] destination_number(8600) =~ /(35\\d{2})-canvas-(\\d+)/ break=on-false"
+    },
+    {
+      "lineNumber": 10094,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->conf mod] continue=false"
+    },
+    {
+      "lineNumber": 10095,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [conf mod] destination_number(8600) =~ /^6070-moderator$/ break=on-false"
+    },
+    {
+      "lineNumber": 10096,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->cdquality_conferences] continue=false"
+    },
+    {
+      "lineNumber": 10097,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [cdquality_conferences] destination_number(8600) =~ /^(35\\d{2})$/ break=on-false"
+    },
+    {
+      "lineNumber": 10098,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->cdquality_conferences_720] continue=false"
+    },
+    {
+      "lineNumber": 10099,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [cdquality_conferences_720] destination_number(8600) =~ /^(36\\d{2})$/ break=on-false"
+    },
+    {
+      "lineNumber": 10100,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->cdquality_conferences_480] continue=false"
+    },
+    {
+      "lineNumber": 10101,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [cdquality_conferences_480] destination_number(8600) =~ /^(37\\d{2})$/ break=on-false"
+    },
+    {
+      "lineNumber": 10102,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->cdquality_conferences_320] continue=false"
+    },
+    {
+      "lineNumber": 10103,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [cdquality_conferences_320] destination_number(8600) =~ /^(38\\d{2})$/ break=on-false"
+    },
+    {
+      "lineNumber": 10104,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->freeswitch_public_conf_via_sip] continue=false"
+    },
+    {
+      "lineNumber": 10105,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [freeswitch_public_conf_via_sip] destination_number(8600) =~ /^9(888|8888|1616|3232)$/ break=on-false"
+    },
+    {
+      "lineNumber": 10106,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->mad_boss_intercom] continue=false"
+    },
+    {
+      "lineNumber": 10107,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [mad_boss_intercom] destination_number(8600) =~ /^0911$/ break=on-false"
+    },
+    {
+      "lineNumber": 10108,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->mad_boss_intercom] continue=false"
+    },
+    {
+      "lineNumber": 10109,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [mad_boss_intercom] destination_number(8600) =~ /^0912$/ break=on-false"
+    },
+    {
+      "lineNumber": 10110,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->mad_boss] continue=false"
+    },
+    {
+      "lineNumber": 10111,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [mad_boss] destination_number(8600) =~ /^0913$/ break=on-false"
+    },
+    {
+      "lineNumber": 10112,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->ivr_demo] continue=false"
+    },
+    {
+      "lineNumber": 10113,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [ivr_demo] destination_number(8600) =~ /^5000$/ break=on-false"
+    },
+    {
+      "lineNumber": 10114,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->dynamic_conference] continue=false"
+    },
+    {
+      "lineNumber": 10115,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [dynamic_conference] destination_number(8600) =~ /^5001$/ break=on-false"
+    },
+    {
+      "lineNumber": 10116,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->rtp_multicast_page] continue=false"
+    },
+    {
+      "lineNumber": 10117,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [rtp_multicast_page] destination_number(8600) =~ /^pagegroup$|^7243$/ break=on-false"
+    },
+    {
+      "lineNumber": 10118,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->park] continue=false"
+    },
+    {
+      "lineNumber": 10119,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [park] destination_number(8600) =~ /^5900$/ break=on-false"
+    },
+    {
+      "lineNumber": 10120,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->unpark] continue=false"
+    },
+    {
+      "lineNumber": 10121,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [unpark] destination_number(8600) =~ /^5901$/ break=on-false"
+    },
+    {
+      "lineNumber": 10122,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->valet_park] continue=false"
+    },
+    {
+      "lineNumber": 10123,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [valet_park] destination_number(8600) =~ /^(6000)$/ break=on-false"
+    },
+    {
+      "lineNumber": 10124,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->valet_park] continue=false"
+    },
+    {
+      "lineNumber": 10125,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [valet_park] destination_number(8600) =~ /^((?!6000)60\\d{2})$/ break=on-false"
+    },
+    {
+      "lineNumber": 10126,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->park] continue=false"
+    },
+    {
+      "lineNumber": 10127,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [park] source(mod_sofia) =~ /mod_sofia/ break=on-false"
+    },
+    {
+      "lineNumber": 10128,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [park] destination_number(8600) =~ /park\\+(\\d+)/ break=on-false"
+    },
+    {
+      "lineNumber": 10129,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->unpark] continue=false"
+    },
+    {
+      "lineNumber": 10130,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [unpark] source(mod_sofia) =~ /mod_sofia/ break=on-false"
+    },
+    {
+      "lineNumber": 10131,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [unpark] destination_number(8600) =~ /^parking$/ break=on-false"
+    },
+    {
+      "lineNumber": 10132,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->park] continue=false"
+    },
+    {
+      "lineNumber": 10133,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [park] source(mod_sofia) =~ /mod_sofia/ break=on-false"
+    },
+    {
+      "lineNumber": 10134,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [park] destination_number(8600) =~ /callpark/ break=on-false"
+    },
+    {
+      "lineNumber": 10135,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->unpark] continue=false"
+    },
+    {
+      "lineNumber": 10136,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [unpark] source(mod_sofia) =~ /mod_sofia/ break=on-false"
+    },
+    {
+      "lineNumber": 10137,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [unpark] destination_number(8600) =~ /pickup/ break=on-false"
+    },
+    {
+      "lineNumber": 10138,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->wait] continue=false"
+    },
+    {
+      "lineNumber": 10139,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [wait] destination_number(8600) =~ /^wait$/ break=on-false"
+    },
+    {
+      "lineNumber": 10140,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->fax_receive] continue=false"
+    },
+    {
+      "lineNumber": 10141,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [fax_receive] destination_number(8600) =~ /^9178$/ break=on-false"
+    },
+    {
+      "lineNumber": 10142,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->fax_transmit] continue=false"
+    },
+    {
+      "lineNumber": 10143,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [fax_transmit] destination_number(8600) =~ /^9179$/ break=on-false"
+    },
+    {
+      "lineNumber": 10144,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->ringback_180] continue=false"
+    },
+    {
+      "lineNumber": 10145,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [ringback_180] destination_number(8600) =~ /^9180$/ break=on-false"
+    },
+    {
+      "lineNumber": 10146,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->ringback_183_uk_ring] continue=false"
+    },
+    {
+      "lineNumber": 10147,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [ringback_183_uk_ring] destination_number(8600) =~ /^9181$/ break=on-false"
+    },
+    {
+      "lineNumber": 10148,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->ringback_183_music_ring] continue=false"
+    },
+    {
+      "lineNumber": 10149,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [ringback_183_music_ring] destination_number(8600) =~ /^9182$/ break=on-false"
+    },
+    {
+      "lineNumber": 10150,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->ringback_post_answer_uk_ring] continue=false"
+    },
+    {
+      "lineNumber": 10151,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [ringback_post_answer_uk_ring] destination_number(8600) =~ /^9183$/ break=on-false"
+    },
+    {
+      "lineNumber": 10152,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->ringback_post_answer_music] continue=false"
+    },
+    {
+      "lineNumber": 10153,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [ringback_post_answer_music] destination_number(8600) =~ /^9184$/ break=on-false"
+    },
+    {
+      "lineNumber": 10154,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->ClueCon] continue=false"
+    },
+    {
+      "lineNumber": 10155,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [ClueCon] destination_number(8600) =~ /^9191$/ break=on-false"
+    },
+    {
+      "lineNumber": 10156,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->show_info] continue=false"
+    },
+    {
+      "lineNumber": 10157,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [show_info] destination_number(8600) =~ /^9192$/ break=on-false"
+    },
+    {
+      "lineNumber": 10158,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->video_record] continue=false"
+    },
+    {
+      "lineNumber": 10159,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [video_record] destination_number(8600) =~ /^9193$/ break=on-false"
+    },
+    {
+      "lineNumber": 10160,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->video_playback] continue=false"
+    },
+    {
+      "lineNumber": 10161,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [video_playback] destination_number(8600) =~ /^9194$/ break=on-false"
+    },
+    {
+      "lineNumber": 10162,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->delay_echo] continue=false"
+    },
+    {
+      "lineNumber": 10163,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [delay_echo] destination_number(8600) =~ /^9195$/ break=on-false"
+    },
+    {
+      "lineNumber": 10164,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->echo] continue=false"
+    },
+    {
+      "lineNumber": 10165,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [echo] destination_number(8600) =~ /^9196$/ break=on-false"
+    },
+    {
+      "lineNumber": 10166,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->milliwatt] continue=false"
+    },
+    {
+      "lineNumber": 10167,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [milliwatt] destination_number(8600) =~ /^9197$/ break=on-false"
+    },
+    {
+      "lineNumber": 10168,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->tone_stream] continue=false"
+    },
+    {
+      "lineNumber": 10169,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [tone_stream] destination_number(8600) =~ /^9198$/ break=on-false"
+    },
+    {
+      "lineNumber": 10170,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->hold_music] continue=false"
+    },
+    {
+      "lineNumber": 10171,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [hold_music] destination_number(8600) =~ /^9664$/ break=on-false"
+    },
+    {
+      "lineNumber": 10172,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->laugh break] continue=false"
+    },
+    {
+      "lineNumber": 10173,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [laugh break] destination_number(8600) =~ /^9386$/ break=on-false"
+    },
+    {
+      "lineNumber": 10174,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->101] continue=false"
+    },
+    {
+      "lineNumber": 10175,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [101] destination_number(8600) =~ /^101$/ break=on-false"
+    },
+    {
+      "lineNumber": 10176,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->pizza_demo] continue=false"
+    },
+    {
+      "lineNumber": 10177,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [pizza_demo] destination_number(8600) =~ /^(pizza|74992)$/ break=on-false"
+    },
+    {
+      "lineNumber": 10178,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->Talking Clock Time] continue=false"
+    },
+    {
+      "lineNumber": 10179,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [Talking Clock Time] destination_number(8600) =~ /^9170$/ break=on-false"
+    },
+    {
+      "lineNumber": 10180,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->Talking Clock Date] continue=false"
+    },
+    {
+      "lineNumber": 10181,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [Talking Clock Date] destination_number(8600) =~ /^9171$/ break=on-false"
+    },
+    {
+      "lineNumber": 10182,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->Talking Clock Date and Time] continue=false"
+    },
+    {
+      "lineNumber": 10183,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [Talking Clock Date and Time] destination_number(8600) =~ /^9172$/ break=on-false"
+    },
+    {
+      "lineNumber": 10184,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->local.example.com] continue=false"
+    },
+    {
+      "lineNumber": 10185,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [local.example.com] ${toll_allow}(local) =~ /local/ break=on-false"
+    },
+    {
+      "lineNumber": 10186,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [local.example.com] destination_number(8600) =~ /^(\\d{7})$/ break=on-false"
+    },
+    {
+      "lineNumber": 10187,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->domestic.example.com] continue=false"
+    },
+    {
+      "lineNumber": 10188,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [domestic.example.com] ${toll_allow}(local) =~ /domestic/ break=on-false"
+    },
+    {
+      "lineNumber": 10189,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->international.example.com] continue=false"
+    },
+    {
+      "lineNumber": 10190,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [international.example.com] ${toll_allow}(local) =~ /international/ break=on-false"
+    },
+    {
+      "lineNumber": 10191,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->agentic_contact_center_local_sip_openai_8600] continue=false"
+    },
+    {
+      "lineNumber": 10192,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [agentic_contact_center_local_sip_openai_8600] destination_number(8600) =~ /^(8600|acc)$/ break=on-false"
+    },
+    {
+      "lineNumber": 10193,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action answer()"
+    },
+    {
+      "lineNumber": 10194,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_route=local_sip)"
+    },
+    {
+      "lineNumber": 10195,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_destination_number=8600)"
+    },
+    {
+      "lineNumber": 10196,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_conversation_mode=openai_llm)"
+    },
+    {
+      "lineNumber": 10197,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_signalwire_ready=true)"
+    },
+    {
+      "lineNumber": 10198,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(hangup_after_bridge=false)"
+    },
+    {
+      "lineNumber": 10199,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_return_audio=pipecat_verto_webrtc)"
+    },
+    {
+      "lineNumber": 10200,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_media_bridge=pipecat_verto_agent_leg)"
+    },
+    {
+      "lineNumber": 10201,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_linked_sip_call_id=${uuid})"
+    },
+    {
+      "lineNumber": 10202,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_proof_sip_call_id=${sip_h_X-ACC-Proof-Call-ID})"
+    },
+    {
+      "lineNumber": 10203,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action export(nolocal:acc_linked_sip_call_id=${uuid})"
+    },
+    {
+      "lineNumber": 10204,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action export(nolocal:sip_h_X-ACC-Proof-Call-ID=${sip_h_X-ACC-Proof-Call-ID})"
+    },
+    {
+      "lineNumber": 10205,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action export(nolocal:acc_destination_number=8600)"
+    },
+    {
+      "lineNumber": 10206,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action export(nolocal:acc_conversation_mode=openai_llm)"
+    },
+    {
+      "lineNumber": 10207,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action export(nolocal:rtp_jitter_buffer_during_bridge=true)"
+    },
+    {
+      "lineNumber": 10208,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action bridge({absolute_codec_string=PCMU,jitterbuffer_msec=60:200:20,rtp_jitter_buffer_during_bridge=true,acc_linked_sip_call_id=${uuid},sip_h_X-ACC-Proof-Call-ID=${sip_h_X-ACC-Proof-Call-ID},acc_destination_number=8600,acc_conversation_mode=openai_llm,sip_h_X-ACC-Destination=8600,sip_h_X-ACC-Conversation-Mode=openai_llm}${verto_contact(acc-pipecat@172.24.0.5)})"
+    },
+    {
+      "lineNumber": 10209,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:281 (sofia/internal/1000@127.0.0.1) State Change CS_ROUTING -> CS_EXECUTE"
+    },
+    {
+      "lineNumber": 10210,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:640 (sofia/internal/1000@127.0.0.1) State ROUTING going to sleep"
+    },
+    {
+      "lineNumber": 10211,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:581 (sofia/internal/1000@127.0.0.1) Running State Change CS_EXECUTE (Cur 1 Tot 15)"
+    },
+    {
+      "lineNumber": 10212,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:647 (sofia/internal/1000@127.0.0.1) State EXECUTE"
+    },
+    {
+      "lineNumber": 10213,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] mod_sofia.c:213 sofia/internal/1000@127.0.0.1 SOFIA EXECUTE"
+    },
+    {
+      "lineNumber": 10214,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:323 sofia/internal/1000@127.0.0.1 Standard EXECUTE"
+    },
+    {
+      "lineNumber": 10215,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 hash(insert/172.24.0.5-spymap/1000/8a0291fb-f25f-4d89-bff8-32d383344d83)"
+    },
+    {
+      "lineNumber": 10216,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 hash(insert/172.24.0.5-last_dial/1000/8600)"
+    },
+    {
+      "lineNumber": 10217,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 hash(insert/172.24.0.5-last_dial/global/8a0291fb-f25f-4d89-bff8-32d383344d83)"
+    },
+    {
+      "lineNumber": 10218,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 export(RFC2822_DATE=Tue, 04 Aug 2026 04:57:03 +0000)"
+    },
+    {
+      "lineNumber": 10219,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_channel.c:1334 EXPORT (export_vars) [RFC2822_DATE]=[Tue, 04 Aug 2026 04:57:03 +0000]"
+    },
+    {
+      "lineNumber": 10220,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 answer()"
+    },
+    {
+      "lineNumber": 10221,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:5526 Audio Codec Compare [PCMU:0:8000:20:64000:1]/[opus:116:48000:20:0:1]"
+    },
+    {
+      "lineNumber": 10222,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:5526 Audio Codec Compare [PCMU:0:8000:20:64000:1]/[G722:9:8000:20:64000:1]"
+    },
+    {
+      "lineNumber": 10223,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:5526 Audio Codec Compare [PCMU:0:8000:20:64000:1]/[PCMU:0:8000:20:64000:1]"
+    },
+    {
+      "lineNumber": 10224,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:5588 Audio Codec Compare [PCMU:0:8000:20:64000:1] ++++ is saved as a match"
+    },
+    {
+      "lineNumber": 10225,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:5526 Audio Codec Compare [PCMU:0:8000:20:64000:1]/[PCMA:8:8000:20:64000:1]"
+    },
+    {
+      "lineNumber": 10226,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:3731 Set Codec sofia/internal/1000@127.0.0.1 PCMU/8000 20 ms 160 samples 64000 bits 1 channels"
+    },
+    {
+      "lineNumber": 10227,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_codec.c:111 sofia/internal/1000@127.0.0.1 Original read codec set to PCMU:0"
+    },
+    {
+      "lineNumber": 10228,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:5827 No 2833 in SDP. Liberal DTMF mode adding 101 as telephone-event."
+    },
+    {
+      "lineNumber": 10229,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:5856 sofia/internal/1000@127.0.0.1 Set 2833 dtmf send payload to 101 recv payload to 101"
+    },
+    {
+      "lineNumber": 10230,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:8660 AUDIO RTP [sofia/internal/1000@127.0.0.1] 172.24.0.5 port 23882 -> 172.24.0.7 port 6002 codec: 0 ms: 20"
+    },
+    {
+      "lineNumber": 10231,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_rtp.c:4566 Starting timer [soft] 160 bytes per 20ms"
+    },
+    {
+      "lineNumber": 10232,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:8973 sofia/internal/1000@127.0.0.1 Set 2833 dtmf send payload to 101"
+    },
+    {
+      "lineNumber": 10233,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:8980 sofia/internal/1000@127.0.0.1 Set 2833 dtmf receive payload to 101"
+    },
+    {
+      "lineNumber": 10234,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:9003 sofia/internal/1000@127.0.0.1 Set rtp dtmf delay to 40"
+    },
+    {
+      "lineNumber": 10235,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [NOTICE] sofia_media.c:90 Pre-Answer sofia/internal/1000@127.0.0.1!"
+    },
+    {
+      "lineNumber": 10236,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_channel.c:3585 (sofia/internal/1000@127.0.0.1) Callstate Change RINGING -> EARLY"
+    },
+    {
+      "lineNumber": 10237,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:8642 Audio params are unchanged for sofia/internal/1000@127.0.0.1."
+    },
+    {
+      "lineNumber": 10238,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_sofia.c:914 Local SDP sofia/internal/1000@127.0.0.1:"
+    },
+    {
+      "lineNumber": 10239,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 v=0"
+    },
+    {
+      "lineNumber": 10240,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 o=FreeSWITCH 1785795541 1785795542 IN IP4 172.24.0.5"
+    },
+    {
+      "lineNumber": 10241,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 s=FreeSWITCH"
+    },
+    {
+      "lineNumber": 10242,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 c=IN IP4 172.24.0.5"
+    },
+    {
+      "lineNumber": 10243,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 t=0 0"
+    },
+    {
+      "lineNumber": 10244,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 m=audio 23882 RTP/AVP 0 101"
+    },
+    {
+      "lineNumber": 10245,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 a=rtpmap:0 PCMU/8000"
+    },
+    {
+      "lineNumber": 10246,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 a=rtpmap:101 telephone-event/8000"
+    },
+    {
+      "lineNumber": 10247,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 a=fmtp:101 0-15"
+    },
+    {
+      "lineNumber": 10248,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 a=ptime:20"
+    },
+    {
+      "lineNumber": 10249,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 a=sendrecv"
+    },
+    {
+      "lineNumber": 10250,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 "
+    },
+    {
+      "lineNumber": 10251,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [NOTICE] mod_dptools.c:1406 Channel [sofia/internal/1000@127.0.0.1] has been answered"
+    },
+    {
+      "lineNumber": 10252,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_channel.c:3912 (sofia/internal/1000@127.0.0.1) Callstate Change EARLY -> ACTIVE"
+    },
+    {
+      "lineNumber": 10253,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_route=local_sip)"
+    },
+    {
+      "lineNumber": 10254,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] sofia.c:7493 Channel sofia/internal/1000@127.0.0.1 entering state [completed][200]"
+    },
+    {
+      "lineNumber": 10255,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_route]=[local_sip]"
+    },
+    {
+      "lineNumber": 10256,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_destination_number=8600)"
+    },
+    {
+      "lineNumber": 10257,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] sofia.c:7493 Channel sofia/internal/1000@127.0.0.1 entering state [ready][200]"
+    },
+    {
+      "lineNumber": 10258,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_destination_number]=[8600]"
+    },
+    {
+      "lineNumber": 10259,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_conversation_mode=openai_llm)"
+    },
+    {
+      "lineNumber": 10260,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_conversation_mode]=[openai_llm]"
+    },
+    {
+      "lineNumber": 10261,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_signalwire_ready=true)"
+    },
+    {
+      "lineNumber": 10262,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_signalwire_ready]=[true]"
+    },
+    {
+      "lineNumber": 10263,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(hangup_after_bridge=false)"
+    },
+    {
+      "lineNumber": 10264,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [hangup_after_bridge]=[false]"
+    },
+    {
+      "lineNumber": 10265,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_return_audio=pipecat_verto_webrtc)"
+    },
+    {
+      "lineNumber": 10266,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_return_audio]=[pipecat_verto_webrtc]"
+    },
+    {
+      "lineNumber": 10267,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_media_bridge=pipecat_verto_agent_leg)"
+    },
+    {
+      "lineNumber": 10268,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_media_bridge]=[pipecat_verto_agent_leg]"
+    },
+    {
+      "lineNumber": 10269,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_linked_sip_call_id=8a0291fb-f25f-4d89-bff8-32d383344d83)"
+    },
+    {
+      "lineNumber": 10270,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_linked_sip_call_id]=[8a0291fb-f25f-4d89-bff8-32d383344d83]"
+    },
+    {
+      "lineNumber": 10271,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_proof_sip_call_id=acc-proof-1785819423318-ef8962274184)"
+    },
+    {
+      "lineNumber": 10272,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_proof_sip_call_id]=[acc-proof-1785819423318-ef8962274184]"
+    },
+    {
+      "lineNumber": 10273,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 export(nolocal:acc_linked_sip_call_id=8a0291fb-f25f-4d89-bff8-32d383344d83)"
+    },
+    {
+      "lineNumber": 10274,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1334 EXPORT (export_vars) (REMOTE ONLY) [acc_linked_sip_call_id]=[8a0291fb-f25f-4d89-bff8-32d383344d83]"
+    },
+    {
+      "lineNumber": 10275,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 export(nolocal:sip_h_X-ACC-Proof-Call-ID=acc-proof-1785819423318-ef8962274184)"
+    },
+    {
+      "lineNumber": 10276,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1334 EXPORT (export_vars) (REMOTE ONLY) [sip_h_X-ACC-Proof-Call-ID]=[acc-proof-1785819423318-ef8962274184]"
+    },
+    {
+      "lineNumber": 10277,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 export(nolocal:acc_destination_number=8600)"
+    },
+    {
+      "lineNumber": 10278,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1334 EXPORT (export_vars) (REMOTE ONLY) [acc_destination_number]=[8600]"
+    },
+    {
+      "lineNumber": 10279,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 export(nolocal:acc_conversation_mode=openai_llm)"
+    },
+    {
+      "lineNumber": 10280,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1334 EXPORT (export_vars) (REMOTE ONLY) [acc_conversation_mode]=[openai_llm]"
+    },
+    {
+      "lineNumber": 10281,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 export(nolocal:rtp_jitter_buffer_during_bridge=true)"
+    },
+    {
+      "lineNumber": 10282,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1334 EXPORT (export_vars) (REMOTE ONLY) [rtp_jitter_buffer_during_bridge]=[true]"
+    },
+    {
+      "lineNumber": 10283,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 bridge({absolute_codec_string=PCMU,jitterbuffer_msec=60:200:20,rtp_jitter_buffer_during_bridge=true,acc_linked_sip_call_id=8a0291fb-f25f-4d89-bff8-32d383344d83,sip_h_X-ACC-Proof-Call-ID=acc-proof-1785819423318-ef8962274184,acc_destination_number=8600,acc_conversation_mode=openai_llm,sip_h_X-ACC-Destination=8600,sip_h_X-ACC-Conversation-Mode=openai_llm}verto.rtc/u:1a166ea3-e099-4380-8cff-8c978fac88f5)"
+    },
+    {
+      "lineNumber": 10284,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1973 (sofia/internal/1000@127.0.0.1) Callstate Change ACTIVE -> RING_WAIT"
+    },
+    {
+      "lineNumber": 10285,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [RFC2822_DATE]=[Tue, 04 Aug 2026 04:57:03 +0000] to event"
+    },
+    {
+      "lineNumber": 10286,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [acc_linked_sip_call_id]=[8a0291fb-f25f-4d89-bff8-32d383344d83] to event"
+    },
+    {
+      "lineNumber": 10287,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [sip_h_X-ACC-Proof-Call-ID]=[acc-proof-1785819423318-ef8962274184] to event"
+    },
+    {
+      "lineNumber": 10288,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [acc_destination_number]=[8600] to event"
+    },
+    {
+      "lineNumber": 10289,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [acc_conversation_mode]=[openai_llm] to event"
+    },
+    {
+      "lineNumber": 10290,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [rtp_jitter_buffer_during_bridge]=[true] to event"
+    },
+    {
+      "lineNumber": 10291,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_ivr_originate.c:2301 Parsing global variables"
+    },
+    {
+      "lineNumber": 10292,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.087401 98.10% [DEBUG] mod_rtc.c:390 () State Change CS_NEW -> CS_INIT"
+    },
+    {
+      "lineNumber": 10293,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.087401 98.10% [NOTICE] switch_channel.c:1142 New Channel verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 [41e7220c-4c1d-4f7b-8341-fcdd9977163b]"
+    },
+    {
+      "lineNumber": 10294,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_core_state_machine.c:581 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Running State Change CS_INIT (Cur 2 Tot 16)"
+    },
+    {
+      "lineNumber": 10295,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_core_state_machine.c:624 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State INIT"
+    },
+    {
+      "lineNumber": 10296,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] mod_verto.c:2416 Local verto.invite SDP verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5:"
+    },
+    {
+      "lineNumber": 10297,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b v=0"
+    },
+    {
+      "lineNumber": 10298,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b o=FreeSWITCH 1785790649 1785790650 IN IP4 172.24.0.5"
+    },
+    {
+      "lineNumber": 10299,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b s=FreeSWITCH"
+    },
+    {
+      "lineNumber": 10300,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b c=IN IP4 172.24.0.5"
+    },
+    {
+      "lineNumber": 10301,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b t=0 0"
+    },
+    {
+      "lineNumber": 10302,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=msid-semantic: WMS 5QESq5Zcb88wQYPpbFv548COVi7PTYQ2"
+    },
+    {
+      "lineNumber": 10303,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b m=audio 28774 RTP/SAVPF 0"
+    },
+    {
+      "lineNumber": 10304,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=rtpmap:0 PCMU/8000"
+    },
+    {
+      "lineNumber": 10305,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=fingerprint:sha-256 7B:56:78:DD:06:BF:D0:C5:D2:A0:C0:7F:14:06:95:D6:13:7C:33:3B:64:C3:06:0A:B1:47:EC:5E:A6:04:BD:32"
+    },
+    {
+      "lineNumber": 10306,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=setup:actpass"
+    },
+    {
+      "lineNumber": 10307,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=rtcp-mux"
+    },
+    {
+      "lineNumber": 10308,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=rtcp:28774 IN IP4 172.24.0.5"
+    },
+    {
+      "lineNumber": 10309,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ssrc:1316428439 cname:gQn6s0Rjf0DTpO50"
+    },
+    {
+      "lineNumber": 10310,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ssrc:1316428439 msid:5QESq5Zcb88wQYPpbFv548COVi7PTYQ2 a0"
+    },
+    {
+      "lineNumber": 10311,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ssrc:1316428439 mslabel:5QESq5Zcb88wQYPpbFv548COVi7PTYQ2"
+    },
+    {
+      "lineNumber": 10312,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ssrc:1316428439 label:5QESq5Zcb88wQYPpbFv548COVi7PTYQ2a0"
+    },
+    {
+      "lineNumber": 10313,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ice-ufrag:Q1c5XQua1nYHq2BT"
+    },
+    {
+      "lineNumber": 10314,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ice-pwd:kyPaTXsVIStHsAb7Xjyk0CbI"
+    },
+    {
+      "lineNumber": 10315,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=candidate:4116595861 1 udp 2130706431 172.24.0.5 28774 typ host generation 0"
+    },
+    {
+      "lineNumber": 10316,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=candidate:4116595861 2 udp 2130706431 172.24.0.5 28774 typ host generation 0"
+    },
+    {
+      "lineNumber": 10317,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=silenceSupp:off - - - -"
+    },
+    {
+      "lineNumber": 10318,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ptime:20"
+    },
+    {
+      "lineNumber": 10319,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=sendrecv"
+    },
+    {
+      "lineNumber": 10320,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b "
+    },
+    {
+      "lineNumber": 10321,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [NOTICE] mod_verto.c:2516 Ring-Ready verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5!"
+    },
+    {
+      "lineNumber": 10322,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_channel.c:3513 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Callstate Change DOWN -> RINGING"
+    },
+    {
+      "lineNumber": 10323,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:40 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 Standard INIT"
+    },
+    {
+      "lineNumber": 10324,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:48 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State Change CS_INIT -> CS_ROUTING"
+    },
+    {
+      "lineNumber": 10325,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:624 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State INIT going to sleep"
+    },
+    {
+      "lineNumber": 10326,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:581 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Running State Change CS_ROUTING (Cur 2 Tot 16)"
+    },
+    {
+      "lineNumber": 10327,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:640 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State ROUTING"
+    },
+    {
+      "lineNumber": 10328,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] mod_rtc.c:89 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 RTC ROUTING"
+    },
+    {
+      "lineNumber": 10329,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_ivr_originate.c:67 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State Change CS_ROUTING -> CS_CONSUME_MEDIA"
+    },
+    {
+      "lineNumber": 10330,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:640 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State ROUTING going to sleep"
+    },
+    {
+      "lineNumber": 10331,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:581 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Running State Change CS_CONSUME_MEDIA (Cur 2 Tot 16)"
+    },
+    {
+      "lineNumber": 10332,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:659 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State CONSUME_MEDIA"
+    },
+    {
+      "lineNumber": 10333,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:659 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State CONSUME_MEDIA going to sleep"
+    },
+    {
+      "lineNumber": 10334,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] mod_verto.c:2965 Remote SDP verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5:"
+    },
+    {
+      "lineNumber": 10335,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b v=0"
+    },
+    {
+      "lineNumber": 10336,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b o=- 3994808223 3994808223 IN IP4 0.0.0.0"
+    },
+    {
+      "lineNumber": 10337,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b s=-"
+    },
+    {
+      "lineNumber": 10338,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b t=0 0"
+    },
+    {
+      "lineNumber": 10339,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=msid-semantic:WMS *"
+    },
+    {
+      "lineNumber": 10340,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b m=audio 52862 UDP/TLS/RTP/SAVPF 0"
+    },
+    {
+      "lineNumber": 10341,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b c=IN IP4 172.24.0.6"
+    },
+    {
+      "lineNumber": 10342,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=sendrecv"
+    },
+    {
+      "lineNumber": 10343,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=msid:cbc1f868-a34c-45f1-afce-1f505711c2a2 9ec7a6c5-246b-4615-945c-5334d946f4c7"
+    },
+    {
+      "lineNumber": 10344,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=rtcp:9 IN IP4 0.0.0.0"
+    },
+    {
+      "lineNumber": 10345,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=rtcp-mux"
+    },
+    {
+      "lineNumber": 10346,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ssrc:570248808 cname:c70cbb0d-0a98-4428-a5e5-b6fce68e8a73"
+    },
+    {
+      "lineNumber": 10347,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=rtpmap:0 PCMU/8000"
+    },
+    {
+      "lineNumber": 10348,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=candidate:0eb85eb8e4879c0f6224c114438c2ec0 1 udp 2130706431 172.24.0.6 52862 typ host"
+    },
+    {
+      "lineNumber": 10349,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=end-of-candidates"
+    },
+    {
+      "lineNumber": 10350,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ice-ufrag:DiB6"
+    },
+    {
+      "lineNumber": 10351,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ice-pwd:FpRkQIaoqjkMff6jxuawfi"
+    },
+    {
+      "lineNumber": 10352,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=fingerprint:sha-256 43:61:81:F1:57:FF:CA:16:03:AC:06:9C:E3:63:90:B8:F8:3B:C5:F1:A8:B6:64:54:BD:45:09:8C:09:F8:5A:63"
+    },
+    {
+      "lineNumber": 10353,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b a=setup:active"
+    },
+    {
+      "lineNumber": 10354,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b "
+    },
+    {
+      "lineNumber": 10355,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:5526 Audio Codec Compare [PCMU:0:8000:20:64000:1]/[PCMU:0:8000:20:64000:1]"
+    },
+    {
+      "lineNumber": 10356,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:5588 Audio Codec Compare [PCMU:0:8000:20:64000:1] ++++ is saved as a match"
+    },
+    {
+      "lineNumber": 10357,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:3731 Set Codec verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 PCMU/8000 20 ms 160 samples 64000 bits 1 channels"
+    },
+    {
+      "lineNumber": 10358,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_codec.c:111 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 Original read codec set to PCMU:0"
+    },
+    {
+      "lineNumber": 10359,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:4211 Save audio Candidate cid: 1 proto: udp type: host addr: 172.24.0.6:52862"
+    },
+    {
+      "lineNumber": 10360,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:4256 Searching for rtp candidate."
+    },
+    {
+      "lineNumber": 10361,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:4265 Choose rtp candidate, index 0, 172.24.0.6:52862"
+    },
+    {
+      "lineNumber": 10362,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:4000 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 choosing family v4"
+    },
+    {
+      "lineNumber": 10363,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:4276 Choose same candidate, index 0, for rtcp based on rtcp-mux attribute 172.24.0.6:52862"
+    },
+    {
+      "lineNumber": 10364,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:4328 setting remote audio ice addr to index 0 172.24.0.6:52862 based on candidate"
+    },
+    {
+      "lineNumber": 10365,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:4363 Setting remote rtcp audio addr to 172.24.0.6:52862 based on candidate"
+    },
+    {
+      "lineNumber": 10366,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:5827 No 2833 in SDP. Liberal DTMF mode adding 1 as telephone-event."
+    },
+    {
+      "lineNumber": 10367,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:5856 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 Set 2833 dtmf send payload to 1 recv payload to 0"
+    },
+    {
+      "lineNumber": 10368,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:8660 AUDIO RTP [verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5] 172.24.0.5 port 28774 -> 172.24.0.6 port 52862 codec: 0 ms: 20"
+    },
+    {
+      "lineNumber": 10369,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_rtp.c:4566 Starting timer [soft] 160 bytes per 20ms"
+    },
+    {
+      "lineNumber": 10370,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [INFO] switch_core_media.c:8841 Activating Audio ICE"
+    },
+    {
+      "lineNumber": 10371,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [NOTICE] switch_rtp.c:5006 Activating RTP audio ICE: DiB6:Q1c5XQua1nYHq2BT 172.24.0.6:52862"
+    },
+    {
+      "lineNumber": 10372,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:8881 Activating RTCP PORT 52862"
+    },
+    {
+      "lineNumber": 10373,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_rtp.c:4898 RTCP send rate is: 1000 and packet rate is: 20000 Remote Port: 52862"
+    },
+    {
+      "lineNumber": 10374,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [INFO] switch_core_media.c:8892 Skipping RTCP ICE (Same as RTP)"
+    },
+    {
+      "lineNumber": 10375,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [INFO] switch_rtp.c:3857 Activate RTP/RTCP audio DTLS server"
+    },
+    {
+      "lineNumber": 10376,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [INFO] switch_rtp.c:4045 Changing audio DTLS state from OFF to HANDSHAKE"
+    },
+    {
+      "lineNumber": 10377,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_core_media.c:2441 Setting Jitterbuffer to 60ms (3 frames) (10 max frames)"
+    },
+    {
+      "lineNumber": 10378,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_core_media.c:8973 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 Set 2833 dtmf send payload to 1"
+    },
+    {
+      "lineNumber": 10379,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_core_media.c:8642 Audio params are unchanged for verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5."
+    },
+    {
+      "lineNumber": 10380,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [NOTICE] mod_verto.c:3001 Channel [verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5] has been answered"
+    },
+    {
+      "lineNumber": 10381,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_ivr_originate.c:3913 Originate Resulted in Success: [verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5] Peer UUID: 41e7220c-4c1d-4f7b-8341-fcdd9977163b"
+    },
+    {
+      "lineNumber": 10382,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_channel.c:2197 (sofia/internal/1000@127.0.0.1) Callstate Change RING_WAIT -> ACTIVE"
+    },
+    {
+      "lineNumber": 10383,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_channel.c:3912 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Callstate Change RINGING -> ACTIVE"
+    },
+    {
+      "lineNumber": 10384,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_ivr_bridge.c:1791 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State Change CS_CONSUME_MEDIA -> CS_EXCHANGE_MEDIA"
+    },
+    {
+      "lineNumber": 10385,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_core_state_machine.c:581 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Running State Change CS_EXCHANGE_MEDIA (Cur 2 Tot 16)"
+    },
+    {
+      "lineNumber": 10386,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_core_state_machine.c:650 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State EXCHANGE_MEDIA"
+    },
+    {
+      "lineNumber": 10387,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] mod_rtc.c:146 RTC EXCHANGE_MEDIA"
+    },
+    {
+      "lineNumber": 10388,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.788819 97.83% [INFO] switch_rtp.c:3341 Changing audio DTLS state from HANDSHAKE to SETUP"
+    },
+    {
+      "lineNumber": 10389,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.816584 97.83% [INFO] switch_rtp.c:3248 audio Fingerprint Verified."
+    },
+    {
+      "lineNumber": 10390,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.816584 97.83% [INFO] switch_rtp.c:4369 Activating audio Secure RTP SEND"
+    },
+    {
+      "lineNumber": 10392,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.816584 97.83% [INFO] switch_rtp.c:4347 Activating audio Secure RTP RECV"
+    },
+    {
+      "lineNumber": 10394,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.816584 97.83% [INFO] switch_rtp.c:3290 Changing audio DTLS state from SETUP to READY"
+    },
+    {
+      "lineNumber": 10395,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.867952 97.83% [DEBUG] switch_rtp.c:1934 rtcp_stats_init: audio ssrc[570248808] base_seq[29256]"
+    },
+    {
+      "lineNumber": 10396,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:06.351640 97.60% [DEBUG] switch_rtp.c:7698 Correct audio ip/port confirmed."
+    },
+    {
+      "lineNumber": 10403,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.007426 96.17% [NOTICE] sofia.c:1065 Hangup sofia/internal/1000@127.0.0.1 [CS_EXECUTE] [NORMAL_CLEARING]"
+    },
+    {
+      "lineNumber": 10404,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.007426 96.17% [DEBUG] switch_ivr_bridge.c:911 BRIDGE THREAD DONE [sofia/internal/1000@127.0.0.1]"
+    },
+    {
+      "lineNumber": 10405,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_ivr_bridge.c:819 sofia/internal/1000@127.0.0.1 ending bridge by request from write function"
+    },
+    {
+      "lineNumber": 10406,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_ivr_bridge.c:911 BRIDGE THREAD DONE [verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5]"
+    },
+    {
+      "lineNumber": 10407,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [NOTICE] switch_ivr_bridge.c:1027 Hangup verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 [CS_EXCHANGE_MEDIA] [NORMAL_CLEARING]"
+    },
+    {
+      "lineNumber": 10408,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:650 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State EXCHANGE_MEDIA going to sleep"
+    },
+    {
+      "lineNumber": 10409,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:581 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Running State Change CS_HANGUP (Cur 2 Tot 16)"
+    },
+    {
+      "lineNumber": 10410,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:844 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Callstate Change ACTIVE -> HANGUP"
+    },
+    {
+      "lineNumber": 10411,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_ivr_bridge.c:1890 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 skip receive message [UNBRIDGE] (channel is hungup already)"
+    },
+    {
+      "lineNumber": 10412,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_ivr_bridge.c:1893 sofia/internal/1000@127.0.0.1 skip receive message [UNBRIDGE] (channel is hungup already)"
+    },
+    {
+      "lineNumber": 10413,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:846 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State HANGUP"
+    },
+    {
+      "lineNumber": 10414,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_session.c:2979 sofia/internal/1000@127.0.0.1 skip receive message [APPLICATION_EXEC_COMPLETE] (channel is hungup already)"
+    },
+    {
+      "lineNumber": 10415,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:647 (sofia/internal/1000@127.0.0.1) State EXECUTE going to sleep"
+    },
+    {
+      "lineNumber": 10416,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:581 (sofia/internal/1000@127.0.0.1) Running State Change CS_HANGUP (Cur 2 Tot 16)"
+    },
+    {
+      "lineNumber": 10417,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:59 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 Standard HANGUP, cause: NORMAL_CLEARING"
+    },
+    {
+      "lineNumber": 10418,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:846 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State HANGUP going to sleep"
+    },
+    {
+      "lineNumber": 10419,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:844 (sofia/internal/1000@127.0.0.1) Callstate Change ACTIVE -> HANGUP"
+    },
+    {
+      "lineNumber": 10420,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:846 (sofia/internal/1000@127.0.0.1) State HANGUP"
+    },
+    {
+      "lineNumber": 10421,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] mod_sofia.c:469 Channel sofia/internal/1000@127.0.0.1 hanging up, cause: NORMAL_CLEARING"
+    },
+    {
+      "lineNumber": 10422,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:616 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State Change CS_HANGUP -> CS_REPORTING"
+    },
+    {
+      "lineNumber": 10423,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:581 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Running State Change CS_REPORTING (Cur 2 Tot 16)"
+    },
+    {
+      "lineNumber": 10424,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:932 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State REPORTING"
+    },
+    {
+      "lineNumber": 10425,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:168 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 Standard REPORTING, cause: NORMAL_CLEARING"
+    },
+    {
+      "lineNumber": 10426,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:932 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State REPORTING going to sleep"
+    },
+    {
+      "lineNumber": 10427,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:59 sofia/internal/1000@127.0.0.1 Standard HANGUP, cause: NORMAL_CLEARING"
+    },
+    {
+      "lineNumber": 10428,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:846 (sofia/internal/1000@127.0.0.1) State HANGUP going to sleep"
+    },
+    {
+      "lineNumber": 10429,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:616 (sofia/internal/1000@127.0.0.1) State Change CS_HANGUP -> CS_REPORTING"
+    },
+    {
+      "lineNumber": 10430,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:607 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State Change CS_REPORTING -> CS_DESTROY"
+    },
+    {
+      "lineNumber": 10431,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_session.c:1744 Session 16 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Locked, Waiting on external entities"
+    },
+    {
+      "lineNumber": 10432,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [NOTICE] switch_core_session.c:1762 Session 16 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Ended"
+    },
+    {
+      "lineNumber": 10433,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [NOTICE] switch_core_session.c:1766 Close Channel verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 [CS_DESTROY]"
+    },
+    {
+      "lineNumber": 10434,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:581 (sofia/internal/1000@127.0.0.1) Running State Change CS_REPORTING (Cur 1 Tot 16)"
+    },
+    {
+      "lineNumber": 10435,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:932 (sofia/internal/1000@127.0.0.1) State REPORTING"
+    },
+    {
+      "lineNumber": 10436,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:735 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Running State Change CS_DESTROY (Cur 1 Tot 16)"
+    },
+    {
+      "lineNumber": 10437,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:745 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State DESTROY"
+    },
+    {
+      "lineNumber": 10438,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] mod_rtc.c:132 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 RTC DESTROY"
+    },
+    {
+      "lineNumber": 10439,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:175 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 Standard DESTROY"
+    },
+    {
+      "lineNumber": 10440,
+      "text": "41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:745 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State DESTROY going to sleep"
+    },
+    {
+      "lineNumber": 10441,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:168 sofia/internal/1000@127.0.0.1 Standard REPORTING, cause: NORMAL_CLEARING"
+    },
+    {
+      "lineNumber": 10442,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:932 (sofia/internal/1000@127.0.0.1) State REPORTING going to sleep"
+    },
+    {
+      "lineNumber": 10443,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:607 (sofia/internal/1000@127.0.0.1) State Change CS_REPORTING -> CS_DESTROY"
+    },
+    {
+      "lineNumber": 10444,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_session.c:1744 Session 15 (sofia/internal/1000@127.0.0.1) Locked, Waiting on external entities"
+    },
+    {
+      "lineNumber": 10445,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [NOTICE] switch_core_session.c:1762 Session 15 (sofia/internal/1000@127.0.0.1) Ended"
+    },
+    {
+      "lineNumber": 10446,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [NOTICE] switch_core_session.c:1766 Close Channel sofia/internal/1000@127.0.0.1 [CS_DESTROY]"
+    },
+    {
+      "lineNumber": 10447,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:735 (sofia/internal/1000@127.0.0.1) Running State Change CS_DESTROY (Cur 0 Tot 16)"
+    },
+    {
+      "lineNumber": 10448,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:745 (sofia/internal/1000@127.0.0.1) State DESTROY"
+    },
+    {
+      "lineNumber": 10449,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] mod_sofia.c:380 sofia/internal/1000@127.0.0.1 SOFIA DESTROY"
+    },
+    {
+      "lineNumber": 10450,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:175 sofia/internal/1000@127.0.0.1 Standard DESTROY"
+    },
+    {
+      "lineNumber": 10451,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:745 (sofia/internal/1000@127.0.0.1) State DESTROY going to sleep"
+    }
+  ]
+}

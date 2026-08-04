@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-04T04:58:03.878Z",
+  "sourceRevision": {
+    "repo": "agonza1/agentic-contact-center",
+    "commit": "bc6e2c00de0c0714de8df83b159593ae0bb8d6c5",
+    "shortCommit": "bc6e2c00de0c",
+    "branch": "acc-330-verto-smallwebrtc-refactor",
+    "dirty": false
+  },
+  "workboardCard": "460f5326-5347-4eaa-9d49-b526f97324a2",
+  "callId": null,
+  "sipCallId": "acc-proof-1785819423318-ef8962274184",
+  "runtimeModeLabels": {
+    "telephony": "local_sip",
+    "media": "live_capture",
+    "rtcAsr": "rtc_asr_live",
+    "pipecat": "pipecat_verto_webrtc",
+    "playback": "caller_audible_playback"
+  },
+  "localSip": {
+    "bind": "sip:1000@172.24.0.7:5094",
+    "socketBind": "0.0.0.0:5094",
+    "advertisedRtpHost": "172.24.0.7",
+    "destination": "8600",
+    "acceptedInvite": true,
+    "remoteRtp": {
+      "host": "172.24.0.5",
+      "port": 23882
+    },
+    "rtpPacketCount": 690,
+    "callerInputPacketCount": 690,
+    "callerPlaybackPacketCount": 2957,
+    "callerPlaybackRms": 547,
+    "introPlaybackPacketCount": 716,
+    "introPlaybackRms": 630,
+    "responsePlaybackPacketCount": 2241,
+    "responsePlaybackRms": 517
+  },
+  "artifacts": {
+    "audioWav": "/workspace/artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/caller-input.wav",
+    "callerInputWav": "/workspace/artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/caller-input.wav",
+    "callerPlaybackWav": "/workspace/artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/caller-playback-capture.wav",
+    "sipLog": "/workspace/artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/sip-events.json",
+    "rtcAsrEvidence": "/workspace/artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/rtc-asr-transcript-evidence.json",
+    "pipecatVertoEvidence": "/workspace/artifacts/freeswitch-live/pipecat-verto-proof.json",
+    "callerPlaybackEvidence": "/workspace/artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/caller-playback-evidence.json",
+    "freeSwitchCallLinkage": "/workspace/artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/freeswitch-call-linkage-evidence.json"
+  },
+  "freeSwitchCallLinkage": {
+    "ready": true,
+    "status": "linked",
+    "source": "freeswitch_log",
+    "method": "proof_sip_call_id_to_aleg_uuid_to_verto_peer_uuid",
+    "logPath": "artifacts/freeswitch-live/freeswitch.log",
+    "proofSipCallId": "acc-proof-1785819423318-ef8962274184",
+    "linkedSipCallId": "8a0291fb-f25f-4d89-bff8-32d383344d83",
+    "vertoCallId": "41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+    "evidenceLines": {
+      "proofSipCallId": {
+        "lineNumber": 10287,
+        "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [sip_h_X-ACC-Proof-Call-ID]=[acc-proof-1785819423318-ef8962274184] to event"
+      },
+      "vertoPeerUuid": {
+        "lineNumber": 10381,
+        "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_ivr_originate.c:3913 Originate Resulted in Success: [verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5] Peer UUID: 41e7220c-4c1d-4f7b-8341-fcdd9977163b"
+      }
+    }
+  },
+  "artifactIntegrity": [
+    {
+      "artifactId": "caller-input-wav",
+      "kind": "call_media",
+      "path": "/workspace/artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/caller-input.wav",
+      "sha256": "316bb9ae8081b2e6d0306321c2d5c946a6a03bab3fe4e4770862db4efccf5c70",
+      "sizeBytes": 220844,
+      "readiness": "ready"
+    },
+    {
+      "artifactId": "caller-playback-capture-wav",
+      "kind": "playback_media",
+      "path": "/workspace/artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/caller-playback-capture.wav",
+      "sha256": "274131026645ccbab03a37df91d7e09f12b9f4e887832b1aae1525036c3ff32a",
+      "sizeBytes": 946284,
+      "readiness": "ready"
+    },
+    {
+      "artifactId": "sip-events",
+      "kind": "sip_log",
+      "path": "/workspace/artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/sip-events.json",
+      "sha256": "3a03ff133dd2096be526c87cdf7a9cf65ca24206ce7a33c735c72ec6d7015ffa",
+      "sizeBytes": 2305,
+      "readiness": "ready"
+    },
+    {
+      "artifactId": "freeswitch-call-linkage",
+      "kind": "call_linkage",
+      "path": "/workspace/artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/freeswitch-call-linkage-evidence.json",
+      "sha256": "104a692ec1451effd9a321c0458843af4e5f484e9cff26a65cdc8ba56186a834",
+      "sizeBytes": 1054,
+      "readiness": "ready"
+    },
+    {
+      "artifactId": "rtc-asr-transcript-evidence",
+      "kind": "transcript_evidence",
+      "path": "/workspace/artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/rtc-asr-transcript-evidence.json",
+      "sha256": "a5d688ca035af127924704d0f4983949a221df03905d92ae2c396b55f3c04fa9",
+      "sizeBytes": 2044,
+      "readiness": "ready"
+    },
+    {
+      "artifactId": "caller-audible-playback-proof",
+      "kind": "playback_evidence",
+      "path": "/workspace/artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/caller-playback-evidence.json",
+      "sha256": "0bab3087572457d175f156f0221a5be2710890112e0dfef18d76a6d1d984337b",
+      "sizeBytes": 1056,
+      "readiness": "ready"
+    }
+  ],
+  "reviewReady": true,
+  "reviewGate": {
+    "requiredLabels": [
+      "local_sip",
+      "live_capture",
+      "rtc_asr_live",
+      "pipecat_verto_webrtc",
+      "caller_audible_playback"
+    ],
+    "missingLabels": [],
+    "nextActions": []
+  },
+  "callerPlaybackEvidence": {
+    "callerPlaybackConfirmed": true,
+    "packetCount": 2957,
+    "playbackRms": 547,
+    "playbackWavPath": "/workspace/artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/caller-playback-capture.wav",
+    "anyPlaybackConfirmed": true,
+    "responsePlaybackBoundaryAt": "2026-08-04T04:57:18.534Z",
+    "responsePlaybackBoundaryStage": "tts.stream_started",
+    "observableIntroCompletedAt": "2026-08-04T04:57:06.637Z",
+    "responseTtsStartedAt": "2026-08-04T04:57:18.534+00:00",
+    "responseTtsReadyAt": "2026-08-04T04:57:23.256+00:00",
+    "responsePlaybackConfirmed": true,
+    "responsePlaybackPacketCount": 2241,
+    "responsePlaybackRms": 517,
+    "introPlaybackPacketCount": 716,
+    "introPlaybackRms": 630
+  },
+  "rtcAsrEvidence": {
+    "transcriptCaptured": true,
+    "transcript": "You",
+    "ttsAudioReady": true,
+    "ttsResponseStartedAt": "2026-08-04T04:57:18.534+00:00",
+    "ttsResponseStartedStage": "tts.stream_started",
+    "vertoCallId": "41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+    "accCallId": "demo-call-0008",
+    "sipCallId": "41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+    "proofSipCallId": "acc-proof-1785819423318-ef8962274184",
+    "linkedSipCallId": "8a0291fb-f25f-4d89-bff8-32d383344d83",
+    "correlationMode": "expected_sip_call_id",
+    "callLinkage": {
+      "ready": true,
+      "status": "linked",
+      "source": "freeswitch_log",
+      "method": "proof_sip_call_id_to_aleg_uuid_to_verto_peer_uuid",
+      "logPath": "artifacts/freeswitch-live/freeswitch.log",
+      "proofSipCallId": "acc-proof-1785819423318-ef8962274184",
+      "linkedSipCallId": "8a0291fb-f25f-4d89-bff8-32d383344d83",
+      "vertoCallId": "41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+      "evidenceLines": {
+        "proofSipCallId": {
+          "lineNumber": 10287,
+          "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [sip_h_X-ACC-Proof-Call-ID]=[acc-proof-1785819423318-ef8962274184] to event"
+        },
+        "vertoPeerUuid": {
+          "lineNumber": 10381,
+          "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_ivr_originate.c:3913 Originate Resulted in Success: [verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5] Peer UUID: 41e7220c-4c1d-4f7b-8341-fcdd9977163b"
+        }
+      }
+    },
+    "currentCallWindowStartedAt": "2026-08-04T04:57:03.319Z"
+  },
+  "blockers": []
+}

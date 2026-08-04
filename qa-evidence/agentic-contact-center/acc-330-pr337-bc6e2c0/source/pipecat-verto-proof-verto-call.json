@@ -1,0 +1,701 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-04T05:29:35.908+00:00",
+  "eventType": "verto.answer.sent",
+  "status": "registered_media_answer_ready",
+  "reviewReady": false,
+  "vertoUrl": "ws://freeswitch:8081",
+  "login": "acc-pipecat@127.0.0.1",
+  "transport": "freeswitch_verto_webrtc",
+  "inviteCount": 1,
+  "lastLogin": {
+    "at": "2026-08-03T07:11:30.452+00:00",
+    "ok": true,
+    "response": {
+      "jsonrpc": "2.0",
+      "id": "acc-verto-1",
+      "result": {
+        "message": "logged in",
+        "sessid": "1a166ea3-e099-4380-8cff-8c978fac88f5"
+      }
+    }
+  },
+  "lastInvite": {},
+  "lastAnswer": {},
+  "lastError": {},
+  "pipelineEvidence": [
+    {
+      "callId": "demo-call-0008",
+      "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+      "turnCount": 1,
+      "lastEvidence": {
+        "ok": true,
+        "turn": 1,
+        "callerTranscript": "You",
+        "agentText": "Your cancellation is confirmed. A specialist will follow up after this call.",
+        "audio": {
+          "stage": "audio.frame",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:18.519+00:00",
+          "rms": 0,
+          "frameBytes": 640,
+          "frameMs": 20,
+          "sampleRate": 16000,
+          "silenceThresholdRms": 260,
+          "inSpeech": false,
+          "collectedMs": 0
+        },
+        "stt": {
+          "engine": "rtc-asr",
+          "contract": "local-stt.v1",
+          "model": "mlx-community/parakeet-tdt_ctc-110m",
+          "backend": "faster-whisper",
+          "connectionId": 1,
+          "persistentSession": true,
+          "elapsedMs": 6614,
+          "audioBytes": 90816,
+          "sessionAudioBytes": 90816,
+          "sessionEventCount": 3,
+          "interimEventCount": 0,
+          "eventCount": 1,
+          "finalEventObserved": true,
+          "finalTranscriptSource": "rtc_asr_interim_fallback"
+        },
+        "acc": {
+          "stage": "acc.caller_turn_overridden",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:18.525+00:00",
+          "turn": 1,
+          "callerTranscript": "You",
+          "agentText": "Your cancellation is confirmed. A specialist will follow up after this call.",
+          "reason": "ACC_PIPECAT_AGENT_TEXT_OVERRIDE"
+        },
+        "tts": {
+          "engine": "kokoro",
+          "provider": "kokoro",
+          "voice": "af_heart",
+          "model": "kokoro",
+          "format": "pcm_s16le",
+          "providerStream": false,
+          "through": "pipecat",
+          "streamId": "5bb4bb27-91da-43d9-91d0-198c1764a79f",
+          "chunkMs": 20,
+          "chunkBytes": 960,
+          "cacheHit": true,
+          "firstAudioMs": 5,
+          "elapsedMs": 4706,
+          "outputWindow": {
+            "audioBytes": 348,
+            "sampleRate": 24000,
+            "channels": 1,
+            "estimatedChunkDurationMs": 7,
+            "activeUntilMonotonicMs": 530935288
+          },
+          "audioBytesEnqueued": 225948,
+          "chunksEnqueued": 236,
+          "streamCompleted": true
+        },
+        "bargeIn": {
+          "reason": "min_words_barge_in",
+          "skipped": true,
+          "skipReason": "no_active_output_audio",
+          "outputGeneration": 1,
+          "timestamp": "2026-08-04T04:57:18.514+00:00"
+        },
+        "outputCancelled": false,
+        "pipecatFrames": {
+          "input": "InputAudioRawFrame",
+          "transcription": "TranscriptionFrame",
+          "agentText": "TextFrame",
+          "output": "TTSAudioRawFrame"
+        },
+        "callId": "demo-call-0008"
+      },
+      "lastAudioEvidence": {
+        "stage": "audio.frame",
+        "ok": true,
+        "callId": "demo-call-0008",
+        "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+        "timestamp": "2026-08-04T04:57:20.535+00:00",
+        "rms": 0,
+        "frameBytes": 640,
+        "frameMs": 20,
+        "sampleRate": 16000,
+        "silenceThresholdRms": 260,
+        "inSpeech": false,
+        "collectedMs": 0
+      },
+      "lastSttEvidence": {
+        "stage": "stt.session_closed",
+        "ok": true,
+        "callId": "demo-call-0008",
+        "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+        "timestamp": "2026-08-04T04:58:35.126+00:00",
+        "connectionId": 1,
+        "reason": "verto_peer_closed",
+        "persistentSession": true
+      },
+      "lastAccEvidence": {
+        "stage": "acc.caller_turn_overridden",
+        "ok": true,
+        "callId": "demo-call-0008",
+        "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+        "timestamp": "2026-08-04T04:57:18.525+00:00",
+        "turn": 1,
+        "callerTranscript": "You",
+        "agentText": "Your cancellation is confirmed. A specialist will follow up after this call.",
+        "reason": "ACC_PIPECAT_AGENT_TEXT_OVERRIDE"
+      },
+      "lastTtsEvidence": {
+        "stage": "tts.stream_completed",
+        "ok": true,
+        "callId": "demo-call-0008",
+        "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+        "timestamp": "2026-08-04T04:57:23.256+00:00",
+        "streamId": "5bb4bb27-91da-43d9-91d0-198c1764a79f",
+        "chunkCount": 236,
+        "audioBytesEnqueued": 225948,
+        "outputGeneration": 1,
+        "pacedAudioMs": 4707,
+        "wallClockMs": 4721
+      },
+      "lastError": {},
+      "stageEvents": [
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:09.939+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.009129524230957031
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:10.069+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.010670661926269531
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:10.125+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.009870380163192749
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:10.236+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.011094629764556885
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:10.299+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.009870380163192749
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:10.388+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.00949278473854065
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:10.469+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.009129524230957031
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:10.550+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.009129524230957031
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:10.618+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.010262787342071533
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:10.677+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.009870380163192749
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:10.778+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.010262787342071533
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:10.885+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.010670661926269531
+        },
+        {
+          "stage": "audio.frame",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:10.892+00:00",
+          "rms": 0,
+          "frameBytes": 640,
+          "frameMs": 20,
+          "sampleRate": 16000,
+          "silenceThresholdRms": 260,
+          "inSpeech": true,
+          "collectedMs": 2598
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:10.953+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.009870380163192749
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:11.081+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.011094629764556885
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:11.140+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.010670661926269531
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:11.222+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.010670661926269531
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:11.303+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.01199302077293396
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:11.381+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.010670661926269531
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:11.479+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.011535167694091797
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:11.551+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.011094629764556885
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:11.665+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.01199302077293396
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:11.739+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.013476967811584473
+        },
+        {
+          "stage": "turn.smart_turn_decision",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:11.864+00:00",
+          "complete": false,
+          "strategy": "LocalSmartTurnAnalyzerV3",
+          "probability": 0.01514175534248352
+        },
+        {
+          "stage": "stt.finalize_started",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:11.879+00:00",
+          "audioBytes": 90816,
+          "collectedMs": 2838,
+          "silenceElapsedMs": 3270,
+          "maxElapsedMs": 5059,
+          "reason": "silence_timer"
+        },
+        {
+          "stage": "stt.transcript_recovered_from_interim",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:18.504+00:00",
+          "transcript": "You",
+          "stt": {
+            "engine": "rtc-asr",
+            "contract": "local-stt.v1",
+            "model": "mlx-community/parakeet-tdt_ctc-110m",
+            "backend": "faster-whisper",
+            "connectionId": 1,
+            "persistentSession": true,
+            "elapsedMs": 6614,
+            "audioBytes": 90816,
+            "sessionAudioBytes": 90816,
+            "sessionEventCount": 3,
+            "interimEventCount": 0,
+            "eventCount": 1,
+            "finalEventObserved": true,
+            "finalTranscriptSource": "rtc_asr_interim_fallback"
+          }
+        },
+        {
+          "stage": "stt.transcript_final",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:18.510+00:00",
+          "transcript": "You",
+          "stt": {
+            "engine": "rtc-asr",
+            "contract": "local-stt.v1",
+            "model": "mlx-community/parakeet-tdt_ctc-110m",
+            "backend": "faster-whisper",
+            "connectionId": 1,
+            "persistentSession": true,
+            "elapsedMs": 6614,
+            "audioBytes": 90816,
+            "sessionAudioBytes": 90816,
+            "sessionEventCount": 3,
+            "interimEventCount": 0,
+            "eventCount": 1,
+            "finalEventObserved": true,
+            "finalTranscriptSource": "rtc_asr_interim_fallback"
+          }
+        },
+        {
+          "stage": "turn.min_words_start",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:18.514+00:00",
+          "strategy": "MinWordsUserTurnStartStrategy",
+          "minWords": 2,
+          "skipped": true
+        },
+        {
+          "stage": "audio.frame",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:18.519+00:00",
+          "rms": 0,
+          "frameBytes": 640,
+          "frameMs": 20,
+          "sampleRate": 16000,
+          "silenceThresholdRms": 260,
+          "inSpeech": false,
+          "collectedMs": 0
+        },
+        {
+          "stage": "acc.caller_turn_overridden",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:18.525+00:00",
+          "turn": 1,
+          "callerTranscript": "You",
+          "agentText": "Your cancellation is confirmed. A specialist will follow up after this call.",
+          "reason": "ACC_PIPECAT_AGENT_TEXT_OVERRIDE"
+        },
+        {
+          "stage": "tts.stream_started",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:18.534+00:00",
+          "tts": {
+            "engine": "kokoro",
+            "provider": "kokoro",
+            "voice": "af_heart",
+            "model": "kokoro",
+            "format": "pcm_s16le",
+            "providerStream": false,
+            "through": "pipecat",
+            "streamId": "5bb4bb27-91da-43d9-91d0-198c1764a79f",
+            "chunkMs": 20,
+            "chunkBytes": 960,
+            "cacheHit": true,
+            "firstAudioMs": 5,
+            "elapsedMs": 5
+          }
+        },
+        {
+          "stage": "tts.audio_chunk",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:18.539+00:00",
+          "streamId": "5bb4bb27-91da-43d9-91d0-198c1764a79f",
+          "chunkIndex": 1,
+          "audioBytes": 960,
+          "sampleRate": 24000,
+          "outputGeneration": 1,
+          "evidenceIntervalChunks": 50
+        },
+        {
+          "stage": "tts.audio_chunk",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:19.517+00:00",
+          "streamId": "5bb4bb27-91da-43d9-91d0-198c1764a79f",
+          "chunkIndex": 50,
+          "audioBytes": 960,
+          "sampleRate": 24000,
+          "outputGeneration": 1,
+          "evidenceIntervalChunks": 50
+        },
+        {
+          "stage": "audio.frame",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:19.534+00:00",
+          "rms": 0,
+          "frameBytes": 640,
+          "frameMs": 20,
+          "sampleRate": 16000,
+          "silenceThresholdRms": 260,
+          "inSpeech": false,
+          "collectedMs": 0
+        },
+        {
+          "stage": "tts.audio_chunk",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:20.515+00:00",
+          "streamId": "5bb4bb27-91da-43d9-91d0-198c1764a79f",
+          "chunkIndex": 100,
+          "audioBytes": 960,
+          "sampleRate": 24000,
+          "outputGeneration": 1,
+          "evidenceIntervalChunks": 50
+        },
+        {
+          "stage": "audio.frame",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:20.535+00:00",
+          "rms": 0,
+          "frameBytes": 640,
+          "frameMs": 20,
+          "sampleRate": 16000,
+          "silenceThresholdRms": 260,
+          "inSpeech": false,
+          "collectedMs": 0
+        },
+        {
+          "stage": "tts.audio_chunk",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:21.516+00:00",
+          "streamId": "5bb4bb27-91da-43d9-91d0-198c1764a79f",
+          "chunkIndex": 150,
+          "audioBytes": 960,
+          "sampleRate": 24000,
+          "outputGeneration": 1,
+          "evidenceIntervalChunks": 50
+        },
+        {
+          "stage": "tts.audio_chunk",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:22.517+00:00",
+          "streamId": "5bb4bb27-91da-43d9-91d0-198c1764a79f",
+          "chunkIndex": 200,
+          "audioBytes": 960,
+          "sampleRate": 24000,
+          "outputGeneration": 1,
+          "evidenceIntervalChunks": 50
+        },
+        {
+          "stage": "tts.stream_completed",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:57:23.256+00:00",
+          "streamId": "5bb4bb27-91da-43d9-91d0-198c1764a79f",
+          "chunkCount": 236,
+          "audioBytesEnqueued": 225948,
+          "outputGeneration": 1,
+          "pacedAudioMs": 4707,
+          "wallClockMs": 4721
+        },
+        {
+          "stage": "stt.session_closed",
+          "ok": true,
+          "callId": "demo-call-0008",
+          "correlationId": "acc-pipecat-41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+          "timestamp": "2026-08-04T04:58:35.126+00:00",
+          "connectionId": 1,
+          "reason": "verto_peer_closed",
+          "persistentSession": true
+        }
+      ],
+      "rtcAsr": {
+        "connectionId": 1,
+        "persistentSession": true,
+        "sessionAudioBytes": 90816,
+        "sessionEventCount": 3
+      },
+      "output": {
+        "generation": 1,
+        "streamActive": false,
+        "streamId": "5bb4bb27-91da-43d9-91d0-198c1764a79f",
+        "chunkCount": 236,
+        "audioBytesEnqueued": 225948,
+        "flushCount": 1,
+        "playbackPending": false
+      },
+      "bargeIn": {
+        "reason": "verto_peer_closed",
+        "skipped": true,
+        "skipReason": "no_active_output_audio",
+        "outputGeneration": 1,
+        "timestamp": "2026-08-04T04:58:35.123+00:00"
+      },
+      "pendingCallerTurnCommit": false,
+      "trackRecordings": null,
+      "flowManager": {
+        "ok": true,
+        "runtimeAdapter": "pipecat.flows.FlowManager",
+        "runtimeVersions": {
+          "pipecat-ai": "1.7.0"
+        },
+        "currentNode": "call_started",
+        "retainedAccOwnership": [
+          "product_state",
+          "operator_controls",
+          "proof_artifacts",
+          "queue_state"
+        ],
+        "queuedFrameTypes": [
+          "LLMMessagesAppendFrame",
+          "LLMSetToolsFrame"
+        ]
+      },
+      "accCallId": "demo-call-0008",
+      "vertoCallId": "41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+      "sipCallId": "41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+      "linkedSipCallId": null,
+      "proofSipCallId": null,
+      "conversationMode": "scripted"
+    }
+  ],
+  "remainingMediaBlocker": "Verto signaling is configured and the sidecar can attempt a Pipecat-backed WebRTC answer, but caller-audible acceptance still requires a live 8600 proof showing rtc-asr final transcript and Kokoro/Pipecat playback heard by the caller.",
+  "nextAction": "Place a local 8600 call with the Verto bridge running, then attach this artifact with the strict live SIP bundle once caller playback proof is captured.",
+  "callScopedProofArtifactPaths": [
+    "/app/artifacts/freeswitch-live/calls/41e7220c-4c1d-4f7b-8341-fcdd9977163b/pipecat-verto-proof.json"
+  ]
+}

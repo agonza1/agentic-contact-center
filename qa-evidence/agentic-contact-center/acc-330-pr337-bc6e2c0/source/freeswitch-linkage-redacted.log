@@ -1,0 +1,460 @@
+9981: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.007338 98.10% [NOTICE] switch_channel.c:1142 New Channel sofia/internal/1000@127.0.0.1 [8a0291fb-f25f-4d89-bff8-32d383344d83]
+9982: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.007338 98.10% [DEBUG] switch_core_state_machine.c:581 (sofia/internal/1000@127.0.0.1) Running State Change CS_NEW (Cur 1 Tot 15)
+9983: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.007338 98.10% [INFO] sofia.c:10460 sofia/internal/1000@127.0.0.1 receiving invite from 172.24.0.7:5094 version: 1.10.12 -release-10222002881-a88d069d6fgit a88d069 2024-08-02 21:02:27Z 64bit call-id: acc-proof-1785819423318-ef8962274184
+9985: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.007338 98.10% [DEBUG] switch_core_state_machine.c:600 (sofia/internal/1000@127.0.0.1) State NEW
+9986: 2026-08-04 04:57:03.027346 98.10% [DEBUG] sofia.c:2419 detaching session 8a0291fb-f25f-4d89-bff8-32d383344d83
+9987: 2026-08-04 04:57:03.027346 98.10% [DEBUG] sofia.c:2532 Re-attaching to session 8a0291fb-f25f-4d89-bff8-32d383344d83
+9988: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.027346 98.10% [INFO] sofia.c:10460 sofia/internal/1000@127.0.0.1 receiving invite from 172.24.0.7:5094 version: 1.10.12 -release-10222002881-a88d069d6fgit a88d069 2024-08-02 21:02:27Z 64bit call-id: acc-proof-1785819423318-ef8962274184
+9990: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] sofia.c:7493 Channel sofia/internal/1000@127.0.0.1 entering state [received][100]
+9991: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] sofia.c:7503 Remote SDP:
+9992: 8a0291fb-f25f-4d89-bff8-32d383344d83 v=0
+9993: 8a0291fb-f25f-4d89-bff8-32d383344d83 o=acc-proof 0 0 IN IP4 172.24.0.7
+9994: 8a0291fb-f25f-4d89-bff8-32d383344d83 s=ACC Verto SIP live proof
+9995: 8a0291fb-f25f-4d89-bff8-32d383344d83 c=IN IP4 172.24.0.7
+9996: 8a0291fb-f25f-4d89-bff8-32d383344d83 t=0 0
+9997: 8a0291fb-f25f-4d89-bff8-32d383344d83 m=audio 6002 RTP/AVP 0
+9998: 8a0291fb-f25f-4d89-bff8-32d383344d83 a=rtpmap:0 PCMU/8000
+9999: 8a0291fb-f25f-4d89-bff8-32d383344d83 
+10000: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] sofia.c:7906 (sofia/internal/1000@127.0.0.1) State Change CS_NEW -> CS_INIT
+10001: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:581 (sofia/internal/1000@127.0.0.1) Running State Change CS_INIT (Cur 1 Tot 15)
+10002: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:624 (sofia/internal/1000@127.0.0.1) State INIT
+10003: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] mod_sofia.c:97 sofia/internal/1000@127.0.0.1 SOFIA INIT
+10004: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:40 sofia/internal/1000@127.0.0.1 Standard INIT
+10005: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:48 (sofia/internal/1000@127.0.0.1) State Change CS_INIT -> CS_ROUTING
+10006: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:624 (sofia/internal/1000@127.0.0.1) State INIT going to sleep
+10007: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:581 (sofia/internal/1000@127.0.0.1) Running State Change CS_ROUTING (Cur 1 Tot 15)
+10008: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_channel.c:2399 (sofia/internal/1000@127.0.0.1) Callstate Change DOWN -> RINGING
+10009: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:640 (sofia/internal/1000@127.0.0.1) State ROUTING
+10010: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] mod_sofia.c:158 sofia/internal/1000@127.0.0.1 SOFIA ROUTING
+10011: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:230 sofia/internal/1000@127.0.0.1 Standard ROUTING
+10012: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [INFO] mod_dialplan_xml.c:639 Processing ACC SIP Proof <1000>->8600 in context default
+10013: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->unloop] continue=false
+10014: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [unloop] ${unroll_loops}(true) =~ /^true$/ break=on-false
+10015: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [unloop] ${sip_looped_call}() =~ /^true$/ break=on-false
+10016: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->tod_example] continue=true
+10017: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Date/TimeMatch (FAIL) [tod_example] break=on-false
+10018: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->holiday_example] continue=true
+10019: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Date/TimeMatch (FAIL) [holiday_example] break=on-false
+10020: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->global-intercept] continue=false
+10021: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [global-intercept] destination_number(8600) =~ /^886$/ break=on-false
+10022: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->group-intercept] continue=false
+10023: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [group-intercept] destination_number(8600) =~ /^\*8$/ break=on-false
+10024: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->intercept-ext] continue=false
+10025: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [intercept-ext] destination_number(8600) =~ /^\*\*(\d+)$/ break=on-false
+10026: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->redial] continue=false
+10027: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [redial] destination_number(8600) =~ /^(redial|870)$/ break=on-false
+10028: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->global] continue=true
+10029: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [global] ${call_debug}(false) =~ /^true$/ break=never
+10031: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [global] ${rtp_has_crypto}() =~ /^(AEAD_AES_256_GCM_8|AEAD_AES_128_GCM_8|AES_CM_256_HMAC_SHA1_80|AES_CM_192_HMAC_SHA1_80|AES_CM_128_HMAC_SHA1_80|AES_CM_256_HMAC_SHA1_32|AES_CM_192_HMAC_SHA1_32|AES_CM_128_HMAC_SHA1_32|AES_CM_128_NULL_AUTH)$/ break=never
+10032: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [global] ${endpoint_disposition}(DELAYED NEGOTIATION) =~ /^(DELAYED NEGOTIATION)/ break=on-false
+10033: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [global] ${switch_r_sdp}(v=0
+10034: 8a0291fb-f25f-4d89-bff8-32d383344d83 o=acc-proof 0 0 IN IP4 172.24.0.7
+10035: 8a0291fb-f25f-4d89-bff8-32d383344d83 s=ACC Verto SIP live proof
+10036: 8a0291fb-f25f-4d89-bff8-32d383344d83 c=IN IP4 172.24.0.7
+10037: 8a0291fb-f25f-4d89-bff8-32d383344d83 t=0 0
+10038: 8a0291fb-f25f-4d89-bff8-32d383344d83 m=audio 6002 RTP/AVP 0
+10039: 8a0291fb-f25f-4d89-bff8-32d383344d83 a=rtpmap:0 PCMU/8000
+10040: 8a0291fb-f25f-4d89-bff8-32d383344d83 ) =~ /(AES_CM_128_HMAC_SHA1_32|AES_CM_128_HMAC_SHA1_80)/ break=never
+10041: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Absolute Condition [global]
+10042: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action hash(insert/${domain_name}-spymap/${caller_id_number}/${uuid})
+10043: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action hash(insert/${domain_name}-last_dial/${caller_id_number}/${destination_number})
+10044: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action hash(insert/${domain_name}-last_dial/global/${uuid})
+10045: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action export(RFC2822_DATE=${strftime(%a, %d %b %Y %T %z)})
+10046: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->snom-demo-2] continue=false
+10047: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [snom-demo-2] destination_number(8600) =~ /^9001$/ break=on-false
+10048: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->snom-demo-1] continue=false
+10049: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [snom-demo-1] destination_number(8600) =~ /^9000$/ break=on-false
+10050: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->eavesdrop] continue=false
+10051: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [eavesdrop] destination_number(8600) =~ /^88(\d{4})$|^\*0(.*)$/ break=on-false
+10052: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->eavesdrop] continue=false
+10053: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [eavesdrop] destination_number(8600) =~ /^779$/ break=on-false
+10054: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->call_return] continue=false
+10055: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [call_return] destination_number(8600) =~ /^\*69$|^869$|^lcr$/ break=on-false
+10056: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->del-group] continue=false
+10057: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [del-group] destination_number(8600) =~ /^80(\d{2})$/ break=on-false
+10058: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->add-group] continue=false
+10059: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [add-group] destination_number(8600) =~ /^81(\d{2})$/ break=on-false
+10060: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->call-group-simo] continue=false
+10061: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [call-group-simo] destination_number(8600) =~ /^82(\d{2})$/ break=on-false
+10062: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->call-group-order] continue=false
+10063: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [call-group-order] destination_number(8600) =~ /^83(\d{2})$/ break=on-false
+10064: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->extension-intercom] continue=false
+10065: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [extension-intercom] destination_number(8600) =~ /^8(10[01][0-9])$/ break=on-false
+10066: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->Local_Extension] continue=false
+10067: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [Local_Extension] destination_number(8600) =~ /^(10[01][0-9])$/ break=on-false
+10068: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->Local_Extension_Skinny] continue=false
+10069: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [Local_Extension_Skinny] destination_number(8600) =~ /^(11[01][0-9])$/ break=on-false
+10070: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->group_dial_sales] continue=false
+10071: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [group_dial_sales] destination_number(8600) =~ /^2000$/ break=on-false
+10072: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->group_dial_support] continue=false
+10073: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [group_dial_support] destination_number(8600) =~ /^2001$/ break=on-false
+10074: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->group_dial_billing] continue=false
+10075: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [group_dial_billing] destination_number(8600) =~ /^2002$/ break=on-false
+10076: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->operator] continue=false
+10077: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [operator] destination_number(8600) =~ /^(operator|0)$/ break=on-false
+10078: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->vmain] continue=false
+10079: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [vmain] destination_number(8600) =~ /^vmain$|^4000$|^\*98$/ break=on-false
+10080: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->sip_uri] continue=false
+10081: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [sip_uri] destination_number(8600) =~ /^sip:(.*)$/ break=on-false
+10082: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->nb_conferences] continue=false
+10083: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [nb_conferences] destination_number(8600) =~ /^(30\d{2})$/ break=on-false
+10084: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->wb_conferences] continue=false
+10085: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [wb_conferences] destination_number(8600) =~ /^(31\d{2})$/ break=on-false
+10086: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->uwb_conferences] continue=false
+10087: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [uwb_conferences] destination_number(8600) =~ /^(32\d{2})$/ break=on-false
+10088: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->cdquality_conferences] continue=false
+10089: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [cdquality_conferences] destination_number(8600) =~ /^(33\d{2})$/ break=on-false
+10090: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->cdquality_stereo_conferences] continue=false
+10091: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [cdquality_stereo_conferences] destination_number(8600) =~ /^(35\d{2}).*?-screen$/ break=on-false
+10092: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->conference-canvases] continue=true
+10093: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [conference-canvases] destination_number(8600) =~ /(35\d{2})-canvas-(\d+)/ break=on-false
+10094: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->conf mod] continue=false
+10095: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [conf mod] destination_number(8600) =~ /^6070-moderator$/ break=on-false
+10096: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->cdquality_conferences] continue=false
+10097: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [cdquality_conferences] destination_number(8600) =~ /^(35\d{2})$/ break=on-false
+10098: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->cdquality_conferences_720] continue=false
+10099: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [cdquality_conferences_720] destination_number(8600) =~ /^(36\d{2})$/ break=on-false
+10100: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->cdquality_conferences_480] continue=false
+10101: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [cdquality_conferences_480] destination_number(8600) =~ /^(37\d{2})$/ break=on-false
+10102: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->cdquality_conferences_320] continue=false
+10103: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [cdquality_conferences_320] destination_number(8600) =~ /^(38\d{2})$/ break=on-false
+10104: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->freeswitch_public_conf_via_sip] continue=false
+10105: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [freeswitch_public_conf_via_sip] destination_number(8600) =~ /^9(888|8888|1616|3232)$/ break=on-false
+10106: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->mad_boss_intercom] continue=false
+10107: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [mad_boss_intercom] destination_number(8600) =~ /^0911$/ break=on-false
+10108: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->mad_boss_intercom] continue=false
+10109: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [mad_boss_intercom] destination_number(8600) =~ /^0912$/ break=on-false
+10110: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->mad_boss] continue=false
+10111: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [mad_boss] destination_number(8600) =~ /^0913$/ break=on-false
+10112: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->ivr_demo] continue=false
+10113: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [ivr_demo] destination_number(8600) =~ /^5000$/ break=on-false
+10114: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->dynamic_conference] continue=false
+10115: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [dynamic_conference] destination_number(8600) =~ /^5001$/ break=on-false
+10116: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->rtp_multicast_page] continue=false
+10117: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [rtp_multicast_page] destination_number(8600) =~ /^pagegroup$|^7243$/ break=on-false
+10118: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->park] continue=false
+10119: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [park] destination_number(8600) =~ /^5900$/ break=on-false
+10120: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->unpark] continue=false
+10121: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [unpark] destination_number(8600) =~ /^5901$/ break=on-false
+10122: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->valet_park] continue=false
+10123: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [valet_park] destination_number(8600) =~ /^(6000)$/ break=on-false
+10124: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->valet_park] continue=false
+10125: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [valet_park] destination_number(8600) =~ /^((?!6000)60\d{2})$/ break=on-false
+10126: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->park] continue=false
+10127: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [park] source(mod_sofia) =~ /mod_sofia/ break=on-false
+10128: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [park] destination_number(8600) =~ /park\+(\d+)/ break=on-false
+10129: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->unpark] continue=false
+10130: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [unpark] source(mod_sofia) =~ /mod_sofia/ break=on-false
+10131: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [unpark] destination_number(8600) =~ /^parking$/ break=on-false
+10132: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->park] continue=false
+10133: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [park] source(mod_sofia) =~ /mod_sofia/ break=on-false
+10134: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [park] destination_number(8600) =~ /callpark/ break=on-false
+10135: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->unpark] continue=false
+10136: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [unpark] source(mod_sofia) =~ /mod_sofia/ break=on-false
+10137: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [unpark] destination_number(8600) =~ /pickup/ break=on-false
+10138: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->wait] continue=false
+10139: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [wait] destination_number(8600) =~ /^wait$/ break=on-false
+10140: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->fax_receive] continue=false
+10141: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [fax_receive] destination_number(8600) =~ /^9178$/ break=on-false
+10142: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->fax_transmit] continue=false
+10143: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [fax_transmit] destination_number(8600) =~ /^9179$/ break=on-false
+10144: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->ringback_180] continue=false
+10145: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [ringback_180] destination_number(8600) =~ /^9180$/ break=on-false
+10146: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->ringback_183_uk_ring] continue=false
+10147: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [ringback_183_uk_ring] destination_number(8600) =~ /^9181$/ break=on-false
+10148: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->ringback_183_music_ring] continue=false
+10149: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [ringback_183_music_ring] destination_number(8600) =~ /^9182$/ break=on-false
+10150: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->ringback_post_answer_uk_ring] continue=false
+10151: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [ringback_post_answer_uk_ring] destination_number(8600) =~ /^9183$/ break=on-false
+10152: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->ringback_post_answer_music] continue=false
+10153: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [ringback_post_answer_music] destination_number(8600) =~ /^9184$/ break=on-false
+10154: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->ClueCon] continue=false
+10155: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [ClueCon] destination_number(8600) =~ /^9191$/ break=on-false
+10156: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->show_info] continue=false
+10157: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [show_info] destination_number(8600) =~ /^9192$/ break=on-false
+10158: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->video_record] continue=false
+10159: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [video_record] destination_number(8600) =~ /^9193$/ break=on-false
+10160: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->video_playback] continue=false
+10161: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [video_playback] destination_number(8600) =~ /^9194$/ break=on-false
+10162: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->delay_echo] continue=false
+10163: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [delay_echo] destination_number(8600) =~ /^9195$/ break=on-false
+10164: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->echo] continue=false
+10165: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [echo] destination_number(8600) =~ /^9196$/ break=on-false
+10166: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->milliwatt] continue=false
+10167: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [milliwatt] destination_number(8600) =~ /^9197$/ break=on-false
+10168: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->tone_stream] continue=false
+10169: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [tone_stream] destination_number(8600) =~ /^9198$/ break=on-false
+10170: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->hold_music] continue=false
+10171: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [hold_music] destination_number(8600) =~ /^9664$/ break=on-false
+10172: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->laugh break] continue=false
+10173: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [laugh break] destination_number(8600) =~ /^9386$/ break=on-false
+10174: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->101] continue=false
+10175: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [101] destination_number(8600) =~ /^101$/ break=on-false
+10176: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->pizza_demo] continue=false
+10177: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [pizza_demo] destination_number(8600) =~ /^(pizza|74992)$/ break=on-false
+10178: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->Talking Clock Time] continue=false
+10179: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [Talking Clock Time] destination_number(8600) =~ /^9170$/ break=on-false
+10180: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->Talking Clock Date] continue=false
+10181: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [Talking Clock Date] destination_number(8600) =~ /^9171$/ break=on-false
+10182: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->Talking Clock Date and Time] continue=false
+10183: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [Talking Clock Date and Time] destination_number(8600) =~ /^9172$/ break=on-false
+10184: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->local.example.com] continue=false
+10185: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [local.example.com] ${toll_allow}(local) =~ /local/ break=on-false
+10186: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [local.example.com] destination_number(8600) =~ /^(\d{7})$/ break=on-false
+10187: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->domestic.example.com] continue=false
+10188: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [domestic.example.com] ${toll_allow}(local) =~ /domestic/ break=on-false
+10189: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->international.example.com] continue=false
+10190: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (FAIL) [international.example.com] ${toll_allow}(local) =~ /international/ break=on-false
+10191: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 parsing [default->agentic_contact_center_local_sip_openai_8600] continue=false
+10192: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Regex (PASS) [agentic_contact_center_local_sip_openai_8600] destination_number(8600) =~ /^(8600|acc)$/ break=on-false
+10193: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action answer()
+10194: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_route=local_sip)
+10195: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_destination_number=8600)
+10196: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_conversation_mode=openai_llm)
+10197: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_signalwire_ready=true)
+10198: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(hangup_after_bridge=false)
+10199: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_return_audio=pipecat_verto_webrtc)
+10200: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_media_bridge=pipecat_verto_agent_leg)
+10201: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_linked_sip_call_id=${uuid})
+10202: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action set(acc_proof_sip_call_id=${sip_h_X-ACC-Proof-Call-ID})
+10203: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action export(nolocal:acc_linked_sip_call_id=${uuid})
+10204: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action export(nolocal:sip_h_X-ACC-Proof-Call-ID=${sip_h_X-ACC-Proof-Call-ID})
+10205: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action export(nolocal:acc_destination_number=8600)
+10206: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action export(nolocal:acc_conversation_mode=openai_llm)
+10207: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action export(nolocal:rtp_jitter_buffer_during_bridge=true)
+10208: 8a0291fb-f25f-4d89-bff8-32d383344d83 Dialplan: sofia/internal/1000@127.0.0.1 Action bridge({absolute_codec_string=PCMU,jitterbuffer_msec=60:200:20,rtp_jitter_buffer_during_bridge=true,acc_linked_sip_call_id=${uuid},sip_h_X-ACC-Proof-Call-ID=${sip_h_X-ACC-Proof-Call-ID},acc_destination_number=8600,acc_conversation_mode=openai_llm,sip_h_X-ACC-Destination=8600,sip_h_X-ACC-Conversation-Mode=openai_llm}${verto_contact(acc-pipecat@172.24.0.5)})
+10209: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:281 (sofia/internal/1000@127.0.0.1) State Change CS_ROUTING -> CS_EXECUTE
+10210: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:640 (sofia/internal/1000@127.0.0.1) State ROUTING going to sleep
+10211: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:581 (sofia/internal/1000@127.0.0.1) Running State Change CS_EXECUTE (Cur 1 Tot 15)
+10212: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:647 (sofia/internal/1000@127.0.0.1) State EXECUTE
+10213: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] mod_sofia.c:213 sofia/internal/1000@127.0.0.1 SOFIA EXECUTE
+10214: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.047374 98.10% [DEBUG] switch_core_state_machine.c:323 sofia/internal/1000@127.0.0.1 Standard EXECUTE
+10215: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 hash(insert/172.24.0.5-spymap/1000/8a0291fb-f25f-4d89-bff8-32d383344d83)
+10216: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 hash(insert/172.24.0.5-last_dial/1000/8600)
+10217: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 hash(insert/172.24.0.5-last_dial/global/8a0291fb-f25f-4d89-bff8-32d383344d83)
+10218: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 export(RFC2822_DATE=Tue, 04 Aug 2026 04:57:03 +0000)
+10219: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_channel.c:1334 EXPORT (export_vars) [RFC2822_DATE]=[Tue, 04 Aug 2026 04:57:03 +0000]
+10220: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 answer()
+10221: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:5526 Audio Codec Compare [PCMU:0:8000:20:64000:1]/[opus:116:48000:20:0:1]
+10222: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:5526 Audio Codec Compare [PCMU:0:8000:20:64000:1]/[G722:9:8000:20:64000:1]
+10223: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:5526 Audio Codec Compare [PCMU:0:8000:20:64000:1]/[PCMU:0:8000:20:64000:1]
+10224: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:5588 Audio Codec Compare [PCMU:0:8000:20:64000:1] ++++ is saved as a match
+10225: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:5526 Audio Codec Compare [PCMU:0:8000:20:64000:1]/[PCMA:8:8000:20:64000:1]
+10226: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:3731 Set Codec sofia/internal/1000@127.0.0.1 PCMU/8000 20 ms 160 samples 64000 bits 1 channels
+10227: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_codec.c:111 sofia/internal/1000@127.0.0.1 Original read codec set to PCMU:0
+10228: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:5827 No 2833 in SDP. Liberal DTMF mode adding 101 as telephone-event.
+10229: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:5856 sofia/internal/1000@127.0.0.1 Set 2833 dtmf send payload to 101 recv payload to 101
+10230: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:8660 AUDIO RTP [sofia/internal/1000@127.0.0.1] 172.24.0.5 port 23882 -> 172.24.0.7 port 6002 codec: 0 ms: 20
+10231: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_rtp.c:4566 Starting timer [soft] 160 bytes per 20ms
+10232: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:8973 sofia/internal/1000@127.0.0.1 Set 2833 dtmf send payload to 101
+10233: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:8980 sofia/internal/1000@127.0.0.1 Set 2833 dtmf receive payload to 101
+10234: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:9003 sofia/internal/1000@127.0.0.1 Set rtp dtmf delay to 40
+10235: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [NOTICE] sofia_media.c:90 Pre-Answer sofia/internal/1000@127.0.0.1!
+10236: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_channel.c:3585 (sofia/internal/1000@127.0.0.1) Callstate Change RINGING -> EARLY
+10237: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_core_media.c:8642 Audio params are unchanged for sofia/internal/1000@127.0.0.1.
+10238: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_sofia.c:914 Local SDP sofia/internal/1000@127.0.0.1:
+10239: 8a0291fb-f25f-4d89-bff8-32d383344d83 v=0
+10240: 8a0291fb-f25f-4d89-bff8-32d383344d83 o=FreeSWITCH 1785795541 1785795542 IN IP4 172.24.0.5
+10241: 8a0291fb-f25f-4d89-bff8-32d383344d83 s=FreeSWITCH
+10242: 8a0291fb-f25f-4d89-bff8-32d383344d83 c=IN IP4 172.24.0.5
+10243: 8a0291fb-f25f-4d89-bff8-32d383344d83 t=0 0
+10244: 8a0291fb-f25f-4d89-bff8-32d383344d83 m=audio 23882 RTP/AVP 0 101
+10245: 8a0291fb-f25f-4d89-bff8-32d383344d83 a=rtpmap:0 PCMU/8000
+10246: 8a0291fb-f25f-4d89-bff8-32d383344d83 a=rtpmap:101 telephone-event/8000
+10247: 8a0291fb-f25f-4d89-bff8-32d383344d83 a=fmtp:101 0-15
+10248: 8a0291fb-f25f-4d89-bff8-32d383344d83 a=ptime:20
+10249: 8a0291fb-f25f-4d89-bff8-32d383344d83 a=sendrecv
+10250: 8a0291fb-f25f-4d89-bff8-32d383344d83 
+10251: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [NOTICE] mod_dptools.c:1406 Channel [sofia/internal/1000@127.0.0.1] has been answered
+10252: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] switch_channel.c:3912 (sofia/internal/1000@127.0.0.1) Callstate Change EARLY -> ACTIVE
+10253: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_route=local_sip)
+10254: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] sofia.c:7493 Channel sofia/internal/1000@127.0.0.1 entering state [completed][200]
+10255: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_route]=[local_sip]
+10256: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_destination_number=8600)
+10257: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] sofia.c:7493 Channel sofia/internal/1000@127.0.0.1 entering state [ready][200]
+10258: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_destination_number]=[8600]
+10259: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_conversation_mode=openai_llm)
+10260: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_conversation_mode]=[openai_llm]
+10261: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_signalwire_ready=true)
+10262: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_signalwire_ready]=[true]
+10263: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(hangup_after_bridge=false)
+10264: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [hangup_after_bridge]=[false]
+10265: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_return_audio=pipecat_verto_webrtc)
+10266: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_return_audio]=[pipecat_verto_webrtc]
+10267: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_media_bridge=pipecat_verto_agent_leg)
+10268: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_media_bridge]=[pipecat_verto_agent_leg]
+10269: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_linked_sip_call_id=8a0291fb-f25f-4d89-bff8-32d383344d83)
+10270: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.067369 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_linked_sip_call_id]=[8a0291fb-f25f-4d89-bff8-32d383344d83]
+10271: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 set(acc_proof_sip_call_id=acc-proof-1785819423318-ef8962274184)
+10272: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] mod_dptools.c:1671 SET sofia/internal/1000@127.0.0.1 [acc_proof_sip_call_id]=[acc-proof-1785819423318-ef8962274184]
+10273: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 export(nolocal:acc_linked_sip_call_id=8a0291fb-f25f-4d89-bff8-32d383344d83)
+10274: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1334 EXPORT (export_vars) (REMOTE ONLY) [acc_linked_sip_call_id]=[8a0291fb-f25f-4d89-bff8-32d383344d83]
+10275: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 export(nolocal:sip_h_X-ACC-Proof-Call-ID=acc-proof-1785819423318-ef8962274184)
+10276: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1334 EXPORT (export_vars) (REMOTE ONLY) [sip_h_X-ACC-Proof-Call-ID]=[acc-proof-1785819423318-ef8962274184]
+10277: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 export(nolocal:acc_destination_number=8600)
+10278: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1334 EXPORT (export_vars) (REMOTE ONLY) [acc_destination_number]=[8600]
+10279: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 export(nolocal:acc_conversation_mode=openai_llm)
+10280: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1334 EXPORT (export_vars) (REMOTE ONLY) [acc_conversation_mode]=[openai_llm]
+10281: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 export(nolocal:rtp_jitter_buffer_during_bridge=true)
+10282: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1334 EXPORT (export_vars) (REMOTE ONLY) [rtp_jitter_buffer_during_bridge]=[true]
+10283: 8a0291fb-f25f-4d89-bff8-32d383344d83 EXECUTE [depth=0] sofia/internal/1000@127.0.0.1 bridge({absolute_codec_string=PCMU,jitterbuffer_msec=60:200:20,rtp_jitter_buffer_during_bridge=true,acc_linked_sip_call_id=8a0291fb-f25f-4d89-bff8-32d383344d83,sip_h_X-ACC-Proof-Call-ID=acc-proof-1785819423318-ef8962274184,acc_destination_number=8600,acc_conversation_mode=openai_llm,sip_h_X-ACC-Destination=8600,sip_h_X-ACC-Conversation-Mode=openai_llm}verto.rtc/u:1a166ea3-e099-4380-8cff-8c978fac88f5)
+10284: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1973 (sofia/internal/1000@127.0.0.1) Callstate Change ACTIVE -> RING_WAIT
+10285: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [RFC2822_DATE]=[Tue, 04 Aug 2026 04:57:03 +0000] to event
+10286: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [acc_linked_sip_call_id]=[8a0291fb-f25f-4d89-bff8-32d383344d83] to event
+10287: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [sip_h_X-ACC-Proof-Call-ID]=[acc-proof-1785819423318-ef8962274184] to event
+10288: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [acc_destination_number]=[8600] to event
+10289: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [acc_conversation_mode]=[openai_llm] to event
+10290: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [rtp_jitter_buffer_during_bridge]=[true] to event
+10291: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_ivr_originate.c:2301 Parsing global variables
+10292: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.087401 98.10% [DEBUG] mod_rtc.c:390 () State Change CS_NEW -> CS_INIT
+10293: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.087401 98.10% [NOTICE] switch_channel.c:1142 New Channel verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 [41e7220c-4c1d-4f7b-8341-fcdd9977163b]
+10294: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_core_state_machine.c:581 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Running State Change CS_INIT (Cur 2 Tot 16)
+10295: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_core_state_machine.c:624 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State INIT
+10296: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] mod_verto.c:2416 Local verto.invite SDP verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5:
+10297: 41e7220c-4c1d-4f7b-8341-fcdd9977163b v=0
+10298: 41e7220c-4c1d-4f7b-8341-fcdd9977163b o=FreeSWITCH 1785790649 1785790650 IN IP4 172.24.0.5
+10299: 41e7220c-4c1d-4f7b-8341-fcdd9977163b s=FreeSWITCH
+10300: 41e7220c-4c1d-4f7b-8341-fcdd9977163b c=IN IP4 172.24.0.5
+10301: 41e7220c-4c1d-4f7b-8341-fcdd9977163b t=0 0
+10302: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=msid-semantic: WMS 5QESq5Zcb88wQYPpbFv548COVi7PTYQ2
+10303: 41e7220c-4c1d-4f7b-8341-fcdd9977163b m=audio 28774 RTP/SAVPF 0
+10304: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=rtpmap:0 PCMU/8000
+10305: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=fingerprint:sha-256 7B:56:78:DD:06:BF:D0:C5:D2:A0:C0:7F:14:06:95:D6:13:7C:33:3B:64:C3:06:0A:B1:47:EC:5E:A6:04:BD:32
+10306: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=setup:actpass
+10307: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=rtcp-mux
+10308: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=rtcp:28774 IN IP4 172.24.0.5
+10309: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ssrc:1316428439 cname:gQn6s0Rjf0DTpO50
+10310: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ssrc:1316428439 msid:5QESq5Zcb88wQYPpbFv548COVi7PTYQ2 a0
+10311: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ssrc:1316428439 mslabel:5QESq5Zcb88wQYPpbFv548COVi7PTYQ2
+10312: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ssrc:1316428439 label:5QESq5Zcb88wQYPpbFv548COVi7PTYQ2a0
+10313: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ice-ufrag:Q1c5XQua1nYHq2BT
+10314: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ice-pwd:kyPaTXsVIStHsAb7Xjyk0CbI
+10315: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=candidate:4116595861 1 udp 2130706431 172.24.0.5 28774 typ host generation 0
+10316: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=candidate:4116595861 2 udp 2130706431 172.24.0.5 28774 typ host generation 0
+10317: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=silenceSupp:off - - - -
+10318: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ptime:20
+10319: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=sendrecv
+10320: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 
+10321: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [NOTICE] mod_verto.c:2516 Ring-Ready verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5!
+10322: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_channel.c:3513 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Callstate Change DOWN -> RINGING
+10323: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:40 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 Standard INIT
+10324: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:48 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State Change CS_INIT -> CS_ROUTING
+10325: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:624 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State INIT going to sleep
+10326: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:581 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Running State Change CS_ROUTING (Cur 2 Tot 16)
+10327: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:640 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State ROUTING
+10328: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] mod_rtc.c:89 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 RTC ROUTING
+10329: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_ivr_originate.c:67 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State Change CS_ROUTING -> CS_CONSUME_MEDIA
+10330: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:640 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State ROUTING going to sleep
+10331: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:581 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Running State Change CS_CONSUME_MEDIA (Cur 2 Tot 16)
+10332: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:659 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State CONSUME_MEDIA
+10333: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.109074 98.10% [DEBUG] switch_core_state_machine.c:659 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State CONSUME_MEDIA going to sleep
+10334: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] mod_verto.c:2965 Remote SDP verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5:
+10335: 41e7220c-4c1d-4f7b-8341-fcdd9977163b v=0
+10336: 41e7220c-4c1d-4f7b-8341-fcdd9977163b o=- 3994808223 3994808223 IN IP4 0.0.0.0
+10337: 41e7220c-4c1d-4f7b-8341-fcdd9977163b s=-
+10338: 41e7220c-4c1d-4f7b-8341-fcdd9977163b t=0 0
+10339: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=msid-semantic:WMS *
+10340: 41e7220c-4c1d-4f7b-8341-fcdd9977163b m=audio 52862 UDP/TLS/RTP/SAVPF 0
+10341: 41e7220c-4c1d-4f7b-8341-fcdd9977163b c=IN IP4 172.24.0.6
+10342: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=sendrecv
+10343: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=msid:cbc1f868-a34c-45f1-afce-1f505711c2a2 9ec7a6c5-246b-4615-945c-5334d946f4c7
+10344: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=rtcp:9 IN IP4 0.0.0.0
+10345: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=rtcp-mux
+10346: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ssrc:570248808 cname:c70cbb0d-0a98-4428-a5e5-b6fce68e8a73
+10347: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=rtpmap:0 PCMU/8000
+10348: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=candidate:0eb85eb8e4879c0f6224c114438c2ec0 1 udp 2130706431 172.24.0.6 52862 typ host
+10349: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=end-of-candidates
+10350: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ice-ufrag:DiB6
+10351: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=ice-pwd:FpRkQIaoqjkMff6jxuawfi
+10352: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=fingerprint:sha-256 43:61:81:F1:57:FF:CA:16:03:AC:06:9C:E3:63:90:B8:F8:3B:C5:F1:A8:B6:64:54:BD:45:09:8C:09:F8:5A:63
+10353: 41e7220c-4c1d-4f7b-8341-fcdd9977163b a=setup:active
+10354: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 
+10355: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:5526 Audio Codec Compare [PCMU:0:8000:20:64000:1]/[PCMU:0:8000:20:64000:1]
+10356: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:5588 Audio Codec Compare [PCMU:0:8000:20:64000:1] ++++ is saved as a match
+10357: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:3731 Set Codec verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 PCMU/8000 20 ms 160 samples 64000 bits 1 channels
+10358: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_codec.c:111 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 Original read codec set to PCMU:0
+10359: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:4211 Save audio Candidate cid: 1 proto: udp type: host addr: 172.24.0.6:52862
+10360: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:4256 Searching for rtp candidate.
+10361: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:4265 Choose rtp candidate, index 0, 172.24.0.6:52862
+10362: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:4000 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 choosing family v4
+10363: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:4276 Choose same candidate, index 0, for rtcp based on rtcp-mux attribute 172.24.0.6:52862
+10364: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:4328 setting remote audio ice addr to index 0 172.24.0.6:52862 based on candidate
+10365: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:4363 Setting remote rtcp audio addr to 172.24.0.6:52862 based on candidate
+10366: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:5827 No 2833 in SDP. Liberal DTMF mode adding 1 as telephone-event.
+10367: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:5856 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 Set 2833 dtmf send payload to 1 recv payload to 0
+10368: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:8660 AUDIO RTP [verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5] 172.24.0.5 port 28774 -> 172.24.0.6 port 52862 codec: 0 ms: 20
+10369: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_rtp.c:4566 Starting timer [soft] 160 bytes per 20ms
+10370: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [INFO] switch_core_media.c:8841 Activating Audio ICE
+10371: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [NOTICE] switch_rtp.c:5006 Activating RTP audio ICE: DiB6:Q1c5XQua1nYHq2BT 172.24.0.6:52862
+10372: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_core_media.c:8881 Activating RTCP PORT 52862
+10373: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [DEBUG] switch_rtp.c:4898 RTCP send rate is: 1000 and packet rate is: 20000 Remote Port: 52862
+10374: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [INFO] switch_core_media.c:8892 Skipping RTCP ICE (Same as RTP)
+10375: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.647560 97.83% [INFO] switch_rtp.c:3857 Activate RTP/RTCP audio DTLS server
+10376: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [INFO] switch_rtp.c:4045 Changing audio DTLS state from OFF to HANDSHAKE
+10377: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_core_media.c:2441 Setting Jitterbuffer to 60ms (3 frames) (10 max frames)
+10378: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_core_media.c:8973 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 Set 2833 dtmf send payload to 1
+10379: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_core_media.c:8642 Audio params are unchanged for verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5.
+10380: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [NOTICE] mod_verto.c:3001 Channel [verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5] has been answered
+10381: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_ivr_originate.c:3913 Originate Resulted in Success: [verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5] Peer UUID: 41e7220c-4c1d-4f7b-8341-fcdd9977163b
+10382: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_channel.c:2197 (sofia/internal/1000@127.0.0.1) Callstate Change RING_WAIT -> ACTIVE
+10383: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_channel.c:3912 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Callstate Change RINGING -> ACTIVE
+10384: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_ivr_bridge.c:1791 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State Change CS_CONSUME_MEDIA -> CS_EXCHANGE_MEDIA
+10385: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_core_state_machine.c:581 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Running State Change CS_EXCHANGE_MEDIA (Cur 2 Tot 16)
+10386: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_core_state_machine.c:650 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State EXCHANGE_MEDIA
+10387: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.667350 97.83% [DEBUG] mod_rtc.c:146 RTC EXCHANGE_MEDIA
+10388: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.788819 97.83% [INFO] switch_rtp.c:3341 Changing audio DTLS state from HANDSHAKE to SETUP
+10389: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.816584 97.83% [INFO] switch_rtp.c:3248 audio Fingerprint Verified.
+10390: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.816584 97.83% [INFO] switch_rtp.c:4369 Activating audio Secure RTP SEND
+10392: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.816584 97.83% [INFO] switch_rtp.c:4347 Activating audio Secure RTP RECV
+10394: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.816584 97.83% [INFO] switch_rtp.c:3290 Changing audio DTLS state from SETUP to READY
+10395: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:57:03.867952 97.83% [DEBUG] switch_rtp.c:1934 rtcp_stats_init: audio ssrc[570248808] base_seq[29256]
+10396: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:06.351640 97.60% [DEBUG] switch_rtp.c:7698 Correct audio ip/port confirmed.
+10403: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.007426 96.17% [NOTICE] sofia.c:1065 Hangup sofia/internal/1000@127.0.0.1 [CS_EXECUTE] [NORMAL_CLEARING]
+10404: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.007426 96.17% [DEBUG] switch_ivr_bridge.c:911 BRIDGE THREAD DONE [sofia/internal/1000@127.0.0.1]
+10405: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_ivr_bridge.c:819 sofia/internal/1000@127.0.0.1 ending bridge by request from write function
+10406: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_ivr_bridge.c:911 BRIDGE THREAD DONE [verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5]
+10407: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [NOTICE] switch_ivr_bridge.c:1027 Hangup verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 [CS_EXCHANGE_MEDIA] [NORMAL_CLEARING]
+10408: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:650 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State EXCHANGE_MEDIA going to sleep
+10409: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:581 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Running State Change CS_HANGUP (Cur 2 Tot 16)
+10410: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:844 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Callstate Change ACTIVE -> HANGUP
+10411: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_ivr_bridge.c:1890 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 skip receive message [UNBRIDGE] (channel is hungup already)
+10412: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_ivr_bridge.c:1893 sofia/internal/1000@127.0.0.1 skip receive message [UNBRIDGE] (channel is hungup already)
+10413: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:846 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State HANGUP
+10414: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_session.c:2979 sofia/internal/1000@127.0.0.1 skip receive message [APPLICATION_EXEC_COMPLETE] (channel is hungup already)
+10415: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:647 (sofia/internal/1000@127.0.0.1) State EXECUTE going to sleep
+10416: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:581 (sofia/internal/1000@127.0.0.1) Running State Change CS_HANGUP (Cur 2 Tot 16)
+10417: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:59 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 Standard HANGUP, cause: NORMAL_CLEARING
+10418: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:846 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State HANGUP going to sleep
+10419: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:844 (sofia/internal/1000@127.0.0.1) Callstate Change ACTIVE -> HANGUP
+10420: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:846 (sofia/internal/1000@127.0.0.1) State HANGUP
+10421: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] mod_sofia.c:469 Channel sofia/internal/1000@127.0.0.1 hanging up, cause: NORMAL_CLEARING
+10422: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:616 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State Change CS_HANGUP -> CS_REPORTING
+10423: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:581 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Running State Change CS_REPORTING (Cur 2 Tot 16)
+10424: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:932 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State REPORTING
+10425: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:168 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 Standard REPORTING, cause: NORMAL_CLEARING
+10426: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:932 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State REPORTING going to sleep
+10427: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:59 sofia/internal/1000@127.0.0.1 Standard HANGUP, cause: NORMAL_CLEARING
+10428: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:846 (sofia/internal/1000@127.0.0.1) State HANGUP going to sleep
+10429: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:616 (sofia/internal/1000@127.0.0.1) State Change CS_HANGUP -> CS_REPORTING
+10430: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:607 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State Change CS_REPORTING -> CS_DESTROY
+10431: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_session.c:1744 Session 16 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Locked, Waiting on external entities
+10432: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [NOTICE] switch_core_session.c:1762 Session 16 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Ended
+10433: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [NOTICE] switch_core_session.c:1766 Close Channel verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 [CS_DESTROY]
+10434: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:581 (sofia/internal/1000@127.0.0.1) Running State Change CS_REPORTING (Cur 1 Tot 16)
+10435: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:932 (sofia/internal/1000@127.0.0.1) State REPORTING
+10436: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:735 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) Running State Change CS_DESTROY (Cur 1 Tot 16)
+10437: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:745 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State DESTROY
+10438: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] mod_rtc.c:132 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 RTC DESTROY
+10439: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:175 verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5 Standard DESTROY
+10440: 41e7220c-4c1d-4f7b-8341-fcdd9977163b 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:745 (verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5) State DESTROY going to sleep
+10441: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:168 sofia/internal/1000@127.0.0.1 Standard REPORTING, cause: NORMAL_CLEARING
+10442: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:932 (sofia/internal/1000@127.0.0.1) State REPORTING going to sleep
+10443: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:607 (sofia/internal/1000@127.0.0.1) State Change CS_REPORTING -> CS_DESTROY
+10444: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_session.c:1744 Session 15 (sofia/internal/1000@127.0.0.1) Locked, Waiting on external entities
+10445: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [NOTICE] switch_core_session.c:1762 Session 15 (sofia/internal/1000@127.0.0.1) Ended
+10446: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [NOTICE] switch_core_session.c:1766 Close Channel sofia/internal/1000@127.0.0.1 [CS_DESTROY]
+10447: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:735 (sofia/internal/1000@127.0.0.1) Running State Change CS_DESTROY (Cur 0 Tot 16)
+10448: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:745 (sofia/internal/1000@127.0.0.1) State DESTROY
+10449: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] mod_sofia.c:380 sofia/internal/1000@127.0.0.1 SOFIA DESTROY
+10450: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:175 sofia/internal/1000@127.0.0.1 Standard DESTROY
+10451: 8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:58:03.029957 96.17% [DEBUG] switch_core_state_machine.c:745 (sofia/internal/1000@127.0.0.1) State DESTROY going to sleep

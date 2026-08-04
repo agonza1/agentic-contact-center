@@ -1,0 +1,21 @@
+{
+  "ready": true,
+  "status": "linked",
+  "source": "freeswitch_log",
+  "method": "proof_sip_call_id_to_aleg_uuid_to_verto_peer_uuid",
+  "logPath": "artifacts/freeswitch-live/freeswitch.log",
+  "proofSipCallId": "acc-proof-1785819423318-ef8962274184",
+  "linkedSipCallId": "8a0291fb-f25f-4d89-bff8-32d383344d83",
+  "vertoCallId": "41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+  "evidenceLines": {
+    "proofSipCallId": {
+      "lineNumber": 10287,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [sip_h_X-ACC-Proof-Call-ID]=[acc-proof-1785819423318-ef8962274184] to event"
+    },
+    "vertoPeerUuid": {
+      "lineNumber": 10381,
+      "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_ivr_originate.c:3913 Originate Resulted in Success: [verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5] Peer UUID: 41e7220c-4c1d-4f7b-8341-fcdd9977163b"
+    }
+  },
+  "generatedAt": "2026-08-04T04:58:03.859Z"
+}

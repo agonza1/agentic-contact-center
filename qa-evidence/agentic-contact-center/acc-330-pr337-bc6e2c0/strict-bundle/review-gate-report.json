@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-04T05:53:54.971Z",
+  "workboardCard": "460f5326-5347-4eaa-9d49-b526f97324a2",
+  "status": "ready_for_review",
+  "reviewReady": true,
+  "reviewGatePassed": true,
+  "requiredLabels": [
+    "local_sip",
+    "live_capture",
+    "rtc_asr_live"
+  ],
+  "missingLabels": [],
+  "failedChecks": [],
+  "checks": {
+    "localSipMode": true,
+    "acceptedInvite": true,
+    "sipLogHasInvite": true,
+    "sipLogHasAcceptedInvite": true,
+    "capturedRtp": true,
+    "callerAudioWavValid": true,
+    "liveCapture": true,
+    "rtcAsrLive": true,
+    "rtcAsrEvidenceValid": true,
+    "callerPlaybackEvidenceValid": true,
+    "artifactsPresent": true,
+    "sourceArtifactIntegrityReady": true,
+    "sourceManifestReviewReady": true,
+    "sourceRevisionCurrent": true,
+    "rtcAsrSameCallCorrelation": true
+  },
+  "failureReasons": {},
+  "evidence": {
+    "callerAudio": {
+      "ready": true,
+      "hasRiffWaveHeader": true,
+      "hasPcmFormat": true,
+      "hasAudioPayload": true,
+      "audioFormat": 1,
+      "channelCount": 1,
+      "sampleRateHz": 8000,
+      "bitsPerSample": 16,
+      "declaredDataBytes": 220800,
+      "sizeBytes": 220844
+    },
+    "sipLog": {
+      "entryCount": 14,
+      "hasInvite": true,
+      "hasAcceptedInviteResponse": true
+    },
+    "rtcAsr": {
+      "required": true,
+      "ready": true,
+      "transcriptChars": 3,
+      "eventCount": 1
+    },
+    "callerPlayback": {
+      "required": true,
+      "ready": true,
+      "path": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/caller-playback-evidence.json",
+      "confirmed": true,
+      "eventCount": 1,
+      "reason": null
+    },
+    "sourceArtifactIntegrity": {
+      "checked": 9,
+      "blocked": [],
+      "changed": [],
+      "ready": true
+    },
+    "sourceRevision": {
+      "required": true,
+      "ready": true,
+      "sourceRevision": {
+        "repo": "agonza1/agentic-contact-center",
+        "commit": "bc6e2c00de0c0714de8df83b159593ae0bb8d6c5",
+        "shortCommit": "bc6e2c00de0c",
+        "branch": "acc-330-verto-smallwebrtc-refactor",
+        "dirty": false
+      },
+      "bundleRevision": {
+        "repo": "agonza1/agentic-contact-center",
+        "commit": "bc6e2c00de0c0714de8df83b159593ae0bb8d6c5",
+        "shortCommit": "bc6e2c00de0c",
+        "branch": "acc-330-verto-smallwebrtc-refactor",
+        "dirty": false
+      },
+      "reason": null
+    },
+    "rtcAsrCorrelation": {
+      "required": true,
+      "ready": true,
+      "correlationMode": "expected_sip_call_id",
+      "expectedSipCallId": "acc-proof-1785819423318-ef8962274184",
+      "proofSipCallId": "acc-proof-1785819423318-ef8962274184",
+      "linkedSipCallId": "8a0291fb-f25f-4d89-bff8-32d383344d83",
+      "evidenceSipCallId": "41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+      "reason": null
+    }
+  },
+  "blockers": [],
+  "nextActions": [],
+  "sourceRevision": {
+    "repo": "agonza1/agentic-contact-center",
+    "commit": "bc6e2c00de0c0714de8df83b159593ae0bb8d6c5",
+    "shortCommit": "bc6e2c00de0c",
+    "branch": "acc-330-verto-smallwebrtc-refactor",
+    "dirty": false
+  },
+  "bundleRevision": {
+    "repo": "agonza1/agentic-contact-center",
+    "commit": "bc6e2c00de0c0714de8df83b159593ae0bb8d6c5",
+    "shortCommit": "bc6e2c00de0c",
+    "branch": "acc-330-verto-smallwebrtc-refactor",
+    "dirty": false
+  },
+  "sourceManifestReviewGate": {
+    "requiredLabels": [
+      "local_sip",
+      "live_capture",
+      "rtc_asr_live",
+      "pipecat_verto_webrtc",
+      "caller_audible_playback"
+    ],
+    "missingLabels": [],
+    "nextActions": []
+  },
+  "artifacts": {
+    "liveManifest": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/verto-sip-live-proof-manifest.json",
+    "audioCapture": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/caller-input.wav",
+    "sipLogs": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/sip-events.json",
+    "runtimeEventTrace": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/strict-bundle/runtime-event-trace.json",
+    "rtcAsrStatus": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/strict-bundle/rtc-asr-blocker.json",
+    "conversationAgentEvalsRequest": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/strict-bundle/conversation-agent-evals-assert-request.json",
+    "rtcAsrEvidence": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/rtc-asr-transcript-evidence.json",
+    "callerPlaybackEvidence": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/caller-playback-evidence.json"
+  },
+  "artifactIntegrity": [
+    {
+      "artifactId": "local-sip-live-proof-manifest",
+      "kind": "manifest",
+      "path": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/verto-sip-live-proof-manifest.json",
+      "readiness": "ready",
+      "sizeBytes": 10634,
+      "sha256": "402fc25efb98d7a1ed15f92ce3b9f5fee0fe845de4eb07bd53379b453e56a17f"
+    },
+    {
+      "artifactId": "local-sip-real-caller-audio-wav",
+      "kind": "call_media",
+      "path": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/caller-input.wav",
+      "readiness": "ready",
+      "sizeBytes": 220844,
+      "sha256": "316bb9ae8081b2e6d0306321c2d5c946a6a03bab3fe4e4770862db4efccf5c70"
+    },
+    {
+      "artifactId": "local-sip-and-freeswitch-sip-log",
+      "kind": "sip_log",
+      "path": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/sip-events.json",
+      "readiness": "ready",
+      "sizeBytes": 2305,
+      "sha256": "3a03ff133dd2096be526c87cdf7a9cf65ca24206ce7a33c735c72ec6d7015ffa"
+    },
+    {
+      "artifactId": "agentic-contact-center-runtime-event-trace",
+      "kind": "action_trace",
+      "path": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/strict-bundle/runtime-event-trace.json",
+      "readiness": "ready",
+      "sizeBytes": 1435,
+      "sha256": "a3c736ea80344e1f3ea89ac8d1b7947177ffb4b1359d0db83d82ee930ff9cd22"
+    },
+    {
+      "artifactId": "rtc-asr-live-status",
+      "kind": "manifest",
+      "path": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/strict-bundle/rtc-asr-blocker.json",
+      "readiness": "ready",
+      "sizeBytes": 155,
+      "sha256": "0cc76111baf5729480fa288f895e5cf6515b1f49341a0f1668725ffd7a6bc356"
+    },
+    {
+      "artifactId": "conversation-agent-evals-assert-request",
+      "kind": "assert_request",
+      "path": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/strict-bundle/conversation-agent-evals-assert-request.json",
+      "readiness": "ready",
+      "sizeBytes": 4914,
+      "sha256": "3b577d49354c922ebabfffffa26ac6f3547b093b58983367089fd43052189ab4"
+    },
+    {
+      "artifactId": "rtc-asr-transcript-evidence",
+      "kind": "transcript_evidence",
+      "path": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/rtc-asr-transcript-evidence.json",
+      "readiness": "ready",
+      "sizeBytes": 2211,
+      "sha256": "7d3ccb8e1987c8432aa8dddd581e58d01bbbccbe885bca606f6beb403551237c"
+    },
+    {
+      "artifactId": "caller-audible-playback-proof",
+      "kind": "playback_evidence",
+      "path": "../../qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/caller-playback-evidence.json",
+      "readiness": "ready",
+      "sizeBytes": 1095,
+      "sha256": "487021a525dc4a5a1521f4be5a9f049c35f4b842f1341d0e8bfd128c0882a4ea"
+    }
+  ]
+}

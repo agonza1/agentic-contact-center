@@ -1,0 +1,217 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-04T04:58:03.878Z",
+  "sourceRevision": {
+    "repo": "agonza1/agentic-contact-center",
+    "commit": "bc6e2c00de0c0714de8df83b159593ae0bb8d6c5",
+    "shortCommit": "bc6e2c00de0c",
+    "branch": "acc-330-verto-smallwebrtc-refactor",
+    "dirty": false
+  },
+  "workboardCard": "460f5326-5347-4eaa-9d49-b526f97324a2",
+  "callId": null,
+  "sipCallId": "acc-proof-1785819423318-ef8962274184",
+  "runtimeModeLabels": {
+    "telephony": "local_sip",
+    "media": "live_capture",
+    "rtcAsr": "rtc_asr_live",
+    "pipecat": "pipecat_verto_webrtc",
+    "playback": "caller_audible_playback"
+  },
+  "localSip": {
+    "bind": "sip:1000@172.24.0.7:5094",
+    "socketBind": "0.0.0.0:5094",
+    "advertisedRtpHost": "172.24.0.7",
+    "destination": "8600",
+    "acceptedInvite": true,
+    "remoteRtp": {
+      "host": "172.24.0.5",
+      "port": 23882
+    },
+    "rtpPacketCount": 690,
+    "callerInputPacketCount": 690,
+    "callerPlaybackPacketCount": 2957,
+    "callerPlaybackRms": 547,
+    "introPlaybackPacketCount": 716,
+    "introPlaybackRms": 630,
+    "responsePlaybackPacketCount": 2241,
+    "responsePlaybackRms": 517
+  },
+  "artifacts": {
+    "audioWav": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/caller-input.wav",
+    "callerInputWav": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/caller-input.wav",
+    "callerPlaybackWav": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/caller-playback-capture.wav",
+    "sipLog": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/sip-events.json",
+    "rtcAsrEvidence": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/rtc-asr-transcript-evidence.json",
+    "pipecatVertoEvidence": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/pipecat-verto-proof-demo-call-0008.json",
+    "callerPlaybackEvidence": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/caller-playback-evidence.json",
+    "freeSwitchCallLinkage": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/freeswitch-call-linkage-evidence.json",
+    "freeSwitchLinkageLog": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/freeswitch-linkage-redacted.log",
+    "ttsStageEvidence": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/tts-stage-evidence.json"
+  },
+  "freeSwitchCallLinkage": {
+    "ready": true,
+    "status": "linked",
+    "source": "freeswitch_log",
+    "method": "proof_sip_call_id_to_aleg_uuid_to_verto_peer_uuid",
+    "logPath": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/freeswitch-linkage-redacted.log",
+    "proofSipCallId": "acc-proof-1785819423318-ef8962274184",
+    "linkedSipCallId": "8a0291fb-f25f-4d89-bff8-32d383344d83",
+    "vertoCallId": "41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+    "evidenceLines": {
+      "proofSipCallId": {
+        "lineNumber": 10287,
+        "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [sip_h_X-ACC-Proof-Call-ID]=[acc-proof-1785819423318-ef8962274184] to event"
+      },
+      "vertoPeerUuid": {
+        "lineNumber": 10381,
+        "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_ivr_originate.c:3913 Originate Resulted in Success: [verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5] Peer UUID: 41e7220c-4c1d-4f7b-8341-fcdd9977163b"
+      }
+    }
+  },
+  "artifactIntegrity": [
+    {
+      "artifactId": "caller-input-wav",
+      "kind": "call_media",
+      "path": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/caller-input.wav",
+      "sha256": "316bb9ae8081b2e6d0306321c2d5c946a6a03bab3fe4e4770862db4efccf5c70",
+      "sizeBytes": 220844,
+      "readiness": "ready"
+    },
+    {
+      "artifactId": "caller-playback-capture-wav",
+      "kind": "playback_media",
+      "path": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/caller-playback-capture.wav",
+      "sha256": "274131026645ccbab03a37df91d7e09f12b9f4e887832b1aae1525036c3ff32a",
+      "sizeBytes": 946284,
+      "readiness": "ready"
+    },
+    {
+      "artifactId": "sip-events",
+      "kind": "sip_log",
+      "path": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/sip-events.json",
+      "sha256": "3a03ff133dd2096be526c87cdf7a9cf65ca24206ce7a33c735c72ec6d7015ffa",
+      "sizeBytes": 2305,
+      "readiness": "ready"
+    },
+    {
+      "artifactId": "freeswitch-call-linkage",
+      "kind": "call_linkage",
+      "path": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/freeswitch-call-linkage-evidence.json",
+      "sha256": "104a692ec1451effd9a321c0458843af4e5f484e9cff26a65cdc8ba56186a834",
+      "sizeBytes": 1054,
+      "readiness": "ready"
+    },
+    {
+      "artifactId": "freeswitch-linkage-redacted-log",
+      "kind": "call_linkage_log",
+      "path": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/freeswitch-linkage-redacted.log",
+      "sha256": "2f4f40f21886c8736425fbac02db06bea6e5e98bc68cedbc574cd1b7892c2b75",
+      "sizeBytes": 69662,
+      "readiness": "ready"
+    },
+    {
+      "artifactId": "rtc-asr-transcript-evidence",
+      "kind": "transcript_evidence",
+      "path": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/rtc-asr-transcript-evidence.json",
+      "sha256": "7d3ccb8e1987c8432aa8dddd581e58d01bbbccbe885bca606f6beb403551237c",
+      "sizeBytes": 2211,
+      "readiness": "ready"
+    },
+    {
+      "artifactId": "caller-audible-playback-proof",
+      "kind": "playback_evidence",
+      "path": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/caller-playback-evidence.json",
+      "sha256": "487021a525dc4a5a1521f4be5a9f049c35f4b842f1341d0e8bfd128c0882a4ea",
+      "sizeBytes": 1095,
+      "readiness": "ready"
+    },
+    {
+      "artifactId": "pipecat-verto-call-proof",
+      "kind": "runtime_evidence",
+      "path": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/pipecat-verto-proof-demo-call-0008.json",
+      "sha256": "aa27415d9ad8480d66fd3f88547a2f0edd3db71f8e297bc022ef2958ed9cd7fc",
+      "sizeBytes": 25359,
+      "readiness": "ready"
+    },
+    {
+      "artifactId": "tts-stage-evidence",
+      "kind": "tts_evidence",
+      "path": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/tts-stage-evidence.json",
+      "sha256": "a734100e2db51a37e608ab920bb8d69a37db1552ba6189eed78b8fa18c1f22a7",
+      "sizeBytes": 1798,
+      "readiness": "ready"
+    }
+  ],
+  "reviewReady": true,
+  "reviewGate": {
+    "requiredLabels": [
+      "local_sip",
+      "live_capture",
+      "rtc_asr_live",
+      "pipecat_verto_webrtc",
+      "caller_audible_playback"
+    ],
+    "missingLabels": [],
+    "nextActions": []
+  },
+  "callerPlaybackEvidence": {
+    "callerPlaybackConfirmed": true,
+    "packetCount": 2957,
+    "playbackRms": 547,
+    "playbackWavPath": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/caller-playback-capture.wav",
+    "anyPlaybackConfirmed": true,
+    "responsePlaybackBoundaryAt": "2026-08-04T04:57:18.534Z",
+    "responsePlaybackBoundaryStage": "tts.stream_started",
+    "observableIntroCompletedAt": "2026-08-04T04:57:06.637Z",
+    "responseTtsStartedAt": "2026-08-04T04:57:18.534+00:00",
+    "responseTtsReadyAt": "2026-08-04T04:57:23.256+00:00",
+    "responsePlaybackConfirmed": true,
+    "responsePlaybackPacketCount": 2241,
+    "responsePlaybackRms": 517,
+    "introPlaybackPacketCount": 716,
+    "introPlaybackRms": 630
+  },
+  "rtcAsrEvidence": {
+    "transcriptCaptured": true,
+    "transcript": "You",
+    "ttsAudioReady": true,
+    "ttsResponseStartedAt": "2026-08-04T04:57:18.534+00:00",
+    "ttsResponseStartedStage": "tts.stream_started",
+    "vertoCallId": "41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+    "accCallId": "demo-call-0008",
+    "sipCallId": "41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+    "proofSipCallId": "acc-proof-1785819423318-ef8962274184",
+    "linkedSipCallId": "8a0291fb-f25f-4d89-bff8-32d383344d83",
+    "correlationMode": "expected_sip_call_id",
+    "callLinkage": {
+      "ready": true,
+      "status": "linked",
+      "source": "freeswitch_log",
+      "method": "proof_sip_call_id_to_aleg_uuid_to_verto_peer_uuid",
+      "logPath": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0/source/freeswitch-linkage-redacted.log",
+      "proofSipCallId": "acc-proof-1785819423318-ef8962274184",
+      "linkedSipCallId": "8a0291fb-f25f-4d89-bff8-32d383344d83",
+      "vertoCallId": "41e7220c-4c1d-4f7b-8341-fcdd9977163b",
+      "evidenceLines": {
+        "proofSipCallId": {
+          "lineNumber": 10287,
+          "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.087401 98.10% [DEBUG] switch_channel.c:1288 sofia/internal/1000@127.0.0.1 EXPORTING[export_vars] [sip_h_X-ACC-Proof-Call-ID]=[acc-proof-1785819423318-ef8962274184] to event"
+        },
+        "vertoPeerUuid": {
+          "lineNumber": 10381,
+          "text": "8a0291fb-f25f-4d89-bff8-32d383344d83 2026-08-04 04:57:03.667350 97.83% [DEBUG] switch_ivr_originate.c:3913 Originate Resulted in Success: [verto.rtc/1a166ea3-e099-4380-8cff-8c978fac88f5] Peer UUID: 41e7220c-4c1d-4f7b-8341-fcdd9977163b"
+        }
+      }
+    },
+    "currentCallWindowStartedAt": "2026-08-04T04:57:03.319Z"
+  },
+  "blockers": [],
+  "hostResolvedFrom": "artifacts/verto-sip-live-2026-08-04T04-57-03.3NZ/verto-sip-live-proof-manifest.json",
+  "hostResolvedAt": "2026-08-04T04:59:01.368Z",
+  "qaEvidencePackage": {
+    "path": "/Users/alberto/.openclaw/workspace/qa-evidence/agentic-contact-center/acc-330-pr337-bc6e2c0",
+    "generatedAt": "2026-08-04T05:53:54.855Z",
+    "note": "Self-contained QA-visible copy of the bc6e2c0 exact-head passing proof. Runtime secrets are omitted; FreeSWITCH evidence is call-scoped/redacted."
+  }
+}

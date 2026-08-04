@@ -1,0 +1,97 @@
+[
+  {
+    "at": "2026-08-04T04:57:03.325Z",
+    "type": "sip.send",
+    "startLine": "INVITE sip:8600@freeswitch:5060 SIP/2.0",
+    "cseq": 1,
+    "authorized": false
+  },
+  {
+    "at": "2026-08-04T04:57:03.359Z",
+    "type": "sip.recv",
+    "remote": "172.24.0.5:5060",
+    "startLine": "SIP/2.0 407 Proxy Authentication Required",
+    "cseq": "1 INVITE"
+  },
+  {
+    "at": "2026-08-04T04:57:03.360Z",
+    "type": "sip.send",
+    "startLine": "ACK",
+    "cseq": 1,
+    "transactionBranch": "acc-proof-1785819423318-ef8962274184-1"
+  },
+  {
+    "at": "2026-08-04T04:57:03.361Z",
+    "type": "sip.send",
+    "startLine": "INVITE sip:8600@freeswitch:5060 SIP/2.0",
+    "cseq": 2,
+    "authorized": true
+  },
+  {
+    "at": "2026-08-04T04:57:03.390Z",
+    "type": "sip.recv",
+    "remote": "172.24.0.5:5060",
+    "startLine": "SIP/2.0 100 Trying",
+    "cseq": "2 INVITE"
+  },
+  {
+    "at": "2026-08-04T04:57:03.414Z",
+    "type": "sip.recv",
+    "remote": "172.24.0.5:5060",
+    "startLine": "SIP/2.0 200 OK",
+    "cseq": "2 INVITE"
+  },
+  {
+    "at": "2026-08-04T04:57:03.414Z",
+    "type": "sip.send",
+    "startLine": "ACK",
+    "cseq": 2,
+    "transactionBranch": "acc-proof-1785819423318-ef8962274184-ack-2"
+  },
+  {
+    "at": "2026-08-04T04:57:03.415Z",
+    "type": "rtp.caller_audio_waiting",
+    "mediaDelayMs": 1000
+  },
+  {
+    "at": "2026-08-04T04:57:04.221Z",
+    "type": "rtp.return_audio_started",
+    "remote": "172.24.0.5:23882"
+  },
+  {
+    "at": "2026-08-04T04:57:06.637Z",
+    "type": "rtp.prerecorded_intro_completed",
+    "observedAt": "2026-08-04T04:57:06.637Z",
+    "method": "caller_rtp_non_silent_then_240ms_silence",
+    "nonSilentPacketCount": 82,
+    "consecutiveSilentPacketCount": 12
+  },
+  {
+    "at": "2026-08-04T04:57:06.671Z",
+    "type": "rtp.caller_audio_started",
+    "packetCount": 690,
+    "remoteRtp": {
+      "host": "172.24.0.5",
+      "port": 23882
+    },
+    "audioBytes": 220800
+  },
+  {
+    "at": "2026-08-04T04:57:21.043Z",
+    "type": "rtp.caller_audio_finished",
+    "packetCount": 690
+  },
+  {
+    "at": "2026-08-04T04:58:03.331Z",
+    "type": "sip.send",
+    "startLine": "BYE",
+    "cseq": 3
+  },
+  {
+    "at": "2026-08-04T04:58:03.353Z",
+    "type": "sip.recv",
+    "remote": "172.24.0.5:5060",
+    "startLine": "SIP/2.0 200 OK",
+    "cseq": "3 BYE"
+  }
+]
