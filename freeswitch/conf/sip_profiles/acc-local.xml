@@ -1,0 +1,36 @@
+<profile name="acc-local">
+  <aliases>
+    <alias name="acc-local"/>
+  </aliases>
+  <gateways/>
+  <domains>
+    <domain name="all" alias="true" parse="false"/>
+  </domains>
+  <settings>
+    <!-- Host port 5060 is bound to 127.0.0.1 by Compose, so this profile is
+         intentionally a no-auth demo ingress for local softphones only. -->
+    <param name="debug" value="0"/>
+    <param name="sip-trace" value="no"/>
+    <param name="context" value="default"/>
+    <param name="dialplan" value="XML"/>
+    <param name="sip-port" value="5062"/>
+    <param name="sip-ip" value="$${local_ip_v4}"/>
+    <param name="rtp-ip" value="$${local_ip_v4}"/>
+    <param name="ext-sip-ip" value="127.0.0.1"/>
+    <param name="ext-rtp-ip" value="127.0.0.1"/>
+    <param name="auth-calls" value="false"/>
+    <param name="auth-subscriptions" value="false"/>
+    <param name="inbound-codec-prefs" value="PCMU,PCMA"/>
+    <param name="outbound-codec-prefs" value="PCMU,PCMA"/>
+    <param name="inbound-late-negotiation" value="true"/>
+    <param name="rtp-timer-name" value="soft"/>
+    <param name="manage-presence" value="false"/>
+    <param name="apply-nat-acl" value="nat.auto"/>
+    <!-- Docker presents host traffic as the bridge gateway. Treat it as NAT so
+         SDP advertises the published host address and SIP replies use the
+         translated source port rather than the Via/Contact port. -->
+    <param name="local-network-acl" value="loopback.auto"/>
+    <param name="aggressive-nat-detection" value="true"/>
+    <param name="NDLB-force-rport" value="true"/>
+  </settings>
+</profile>

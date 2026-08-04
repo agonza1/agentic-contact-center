@@ -91,8 +91,10 @@ services:
     depends_on:
       - app
     ports:
-      - "127.0.0.1:5060:5060/udp"
-      - "127.0.0.1:5060:5060/tcp"
+      # Stable host-only Linphone ingress. The container's normal authenticated
+      # internal profile remains on 5060 for Docker-network traffic.
+      - "127.0.0.1:5060:5062/udp"
+      - "127.0.0.1:5060:5062/tcp"
       - "127.0.0.1:8021:8021/tcp"
       - "127.0.0.1:8081:8081/tcp"
       - "127.0.0.1:8082:8082/tcp"
@@ -101,6 +103,9 @@ services:
       - ./freeswitch/conf/dialplan/default/acc_local_sip.xml:/etc/freeswitch/dialplan/default/acc_local_sip.xml:ro
       - ./freeswitch/conf/directory/default/1000.xml:/etc/freeswitch/directory/default/1000.xml:ro
       - ./freeswitch/conf/directory/default/acc-pipecat.xml:/etc/freeswitch/directory/default/acc-pipecat.xml:ro
+      - ./freeswitch/conf/directory/localhost.xml:/etc/freeswitch/directory/localhost.xml:ro
+      - ./freeswitch/conf/sip_profiles/acc-local.xml:/etc/freeswitch/sip_profiles/acc-local.xml:ro
+      - ./freeswitch/conf/autoload_configs/switch.conf.xml:/etc/freeswitch/autoload_configs/switch.conf.xml:ro
       - ./freeswitch/conf/autoload_configs/event_socket.conf.xml:/etc/freeswitch/autoload_configs/event_socket.conf.xml:ro
       - ./freeswitch/conf/autoload_configs/verto.conf.xml:/etc/freeswitch/autoload_configs/verto.conf.xml:ro
       - ./artifacts/freeswitch-live:/var/log/freeswitch/acc
@@ -221,6 +226,9 @@ services:
       ACC_VERTO_OWNS_MEDIA: ${ACC_VERTO_OWNS_MEDIA:-false}
 
   pipecat-verto-bridge:
+    # The regex runtime intentionally refuses imports from the process CWD.
+    # Run outside /app while keeping all application paths explicit.
+    working_dir: /tmp
     build:
       context: .
       target: voice-runtime
@@ -233,7 +241,7 @@ services:
       - kokoro
     command:
       - python3
-      - scripts/pipecat-verto-agent-bridge.py
+      - /app/scripts/pipecat-verto-agent-bridge.py
       - --host
       - 0.0.0.0
       - --port
@@ -272,6 +280,7 @@ services:
       ACC_WEBRTC_MAX_TURN_MS: ${ACC_WEBRTC_MAX_TURN_MS:-5000}
       ACC_TTS_OUTPUT_CHUNK_YIELD_MS: ${ACC_TTS_OUTPUT_CHUNK_YIELD_MS:-20}
       ACC_TTS_EVIDENCE_EVERY_N_CHUNKS: ${ACC_TTS_EVIDENCE_EVERY_N_CHUNKS:-50}
+      ACC_VERTO_AUDIO_OUT_SAMPLE_RATE: ${ACC_VERTO_AUDIO_OUT_SAMPLE_RATE:-8000}
       PIPECAT_VERTO_PROOF_OUT: /app/artifacts/freeswitch-live/pipecat-verto-proof.json
     healthcheck:
       test:

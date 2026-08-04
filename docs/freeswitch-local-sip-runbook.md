@@ -16,7 +16,7 @@ That route is the Issue #214/#222 review surface for browser WebRTC, local SIP/F
 - FreeSWITCH SIP profile: `127.0.0.1:5060/UDP` or Docker-published `5060/UDP`
 - FreeSWITCH ESL: `127.0.0.1:8021`, password `ClueCon`
 - FreeSWITCH Verto: `ws://127.0.0.1:8081`, WSS on `127.0.0.1:8082`
-- Local SIP account: extension `1000`, password `local-sip-pass`, domain `127.0.0.1`
+- Local SIP account: extension `1000`, password `pass`, domain `localhost`
 - ACC destinations: dial `8600` for the OpenAI-backed live LLM flow, or `8611` for the existing deterministic scripted flow
 - Preferred Verto agent: `acc-pipecat@127.0.0.1`, password `local-verto-pass`
 - RTP range in compose: `16384-16484/UDP`
@@ -145,7 +145,7 @@ cleared on every new `start` and cannot leak into the next turn.
 To run the deterministic two-way proof, create or supply a PCM16 WAV containing a spoken caller utterance, then run:
 
 ```sh
-FREESWITCH_SIP_PASSWORD=local-sip-pass \
+FREESWITCH_SIP_PASSWORD=pass \
   ACC_SIP_PROOF_LOCAL_HOST=192.168.86.28 \
   npm run pipecat:verto:live-proof -- \
   --caller-audio artifacts/caller-speech.wav \
@@ -170,8 +170,8 @@ The accepted #222 proof must come from the active Verto/WebRTC call leg, not pos
 
 ```text
 User: 1000
-Password: local-sip-pass
-Domain/proxy: 127.0.0.1:5060
+Password: pass
+Domain/proxy: localhost:5060
 Transport: UDP
 Dial: 8600
 ```
@@ -182,7 +182,7 @@ If using an already-running native/Homebrew FreeSWITCH instead of the compose se
 fs_cli -x 'global_getvar default_password'
 ```
 
-On Alberto's current local Homebrew FreeSWITCH, the active SIP profile binds to `192.168.86.28:5060` and extension `1000` uses the `default_password` value rather than the compose-only `local-sip-pass`.
+On Alberto's current local Homebrew FreeSWITCH, the active SIP profile binds to `192.168.86.28:5060` and extension `1000` uses the `default_password` value rather than the compose-only `pass` value.
 
 5. Speak a real caller utterance, then hang up. Review:
 

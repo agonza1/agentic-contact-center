@@ -7,7 +7,7 @@ const repoRoot = join(__dirname, "..", "..");
 
 test("Docker runtime assets keep the documented health and proof contract", () => {
   const dockerfile = readFileSync(join(repoRoot, "Dockerfile"), "utf8");
-  const compose = readFileSync(join(repoRoot, "docker-compose.yml"), "utf8");
+  const compose = readFileSync(join(repoRoot, "docker-compose.yml"), "utf8").replaceAll("\r\n", "\n");
   const freeswitchDialplan = readFileSync(join(repoRoot, "freeswitch", "conf", "dialplan", "default", "acc_local_sip.xml"), "utf8");
   const readme = readFileSync(join(repoRoot, "README.md"), "utf8");
   const runtimeReference = readFileSync(join(repoRoot, "docs", "runtime-reference.md"), "utf8");
@@ -52,6 +52,10 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /browser-webrtc-bridge:\n[\s\S]*RTC_ASR_WS_URL: ws:\/\/rtc-asr:8080\/v1\/stt\/stream/);
   assert.match(compose, /freeswitch:\n[\s\S]*profiles: \["freeswitch", "sip", "sip-verto", "full"\]/);
   assert.match(compose, /freeswitch:\n[\s\S]*"127\.0\.0\.1:8081:8081\/tcp"/);
+  assert.match(compose, /freeswitch:\n[\s\S]*"127\.0\.0\.1:5060:5062\/udp"/);
+  assert.match(compose, /freeswitch:\n[\s\S]*freeswitch\/conf\/sip_profiles\/acc-local\.xml/);
+  assert.match(compose, /freeswitch:\n[\s\S]*freeswitch\/conf\/directory\/localhost\.xml/);
+  assert.match(compose, /freeswitch:\n[\s\S]*freeswitch\/conf\/autoload_configs\/switch\.conf\.xml/);
   assert.match(compose, /freeswitch:\n[\s\S]*acc-pipecat\.xml/);
   assert.match(compose, /freeswitch:\n[\s\S]*verto\.conf\.xml/);
   assert.match(freeswitchDialplan, /acc_linked_sip_call_id=\$\{uuid\}/);
@@ -70,6 +74,8 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /freeswitch-bridge:\n[\s\S]*ACC_VERTO_OWNS_MEDIA: \${ACC_VERTO_OWNS_MEDIA:-false}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*target: voice-runtime/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*scripts\/pipecat-verto-agent-bridge\.py/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*working_dir: \/tmp/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_VERTO_AUDIO_OUT_SAMPLE_RATE: \$\{ACC_VERTO_AUDIO_OUT_SAMPLE_RATE:-8000\}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*\.\/artifacts:\/app\/artifacts/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_VERTO_OWNS_GREETING: \${ACC_VERTO_OWNS_GREETING:-true}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_SIP_GREETING_PREROLL_MS: \${ACC_SIP_GREETING_PREROLL_MS:-300}/);

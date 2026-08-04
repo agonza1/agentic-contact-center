@@ -912,6 +912,10 @@ class VertoAgentBridge:
             conversation_mode=conversation_mode,
         )
         session.hold_caller_turns("prerecorded_greeting_evidence_pending")
+        # FreeSWITCH's Verto leg negotiates PCMU/8 kHz for the local SIP demo.
+        # Make Pipecat resample before audio reaches aiortc so the WebRTC sender
+        # does not have to convert a 24 kHz raw track inside the G.711 encoder.
+        audio_out_sample_rate = int(os.environ.get("ACC_VERTO_AUDIO_OUT_SAMPLE_RATE", "8000"))
         transport = SmallWebRTCTransport(
             webrtc_connection=connection,
             params=TransportParams(
@@ -920,7 +924,7 @@ class VertoAgentBridge:
                 audio_in_channels=1,
                 audio_in_passthrough=True,
                 audio_out_enabled=True,
-                audio_out_sample_rate=24000,
+                audio_out_sample_rate=audio_out_sample_rate,
                 audio_out_channels=1,
                 audio_out_auto_silence=True,
             ),
@@ -932,7 +936,10 @@ class VertoAgentBridge:
         )
         task = PipelineTask(
             pipeline,
-            params=PipelineParams(audio_in_sample_rate=INPUT_SAMPLE_RATE, audio_out_sample_rate=24000),
+            params=PipelineParams(
+                audio_in_sample_rate=INPUT_SAMPLE_RATE,
+                audio_out_sample_rate=audio_out_sample_rate,
+            ),
             enable_rtvi=False,
             idle_timeout_secs=None,
         )
