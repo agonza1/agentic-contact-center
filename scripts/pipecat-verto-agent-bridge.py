@@ -479,6 +479,10 @@ class VertoAgentBridge:
         )
         if value:
             return "8600" if value.lower() == "acc" else value
+        route_hint = nested_param_value(params, ("caller_id_name", "Caller-Caller-ID-Name"))
+        route_match = re.fullmatch(r"ACC[-_ ](8600|8611|8612)", route_hint or "", flags=re.IGNORECASE)
+        if route_match:
+            return route_match.group(1)
         return None
 
     def conversation_mode(self, params: dict[str, Any], destination_number: str | None) -> str:
@@ -497,7 +501,11 @@ class VertoAgentBridge:
         )
         if value and value in {"scripted", "free_caller", "openai_llm"}:
             return value
-        return "openai_llm" if destination_number == "8600" else "scripted"
+        if destination_number == "8600":
+            return "openai_llm"
+        if destination_number == "8611":
+            return "free_caller"
+        return "scripted"
 
     async def end_acc_call(self, call_id: str, *, reason: str, timestamp: str | None = None, timeout: float = 2.0, linked_sip_call_id: str | None = None) -> bool:
         try:

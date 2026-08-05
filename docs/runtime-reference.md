@@ -312,7 +312,7 @@ Call, transcript, event, and latency routes support pagination with `offset`, `l
 - `npm run docker:proof`: run the proof harness in Compose and write artifacts.
 - `npm run docker:voice`: run ACC with optional rtc-asr and Kokoro sidecars.
 - `npm run docker:browser-webrtc`: run ACC, rtc-asr, Kokoro, and the Pipecat browser WebRTC bridge.
-- `npm run docker:sip-verto`: run ACC, FreeSWITCH, rtc-asr, Kokoro, and the preferred Pipecat Verto/WebRTC sidecar for local SIP 8600/8611 lab work.
+- `npm run docker:sip-verto`: run ACC, FreeSWITCH, rtc-asr, Kokoro, and the preferred Pipecat Verto/WebRTC sidecar for local SIP 8600/8611/8612 lab work.
 - `npm run docker:sip`: run ACC, FreeSWITCH, the legacy FreeSWITCH ESL bridge, rtc-asr, and Kokoro for local SIP proof/debug work.
 - `npm run docker:assert`: export ASSERT artifacts and start the upstream ASSERT viewer.
 - `npm run docker:full`: run all optional local contact-center services.
@@ -323,7 +323,7 @@ The default Compose path only starts `app` unless another service is requested. 
 
 - `voice`: `rtc-asr` and `kokoro` sidecars. `rtc-asr` listens on `8080`, Kokoro listens on `8880`, and ACC is preconfigured with Docker-network URLs for both.
 - `browser-webrtc`: adds `browser-webrtc-bridge` on `8766`, using the `voice-runtime` Dockerfile target with Pipecat WebRTC Python dependencies installed into `.pipecat-runtime`.
-- `sip-verto`: adds FreeSWITCH plus `pipecat-verto-bridge`, exposes Verto on `8081`/`8082`, and routes local extensions `8600` and `8611` to the registered `acc-pipecat` WebRTC agent leg. Extension `8600` is `openai_llm`; extension `8611` is deterministic `scripted`.
+- `sip-verto`: adds FreeSWITCH plus `pipecat-verto-bridge`, exposes Verto on `8081`/`8082`, and routes local extensions `8600`, `8611`, and `8612` to the registered `acc-pipecat` WebRTC agent leg. Extension `8611` is the normal credential-free `free_caller` path, `8612` is the scripted failure-control path, and `8600` is the optional `openai_llm` path.
 - `sip`: legacy proof/debug lane with FreeSWITCH plus `freeswitch-bridge`, writes SIP/media proof artifacts under `artifacts/freeswitch-live`, and points the bridge at Docker-network rtc-asr/Kokoro URLs.
 - `eval`: runs `assert-viewer`, exporting ACC ASSERT artifacts before starting the upstream ASSERT viewer on `5174`.
 - `full`: enables every optional service above for an end-to-end local lab stack.
@@ -348,13 +348,13 @@ npm run proof:live-sip-bundle -- --live-manifest artifacts/local-sip-selftest/lo
 FreeSWITCH local SIP target:
 
 - SIP account: `1000` / `pass` at `localhost:5060` UDP
-- Dial: `8600` for OpenAI-backed live LLM conversation, or `8611` for the deterministic scripted conversation
+- Dial: `8611` for the normal credential-free local conversation, `8612` for the deterministic failure-control script, or `8600` for an OpenAI-backed live LLM conversation
 - ESL bridge: `npm run freeswitch:bridge -- --acc-url http://127.0.0.1:8026`
 - Docker profile: `npm run docker:freeswitch` when Docker is available
 - FreeSWITCH-only compose start: `npm run docker:freeswitch:only` when ACC is already running locally
 - Runbook: `docs/freeswitch-local-sip-runbook.md`
 
-Review release requires a real local SIP softphone call with `live_capture`, not the generated self-test. If `RTC_ASR_WS_URL` is not set, the bundle emits an explicit `rtc_asr_blocked` artifact and blocker instead of a fake transcript. For extension `8600`, set `OPENAI_API_KEY` or `ACC_OPENAI_API_KEY`, or opt into the local OpenClaw OAuth-backed Responses gateway with `ACC_OPENAI_AUTH_MODE=openclaw_oauth`, `ACC_OPENAI_AUTH_TOKEN=$OPENCLAW_GATEWAY_TOKEN`, `ACC_OPENCLAW_AGENT_ID=acc-voice`, and `ACC_OPENAI_BASE_URL=http://host.docker.internal:18789/v1` for Docker. `ACC_OPENAI_CONVERSATION_MODEL` defaults to the requested literal `GPT-5.4-mini`, and missing credentials/tokens or API/model failures fail closed without scripted substitution. Extension `8611` remains the default deterministic scripted path.
+Review release requires a real local SIP softphone call with `live_capture`, not the generated self-test. If `RTC_ASR_WS_URL` is not set, the bundle emits an explicit `rtc_asr_blocked` artifact and blocker instead of a fake transcript. For extension `8600`, set `OPENAI_API_KEY` or `ACC_OPENAI_API_KEY`, or opt into the local OpenClaw OAuth-backed Responses gateway with `ACC_OPENAI_AUTH_MODE=openclaw_oauth`, `ACC_OPENAI_AUTH_TOKEN=$OPENCLAW_GATEWAY_TOKEN`, `ACC_OPENCLAW_AGENT_ID=acc-voice`, and `ACC_OPENAI_BASE_URL=http://host.docker.internal:18789/v1` for Docker. `ACC_OPENAI_CONVERSATION_MODEL` defaults to the requested literal `GPT-5.4-mini`, and missing credentials/tokens or API/model failures fail closed without scripted substitution. Extension `8611` remains the default credential-free local path; use `8612` when intentionally demonstrating scripted failure control.
 
 The operator/demo UI for this path is `/operator/console`. Select the live SIP call to see the visible run/session id, SIP/FreeSWITCH/SignalWire runtime labels, audio WAV and SIP log paths, live transcript or `rtc-asr` blocker state, proof/eval links, caveats, and operator controls for fallback, takeover, transfer, or end-call handoff.
 

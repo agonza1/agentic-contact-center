@@ -4648,11 +4648,12 @@ function normalizeLiveSipDestination(value: unknown): string | null {
   const destination = getOptionalTrimmedString(value);
   if (!destination) return null;
   const normalized = destination.toLowerCase() === "acc" ? "8600" : destination;
-  return /^(8600|8611)$/.test(normalized) ? normalized : destination;
+  return /^(8600|8611|8612)$/.test(normalized) ? normalized : destination;
 }
 
 function conversationModeForLiveSipDestination(destination: string | null): ConversationMode {
   if (destination === "8600") return "openai_llm";
+  if (destination === "8611") return "free_caller";
   return "scripted";
 }
 

@@ -669,7 +669,7 @@ test("live SIP prerecorded greeting advances context before the first caller tur
   }
 });
 
-test("live SIP separates 8611 scripted flow from 8600 OpenAI flow", async () => {
+test("live SIP separates 8611 free caller, 8612 scripted failure, and 8600 OpenAI flows", async () => {
   const originalEnv = {
     ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
@@ -712,29 +712,53 @@ test("live SIP separates 8611 scripted flow from 8600 OpenAI flow", async () => 
   assert.ok(address && typeof address !== "string");
 
   try {
+    const freeCallerStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T22:29:00.000Z",
+      sipCallId: "sip-free-caller-8611",
+      destination: "8611",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(freeCallerStarted.statusCode, 201);
+    assert.equal(freeCallerStarted.payload.call.scenario.conversationMode, "free_caller");
+    assert.equal(freeCallerStarted.payload.call.scenario.sipExtension, "8611");
+
+    const freeCallerTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-27T22:29:01.000Z",
+      sipCallId: "sip-free-caller-8611",
+      text: "Hi, how are you?",
+    });
+    assert.equal(freeCallerTranscript.statusCode, 200);
+    assert.equal(freeCallerTranscript.payload.call.flowState, "greet");
+    assert.notEqual(freeCallerTranscript.payload.call.transcript.at(-1).text.includes("runtime reported a failure"), true);
+    assert.equal(openAiRequests.length, 0);
+
     const scriptedStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "call.started",
       timestamp: "2026-07-27T22:30:00.000Z",
-      sipCallId: "sip-scripted-8611",
-      destination: "8611",
+      sipCallId: "sip-scripted-8612",
+      destination: "8612",
       source: "freeswitch_verto",
       telephonyMode: "local_sip",
       rtcAsrMode: "rtc_asr_live",
     });
     assert.equal(scriptedStarted.statusCode, 201);
     assert.equal(scriptedStarted.payload.call.scenario.conversationMode, "scripted");
-    assert.equal(scriptedStarted.payload.call.scenario.sipExtension, "8611");
+    assert.equal(scriptedStarted.payload.call.scenario.sipExtension, "8612");
 
     const scriptedTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.transcript",
       timestamp: "2026-07-27T22:30:01.000Z",
-      sipCallId: "sip-scripted-8611",
+      sipCallId: "sip-scripted-8612",
       text: "I'm thinking about canceling my policy.",
     });
     assert.equal(scriptedTranscript.statusCode, 200);
     assert.equal(
       scriptedTranscript.payload.call.transcript.at(-1).text,
-      "I can help with that. Before I review options, what is pushing you to cancel today?",
+      "I can help with that. May I ask what is prompting the cancellation?",
     );
     assert.equal(openAiRequests.length, 0);
 
@@ -1813,7 +1837,7 @@ test("live SIP fallback disarm preserves an earlier explicit operator hold", asy
       eventType: "call.started",
       timestamp: "2026-07-31T20:00:00.000Z",
       sipCallId: "sip-scripted-pause-fallback-disarm",
-      destination: "8611",
+      destination: "8612",
       source: "freeswitch_verto",
       telephonyMode: "local_sip",
       rtcAsrMode: "rtc_asr_live",
@@ -2502,7 +2526,7 @@ test("live SIP scripted caller turns honor explicit operator pause holds", async
       eventType: "call.started",
       timestamp: "2026-07-27T23:06:00.000Z",
       sipCallId: "sip-scripted-explicit-pause",
-      destination: "8611",
+      destination: "8612",
       source: "freeswitch_verto",
       telephonyMode: "local_sip",
       rtcAsrMode: "rtc_asr_live",
@@ -2584,7 +2608,7 @@ test("live SIP scripted caller turns stay held after terminal operator stops", a
         eventType: "call.started",
         timestamp: "2026-07-27T23:07:00.000Z",
         sipCallId: `sip-scripted-terminal-${action}`,
-        destination: "8611",
+        destination: "8612",
         source: "freeswitch_verto",
         telephonyMode: "local_sip",
         rtcAsrMode: "rtc_asr_live",
@@ -2640,7 +2664,7 @@ test("live SIP scripted caller turns stay held after terminal operator stops", a
           eventType: "call.started",
           timestamp: "2026-07-27T23:07:10.000Z",
           sipCallId: `sip-scripted-terminal-fallback-${action}`,
-          destination: "8611",
+          destination: "8612",
           source: "freeswitch_verto",
           telephonyMode: "local_sip",
           rtcAsrMode: "rtc_asr_live",

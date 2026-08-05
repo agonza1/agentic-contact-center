@@ -205,7 +205,7 @@ npm run docker:freeswitch:only
 
 - `voice`: rtc-asr on `8080` and Kokoro on `8880`.
 - `browser-webrtc`: voice sidecars plus the Pipecat browser WebRTC bridge on `8766`.
-- `sip-verto`: FreeSWITCH, rtc-asr, Kokoro, and the preferred Pipecat Verto/WebRTC agent-leg bridge. Dial `8600` for the OpenAI-backed `openai_llm` flow (`OPENAI_API_KEY` or `ACC_OPENAI_API_KEY`, or local `ACC_OPENAI_AUTH_MODE=openclaw_oauth` via the OpenClaw Responses gateway; default model `GPT-5.4-mini`) and `8611` for the deterministic scripted flow.
+- `sip-verto`: FreeSWITCH, rtc-asr, Kokoro, and the preferred Pipecat Verto/WebRTC agent-leg bridge. Dial `8611` for the normal credential-free `free_caller` flow, `8612` for the deterministic scripted failure-control flow, or `8600` for the optional OpenAI-backed `openai_llm` flow (`OPENAI_API_KEY` or `ACC_OPENAI_API_KEY`, or local `ACC_OPENAI_AUTH_MODE=openclaw_oauth` via the OpenClaw Responses gateway; default model `GPT-5.4-mini`).
 - `sip`: legacy FreeSWITCH-to-ACC ESL proof/debug bridge with rtc-asr and Kokoro.
 - `eval`: ASSERT artifact export/viewer on `5174`.
 - `full`: all optional ACC-local services; this is not yet a full CAE-backed reliability lab.
