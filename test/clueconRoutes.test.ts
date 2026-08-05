@@ -1102,7 +1102,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Starting microphone…/);
   assert.match(narrative.body, /MIC_START_CANCELLED/);
   assert.match(narrative.body, /slideCount: slideOrder\.length/);
-  assert.match(narrative.body, /\["flow", "voice-evolution", "realtime-problem", "map", "integration", "vad-interruption", "asr-architecture", "asr", "security", "agent", "demo", "tts", "ecosystem", "slo", "proof", "finale"\]/);
+  assert.match(narrative.body, /\["flow", "voice-evolution", "realtime-problem", "map", "integration", "vad-interruption", "asr-architecture", "asr", "security", "agent", "demo", "tts", "ecosystem", "proof", "slo", "finale"\]/);
   assert.match(narrative.body, /Pipecat coordinates the realtime media and LLM loop\./);
   assert.match(narrative.body, /Agentic Call Center app authorizes tools and telephony actions/);
   assert.match(narrative.body, /orient="auto-start-reverse"/);
@@ -1357,7 +1357,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /runEvalProof/);
   assert.match(narrative.body, /goToSlide/);
   assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 16'));
-  assert.match(narrative.body, /"ecosystem", "slo", "proof", "finale"/);
+  assert.match(narrative.body, /"ecosystem", "proof", "slo", "finale"/);
   assert.match(narrative.body, /aria-label="Previous slide"/);
   assert.ok(narrative.body.includes('status.textContent = String(state.slide + 1) + " / " + String(state.slideCount)'));
   assert.match(narrative.body, /@media \(max-width: 1100px\) \{ \.demo-control-step/);
