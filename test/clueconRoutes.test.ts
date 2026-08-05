@@ -1325,6 +1325,11 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Conversational SLO/);
   assert.match(narrative.body, /Google SRE Workbook ↗/);
   assert.match(narrative.body, /ITU-T P\.851 ↗/);
+  assert.match(narrative.body, /class="ecosystem-card ecosystem-card--primary" href="http:\/\/127\.0\.0\.1:3010"/);
+  assert.match(narrative.body, /class="ecosystem-card" href="https:\/\/github\.com\/responsibleai\/ASSERT"/);
+  assert.match(narrative.body, /class="ecosystem-card ecosystem-card--target" href="http:\/\/127\.0\.0\.1:8026\/operator\/console"/);
+  assert.match(narrative.body, /class="ecosystem-card" href="http:\/\/127\.0\.0\.1:8090\/rtc-asr"/);
+  assert.match(narrative.body, /\.ecosystem-card:focus-visible/);
   assert.match(narrative.body, /Different voice agents\. One evaluation contract\./);
   assert.match(narrative.body, /ConversationAgentEvals runs the same scenario against web and VoIP\/SIP voice agents\./);
   assert.match(narrative.body, /A target adapter connects to each agent's call interface/);
