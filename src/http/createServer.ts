@@ -3577,10 +3577,17 @@ function isClueConOperatorDrillKind(value: unknown): value is ClueConOperatorDri
 }
 
 function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, callId: string) {
+  const freeSwitchQueueHandoffPatterns = [
+    "Adapter protocol: ACC JSON is internal; FreeSWITCH receives authenticated mod_event_socket / ESL api or bgapi commands after callId maps to the channel Unique-ID.",
+    "Preferred queue path: api uuid_transfer <caller_uuid> 5000 XML default; extension 5000 executes callcenter support@default.",
+    "Direct-leg alternative: bgapi originate {origination_uuid=<agent_uuid>}sofia/... &park(); after CHANNEL_ANSWER, api uuid_bridge <caller_uuid> <agent_uuid>.",
+    "Verify BACKGROUND_JOB, CHANNEL_ANSWER, and CHANNEL_BRIDGE; preserve the caller and record -ERR, Q.850, or CHANNEL_HANGUP_COMPLETE on failure.",
+    "Production boundary: bind ESL to loopback or a private interface, apply a narrow apply-inbound-acl, use a strong password, and allowlist adapter commands.",
+  ];
   const common = {
     boundary: "acc_control_plane_to_telephony_adapter",
-    controlPlane: "ACC emits a structured JSON command; a telephony adapter authenticates it, maps the call id, and executes the media-server action.",
-    mediaPlane: "FreeSWITCH or another SIP/media server remains responsible for SIP dialogs, RTP continuity, and the actual transfer or hangup.",
+    controlPlane: "ACC JSON → authenticated mod_event_socket / ESL adapter → callId-to-Unique-ID mapping → api or bgapi command.",
+    mediaPlane: "FreeSWITCH owns the SIP/RTP legs and executes the queue transfer, outbound leg, bridge, or hangup.",
     demoCaveat: "This presentation records the command and evidence but does not place an external transfer leg.",
   };
 
@@ -3594,9 +3601,11 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
         target: { type: "sip_uri", uri: "sip:retention@pbx.example" },
       },
       executionPatterns: [
-        "FreeSWITCH ESL: map callId to channel UUID, then use uuid_transfer or originate + uuid_bridge.",
-        "SIP REFER: ask the current endpoint to transfer the existing dialog to the target URI.",
+        "FreeSWITCH ESL: map callId to Unique-ID, then use api uuid_transfer into a dialplan extension or bgapi originate plus api uuid_bridge.",
+        "Queue handoff: uuid_transfer the caller into an extension that executes callcenter support@default.",
+        "SIP REFER: invoke the FreeSWITCH deflect application on an established call when the upstream endpoint should transfer it and FreeSWITCH may leave the path.",
         "SIP B2BUA: create an outbound INVITE and bridge the new leg when the platform must retain call control.",
+        "Correlate BACKGROUND_JOB, CHANNEL_ANSWER, CHANNEL_BRIDGE, and CHANNEL_HANGUP_COMPLETE evidence by Unique-ID and Job-UUID.",
         "Other media servers: consume the same JSON command over HTTP, WebSocket, or an event bus and use their native call-control API.",
       ],
     };
@@ -3613,7 +3622,7 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
       },
       executionPatterns: [
         "Keep the existing SIP/RTP session stable while automated responses stop.",
-        "Send the handoff JSON to the FreeSWITCH/media-server adapter, which creates or bridges the human leg.",
+        ...freeSwitchQueueHandoffPatterns,
         "If the handoff cannot be completed, preserve the call and emit explicit failure evidence instead of improvising an AI response.",
       ],
     };
@@ -3651,8 +3660,7 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
         "Stop ASR and LLM generation so the failed recognition path cannot continue producing responses.",
         "Synthesize one bounded handoff prompt through the same configured TTS route as the latency lab.",
         "If live TTS also fails, play the prerecorded media-server asset instead.",
-        "Keep the SIP/RTP session stable and bridge the caller to the human-support queue.",
-        "If the queue handoff also fails, preserve the call and emit explicit failure evidence.",
+        ...freeSwitchQueueHandoffPatterns,
       ],
     };
   }
@@ -3686,8 +3694,7 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
       executionPatterns: [
         "Stop ASR, LLM, and synthesized output so the failed AI path cannot continue producing responses.",
         "Play a prerecorded media-server asset that does not depend on the unavailable TTS service.",
-        "Keep the SIP/RTP session stable and bridge the caller to the human-support queue.",
-        "If the queue handoff also fails, preserve the call and emit explicit failure evidence.",
+        ...freeSwitchQueueHandoffPatterns,
       ],
     };
   }

@@ -393,8 +393,10 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.ok(payload.operatorCockpit.drillKinds.includes("rtc_asr_unavailable"));
   assert.ok(payload.operatorCockpit.drillKinds.includes("tts_unavailable"));
   assert.equal(payload.operatorCockpit.telephonyControlBoundary.command, "structured JSON from ACC");
-  assert.ok(payload.operatorCockpit.telephonyControlBoundary.adapters.includes("FreeSWITCH ESL"));
-  assert.ok(payload.operatorCockpit.telephonyControlBoundary.standardPatterns.includes("SIP REFER"));
+  assert.ok(payload.operatorCockpit.telephonyControlBoundary.adapters.includes("FreeSWITCH mod_event_socket / ESL"));
+  assert.ok(payload.operatorCockpit.telephonyControlBoundary.standardPatterns.includes("ESL uuid_transfer → dialplan / mod_callcenter"));
+  assert.ok(payload.operatorCockpit.telephonyControlBoundary.standardPatterns.includes("ESL bgapi originate + uuid_bridge"));
+  assert.ok(payload.operatorCockpit.telephonyControlBoundary.standardPatterns.includes("SIP REFER via deflect"));
   assert.equal(payload.proofPreview.workboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
   assert.equal(payload.proofPreview.compatibleRequest, "conversation-agent-evals-assert-request.json");
   assert.equal(payload.proofPreview.previewRoute, "/api/cluecon/eval/preview");
@@ -573,6 +575,7 @@ test("POST /api/cluecon/operator/drill runs fail-closed and operator action dril
   assert.equal(ttsFailure.integration.controlSequence[1]?.asset, "/cluecon/system-unavailable.mp3");
   assert.equal(ttsFailure.integration.controlSequence[2]?.target?.id, "human-support");
   assert.ok(ttsFailure.integration.executionPatterns.some((pattern) => /does not depend on the unavailable TTS service/.test(pattern)));
+  assert.ok(ttsFailure.integration.executionPatterns.some((pattern) => /apply-inbound-acl/.test(pattern)));
   assert.match(ttsFailure.call.demoFallback.reason ?? "", /tts_unavailable/);
 
   const transferResponse = await post("/api/cluecon/operator/drill", { kind: "transfer" });
@@ -600,7 +603,10 @@ test("POST /api/cluecon/operator/drill runs fail-closed and operator action dril
   assert.ok(transfer.integration.executionPatterns.some((pattern) => /uuid_transfer/.test(pattern)));
   assert.ok(transfer.integration.executionPatterns.some((pattern) => /SIP REFER/.test(pattern)));
   assert.ok(transfer.integration.executionPatterns.some((pattern) => /SIP B2BUA/.test(pattern)));
-  assert.match(transfer.integration.mediaPlane, /SIP dialogs, RTP continuity/);
+  assert.ok(transfer.integration.executionPatterns.some((pattern) => /callcenter support@default/.test(pattern)));
+  assert.ok(transfer.integration.executionPatterns.some((pattern) => /BACKGROUND_JOB, CHANNEL_ANSWER, CHANNEL_BRIDGE/.test(pattern)));
+  assert.match(transfer.integration.controlPlane, /mod_event_socket \/ ESL/);
+  assert.match(transfer.integration.mediaPlane, /owns the SIP\/RTP legs/);
   assert.match(transfer.integration.demoCaveat, /does not place an external transfer leg/);
   assert.equal(transfer.call.flowState, "wrap");
   assert.equal(transfer.call.operatorSteer.lastAction, "transfer");

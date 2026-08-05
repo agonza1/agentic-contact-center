@@ -654,9 +654,9 @@ function buildBasePayload(
       actions: ["pause", "resume", "approve_offer", "approve_retention_review", "ask_operator", "escalate_to_human", "fallback", "transfer", "takeover", "end_call"],
       telephonyControlBoundary: {
         command: "structured JSON from ACC",
-        adapters: ["FreeSWITCH ESL", "SIP media server", "CPaaS call-control API"],
-        standardPatterns: ["SIP REFER", "B2BUA outbound INVITE + bridge", "SIP BYE"],
-        responsibility: "The adapter/media server owns SIP dialogs and RTP; ACC owns the policy decision and auditable command.",
+        adapters: ["FreeSWITCH mod_event_socket / ESL", "SIP media server", "CPaaS call-control API"],
+        standardPatterns: ["ESL uuid_transfer → dialplan / mod_callcenter", "ESL bgapi originate + uuid_bridge", "SIP REFER via deflect", "SIP BYE"],
+        responsibility: "ACC owns the policy decision and audit record; the adapter maps callId to FreeSWITCH Unique-ID, and FreeSWITCH owns SIP/RTP execution.",
       },
       proofLinks: ["/api/operator/console", "/api/queue?attentionRequired=true", "/api/demo/run-end-to-end"],
       caveat: "Cockpit drills reuse the local call/session APIs; #222 still needs fixture/tester and SIP adapters sharing the same Pipeline processors.",
