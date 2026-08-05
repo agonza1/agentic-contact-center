@@ -749,6 +749,7 @@ test("ClueCon TTS route streams Kokoro audio using the configured local model an
       async () => {
         const response = await post("/api/cluecon/tts/synthesize", {
           text: "AI may be probabilistic, but the system around it does not have to be.",
+          model: "kokoro",
           voice: "af_heart",
         });
         assert.equal(response.statusCode, 200);
@@ -762,6 +763,35 @@ test("ClueCon TTS route streams Kokoro audio using the configured local model an
           response_format: "mp3",
           stream: true,
         });
+      },
+    );
+  } finally {
+    await closeServer(kokoro.server);
+  }
+});
+
+test("ClueCon TTS route rejects a model that differs from the selected local target", async () => {
+  const kokoro = await startKokoroServer();
+  try {
+    await withEnv(
+      {
+        ACC_TTS_PROVIDER: "kokoro",
+        POCKET_TTS_BASE_URL: undefined,
+        KOKORO_BASE_URL: kokoro.baseUrl,
+        KOKORO_MODEL: "kokoro",
+      },
+      async () => {
+        const response = await post("/api/cluecon/tts/synthesize", {
+          provider: "kokoro",
+          model: "different-model",
+          text: "This must not use a different model.",
+        });
+        assert.equal(response.statusCode, 409);
+        const payload = JSON.parse(response.body) as { error: string; requestedModel: string; selectedModel: string };
+        assert.equal(payload.error, "tts_model_selection_mismatch");
+        assert.equal(payload.requestedModel, "different-model");
+        assert.equal(payload.selectedModel, "kokoro");
+        assert.equal(kokoro.requests.length, 0);
       },
     );
   } finally {
@@ -1153,6 +1183,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /system-unavailable\.mp3/);
   assert.match(narrative.body, /kind === "rtc_asr_unavailable"/);
   assert.match(narrative.body, /synthesizedAsrFailureAudio/);
+  assert.match(narrative.body, /model: provider\.model/);
+  assert.match(narrative.body, /provider\.label \+ " · " \+ provider\.model \+ " live TTS"/);
   assert.match(narrative.body, /data\.ttsPanel\.synthesizeRoute/);
   assert.match(narrative.body, /demo-failure-audio/);
   assert.match(narrative.body, /Audible caller prompt/);
