@@ -1567,7 +1567,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
           <article class="transport-path transport-path--sip">
             <div class="transport-node"><small>Phone network</small><strong>SIP/RTP ↔ FreeSWITCH</strong><code>dialog · codec · transfer · BYE</code></div>
             <div class="transport-arrow" aria-label="bidirectional">↔</div>
-            <div class="transport-node"><small>Pipecat media peer</small><strong>FreeSWITCH ↔ Pipecat</strong><code>signaling: Verto JSON-RPC · WebSocket<br>media: ICE · DTLS-SRTP · RTP/RTCP</code></div>
+            <div class="transport-node"><small>FreeSWITCH ↔ Pipecat</small><strong>SmallWebRTC / aiortc</strong><code>signaling: Verto JSON-RPC · WebSocket<br>media: ICE · DTLS-SRTP · RTP/RTCP</code></div>
           </article>
         </div>
         <div class="shared-pipeline" aria-label="Shared streaming Pipecat voice-agent pipeline">
