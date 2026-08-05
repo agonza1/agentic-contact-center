@@ -26,6 +26,12 @@
     <param name="rtp-timer-name" value="soft"/>
     <param name="manage-presence" value="false"/>
     <param name="apply-nat-acl" value="nat.auto"/>
+    <!-- Linphone can advertise both a private host candidate and a public STUN
+         candidate. This host-only demo must keep media on the local/private
+         path; otherwise FreeSWITCH's wan.auto fallback selects the public
+         candidate and the Docker-to-host RTP leg becomes silent. -->
+    <param name="apply-candidate-acl" value="rfc1918.auto"/>
+    <param name="apply-candidate-acl" value="loopback.auto"/>
     <!-- Docker presents host traffic as the bridge gateway. Treat it as NAT so
          SDP advertises the published host address and SIP replies use the
          translated source port rather than the Via/Contact port. -->
