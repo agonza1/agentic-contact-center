@@ -1827,6 +1827,10 @@ test("GET /operator/console serves a compact console with contextual controls", 
     assert.equal(response.contentType, "text/html; charset=utf-8");
     assert.match(response.body, /<title>Operator Console<\/title>/);
     assert.match(response.body, /Run Demo/);
+    assert.match(response.body, /Codex login/);
+    assert.match(response.body, /Connect Codex/);
+    assert.match(response.body, /Voice model: gpt-5\.4-mini/);
+    assert.match(response.body, /\/api\/codex-auth\/device\/start/);
     assert.match(response.body, /Start empty call/);
     assert.match(response.body, /<details class="toolbar-menu"><summary>More<\/summary>/);
     assert.match(response.body, /\.toolbar-menu:not\(\[open\]\) > \.menu-panel \{ display: none; \}/);

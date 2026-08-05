@@ -963,14 +963,14 @@ function buildOperatorConsoleHtml(): string {
 <body>
   <header>
     <div class="brand"><span class="brand-kicker">Agentic Contact Center</span><h1>Operator Console</h1></div>
-    <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" class="primary" id="run-demo-flow">Run Demo</button><details class="toolbar-menu"><summary>More</summary><div class="menu-panel"><button type="button" id="start-demo">Start empty call</button><a class="nav-link" href="/assert/full">Evidence viewer</a><a class="nav-link" href="/assert">ACC artifacts</a><a class="nav-link" href="/assert/spec">Eval spec</a></div></details></div>
+    <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" class="primary" id="run-demo-flow">Run Demo</button><details class="toolbar-menu" id="codex-auth"><summary id="codex-auth-summary">Codex login</summary><div class="menu-panel"><span class="meta" id="codex-auth-detail">Checking backend session…</span><button type="button" id="codex-auth-connect">Connect Codex</button><a class="nav-link" id="codex-auth-link" target="_blank" rel="noreferrer" hidden>Open device login</a><strong id="codex-auth-code" hidden></strong><span class="meta">Voice model: gpt-5.4-mini</span></div></details><details class="toolbar-menu"><summary>More</summary><div class="menu-panel"><button type="button" id="start-demo">Start empty call</button><a class="nav-link" href="/assert/full">Evidence viewer</a><a class="nav-link" href="/assert">ACC artifacts</a><a class="nav-link" href="/assert/spec">Eval spec</a></div></details></div>
   </header>
   <main>
     <section class="panel" aria-label="Live calls"><div class="panel-header"><h2>Live Calls</h2><span class="queue-count" id="queue-count">0 queued</span></div><div class="filters filters-primary"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Needs attention</label><input id="transcript-filter" aria-label="Search calls" placeholder="Search calls"></div><details class="filter-drawer"><summary>Filters</summary><div class="filters filters-advanced"><label class="filter-toggle"><input type="checkbox" id="latency-over-budget-filter">Over-budget latency</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><select id="fallback-filter" aria-label="Fallback mode filter"><option value="">All fallback modes</option><option value="tool_timeout">Tool Timeout</option><option value="runtime_failure">Runtime Failure</option></select><select id="fallback-source-filter" aria-label="Fallback source filter"><option value="">All fallback sources</option><option value="tool_timeout_fail_closed">Tool Timeout Source</option><option value="pipecat_runtime_failure_fail_closed">Runtime Failure Source</option></select><input id="fallback-reason-filter" aria-label="Fallback reason filter" placeholder="Fallback reason"><select id="tool-filter" aria-label="Active tool filter"><option value="">All active tools</option><option value="get_current_slide">Get Current Slide</option><option value="goto_slide">Go To Slide</option><option value="pause_presentation">Pause Presentation</option><option value="ask_operator">Ask Operator</option></select><select id="script-completed-filter" aria-label="Script status filter"><option value="">All script states</option><option value="false">In progress</option><option value="true">Complete</option></select><select id="script-progress-filter" aria-label="Script minimum progress filter"><option value="">Any min progress</option><option value="25">25%+ scripted</option><option value="50">50%+ scripted</option><option value="75">75%+ scripted</option><option value="100">100% scripted</option></select><select id="script-max-progress-filter" aria-label="Script maximum progress filter"><option value="">Any max progress</option><option value="0">0% or less scripted</option><option value="25">25% or less scripted</option><option value="50">50% or less scripted</option><option value="75">75% or less scripted</option></select><button type="button" id="clear-filters">Clear filters</button></div></details><div class="call-list" id="calls"></div></section>
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceRemoteTrackReceived: false, voiceRemoteAudioStarted: false, voiceLiveAudioVerified: false, voiceLiveTurnVerified: false, voiceAudioWatchdog: null, voiceSessionProofTimer: null, voiceLastProofTurnCount: 0, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, codexLoginId: null, codexAuthTimer: null, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceRemoteTrackReceived: false, voiceRemoteAudioStarted: false, voiceLiveAudioVerified: false, voiceLiveTurnVerified: false, voiceAudioWatchdog: null, voiceSessionProofTimer: null, voiceLastProofTurnCount: 0, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
     const repoHeadEvidence = ${JSON.stringify(getRepoHeadEvidence())};
     const advancedActions = ["escalate_to_human", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
@@ -981,6 +981,47 @@ function buildOperatorConsoleHtml(): string {
     function linkHtml(href, text) { return href ? '<a href="' + escapeHtml(href) + '">' + escapeHtml(text) + '</a>' : '<span class="meta">' + escapeHtml(text) + ': unavailable</span>'; }
     function pathHtml(path, label) { return path ? '<span class="meta">' + escapeHtml(label) + ': ' + escapeHtml(path) + '</span>' : '<span class="meta">' + escapeHtml(label) + ': not attached</span>'; }
     function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
+    function scheduleCodexAuthRefresh() {
+      if (state.codexAuthTimer) clearTimeout(state.codexAuthTimer);
+      if (!state.codexLoginId) return;
+      state.codexAuthTimer = setTimeout(function() { refreshCodexAuth().catch(function(error) { renderCodexAuth({ ok: false, error: error.message }); }); }, 1500);
+    }
+    function renderCodexAuth(payload) {
+      const summary = document.getElementById("codex-auth-summary");
+      const detail = document.getElementById("codex-auth-detail");
+      const connect = document.getElementById("codex-auth-connect");
+      const link = document.getElementById("codex-auth-link");
+      const code = document.getElementById("codex-auth-code");
+      const connected = payload.authenticated === true || payload.status === "connected";
+      summary.textContent = connected ? "Codex connected" : payload.status === "pending" ? "Complete Codex login" : "Codex login";
+      detail.textContent = connected ? "Backend OAuth session ready for extension 8600." : payload.error ? "Codex bridge unavailable: " + payload.error : "Connect the backend without exposing credentials to this browser.";
+      connect.hidden = connected || payload.status === "pending";
+      if (payload.verificationUrl && payload.userCode && !connected) {
+        link.hidden = false;
+        link.href = payload.verificationUrl;
+        link.textContent = "Open device login";
+        code.hidden = false;
+        code.textContent = "Code: " + payload.userCode;
+      } else {
+        link.hidden = true;
+        code.hidden = true;
+      }
+      if (payload.status === "pending") scheduleCodexAuthRefresh();
+      else { state.codexLoginId = null; if (state.codexAuthTimer) clearTimeout(state.codexAuthTimer); }
+    }
+    async function refreshCodexAuth() {
+      const path = state.codexLoginId ? "/api/codex-auth/device/" + encodeURIComponent(state.codexLoginId) : "/api/codex-auth/status";
+      const response = await fetch(path, { cache: "no-store" });
+      const payload = await response.json().catch(function() { return {}; });
+      renderCodexAuth(payload);
+    }
+    async function startCodexAuth() {
+      const response = await fetch("/api/codex-auth/device/start", { method: "POST" });
+      const payload = await response.json().catch(function() { return {}; });
+      if (payload.loginId) state.codexLoginId = payload.loginId;
+      renderCodexAuth(payload);
+      document.getElementById("codex-auth").open = true;
+    }
     function operatorConsoleQuery() {
       const params = new URLSearchParams({ sort: "attentionStartedAt", order: "asc", limit: "25" });
       if (document.getElementById("attention-filter").checked) params.set("attentionRequired", "true");
@@ -1722,6 +1763,7 @@ function buildOperatorConsoleHtml(): string {
     }
     document.addEventListener("visibilitychange", function() { if (document.hidden && state.refreshTimer) clearTimeout(state.refreshTimer); else refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("run-demo-flow").addEventListener("click", function() { runDemoFlow().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("codex-auth-connect").addEventListener("click", function() { startCodexAuth().catch(function(error) { renderCodexAuth({ ok: false, error: error.message }); }); });
     document.getElementById("start-demo").addEventListener("click", function() { startDemoCall().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("attention-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("latency-over-budget-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
@@ -1735,7 +1777,7 @@ function buildOperatorConsoleHtml(): string {
     document.getElementById("script-progress-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("script-max-progress-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("clear-filters").addEventListener("click", function() { document.getElementById("attention-filter").checked = false; document.getElementById("latency-over-budget-filter").checked = false; document.getElementById("flow-filter").value = ""; document.getElementById("fallback-filter").value = ""; document.getElementById("fallback-source-filter").value = ""; document.getElementById("fallback-reason-filter").value = ""; document.getElementById("tool-filter").value = ""; document.getElementById("script-completed-filter").value = ""; document.getElementById("script-progress-filter").value = ""; document.getElementById("script-max-progress-filter").value = ""; document.getElementById("transcript-filter").value = ""; refresh().catch(function(error) { setStatus(error.message); }); });
-    refresh()
+    Promise.all([refresh(), refreshCodexAuth()])
       .then(startVoiceBridgeProbing)
       .catch(function(error) { setStatus(error.message); startVoiceBridgeProbing(); });
   </script>
@@ -2387,7 +2429,11 @@ function rejectTerminalOperatorStopCallerTurn(
   writeJson(response, 409, {
     ok: false,
     route,
-    error: "caller_turn_terminal_operator_stop",
+    error: snapshot.session.runtimeModeLabels.telephony === "mocked_telephony"
+      ? "caller_turn_terminal_operator_stop"
+      : snapshot.scenario.conversationMode === "openai_llm"
+        ? "live_sip_openai_automation_stopped"
+        : "live_sip_operator_hold_active",
     call: buildCallPayload(snapshot),
   });
   return true;
@@ -4663,7 +4709,7 @@ function normalizeLiveSipConversationMode(value: unknown, destination: string | 
 }
 
 function openAiConversationModel(env: NodeJS.ProcessEnv = process.env): string {
-  return env.ACC_OPENAI_CONVERSATION_MODEL?.trim() || "GPT-5.4-mini";
+  return env.ACC_OPENAI_CONVERSATION_MODEL?.trim() || "gpt-5.4-mini";
 }
 
 function openAiConversationTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
@@ -4671,7 +4717,7 @@ function openAiConversationTimeoutMs(env: NodeJS.ProcessEnv = process.env): numb
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 12000;
 }
 
-type OpenAiConversationAuthMode = "api_key" | "openclaw_oauth";
+type OpenAiConversationAuthMode = "api_key" | "openclaw_oauth" | "codex_oauth";
 
 type OpenAiConversationRequestConfig = {
   model: string;
@@ -4684,7 +4730,41 @@ type OpenAiConversationRequestConfig = {
 };
 
 function openAiConversationAuthMode(env: NodeJS.ProcessEnv = process.env): OpenAiConversationAuthMode {
-  return env.ACC_OPENAI_AUTH_MODE?.trim().toLowerCase() === "openclaw_oauth" ? "openclaw_oauth" : "api_key";
+  const configured = env.ACC_OPENAI_AUTH_MODE?.trim().toLowerCase();
+  if (configured === "openclaw_oauth" || configured === "codex_oauth") return configured;
+  return "api_key";
+}
+
+const codexVoiceModel = "gpt-5.4-mini";
+
+function codexVoiceBridgeBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return (env.ACC_CODEX_VOICE_BRIDGE_URL?.trim() || "http://127.0.0.1:8771").replace(/\/+$/, "");
+}
+
+async function requestCodexVoiceBridge(
+  path: string,
+  init: RequestInit = {},
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ status: number; payload: Record<string, unknown> }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), openAiConversationTimeoutMs(env));
+  try {
+    const response = await fetch(`${codexVoiceBridgeBaseUrl(env)}${path}`, {
+      ...init,
+      headers: {
+        ...(init.body ? { "content-type": "application/json" } : {}),
+        ...init.headers,
+      },
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => ({}));
+    return { status: response.status, payload: isRecord(payload) ? payload : {} };
+  } catch (error) {
+    const detail = error instanceof Error && error.name === "AbortError" ? "codex_bridge_timeout" : redactOpenAiError(error);
+    return { status: 503, payload: { ok: false, error: detail, model: codexVoiceModel } };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function openAiConversationGatewayAgentId(env: NodeJS.ProcessEnv = process.env): string {
@@ -4765,10 +4845,6 @@ async function generateOpenAiLiveSipResponse(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<OpenAiLlmTurnResult> {
   const model = openAiConversationModel(env);
-  const requestConfig = buildOpenAiConversationRequestConfig(model, env);
-  if (!requestConfig.bearerToken) {
-    return { ok: false, model, error: requestConfig.missingCredentialError, status: null };
-  }
   const transcript = snapshot.transcript
     .slice(-8)
     .map((turn) => `${turn.speaker}: ${turn.text}`)
@@ -4786,6 +4862,43 @@ async function generateOpenAiLiveSipResponse(
     `Recent transcript:\n${transcript || "(none)"}`,
     `Latest caller turn: ${callerText}`,
   ].join("\n");
+
+  if (openAiConversationAuthMode(env) === "codex_oauth") {
+    if (model !== codexVoiceModel) {
+      return { ok: false, model, error: "codex_model_must_be_gpt-5.4-mini", status: null };
+    }
+    const bridge = await requestCodexVoiceBridge(
+      "/respond",
+      {
+        method: "POST",
+        body: JSON.stringify({ callId: snapshot.session.callId, model: codexVoiceModel, prompt: userPromptText }),
+      },
+      env,
+    );
+    if (bridge.status < 200 || bridge.status >= 300 || bridge.payload.ok !== true) {
+      return {
+        ok: false,
+        model,
+        error: getOptionalTrimmedString(bridge.payload.error) ?? "codex_bridge_request_failed",
+        status: bridge.status,
+      };
+    }
+    const text = getOptionalTrimmedString(bridge.payload.text) ?? "";
+    const validationError = validateOpenAiAgentText(text);
+    if (validationError) return { ok: false, model, error: validationError, status: bridge.status };
+    return {
+      ok: true,
+      model,
+      text,
+      responseId: getOptionalTrimmedString(bridge.payload.threadId) ?? null,
+      status: bridge.status,
+    };
+  }
+
+  const requestConfig = buildOpenAiConversationRequestConfig(model, env);
+  if (!requestConfig.bearerToken) {
+    return { ok: false, model, error: requestConfig.missingCredentialError, status: null };
+  }
   const input = requestConfig.useStringInput
     ? `${systemPromptText}\n\n${userPromptText}`
     : [
@@ -5958,6 +6071,38 @@ async function routeRequest(
   if (request.method === "GET" && pathname === "/cluecon/present") {
     response.setHeader("cache-control", "no-store, max-age=0");
     writeHtml(response, 200, buildClueConHtml(config, "present", activeClueConBrainBlocks));
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/codex-auth/status") {
+    const bridge = await requestCodexVoiceBridge("/auth/status");
+    writeJson(response, bridge.status, {
+      ...bridge.payload,
+      configuredForVoice: openAiConversationAuthMode() === "codex_oauth",
+      model: codexVoiceModel,
+    });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/codex-auth/device/start") {
+    const bridge = await requestCodexVoiceBridge("/auth/device/start", { method: "POST" });
+    writeJson(response, bridge.status, {
+      ...bridge.payload,
+      configuredForVoice: openAiConversationAuthMode() === "codex_oauth",
+      model: codexVoiceModel,
+    });
+    return;
+  }
+
+  const codexDeviceLoginMatch = pathname.match(/^\/api\/codex-auth\/device\/([^/]+)$/);
+  if (request.method === "GET" && codexDeviceLoginMatch) {
+    const loginId = decodeURIComponent(codexDeviceLoginMatch[1]);
+    const bridge = await requestCodexVoiceBridge(`/auth/device/${encodeURIComponent(loginId)}`);
+    writeJson(response, bridge.status, {
+      ...bridge.payload,
+      configuredForVoice: openAiConversationAuthMode() === "codex_oauth",
+      model: codexVoiceModel,
+    });
     return;
   }
 

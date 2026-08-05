@@ -74,12 +74,29 @@ preference only to the inbound Linphone leg is insufficient; extensions `8600`,
 FreeSWITCH and aiortc exchange payload `0` in both directions.
 
 Extension `8600` posts `conversationMode=openai_llm` to ACC and requires a real
-OpenAI Responses API call before ACC emits conversational agent text. Configure
-`OPENAI_API_KEY` or `ACC_OPENAI_API_KEY`; optionally set
-`ACC_OPENAI_BASE_URL` and `ACC_OPENAI_CONVERSATION_MODEL`. The default model is
-the requested literal `GPT-5.4-mini`. If credentials, model access, or the API
-request fails, ACC records `openai_conversation_generation_failed`, fails closed
-to the human-handoff path, and does not substitute scripted responses.
+model response before ACC emits conversational agent text. The local SIP/Verto
+profile defaults to a backend-owned Codex OAuth bridge and pins the exact model
+`gpt-5.4-mini`. Start the profile, open
+`http://127.0.0.1:8026/operator/console`, select **Connect Codex**, open the
+device-login URL, and enter the displayed code. The browser receives only the
+verification URL and one-time code; the bridge keeps the authenticated session
+in the `codex-voice-auth` Docker volume.
+
+The bridge creates one ephemeral, read-only Codex thread per call in an empty
+working directory, denies approval requests, and returns only final assistant
+text to ACC. It cannot silently select another model: a value other than
+`gpt-5.4-mini` fails closed. If login, model access, or the bridge request fails,
+ACC records `openai_conversation_generation_failed`, routes to the human-handoff
+path, and does not substitute scripted responses.
+
+An API key remains available as an explicit alternative:
+
+```bash
+ACC_OPENAI_AUTH_MODE=api_key \
+ACC_OPENAI_API_KEY="$OPENAI_API_KEY" \
+ACC_OPENAI_CONVERSATION_MODEL=gpt-5.4-mini \
+npm run docker:sip-verto
+```
 
 For a local lab run that should use the signed-in OpenClaw OpenAI OAuth profile
 instead of an OpenAI API key, enable OpenClaw's Responses gateway and run 8600
@@ -90,7 +107,7 @@ ACC_OPENAI_AUTH_MODE=openclaw_oauth \
 ACC_OPENAI_AUTH_TOKEN="$OPENCLAW_GATEWAY_TOKEN" \
 ACC_OPENCLAW_AGENT_ID=acc-voice \
 ACC_OPENAI_BASE_URL=http://host.docker.internal:18789/v1 \
-ACC_OPENAI_CONVERSATION_MODEL=GPT-5.4-mini \
+ACC_OPENAI_CONVERSATION_MODEL=gpt-5.4-mini \
 npm run docker:sip-verto
 ```
 

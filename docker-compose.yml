@@ -21,8 +21,9 @@ services:
       POCKET_TTS_SPEECH_PATH: ${POCKET_TTS_SPEECH_PATH:-/v1/audio/speech}
       KOKORO_BASE_URL: http://kokoro:8880
       BROWSER_WEBRTC_BRIDGE_URL: http://browser-webrtc-bridge:8766
-      ACC_OPENAI_CONVERSATION_MODEL: ${ACC_OPENAI_CONVERSATION_MODEL:-GPT-5.4-mini}
-      ACC_OPENAI_AUTH_MODE: ${ACC_OPENAI_AUTH_MODE:-api_key}
+      ACC_OPENAI_CONVERSATION_MODEL: ${ACC_OPENAI_CONVERSATION_MODEL:-gpt-5.4-mini}
+      ACC_OPENAI_AUTH_MODE: ${ACC_OPENAI_AUTH_MODE:-codex_oauth}
+      ACC_CODEX_VOICE_BRIDGE_URL: http://codex-voice-bridge:8771
       ACC_OPENAI_AUTH_TOKEN: ${ACC_OPENAI_AUTH_TOKEN:-}
       ACC_OPENCLAW_AGENT_ID: ${ACC_OPENCLAW_AGENT_ID:-acc-voice}
       ACC_OPENAI_BASE_URL: ${ACC_OPENAI_BASE_URL:-https://api.openai.com/v1}
@@ -236,6 +237,7 @@ services:
     profiles: ["sip-verto", "full"]
     depends_on:
       - app
+      - codex-voice-bridge
       - freeswitch
       - rtc-asr
       - kokoro
@@ -295,6 +297,36 @@ services:
       retries: 12
       start_period: 10s
 
+  codex-voice-bridge:
+    build:
+      context: .
+      target: voice-runtime
+    image: agentic-contact-center:voice-local
+    profiles: ["sip-verto", "full"]
+    working_dir: /tmp
+    command:
+      - python3
+      - /app/scripts/codex-voice-bridge.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8771"
+    ports:
+      - "127.0.0.1:8771:8771"
+    volumes:
+      - codex-voice-auth:/root/.codex
+    environment:
+      CODEX_HOME: /root/.codex
+      CODEX_VOICE_WORKSPACE: /tmp/acc-codex-voice
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c 'import json, urllib.request; payload = json.load(urllib.request.urlopen("http://127.0.0.1:8771/health", timeout=2)); raise SystemExit(0 if payload.get("ok") else 1)'
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
   assert-viewer:
     build:
       context: .
@@ -312,3 +344,6 @@ services:
       - ./.assert-viewer:/app/.assert-viewer
     environment:
       ARTIFACTS_ROOT: /app/artifacts/results
+
+volumes:
+  codex-voice-auth:

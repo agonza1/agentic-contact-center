@@ -94,7 +94,12 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_TTS_OUTPUT_CHUNK_YIELD_MS: \${ACC_TTS_OUTPUT_CHUNK_YIELD_MS:-20}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_TTS_EVIDENCE_EVERY_N_CHUNKS: \${ACC_TTS_EVIDENCE_EVERY_N_CHUNKS:-50}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*PIPECAT_VERTO_PROOF_OUT: \/app\/artifacts\/freeswitch-live\/pipecat-verto-proof\.json/);
-  assert.match(compose, /app:\n[\s\S]*ACC_OPENAI_CONVERSATION_MODEL: \${ACC_OPENAI_CONVERSATION_MODEL:-GPT-5\.4-mini}/);
+  assert.match(compose, /codex-voice-bridge:\n[\s\S]*scripts\/codex-voice-bridge\.py/);
+  assert.match(compose, /codex-voice-bridge:\n[\s\S]*"127\.0\.0\.1:8771:8771"/);
+  assert.match(compose, /codex-voice-bridge:\n[\s\S]*codex-voice-auth:\/root\/\.codex/);
+  assert.match(compose, /app:\n[\s\S]*ACC_OPENAI_CONVERSATION_MODEL: \${ACC_OPENAI_CONVERSATION_MODEL:-gpt-5\.4-mini}/);
+  assert.match(compose, /app:\n[\s\S]*ACC_OPENAI_AUTH_MODE: \${ACC_OPENAI_AUTH_MODE:-codex_oauth}/);
+  assert.match(compose, /app:\n[\s\S]*ACC_CODEX_VOICE_BRIDGE_URL: http:\/\/codex-voice-bridge:8771/);
   assert.match(compose, /app:\n[\s\S]*ACC_OPENAI_API_KEY: \${ACC_OPENAI_API_KEY:-}/);
   assert.match(compose, /assert-viewer:\n[\s\S]*target: assert-runtime/);
   assert.match(compose, /assert-viewer:\n[\s\S]*scripts\/assert-viewer\.mjs/);
@@ -116,7 +121,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   );
   assert.equal(
     packageJson.scripts?.["docker:sip-verto"],
-    "docker compose --profile sip-verto up --build app freeswitch rtc-asr kokoro pipecat-verto-bridge",
+    "docker compose --profile sip-verto up --build app freeswitch rtc-asr kokoro codex-voice-bridge pipecat-verto-bridge",
   );
   assert.equal(packageJson.scripts?.["pipecat:verto:live-proof"], "node scripts/verto-sip-live-proof.mjs");
   assert.equal(packageJson.scripts?.["docker:sip"], "docker compose --profile sip up --build app freeswitch rtc-asr kokoro freeswitch-bridge");
