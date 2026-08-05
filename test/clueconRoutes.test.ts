@@ -971,7 +971,7 @@ test("GET/POST /api/cluecon/eval expose ASSERT handoff preview and scorecard", a
   assert.equal(run.scorecard.performance.status, "warning");
   assert.ok(run.scorecard.performance.overBudget > 0);
   assert.ok(run.scorecard.performance.total >= run.scorecard.performance.overBudget);
-  assert.ok(run.scorecard.checks.some((check) => check.id === "operator_approval" && check.passed && check.label === "Price review approved before it was offered"));
+  assert.ok(run.scorecard.checks.some((check) => check.id === "operator_approval" && check.passed && check.label === "Price review completed before cancellation"));
   assert.equal(run.assertRequestPreview.spec_ref.assert_project, "conversation-agent-evals");
   assert.equal(run.assertRequestPreview.evidence.transcript.readiness, "inline_preview");
   assert.match(run.assertRequestPreview.evidence.proof_bundle.routes.transcript, /\/api\/calls\/demo-call-\d+\/transcript/);
@@ -1116,10 +1116,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.doesNotMatch(narrative.body, /Failure-control demo/);
   assert.match(narrative.body, /Run cancellation scenario/);
   assert.match(narrative.body, /Try another control/);
-  assert.match(narrative.body, /The caller chooses\. The application authorizes\./);
-  assert.match(narrative.body, /Policy remains active\. Price review requested\./);
-  assert.match(narrative.body, /Concern captured/);
-  assert.match(narrative.body, /Final policy state recorded/);
+  assert.match(narrative.body, /Simple for the caller\. Controlled underneath\./);
+  assert.match(narrative.body, /Cancellation scheduled for August 31\./);
+  assert.match(narrative.body, /Account validated/);
+  assert.match(narrative.body, /Final plan state recorded/);
   assert.match(narrative.body, /Price review/);
   assert.match(narrative.body, /\.demo-control-story::before/);
   assert.match(narrative.body, /border-top: 2px solid #5072a7/);
@@ -1305,7 +1305,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /A target adapter connects to each agent's call interface/);
   assert.match(narrative.body, /Agentic Call Center reference application as the Voice AI target/);
   assert.match(narrative.body, /normalized evidence/);
-  assert.match(narrative.body, /Price review approved before it was offered/);
+  assert.match(narrative.body, /Price review completed before cancellation/);
   assert.doesNotMatch(narrative.body, /CAE_WEB_URL/);
   assert.doesNotMatch(narrative.body, /id="proof-cards"/);
   assert.match(narrative.body, /Every enterprise workflow can now begin with a conversation\./);
@@ -1421,7 +1421,7 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /demo-evidence-count/);
   assert.doesNotMatch(html, /intercept\("drill-tool"/);
   assert.match(html, /turns\[2\]/);
-  assert.match(html, /retention_review_approved/);
+  assert.match(html, /cancellation_scheduled/);
   assert.match(html, /href="\.\/present\/"/);
   assert.match(html, /src="\.\/alberto-echo-show-prototype\.jpg"/);
   assert.doesNotMatch(html, /href="\/cluecon"/);

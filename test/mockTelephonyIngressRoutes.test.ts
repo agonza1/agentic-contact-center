@@ -2178,6 +2178,8 @@ test("POST /api/demo/run-end-to-end executes a complete usable call flow", async
     assert.equal(payload.call.operatorSteer.lastAction, "approve_retention_review");
     assert.equal(payload.call.transcript.some((turn) => turn.speaker === "operator"), false);
     assert.equal(payload.call.events.some((event) => event.type === "retention_review_approved"), true);
+    assert.equal(payload.call.events.some((event) => event.type === "price_review_completed"), true);
+    assert.equal(payload.call.events.some((event) => event.type === "cancellation_scheduled"), true);
     assert.equal(payload.call.events.some((event) => event.type === "final_policy_state_recorded"), true);
     assert.equal(payload.call.session.openclawSession.label, "operator-console/end-to-end-test");
     const startedAtMs = Date.parse(payload.call.session.startedAt);
@@ -2425,9 +2427,9 @@ test("retention approval requires its exact pending request and the console foll
     const initialConsole = await requestJson(port, "GET", `/api/operator/console?callId=${callId}`);
     const initialCall = (initialConsole.payload as OperatorConsolePayload).calls.items[0];
     assert.deepEqual(initialCall?.actionState.scriptedCallerTurnState.turnTexts, [
-      "My renewal is $60 more a month. I can't afford that, so I want to cancel.",
-      "Yes, please ask someone to review the price.",
-      "Keep it active until they call.",
+      "My account ends in 4821, and I want to cancel my plan.",
+      "Yes, please check the price first.",
+      "Yes, please cancel it.",
     ]);
     assert.equal(initialCall?.actionState.scriptedCallerTurnState.totalTurns, 3);
 
@@ -2455,10 +2457,10 @@ test("retention approval requires its exact pending request and the console foll
     const pendingCall = (pendingConsole.payload as OperatorConsolePayload).calls.items[0];
     assert.equal(pendingCall?.actionState.pendingApprovalDetails?.recommendedAction, "approve_retention_review");
     assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnIndex, 2);
-    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnText, "Keep it active until they call.");
+    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnText, "Yes, please cancel it.");
     assert.equal(pendingCall?.actionState.scriptedCallerTurnState.progressLabel, "2/3 scripted turns sent");
     assert.equal(pendingCall?.transcript.at(-1)?.speaker, "agent");
-    assert.match(pendingCall?.transcript.at(-1)?.text ?? "", /policy stays the same while I check/i);
+    assert.match(pendingCall?.transcript.at(-1)?.text ?? "", /plan stays the same while I check/i);
 
     const invalidResume = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
       action: "resume",
@@ -2534,11 +2536,11 @@ test("retention approval requires its exact pending request and the console foll
     assert.equal(stillPendingCall.pipecatFlow.script.matchedCallerTurns, 2);
     assert.equal(stillPendingCall.operatorSteer.pending, true);
     assert.equal(stillPendingCall.operatorSteer.lastAction, "approve_retention_review");
-    assert.equal(stillPendingCall.events.some((event) => event.type === "retention_followup_created"), false);
+    assert.equal(stillPendingCall.events.some((event) => event.type === "cancellation_scheduled"), false);
     assert.equal(stillPendingCall.events.some((event) => event.type === "final_policy_state_recorded"), false);
 
     const modeOverrideFinalTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "Keep it active until they call.",
+      text: "Yes, please cancel it.",
       conversationMode: "free_caller",
       timestamp: "2026-06-10T14:00:18.000Z",
     });
@@ -2558,16 +2560,17 @@ test("retention approval requires its exact pending request and the console foll
     assert.equal(approved.statusCode, 200);
     const approvedCall = approved.payload as SnapshotPayload;
     assert.equal(approvedCall.events.some((event) => event.type === "retention_review_approved"), true);
+    assert.equal(approvedCall.events.some((event) => event.type === "price_review_completed"), true);
 
     const finalTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "Keep it active until they call.",
+      text: "Yes, please cancel it.",
       conversationMode: "openai_llm",
       timestamp: "2026-06-10T14:00:18.000Z",
     });
     assert.equal(finalTurn.statusCode, 200);
     const finalCall = finalTurn.payload as SnapshotPayload;
     assert.equal(finalCall.pipecatFlow.script.completed, true);
-    assert.equal(finalCall.events.some((event) => event.type === "retention_followup_created"), true);
+    assert.equal(finalCall.events.some((event) => event.type === "cancellation_scheduled"), true);
     assert.equal(finalCall.events.some((event) => event.type === "final_policy_state_recorded"), true);
     assert.equal(finalCall.events.some((event) => event.detail.source === "openai_llm_fail_closed"), false);
     const completedConsole = await requestJson(port, "GET", `/api/operator/console?callId=${callId}`);
@@ -2577,7 +2580,7 @@ test("retention approval requires its exact pending request and the console foll
   }, retentionConfig);
 });
 
-test("a denied retention review lets the caller continue cancellation through a safe handoff", async () => {
+test("an unavailable price review still lets the caller schedule cancellation safely", async () => {
   const config = loadPocConfig();
   config.policy.defaultSupervisorSteer = "approve_retention_review";
   await withServer(async (port) => {
@@ -2601,10 +2604,10 @@ test("a denied retention review lets the caller continue cancellation through a 
 
     const pendingConsole = await requestJson(port, "GET", `/api/operator/console?callId=${callId}`);
     const pendingCall = (pendingConsole.payload as OperatorConsolePayload).calls.items[0];
-    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnText, "Cancel it, please.");
+    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnText, "Yes, please cancel it.");
 
     const continued = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "Cancel it, please.",
+      text: "Yes, please cancel it.",
       conversationMode: "free_caller",
       timestamp: "2026-06-10T14:00:18.000Z",
     });
@@ -2612,10 +2615,11 @@ test("a denied retention review lets the caller continue cancellation through a 
     const continuedCall = continued.payload as SnapshotPayload;
     assert.equal(continuedCall.pipecatFlow.script.completed, true);
     assert.equal(continuedCall.flowState, "wrap");
-    assert.equal(continuedCall.events.some((event) => event.type === "human_handoff_started"), true);
+    assert.equal(continuedCall.events.some((event) => event.type === "human_handoff_started"), false);
+    assert.equal(continuedCall.events.some((event) => event.type === "cancellation_scheduled"), true);
     const finalState = continuedCall.events.find((event) => event.type === "final_policy_state_recorded");
-    assert.equal(finalState?.detail.policyStatus, "active");
-    assert.equal(finalState?.detail.pendingOperation, "cancellation_handoff");
+    assert.equal(finalState?.detail.policyStatus, "active_through_2026-08-31");
+    assert.equal(finalState?.detail.pendingOperation, "cancel_at_period_end");
     assert.equal(continuedCall.events.some((event) => event.type === "retention_followup_created"), false);
   }, config);
 });
@@ -2658,7 +2662,7 @@ test("terminal operator actions suppress and reject the remaining scripted calle
       assert.deepEqual(rejectedScriptedTurn.payload, { ok: false, error: "operator_console_scripted_turn_terminal" });
 
       const rejectedModeOverride = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-        text: "Keep it active until they call.",
+        text: "Yes, please cancel it.",
         conversationMode: "openai_llm",
       });
       const rejectedModeOverridePayload = rejectedModeOverride.payload as { error: string; route: string };
@@ -6094,9 +6098,9 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     });
     assert.equal(payload.scriptedCallerTurnSets.approve_offer.length, 4);
     assert.deepEqual(payload.scriptedCallerTurnSets.approve_retention_review, [
-      "My renewal is $60 more a month. I can't afford that, so I want to cancel.",
-      "Yes, please ask someone to review the price.",
-      "Keep it active until they call.",
+      "My account ends in 4821, and I want to cancel my plan.",
+      "Yes, please check the price first.",
+      "Yes, please cancel it.",
     ]);
     assert.deepEqual(
       payload.actions.map((action) => action.action),

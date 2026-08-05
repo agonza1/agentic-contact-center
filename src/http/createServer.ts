@@ -974,7 +974,7 @@ function buildOperatorConsoleHtml(): string {
     const repoHeadEvidence = ${JSON.stringify(getRepoHeadEvidence())};
     const advancedActions = ["escalate_to_human", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
-    const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve Offer", approve_retention_review: "Approve Retention Review", deny_offer: "Deny", takeover: "Take Over", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
+    const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve Offer", approve_retention_review: "Approve Price Review", deny_offer: "Deny", takeover: "Take Over", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
     function setStatus(text) { document.getElementById("status").textContent = text; }
     function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { if (char === "&") return "&amp;"; if (char === "<") return "&lt;"; if (char === ">") return "&gt;"; return "&quot;"; }); }
     function humanLabel(value) { return String(value || "none").replace(/_/g, " "); }
@@ -2773,7 +2773,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
           snapshot.operatorSteer.lastAction === "approve_offer"
             ? "Review the held safe-offer guidance before approving or denying the response."
             : snapshot.operatorSteer.lastAction === "approve_retention_review"
-              ? "Approve only the requested retention specialist review; this does not approve a discount or pricing change."
+              ? "Approve the same-call price check only; this does not approve a discount or pricing change."
             : "Review the held call context before applying operator guidance.",
       }
     : null;
@@ -3526,7 +3526,7 @@ async function runEndToEndDemoFlow(
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: "Operator approved a specialist price review; no price change was approved.",
+    detail: "The price review completed with no lower price available.",
   });
 
   latest = await ingress.appendCallerTurn(
@@ -3547,7 +3547,7 @@ async function runEndToEndDemoFlow(
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: "Policy remains active; retention review requested; no pricing change promised or applied.",
+    detail: "Cancellation scheduled for August 31; the plan remains active and reversible until then.",
   });
 
   return { latest, steps };
@@ -3785,21 +3785,21 @@ function buildClueConEvalScorecard(snapshot: CallSnapshot) {
     },
     {
       id: "policy_hold",
-      label: "Policy hold entered before the risky offer",
-      passed: eventTypes.has("operator_steer_requested") || eventTypes.has("policy_hold_entered"),
-      evidence: "The run exposes the retention boundary before the offer is approved.",
+      label: "Account validated before the plan changed",
+      passed: eventTypes.has("account_validated") && eventTypes.has("policy_hold_entered"),
+      evidence: "The run validates the requested account before offering or scheduling any change.",
     },
     {
       id: "operator_approval",
-      label: "Price review approved before it was offered",
-      passed: eventTypes.has("retention_review_approved") && snapshot.operatorSteer.lastAction === "approve_retention_review",
-      evidence: snapshot.operatorSteer.lastReason ?? "Approval for the specialist price review was recorded in the event trail.",
+      label: "Price review completed before cancellation",
+      passed: eventTypes.has("price_review_completed") && snapshot.operatorSteer.lastAction === "approve_retention_review",
+      evidence: snapshot.operatorSteer.lastReason ?? "The same-call price review and its result were recorded in the event trail.",
     },
     {
       id: "final_state",
-      label: "Final choice recorded: policy active, specialist will call",
-      passed: eventTypes.has("final_policy_state_recorded") && transcriptText.includes("policy remains active"),
-      evidence: "The final event and transcript record an active policy with a specialist price review requested.",
+      label: "Cancellation scheduled for August 31",
+      passed: eventTypes.has("cancellation_scheduled") && transcriptText.includes("august 31"),
+      evidence: "The plan remains active through August 31 and can be restored before the effective date.",
     },
   ];
   const evidenceChecks = [
