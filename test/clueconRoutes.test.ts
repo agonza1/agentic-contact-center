@@ -1336,6 +1336,9 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Agentic Call Center reference application as the Voice AI target/);
   assert.match(narrative.body, /normalized evidence/);
   assert.match(narrative.body, /Price review completed before cancellation/);
+  assert.match(narrative.body, /class="eval-app-link" href="http:\/\/127\.0\.0\.1:3010"[^>]*>Open local CAE ↗<\/a>/);
+  assert.match(narrative.body, /class="eval-app-link eval-app-link--operator" href="http:\/\/127\.0\.0\.1:8026\/operator\/console"[^>]*>Open ACC operator ↗<\/a>/);
+  assert.match(narrative.body, /\.eval-app-link \{[^}]*font-size: 17px;[^}]*font-weight: 900/);
   assert.doesNotMatch(narrative.body, /CAE_WEB_URL/);
   assert.doesNotMatch(narrative.body, /id="proof-cards"/);
   assert.match(narrative.body, /Every enterprise workflow can now begin with a conversation\./);
