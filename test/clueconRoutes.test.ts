@@ -293,7 +293,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
       telephonyControlBoundary: { command: string; adapters: string[]; standardPatterns: string[]; responsibility: string };
     };
     proofPreview: { workboardCard: string; previewRoute: string; runRoute: string; compatibleRequest: string; includes: string[]; scorecardChecks: string[] };
-    caePanel: { webBaseUrl: string; scenariosPath: string; runsPath: string; demoRunId: string; demoRunPath: string; repoUrl: string; relationship: string };
+    caePanel: { webBaseUrl: string; scenariosPath: string; runsPath: string; repoUrl: string; relationship: string };
     contactPanel: { name: string; role: string; email: string; linkedinUrl: string; websiteUrl: string; logoUrl: string };
   };
 
@@ -406,8 +406,6 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.caePanel.webBaseUrl, "http://127.0.0.1:3010");
   assert.equal(payload.caePanel.scenariosPath, "/scenarios");
   assert.equal(payload.caePanel.runsPath, "/runs");
-  assert.equal(payload.caePanel.demoRunId, "AgentEvalDemoRun");
-  assert.equal(payload.caePanel.demoRunPath, "/runs/AgentEvalDemoRun");
   assert.match(payload.caePanel.relationship, /ACC runs the local scorecard/);
   assert.equal(payload.contactPanel.email, "alberto@webrtc.ventures");
   assert.equal(payload.contactPanel.linkedinUrl, "https://www.linkedin.com/in/albertogonzaleztrastoy/");
@@ -1372,7 +1370,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Price review completed before cancellation/);
   assert.match(narrative.body, /class="eval-app-link" href="http:\/\/127\.0\.0\.1:3010"[^>]*>Open local CAE ↗<\/a>/);
   assert.match(narrative.body, /class="eval-app-link eval-app-link--operator" href="http:\/\/127\.0\.0\.1:8026\/operator\/console"[^>]*>Open ACC operator ↗<\/a>/);
-  assert.match(narrative.body, /class="eval-demo-run-link" href="http:\/\/127\.0\.0\.1:3010\/runs\/AgentEvalDemoRun"[^>]*>Open AgentEvalDemoRun ↗<\/a>/);
+  assert.match(narrative.body, /class="eval-demo-run-link" href="http:\/\/127\.0\.0\.1:3010\/scenarios"[^>]*>Open CAE scenarios ↗<\/a>/);
   assert.match(narrative.body, /\.eval-demo-run-link \{[^}]*min-height: 46px;[^}]*font-size: 16px;[^}]*font-weight: 900/);
   assert.match(narrative.body, /\.eval-demo-run-link \{[^}]*white-space: nowrap/);
   assert.match(narrative.body, /\.eval-app-link \{[^}]*font-size: 17px;[^}]*font-weight: 900/);
