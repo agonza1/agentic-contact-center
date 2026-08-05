@@ -3619,12 +3619,12 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
     };
   }
 
-  if (kind === "rtc_asr_unavailable" || kind === "tts_unavailable") {
+  if (kind === "rtc_asr_unavailable") {
     const stopAiPath = {
       type: "telephony.ai_path.stop_requested",
       callId,
       reason: kind,
-      components: ["asr", "llm", "tts"],
+      components: ["asr", "llm"],
     };
     const handoff = {
       type: "telephony.handoff.requested",
@@ -3638,6 +3638,43 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
       controlSequence: [
         stopAiPath,
         {
+          type: "telephony.tts.requested",
+          callId,
+          source: "bounded_fixed_prompt",
+          route: "/api/cluecon/tts",
+          fallbackAsset: "/cluecon/system-unavailable.mp3",
+          message: "We are sorry. I cannot hear you right now. Please hold while I connect you with a human agent.",
+        },
+        handoff,
+      ],
+      executionPatterns: [
+        "Stop ASR and LLM generation so the failed recognition path cannot continue producing responses.",
+        "Synthesize one bounded handoff prompt through the same configured TTS route as the latency lab.",
+        "If live TTS also fails, play the prerecorded media-server asset instead.",
+        "Keep the SIP/RTP session stable and bridge the caller to the human-support queue.",
+        "If the queue handoff also fails, preserve the call and emit explicit failure evidence.",
+      ],
+    };
+  }
+
+  if (kind === "tts_unavailable") {
+    const handoff = {
+      type: "telephony.handoff.requested",
+      callId,
+      reason: kind,
+      target: { type: "queue", id: "human-support" },
+    };
+    return {
+      ...common,
+      controlMessage: handoff,
+      controlSequence: [
+        {
+          type: "telephony.ai_path.stop_requested",
+          callId,
+          reason: kind,
+          components: ["asr", "llm", "tts"],
+        },
+        {
           type: "telephony.playback.requested",
           callId,
           source: "prerecorded_media",
@@ -3648,7 +3685,7 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
       ],
       executionPatterns: [
         "Stop ASR, LLM, and synthesized output so the failed AI path cannot continue producing responses.",
-        "Play a prerecorded media-server asset that does not depend on ASR, the LLM, or TTS.",
+        "Play a prerecorded media-server asset that does not depend on the unavailable TTS service.",
         "Keep the SIP/RTP session stable and bridge the caller to the human-support queue.",
         "If the queue handoff also fails, preserve the call and emit explicit failure evidence.",
       ],
@@ -3714,20 +3751,35 @@ async function runClueConOperatorDrill(
   if (kind === "tool_timeout" || kind === "runtime_failure" || kind === "rtc_asr_unavailable" || kind === "tts_unavailable") {
     const fallbackMode = kind === "tool_timeout" ? "tool_timeout" : "runtime_failure";
     latest = await ingress.triggerFallback(callId, fallbackMode, timestampAfter(14_000), `${kind} ClueCon operator drill`);
-    if (kind === "rtc_asr_unavailable" || kind === "tts_unavailable") {
+    if (kind === "rtc_asr_unavailable") {
       steps.push({
         step: "failed_ai_path_stopped",
         ok: true,
         flowState: latest.flowState,
         callId,
-        detail: "ASR, LLM, and synthesized output are stopped before any fallback media plays.",
+        detail: "ASR and LLM generation are stopped before the bounded handoff prompt plays.",
+      });
+      steps.push({
+        step: "bounded_tts_prompt_requested",
+        ok: true,
+        flowState: latest.flowState,
+        callId,
+        detail: "The fixed handoff prompt uses the configured ClueCon TTS route, with a prerecorded fallback if synthesis also fails.",
+      });
+    } else if (kind === "tts_unavailable") {
+      steps.push({
+        step: "failed_ai_path_stopped",
+        ok: true,
+        flowState: latest.flowState,
+        callId,
+        detail: "ASR, LLM, and synthesized output are stopped before fallback media plays.",
       });
       steps.push({
         step: "prerecorded_error_prompt",
         ok: true,
         flowState: latest.flowState,
         callId,
-        detail: "A prerecorded system-unavailable prompt plays without using the failed ASR/TTS path.",
+        detail: "A prerecorded system-unavailable prompt plays without using the unavailable synthesizer.",
       });
     }
     steps.push({
@@ -3741,9 +3793,11 @@ async function runClueConOperatorDrill(
       latest,
       steps,
       completedControlStages: ["understand", "prepare"],
-      summary: kind === "rtc_asr_unavailable" || kind === "tts_unavailable"
-        ? `${kind} -> prerecorded error prompt -> fail-closed human handoff.`
-        : `${kind} -> fail-closed human handoff; no improvised offer.`,
+      summary: kind === "rtc_asr_unavailable"
+        ? `${kind} -> bounded TTS handoff prompt -> fail-closed human handoff.`
+        : kind === "tts_unavailable"
+          ? `${kind} -> prerecorded error prompt -> fail-closed human handoff.`
+          : `${kind} -> fail-closed human handoff; no improvised offer.`,
       outcome: "fail_closed_handoff",
       integration: buildClueConOperatorDrillIntegration(kind, callId),
     };
