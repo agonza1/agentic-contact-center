@@ -142,6 +142,7 @@ function isInboundDialplanActive(entry, expectedDidPattern, sourceAclName) {
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
   if (/can't\s+find|not\s+found|invalid/i.test(output)) return false;
   const aclPattern = new RegExp(`acl\\(\\$\\{network_addr\\}\\s+${regexpLiteral(sourceAclName)}\\)`, "i");
+  const pcMuVertoBridgePattern = /bridge[^>]+data=["'][^"']*absolute_codec_string=PCMU[^"']*verto_contact\(acc-pipecat@/i;
   return /agentic_contact_center_signalwire_pstn/i.test(output)
     && /acc_route=signalwire_live/i.test(output)
     && aclPattern.test(output)
@@ -151,8 +152,15 @@ function isInboundDialplanActive(entry, expectedDidPattern, sourceAclName) {
     && /(?:sip_h_X-ACC-Destination|X-ACC-Destination)=8600/i.test(output)
     && /(?:sip_h_X-ACC-Conversation-Mode|X-ACC-Conversation-Mode)=openai_llm/i.test(output)
     && /acc_media_bridge=pipecat_verto_agent_leg/i.test(output)
-    && /verto_contact\(acc-pipecat@/i.test(output)
+    && pcMuVertoBridgePattern.test(output)
     && output.includes(expectedDidPattern);
+}
+
+function isSignalWireSourceAclProven(entry) {
+  if (!entry) return false;
+  const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
+  if (/\b(?:false|deny|denied|reject|rejected|not\s+found|invalid|error)\b/i.test(output)) return false;
+  return /\b(?:true|allow|allowed|pass|passed|ok)\b/i.test(output);
 }
 
 function isPublicIpAddress(address) {
@@ -335,7 +343,7 @@ async function runFsCli(command, redactor) {
   }
   return {
     proof: {
-      command: proofCommand,
+      command: redactor(proofCommand),
       stdout: redactor(stdout.trim()),
       stderr: redactor(stderr.trim()),
     },
@@ -356,6 +364,7 @@ const signalwireRealm = clean(process.env.SIGNALWIRE_SIP_REALM) || signalwireSip
 const signalwireProxy = clean(process.env.SIGNALWIRE_SIP_PROXY) || signalwireRealm;
 const signalwireDid = signalwireDidDigits(env.SIGNALWIRE_FROM_NUMBER);
 const signalwireSourceAclName = clean(process.env.SIGNALWIRE_SOURCE_ACL_NAME) || DEFAULT_SIGNALWIRE_SOURCE_ACL_NAME;
+const signalwireSourceIpProbe = clean(process.env.SIGNALWIRE_SOURCE_IP_PROBE);
 const signalwireDidNational = signalwireDid.length === 11 && signalwireDid.startsWith("1")
   ? signalwireDid.slice(1)
   : "";
@@ -376,6 +385,7 @@ const redactor = buildRedactor([
   process.env.SIGNALWIRE_TOKEN,
   process.env.SIGNALWIRE_SIP_REALM,
   process.env.SIGNALWIRE_SIP_PROXY,
+  signalwireSourceIpProbe,
 ]);
 
 const summary = {
@@ -396,6 +406,8 @@ const summary = {
   sourceRestriction: {
     type: "freeswitch_acl",
     aclName: signalwireSourceAclName,
+    probeIp: signalwireSourceIpProbe ? redactor(signalwireSourceIpProbe) : null,
+    activeAclProven: false,
   },
   generatedConfig: null,
   freeswitchCli: [],
@@ -414,6 +426,14 @@ if (!["registration", "ip_auth"].includes(trunkMode)) {
 }
 if (!/^[A-Za-z0-9_.:-]+$/.test(signalwireSourceAclName)) {
   summary.blockers.push("invalid_signalwire_source_acl_name");
+}
+if (summary.blockers.length === 0 && !hasFlag("--skip-fs-cli")) {
+  if (!signalwireSourceIpProbe) {
+    summary.missingEnv.push("SIGNALWIRE_SOURCE_IP_PROBE");
+    summary.blockers.push("signalwire_source_acl_probe_missing");
+  } else if (!isIP(signalwireSourceIpProbe)) {
+    summary.blockers.push("invalid_signalwire_source_ip_probe");
+  }
 }
 
 if (hasFlag("--render") && !outputDirIsArtifact) {
@@ -476,9 +496,10 @@ const rawFsCli = new Map();
 
 if (summary.blockers.length === 0 && !fsCliSkipped) {
   const dialplanCommand = "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn";
+  const aclCommand = `acl ${signalwireSourceIpProbe} ${signalwireSourceAclName}`;
   const commands = trunkMode === "ip_auth"
-    ? ["sofia status profile external", "show registrations", dialplanCommand]
-    : ["sofia status profile external", "sofia status gateway signalwire", "show registrations", dialplanCommand];
+    ? ["sofia status profile external", aclCommand, "show registrations", dialplanCommand]
+    : ["sofia status profile external", "sofia status gateway signalwire", aclCommand, "show registrations", dialplanCommand];
   for (const command of commands) {
     try {
       const result = await runFsCli(command, redactor);
@@ -491,7 +512,7 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
           : "freeswitch_cli_unavailable_or_gateway_unregistered",
       );
       summary.freeswitchCli.push({
-        command: `fs_cli -x '${command}'`,
+        command: redactor(`fs_cli -x '${command}'`),
         error: redactor(error instanceof Error ? error.message : String(error)),
       });
       break;
@@ -518,6 +539,15 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
   const gateway = rawFsCli.get("sofia status gateway signalwire");
   if (trunkMode === "registration" && gateway && !/\bREGED\b/i.test(`${gateway.stdout}\n${gateway.stderr}`)) {
     summary.blockers.push("signalwire_gateway_status_not_proven");
+  }
+}
+
+if (summary.blockers.length === 0 && !fsCliSkipped) {
+  const acl = rawFsCli.get(`acl ${signalwireSourceIpProbe} ${signalwireSourceAclName}`);
+  if (!isSignalWireSourceAclProven(acl)) {
+    summary.blockers.push("signalwire_source_acl_not_proven");
+  } else {
+    summary.sourceRestriction.activeAclProven = true;
   }
 }
 

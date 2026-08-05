@@ -23,9 +23,10 @@ export SIGNALWIRE_SIP_PASSWORD="SIP_PASSWORD_PLACEHOLDER"
 export SIGNALWIRE_FROM_NUMBER="+12029687351"
 export FREESWITCH_PUBLIC_SIP_HOST="PUBLIC_SIP_HOST_OR_TUNNEL_PLACEHOLDER"
 export SIGNALWIRE_SOURCE_ACL_NAME="signalwire_trunk"
+export SIGNALWIRE_SOURCE_IP_PROBE="APPROVED_SIGNALWIRE_SOURCE_IP_PLACEHOLDER"
 ```
 
-IP-auth trunks require only `SIGNALWIRE_TRUNK_MODE=ip_auth`, `SIGNALWIRE_FROM_NUMBER`, and `FREESWITCH_PUBLIC_SIP_HOST`; they do not require a Space URL or SIP registration credentials.
+IP-auth trunks require only `SIGNALWIRE_TRUNK_MODE=ip_auth`, `SIGNALWIRE_FROM_NUMBER`, `FREESWITCH_PUBLIC_SIP_HOST`, and `SIGNALWIRE_SOURCE_IP_PROBE`; they do not require a Space URL or SIP registration credentials.
 
 Optional overrides:
 
@@ -37,7 +38,7 @@ export SIGNALWIRE_TRUNK_MODE="registration"
 
 When `SIGNALWIRE_SIP_REALM` and `SIGNALWIRE_SIP_PROXY` are omitted, the readiness script derives `SPACE.sip.signalwire.com` from `SIGNALWIRE_SPACE_URL=https://SPACE.signalwire.com`. Set `SIGNALWIRE_TRUNK_MODE=ip_auth` only for documented IP-auth trunking where SignalWire routes directly to `sip:8600@FREESWITCH_PUBLIC_SIP_HOST` and no FreeSWITCH gateway registration is expected.
 
-`SIGNALWIRE_SOURCE_ACL_NAME` defaults to `signalwire_trunk`. The public dialplan is gated by `${acl(${network_addr} SIGNALWIRE_SOURCE_ACL_NAME)}` so an arbitrary Internet SIP sender cannot reach the live agent by guessing the DID. Configure that FreeSWITCH ACL with the approved SignalWire source ranges or an equivalent authenticated trunk predicate before opening the manual-call gate.
+`SIGNALWIRE_SOURCE_ACL_NAME` defaults to `signalwire_trunk`. The public dialplan is gated by `${acl(${network_addr} SIGNALWIRE_SOURCE_ACL_NAME)}` so an arbitrary Internet SIP sender cannot reach the live agent by guessing the DID. Configure that FreeSWITCH ACL with the approved SignalWire source ranges or an equivalent authenticated trunk predicate before opening the manual-call gate. `SIGNALWIRE_SOURCE_IP_PROBE` must be one approved SignalWire source IP from that ACL; the readiness probe redacts it and runs `fs_cli -x 'acl SIGNALWIRE_SOURCE_IP_PROBE SIGNALWIRE_SOURCE_ACL_NAME'` before it can report `ready_for_manual_pstn_call`.
 
 ## Generate FreeSWITCH config
 
@@ -105,7 +106,8 @@ Expected proof:
 - For registration trunks, `freeswitchCli` includes redacted output for `sofia status profile external`, `sofia status gateway signalwire`, and `show registrations`.
 - For IP-auth trunks, `freeswitchCli` includes redacted output for `sofia status profile external` and `show registrations`; `REGED` is not required because there is no outbound gateway registration.
 - Both modes include `xml_locate` proof that the active `agentic_contact_center_signalwire_pstn` extension routes to `acc_route=signalwire_live`.
-- The active dialplan proof includes the SignalWire source ACL predicate and the Verto lane fields (`acc_destination_number=8600`, `acc_conversation_mode=openai_llm`, `sip_h_X-ACC-Telephony-Mode=signalwire_live`).
+- Both modes include active ACL proof from `fs_cli -x 'acl SIGNALWIRE_SOURCE_IP_PROBE SIGNALWIRE_SOURCE_ACL_NAME'`; `sourceRestriction.activeAclProven` must be `true`.
+- The active dialplan proof includes the SignalWire source ACL predicate, a PCMU-only Verto bridge leg, and the Verto lane fields (`acc_destination_number=8600`, `acc_conversation_mode=openai_llm`, `sip_h_X-ACC-Telephony-Mode=signalwire_live`).
 - `show registrations` proves the `acc-pipecat` Verto contact is active before the manual-call gate opens.
 - `artifacts/freeswitch-signalwire/readiness.json` contains no live tokens, SIP passwords, project IDs, or private host values.
 
