@@ -103,7 +103,7 @@ export function shouldForceScriptedRetentionFinalTurn(snapshot: CallSnapshot, co
 
   return configuredConversationMode === "scripted"
     && config.policy.defaultSupervisorSteer === "approve_retention_review"
-    && snapshot.transcript.filter((entry) => entry.speaker === "caller").length >= 4
+    && snapshot.transcript.filter((entry) => entry.speaker === "caller").length >= 2
     && !snapshot.operatorSteer.pending
     && retentionDecisionRecorded
     && !snapshot.events.some((event) => event.type === "final_policy_state_recorded");
@@ -402,7 +402,7 @@ export class InMemoryTelephonyIngress {
 
     const retentionReviewApprovalRequired =
       config.policy.defaultSupervisorSteer === "approve_retention_review"
-      && snapshot.transcript.filter((entry) => entry.speaker === "caller").length >= 4
+      && snapshot.transcript.filter((entry) => entry.speaker === "caller").length >= 2
       && snapshot.operatorSteer.pending
       && snapshot.operatorSteer.lastAction === "approve_retention_review"
       && !snapshot.events.some((event) => event.type === "retention_review_approved");

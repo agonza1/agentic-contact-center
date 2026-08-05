@@ -3503,9 +3503,9 @@ async function runEndToEndDemoFlow(
   let latest = started;
   const startedAtMs = new Date(started.session.startedAt).getTime();
   const timestampAfter = (offsetMs: number) => new Date(startedAtMs + offsetMs).toISOString();
-  const scriptedTimestamps = [timestampAfter(1_000), timestampAfter(5_000), timestampAfter(9_000), timestampAfter(12_000)];
+  const scriptedTimestamps = [timestampAfter(1_000), timestampAfter(5_000)];
 
-  for (const [index, text] of CLUECON_CANCELLATION_CALLER_TURNS.slice(0, 4).entries()) {
+  for (const [index, text] of CLUECON_CANCELLATION_CALLER_TURNS.slice(0, 2).entries()) {
     latest = await ingress.appendCallerTurn(
       callId,
       { speaker: "caller", text, timestamp: scriptedTimestamps[index] },
@@ -3520,18 +3520,18 @@ async function runEndToEndDemoFlow(
     });
   }
 
-  latest = await ingress.applyOperatorSteer(callId, "approve_retention_review", timestampAfter(14_000));
+  latest = await ingress.applyOperatorSteer(callId, "approve_retention_review", timestampAfter(8_000));
   steps.push({
     step: "operator_approve_retention_review",
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: "Operator approved the retention specialist review; no discount was approved.",
+    detail: "Operator approved a specialist price review; no price change was approved.",
   });
 
   latest = await ingress.appendCallerTurn(
     callId,
-    { speaker: "caller", text: CLUECON_CANCELLATION_CALLER_TURNS[4], timestamp: timestampAfter(18_000) },
+    { speaker: "caller", text: CLUECON_CANCELLATION_CALLER_TURNS[2], timestamp: timestampAfter(12_000) },
     scenarioConfig,
   );
   steps.push({
@@ -3539,7 +3539,7 @@ async function runEndToEndDemoFlow(
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: CLUECON_CANCELLATION_CALLER_TURNS[4],
+    detail: CLUECON_CANCELLATION_CALLER_TURNS[2],
   });
 
   steps.push({
@@ -3791,15 +3791,15 @@ function buildClueConEvalScorecard(snapshot: CallSnapshot) {
     },
     {
       id: "operator_approval",
-      label: "Approval to open retention review captured",
+      label: "Price review approved before it was offered",
       passed: eventTypes.has("retention_review_approved") && snapshot.operatorSteer.lastAction === "approve_retention_review",
-      evidence: snapshot.operatorSteer.lastReason ?? "Retention review approval recorded in the event trail.",
+      evidence: snapshot.operatorSteer.lastReason ?? "Approval for the specialist price review was recorded in the event trail.",
     },
     {
       id: "final_state",
-      label: "Final state recorded: policy active, review pending",
+      label: "Final choice recorded: policy active, specialist will call",
       passed: eventTypes.has("final_policy_state_recorded") && transcriptText.includes("policy remains active"),
-      evidence: "The final event and transcript record an active policy with a retention review pending.",
+      evidence: "The final event and transcript record an active policy with a specialist price review requested.",
     },
   ];
   const evidenceChecks = [

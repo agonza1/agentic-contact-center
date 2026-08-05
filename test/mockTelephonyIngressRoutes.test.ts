@@ -2167,8 +2167,6 @@ test("POST /api/demo/run-end-to-end executes a complete usable call flow", async
         "start_call",
         "caller_turn_1",
         "caller_turn_2",
-        "caller_turn_3",
-        "caller_turn_4",
         "operator_approve_retention_review",
         "caller_wrap",
         "final_policy_state",
@@ -2186,16 +2184,16 @@ test("POST /api/demo/run-end-to-end executes a complete usable call flow", async
     const callerOffsets = payload.call.transcript
       .filter((turn) => turn.speaker === "caller")
       .map((turn) => Date.parse(turn.timestamp ?? "") - startedAtMs);
-    assert.deepEqual(callerOffsets, [1_000, 5_000, 9_000, 12_000, 18_000]);
+    assert.deepEqual(callerOffsets, [1_000, 5_000, 12_000]);
     const consentEvent = payload.call.events.find((event) => event.type === "customer_consent_recorded");
-    assert.equal(Date.parse(consentEvent?.at ?? "") - startedAtMs, 12_000);
-    assert.equal(Date.parse(payload.call.operatorSteer.respondedAt ?? "") - startedAtMs, 14_000);
+    assert.equal(Date.parse(consentEvent?.at ?? "") - startedAtMs, 5_000);
+    assert.equal(Date.parse(payload.call.operatorSteer.respondedAt ?? "") - startedAtMs, 8_000);
     assert.equal(payload.operatorConsoleCall.actionState.scriptedCallerTurnState.completed, true);
     assert.equal(payload.operatorConsoleCall.actionState.scriptedCallerTurnState.progressPct, 100);
     assert.equal(payload.proof.outcome.flowState, "wrap");
     assert.equal(payload.proof.outcome.scriptCompleted, true);
     assert.equal(payload.proof.summary.operatorNoteCount, 0);
-    assert.equal(payload.proof.summary.transcriptTurns >= 8, true);
+    assert.equal(payload.proof.summary.transcriptTurns >= 7, true);
   });
 });
 
@@ -2394,7 +2392,7 @@ test("POST /api/operator/console/scripted-turn submits only the next scripted ca
   });
 });
 
-test("retention approval requires its exact pending request and the console follows the five-turn script", async () => {
+test("retention approval requires its exact pending request and the console follows the concise script", async () => {
   const defaultConfig = loadPocConfig();
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start");
@@ -2427,15 +2425,13 @@ test("retention approval requires its exact pending request and the console foll
     const initialConsole = await requestJson(port, "GET", `/api/operator/console?callId=${callId}`);
     const initialCall = (initialConsole.payload as OperatorConsolePayload).calls.items[0];
     assert.deepEqual(initialCall?.actionState.scriptedCallerTurnState.turnTexts, [
-      "I'm thinking about canceling my policy.",
-      "My renewal went up a lot, and I can't afford it.",
-      "Yes, please check.",
-      "Yes.",
-      "Keep it active until the review.",
+      "My renewal is $60 more a month. I can't afford that, so I want to cancel.",
+      "Yes, please ask someone to review the price.",
+      "Keep it active until they call.",
     ]);
-    assert.equal(initialCall?.actionState.scriptedCallerTurnState.totalTurns, 5);
+    assert.equal(initialCall?.actionState.scriptedCallerTurnState.totalTurns, 3);
 
-    for (let index = 0; index < 2; index += 1) {
+    for (let index = 0; index < 1; index += 1) {
       const submitted = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
         callId,
         expectedTurnIndex: index,
@@ -2448,7 +2444,7 @@ test("retention approval requires its exact pending request and the console foll
     assert.equal(prematureApproval.statusCode, 400);
     assert.deepEqual(prematureApproval.payload, { ok: false, error: "operator_steer_not_pending" });
 
-    for (let index = 2; index < 4; index += 1) {
+    for (let index = 1; index < 2; index += 1) {
       const submitted = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
         callId,
         expectedTurnIndex: index,
@@ -2458,11 +2454,11 @@ test("retention approval requires its exact pending request and the console foll
     const pendingConsole = await requestJson(port, "GET", `/api/operator/console?callId=${callId}`);
     const pendingCall = (pendingConsole.payload as OperatorConsolePayload).calls.items[0];
     assert.equal(pendingCall?.actionState.pendingApprovalDetails?.recommendedAction, "approve_retention_review");
-    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnIndex, 4);
-    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnText, "Keep it active until the review.");
-    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.progressLabel, "4/5 scripted turns sent");
+    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnIndex, 2);
+    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnText, "Keep it active until they call.");
+    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.progressLabel, "2/3 scripted turns sent");
     assert.equal(pendingCall?.transcript.at(-1)?.speaker, "agent");
-    assert.match(pendingCall?.transcript.at(-1)?.text ?? "", /policy remains unchanged while I wait/i);
+    assert.match(pendingCall?.transcript.at(-1)?.text ?? "", /policy stays the same while I check/i);
 
     const invalidResume = await requestJson(port, "POST", `/api/calls/${callId}/operator-steer`, {
       action: "resume",
@@ -2529,20 +2525,20 @@ test("retention approval requires its exact pending request and the console foll
 
     const prematureFinalTurn = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
       callId,
-      expectedTurnIndex: 4,
+      expectedTurnIndex: 2,
     });
     assert.equal(prematureFinalTurn.statusCode, 409);
     assert.deepEqual(prematureFinalTurn.payload, { ok: false, error: "retention_review_approval_required" });
     const stillPending = await requestJson(port, "GET", `/api/calls/${callId}`);
     const stillPendingCall = stillPending.payload as SnapshotPayload;
-    assert.equal(stillPendingCall.pipecatFlow.script.matchedCallerTurns, 4);
+    assert.equal(stillPendingCall.pipecatFlow.script.matchedCallerTurns, 2);
     assert.equal(stillPendingCall.operatorSteer.pending, true);
     assert.equal(stillPendingCall.operatorSteer.lastAction, "approve_retention_review");
     assert.equal(stillPendingCall.events.some((event) => event.type === "retention_followup_created"), false);
     assert.equal(stillPendingCall.events.some((event) => event.type === "final_policy_state_recorded"), false);
 
     const modeOverrideFinalTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "Keep it active until the review.",
+      text: "Keep it active until they call.",
       conversationMode: "free_caller",
       timestamp: "2026-06-10T14:00:18.000Z",
     });
@@ -2552,7 +2548,7 @@ test("retention approval requires its exact pending request and the console foll
     const afterModeOverrideCall = afterModeOverride.payload as SnapshotPayload;
     assert.deepEqual(afterModeOverrideCall.transcript, stillPendingCall.transcript);
     assert.deepEqual(afterModeOverrideCall.events, stillPendingCall.events);
-    assert.equal(afterModeOverrideCall.pipecatFlow.script.matchedCallerTurns, 4);
+    assert.equal(afterModeOverrideCall.pipecatFlow.script.matchedCallerTurns, 2);
     assert.equal(afterModeOverrideCall.operatorSteer.pending, true);
     assert.equal(afterModeOverrideCall.operatorSteer.lastAction, "approve_retention_review");
 
@@ -2564,7 +2560,7 @@ test("retention approval requires its exact pending request and the console foll
     assert.equal(approvedCall.events.some((event) => event.type === "retention_review_approved"), true);
 
     const finalTurn = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "Keep it active until the review.",
+      text: "Keep it active until they call.",
       conversationMode: "openai_llm",
       timestamp: "2026-06-10T14:00:18.000Z",
     });
@@ -2576,7 +2572,7 @@ test("retention approval requires its exact pending request and the console foll
     assert.equal(finalCall.events.some((event) => event.detail.source === "openai_llm_fail_closed"), false);
     const completedConsole = await requestJson(port, "GET", `/api/operator/console?callId=${callId}`);
     const completedCall = (completedConsole.payload as OperatorConsolePayload).calls.items[0];
-    assert.equal(completedCall?.actionState.scriptedCallerTurnState.progressLabel, "5/5 scripted turns sent");
+    assert.equal(completedCall?.actionState.scriptedCallerTurnState.progressLabel, "3/3 scripted turns sent");
     assert.equal(completedCall?.actionState.scriptedCallerTurnState.nextTurnText, null);
   }, retentionConfig);
 });
@@ -2587,7 +2583,7 @@ test("a denied retention review lets the caller continue cancellation through a 
   await withServer(async (port) => {
     const started = await requestJson(port, "POST", "/api/demo/start");
     const callId = (started.payload as SnapshotPayload).session.callId;
-    for (let index = 0; index < 4; index += 1) {
+    for (let index = 0; index < 2; index += 1) {
       const submitted = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
         callId,
         expectedTurnIndex: index,
@@ -2605,10 +2601,10 @@ test("a denied retention review lets the caller continue cancellation through a 
 
     const pendingConsole = await requestJson(port, "GET", `/api/operator/console?callId=${callId}`);
     const pendingCall = (pendingConsole.payload as OperatorConsolePayload).calls.items[0];
-    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnText, "Continue with cancellation.");
+    assert.equal(pendingCall?.actionState.scriptedCallerTurnState.nextTurnText, "Cancel it, please.");
 
     const continued = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-      text: "Continue with cancellation.",
+      text: "Cancel it, please.",
       conversationMode: "free_caller",
       timestamp: "2026-06-10T14:00:18.000Z",
     });
@@ -2631,7 +2627,7 @@ test("terminal operator actions suppress and reject the remaining scripted calle
     for (const action of ["escalate_to_human", "transfer", "takeover", "end_call"] as const) {
       const started = await requestJson(port, "POST", "/api/demo/start");
       const callId = (started.payload as SnapshotPayload).session.callId;
-      for (let index = 0; index < 4; index += 1) {
+      for (let index = 0; index < 2; index += 1) {
         const submitted = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
           callId,
           expectedTurnIndex: index,
@@ -2656,13 +2652,13 @@ test("terminal operator actions suppress and reject the remaining scripted calle
 
       const rejectedScriptedTurn = await requestJson(port, "POST", "/api/operator/console/scripted-turn", {
         callId,
-        expectedTurnIndex: 4,
+        expectedTurnIndex: 2,
       });
       assert.equal(rejectedScriptedTurn.statusCode, 409);
       assert.deepEqual(rejectedScriptedTurn.payload, { ok: false, error: "operator_console_scripted_turn_terminal" });
 
       const rejectedModeOverride = await requestJson(port, "POST", `/api/calls/${callId}/caller-turn`, {
-        text: "Keep it active until the review.",
+        text: "Keep it active until they call.",
         conversationMode: "openai_llm",
       });
       const rejectedModeOverridePayload = rejectedModeOverride.payload as { error: string; route: string };
@@ -6098,11 +6094,9 @@ test("GET /api/operator/actions exposes Slack-ready control metadata", async () 
     });
     assert.equal(payload.scriptedCallerTurnSets.approve_offer.length, 4);
     assert.deepEqual(payload.scriptedCallerTurnSets.approve_retention_review, [
-      "I'm thinking about canceling my policy.",
-      "My renewal went up a lot, and I can't afford it.",
-      "Yes, please check.",
-      "Yes.",
-      "Keep it active until the review.",
+      "My renewal is $60 more a month. I can't afford that, so I want to cancel.",
+      "Yes, please ask someone to review the price.",
+      "Keep it active until they call.",
     ]);
     assert.deepEqual(
       payload.actions.map((action) => action.action),

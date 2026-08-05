@@ -341,7 +341,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.ok(payload.liveProbes.some((probe) => probe.id === "rtc_asr" && probe.configured === false && probe.status === "fixture"));
   assert.ok(payload.liveProbes.some((probe) => probe.id === "kokoro" && probe.configured === false && probe.status === "fixture"));
   assert.ok(payload.liveProbes.some((probe) => probe.id === "pocket_tts" && probe.configured === false && probe.status === "fixture"));
-  assert.equal(payload.scenario.callerTurns.length, 5);
+  assert.equal(payload.scenario.callerTurns.length, 3);
   assert.ok(payload.scenario.failureDrills.includes("tts_unavailable"));
   assert.equal(payload.asrPanel.contract, "PCM16 16 kHz mono in; transcript events out");
   assert.equal(payload.asrPanel.modelsRoute, "/api/cluecon/asr/models");
@@ -971,7 +971,7 @@ test("GET/POST /api/cluecon/eval expose ASSERT handoff preview and scorecard", a
   assert.equal(run.scorecard.performance.status, "warning");
   assert.ok(run.scorecard.performance.overBudget > 0);
   assert.ok(run.scorecard.performance.total >= run.scorecard.performance.overBudget);
-  assert.ok(run.scorecard.checks.some((check) => check.id === "operator_approval" && check.passed && check.label === "Approval to open retention review captured"));
+  assert.ok(run.scorecard.checks.some((check) => check.id === "operator_approval" && check.passed && check.label === "Price review approved before it was offered"));
   assert.equal(run.assertRequestPreview.spec_ref.assert_project, "conversation-agent-evals");
   assert.equal(run.assertRequestPreview.evidence.transcript.readiness, "inline_preview");
   assert.match(run.assertRequestPreview.evidence.proof_bundle.routes.transcript, /\/api\/calls\/demo-call-\d+\/transcript/);
@@ -1112,15 +1112,15 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.doesNotMatch(narrative.body, /FlowManager validates node transitions; ACC demonstrates bounded state/);
   assert.doesNotMatch(narrative.body, /Forward the first playable TTS chunk immediately/);
   assert.doesNotMatch(narrative.body, /Run scripted demo/);
-  assert.match(narrative.body, /Failure-control example/);
+  assert.match(narrative.body, /Policy-control example/);
   assert.doesNotMatch(narrative.body, /Failure-control demo/);
   assert.match(narrative.body, /Run cancellation scenario/);
   assert.match(narrative.body, /Try another control/);
   assert.match(narrative.body, /The caller chooses\. The application authorizes\./);
-  assert.match(narrative.body, /Policy remains active\. Retention review requested\./);
+  assert.match(narrative.body, /Policy remains active\. Price review requested\./);
   assert.match(narrative.body, /Concern captured/);
   assert.match(narrative.body, /Final policy state recorded/);
-  assert.match(narrative.body, /Eligible options/);
+  assert.match(narrative.body, /Price review/);
   assert.match(narrative.body, /\.demo-control-story::before/);
   assert.match(narrative.body, /border-top: 2px solid #5072a7/);
   assert.doesNotMatch(narrative.body, /\.demo-control-step:not\(:last-child\)::after \{ content: "â†’"/);
@@ -1132,7 +1132,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /system-unavailable\.mp3/);
   assert.match(narrative.body, /kind === "rtc_asr_unavailable"/);
   assert.doesNotMatch(narrative.body, /id="run-demo-top"/);
-  assert.match(narrative.body, /Run ACC target/);
+  assert.match(narrative.body, /Run Voice AI target/);
   assert.match(narrative.body, /window\.__CLUECON__/);
   assert.match(narrative.body, /rtc-asr is measurable and swappable/);
   assert.match(narrative.body, /id="asr-architecture"/);
@@ -1301,11 +1301,11 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Google SRE Workbook ↗/);
   assert.match(narrative.body, /ITU-T P\.851 ↗/);
   assert.match(narrative.body, /Different voice agents\. One evaluation contract\./);
-  assert.match(narrative.body, /CAE evaluates web voice agents and VoIP\/SIP agents through target adapters\./);
-  assert.match(narrative.body, /This demo uses the Agentic Call Center PoC\./);
-  assert.match(narrative.body, /ACC PoC in this demo/);
+  assert.match(narrative.body, /ConversationAgentEvals runs the same scenario against web and VoIP\/SIP voice agents\./);
+  assert.match(narrative.body, /A target adapter connects to each agent's call interface/);
+  assert.match(narrative.body, /Agentic Call Center reference application as the Voice AI target/);
   assert.match(narrative.body, /normalized evidence/);
-  assert.match(narrative.body, /Approval to open retention review captured/);
+  assert.match(narrative.body, /Price review approved before it was offered/);
   assert.doesNotMatch(narrative.body, /CAE_WEB_URL/);
   assert.doesNotMatch(narrative.body, /id="proof-cards"/);
   assert.match(narrative.body, /Every enterprise workflow can now begin with a conversation\./);
@@ -1356,7 +1356,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(present.body, /From SIP to Tokens/);
   assert.match(present.body, /Alberto Gonzalez CTO @ WebRTC\.ventures/);
   assert.match(present.body, /ArrowRight/);
-  assert.match(present.body, /Run ACC target/);
+  assert.match(present.body, /Run Voice AI target/);
   assert.match(present.body, /eval-scorecard/);
   assert.match(present.body, /ClueCon 2026 presentation/);
   assert.match(present.body, /RTF = processing time ÷ audio duration/);
@@ -1407,7 +1407,7 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.doesNotMatch(html, /5 min proof \+ close/);
   assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 16);
   assert.match(html, /Reliable audio is necessary\. Reliable conversation is the outcome\./);
-  assert.match(html, /Run ACC target/);
+  assert.match(html, /Run Voice AI target/);
   assert.match(html, /Every enterprise workflow can now begin with a conversation\./);
   assert.match(html, /Open source projects to try below:/);
   assert.doesNotMatch(html, /Bring back evidence\. Let’s compare notes after the talk\./);
@@ -1420,7 +1420,7 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /if\(evidence\)evidence\.open=true/);
   assert.match(html, /demo-evidence-count/);
   assert.doesNotMatch(html, /intercept\("drill-tool"/);
-  assert.match(html, /turns\[4\]/);
+  assert.match(html, /turns\[2\]/);
   assert.match(html, /retention_review_approved/);
   assert.match(html, /href="\.\/present\/"/);
   assert.match(html, /src="\.\/alberto-echo-show-prototype\.jpg"/);
