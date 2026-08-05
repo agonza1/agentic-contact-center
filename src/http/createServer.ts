@@ -1648,7 +1648,7 @@ function buildOperatorConsoleHtml(): string {
       document.getElementById("queue-count").textContent = state.calls.length + (state.calls.length === 1 ? " call" : " calls");
       root.innerHTML = state.calls.map(function(call) {
         const labels = call.liveProof ? call.liveProof.labels : call.session.runtimeModeLabels;
-        const labelText = labels ? [labels.telephony, labels.media, labels.rtcAsr].filter(Boolean).join(" | ") : "runtime labels unavailable";
+        const labelText = [call.session.providerName, labels && labels.telephony, labels && labels.media, labels && labels.rtcAsr].filter(Boolean).join(" | ") || "runtime labels unavailable";
         const scriptedState = call.actionState.scriptedCallerTurnState || { matchedTurns: 0, totalTurns: (state.scriptedCallerTurns || []).length, remainingTurns: (state.scriptedCallerTurns || []).length, progressPct: 0, nextTurnIndex: 0, nextTurnText: null, completed: false };
         const scriptedLabel = scriptedState.completed ? "script complete" : ("script " + scriptedState.matchedTurns + "/" + scriptedState.totalTurns + " | next: " + (scriptedState.nextTurnText || "queued"));
         const proofStatus = call.liveProof && call.liveProof.eval ? call.liveProof.eval.status : "not_review_ready";
@@ -5263,6 +5263,12 @@ async function routeRequest(
       return;
     }
 
+    if (body.conversationMode !== undefined && !isConversationMode(body.conversationMode)) {
+      writeBadRequest(response, "browser_webrtc_conversation_mode_invalid");
+      return;
+    }
+
+    const sessionId = getOptionalTrimmedString(body.sessionId) ?? `browser-webrtc-${randomUUID()}`;
     const requestedCallId = getOptionalTrimmedString(body.callId);
     const existingSnapshot = requestedCallId ? await ingress.getSnapshot(requestedCallId) : null;
     if (requestedCallId && !existingSnapshot) {
@@ -5270,11 +5276,20 @@ async function routeRequest(
       return;
     }
     const snapshot = existingSnapshot ?? await ingress.startCall(config, {
-      openclawSessionId: `browser-webrtc-${randomUUID()}`,
-      openclawSessionLabel: "browser-webrtc/pipecat",
+      providerName: "pipecat-browser-webrtc",
+      providerCallId: sessionId,
+      openclawSessionId: `pipecat-browser-webrtc-${sessionId}`,
+      openclawSessionLabel: `pipecat/browser-webrtc/${sessionId}`,
+      source: "mock_http_route",
+      conversationMode: body.conversationMode ?? "free_caller",
+      runtimeModeLabels: {
+        telephony: "mocked_telephony",
+        media: "live_capture",
+        rtcAsr: "rtc_asr_live",
+        credentialsMode: "mocked",
+      },
     } satisfies StartCallOptions);
     const callId = snapshot.session.callId;
-    const sessionId = getOptionalTrimmedString(body.sessionId) ?? `browser-webrtc-${randomUUID()}`;
     const host = request.headers.host ?? "127.0.0.1:8026";
     const protocol = host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "http";
 
@@ -6071,6 +6086,90 @@ async function routeRequest(
   if (request.method === "GET" && pathname === "/cluecon/present") {
     response.setHeader("cache-control", "no-store, max-age=0");
     writeHtml(response, 200, buildClueConHtml(config, "present", activeClueConBrainBlocks));
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/pipecat/sessions/ensure-call") {
+    const body = await readJsonBody<unknown>(request);
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const sessionId = getOptionalTrimmedString(body.sessionId);
+    if (!sessionId) {
+      writeBadRequest(response, "pipecat_session_id_required");
+      return;
+    }
+    const transport = getOptionalTrimmedString(body.transport);
+    if (transport !== "browser_webrtc" && transport !== "freeswitch_verto") {
+      writeBadRequest(response, "pipecat_transport_invalid");
+      return;
+    }
+    if (body.conversationMode !== undefined && !isConversationMode(body.conversationMode)) {
+      writeBadRequest(response, "pipecat_conversation_mode_invalid");
+      return;
+    }
+
+    const requestedCallId = getOptionalTrimmedString(body.callId);
+    if (requestedCallId) {
+      const existingSnapshot = await ingress.getSnapshot(requestedCallId);
+      if (!existingSnapshot) {
+        writeJson(response, 404, { ok: false, error: "pipecat_call_not_found" });
+        return;
+      }
+      writeJson(response, 200, {
+        ok: true,
+        route: "/api/pipecat/sessions/ensure-call",
+        callId: existingSnapshot.session.callId,
+        sessionId,
+        transport,
+        idempotent: true,
+        call: buildCallPayload(existingSnapshot),
+      });
+      return;
+    }
+
+    const transportLabel = transport.replace("_", "-");
+    const openclawSessionId = `pipecat-${transportLabel}-${sessionId}`;
+    const [existingSnapshot] = await ingress.listSnapshots({ openclawSessionId });
+    if (existingSnapshot) {
+      writeJson(response, 200, {
+        ok: true,
+        route: "/api/pipecat/sessions/ensure-call",
+        callId: existingSnapshot.session.callId,
+        sessionId,
+        transport,
+        idempotent: true,
+        call: buildCallPayload(existingSnapshot),
+      });
+      return;
+    }
+
+    const browserTransport = transport === "browser_webrtc";
+    const snapshot = await ingress.startCall(config, {
+      providerName: browserTransport ? "pipecat-browser-webrtc" : "freeswitch-verto",
+      providerCallId: sessionId,
+      openclawSessionId,
+      openclawSessionLabel: `pipecat/${transportLabel}/${sessionId}`,
+      source: browserTransport ? "mock_http_route" : "freeswitch_verto",
+      conversationMode: body.conversationMode ?? "free_caller",
+      runtimeModeLabels: {
+        telephony: browserTransport ? "mocked_telephony" : "local_sip",
+        media: "live_capture",
+        rtcAsr: "rtc_asr_live",
+        credentialsMode: "mocked",
+      },
+    } satisfies StartCallOptions);
+    writeJson(response, 201, {
+      ok: true,
+      route: "/api/pipecat/sessions/ensure-call",
+      callId: snapshot.session.callId,
+      sessionId,
+      transport,
+      idempotent: false,
+      call: buildCallPayload(snapshot),
+    });
     return;
   }
 

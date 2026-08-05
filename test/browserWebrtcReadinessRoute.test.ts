@@ -73,6 +73,9 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(bridge, /session_record=session_record/);
   assert.match(bridge, /reason="small_webrtc_peer_closed"/);
   assert.match(bridge, /forget_session_record/);
+  assert.match(bridge, /api\/pipecat\/sessions\/ensure-call/);
+  assert.match(bridge, /call_id = await self\.ensure_acc_call/);
+  assert.match(bridge, /"transport": "browser_webrtc"/);
   assert.match(sharedPipeline, /silence_finalize_task/);
   assert.match(sharedPipeline, /finalize_after_silence/);
   assert.match(sharedPipeline, /finalize_turn\("silence_timer"\)/);
@@ -786,6 +789,20 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
     assert.equal(bridgeRequest?.type, "offer");
     assert.equal(bridgeRequest?.callId, payload.callId);
     assert.match(bridgeRequest?.accUrl ?? "", new RegExp(String(address.port)));
+
+    const consoleBody = await new Promise<string>((resolve, reject) => {
+      const req = request({ host: "127.0.0.1", port: address.port, path: "/api/operator/console", method: "GET" }, (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => { body += chunk; });
+        response.on("end", () => resolve(body));
+      });
+      req.on("error", reject);
+      req.end();
+    });
+    const consolePayload = JSON.parse(consoleBody) as { calls: { items: Array<{ session: { callId: string; providerName: string } }> } };
+    const browserCall = consolePayload.calls.items.find((call) => call.session.callId === payload.callId);
+    assert.equal(browserCall?.session.providerName, "pipecat-browser-webrtc");
   } finally {
     if (previousBridgeUrl === undefined) {
       delete process.env.BROWSER_WEBRTC_BRIDGE_URL;
@@ -795,6 +812,58 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     bridge.closeAllConnections();
     await new Promise<void>((resolve, reject) => bridge.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("POST /api/pipecat/sessions/ensure-call registers direct Pipecat transports once for the operator console", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Expected an ephemeral TCP port");
+
+  const post = (payload: object) => new Promise<{ status: number; payload: Record<string, unknown> }>((resolve, reject) => {
+    const req = request({
+      host: "127.0.0.1",
+      port: address.port,
+      path: "/api/pipecat/sessions/ensure-call",
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => { body += chunk; });
+      response.on("end", () => resolve({ status: response.statusCode ?? 0, payload: JSON.parse(body) as Record<string, unknown> }));
+    });
+    req.on("error", reject);
+    req.end(JSON.stringify(payload));
+  });
+
+  try {
+    const browser = await post({ sessionId: "direct-browser-1", transport: "browser_webrtc" });
+    const browserRetry = await post({ sessionId: "direct-browser-1", transport: "browser_webrtc" });
+    const freeswitch = await post({ sessionId: "verto-dialog-1", transport: "freeswitch_verto", conversationMode: "openai_llm" });
+
+    assert.equal(browser.status, 201);
+    assert.equal(browserRetry.status, 200);
+    assert.equal(browserRetry.payload.idempotent, true);
+    assert.equal(browserRetry.payload.callId, browser.payload.callId);
+    assert.equal(freeswitch.status, 201);
+
+    const consolePayload = await new Promise<{ calls: { items: Array<{ session: { callId: string; providerName: string } }> } }>((resolve, reject) => {
+      const req = request({ host: "127.0.0.1", port: address.port, path: "/api/operator/console", method: "GET" }, (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => { body += chunk; });
+        response.on("end", () => resolve(JSON.parse(body) as { calls: { items: Array<{ session: { callId: string; providerName: string } }> } }));
+      });
+      req.on("error", reject);
+      req.end();
+    });
+    const providers = consolePayload.calls.items.map((call) => call.session.providerName);
+    assert.equal(consolePayload.calls.items.length, 2);
+    assert.deepEqual(new Set(providers), new Set(["pipecat-browser-webrtc", "freeswitch-verto"]));
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
 test("GET /api/browser-webrtc/session/:sessionId/proof follows generated SmallWebRTC pc_id", async () => {
