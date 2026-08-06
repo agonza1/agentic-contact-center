@@ -468,7 +468,7 @@ class VertoAgentBridge:
                 value = case_insensitive.get(key.lower())
             if isinstance(value, str) and value.strip():
                 return value.strip()
-        return None
+        return nested_param_value(params, keys)
 
     def destination_number(self, params: dict[str, Any]) -> str | None:
         value = self.first_param_string(params, (
