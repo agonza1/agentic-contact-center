@@ -1763,6 +1763,8 @@ def collect_identity_node() -> NodeConfig:
     slideOrder.forEach((id, index) => { const slide = document.getElementById(id); if (slide) { slide.dataset.slide = String(index); main?.appendChild(slide); } });
     const state = { slide: 0, slideCount: slideOrder.length, isPresent: document.body.classList.contains("present"), proof: null, brain: JSON.parse(JSON.stringify(data.brainBlocks)), brainSession: null, asrCapture: null, asrStopping: false, asrModels: [], asrLive: null, ttsStream: null, ttsStreamToken: 0, failureAudio: null, failureAudioUrl: null, vad: null, vadStarting: false, vadStartToken: 0, vadPendingStream: null, vadBotSpeaking: false, vadBotTimer: null, vadTurnTimer: null, vadOutputTimer: null, vadOutputCleanupTimer: null, vadSimulationTimers: [] };
     const VAD_END_OF_TURN_MS = Number(data.turnTiming?.endOfTurnSilenceMs) || 2000;
+    const LIVE_TTS_FETCH_TIMEOUT_MS = 12_000;
+    const LIVE_TTS_READ_TIMEOUT_MS = 10_000;
     function esc(value) { return String(value).replace(/[&<>\"]/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;"); }
     let agentCodeTrigger = null;
     function closeAgentCode() { const modal = document.getElementById("agent-code-modal"); if (!modal || modal.hidden) return; modal.hidden = true; modal.setAttribute("aria-hidden", "true"); document.querySelectorAll("[data-agent-code]").forEach(button => button.setAttribute("aria-expanded", "false")); if (agentCodeTrigger) agentCodeTrigger.focus(); agentCodeTrigger = null; }
@@ -1914,13 +1916,24 @@ def collect_identity_node() -> NodeConfig:
       document.getElementById("tts-run").disabled = false;
       document.getElementById("tts-provider").disabled = false;
     }
-    async function readTtsAudioResponse(response, onChunk) {
+    async function readTtsChunk(reader, timeoutMs, context) {
+      let timeoutId;
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(context + " did not return data within " + timeoutMs + " ms.")), timeoutMs);
+      });
+      try {
+        return await Promise.race([reader.read(), timeout]);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+    async function readTtsAudioResponse(response, onChunk, readTimeoutMs = LIVE_TTS_READ_TIMEOUT_MS) {
       if (!response.body) throw new Error("The browser did not expose the streaming response body.");
       const reader = response.body.getReader();
       const parts = [];
       let total = 0;
       while (true) {
-        const chunk = await reader.read();
+        const chunk = await readTtsChunk(reader, readTimeoutMs, "The live TTS audio stream");
         if (chunk.done) break;
         if (!chunk.value?.byteLength) continue;
         parts.push(chunk.value);
@@ -2062,6 +2075,7 @@ def collect_identity_node() -> NodeConfig:
       if (!text) { status.textContent = "Enter text before running " + provider.label + "."; return; }
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextClass) { status.textContent = "Web Audio is unavailable in this browser."; return; }
+      stopFailureAudio();
       stopTtsStream();
       const segments = renderTtsTextProgress();
       const token = state.ttsStreamToken;
@@ -2086,26 +2100,33 @@ def collect_identity_node() -> NodeConfig:
       let completedSegments = 0;
       let scheduledUntil = context.currentTime;
       try {
-        for (let index = 0; index < segments.length; index += 1) {
+      for (let index = 0; index < segments.length; index += 1) {
+        if (token !== state.ttsStreamToken) return;
+        status.textContent = (playbackMs === null ? "Synthesizing" : "Playing queued audio while synthesizing") + " chunk " + (index + 1) + " of " + segments.length + "…";
+        stream.controller = new AbortController();
+        const requestController = stream.controller;
+        const requestTimeout = setTimeout(() => requestController.abort(), LIVE_TTS_FETCH_TIMEOUT_MS);
+        const response = await fetch(data.ttsPanel.synthesizeRoute, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(buildTtsSynthesisRequest(provider, segments[index])),
+          signal: requestController.signal,
+        }).finally(() => clearTimeout(requestTimeout));
+        if (token !== state.ttsStreamToken) return;
+        if (!response.ok) {
+          const failure = await response.json().catch(() => ({ error: "HTTP " + response.status }));
+          throw new Error(failure.detail || failure.nextStep || failure.error || provider.label + " synthesis failed.");
+        }
+        const contentType = (response.headers.get("content-type") || "").split(";")[0].toLowerCase();
+        if (contentType && !contentType.startsWith("audio/")) {
+          throw new Error(provider.label + " returned non-audio content (" + contentType + "); check POCKET_TTS_SPEECH_PATH and provider compatibility.");
+        }
+        const audioBytes = await readTtsAudioResponse(response, byteLength => {
           if (token !== state.ttsStreamToken) return;
-          status.textContent = (playbackMs === null ? "Synthesizing" : "Playing queued audio while synthesizing") + " chunk " + (index + 1) + " of " + segments.length + "…";
-          const response = await fetch(data.ttsPanel.synthesizeRoute, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(buildTtsSynthesisRequest(provider, segments[index])),
-            signal: stream.controller.signal,
-          });
-          if (token !== state.ttsStreamToken) return;
-          if (!response.ok) {
-            const failure = await response.json().catch(() => ({ error: "HTTP " + response.status }));
-            throw new Error(failure.detail || failure.nextStep || failure.error || provider.label + " synthesis failed.");
+          if (firstByteMs === null) {
+            firstByteMs = performance.now() - started;
+            document.getElementById("tts-ttfb").textContent = Math.round(firstByteMs) + " ms";
           }
-          const audioBytes = await readTtsAudioResponse(response, byteLength => {
-            if (token !== state.ttsStreamToken) return;
-            if (firstByteMs === null) {
-              firstByteMs = performance.now() - started;
-              document.getElementById("tts-ttfb").textContent = Math.round(firstByteMs) + " ms";
-            }
             bytes += byteLength;
             document.getElementById("tts-bytes").textContent = completedSegments + " / " + segments.length + " · " + new Intl.NumberFormat().format(bytes) + " B";
           });
@@ -2153,7 +2174,11 @@ def collect_identity_node() -> NodeConfig:
         stopTtsStream();
         badge.textContent = "blocked";
         badge.className = "badge blocked";
-        status.textContent = String(error.message || error);
+        if (error?.name === "AbortError") {
+          status.textContent = "TTS request timed out. Confirm POCKET_TTS_BASE_URL is a real reachable endpoint and retry.";
+        } else {
+          status.textContent = String(error.message || error);
+        }
       } finally {
         if (token === state.ttsStreamToken) {
           button.disabled = false;
