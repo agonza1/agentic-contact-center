@@ -929,6 +929,35 @@ test("GET /api/cluecon blocks explicitly selected Pocket when its base URL is mi
     },
   );
 });
+
+test("Pocket TTS route ignores model mismatch and keeps using the configured model", async () => {
+  const pocket = await startPocketTtsServer();
+  try {
+    await withEnv(
+      {
+        ACC_TTS_PROVIDER: "pocket",
+        POCKET_TTS_BASE_URL: pocket.baseUrl,
+        POCKET_TTS_MODEL: "pocket-tts",
+        POCKET_TTS_VOICE: "alloy",
+        KOKORO_BASE_URL: undefined,
+      },
+      async () => {
+        const response = await post("/api/cluecon/tts/synthesize", {
+          provider: "pocket",
+          model: "legacy-pocket-model",
+          text: "Model mismatch should stay usable for Pocket as long as the provider is healthy.",
+        });
+        assert.equal(response.statusCode, 200);
+        assert.match(response.contentType, /audio\/mpeg/);
+        assert.equal(pocket.requests.length, 1);
+        assert.equal(pocket.requests[0].model, "pocket-tts");
+      },
+    );
+  } finally {
+    await closeServer(pocket.server);
+  }
+});
+
 test("ClueCon TTS route refreshes its idle timeout while audio keeps arriving", async () => {
   const kokoro = await startKokoroServer([
     { delayMs: 60, value: "audio-1" },

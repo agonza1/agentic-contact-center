@@ -1772,7 +1772,12 @@ def collect_identity_node() -> NodeConfig:
     function renderSecurityPanel() { document.getElementById("security-actions").innerHTML = data.securityPanel.scenarios.map(scenario => '<button type="button" data-security-scenario="' + esc(scenario.id) + '">' + esc(scenario.label) + '</button>').join(""); document.getElementById("security-controls").innerHTML = data.securityPanel.controls.map(control => '<li>' + esc(control) + '</li>').join(""); document.querySelectorAll("[data-security-scenario]").forEach(button => button.addEventListener("click", () => renderSecurityScenario(button.dataset.securityScenario))); renderSecurityScenario("safe"); }
     function stopFailureAudio() { if (state.failureAudio) { state.failureAudio.pause(); state.failureAudio.removeAttribute("src"); state.failureAudio.load(); state.failureAudio = null; } if (state.failureAudioUrl) { URL.revokeObjectURL(state.failureAudioUrl); state.failureAudioUrl = null; } }
     function prerecordedFailureAudio() { const audio = new Audio("/cluecon/system-unavailable.mp3"); state.failureAudio = audio; return { audio, source: "Prerecorded failover prompt" }; }
-    async function synthesizedAsrFailureAudio() { const provider = selectedTtsProvider(); const response = await fetch(data.ttsPanel.synthesizeRoute, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: provider.id, model: provider.model, voice: provider.voice, text: "We are sorry. I cannot hear you right now. Please hold while I connect you with a human agent." }) }); if (!response.ok) { const failure = await response.json().catch(() => ({ error: "HTTP " + response.status })); throw new Error(failure.detail || failure.nextStep || failure.error || provider.label + " synthesis failed."); } const contentType = (response.headers.get("content-type") || "audio/mpeg").split(";")[0]; const bytes = await readTtsAudioResponse(response, () => undefined); state.failureAudioUrl = URL.createObjectURL(new Blob([bytes], { type: contentType })); const audio = new Audio(state.failureAudioUrl); state.failureAudio = audio; return { audio, source: provider.label + " · " + provider.model + " live TTS" }; }
+    function buildTtsSynthesisRequest(provider, text) {
+      const request = { provider: provider.id, text, voice: provider.voice };
+      if (provider.id !== "pocket" && provider.model) request.model = provider.model;
+      return request;
+    }
+    async function synthesizedAsrFailureAudio() { const provider = selectedTtsProvider(); const response = await fetch(data.ttsPanel.synthesizeRoute, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(buildTtsSynthesisRequest(provider, "We are sorry. I cannot hear you right now. Please hold while I connect you with a human agent.")) }); if (!response.ok) { const failure = await response.json().catch(() => ({ error: "HTTP " + response.status })); throw new Error(failure.detail || failure.nextStep || failure.error || provider.label + " synthesis failed."); } const contentType = (response.headers.get("content-type") || "audio/mpeg").split(";")[0]; const bytes = await readTtsAudioResponse(response, () => undefined); state.failureAudioUrl = URL.createObjectURL(new Blob([bytes], { type: contentType })); const audio = new Audio(state.failureAudioUrl); state.failureAudio = audio; return { audio, source: provider.label + " · " + provider.model + " live TTS" }; }
     async function playFailureAudio(kind) { stopFailureAudio(); let playback; if (kind === "rtc_asr_unavailable") { try { playback = await synthesizedAsrFailureAudio(); } catch { playback = prerecordedFailureAudio(); playback.source += " · live TTS unavailable"; } } else { playback = prerecordedFailureAudio(); } let autoplayBlocked = false; try { await playback.audio.play(); } catch { autoplayBlocked = true; } return { ...playback, autoplayBlocked }; }
     function attachFailureAudio(playback) { const screen = document.getElementById("demo-screen"); const panel = document.createElement("div"); panel.className = "demo-failure-audio"; const label = document.createElement("span"); label.innerHTML = '<small>Audible caller prompt</small><strong>' + esc(playback.source) + (playback.autoplayBlocked ? " · press play" : " · playing") + '</strong>'; playback.audio.controls = true; playback.audio.preload = "auto"; panel.append(label, playback.audio); screen.appendChild(panel); }
     async function runMediaFailureDrill(kind) { const playbackPromise = playFailureAudio(kind); const drillPromise = runOperatorDrill(kind); const [playback] = await Promise.all([playbackPromise, drillPromise]); attachFailureAudio(playback); }
@@ -1963,7 +1968,7 @@ def collect_identity_node() -> NodeConfig:
         const response = await fetch(data.ttsPanel.synthesizeRoute, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ provider: provider.id, model: provider.model, text, voice: provider.voice }),
+          body: JSON.stringify(buildTtsSynthesisRequest(provider, text)),
         });
         if (!response.ok) {
           const failure = await response.json().catch(() => ({ error: "HTTP " + response.status }));
@@ -2087,7 +2092,7 @@ def collect_identity_node() -> NodeConfig:
           const response = await fetch(data.ttsPanel.synthesizeRoute, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ provider: provider.id, model: provider.model, text: segments[index], voice: provider.voice }),
+            body: JSON.stringify(buildTtsSynthesisRequest(provider, segments[index])),
             signal: stream.controller.signal,
           });
           if (token !== state.ttsStreamToken) return;
