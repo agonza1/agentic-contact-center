@@ -16,7 +16,7 @@ That route is the Issue #214/#222 review surface for browser WebRTC, local SIP/F
 - FreeSWITCH SIP profile: `127.0.0.1:5060/UDP` or Docker-published `5060/UDP`
 - FreeSWITCH ESL: `127.0.0.1:8021`, password `ClueCon`
 - FreeSWITCH Verto: `ws://127.0.0.1:8081`, WSS on `127.0.0.1:8082`
-- Local SIP account: extension `1000`, password `local-sip-pass`, domain `127.0.0.1`
+- Local SIP account: extension `1000`, password `pass`, domain `127.0.0.1`
 - ACC destinations: dial `8600` for the OpenAI-backed live LLM flow, or `8611` for the existing deterministic scripted flow
 - Preferred Verto agent: `acc-pipecat@127.0.0.1`, password `local-verto-pass`
 - RTP range in compose: `16384-16484/UDP`
@@ -126,13 +126,23 @@ and evidence overhead do not accumulate on top of each 20 ms frame. Chunk
 evidence is sampled every 50 frames by default instead of forcing a proof-file
 write for every frame.
 
-For a native/Homebrew FreeSWITCH used only on the local LAN, its internal SIP
-profile must advertise the LAN address in both `ext-sip-ip` and `ext-rtp-ip`.
-If it advertises a discovered public address instead, Linphone sends the dialog
-ACK to the wrong address and FreeSWITCH ends an otherwise working call after
-32 seconds with `SIP 408: ACK Timeout`. Set both profile values to
-`$${local_ip_v4}`, restart FreeSWITCH, and verify `sofia status profile
-internal` reports the LAN address in `URL`.
+For this local Docker lab, FreeSWITCH must advertise the host-reachable loopback
+address in `ext-sip-ip` and `ext-rtp-ip`:
+
+```text
+ext-sip-ip=127.0.0.1
+ext-rtp-ip=127.0.0.1
+```
+
+If FreeSWITCH advertises a container/private address instead (for example
+`172.x.x.x`), Linphone can send ACK/media to an unreachable destination and the
+call often falls out around 30 seconds with `SIP 408: ACK Timeout`. Restart
+FreeSWITCH and verify `sofia status profile internal` reports loopback in the
+`URL` field.
+
+For native/Homebrew FreeSWITCH on a direct LAN host, set
+`ext-sip-ip=ext-rtp-ip=$${local_ip_v4}` (or equivalent host LAN address), then
+verify `sofia status profile internal` reports that address.
 
 rtc-asr can occasionally emit a useful live interim transcript and then an
 empty final event for a short utterance such as “hello.” The shared Pipecat
@@ -145,7 +155,7 @@ cleared on every new `start` and cannot leak into the next turn.
 To run the deterministic two-way proof, create or supply a PCM16 WAV containing a spoken caller utterance, then run:
 
 ```sh
-FREESWITCH_SIP_PASSWORD=local-sip-pass \
+FREESWITCH_SIP_PASSWORD=pass \
   ACC_SIP_PROOF_LOCAL_HOST=192.168.86.28 \
   npm run pipecat:verto:live-proof -- \
   --caller-audio artifacts/caller-speech.wav \
@@ -170,7 +180,7 @@ The accepted #222 proof must come from the active Verto/WebRTC call leg, not pos
 
 ```text
 User: 1000
-Password: local-sip-pass
+Password: pass
 Domain/proxy: 127.0.0.1:5060
 Transport: UDP
 Dial: 8600
@@ -182,7 +192,7 @@ If using an already-running native/Homebrew FreeSWITCH instead of the compose se
 fs_cli -x 'global_getvar default_password'
 ```
 
-On Alberto's current local Homebrew FreeSWITCH, the active SIP profile binds to `192.168.86.28:5060` and extension `1000` uses the `default_password` value rather than the compose-only `local-sip-pass`.
+On Alberto's current local Homebrew FreeSWITCH, the active SIP profile binds to `192.168.86.28:5060` and extension `1000` uses the `default_password` value rather than the compose-only `pass`.
 
 5. Speak a real caller utterance, then hang up. Review:
 

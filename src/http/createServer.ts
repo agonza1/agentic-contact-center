@@ -5761,15 +5761,17 @@ async function routeRequest(
     }
     const requestedModel = getOptionalTrimmedString(body.model);
     if (requestedModel && requestedModel !== target.model) {
-      writeJson(response, 409, {
-        ok: false,
-        provider,
-        error: "tts_model_selection_mismatch",
-        requestedModel,
-        selectedModel: target.model,
-        nextStep: "Refresh the ClueCon presentation and use the model selected in the Live TTS latency lab.",
-      });
-      return;
+      if (provider === "kokoro") {
+        writeJson(response, 409, {
+          ok: false,
+          provider,
+          error: "tts_model_selection_mismatch",
+          requestedModel,
+          selectedModel: target.model,
+          nextStep: "Refresh the ClueCon presentation and use the model selected in the Live TTS latency lab.",
+        });
+        return;
+      }
     }
     const requestedVoice = getOptionalTrimmedString(body.voice);
     const voice = requestedVoice && /^[a-z0-9_-]{1,64}$/i.test(requestedVoice) ? requestedVoice : target.voice;

@@ -993,7 +993,7 @@ function runSelfTest() {
   const requestUri = "sip:8600@192.168.86.28:5060";
   const authorization = digestAuthorization({
     username: "1000",
-    password: "local-sip-pass",
+    password: "pass",
     method: "INVITE",
     uri: requestUri,
     challenge,
@@ -1195,7 +1195,7 @@ async function main() {
     localSipPort: Number(argValue("--local-sip-port", process.env.ACC_SIP_PROOF_LOCAL_SIP_PORT || "5094")),
     localRtpPort: Number(argValue("--local-rtp-port", process.env.ACC_SIP_PROOF_LOCAL_RTP_PORT || "6002")),
     username: argValue("--username", process.env.FREESWITCH_SIP_USERNAME || "1000"),
-    password: argValue("--password", process.env.FREESWITCH_SIP_PASSWORD || "local-sip-pass"),
+    password: argValue("--password", process.env.FREESWITCH_SIP_PASSWORD || "pass"),
     domain: argValue("--domain", process.env.FREESWITCH_SIP_DOMAIN || remoteHost),
     destination: argValue("--destination", process.env.FREESWITCH_SIP_DESTINATION || "8600"),
     toneMs: Number(argValue("--tone-ms", "1800")),
