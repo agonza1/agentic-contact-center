@@ -126,13 +126,23 @@ and evidence overhead do not accumulate on top of each 20 ms frame. Chunk
 evidence is sampled every 50 frames by default instead of forcing a proof-file
 write for every frame.
 
-For a native/Homebrew FreeSWITCH used only on the local LAN, its internal SIP
-profile must advertise the LAN address in both `ext-sip-ip` and `ext-rtp-ip`.
-If it advertises a discovered public address instead, Linphone sends the dialog
-ACK to the wrong address and FreeSWITCH ends an otherwise working call after
-32 seconds with `SIP 408: ACK Timeout`. Set both profile values to
-`$${local_ip_v4}`, restart FreeSWITCH, and verify `sofia status profile
-internal` reports the LAN address in `URL`.
+For this local Docker lab, FreeSWITCH must advertise the host-reachable loopback
+address in `ext-sip-ip` and `ext-rtp-ip`:
+
+```text
+ext-sip-ip=127.0.0.1
+ext-rtp-ip=127.0.0.1
+```
+
+If FreeSWITCH advertises a container/private address instead (for example
+`172.x.x.x`), Linphone can send ACK/media to an unreachable destination and the
+call often falls out around 30 seconds with `SIP 408: ACK Timeout`. Restart
+FreeSWITCH and verify `sofia status profile internal` reports loopback in the
+`URL` field.
+
+For native/Homebrew FreeSWITCH on a direct LAN host, set
+`ext-sip-ip=ext-rtp-ip=$${local_ip_v4}` (or equivalent host LAN address), then
+verify `sofia status profile internal` reports that address.
 
 rtc-asr can occasionally emit a useful live interim transcript and then an
 empty final event for a short utterance such as “hello.” The shared Pipecat
