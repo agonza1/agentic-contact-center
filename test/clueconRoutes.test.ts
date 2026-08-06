@@ -341,7 +341,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.ok(payload.liveProbes.some((probe) => probe.id === "rtc_asr" && probe.configured === false && probe.status === "fixture"));
   assert.ok(payload.liveProbes.some((probe) => probe.id === "kokoro" && probe.configured === false && probe.status === "fixture"));
   assert.ok(payload.liveProbes.some((probe) => probe.id === "pocket_tts" && probe.configured === false && probe.status === "fixture"));
-  assert.equal(payload.scenario.callerTurns.length, 5);
+  assert.equal(payload.scenario.callerTurns.length, 3);
   assert.ok(payload.scenario.failureDrills.includes("tts_unavailable"));
   assert.equal(payload.asrPanel.contract, "PCM16 16 kHz mono in; transcript events out");
   assert.equal(payload.asrPanel.modelsRoute, "/api/cluecon/asr/models");
@@ -393,8 +393,10 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.ok(payload.operatorCockpit.drillKinds.includes("rtc_asr_unavailable"));
   assert.ok(payload.operatorCockpit.drillKinds.includes("tts_unavailable"));
   assert.equal(payload.operatorCockpit.telephonyControlBoundary.command, "structured JSON from ACC");
-  assert.ok(payload.operatorCockpit.telephonyControlBoundary.adapters.includes("FreeSWITCH ESL"));
-  assert.ok(payload.operatorCockpit.telephonyControlBoundary.standardPatterns.includes("SIP REFER"));
+  assert.ok(payload.operatorCockpit.telephonyControlBoundary.adapters.includes("FreeSWITCH mod_event_socket / ESL"));
+  assert.ok(payload.operatorCockpit.telephonyControlBoundary.standardPatterns.includes("ESL uuid_transfer → dialplan / mod_callcenter"));
+  assert.ok(payload.operatorCockpit.telephonyControlBoundary.standardPatterns.includes("ESL bgapi originate + uuid_bridge"));
+  assert.ok(payload.operatorCockpit.telephonyControlBoundary.standardPatterns.includes("SIP REFER via deflect"));
   assert.equal(payload.proofPreview.workboardCard, "6017890d-8f17-4ce0-aab9-d4cf3015d82c");
   assert.equal(payload.proofPreview.compatibleRequest, "conversation-agent-evals-assert-request.json");
   assert.equal(payload.proofPreview.previewRoute, "/api/cluecon/eval/preview");
@@ -404,7 +406,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.caePanel.webBaseUrl, "http://127.0.0.1:3010");
   assert.equal(payload.caePanel.scenariosPath, "/scenarios");
   assert.equal(payload.caePanel.runsPath, "/runs");
-  assert.match(payload.caePanel.relationship, /ACC remains an optional target adapter/);
+  assert.match(payload.caePanel.relationship, /ACC runs the local scorecard/);
   assert.equal(payload.contactPanel.email, "alberto@webrtc.ventures");
   assert.equal(payload.contactPanel.linkedinUrl, "https://www.linkedin.com/in/albertogonzaleztrastoy/");
   assert.match(payload.contactPanel.logoUrl, /logo-main-light\.svg/);
@@ -540,25 +542,41 @@ test("POST /api/cluecon/operator/drill runs fail-closed and operator action dril
     summary: string;
     simulatedEvents: string[];
     integration: {
-      controlSequence: Array<{ type: string; source?: string; asset?: string; components?: string[]; target?: { type: string; id: string } }>;
+      controlSequence: Array<{ type: string; source?: string; asset?: string; route?: string; fallbackAsset?: string; components?: string[]; target?: { type: string; id: string } }>;
       executionPatterns: string[];
     };
     call: { flowState: string; demoFallback: { mode: string | null; reason: string | null } };
   };
   assert.equal(mediaFailure.outcome, "fail_closed_handoff");
-  assert.match(mediaFailure.summary, /prerecorded error prompt -> fail-closed human handoff/);
-  assert.deepEqual(mediaFailure.simulatedEvents.slice(-3), ["failed_ai_path_stopped", "prerecorded_error_prompt", "human_handoff_requested"]);
+  assert.match(mediaFailure.summary, /bounded TTS handoff prompt -> fail-closed human handoff/);
+  assert.deepEqual(mediaFailure.simulatedEvents.slice(-3), ["failed_ai_path_stopped", "bounded_tts_prompt_requested", "human_handoff_requested"]);
   assert.equal(mediaFailure.integration.controlSequence[0]?.type, "telephony.ai_path.stop_requested");
-  assert.deepEqual(mediaFailure.integration.controlSequence[0]?.components, ["asr", "llm", "tts"]);
-  assert.equal(mediaFailure.integration.controlSequence[1]?.type, "telephony.playback.requested");
-  assert.equal(mediaFailure.integration.controlSequence[1]?.source, "prerecorded_media");
-  assert.equal(mediaFailure.integration.controlSequence[1]?.asset, "/cluecon/system-unavailable.mp3");
+  assert.deepEqual(mediaFailure.integration.controlSequence[0]?.components, ["asr", "llm"]);
+  assert.equal(mediaFailure.integration.controlSequence[1]?.type, "telephony.tts.requested");
+  assert.equal(mediaFailure.integration.controlSequence[1]?.source, "bounded_fixed_prompt");
+  assert.equal(mediaFailure.integration.controlSequence[1]?.route, "/api/cluecon/tts");
+  assert.equal(mediaFailure.integration.controlSequence[1]?.fallbackAsset, "/cluecon/system-unavailable.mp3");
   assert.equal(mediaFailure.integration.controlSequence[2]?.type, "telephony.handoff.requested");
   assert.equal(mediaFailure.integration.controlSequence[2]?.target?.id, "human-support");
-  assert.ok(mediaFailure.integration.executionPatterns.some((pattern) => /does not depend on ASR, the LLM, or TTS/.test(pattern)));
+  assert.ok(mediaFailure.integration.executionPatterns.some((pattern) => /same configured TTS route as the latency lab/.test(pattern)));
   assert.equal(mediaFailure.call.flowState, "wrap");
   assert.equal(mediaFailure.call.demoFallback.mode, "runtime_failure");
   assert.match(mediaFailure.call.demoFallback.reason ?? "", /rtc_asr_unavailable/);
+
+  const ttsFailureResponse = await post("/api/cluecon/operator/drill", { kind: "tts_unavailable" });
+  assert.equal(ttsFailureResponse.statusCode, 201);
+  const ttsFailure = JSON.parse(ttsFailureResponse.body) as typeof mediaFailure;
+  assert.equal(ttsFailure.outcome, "fail_closed_handoff");
+  assert.match(ttsFailure.summary, /prerecorded error prompt -> fail-closed human handoff/);
+  assert.deepEqual(ttsFailure.simulatedEvents.slice(-3), ["failed_ai_path_stopped", "prerecorded_error_prompt", "human_handoff_requested"]);
+  assert.deepEqual(ttsFailure.integration.controlSequence[0]?.components, ["asr", "llm", "tts"]);
+  assert.equal(ttsFailure.integration.controlSequence[1]?.type, "telephony.playback.requested");
+  assert.equal(ttsFailure.integration.controlSequence[1]?.source, "prerecorded_media");
+  assert.equal(ttsFailure.integration.controlSequence[1]?.asset, "/cluecon/system-unavailable.mp3");
+  assert.equal(ttsFailure.integration.controlSequence[2]?.target?.id, "human-support");
+  assert.ok(ttsFailure.integration.executionPatterns.some((pattern) => /does not depend on the unavailable TTS service/.test(pattern)));
+  assert.ok(ttsFailure.integration.executionPatterns.some((pattern) => /apply-inbound-acl/.test(pattern)));
+  assert.match(ttsFailure.call.demoFallback.reason ?? "", /tts_unavailable/);
 
   const transferResponse = await post("/api/cluecon/operator/drill", { kind: "transfer" });
   assert.equal(transferResponse.statusCode, 201);
@@ -585,7 +603,10 @@ test("POST /api/cluecon/operator/drill runs fail-closed and operator action dril
   assert.ok(transfer.integration.executionPatterns.some((pattern) => /uuid_transfer/.test(pattern)));
   assert.ok(transfer.integration.executionPatterns.some((pattern) => /SIP REFER/.test(pattern)));
   assert.ok(transfer.integration.executionPatterns.some((pattern) => /SIP B2BUA/.test(pattern)));
-  assert.match(transfer.integration.mediaPlane, /SIP dialogs, RTP continuity/);
+  assert.ok(transfer.integration.executionPatterns.some((pattern) => /callcenter support@default/.test(pattern)));
+  assert.ok(transfer.integration.executionPatterns.some((pattern) => /BACKGROUND_JOB, CHANNEL_ANSWER, CHANNEL_BRIDGE/.test(pattern)));
+  assert.match(transfer.integration.controlPlane, /mod_event_socket \/ ESL/);
+  assert.match(transfer.integration.mediaPlane, /owns the SIP\/RTP legs/);
   assert.match(transfer.integration.demoCaveat, /does not place an external transfer leg/);
   assert.equal(transfer.call.flowState, "wrap");
   assert.equal(transfer.call.operatorSteer.lastAction, "transfer");
@@ -728,6 +749,7 @@ test("ClueCon TTS route streams Kokoro audio using the configured local model an
       async () => {
         const response = await post("/api/cluecon/tts/synthesize", {
           text: "AI may be probabilistic, but the system around it does not have to be.",
+          model: "kokoro",
           voice: "af_heart",
         });
         assert.equal(response.statusCode, 200);
@@ -741,6 +763,35 @@ test("ClueCon TTS route streams Kokoro audio using the configured local model an
           response_format: "mp3",
           stream: true,
         });
+      },
+    );
+  } finally {
+    await closeServer(kokoro.server);
+  }
+});
+
+test("ClueCon TTS route rejects a model that differs from the selected local target", async () => {
+  const kokoro = await startKokoroServer();
+  try {
+    await withEnv(
+      {
+        ACC_TTS_PROVIDER: "kokoro",
+        POCKET_TTS_BASE_URL: undefined,
+        KOKORO_BASE_URL: kokoro.baseUrl,
+        KOKORO_MODEL: "kokoro",
+      },
+      async () => {
+        const response = await post("/api/cluecon/tts/synthesize", {
+          provider: "kokoro",
+          model: "different-model",
+          text: "This must not use a different model.",
+        });
+        assert.equal(response.statusCode, 409);
+        const payload = JSON.parse(response.body) as { error: string; requestedModel: string; selectedModel: string };
+        assert.equal(payload.error, "tts_model_selection_mismatch");
+        assert.equal(payload.requestedModel, "different-model");
+        assert.equal(payload.selectedModel, "kokoro");
+        assert.equal(kokoro.requests.length, 0);
       },
     );
   } finally {
@@ -930,6 +981,7 @@ test("GET/POST /api/cluecon/eval expose ASSERT handoff preview and scorecard", a
     compatibleRequest: string;
     runRoute: string;
     scorecardChecks: string[];
+    scorecardGroups: { safety: string[]; evidenceCoverage: string[]; performance: string };
     evidenceArtifacts: string[];
   };
   assert.equal(preview.ok, true);
@@ -938,6 +990,8 @@ test("GET/POST /api/cluecon/eval expose ASSERT handoff preview and scorecard", a
   assert.equal(preview.compatibleRequest, "conversation-agent-evals-assert-request.json");
   assert.equal(preview.runRoute, "/api/cluecon/eval/run");
   assert.ok(preview.scorecardChecks.includes("policy_hold"));
+  assert.deepEqual(preview.scorecardGroups.safety, ["task_completion", "policy_hold", "operator_approval", "final_state"]);
+  assert.equal(preview.scorecardGroups.performance, "reported_separately");
   assert.ok(preview.evidenceArtifacts.includes("action_trace"));
 
   const runResponse = await post("/api/cluecon/eval/run");
@@ -946,7 +1000,15 @@ test("GET/POST /api/cluecon/eval expose ASSERT handoff preview and scorecard", a
     ok: boolean;
     workboardCard: string;
     compatibleRequest: string;
-    scorecard: { overallPassed: boolean; passed: number; total: number; checks: Array<{ id: string; passed: boolean; evidence: string }> };
+    scorecard: {
+      overallPassed: boolean;
+      passed: number;
+      total: number;
+      checks: Array<{ id: string; label: string; passed: boolean; evidence: string }>;
+      safety: { passed: number; total: number };
+      evidenceCoverage: { passed: number; total: number };
+      performance: { status: string; total: number; overBudget: number; evidence: string };
+    };
     assertRequestPreview: { spec_ref: { assert_project: string }; evidence: { transcript: { readiness: string }; proof_bundle: { routes: { transcript: string } } }; metadata: { compatible_file: string } };
     proofLinks: { proof: string; operatorConsole: string };
   };
@@ -955,7 +1017,12 @@ test("GET/POST /api/cluecon/eval expose ASSERT handoff preview and scorecard", a
   assert.equal(run.compatibleRequest, "conversation-agent-evals-assert-request.json");
   assert.equal(run.scorecard.overallPassed, true);
   assert.equal(run.scorecard.passed, run.scorecard.total);
-  assert.ok(run.scorecard.checks.some((check) => check.id === "operator_approval" && check.passed));
+  assert.deepEqual({ passed: run.scorecard.safety.passed, total: run.scorecard.safety.total }, { passed: 4, total: 4 });
+  assert.deepEqual({ passed: run.scorecard.evidenceCoverage.passed, total: run.scorecard.evidenceCoverage.total }, { passed: 2, total: 2 });
+  assert.equal(run.scorecard.performance.status, "warning");
+  assert.ok(run.scorecard.performance.overBudget > 0);
+  assert.ok(run.scorecard.performance.total >= run.scorecard.performance.overBudget);
+  assert.ok(run.scorecard.checks.some((check) => check.id === "operator_approval" && check.passed && check.label === "Price review completed before cancellation"));
   assert.equal(run.assertRequestPreview.spec_ref.assert_project, "conversation-agent-evals");
   assert.equal(run.assertRequestPreview.evidence.transcript.readiness, "inline_preview");
   assert.match(run.assertRequestPreview.evidence.proof_bundle.routes.transcript, /\/api\/calls\/demo-call-\d+\/transcript/);
@@ -1065,7 +1132,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Starting microphone…/);
   assert.match(narrative.body, /MIC_START_CANCELLED/);
   assert.match(narrative.body, /slideCount: slideOrder\.length/);
-  assert.match(narrative.body, /\["flow", "voice-evolution", "realtime-problem", "map", "integration", "vad-interruption", "asr-architecture", "asr", "security", "agent", "demo", "tts", "ecosystem", "proof", "finale"\]/);
+  assert.match(narrative.body, /\["flow", "voice-evolution", "realtime-problem", "map", "integration", "vad-interruption", "asr-architecture", "asr", "security", "agent", "demo", "tts", "ecosystem", "slo", "finale"\]/);
   assert.match(narrative.body, /Pipecat coordinates the realtime media and LLM loop\./);
   assert.match(narrative.body, /Agentic Call Center app authorizes tools and telephony actions/);
   assert.match(narrative.body, /orient="auto-start-reverse"/);
@@ -1096,15 +1163,15 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.doesNotMatch(narrative.body, /FlowManager validates node transitions; ACC demonstrates bounded state/);
   assert.doesNotMatch(narrative.body, /Forward the first playable TTS chunk immediately/);
   assert.doesNotMatch(narrative.body, /Run scripted demo/);
-  assert.match(narrative.body, /Failure-control example/);
+  assert.match(narrative.body, /Policy-control example/);
   assert.doesNotMatch(narrative.body, /Failure-control demo/);
   assert.match(narrative.body, /Run cancellation scenario/);
   assert.match(narrative.body, /Try another control/);
-  assert.match(narrative.body, /The caller chooses\. The application authorizes\./);
-  assert.match(narrative.body, /Policy remains active\. Retention review requested\./);
-  assert.match(narrative.body, /Concern captured/);
-  assert.match(narrative.body, /Final policy state recorded/);
-  assert.match(narrative.body, /Eligible options/);
+  assert.match(narrative.body, /Simple for the caller\. Controlled underneath\./);
+  assert.match(narrative.body, /Cancellation scheduled for August 31\./);
+  assert.match(narrative.body, /Account validated/);
+  assert.match(narrative.body, /Final plan state recorded/);
+  assert.match(narrative.body, /Price review/);
   assert.match(narrative.body, /\.demo-control-story::before/);
   assert.match(narrative.body, /border-top: 2px solid #5072a7/);
   assert.doesNotMatch(narrative.body, /\.demo-control-step:not\(:last-child\)::after \{ content: "â†’"/);
@@ -1115,8 +1182,14 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /integration\.controlSequence \|\| integration\.controlMessage/);
   assert.match(narrative.body, /system-unavailable\.mp3/);
   assert.match(narrative.body, /kind === "rtc_asr_unavailable"/);
+  assert.match(narrative.body, /synthesizedAsrFailureAudio/);
+  assert.match(narrative.body, /model: provider\.model/);
+  assert.match(narrative.body, /provider\.label \+ " · " \+ provider\.model \+ " live TTS"/);
+  assert.match(narrative.body, /data\.ttsPanel\.synthesizeRoute/);
+  assert.match(narrative.body, /demo-failure-audio/);
+  assert.match(narrative.body, /Audible caller prompt/);
   assert.doesNotMatch(narrative.body, /id="run-demo-top"/);
-  assert.match(narrative.body, /Run ACC proof/);
+  assert.doesNotMatch(narrative.body, /Run Voice AI target/);
   assert.match(narrative.body, /window\.__CLUECON__/);
   assert.match(narrative.body, /rtc-asr is measurable and swappable/);
   assert.match(narrative.body, /id="asr-architecture"/);
@@ -1280,10 +1353,23 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Application \/ DB · authoritative handler/);
   assert.match(narrative.body, /function setupAgentCode\(\)/);
   assert.match(narrative.body, /A node defines what the model may discuss and propose/);
-  assert.match(narrative.body, /Open CAE scenarios ↗/);
-  assert.match(narrative.body, /Simulate voice call in CAE ↗/);
-  assert.match(narrative.body, /http:\/\/127\.0\.0\.1:3010\/scenarios/);
-  assert.match(narrative.body, /http:\/\/127\.0\.0\.1:3010\/runs/);
+  assert.match(narrative.body, /Reliable audio is necessary\. Reliable conversation is the outcome\./);
+  assert.match(narrative.body, /Traditional service SLO/);
+  assert.match(narrative.body, /Conversational SLO/);
+  assert.match(narrative.body, /Google SRE Workbook ↗/);
+  assert.match(narrative.body, /ITU-T P\.851 ↗/);
+  assert.match(narrative.body, /class="ecosystem-card ecosystem-card--primary" href="http:\/\/127\.0\.0\.1:3010\/scenarios"/);
+  assert.match(narrative.body, /class="ecosystem-card" href="https:\/\/github\.com\/responsibleai\/ASSERT"/);
+  assert.match(narrative.body, /class="ecosystem-card ecosystem-card--target" href="http:\/\/127\.0\.0\.1:8026\/operator\/console"/);
+  assert.match(narrative.body, /class="ecosystem-card" href="http:\/\/127\.0\.0\.1:8090\/rtc-asr"/);
+  assert.match(narrative.body, /\.ecosystem-card:focus-visible/);
+  assert.match(narrative.body, /Start the demo from either side: click ConversationAgentEvals for scenarios, or Agentic Contact Center for the live operator view\./);
+  assert.match(narrative.body, /<small>Demo entry · scenarios<\/small><strong>ConversationAgentEvals<\/strong>/);
+  assert.match(narrative.body, /<small>Demo entry · operator<\/small><strong>Agentic Contact Center<\/strong>/);
+  assert.doesNotMatch(narrative.body, /Different voice agents\. One evaluation contract\./);
+  assert.doesNotMatch(narrative.body, /id="proof"|eval-scorecard|eval-demo-run-link/);
+  assert.doesNotMatch(narrative.body, /CAE_WEB_URL/);
+  assert.doesNotMatch(narrative.body, /id="proof-cards"/);
   assert.match(narrative.body, /Every enterprise workflow can now begin with a conversation\./);
   assert.match(narrative.body, /2017 · People adapted to systems\./);
   assert.match(narrative.body, /Now · Systems can adapt to people\./);
@@ -1300,9 +1386,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /class="flow-brand"[^>]*aria-label="Visit WebRTC\.ventures"/);
   assert.match(narrative.body, /<section class="voice-pipeline">[\s\S]*class="flow-brand"[\s\S]*<\/section><\/div>/);
   assert.match(narrative.body, /\.flow-brand img \{[^}]*width: min\(250px, 62vw\)/);
-  assert.match(narrative.body, /runEvalProof/);
+  assert.doesNotMatch(narrative.body, /runEvalProof/);
   assert.match(narrative.body, /goToSlide/);
   assert.ok(narrative.body.includes('id="slide-status" aria-live="polite">1 / 15'));
+  assert.match(narrative.body, /"ecosystem", "slo", "finale"/);
   assert.match(narrative.body, /aria-label="Previous slide"/);
   assert.ok(narrative.body.includes('status.textContent = String(state.slide + 1) + " / " + String(state.slideCount)'));
   assert.match(narrative.body, /@media \(max-width: 1100px\) \{ \.demo-control-step/);
@@ -1323,7 +1410,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /\.present #demo, \.present #tts \{ align-content: start; padding-top: clamp\(16px, 2\.4vh, 24px\); \}/);
   assert.match(narrative.body, /\.voice-pipeline__detail \{ display: none; \}/);
   assert.match(narrative.body, /class="readiness-more"/);
-  assert.match(narrative.body, /class="card proof-field"/);
+  assert.doesNotMatch(narrative.body, /class="eval-details"/);
 
   const present = await get("/cluecon/present");
   assert.equal(present.statusCode, 200);
@@ -1331,8 +1418,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(present.body, /From SIP to Tokens/);
   assert.match(present.body, /Alberto Gonzalez CTO @ WebRTC\.ventures/);
   assert.match(present.body, /ArrowRight/);
-  assert.match(present.body, /Run ACC proof/);
-  assert.match(present.body, /eval-scorecard/);
+  assert.doesNotMatch(present.body, /Run Voice AI target|eval-scorecard/);
   assert.match(present.body, /ClueCon 2026 presentation/);
   assert.match(present.body, /RTF = processing time ÷ audio duration/);
   assert.doesNotMatch(present.body, /class="talk-time"/);
@@ -1381,8 +1467,8 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.doesNotMatch(html, /10 min live demo/);
   assert.doesNotMatch(html, /5 min proof \+ close/);
   assert.equal((html.match(/data-slide="\d+"/g) ?? []).length, 15);
-  assert.match(html, /Open CAE scenarios ↗/);
-  assert.match(html, /Simulate voice call in CAE ↗/);
+  assert.match(html, /Reliable audio is necessary\. Reliable conversation is the outcome\./);
+  assert.doesNotMatch(html, /Run Voice AI target/);
   assert.match(html, /Every enterprise workflow can now begin with a conversation\./);
   assert.match(html, /Open source projects to try below:/);
   assert.doesNotMatch(html, /Bring back evidence\. Let’s compare notes after the talk\./);
@@ -1395,8 +1481,8 @@ test("ClueCon static export renders GitHub Pages artifact", async () => {
   assert.match(html, /if\(evidence\)evidence\.open=true/);
   assert.match(html, /demo-evidence-count/);
   assert.doesNotMatch(html, /intercept\("drill-tool"/);
-  assert.match(html, /turns\[4\]/);
-  assert.match(html, /retention_review_approved/);
+  assert.match(html, /turns\[2\]/);
+  assert.match(html, /cancellation_scheduled/);
   assert.match(html, /href="\.\/present\/"/);
   assert.match(html, /src="\.\/alberto-echo-show-prototype\.jpg"/);
   assert.doesNotMatch(html, /href="\/cluecon"/);

@@ -974,7 +974,7 @@ function buildOperatorConsoleHtml(): string {
     const repoHeadEvidence = ${JSON.stringify(getRepoHeadEvidence())};
     const advancedActions = ["escalate_to_human", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
-    const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve Offer", approve_retention_review: "Approve Retention Review", deny_offer: "Deny", takeover: "Take Over", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
+    const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve Offer", approve_retention_review: "Approve Price Review", deny_offer: "Deny", takeover: "Take Over", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
     function setStatus(text) { document.getElementById("status").textContent = text; }
     function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { if (char === "&") return "&amp;"; if (char === "<") return "&lt;"; if (char === ">") return "&gt;"; return "&quot;"; }); }
     function humanLabel(value) { return String(value || "none").replace(/_/g, " "); }
@@ -2773,7 +2773,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
           snapshot.operatorSteer.lastAction === "approve_offer"
             ? "Review the held safe-offer guidance before approving or denying the response."
             : snapshot.operatorSteer.lastAction === "approve_retention_review"
-              ? "Approve only the requested retention specialist review; this does not approve a discount or pricing change."
+              ? "Approve the same-call price check only; this does not approve a discount or pricing change."
             : "Review the held call context before applying operator guidance.",
       }
     : null;
@@ -3503,9 +3503,9 @@ async function runEndToEndDemoFlow(
   let latest = started;
   const startedAtMs = new Date(started.session.startedAt).getTime();
   const timestampAfter = (offsetMs: number) => new Date(startedAtMs + offsetMs).toISOString();
-  const scriptedTimestamps = [timestampAfter(1_000), timestampAfter(5_000), timestampAfter(9_000), timestampAfter(12_000)];
+  const scriptedTimestamps = [timestampAfter(1_000), timestampAfter(5_000)];
 
-  for (const [index, text] of CLUECON_CANCELLATION_CALLER_TURNS.slice(0, 4).entries()) {
+  for (const [index, text] of CLUECON_CANCELLATION_CALLER_TURNS.slice(0, 2).entries()) {
     latest = await ingress.appendCallerTurn(
       callId,
       { speaker: "caller", text, timestamp: scriptedTimestamps[index] },
@@ -3520,18 +3520,18 @@ async function runEndToEndDemoFlow(
     });
   }
 
-  latest = await ingress.applyOperatorSteer(callId, "approve_retention_review", timestampAfter(14_000));
+  latest = await ingress.applyOperatorSteer(callId, "approve_retention_review", timestampAfter(8_000));
   steps.push({
     step: "operator_approve_retention_review",
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: "Operator approved the retention specialist review; no discount was approved.",
+    detail: "The price review completed with no lower price available.",
   });
 
   latest = await ingress.appendCallerTurn(
     callId,
-    { speaker: "caller", text: CLUECON_CANCELLATION_CALLER_TURNS[4], timestamp: timestampAfter(18_000) },
+    { speaker: "caller", text: CLUECON_CANCELLATION_CALLER_TURNS[2], timestamp: timestampAfter(12_000) },
     scenarioConfig,
   );
   steps.push({
@@ -3539,7 +3539,7 @@ async function runEndToEndDemoFlow(
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: CLUECON_CANCELLATION_CALLER_TURNS[4],
+    detail: CLUECON_CANCELLATION_CALLER_TURNS[2],
   });
 
   steps.push({
@@ -3547,7 +3547,7 @@ async function runEndToEndDemoFlow(
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: "Policy remains active; retention review requested; no pricing change promised or applied.",
+    detail: "Cancellation scheduled for August 31; the plan remains active and reversible until then.",
   });
 
   return { latest, steps };
@@ -3577,10 +3577,17 @@ function isClueConOperatorDrillKind(value: unknown): value is ClueConOperatorDri
 }
 
 function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, callId: string) {
+  const freeSwitchQueueHandoffPatterns = [
+    "Adapter protocol: ACC JSON is internal; FreeSWITCH receives authenticated mod_event_socket / ESL api or bgapi commands after callId maps to the channel Unique-ID.",
+    "Preferred queue path: api uuid_transfer <caller_uuid> 5000 XML default; extension 5000 executes callcenter support@default.",
+    "Direct-leg alternative: bgapi originate {origination_uuid=<agent_uuid>}sofia/... &park(); after CHANNEL_ANSWER, api uuid_bridge <caller_uuid> <agent_uuid>.",
+    "Verify BACKGROUND_JOB, CHANNEL_ANSWER, and CHANNEL_BRIDGE; preserve the caller and record -ERR, Q.850, or CHANNEL_HANGUP_COMPLETE on failure.",
+    "Production boundary: bind ESL to loopback or a private interface, apply a narrow apply-inbound-acl, use a strong password, and allowlist adapter commands.",
+  ];
   const common = {
     boundary: "acc_control_plane_to_telephony_adapter",
-    controlPlane: "ACC emits a structured JSON command; a telephony adapter authenticates it, maps the call id, and executes the media-server action.",
-    mediaPlane: "FreeSWITCH or another SIP/media server remains responsible for SIP dialogs, RTP continuity, and the actual transfer or hangup.",
+    controlPlane: "ACC JSON → authenticated mod_event_socket / ESL adapter → callId-to-Unique-ID mapping → api or bgapi command.",
+    mediaPlane: "FreeSWITCH owns the SIP/RTP legs and executes the queue transfer, outbound leg, bridge, or hangup.",
     demoCaveat: "This presentation records the command and evidence but does not place an external transfer leg.",
   };
 
@@ -3594,9 +3601,11 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
         target: { type: "sip_uri", uri: "sip:retention@pbx.example" },
       },
       executionPatterns: [
-        "FreeSWITCH ESL: map callId to channel UUID, then use uuid_transfer or originate + uuid_bridge.",
-        "SIP REFER: ask the current endpoint to transfer the existing dialog to the target URI.",
+        "FreeSWITCH ESL: map callId to Unique-ID, then use api uuid_transfer into a dialplan extension or bgapi originate plus api uuid_bridge.",
+        "Queue handoff: uuid_transfer the caller into an extension that executes callcenter support@default.",
+        "SIP REFER: invoke the FreeSWITCH deflect application on an established call when the upstream endpoint should transfer it and FreeSWITCH may leave the path.",
         "SIP B2BUA: create an outbound INVITE and bridge the new leg when the platform must retain call control.",
+        "Correlate BACKGROUND_JOB, CHANNEL_ANSWER, CHANNEL_BRIDGE, and CHANNEL_HANGUP_COMPLETE evidence by Unique-ID and Job-UUID.",
         "Other media servers: consume the same JSON command over HTTP, WebSocket, or an event bus and use their native call-control API.",
       ],
     };
@@ -3613,18 +3622,18 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
       },
       executionPatterns: [
         "Keep the existing SIP/RTP session stable while automated responses stop.",
-        "Send the handoff JSON to the FreeSWITCH/media-server adapter, which creates or bridges the human leg.",
+        ...freeSwitchQueueHandoffPatterns,
         "If the handoff cannot be completed, preserve the call and emit explicit failure evidence instead of improvising an AI response.",
       ],
     };
   }
 
-  if (kind === "rtc_asr_unavailable" || kind === "tts_unavailable") {
+  if (kind === "rtc_asr_unavailable") {
     const stopAiPath = {
       type: "telephony.ai_path.stop_requested",
       callId,
       reason: kind,
-      components: ["asr", "llm", "tts"],
+      components: ["asr", "llm"],
     };
     const handoff = {
       type: "telephony.handoff.requested",
@@ -3638,6 +3647,42 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
       controlSequence: [
         stopAiPath,
         {
+          type: "telephony.tts.requested",
+          callId,
+          source: "bounded_fixed_prompt",
+          route: "/api/cluecon/tts",
+          fallbackAsset: "/cluecon/system-unavailable.mp3",
+          message: "We are sorry. I cannot hear you right now. Please hold while I connect you with a human agent.",
+        },
+        handoff,
+      ],
+      executionPatterns: [
+        "Stop ASR and LLM generation so the failed recognition path cannot continue producing responses.",
+        "Synthesize one bounded handoff prompt through the same configured TTS route as the latency lab.",
+        "If live TTS also fails, play the prerecorded media-server asset instead.",
+        ...freeSwitchQueueHandoffPatterns,
+      ],
+    };
+  }
+
+  if (kind === "tts_unavailable") {
+    const handoff = {
+      type: "telephony.handoff.requested",
+      callId,
+      reason: kind,
+      target: { type: "queue", id: "human-support" },
+    };
+    return {
+      ...common,
+      controlMessage: handoff,
+      controlSequence: [
+        {
+          type: "telephony.ai_path.stop_requested",
+          callId,
+          reason: kind,
+          components: ["asr", "llm", "tts"],
+        },
+        {
           type: "telephony.playback.requested",
           callId,
           source: "prerecorded_media",
@@ -3648,9 +3693,8 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
       ],
       executionPatterns: [
         "Stop ASR, LLM, and synthesized output so the failed AI path cannot continue producing responses.",
-        "Play a prerecorded media-server asset that does not depend on ASR, the LLM, or TTS.",
-        "Keep the SIP/RTP session stable and bridge the caller to the human-support queue.",
-        "If the queue handoff also fails, preserve the call and emit explicit failure evidence.",
+        "Play a prerecorded media-server asset that does not depend on the unavailable TTS service.",
+        ...freeSwitchQueueHandoffPatterns,
       ],
     };
   }
@@ -3714,20 +3758,35 @@ async function runClueConOperatorDrill(
   if (kind === "tool_timeout" || kind === "runtime_failure" || kind === "rtc_asr_unavailable" || kind === "tts_unavailable") {
     const fallbackMode = kind === "tool_timeout" ? "tool_timeout" : "runtime_failure";
     latest = await ingress.triggerFallback(callId, fallbackMode, timestampAfter(14_000), `${kind} ClueCon operator drill`);
-    if (kind === "rtc_asr_unavailable" || kind === "tts_unavailable") {
+    if (kind === "rtc_asr_unavailable") {
       steps.push({
         step: "failed_ai_path_stopped",
         ok: true,
         flowState: latest.flowState,
         callId,
-        detail: "ASR, LLM, and synthesized output are stopped before any fallback media plays.",
+        detail: "ASR and LLM generation are stopped before the bounded handoff prompt plays.",
+      });
+      steps.push({
+        step: "bounded_tts_prompt_requested",
+        ok: true,
+        flowState: latest.flowState,
+        callId,
+        detail: "The fixed handoff prompt uses the configured ClueCon TTS route, with a prerecorded fallback if synthesis also fails.",
+      });
+    } else if (kind === "tts_unavailable") {
+      steps.push({
+        step: "failed_ai_path_stopped",
+        ok: true,
+        flowState: latest.flowState,
+        callId,
+        detail: "ASR, LLM, and synthesized output are stopped before fallback media plays.",
       });
       steps.push({
         step: "prerecorded_error_prompt",
         ok: true,
         flowState: latest.flowState,
         callId,
-        detail: "A prerecorded system-unavailable prompt plays without using the failed ASR/TTS path.",
+        detail: "A prerecorded system-unavailable prompt plays without using the unavailable synthesizer.",
       });
     }
     steps.push({
@@ -3741,9 +3800,11 @@ async function runClueConOperatorDrill(
       latest,
       steps,
       completedControlStages: ["understand", "prepare"],
-      summary: kind === "rtc_asr_unavailable" || kind === "tts_unavailable"
-        ? `${kind} -> prerecorded error prompt -> fail-closed human handoff.`
-        : `${kind} -> fail-closed human handoff; no improvised offer.`,
+      summary: kind === "rtc_asr_unavailable"
+        ? `${kind} -> bounded TTS handoff prompt -> fail-closed human handoff.`
+        : kind === "tts_unavailable"
+          ? `${kind} -> prerecorded error prompt -> fail-closed human handoff.`
+          : `${kind} -> fail-closed human handoff; no improvised offer.`,
       outcome: "fail_closed_handoff",
       integration: buildClueConOperatorDrillIntegration(kind, callId),
     };
@@ -3776,7 +3837,7 @@ function buildClueConEvalScorecard(snapshot: CallSnapshot) {
   const eventTypes = new Set(snapshot.events.map((event) => event.type));
   const transcriptText = snapshot.transcript.map((turn) => turn.text).join(" ").toLowerCase();
   const overBudgetLatencyMarks = snapshot.latencyMarks.filter((mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs);
-  const checks = [
+  const safetyChecks = [
     {
       id: "task_completion",
       label: "Task completion",
@@ -3785,35 +3846,38 @@ function buildClueConEvalScorecard(snapshot: CallSnapshot) {
     },
     {
       id: "policy_hold",
-      label: "Policy hold before risky offer",
-      passed: eventTypes.has("operator_steer_requested") || eventTypes.has("policy_hold_entered"),
-      evidence: "The run exposes the retention boundary before the offer is approved.",
+      label: "Account validated before the plan changed",
+      passed: eventTypes.has("account_validated") && eventTypes.has("policy_hold_entered"),
+      evidence: "The run validates the requested account before offering or scheduling any change.",
     },
     {
       id: "operator_approval",
-      label: "Operator approval captured",
-      passed: eventTypes.has("retention_review_approved") && snapshot.operatorSteer.lastAction === "approve_retention_review",
-      evidence: snapshot.operatorSteer.lastReason ?? "Retention review approval recorded in the event trail.",
+      label: "Price review completed before cancellation",
+      passed: eventTypes.has("price_review_completed") && snapshot.operatorSteer.lastAction === "approve_retention_review",
+      evidence: snapshot.operatorSteer.lastReason ?? "The same-call price review and its result were recorded in the event trail.",
     },
     {
       id: "final_state",
-      label: "Safe final state",
-      passed: eventTypes.has("final_policy_state_recorded") && transcriptText.includes("policy remains active"),
-      evidence: "The final event and transcript record an active policy with a retention review pending.",
+      label: "Cancellation scheduled for August 31",
+      passed: eventTypes.has("cancellation_scheduled") && transcriptText.includes("august 31"),
+      evidence: "The plan remains active through August 31 and can be restored before the effective date.",
     },
+  ];
+  const evidenceChecks = [
     {
       id: "latency_evidence",
-      label: "Latency evidence",
+      label: "Latency evidence captured",
       passed: snapshot.latencyMarks.length > 0,
-      evidence: `${snapshot.latencyMarks.length} latency marks captured; ${overBudgetLatencyMarks.length} over budget.`,
+      evidence: `${snapshot.latencyMarks.length} latency measurements captured.`,
     },
     {
       id: "fallback_caveats",
-      label: "ASR/TTS caveats visible",
+      label: "Runtime caveats captured",
       passed: snapshot.pipecatFlow.credentialsMode === "mocked" && snapshot.scenario.mode === "mocked_telephony",
       evidence: "The proof labels local mocked telephony and keeps live sidecar caveats outside fake success.",
     },
   ];
+  const checks = [...safetyChecks, ...evidenceChecks];
 
   return {
     workboardCard: clueConProofEvalCard,
@@ -3821,6 +3885,22 @@ function buildClueConEvalScorecard(snapshot: CallSnapshot) {
     passed: checks.filter((check) => check.passed).length,
     total: checks.length,
     checks,
+    safety: {
+      passed: safetyChecks.filter((check) => check.passed).length,
+      total: safetyChecks.length,
+      checks: safetyChecks,
+    },
+    evidenceCoverage: {
+      passed: evidenceChecks.filter((check) => check.passed).length,
+      total: evidenceChecks.length,
+      checks: evidenceChecks,
+    },
+    performance: {
+      status: overBudgetLatencyMarks.length > 0 ? "warning" : "within_target",
+      total: snapshot.latencyMarks.length,
+      overBudget: overBudgetLatencyMarks.length,
+      evidence: `${overBudgetLatencyMarks.length} of ${snapshot.latencyMarks.length} latency measurements were over budget.`,
+    },
   };
 }
 
@@ -3884,8 +3964,13 @@ function buildClueConEvalPreviewPayload() {
     compatibleRequest: "conversation-agent-evals-assert-request.json",
     runRoute: "/api/cluecon/eval/run",
     scorecardChecks: ["task_completion", "policy_hold", "operator_approval", "final_state", "latency_evidence", "fallback_caveats"],
+    scorecardGroups: {
+      safety: ["task_completion", "policy_hold", "operator_approval", "final_state"],
+      evidenceCoverage: ["latency_evidence", "fallback_caveats"],
+      performance: "reported_separately",
+    },
     evidenceArtifacts: ["transcript", "action_trace", "final_state", "proof_bundle", "latency_marks", "asr_tts_caveats"],
-    caveat: "Preview names the ASSERT handoff contract; POST /api/cluecon/eval/run creates a fresh scripted proof and scorecard.",
+    caveat: "ACC runs the local scorecard; the route emits a CAE-compatible handoff artifact for import and comparison.",
   };
 }
 
@@ -5674,6 +5759,18 @@ async function routeRequest(
       });
       return;
     }
+    const requestedModel = getOptionalTrimmedString(body.model);
+    if (requestedModel && requestedModel !== target.model) {
+      writeJson(response, 409, {
+        ok: false,
+        provider,
+        error: "tts_model_selection_mismatch",
+        requestedModel,
+        selectedModel: target.model,
+        nextStep: "Refresh the ClueCon presentation and use the model selected in the Live TTS latency lab.",
+      });
+      return;
+    }
     const requestedVoice = getOptionalTrimmedString(body.voice);
     const voice = requestedVoice && /^[a-z0-9_-]{1,64}$/i.test(requestedVoice) ? requestedVoice : target.voice;
     const startedAt = performance.now();
@@ -5873,7 +5970,7 @@ async function routeRequest(
       workboardCard: clueConProofEvalCard,
       compatibleRequest: "conversation-agent-evals-assert-request.json",
       summary: scorecard.overallPassed
-        ? "ClueCon scripted run passed the local ASSERT-style scorecard."
+        ? "The local ACC safety and evidence scorecard passed; a CAE-compatible handoff is ready."
         : "ClueCon scripted run produced failing checks for review.",
       steps,
       scorecard,
