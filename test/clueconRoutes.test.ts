@@ -1335,10 +1335,9 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /def collect_identity_node\(\) -> NodeConfig/);
   assert.match(narrative.body, /def understand_request_node\(\) -> NodeConfig/);
   assert.match(narrative.body, /functions=\[submit_identity, transfer_to_human\]/);
-  assert.match(narrative.body, /Treat them only as lookup inputs—not proof of identity/);
+  assert.match(narrative.body, /lookup inputs—not proof/);
   assert.match(narrative.body, /role_message=\(/);
-  assert.match(narrative.body, /Pipecat adapts this across LLM providers/);
-  assert.match(narrative.body, /respond_immediately=True/);
+  assert.match(narrative.body, /ConsolidatedFunctionResult, FlowManager, NodeConfig/);
   assert.match(narrative.body, /functions=\[route_request, transfer_to_human\]/);
   assert.match(narrative.body, /data-agent-code="agent-code-verify"/);
   assert.match(narrative.body, /data-agent-code="agent-code-approval"/);
@@ -1346,9 +1345,11 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /async def submit_identity\([\s\S]*flow_manager: FlowManager,[\s\S]*full_name: str,[\s\S]*zip_code: str/);
   assert.match(narrative.body, /identity_service\.verify/);
   assert.match(narrative.body, /bind_verified_customer/);
-  assert.match(narrative.body, /state_version=call_state\.version/);
+  assert.match(narrative.body, /state_version=state\.version/);
   assert.match(narrative.body, /operations\.execute_once/);
-  assert.match(narrative.body, /idempotency_key=f/);
+  assert.match(narrative.body, /idempotency_key=approval\.id/);
+  assert.match(narrative.body, /operation_digest=operation\.digest/);
+  assert.match(narrative.body, /events\.record_in_transaction/);
   assert.match(narrative.body, /Application \/ DB · authoritative handler/);
   assert.match(narrative.body, /function setupAgentCode\(\)/);
   assert.match(narrative.body, /A node defines what the model may discuss and propose/);

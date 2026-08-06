@@ -1661,7 +1661,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
           <pre><code id="agent-code-content"></code></pre>
         </div>
       </div>
-      <template id="agent-code-identity">from pipecat.flows import NodeConfig
+      <template id="agent-code-identity">from pipecat.flows import ConsolidatedFunctionResult, FlowManager, NodeConfig
 
 def collect_identity_node() -> NodeConfig:
     return NodeConfig(
@@ -1670,30 +1670,25 @@ def collect_identity_node() -> NodeConfig:
             "You are a concise voice support agent. "
             "Never reveal account data before verification."
         ),
-        # Node objective; Pipecat adapts this across LLM providers.
         task_messages=[{
             "role": "developer",
             "content": (
-                "Collect the caller's full name and billing ZIP. "
-                "Treat them only as lookup inputs—not proof of identity. "
-                "Confirm both, then call submit_identity. "
-                "If the caller declines, offer a human handoff."
+                "Collect full name and billing ZIP as lookup inputs—not proof. "
+                "Confirm both, then call submit_identity; if declined, "
+                "offer a human handoff."
             ),
         }],
         functions=[submit_identity, transfer_to_human],
-        respond_immediately=True,
     )</template>
       <template id="agent-code-request">def understand_request_node() -> NodeConfig:
     return NodeConfig(
         name="understand_request",
         task_messages=[{
             "role": "developer",
-            "content": """
-            Ask how you can help.
-            Classify the request as account_information,
-            change_plan, cancellation, or other.
-            Call route_request after the request is clear.
-            """,
+            "content": (
+                "Ask how you can help. Classify as account_information, "
+                "change_plan, cancellation, or other; then call route_request."
+            ),
         }],
         functions=[route_request, transfer_to_human],
     )</template>
@@ -1702,54 +1697,57 @@ def collect_identity_node() -> NodeConfig:
     full_name: str,
     zip_code: str,
 ) -> ConsolidatedFunctionResult:
-    """Look up the caller and run the configured identity check."""
+    """Verify caller-provided lookup inputs.
+
+    Args:
+        full_name: Caller name.
+        zip_code: Billing ZIP.
+    """
+    call_id = flow_manager.state["call_id"]  # Seeded before initialize().
     candidate = await customers.lookup(
         full_name=normalize_name(full_name),
         zip_code=normalize_zip(zip_code),
     )
     verification = await identity_service.verify(
-        call_id=flow_manager.state["call_id"],
+        call_id=call_id,
         candidate=candidate,
     )
 
     if not verification.verified:
         return {"status": "not_verified"}, identity_retry_or_handoff()
 
+    state = await call_state.reload(call_id)
     await call_state.bind_verified_customer(
-        call_id=flow_manager.state["call_id"],
+        call_id=call_id,
         customer_id=verification.customer_id,
-        expected_version=flow_manager.state["state_version"],
+        expected_version=state.version,
     )
     return {"status": "verified"}, understand_request_node()</template>
-      <template id="agent-code-approval">async def authorize_operation(operation, call_state):
-    decision = await approvals.resolve(
-        customer_id=call_state.customer_id,
-        operation_id=operation.id,
-        state_version=call_state.version,
-    )
-
-    if decision.status != "approved":
-        return {"authorized": False}, transfer_to_human_node()
-
-    return {
-        "authorized": True,
-        "approval_id": decision.id,
-        "operation_id": operation.id,
-        "state_version": call_state.version,
-    }</template>
-      <template id="agent-code-execute">async def execute_approved_operation(call_id, operation, approval_id):
+      <template id="agent-code-approval">async def authorize_operation(call_id, operation_id):
     state = await call_state.reload(call_id)
-    approval = await approvals.get(approval_id)
-
-    if not approval.matches(operation.id, state.version):
-        return transfer_to_human_node()
-
-    result = await operations.execute_once(
-        operation,
-        idempotency_key=f"{call_id}:{operation.id}:{state.version}",
+    operation = await operations.get_confirmed(call_id, operation_id)
+    return await approvals.resolve(
+        customer_id=state.customer_id,
+        operation_id=operation.id,
+        operation_digest=operation.digest,
+        state_version=state.version,
     )
-    await events.record("operation_completed", result)
-    return explain_result_node(result)</template>
+</template>
+      <template id="agent-code-execute">async def execute_approved_operation(call_id, approval_id):
+    async with db.transaction():
+        state, approval = await reload_authoritative_inputs(call_id, approval_id)
+        operation = await operations.get_confirmed(call_id, approval.operation_id)
+        approval.require_valid_for(
+            customer_id=state.customer_id,
+            operation=operation,
+            state_version=state.version,
+        )  # Checks binding, status, expiry, and prior use.
+        result = await operations.execute_once(
+            operation,
+            idempotency_key=approval.id,
+        )
+        await events.record_in_transaction("operation_completed", result)
+        return result</template>
     </section>
     <section class="section-band slide" data-slide="11" id="ecosystem"><span class="kicker">WebRTC.ventures open source</span><h2>Three projects. One reliability loop.</h2><p class="subhead">Start the demo from either side: click ConversationAgentEvals for scenarios, or Agentic Contact Center for the live operator view.</p><div class="ecosystem-diagram"><div class="ecosystem-lane"><a class="ecosystem-card ecosystem-card--primary" href="${payload.caePanel.webBaseUrl}${payload.caePanel.scenariosPath}" target="_blank" rel="noreferrer" aria-label="Start the demo in ConversationAgentEvals scenarios"><small>Demo entry · scenarios</small><strong>ConversationAgentEvals</strong><span>Runs scenarios, normalizes proof, and compares regressions.</span></a><div class="ecosystem-arrow-down"><span>canonical evaluation</span><b>↓</b></div><a class="ecosystem-card" href="${payload.sourceRepos.assert}" target="_blank" rel="noreferrer" aria-label="Open the ASSERT repository"><small>Upstream engine</small><strong>ASSERT</strong><span>Generates and judges requirement-driven evaluations.</span></a></div><div class="ecosystem-handoff" aria-label="Bidirectional test and evidence handoff"><span>test scenarios →</span><span>← proof bundle</span></div><div class="ecosystem-lane"><a class="ecosystem-card ecosystem-card--target" href="http://127.0.0.1:8026/operator/console" target="_blank" rel="noreferrer" aria-label="Start the demo in the Agentic Contact Center operator view"><small>Demo entry · operator</small><strong>Agentic Contact Center</strong><span>Demonstrates the realtime voice-agent path and deterministic failure controls.</span></a><div class="ecosystem-arrow-down"><span>optional local STT</span><b>↓</b></div><a class="ecosystem-card" href="http://127.0.0.1:8090/rtc-asr" target="_blank" rel="noreferrer" aria-label="Open the local rtc-asr browser app"><small>Speech sidecar</small><strong>rtc-asr</strong><span>Streams transcripts and publishes reproducible ASR benchmarks.</span></a></div></div><div class="ecosystem-foot">Open components connected by explicit adapters and reviewable evidence.</div></section>
     <section class="section-band slide" data-slide="12" id="slo"><span class="kicker">Reliability targets</span><h2>Reliable audio is necessary. Reliable conversation is the outcome.</h2><p class="subhead">Traditional SLOs tell us whether the service answered. Conversational SLOs tell us whether the agent understood, acted correctly, and recovered safely.</p><div class="slo-layout"><article class="slo-column"><small>Traditional service SLO</small><strong>Did the system answer reliably?</strong><ul><li>Call connected</li><li>Two-way audio stayed available</li><li>Latency met its target</li><li>Infrastructure stayed healthy</li></ul></article><div class="slo-bridge"><b aria-hidden="true">→</b><span>same call · wider outcome</span></div><article class="slo-column slo-column--conversation"><small>Conversational SLO</small><strong>Did the agent do the right thing?</strong><ul><li>Understood the caller</li><li>Responded at the right time</li><li>Changed the correct business state</li><li>Clarified, recovered, or handed off safely</li></ul></article></div><div class="slo-measures"><div class="slo-measure"><strong>Response onset</strong><span>First audible response within target</span></div><div class="slo-measure"><strong>Task outcome</strong><span>Correct state or correct handoff</span></div><div class="slo-measure"><strong>Floor control</strong><span>Fast barge-in; few false interruptions</span></div><div class="slo-measure"><strong>Policy integrity</strong><span>Zero unauthorized consequential actions</span></div></div><div class="slo-foot"><span><strong>Evals gate a release.</strong> Conversational SLOs show whether it stays good in production.</span><span class="slo-sources"><a href="https://sre.google/workbook/implementing-slos/" target="_blank" rel="noreferrer">Google SRE Workbook ↗</a><a href="https://www.itu.int/rec/T-REC-P.851-200311-I/en" target="_blank" rel="noreferrer">ITU-T P.851 ↗</a></span></div></section>
