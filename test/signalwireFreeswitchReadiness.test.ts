@@ -428,6 +428,53 @@ esac
   }
 });
 
+for (const unroutableProbeIp of ["10.0.0.5", "192.0.2.10", "2001:db8::10", "::ffff:192.0.2.10"]) {
+  test(`SignalWire FreeSWITCH readiness rejects non-routable ACL probe IP: ${unroutableProbeIp}`, async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+    const fsCliBin = path.join(tempDir, "fs_cli");
+
+    try {
+      await writeFile(
+        fsCliBin,
+        "#!/bin/sh\nprintf '%s\\n' 'unexpected fs_cli invocation'\n",
+        "utf8",
+      );
+      await chmod(fsCliBin, 0o700);
+
+      await assert.rejects(
+        execFileAsync(process.execPath, [
+          "scripts/signalwire-freeswitch-readiness.mjs",
+          "--fs-cli-bin",
+          fsCliBin,
+          "--manifest",
+          path.join(tempDir, "readiness.json"),
+        ], {
+          cwd: repoRoot,
+          env: {
+            PATH: process.env.PATH ?? "",
+            SIGNALWIRE_TRUNK_MODE: "ip_auth",
+            SIGNALWIRE_FROM_NUMBER: "+12029687351",
+            FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+            SIGNALWIRE_SOURCE_IP_PROBE: unroutableProbeIp,
+          },
+          encoding: "utf8",
+        }),
+        (error: unknown) => {
+          const result = error as { stdout?: string; code?: number };
+          assert.equal(result.code, 2);
+          const payload = JSON.parse(result.stdout ?? "{}");
+          assert.equal(payload.manualCallReady, false);
+          assert.ok(payload.blockers.includes("invalid_signalwire_source_ip_probe"));
+          assert.deepEqual(payload.freeswitchCli, []);
+          return true;
+        },
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+}
+
 test("SignalWire FreeSWITCH readiness preserves bracketed IPv6 endpoint hosts", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
   const fsCliBin = path.join(tempDir, "fs_cli");

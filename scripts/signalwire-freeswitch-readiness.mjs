@@ -433,6 +433,8 @@ if (summary.blockers.length === 0 && !hasFlag("--skip-fs-cli")) {
     summary.blockers.push("signalwire_source_acl_probe_missing");
   } else if (!isIP(signalwireSourceIpProbe)) {
     summary.blockers.push("invalid_signalwire_source_ip_probe");
+  } else if (!isPublicIpAddress(signalwireSourceIpProbe)) {
+    summary.blockers.push("invalid_signalwire_source_ip_probe");
   }
 }
 
