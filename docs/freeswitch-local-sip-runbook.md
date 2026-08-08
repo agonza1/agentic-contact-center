@@ -8,7 +8,7 @@ For the shared Pipecat media-engine contract, run ACC and inspect:
 curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness
 ```
 
-That route is the Issue #214/#222 review surface for browser WebRTC, local SIP/FreeSWITCH, and future SignalWire SIP trunk audio. The preferred local SIP path is now a live FreeSWITCH Verto/WebRTC agent leg: Linphone calls `8600`, FreeSWITCH bridges the call to registered user `acc-pipecat`, and the Pipecat sidecar must answer that WebRTC leg so caller PCM streams to rtc-asr/ACC/Kokoro and return audio is heard in the same active call.
+That route is the Issue #214/#222 review surface for browser WebRTC, local SIP/FreeSWITCH, and future SignalWire SIP trunk audio. The preferred local SIP path is now a live FreeSWITCH Verto/WebRTC agent leg: Linphone calls `8611`, FreeSWITCH bridges the call to registered user `acc-pipecat`, and the Pipecat sidecar must answer that WebRTC leg so caller PCM streams to rtc-asr/ACC/Kokoro and return audio is heard in the same active call.
 
 ## Ports and credentials
 
@@ -16,8 +16,8 @@ That route is the Issue #214/#222 review surface for browser WebRTC, local SIP/F
 - FreeSWITCH SIP profile: `127.0.0.1:5060/UDP` or Docker-published `5060/UDP`
 - FreeSWITCH ESL: `127.0.0.1:8021`, password `ClueCon`
 - FreeSWITCH Verto: `ws://127.0.0.1:8081`, WSS on `127.0.0.1:8082`
-- Local SIP account: extension `1000`, password `local-sip-pass`, domain `127.0.0.1`
-- ACC destinations: dial `8600` for the OpenAI-backed live LLM flow, or `8611` for the existing deterministic scripted flow
+- Local SIP account: extension `1000`, password `pass`, domain `localhost`
+- ACC destinations: dial `8611` for the normal credential-free local conversation, `8612` for the scripted failure-control scenario, or `8600` for the optional OpenAI-backed live LLM flow
 - Preferred Verto agent: `acc-pipecat@127.0.0.1`, password `local-verto-pass`
 - RTP range in compose: `16384-16484/UDP`
 
@@ -54,7 +54,7 @@ npm run docker:freeswitch:only
 
 Use `npm run docker:freeswitch` instead when you want compose to build and start both ACC and FreeSWITCH together.
 
-Use `npm run docker:sip-verto` when you want Compose to start the preferred #222 local SIP lab stack: ACC, FreeSWITCH, rtc-asr, Kokoro, and the Pipecat Verto/WebRTC sidecar. That path expects a compatible `rtc-asr` image, defaulting to `rtc-asr:local`, exposes FreeSWITCH Verto on `127.0.0.1:8081`/`8082`, and keeps extensions `8600` and `8611` bridged to `acc-pipecat` with separate conversation-mode headers.
+Use `npm run docker:sip-verto` when you want Compose to start the preferred #222 local SIP lab stack: ACC, FreeSWITCH, rtc-asr, Kokoro, and the Pipecat Verto/WebRTC sidecar. That path expects a compatible `rtc-asr` image, defaulting to `rtc-asr:local`, exposes FreeSWITCH Verto on `127.0.0.1:8081`/`8082`, and keeps extensions `8600`, `8611`, and `8612` bridged to `acc-pipecat` with separate conversation-mode headers.
 
 The Compose sidecar mounts `./artifacts`, keeps the latest bridge proof at `artifacts/freeswitch-live/pipecat-verto-proof.json`, and also preserves per-call snapshots under `artifacts/freeswitch-live/calls/<call-id>/pipecat-verto-proof.json`.
 
@@ -69,17 +69,34 @@ FREESWITCH_VERTO_URL=ws://127.0.0.1:8081 FREESWITCH_VERTO_LOGIN=acc-pipecat@127.
 The sidecar updates `PIPECAT_VERTO_PROOF_OUT` after login, invite, and pipeline stage events. It includes the call-scoped rtc-asr final transcript and Kokoro TTS evidence needed by the strict caller harness.
 
 The Verto originate leg must negotiate PCMU directly. Applying a codec
-preference only to the inbound Linphone leg is insufficient; extensions `8600`
-and `8611` use `absolute_codec_string=PCMU` on the `verto_contact(...)` bridge target so
+preference only to the inbound Linphone leg is insufficient; extensions `8600`,
+`8611`, and `8612` use `absolute_codec_string=PCMU` on the `verto_contact(...)` bridge target so
 FreeSWITCH and aiortc exchange payload `0` in both directions.
 
 Extension `8600` posts `conversationMode=openai_llm` to ACC and requires a real
-OpenAI Responses API call before ACC emits conversational agent text. Configure
-`OPENAI_API_KEY` or `ACC_OPENAI_API_KEY`; optionally set
-`ACC_OPENAI_BASE_URL` and `ACC_OPENAI_CONVERSATION_MODEL`. The default model is
-the requested literal `GPT-5.4-mini`. If credentials, model access, or the API
-request fails, ACC records `openai_conversation_generation_failed`, fails closed
-to the human-handoff path, and does not substitute scripted responses.
+model response before ACC emits conversational agent text. The local SIP/Verto
+profile defaults to a backend-owned Codex OAuth bridge and pins the exact model
+`gpt-5.4-mini`. Start the profile, open
+`http://127.0.0.1:8026/operator/console`, select **Connect Codex**, open the
+device-login URL, and enter the displayed code. The browser receives only the
+verification URL and one-time code; the bridge keeps the authenticated session
+in the `codex-voice-auth` Docker volume.
+
+The bridge creates one ephemeral, read-only Codex thread per call in an empty
+working directory, denies approval requests, and returns only final assistant
+text to ACC. It cannot silently select another model: a value other than
+`gpt-5.4-mini` fails closed. If login, model access, or the bridge request fails,
+ACC records `openai_conversation_generation_failed`, routes to the human-handoff
+path, and does not substitute scripted responses.
+
+An API key remains available as an explicit alternative:
+
+```bash
+ACC_OPENAI_AUTH_MODE=api_key \
+ACC_OPENAI_API_KEY="$OPENAI_API_KEY" \
+ACC_OPENAI_CONVERSATION_MODEL=gpt-5.4-mini \
+npm run docker:sip-verto
+```
 
 For a local lab run that should use the signed-in OpenClaw OpenAI OAuth profile
 instead of an OpenAI API key, enable OpenClaw's Responses gateway and run 8600
@@ -90,7 +107,7 @@ ACC_OPENAI_AUTH_MODE=openclaw_oauth \
 ACC_OPENAI_AUTH_TOKEN="$OPENCLAW_GATEWAY_TOKEN" \
 ACC_OPENCLAW_AGENT_ID=acc-voice \
 ACC_OPENAI_BASE_URL=http://host.docker.internal:18789/v1 \
-ACC_OPENAI_CONVERSATION_MODEL=GPT-5.4-mini \
+ACC_OPENAI_CONVERSATION_MODEL=gpt-5.4-mini \
 npm run docker:sip-verto
 ```
 
@@ -100,8 +117,14 @@ gateway token has broader operator authority than a narrow production API key.
 For a native, non-Docker ACC process on the host, use
 `ACC_OPENAI_BASE_URL=http://127.0.0.1:18789/v1`.
 
-Extension `8611` posts `conversationMode=scripted` and keeps the deterministic
-cancellation-rescue script for repeatable proof and regression work.
+Extension `8611` posts `conversationMode=free_caller`. It is the normal local
+demo path: arbitrary caller speech receives a bounded conversational response
+without requiring external model credentials.
+
+Extension `8612` posts `conversationMode=scripted` and keeps the deterministic
+cancellation-rescue script for repeatable failure-control proof and regression
+work. An off-script utterance on this extension deliberately exercises the
+fail-closed runtime path; it is not the default caller experience.
 
 Immediately after the Verto media connection is ready, the sidecar sends the
 prerecorded `assets/audio/agilityfeat-intro.wav` greeting:
@@ -145,7 +168,7 @@ cleared on every new `start` and cannot leak into the next turn.
 To run the deterministic two-way proof, create or supply a PCM16 WAV containing a spoken caller utterance, then run:
 
 ```sh
-FREESWITCH_SIP_PASSWORD=local-sip-pass \
+FREESWITCH_SIP_PASSWORD=pass \
   ACC_SIP_PROOF_LOCAL_HOST=192.168.86.28 \
   npm run pipecat:verto:live-proof -- \
   --caller-audio artifacts/caller-speech.wav \
@@ -170,10 +193,10 @@ The accepted #222 proof must come from the active Verto/WebRTC call leg, not pos
 
 ```text
 User: 1000
-Password: local-sip-pass
-Domain/proxy: 127.0.0.1:5060
+Password: pass
+Domain/proxy: localhost:5060
 Transport: UDP
-Dial: 8600
+Dial: 8611
 ```
 
 If using an already-running native/Homebrew FreeSWITCH instead of the compose service, confirm its active password before running SIPp or configuring a softphone:
@@ -182,7 +205,7 @@ If using an already-running native/Homebrew FreeSWITCH instead of the compose se
 fs_cli -x 'global_getvar default_password'
 ```
 
-On Alberto's current local Homebrew FreeSWITCH, the active SIP profile binds to `192.168.86.28:5060` and extension `1000` uses the `default_password` value rather than the compose-only `local-sip-pass`.
+On Alberto's current local Homebrew FreeSWITCH, the active SIP profile binds to `192.168.86.28:5060` and extension `1000` uses the `default_password` value rather than the compose-only `pass` value.
 
 5. Speak a real caller utterance, then hang up. Review:
 

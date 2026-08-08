@@ -669,7 +669,7 @@ test("live SIP prerecorded greeting advances context before the first caller tur
   }
 });
 
-test("live SIP separates 8611 scripted flow from 8600 OpenAI flow", async () => {
+test("live SIP separates 8611 free caller, 8612 scripted failure, and 8600 OpenAI flows", async () => {
   const originalEnv = {
     ACC_OPENAI_API_KEY: process.env.ACC_OPENAI_API_KEY,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
@@ -712,29 +712,53 @@ test("live SIP separates 8611 scripted flow from 8600 OpenAI flow", async () => 
   assert.ok(address && typeof address !== "string");
 
   try {
+    const freeCallerStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-07-27T22:29:00.000Z",
+      sipCallId: "sip-free-caller-8611",
+      destination: "8611",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(freeCallerStarted.statusCode, 201);
+    assert.equal(freeCallerStarted.payload.call.scenario.conversationMode, "free_caller");
+    assert.equal(freeCallerStarted.payload.call.scenario.sipExtension, "8611");
+
+    const freeCallerTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-07-27T22:29:01.000Z",
+      sipCallId: "sip-free-caller-8611",
+      text: "Hi, how are you?",
+    });
+    assert.equal(freeCallerTranscript.statusCode, 200);
+    assert.equal(freeCallerTranscript.payload.call.flowState, "greet");
+    assert.notEqual(freeCallerTranscript.payload.call.transcript.at(-1).text.includes("runtime reported a failure"), true);
+    assert.equal(openAiRequests.length, 0);
+
     const scriptedStarted = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "call.started",
       timestamp: "2026-07-27T22:30:00.000Z",
-      sipCallId: "sip-scripted-8611",
-      destination: "8611",
+      sipCallId: "sip-scripted-8612",
+      destination: "8612",
       source: "freeswitch_verto",
       telephonyMode: "local_sip",
       rtcAsrMode: "rtc_asr_live",
     });
     assert.equal(scriptedStarted.statusCode, 201);
     assert.equal(scriptedStarted.payload.call.scenario.conversationMode, "scripted");
-    assert.equal(scriptedStarted.payload.call.scenario.sipExtension, "8611");
+    assert.equal(scriptedStarted.payload.call.scenario.sipExtension, "8612");
 
     const scriptedTranscript = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "media.transcript",
       timestamp: "2026-07-27T22:30:01.000Z",
-      sipCallId: "sip-scripted-8611",
+      sipCallId: "sip-scripted-8612",
       text: "I'm thinking about canceling my policy.",
     });
     assert.equal(scriptedTranscript.statusCode, 200);
     assert.equal(
       scriptedTranscript.payload.call.transcript.at(-1).text,
-      "I can help with that. Before I review options, what is pushing you to cancel today?",
+      "I can help with that. May I ask what is prompting the cancellation?",
     );
     assert.equal(openAiRequests.length, 0);
 
@@ -765,9 +789,9 @@ test("live SIP separates 8611 scripted flow from 8600 OpenAI flow", async () => 
     assert.equal(openAiRequests.length, 1);
     assert.equal(openAiRequests[0].url, "/v1/responses");
     assert.equal(openAiRequests[0].authorization, "Bearer test-openai-key");
-    assert.equal(openAiRequests[0].body.model, "GPT-5.4-mini");
+    assert.equal(openAiRequests[0].body.model, "gpt-5.4-mini");
     assert.equal(
-      llmTranscript.payload.call.events.some((event: any) => event.type === "openai_conversation_turn_processed" && event.detail.model === "GPT-5.4-mini"),
+      llmTranscript.payload.call.events.some((event: any) => event.type === "openai_conversation_turn_processed" && event.detail.model === "gpt-5.4-mini"),
       true,
     );
   } finally {
@@ -777,6 +801,105 @@ test("live SIP separates 8611 scripted flow from 8600 OpenAI flow", async () => 
     }
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     await new Promise<void>((resolve, reject) => openAiServer.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model", async () => {
+  const originalEnv = {
+    ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
+    ACC_OPENAI_CONVERSATION_MODEL: process.env.ACC_OPENAI_CONVERSATION_MODEL,
+    ACC_CODEX_VOICE_BRIDGE_URL: process.env.ACC_CODEX_VOICE_BRIDGE_URL,
+  };
+  const bridgeRequests: Array<{ method: string | undefined; url: string | undefined; body: any }> = [];
+  const bridgeServer = createTestServer((req, res) => {
+    if (req.method === "GET" && req.url === "/auth/status") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, authenticated: true, accountType: "chatgpt", model: "gpt-5.4-mini" }));
+      return;
+    }
+    if (req.method === "POST" && req.url === "/auth/device/start") {
+      res.writeHead(202, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, status: "pending", loginId: "login-1", verificationUrl: "https://auth.example/device", userCode: "ABCD-EFGH", model: "gpt-5.4-mini" }));
+      return;
+    }
+    if (req.method === "GET" && req.url === "/auth/device/login-1") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, status: "connected", authenticated: true, model: "gpt-5.4-mini" }));
+      return;
+    }
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => {
+      bridgeRequests.push({ method: req.method, url: req.url, body: body ? JSON.parse(body) : null });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, model: "gpt-5.4-mini", text: "I can help with that safely. What would you like me to review?", threadId: "codex-thread-1" }));
+    });
+  });
+  await new Promise<void>((resolve) => bridgeServer.listen(0, "127.0.0.1", resolve));
+  const bridgeAddress = bridgeServer.address();
+  assert.ok(bridgeAddress && typeof bridgeAddress !== "string");
+
+  process.env.ACC_OPENAI_AUTH_MODE = "codex_oauth";
+  process.env.ACC_OPENAI_CONVERSATION_MODEL = "gpt-5.4-mini";
+  process.env.ACC_CODEX_VOICE_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const authStatus = await requestJson(address.port, "GET", "/api/codex-auth/status");
+    assert.equal(authStatus.statusCode, 200);
+    assert.equal(authStatus.payload.authenticated, true);
+    assert.equal(authStatus.payload.configuredForVoice, true);
+    assert.equal(authStatus.payload.model, "gpt-5.4-mini");
+
+    const loginStart = await requestJson(address.port, "POST", "/api/codex-auth/device/start");
+    assert.equal(loginStart.statusCode, 202);
+    assert.equal(loginStart.payload.loginId, "login-1");
+    assert.equal(loginStart.payload.userCode, "ABCD-EFGH");
+
+    const loginStatus = await requestJson(address.port, "GET", "/api/codex-auth/device/login-1");
+    assert.equal(loginStatus.statusCode, 200);
+    assert.equal(loginStatus.payload.status, "connected");
+
+    const started = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.started",
+      timestamp: "2026-08-04T12:00:00.000Z",
+      sipCallId: "sip-codex-oauth-8600",
+      destination: "8600",
+      source: "freeswitch_verto",
+      telephonyMode: "local_sip",
+      rtcAsrMode: "rtc_asr_live",
+    });
+    assert.equal(started.statusCode, 201);
+
+    const transcript = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "media.transcript",
+      timestamp: "2026-08-04T12:00:01.000Z",
+      sipCallId: "sip-codex-oauth-8600",
+      text: "Can you help with my renewal?",
+    });
+    assert.equal(transcript.statusCode, 200);
+    assert.equal(transcript.payload.call.transcript.at(-1).text, "I can help with that safely. What would you like me to review?");
+    assert.equal(bridgeRequests.length, 1);
+    assert.equal(bridgeRequests[0].url, "/respond");
+    assert.equal(bridgeRequests[0].body.callId, transcript.payload.call.session.callId);
+    assert.equal(bridgeRequests[0].body.model, "gpt-5.4-mini");
+    assert.match(bridgeRequests[0].body.prompt, /Latest caller turn: Can you help with my renewal\?/);
+    assert.equal(
+      transcript.payload.call.events.some((event: any) => event.type === "openai_conversation_turn_processed" && event.detail.model === "gpt-5.4-mini"),
+      true,
+    );
+  } finally {
+    Object.assign(process.env, originalEnv);
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => bridgeServer.close((error) => error ? reject(error) : resolve()));
   }
 });
 
@@ -1813,7 +1936,7 @@ test("live SIP fallback disarm preserves an earlier explicit operator hold", asy
       eventType: "call.started",
       timestamp: "2026-07-31T20:00:00.000Z",
       sipCallId: "sip-scripted-pause-fallback-disarm",
-      destination: "8611",
+      destination: "8612",
       source: "freeswitch_verto",
       telephonyMode: "local_sip",
       rtcAsrMode: "rtc_asr_live",
@@ -2502,7 +2625,7 @@ test("live SIP scripted caller turns honor explicit operator pause holds", async
       eventType: "call.started",
       timestamp: "2026-07-27T23:06:00.000Z",
       sipCallId: "sip-scripted-explicit-pause",
-      destination: "8611",
+      destination: "8612",
       source: "freeswitch_verto",
       telephonyMode: "local_sip",
       rtcAsrMode: "rtc_asr_live",
@@ -2584,7 +2707,7 @@ test("live SIP scripted caller turns stay held after terminal operator stops", a
         eventType: "call.started",
         timestamp: "2026-07-27T23:07:00.000Z",
         sipCallId: `sip-scripted-terminal-${action}`,
-        destination: "8611",
+        destination: "8612",
         source: "freeswitch_verto",
         telephonyMode: "local_sip",
         rtcAsrMode: "rtc_asr_live",
@@ -2640,7 +2763,7 @@ test("live SIP scripted caller turns stay held after terminal operator stops", a
           eventType: "call.started",
           timestamp: "2026-07-27T23:07:10.000Z",
           sipCallId: `sip-scripted-terminal-fallback-${action}`,
-          destination: "8611",
+          destination: "8612",
           source: "freeswitch_verto",
           telephonyMode: "local_sip",
           rtcAsrMode: "rtc_asr_live",

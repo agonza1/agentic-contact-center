@@ -50,6 +50,8 @@ try:
         active_tts_config,
         build_acc_voice_pipeline,
         check_readiness,
+        json_http,
+        join_url,
         normalize_browser_answer_sdp,
         ready_payload,
     )
@@ -90,6 +92,22 @@ class BrowserWebrtcBridge:
         skip_acc = request.query.get("skipAcc", "").lower() in {"1", "true", "yes"}
         readiness = await asyncio.to_thread(check_readiness, acc_url, skip_acc)
         return web.json_response(ready_payload(readiness, self.host, self.port), status=200 if readiness.ok else 503)
+
+    async def ensure_acc_call(self, *, acc_url: str, call_id: str, session_id: str) -> str:
+        payload = await asyncio.to_thread(
+            json_http,
+            "POST",
+            join_url(acc_url, "/api/pipecat/sessions/ensure-call"),
+            {
+                "callId": call_id or None,
+                "sessionId": session_id,
+                "transport": "browser_webrtc",
+            },
+        )
+        registered_call_id = str(payload.get("callId") or "").strip()
+        if not registered_call_id:
+            raise RuntimeError("ACC Pipecat session registration did not return callId")
+        return registered_call_id
 
     async def start_pipeline(self, *, connection: Any, session_id: str, acc_url: str, call_id: str, readiness: BridgeReadiness) -> AccVoicePipelineSession:
         session = AccVoicePipelineSession(acc_url=acc_url, call_id=call_id, readiness=readiness)
@@ -157,6 +175,10 @@ class BrowserWebrtcBridge:
         readiness = await asyncio.to_thread(check_readiness, acc_url)
         if not readiness.ok:
             return web.json_response({"ok": False, "error": "sidecar_unavailable", "ready": ready_payload(readiness, self.host, self.port)}, status=503)
+        try:
+            call_id = await self.ensure_acc_call(acc_url=acc_url, call_id=call_id, session_id=session_id)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": "acc_call_registration_failed", "detail": str(exc)}, status=503)
 
         small_request = SmallWebRTCRequest.from_dict({
             "sdp": payload["sdp"],

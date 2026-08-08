@@ -479,6 +479,10 @@ class VertoAgentBridge:
         )
         if value:
             return "8600" if value.lower() == "acc" else value
+        route_hint = nested_param_value(params, ("caller_id_name", "Caller-Caller-ID-Name"))
+        route_match = re.fullmatch(r"ACC[-_ ](8600|8611|8612)", route_hint or "", flags=re.IGNORECASE)
+        if route_match:
+            return route_match.group(1)
         return None
 
     def conversation_mode(self, params: dict[str, Any], destination_number: str | None) -> str:
@@ -497,7 +501,11 @@ class VertoAgentBridge:
         )
         if value and value in {"scripted", "free_caller", "openai_llm"}:
             return value
-        return "openai_llm" if destination_number == "8600" else "scripted"
+        if destination_number == "8600":
+            return "openai_llm"
+        if destination_number == "8611":
+            return "free_caller"
+        return "scripted"
 
     async def end_acc_call(self, call_id: str, *, reason: str, timestamp: str | None = None, timeout: float = 2.0, linked_sip_call_id: str | None = None) -> bool:
         try:
@@ -912,6 +920,10 @@ class VertoAgentBridge:
             conversation_mode=conversation_mode,
         )
         session.hold_caller_turns("prerecorded_greeting_evidence_pending")
+        # FreeSWITCH's Verto leg negotiates PCMU/8 kHz for the local SIP demo.
+        # Make Pipecat resample before audio reaches aiortc so the WebRTC sender
+        # does not have to convert a 24 kHz raw track inside the G.711 encoder.
+        audio_out_sample_rate = int(os.environ.get("ACC_VERTO_AUDIO_OUT_SAMPLE_RATE", "8000"))
         transport = SmallWebRTCTransport(
             webrtc_connection=connection,
             params=TransportParams(
@@ -920,7 +932,7 @@ class VertoAgentBridge:
                 audio_in_channels=1,
                 audio_in_passthrough=True,
                 audio_out_enabled=True,
-                audio_out_sample_rate=24000,
+                audio_out_sample_rate=audio_out_sample_rate,
                 audio_out_channels=1,
                 audio_out_auto_silence=True,
             ),
@@ -932,7 +944,10 @@ class VertoAgentBridge:
         )
         task = PipelineTask(
             pipeline,
-            params=PipelineParams(audio_in_sample_rate=INPUT_SAMPLE_RATE, audio_out_sample_rate=24000),
+            params=PipelineParams(
+                audio_in_sample_rate=INPUT_SAMPLE_RATE,
+                audio_out_sample_rate=audio_out_sample_rate,
+            ),
             enable_rtvi=False,
             idle_timeout_secs=None,
         )

@@ -69,7 +69,15 @@ DEFAULT_TTS_PREWARM_TEXT = (
     "Hi, I can help with billing, cancellation, account updates, or a human handoff. "
     "What do you need today?"
 )
+DEFAULT_RUNTIME_FAILURE_TEXT = (
+    "The runtime reported a failure. I can't complete this safely or promise a billing credit, so I'll connect you with a licensed retention specialist."
+)
+DEFAULT_TOOL_TIMEOUT_TEXT = (
+    "A required tool timed out. I can't complete this safely or promise a billing credit, so I'll connect you with a licensed retention specialist."
+)
 DEFAULT_TTS_PREWARM_TEXTS = (
+    DEFAULT_RUNTIME_FAILURE_TEXT,
+    DEFAULT_TOOL_TIMEOUT_TEXT,
     DEFAULT_TTS_PREWARM_TEXT,
     "Is this billing, cancellation, an account update, or a human handoff?",
     "I can help. Is it a charge, renewal increase, refund, or payment issue?",
@@ -1130,7 +1138,7 @@ class AccVoicePipelineSession:
             "POST",
             join_url(tts_config["base_url"], tts_config["speech_path"]),
             payload,
-            30,
+            float(os.environ.get("ACC_TTS_REQUEST_TIMEOUT_SEC", "60")),
         )
         read_size = max(chunk_bytes - (chunk_bytes % SAMPLE_WIDTH_BYTES), SAMPLE_WIDTH_BYTES)
         pending = b""

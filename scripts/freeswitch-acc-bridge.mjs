@@ -1427,7 +1427,8 @@ export class EslBridge {
   async onAnswer(uuid, headers) {
     if (this.callMap.has(uuid)) return;
     const destination = headers.get("Caller-Destination-Number") ?? "8600";
-    const conversationMode = headers.get("variable_acc_conversation_mode") ?? (destination === "8600" || destination === "acc" ? "openai_llm" : "scripted");
+    const conversationMode = headers.get("variable_acc_conversation_mode")
+      ?? (destination === "8600" || destination === "acc" ? "openai_llm" : destination === "8611" ? "free_caller" : "scripted");
     this.rtpCollector = this.createRtpCollector();
     const rtpCollector = this.createRtpCollector();
     const rtpPlaybackSink = this.createRtpPlaybackSink();

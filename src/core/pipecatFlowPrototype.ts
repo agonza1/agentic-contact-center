@@ -370,8 +370,8 @@ export function triggerFailClosedFallback(
   const fallbackReason = reason?.trim() || mode;
   const handoffSource = mode === "runtime_failure" ? "pipecat_runtime_failure_fail_closed" : "tool_timeout_fail_closed";
   const agentMessage = mode === "runtime_failure"
-    ? "The local Pipecat runtime reported a failure, so I am failing closed and connecting you to a licensed retention specialist instead of improvising an offer or promising any billing credit."
-    : "A required tool timed out, so I am failing closed and connecting you to a licensed retention specialist instead of improvising an offer or promising any billing credit.";
+    ? "The runtime reported a failure. I can't complete this safely or promise a billing credit, so I'll connect you with a licensed retention specialist."
+    : "A required tool timed out. I can't complete this safely or promise a billing credit, so I'll connect you with a licensed retention specialist.";
 
   snapshot.pipecatFlow.activeTool = "pause_presentation";
   setDemoFallback(snapshot, true, timestamp, fallbackReason, mode);
