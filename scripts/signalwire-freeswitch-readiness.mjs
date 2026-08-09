@@ -177,6 +177,85 @@ function isSignalWireSourceAclProven(entry) {
   return /\b(?:true|allow|allowed|pass|passed|ok)\b/i.test(output);
 }
 
+function ipv4ToNumber(address) {
+  const parts = clean(address).split(".").map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return null;
+  return parts.reduce((value, part) => ((value << 8) | part) >>> 0, 0);
+}
+
+function ipv6ToBigInt(address) {
+  const canonical = canonicalizeIpAddress(address);
+  if (!canonical) return null;
+  return canonical.split(":").reduce((value, group) => (value << 16n) + BigInt(Number.parseInt(group, 16)), 0n);
+}
+
+function parseProviderIngressCidrs(value) {
+  return clean(value)
+    .split(/[\s,]+/)
+    .map(clean)
+    .filter(Boolean);
+}
+
+function cidrContainsIp(cidr, address) {
+  const [cidrAddress, prefixText] = clean(cidr).split("/");
+  const addressVersion = isIP(address);
+  const cidrVersion = isIP(cidrAddress);
+  if (!addressVersion || !cidrVersion || addressVersion !== cidrVersion) return false;
+  const maxPrefix = addressVersion === 4 ? 32 : 128;
+  const prefix = prefixText === undefined ? maxPrefix : Number(prefixText);
+  if (!Number.isInteger(prefix) || prefix < 0 || prefix > maxPrefix) return false;
+  if (addressVersion === 4) {
+    const probe = ipv4ToNumber(address);
+    const base = ipv4ToNumber(cidrAddress);
+    if (probe === null || base === null) return false;
+    const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+    return (probe & mask) === (base & mask);
+  }
+  const probe = ipv6ToBigInt(address);
+  const base = ipv6ToBigInt(cidrAddress);
+  if (probe === null || base === null) return false;
+  const mask = prefix === 0 ? 0n : ((1n << BigInt(prefix)) - 1n) << BigInt(128 - prefix);
+  return (probe & mask) === (base & mask);
+}
+
+function isSignalWireProviderIngressProbe(address, providerCidrs) {
+  return providerCidrs.some((cidr) => cidrContainsIp(cidr, address));
+}
+
+function fieldAliasesPattern(aliases) {
+  return aliases.map((alias) => alias.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")).join("|");
+}
+
+function gatewayFieldValues(output, aliases) {
+  const pattern = new RegExp(`^\\s*(?:${fieldAliasesPattern(aliases)})\\s*(?::|=)\\s*(.+?)\\s*$`, "gim");
+  return [...output.matchAll(pattern)].map((match) => clean(match[1]).replace(/^"|"$/g, ""));
+}
+
+function outputHasGatewayHost(output, aliases, expectedHost) {
+  const expected = normalizeSipEndpointHost(expectedHost).toLowerCase();
+  if (!expected) return false;
+  return gatewayFieldValues(output, aliases)
+    .map((value) => normalizeSipEndpointHost(value).toLowerCase())
+    .includes(expected);
+}
+
+function outputHasGatewayUser(output, expectedUser) {
+  const expected = clean(expectedUser);
+  if (!expected) return false;
+  return gatewayFieldValues(output, ["username", "user", "auth-username", "auth username", "from-user", "from user", "extension"])
+    .includes(expected);
+}
+
+function signalWireGatewayIdentity(entry, expected) {
+  const output = `${entry?.stdout ?? ""}\n${entry?.stderr ?? ""}`;
+  return {
+    registered: /\bREGED\b/i.test(output),
+    realmMatches: outputHasGatewayHost(output, ["realm", "sip realm", "register-realm", "register realm"], expected.realm),
+    proxyMatches: outputHasGatewayHost(output, ["proxy", "sip proxy", "register-proxy", "register proxy"], expected.proxy),
+    usernameMatches: outputHasGatewayUser(output, expected.username),
+  };
+}
+
 function isPublicIpAddress(address) {
   if (isIP(address) === 4) {
     const [a, b, c] = address.split(".").map(Number);
@@ -379,6 +458,7 @@ const signalwireProxy = clean(process.env.SIGNALWIRE_SIP_PROXY) || signalwireRea
 const signalwireDid = signalwireDidDigits(env.SIGNALWIRE_FROM_NUMBER);
 const signalwireSourceAclName = clean(process.env.SIGNALWIRE_SOURCE_ACL_NAME) || DEFAULT_SIGNALWIRE_SOURCE_ACL_NAME;
 const signalwireSourceIpProbe = clean(process.env.SIGNALWIRE_SOURCE_IP_PROBE);
+const signalwireProviderIngressCidrs = parseProviderIngressCidrs(process.env.SIGNALWIRE_PROVIDER_INGRESS_CIDRS);
 const signalwireDidNational = signalwireDid.length === 11 && signalwireDid.startsWith("1")
   ? signalwireDid.slice(1)
   : "";
@@ -400,6 +480,7 @@ const redactor = buildRedactor([
   process.env.SIGNALWIRE_SIP_REALM,
   process.env.SIGNALWIRE_SIP_PROXY,
   signalwireSourceIpProbe,
+  ...signalwireProviderIngressCidrs,
 ]);
 
 const summary = {
@@ -421,8 +502,18 @@ const summary = {
     type: "freeswitch_acl",
     aclName: signalwireSourceAclName,
     probeIp: signalwireSourceIpProbe ? redactor(signalwireSourceIpProbe) : null,
+    providerIngressCidrs: signalwireProviderIngressCidrs.map(redactor),
+    providerOwnedProbe: false,
     activeAclProven: false,
   },
+  gatewayRegistration: trunkMode === "registration"
+    ? {
+      registered: false,
+      realmMatches: false,
+      proxyMatches: false,
+      usernameMatches: false,
+    }
+    : null,
   generatedConfig: null,
   freeswitchCli: [],
   blockers: [],
@@ -449,6 +540,13 @@ if (summary.blockers.length === 0 && !hasFlag("--skip-fs-cli")) {
     summary.blockers.push("invalid_signalwire_source_ip_probe");
   } else if (!isPublicIpAddress(signalwireSourceIpProbe)) {
     summary.blockers.push("invalid_signalwire_source_ip_probe");
+  } else if (signalwireProviderIngressCidrs.length === 0) {
+    summary.missingEnv.push("SIGNALWIRE_PROVIDER_INGRESS_CIDRS");
+    summary.blockers.push("signalwire_provider_ingress_cidrs_missing");
+  } else if (!isSignalWireProviderIngressProbe(signalwireSourceIpProbe, signalwireProviderIngressCidrs)) {
+    summary.blockers.push("signalwire_source_probe_not_provider_owned");
+  } else {
+    summary.sourceRestriction.providerOwnedProbe = true;
   }
 }
 
@@ -553,8 +651,18 @@ if (summary.blockers.length === 0 && !fsCliSkipped && trunkMode === "ip_auth") {
 
 if (summary.blockers.length === 0 && !fsCliSkipped) {
   const gateway = rawFsCli.get("sofia status gateway signalwire");
-  if (trunkMode === "registration" && gateway && !/\bREGED\b/i.test(`${gateway.stdout}\n${gateway.stderr}`)) {
-    summary.blockers.push("signalwire_gateway_status_not_proven");
+  if (trunkMode === "registration") {
+    const gatewayIdentity = signalWireGatewayIdentity(gateway, {
+      realm: signalwireRealm,
+      proxy: signalwireProxy,
+      username: env.SIGNALWIRE_SIP_USERNAME,
+    });
+    summary.gatewayRegistration = gatewayIdentity;
+    if (!gatewayIdentity.registered) {
+      summary.blockers.push("signalwire_gateway_status_not_proven");
+    } else if (!gatewayIdentity.realmMatches || !gatewayIdentity.proxyMatches || !gatewayIdentity.usernameMatches) {
+      summary.blockers.push("signalwire_gateway_identity_mismatch");
+    }
   }
 }
 
