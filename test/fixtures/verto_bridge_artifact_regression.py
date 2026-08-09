@@ -51,6 +51,9 @@ def main() -> None:
                     "sip_from_uri": "sip:+12025550123@example.signalwire.test",
                     "variable_sip_from_uri": "sip:+12025550123@example.signalwire.test",
                     "sip_full_from": "\"Caller\" <sip:+12025550123@example.signalwire.test>",
+                    "sip_h_P-Asserted-Identity": "<sip:+12025550123@example.signalwire.test>",
+                    "variable_sip_h_P-Asserted-Identity": "<sip:+12025550123@example.signalwire.test>",
+                    "sip_h_Remote-Party-ID": "\"Caller\" <sip:+12025550123@example.signalwire.test>",
                     "sip_h_Authorization": "Digest username=\"1000\", response=\"super-secret\"",
                     "acc_api_token": "token-secret",
                     "nested": {
@@ -99,6 +102,9 @@ def main() -> None:
                 and sanitized_params["dialogParams"]["variables"]["sip_from_uri"] == "<redacted caller identity>"
                 and sanitized_params["dialogParams"]["variables"]["variable_sip_from_uri"] == "<redacted caller identity>"
                 and sanitized_params["dialogParams"]["variables"]["sip_full_from"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["sip_h_P-Asserted-Identity"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["variable_sip_h_P-Asserted-Identity"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["sip_h_Remote-Party-ID"] == "<redacted caller identity>"
                 and sanitized_params["dialogParams"]["variables"]["nested"]["ani"] == "<redacted caller identity>"
                 and "+12025550123" not in json.dumps(sanitized_params)
             ),

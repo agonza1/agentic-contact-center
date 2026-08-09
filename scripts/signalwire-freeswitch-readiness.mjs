@@ -98,11 +98,14 @@ function redactIpLiterals(text) {
 }
 
 function buildRedactor(values) {
-  const secrets = values.filter(Boolean).sort((a, b) => b.length - a.length);
+  const secrets = [...new Set(values
+    .flatMap(redactionVariants)
+    .filter(Boolean))]
+    .sort((a, b) => b.length - a.length);
   return (text) => {
     let redacted = text;
     for (const secret of secrets) {
-      redacted = redacted.split(secret).join("[redacted]");
+      redacted = redacted.replace(new RegExp(regexpEscape(secret), "gi"), "[redacted]");
     }
     redacted = redacted
       .replace(
@@ -111,6 +114,21 @@ function buildRedactor(values) {
       );
     return redactIpLiterals(redacted);
   };
+}
+
+function redactionVariants(value) {
+  const text = clean(value);
+  if (!text) return [];
+  const variants = [text];
+  const endpointHost = normalizeSipEndpointHost(text);
+  if (endpointHost) {
+    variants.push(endpointHost, endpointHost.toLowerCase());
+  }
+  const spaceHost = signalwireSipHostFromSpaceUrl(text);
+  if (spaceHost) {
+    variants.push(spaceHost, spaceHost.toLowerCase());
+  }
+  return variants;
 }
 
 function xmlEscape(value) {

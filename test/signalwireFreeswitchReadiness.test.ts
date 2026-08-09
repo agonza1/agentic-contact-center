@@ -203,6 +203,8 @@ test("SignalWire FreeSWITCH readiness does not report rendered status without re
       env: {
         PATH: process.env.PATH ?? "",
         SIGNALWIRE_SPACE_URL: "https://example.signalwire.com",
+        SIGNALWIRE_SIP_REALM: "EXAMPLE.SIP.SIGNALWIRE.COM",
+        SIGNALWIRE_SIP_PROXY: "EXAMPLE.SIP.SIGNALWIRE.COM",
         SIGNALWIRE_SIP_USERNAME: "acc-sip-user",
         SIGNALWIRE_SIP_PASSWORD: "example-rendered-sip-password",
         SIGNALWIRE_FROM_NUMBER: "+12029687351",
@@ -265,6 +267,7 @@ esac
     });
 
     const payload = JSON.parse(stdout);
+    const manifest = await readFile(path.join(tempDir, "readiness.json"), "utf8");
     assert.equal(payload.ok, true);
     assert.equal(payload.status, "ready_for_manual_pstn_call");
     assert.deepEqual(payload.gatewayRegistration, {
@@ -277,7 +280,8 @@ esac
       expectedContacts: ["acc-pipecat@example.test"],
       registered: true,
     });
-    assert.doesNotMatch(stdout, /example\.sip\.signalwire\.com/);
+    assert.doesNotMatch(stdout, /example\.sip\.signalwire\.com/i);
+    assert.doesNotMatch(manifest, /example\.sip\.signalwire\.com/i);
     assert.doesNotMatch(stdout, /192\.168\.50\.4|10\.0\.0\.8|fd00::1234/);
     assert.doesNotMatch(stdout, /12029687351|2029687351/);
     assert.match(stdout, /\[redacted-address\]/);
