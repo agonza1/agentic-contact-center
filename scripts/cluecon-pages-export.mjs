@@ -40,6 +40,8 @@ function pagesHtml(mode) {
   const presentHref = mode === "present" ? "./" : "./present/";
   return html
     .replaceAll('join("\n")', 'join("\\n")')
+    .replaceAll("Quick price check", "Authorized offer check")
+    .replaceAll("One optional save attempt.", "Only approved prices can be promised.")
     .replace("</style>", `${staticFixtureStyles}\n  </style>`)
     .replace("</body>", `${staticFixtureRuntime}\n</body>`)
     .replaceAll('href="/cluecon/present"', 'href="' + presentHref + '"')
