@@ -109,8 +109,9 @@ Expected proof:
 - Both modes include `xml_locate` proof that the active `agentic_contact_center_signalwire_pstn` extension routes to `acc_route=signalwire_live`.
 - Both modes include active ACL proof from `fs_cli -x 'acl SIGNALWIRE_SOURCE_IP_PROBE SIGNALWIRE_SOURCE_ACL_NAME'`; `sourceRestriction.providerOwnedProbe` and `sourceRestriction.activeAclProven` must both be `true`.
 - The active dialplan proof includes the SignalWire source ACL predicate, a PCMU-only Verto bridge leg, and the Verto lane fields (`acc_destination_number=8600`, `acc_conversation_mode=openai_llm`, `sip_h_X-ACC-Telephony-Mode=signalwire_live`).
-- `show registrations` proves the `acc-pipecat` Verto contact is active before the manual-call gate opens.
+- `show registrations` proves the exact `acc-pipecat@<domain>` Verto contact referenced by the active dialplan is registered before the manual-call gate opens; a stale `acc-pipecat` registration under another domain is not sufficient.
 - `artifacts/freeswitch-signalwire/readiness.json` contains no live tokens, SIP passwords, project IDs, or private host values.
+- Verto bridge proof artifacts redact PSTN caller identity fields from persisted Verto parameters.
 
 If FreeSWITCH is down, the registration gateway is unregistered, the selected trunk mode is wrong, or the public SIP endpoint is unavailable, the probe exits non-zero with an actionable blocker. Do not ask for the live PSTN call until this is ready and QA has confirmed the ACC voice path is listening.
 

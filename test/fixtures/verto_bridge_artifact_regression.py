@@ -45,10 +45,14 @@ def main() -> None:
                     "acc_linked_sip_call_id": "linked-call-1",
                     "acc_destination_number": "8600",
                     "acc_conversation_mode": "openai_llm",
+                    "caller_id_number": "+12025550123",
+                    "Caller-Caller-ID-Number": "+12025550123",
+                    "sip_from_user": "+12025550123",
                     "sip_h_Authorization": "Digest username=\"1000\", response=\"super-secret\"",
                     "acc_api_token": "token-secret",
                     "nested": {
                         "password": "do-not-persist",
+                        "ani": "+12025550123",
                     },
                 }
             }
@@ -86,6 +90,11 @@ def main() -> None:
                 and sanitized_params["dialogParams"]["variables"]["sip_h_Authorization"] == "<redacted secret>"
                 and sanitized_params["dialogParams"]["variables"]["acc_api_token"] == "<redacted secret>"
                 and sanitized_params["dialogParams"]["variables"]["nested"]["password"] == "<redacted secret>"
+                and sanitized_params["dialogParams"]["variables"]["caller_id_number"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["Caller-Caller-ID-Number"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["sip_from_user"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["nested"]["ani"] == "<redacted caller identity>"
+                and "+12025550123" not in json.dumps(sanitized_params)
             ),
             "callARewritten": call_a_path.read_text(encoding="utf8") != before_call_a,
             "callALastError": call_a.get("lastError"),

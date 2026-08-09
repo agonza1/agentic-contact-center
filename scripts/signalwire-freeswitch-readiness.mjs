@@ -170,6 +170,14 @@ function isInboundDialplanActive(entry, expectedDidPattern, sourceAclName) {
     && output.includes(expectedDidPattern);
 }
 
+function expectedVertoAgentContactsFromDialplan(entry) {
+  if (!entry) return [];
+  const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
+  return [...output.matchAll(/verto_contact\(\s*acc-pipecat@([^)'"<>\s]+)\s*\)/gi)]
+    .map((match) => `acc-pipecat@${clean(match[1]).toLowerCase()}`)
+    .filter((contact, index, contacts) => contact && contacts.indexOf(contact) === index);
+}
+
 function isSignalWireSourceAclProven(entry) {
   if (!entry) return false;
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
@@ -379,11 +387,14 @@ function isIpAuthEndpointAdvertised(entry, expectedAddresses) {
   return expectedAddresses.some((address) => advertised.includes(address));
 }
 
-function isVertoAgentContactRegistered(entry) {
+function isVertoAgentContactRegistered(entry, expectedContacts) {
   if (!entry) return false;
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
   if (/\b0\s+total\s+registrations\b/i.test(output)) return false;
-  return /\bacc-pipecat@/i.test(output);
+  const registeredContacts = [...output.matchAll(/\bacc-pipecat@([^\s;,'"<>]+)/gi)]
+    .map((match) => `acc-pipecat@${clean(match[1]).toLowerCase().replace(/[);]+$/g, "")}`)
+    .filter(Boolean);
+  return expectedContacts.some((contact) => registeredContacts.includes(contact));
 }
 
 async function renderTemplate(templatePath, outputPath, replacements) {
@@ -514,6 +525,10 @@ const summary = {
       usernameMatches: false,
     }
     : null,
+  vertoRegistration: {
+    expectedContacts: [],
+    registered: false,
+  },
   generatedConfig: null,
   freeswitchCli: [],
   blockers: [],
@@ -679,12 +694,20 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
   const dialplan = rawFsCli.get("xml_locate dialplan extension name agentic_contact_center_signalwire_pstn");
   if (!isInboundDialplanActive(dialplan, signalwireDidPattern, signalwireSourceAclName)) {
     summary.blockers.push("signalwire_inbound_dialplan_not_proven");
+  } else {
+    summary.vertoRegistration.expectedContacts = expectedVertoAgentContactsFromDialplan(dialplan).map(redactor);
+    if (summary.vertoRegistration.expectedContacts.length === 0) {
+      summary.blockers.push("verto_agent_contact_not_proven");
+    }
   }
 }
 
 if (summary.blockers.length === 0 && !fsCliSkipped) {
   const registrations = rawFsCli.get("show registrations");
-  if (!isVertoAgentContactRegistered(registrations)) {
+  const dialplan = rawFsCli.get("xml_locate dialplan extension name agentic_contact_center_signalwire_pstn");
+  const expectedContacts = expectedVertoAgentContactsFromDialplan(dialplan);
+  summary.vertoRegistration.registered = isVertoAgentContactRegistered(registrations, expectedContacts);
+  if (!summary.vertoRegistration.registered) {
     summary.blockers.push("verto_agent_contact_not_proven");
   }
 }
