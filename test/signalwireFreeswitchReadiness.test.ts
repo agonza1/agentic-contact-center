@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, link, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -980,6 +980,80 @@ test("SignalWire FreeSWITCH readiness rejects symlinked generated config childre
   } finally {
     await rm(tempDir, { recursive: true, force: true });
     await rm(outsideDir, { recursive: true, force: true });
+  }
+});
+
+test("SignalWire FreeSWITCH readiness replaces symlinked manifests without touching the target", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const manifestTarget = path.join(tempDir, "linked-readiness-target.json");
+  const manifestPath = path.join(tempDir, "readiness.json");
+
+  try {
+    await writeFile(manifestTarget, "linked-manifest-secret", { mode: 0o600 });
+    await symlink(manifestTarget, manifestPath);
+
+    await execFileAsync(process.execPath, [
+      "scripts/signalwire-freeswitch-readiness.mjs",
+      "--skip-fs-cli",
+      "--manifest",
+      manifestPath,
+    ], {
+      cwd: repoRoot,
+      env: {
+        PATH: process.env.PATH ?? "",
+        SIGNALWIRE_SPACE_URL: "https://example.signalwire.com",
+        SIGNALWIRE_SIP_USERNAME: "acc-sip-user",
+        SIGNALWIRE_SIP_PASSWORD: "example-rendered-sip-password",
+        SIGNALWIRE_FROM_NUMBER: "+12029687351",
+        FREESWITCH_PUBLIC_SIP_HOST: "sip-public-host.example.test",
+        SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+        SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+      },
+      encoding: "utf8",
+    });
+
+    assert.equal(await readFile(manifestTarget, "utf8"), "linked-manifest-secret");
+    assert.equal((await lstat(manifestPath)).isSymbolicLink(), false);
+    assert.equal(JSON.parse(await readFile(manifestPath, "utf8")).ok, true);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("SignalWire FreeSWITCH readiness replaces hard-linked manifests without touching sibling links", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const manifestTarget = path.join(tempDir, "linked-readiness-target.json");
+  const manifestPath = path.join(tempDir, "readiness.json");
+
+  try {
+    await writeFile(manifestTarget, "linked-manifest-secret", { mode: 0o600 });
+    await link(manifestTarget, manifestPath);
+
+    await execFileAsync(process.execPath, [
+      "scripts/signalwire-freeswitch-readiness.mjs",
+      "--skip-fs-cli",
+      "--manifest",
+      manifestPath,
+    ], {
+      cwd: repoRoot,
+      env: {
+        PATH: process.env.PATH ?? "",
+        SIGNALWIRE_SPACE_URL: "https://example.signalwire.com",
+        SIGNALWIRE_SIP_USERNAME: "acc-sip-user",
+        SIGNALWIRE_SIP_PASSWORD: "example-rendered-sip-password",
+        SIGNALWIRE_FROM_NUMBER: "+12029687351",
+        FREESWITCH_PUBLIC_SIP_HOST: "sip-public-host.example.test",
+        SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+        SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+      },
+      encoding: "utf8",
+    });
+
+    assert.equal(await readFile(manifestTarget, "utf8"), "linked-manifest-secret");
+    assert.equal((await stat(manifestPath)).nlink, 1);
+    assert.equal(JSON.parse(await readFile(manifestPath, "utf8")).ok, true);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
   }
 });
 

@@ -420,14 +420,25 @@ async function renderTemplate(templatePath, outputPath, replacements) {
   for (const [key, value] of Object.entries(replacements)) {
     text = text.replaceAll(`__${key}__`, value);
   }
-  const outputDirname = path.dirname(outputPath);
-  await mkdir(outputDirname, { recursive: true });
-  const tempPath = path.join(outputDirname, `.${path.basename(outputPath)}.${process.pid}.${Date.now()}.tmp`);
-  await writeFile(tempPath, text, { mode: 0o600 });
-  await chmod(tempPath, 0o600);
-  await rename(tempPath, outputPath);
-  await chmod(outputPath, 0o600);
+  await writeAtomicPrivateFile(outputPath, text);
   return outputPath;
+}
+
+async function writeAtomicPrivateFile(outputPath, text) {
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  const tempPath = path.join(
+    path.dirname(outputPath),
+    `.${path.basename(outputPath)}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`,
+  );
+  try {
+    await writeFile(tempPath, text, { mode: 0o600, flag: "wx" });
+    await chmod(tempPath, 0o600);
+    await rename(tempPath, outputPath);
+    await chmod(outputPath, 0o600);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
 }
 
 async function safeArtifactOutputPath(outputPath) {
@@ -740,8 +751,7 @@ summary.status = summary.manualCallReady
       ? "config_validated_pending_render_or_freeswitch_cli"
       : "blocked";
 
-await mkdir(path.dirname(manifestPath), { recursive: true });
-await writeFile(manifestPath, `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600 });
+await writeAtomicPrivateFile(manifestPath, `${JSON.stringify(summary, null, 2)}\n`);
 
 console.log(JSON.stringify(summary, null, 2));
 process.exit(summary.ok ? 0 : 2);
