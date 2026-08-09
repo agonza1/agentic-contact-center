@@ -168,7 +168,12 @@ function didPattern(value) {
 function isExternalProfileRunning(entry) {
   if (!entry) return false;
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
-  if (/\b(?:DOWN|FAILED|STOPPED)\b|invalid\s+profile|not\s+running/i.test(output)) return false;
+  if (/invalid\s+profile|not\s+running/i.test(output)) return false;
+  const profileStateLines = output
+    .split(/\r?\n/)
+    .map(clean)
+    .filter((line) => /(?:\bprofile\b|\bstate\b|\bstatus\b)/i.test(line));
+  if (profileStateLines.some((line) => /\b(?:DOWN|FAILED|STOPPED)\b/i.test(line))) return false;
   return /\bRUNNING\b/i.test(output);
 }
 
