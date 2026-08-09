@@ -1183,10 +1183,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /FreeSWITCH ↔ Pipecat/);
   assert.match(narrative.body, /SIP\/RTP \u2194 FreeSWITCH/);
   assert.equal((narrative.body.match(/class="transport-arrow" aria-label="bidirectional">↔<\/div>/g) ?? []).length, 2);
-  assert.match(narrative.body, /persistent WebSocket \u00b7 16 kHz PCM16/);
-  assert.match(narrative.body, /20 ms \/ 640 B \u00b7 interim events/);
-  assert.match(narrative.body, /Pipecat Flows \/ FlowManager \u2197/);
-  assert.match(narrative.body, /Agentic Call Center Reference App/);
+  assert.doesNotMatch(narrative.body, /class="shared-pipeline"/);
+  assert.doesNotMatch(narrative.body, /persistent WebSocket \u00b7 16 kHz PCM16/);
+  assert.doesNotMatch(narrative.body, /20 ms \/ 640 B \u00b7 interim events/);
+  assert.doesNotMatch(narrative.body, /Agentic Call Center Reference App/);
   assert.match(narrative.body, /Commit after delivery/);
   assert.doesNotMatch(narrative.body, /rtc-asr keeps one socket session open and emits evolving partials/);
   assert.doesNotMatch(narrative.body, /FlowManager validates node transitions; ACC demonstrates bounded state/);
@@ -1212,7 +1212,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /system-unavailable\.mp3/);
   assert.match(narrative.body, /kind === "rtc_asr_unavailable"/);
   assert.match(narrative.body, /synthesizedAsrFailureAudio/);
-  assert.match(narrative.body, /model: provider\.model/);
+  assert.match(narrative.body, /provider\.id !== "pocket" && provider\.model/);
   assert.match(narrative.body, /provider\.label \+ " · " \+ provider\.model \+ " live TTS"/);
   assert.match(narrative.body, /data\.ttsPanel\.synthesizeRoute/);
   assert.match(narrative.body, /demo-failure-audio/);
@@ -1302,7 +1302,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /function renderTtsProviderSelection\(\)/);
   assert.match(narrative.body, /function resetTtsMeasurements\(\)/);
   assert.match(narrative.body, /controller: new AbortController\(\)/);
-  assert.match(narrative.body, /signal: stream\.controller\.signal/);
+  assert.match(narrative.body, /signal: requestController\.signal/);
   assert.match(narrative.body, /if \(token !== state\.ttsStreamToken\) return;\s+if \(firstByteMs === null\)/);
   assert.match(narrative.body, /if \(token !== state\.ttsStreamToken\) return;\s+stopTtsStream\(\);/);
   assert.match(narrative.body, /providerSelect\.disabled = true/);
@@ -1404,8 +1404,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Now · Systems can adapt to people\./);
   assert.match(narrative.body, /\.finale-callback \{[^}]*font-size: 18px/);
   assert.match(narrative.body, /\.finale-callback strong \{[^}]*font-size: 22px/);
-  assert.match(narrative.body, /The conversation can be open-ended\./);
-  assert.match(narrative.body, /Identity, authority, and outcomes cannot be\./);
+  assert.doesNotMatch(narrative.body, /The conversation can be open-ended\./);
+  assert.doesNotMatch(narrative.body, /Identity, authority, and outcomes cannot be\./);
   assert.doesNotMatch(narrative.body, /Let AI handle the unexpected|Engineer everything that happens next/);
   assert.match(narrative.body, /Run it\. Break it\. Make it better\./);
   assert.match(narrative.body, /Connect on LinkedIn/);
