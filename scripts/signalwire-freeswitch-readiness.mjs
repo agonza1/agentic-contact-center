@@ -263,6 +263,82 @@ function cidrContainsIp(cidr, address) {
   return (probe & mask) === (base & mask);
 }
 
+function cidrRange(cidr) {
+  const [cidrAddress, prefixText] = clean(cidr).split("/");
+  const version = isIP(cidrAddress);
+  if (!version) return null;
+  const maxPrefix = version === 4 ? 32 : 128;
+  const prefix = prefixText === undefined ? maxPrefix : Number(prefixText);
+  if (!Number.isInteger(prefix) || prefix < 0 || prefix > maxPrefix) return null;
+  if (version === 4) {
+    const base = ipv4ToNumber(cidrAddress);
+    if (base === null) return null;
+    const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+    const start = BigInt(base & mask);
+    const size = 1n << BigInt(32 - prefix);
+    return { version, start, end: start + size - 1n };
+  }
+  const base = ipv6ToBigInt(cidrAddress);
+  if (base === null) return null;
+  const mask = prefix === 0 ? 0n : ((1n << BigInt(prefix)) - 1n) << BigInt(128 - prefix);
+  const start = base & mask;
+  const size = 1n << BigInt(128 - prefix);
+  return { version, start, end: start + size - 1n };
+}
+
+function cidrIsSubsetOf(childCidr, parentCidr) {
+  const child = cidrRange(childCidr);
+  const parent = cidrRange(parentCidr);
+  return Boolean(
+    child
+    && parent
+    && child.version === parent.version
+    && child.start >= parent.start
+    && child.end <= parent.end,
+  );
+}
+
+function parseXmlAttributes(value) {
+  const attributes = {};
+  for (const match of value.matchAll(/([A-Za-z0-9_.:-]+)\s*=\s*(["'])(.*?)\2/g)) {
+    attributes[match[1].toLowerCase()] = clean(match[3]);
+  }
+  return attributes;
+}
+
+function activeAclAllowSet(entry, aclName) {
+  const output = `${entry?.stdout ?? ""}\n${entry?.stderr ?? ""}`;
+  const escapedName = regexpLiteral(aclName);
+  const networkListPattern = new RegExp(
+    `<(?:network-)?list\\b(?=[^>]*\\bname\\s*=\\s*["']${escapedName}["'])[^>]*>[\\s\\S]*?<\\/(?:network-)?list>`,
+    "i",
+  );
+  const networkList = output.match(networkListPattern)?.[0] ?? output;
+  const listOpenTag = networkList.match(/<(?:network-)?list\b[^>]*>/i)?.[0] ?? "";
+  const listAttributes = parseXmlAttributes(listOpenTag);
+  const allowCidrs = [...networkList.matchAll(/<node\b[^>]*>/gi)]
+    .map((match) => parseXmlAttributes(match[0]))
+    .filter((attributes) => clean(attributes.type).toLowerCase() === "allow")
+    .map((attributes) => clean(attributes.cidr))
+    .filter(Boolean);
+  return {
+    found: Boolean(networkList.match(/<(?:network-)?list\b/i)),
+    defaultPolicy: clean(listAttributes.default).toLowerCase(),
+    allowCidrs,
+  };
+}
+
+function activeAclAllowsOnlyProviderCidrs(entry, aclName, providerCidrs) {
+  const allowSet = activeAclAllowSet(entry, aclName);
+  if (!allowSet.found || allowSet.defaultPolicy === "allow" || allowSet.allowCidrs.length === 0) {
+    return false;
+  }
+  return allowSet.allowCidrs.every((allowCidr) => (
+    cidrRange(allowCidr)
+    && providerCidrs.some((providerCidr) => cidrIsSubsetOf(allowCidr, providerCidr))
+  ));
+}
+
 function isSignalWireProviderIngressProbe(address, providerCidrs) {
   return providerCidrs.some((cidr) => cidrContainsIp(cidr, address));
 }
@@ -413,6 +489,21 @@ async function hasSymlinkedAncestor(parent, child) {
   return false;
 }
 
+async function hasSymlinkedDirectoryAncestor(outputPath) {
+  const absolute = path.resolve(outputPath);
+  let current = path.parse(absolute).root;
+  for (const part of path.dirname(absolute).slice(current.length).split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) return true;
+    } catch (error) {
+      if (error && error.code === "ENOENT") return false;
+      throw error;
+    }
+  }
+  return false;
+}
+
 function removeEndpointPort(value) {
   const raw = clean(value);
   if (!raw) return "";
@@ -423,7 +514,7 @@ function removeEndpointPort(value) {
   return raw;
 }
 
-function isIpAuthEndpointAdvertised(entry, expectedAddresses) {
+function isPublicEndpointAdvertised(entry, expectedAddresses) {
   if (!entry || expectedAddresses.length === 0) return false;
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
   const advertised = [...output.matchAll(/^\s*(?:ext-)?sip-ip(?:\s*[:=]\s*|\s+)(\S+)/gim)]
@@ -527,6 +618,7 @@ const signalwireSourceAclName = clean(process.env.SIGNALWIRE_SOURCE_ACL_NAME) ||
 const signalwireSourceIpProbe = clean(process.env.SIGNALWIRE_SOURCE_IP_PROBE);
 const signalwireProviderIngressCidrs = parseProviderIngressCidrs(process.env.SIGNALWIRE_PROVIDER_INGRESS_CIDRS);
 const signalwireSourceRejectProbe = nonProviderSourceAclRejectProbe(signalwireProviderIngressCidrs, signalwireSourceIpProbe);
+const signalwireSourceAclConfigCommand = `xml_locate configuration list name ${signalwireSourceAclName}`;
 const signalwireDidNational = signalwireDid.length === 11 && signalwireDid.startsWith("1")
   ? signalwireDid.slice(1)
   : "";
@@ -536,6 +628,7 @@ const manifestPath = path.resolve(repoRoot, argValue("--manifest", "artifacts/fr
 const artifactsRoot = path.resolve(repoRoot, "artifacts");
 const outputDirIsArtifact = isPathInside(artifactsRoot, outputDir)
   && !(await hasSymlinkedAncestor(artifactsRoot, outputDir));
+const manifestPathHasSymlinkedAncestor = await hasSymlinkedDirectoryAncestor(manifestPath);
 const redactor = buildRedactor([
   ...Object.values(env),
   signalwireRealm,
@@ -576,6 +669,7 @@ const summary = {
     providerOwnedProbe: false,
     activeAclProven: false,
     activeAclRejectsNonProvider: false,
+    activeAclAllowSetProviderOnly: false,
   },
   gatewayRegistration: trunkMode === "registration"
     ? {
@@ -629,6 +723,9 @@ if (summary.blockers.length === 0 && !hasFlag("--skip-fs-cli")) {
 
 if (hasFlag("--render") && !outputDirIsArtifact) {
   summary.blockers.push("unsafe_freeswitch_output_dir");
+}
+if (manifestPathHasSymlinkedAncestor) {
+  summary.blockers.push("unsafe_freeswitch_manifest_path");
 }
 
 const replacements = {
@@ -690,8 +787,8 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
   const aclCommand = `acl ${signalwireSourceIpProbe} ${signalwireSourceAclName}`;
   const aclRejectCommand = `acl ${signalwireSourceRejectProbe} ${signalwireSourceAclName}`;
   const commands = trunkMode === "ip_auth"
-    ? ["sofia status profile external", aclCommand, aclRejectCommand, "show registrations", dialplanCommand]
-    : ["sofia status profile external", "sofia status gateway signalwire", aclCommand, aclRejectCommand, "show registrations", dialplanCommand];
+    ? ["sofia status profile external", signalwireSourceAclConfigCommand, aclCommand, aclRejectCommand, "show registrations", dialplanCommand]
+    : ["sofia status profile external", "sofia status gateway signalwire", signalwireSourceAclConfigCommand, aclCommand, aclRejectCommand, "show registrations", dialplanCommand];
   for (const command of commands) {
     try {
       const result = await runFsCli(command, redactor);
@@ -719,10 +816,10 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
   }
 }
 
-if (summary.blockers.length === 0 && !fsCliSkipped && trunkMode === "ip_auth") {
+if (summary.blockers.length === 0 && !fsCliSkipped) {
   const publicAddresses = await resolvePublicEndpointAddresses(env.FREESWITCH_PUBLIC_SIP_HOST);
   const externalProfile = rawFsCli.get("sofia status profile external");
-  if (!isIpAuthEndpointAdvertised(externalProfile, publicAddresses)) {
+  if (!isPublicEndpointAdvertised(externalProfile, publicAddresses)) {
     summary.blockers.push("freeswitch_public_sip_endpoint_not_proven");
   }
 }
@@ -747,13 +844,17 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
 if (summary.blockers.length === 0 && !fsCliSkipped) {
   const acl = rawFsCli.get(`acl ${signalwireSourceIpProbe} ${signalwireSourceAclName}`);
   const rejectAcl = rawFsCli.get(`acl ${signalwireSourceRejectProbe} ${signalwireSourceAclName}`);
+  const aclConfig = rawFsCli.get(signalwireSourceAclConfigCommand);
   if (!isSignalWireSourceAclProven(acl)) {
     summary.blockers.push("signalwire_source_acl_not_proven");
   } else if (!isSignalWireSourceAclRejected(rejectAcl)) {
     summary.blockers.push("signalwire_source_acl_too_permissive");
+  } else if (!activeAclAllowsOnlyProviderCidrs(aclConfig, signalwireSourceAclName, signalwireProviderIngressCidrs)) {
+    summary.blockers.push("signalwire_source_acl_too_permissive");
   } else {
     summary.sourceRestriction.activeAclProven = true;
     summary.sourceRestriction.activeAclRejectsNonProvider = true;
+    summary.sourceRestriction.activeAclAllowSetProviderOnly = true;
   }
 }
 
@@ -789,7 +890,9 @@ summary.status = summary.manualCallReady
       ? "config_validated_pending_render_or_freeswitch_cli"
       : "blocked";
 
-await writeAtomicPrivateFile(manifestPath, `${JSON.stringify(summary, null, 2)}\n`);
+if (!manifestPathHasSymlinkedAncestor) {
+  await writeAtomicPrivateFile(manifestPath, `${JSON.stringify(summary, null, 2)}\n`);
+}
 
 console.log(JSON.stringify(summary, null, 2));
 process.exit(summary.ok ? 0 : 2);
