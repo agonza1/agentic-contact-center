@@ -1425,7 +1425,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.ok(narrative.body.includes('status.textContent = String(state.slide + 1) + " / " + String(state.slideCount)'));
   assert.match(narrative.body, /@media \(max-width: 1100px\) \{ \.demo-control-step/);
   assert.match(narrative.body, /@media \(max-width: 920px\) \{ \.demo-commandbar/);
-  assert.match(narrative.body, /\.present #demo \{ height: calc\(100vh - 62px\)/);
+  assert.match(narrative.body, /--topbar-height: 48px/);
+  assert.match(narrative.body, /\.brand \{ display: flex; align-items: baseline/);
+  assert.match(narrative.body, /\.toolbar a, \.mode-link \{[^}]*min-height: 30px/);
+  assert.match(narrative.body, /\.present #demo \{ height: calc\(100vh - var\(--topbar-height\)\)/);
   assert.match(narrative.body, /\.present \.topbar \{ position: static/);
   assert.match(narrative.body, /\.demo-commandbar \{ display: grid/);
   assert.match(narrative.body, /\.demo-drill-picker \{ display: grid/);
