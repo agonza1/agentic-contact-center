@@ -882,7 +882,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(payload.title)}</title>
   <style>
-    :root { --bg: #f5f7f8; --panel: #fff; --ink: #17202a; --muted: #5d6b78; --line: #d8e0e7; --teal: #0f766e; --blue: #2457a6; --red: #b42318; --amber: #9a5b04; --green: #167247; --shadow: 0 14px 34px rgba(20, 34, 46, 0.09); }
+    :root { --bg: #f5f7f8; --panel: #fff; --ink: #17202a; --muted: #5d6b78; --line: #d8e0e7; --teal: #0f766e; --blue: #2457a6; --red: #b42318; --amber: #9a5b04; --green: #167247; --shadow: 0 14px 34px rgba(20, 34, 46, 0.09); --topbar-height: 48px; }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
     body { margin: 0; background: var(--bg); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -892,17 +892,20 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     button.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
     button.danger { color: var(--red); border-color: #efb4ac; background: #fff4f2; }
     button:disabled { opacity: 0.52; cursor: wait; }
-    .topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 22px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.96); backdrop-filter: blur(12px); }
-    .brand { display: grid; gap: 2px; min-width: 240px; }
+    .topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--topbar-height); padding: 6px 14px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.96); backdrop-filter: blur(12px); }
+    .brand { display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; }
+    .brand .kicker { font-size: 10px; }
+    .brand strong { font-size: 14px; }
     .kicker { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
     h1, h2, h3, p { margin-top: 0; letter-spacing: 0; }
     h1, h2 { text-wrap: balance; }
     h1 { max-width: 980px; font-size: clamp(36px, 7vw, 78px); line-height: .96; margin-bottom: 14px; }
     h2 { max-width: 920px; font-size: clamp(28px, 4vw, 48px); line-height: 1.02; margin-bottom: 6px; }
     h3 { font-size: 15px; margin-bottom: 8px; }
-    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
-    .toolbar a, .mode-link { display: inline-flex; align-items: center; min-height: 36px; padding: 0 10px; border: 1px solid #b9c6d2; border-radius: 6px; background: #fff; color: var(--ink); font-size: 13px; }
-    .hero, .slide { min-height: calc(100vh - 62px); padding: 48px clamp(18px, 5vw, 72px); display: grid; align-content: center; gap: 16px; border-bottom: 1px solid var(--line); }
+    .toolbar { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+    .toolbar a, .mode-link { display: inline-flex; align-items: center; min-height: 30px; padding: 0 8px; border: 1px solid #b9c6d2; border-radius: 6px; background: #fff; color: var(--ink); font-size: 12px; }
+    .toolbar button { min-height: 30px; padding: 0 9px; font-size: 12px; }
+    .hero, .slide { min-height: calc(100vh - var(--topbar-height)); padding: 48px clamp(18px, 5vw, 72px); display: grid; align-content: center; gap: 16px; border-bottom: 1px solid var(--line); }
     .hero { background: linear-gradient(180deg, #ffffff 0%, #eef4f4 100%); }
     .subhead { max-width: 760px; margin-bottom: 2px; color: #334155; font-size: clamp(17px, 1.8vw, 22px); line-height: 1.34; }
     .section-band { padding: 36px clamp(18px, 5vw, 72px); border-bottom: 1px solid var(--line); }
@@ -934,7 +937,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .line--control.line--forward { marker-end: url(#arrow-control); }
     .line--control.line--bidirectional { marker-start: url(#arrow-control); marker-end: url(#arrow-control); }
     .arch-legend { font: 750 11px system-ui,sans-serif; fill: #5d6b78; }
-    .flow-hero { align-content: start; min-height: calc(100vh - 62px); gap: 20px; }
+    .flow-hero { align-content: start; min-height: calc(100vh - var(--topbar-height)); gap: 20px; }
     .flow-header { display: grid; gap: 8px; max-width: 920px; }
     .flow-header h1 { font-size: clamp(32px, 5vw, 58px); line-height: 1; margin-bottom: 0; }
     .flow-header .subhead { max-width: 720px; font-size: clamp(16px, 1.5vw, 20px); }
@@ -1232,13 +1235,6 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .transport-node strong { font-size: clamp(16px,1.8vw,22px); line-height: 1.12; }
     .transport-node code { color: var(--blue); font-size: clamp(13px,1vw,14px); line-height: 1.4; overflow-wrap: anywhere; }
     .transport-arrow { display: grid; place-items: center; color: var(--blue); font-size: 24px; font-weight: 900; }
-    .shared-pipeline { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; padding: 15px; border: 1px solid rgba(15,118,110,.28); border-radius: 14px; background: linear-gradient(135deg,rgba(15,118,110,.08),rgba(36,87,166,.06)); }
-    .shared-stage { display: grid; gap: 5px; min-width: 0; padding: 12px; border: 1px solid rgba(15,118,110,.2); border-radius: 10px; background: #fff; text-align: center; }
-    .shared-stage small { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
-    .shared-stage strong { font-size: 14px; }
-    .shared-stage code { color: var(--blue); font-size: 10.5px; line-height: 1.45; overflow-wrap: anywhere; }
-    .shared-stage a { color: inherit; text-decoration: none; }
-    .shared-stage a:hover { color: var(--blue); }
     .integration-truths { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 0; padding-top: 10px; border-top: 1px solid var(--line); }
     .integration-truth { padding: 4px 12px; color: var(--ink); text-align: center; }
     .integration-truth:not(:last-child) { border-right: 1px solid var(--line); }
@@ -1280,11 +1276,11 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .tts-candidate a { width: fit-content; font-size: 10.5px; }
     @keyframes liveAsrWave { from { transform: scaleY(.35); } to { transform: scaleY(1.25); } }
     .brain { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
-    .voice-origin { position: relative; isolation: isolate; overflow: hidden; min-height: calc(100vh - 62px); padding: 0; border-bottom: 0; background: #071019; color: #f8fafc; }
+    .voice-origin { position: relative; isolation: isolate; overflow: hidden; min-height: calc(100vh - var(--topbar-height)); padding: 0; border-bottom: 0; background: #071019; color: #f8fafc; }
     .voice-origin__photo { position: absolute; z-index: -4; inset: -2%; width: 104%; height: 104%; object-fit: cover; object-position: 50% 38%; filter: saturate(.82) contrast(1.06) brightness(.82); transform: scale(1.015); }
     .voice-origin::before { content: ""; position: absolute; z-index: -3; inset: 0; background: radial-gradient(ellipse 72% 66% at 15% 23%,rgba(3,7,12,.94) 0%,rgba(3,7,12,.78) 44%,rgba(3,7,12,.18) 79%,transparent 100%),linear-gradient(90deg,rgba(3,7,12,.64) 0%,rgba(3,7,12,.38) 48%,rgba(3,7,12,.08) 78%,rgba(3,7,12,.03) 100%),linear-gradient(0deg,rgba(3,7,12,.38),transparent 52%); }
     .voice-origin::after { content: ""; position: absolute; z-index: -2; inset: 0; pointer-events: none; opacity: .48; background: radial-gradient(circle at 24% 72%,rgba(103,232,249,.16),transparent 10%),linear-gradient(105deg,transparent 0 43%,rgba(255,255,255,.055) 49%,transparent 55%); mix-blend-mode: screen; }
-    .voice-origin__content { position: relative; display: grid; align-content: start; gap: clamp(10px,1.55vh,17px); width: min(74vw,1180px); min-height: calc(100vh - 62px); padding: clamp(38px,4.8vh,58px) clamp(24px,2.6vw,46px) clamp(34px,4vh,52px) clamp(46px,6vw,96px); }
+    .voice-origin__content { position: relative; display: grid; align-content: start; gap: clamp(10px,1.55vh,17px); width: min(74vw,1180px); min-height: calc(100vh - var(--topbar-height)); padding: clamp(38px,4.8vh,58px) clamp(24px,2.6vw,46px) clamp(34px,4vh,52px) clamp(46px,6vw,96px); }
     @media (min-width: 921px) { .present .voice-origin__content { padding-top: clamp(60px,7.5vh,84px); padding-bottom: clamp(150px,18vh,190px); } .present .voice-origin__turn { position: absolute; right: clamp(24px,2.6vw,46px); bottom: clamp(42px,5vh,64px); left: clamp(46px,6vw,96px); } }
     .voice-origin__eyebrow { display: flex; align-items: center; gap: 11px; color: #a5f3fc; font-size: clamp(10px,1vw,13px); font-weight: 850; letter-spacing: .16em; text-transform: uppercase; opacity: 0; transform: translateY(12px); }
     .voice-origin__eyebrow::before { content: ""; width: clamp(34px,4vw,62px); border-top: 2px solid #67e8f9; box-shadow: 0 0 18px rgba(103,232,249,.48); }
@@ -1373,13 +1369,13 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     textarea { width: 100%; min-height: 88px; resize: vertical; border: 1px solid var(--line); border-radius: 7px; padding: 11px; color: var(--ink); font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .proof-pre { margin: 0; min-height: 260px; max-height: 460px; overflow: auto; border-radius: 8px; padding: 15px; background: #0d1117; color: #e6edf3; font: 13px/1.58 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .talk-attribution { margin: 0; color: var(--muted); font-size: 13px; font-weight: 650; letter-spacing: .01em; }
-    .slide-status { min-width: 76px; text-align: center; color: var(--muted); font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .slide-status { min-width: 58px; text-align: center; color: var(--muted); font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .present .topbar { position: fixed; width: 100%; }
-    .present main { padding-top: 62px; }
-    .present .slide, .present .hero { min-height: calc(100vh - 62px); }
+    .present main { padding-top: var(--topbar-height); }
+    .present .slide, .present .hero { min-height: calc(100vh - var(--topbar-height)); }
     .present #asr { align-content: center; }
     .present #demo, .present #tts { align-content: start; padding-top: clamp(16px, 2.4vh, 24px); }
-    .present #demo { height: calc(100vh - 62px); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+    .present #demo { height: calc(100vh - var(--topbar-height)); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
     .present .section-band:not(.active), .present .hero:not(.active) { display: none; }
 
     .security-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); gap: 16px; align-items: stretch; }
@@ -1493,7 +1489,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
       .voice-origin__eyebrow, .voice-origin__title span, .voice-origin__fallback, .voice-origin__turn { opacity: 1; transform: none; filter: none; }
       .voice-origin__title .voice-origin__accent::after { transform: scaleX(1); }
     }
-    @media (max-width: 920px) { .ecosystem-diagram { grid-template-columns: minmax(0, 1fr); } .ecosystem-handoff { min-height: auto; grid-template-columns: 1fr 1fr; } .ecosystem-card { min-height: 132px; } .two, .vad-layout, .transport-paths, .finale-layout { grid-template-columns: 1fr; } .shared-pipeline, .integration-truths, .control-stack, .contract-evidence, .agent-max-impact, .project-links { grid-template-columns: 1fr; } .finale-callback, .finale-invitation { align-items: flex-start; flex-direction: column; gap: 5px; } .finale-callback b { transform: rotate(90deg); } .control-layer:not(:last-child)::after { content: "↓"; right: auto; left: 50%; top: auto; bottom: -21px; transform: translateX(-50%); } .contrast-grid { grid-template-columns: 1fr; } .versus { width: auto; height: 34px; border-radius: 999px; } .contrast-card { min-height: 0; } .boundary-strip { grid-template-columns: 1fr; } .boundary-gate { justify-self: center; } .pipecat-flow { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 8px; } .pipecat-node { flex: 0 0 min(70vw,220px); scroll-snap-align: start; } .turn-references { grid-template-columns: 1fr; } .present .topbar { position: static; width: auto; } .present main { padding-top: 0; } .present .slide, .present .hero { min-height: calc(100vh - 62px); } .present #demo { height: auto; min-height: calc(100vh - 62px); overflow: visible; } .topbar { align-items: stretch; flex-direction: column; } .toolbar { justify-content: flex-start; } .hero, .slide, .section-band { padding: 28px 14px; } h1 { font-size: 38px; } .event, #demo .event { grid-template-columns: minmax(0, 1fr); } #demo .actions { grid-template-columns: repeat(2, minmax(0, 1fr)); } #demo .screen, #demo .timeline, .present #demo .screen, .present #demo .timeline { max-height: min(48vh, 380px); } .asr-live-controls { grid-template-columns: minmax(0, 1fr); } .voice-pipeline__chrome { padding: 16px 14px 10px; } .voice-pipeline__canvas { padding: 8px 8px 14px; } .xform-rail { display: none; } .voice-pipeline__stages { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 12px 4px 4px; -webkit-overflow-scrolling: touch; } .voice-pipeline__stage { flex: 0 0 min(82vw, 300px); scroll-snap-align: start; min-height: 260px; } }
+    @media (max-width: 920px) { .ecosystem-diagram { grid-template-columns: minmax(0, 1fr); } .ecosystem-handoff { min-height: auto; grid-template-columns: 1fr 1fr; } .ecosystem-card { min-height: 132px; } .two, .vad-layout, .transport-paths, .finale-layout { grid-template-columns: 1fr; } .integration-truths, .control-stack, .contract-evidence, .agent-max-impact, .project-links { grid-template-columns: 1fr; } .finale-callback, .finale-invitation { align-items: flex-start; flex-direction: column; gap: 5px; } .finale-callback b { transform: rotate(90deg); } .control-layer:not(:last-child)::after { content: "↓"; right: auto; left: 50%; top: auto; bottom: -21px; transform: translateX(-50%); } .contrast-grid { grid-template-columns: 1fr; } .versus { width: auto; height: 34px; border-radius: 999px; } .contrast-card { min-height: 0; } .boundary-strip { grid-template-columns: 1fr; } .boundary-gate { justify-self: center; } .pipecat-flow { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 8px; } .pipecat-node { flex: 0 0 min(70vw,220px); scroll-snap-align: start; } .turn-references { grid-template-columns: 1fr; } .present .topbar { position: static; width: auto; } .present main { padding-top: 0; } .present .slide, .present .hero { min-height: calc(100vh - var(--topbar-height)); } .present #demo { height: auto; min-height: calc(100vh - var(--topbar-height)); overflow: visible; } .topbar { align-items: stretch; flex-direction: column; } .toolbar { justify-content: flex-start; } .hero, .slide, .section-band { padding: 28px 14px; } h1 { font-size: 38px; } .event, #demo .event { grid-template-columns: minmax(0, 1fr); } #demo .actions { grid-template-columns: repeat(2, minmax(0, 1fr)); } #demo .screen, #demo .timeline, .present #demo .screen, .present #demo .timeline { max-height: min(48vh, 380px); } .asr-live-controls { grid-template-columns: minmax(0, 1fr); } .voice-pipeline__chrome { padding: 16px 14px 10px; } .voice-pipeline__canvas { padding: 8px 8px 14px; } .xform-rail { display: none; } .voice-pipeline__stages { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 12px 4px 4px; -webkit-overflow-scrolling: touch; } .voice-pipeline__stage { flex: 0 0 min(82vw, 300px); scroll-snap-align: start; min-height: 260px; } }
     @media (max-width: 920px) { .tts-layout, .asr-noise-guidance { grid-template-columns: minmax(0,1fr); } .asr-noise-guidance ul { grid-template-columns: minmax(0,1fr); } .asr-noise-foot { grid-column: auto; align-items: flex-start; flex-direction: column; } }
     @media (max-width: 920px) { .asr-app-flow { display: flex; overflow-x: auto; } .asr-app-node { flex: 0 0 min(70vw,260px); min-height: 210px; } .asr-app-link { flex: 0 0 105px; } .asr-benefits { grid-template-columns: repeat(2,minmax(0,1fr)); } }
     @media (max-width: 920px) { .demo-commandbar { grid-template-columns: 1fr; } .demo-control-story { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; } .demo-control-story::before, .demo-control-step:not(:last-child)::after { display: none; } .demo-result-grid, .demo-evidence-grid { grid-template-columns: 1fr; } .demo-result-item:not(:last-child) { margin-right: 0; padding-bottom: 8px; border-right: 0; border-bottom: 1px solid rgba(125,211,252,.18); } }
@@ -1517,7 +1513,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
       .present #vad-interruption .turn-diagram { padding: 5px; }
       .present #vad-interruption .turn-diagram svg { min-height: 100px; max-height: 112px; }
       .present #map .arch { min-height: 0; max-height: 372px; }
-      .present #agent, .present #slo, .present #proof { height: calc(100vh - 62px); min-height: 0; overflow-y: auto; align-content: start; }
+      .present #agent, .present #slo, .present #proof { height: calc(100vh - var(--topbar-height)); min-height: 0; overflow-y: auto; align-content: start; }
     }
   </style>
 </head>
@@ -1593,12 +1589,6 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
             <div class="transport-arrow" aria-label="bidirectional">↔</div>
             <div class="transport-node"><small>FreeSWITCH ↔ Pipecat</small><strong>SmallWebRTC / aiortc</strong><code>signaling: Verto JSON-RPC · WebSocket<br>media: ICE · DTLS-SRTP · RTP/RTCP</code></div>
           </article>
-        </div>
-        <div class="shared-pipeline" aria-label="Shared streaming Pipecat voice-agent pipeline">
-          <div class="shared-stage"><small>Stream in</small><strong>rtc-asr socket stream</strong><code>persistent WebSocket · 16 kHz PCM16<br>20 ms / 640 B · interim events</code></div>
-          <div class="shared-stage"><small>Structure</small><strong><a href="https://docs.pipecat.ai/overview/flows" target="_blank" rel="noreferrer">Pipecat Flows / FlowManager ↗</a></strong><code>open-source node graph<br>scoped prompts + tools · explicit transitions</code></div>
-          <div class="shared-stage"><small>Bound actions</small><strong>Agentic Call Center Reference App</strong><code>business state · policy gates<br>human approval · fallback · proof</code></div>
-          <div class="shared-stage"><small>Stream out</small><strong>Incremental TTS audio</strong><code>first playable chunk → transport<br>synthesis and playback overlap</code></div>
         </div>
         <div class="integration-truths">
           <div class="integration-truth"><strong>Transcribe while speech arrives</strong></div>
@@ -1752,7 +1742,7 @@ def collect_identity_node() -> NodeConfig:
     <section class="section-band slide" data-slide="11" id="ecosystem"><span class="kicker">WebRTC.ventures open source</span><h2>Three projects. One reliability loop.</h2><p class="subhead">Start the demo from either side: click ConversationAgentEvals for scenarios, or Agentic Contact Center for the live operator view.</p><div class="ecosystem-diagram"><div class="ecosystem-lane"><a class="ecosystem-card ecosystem-card--primary" href="${payload.caePanel.webBaseUrl}${payload.caePanel.scenariosPath}" target="_blank" rel="noreferrer" aria-label="Start the demo in ConversationAgentEvals scenarios"><small>Demo entry · scenarios</small><strong>ConversationAgentEvals</strong><span>Runs scenarios, normalizes proof, and compares regressions.</span></a><div class="ecosystem-arrow-down"><span>canonical evaluation</span><b>↓</b></div><a class="ecosystem-card" href="${payload.sourceRepos.assert}" target="_blank" rel="noreferrer" aria-label="Open the ASSERT repository"><small>Upstream engine</small><strong>ASSERT</strong><span>Generates and judges requirement-driven evaluations.</span></a></div><div class="ecosystem-handoff" aria-label="Bidirectional test and evidence handoff"><span>test scenarios →</span><span>← proof bundle</span></div><div class="ecosystem-lane"><a class="ecosystem-card ecosystem-card--target" href="http://127.0.0.1:8026/operator/console" target="_blank" rel="noreferrer" aria-label="Start the demo in the Agentic Contact Center operator view"><small>Demo entry · operator</small><strong>Agentic Contact Center</strong><span>Demonstrates the realtime voice-agent path and deterministic failure controls.</span></a><div class="ecosystem-arrow-down"><span>optional local STT</span><b>↓</b></div><a class="ecosystem-card" href="http://127.0.0.1:8090/rtc-asr" target="_blank" rel="noreferrer" aria-label="Open the local rtc-asr browser app"><small>Speech sidecar</small><strong>rtc-asr</strong><span>Streams transcripts and publishes reproducible ASR benchmarks.</span></a></div></div><div class="ecosystem-foot">Open components connected by explicit adapters and reviewable evidence.</div></section>
     <section class="section-band slide" data-slide="12" id="slo"><span class="kicker">Reliability targets</span><h2>Reliable audio is necessary. Reliable conversation is the outcome.</h2><p class="subhead">Traditional SLOs tell us whether the service answered. Conversational SLOs tell us whether the agent understood, acted correctly, and recovered safely.</p><div class="slo-layout"><article class="slo-column"><small>Traditional service SLO</small><strong>Did the system answer reliably?</strong><ul><li>Call connected</li><li>Two-way audio stayed available</li><li>Latency met its target</li><li>Infrastructure stayed healthy</li></ul></article><div class="slo-bridge"><b aria-hidden="true">→</b><span>same call · wider outcome</span></div><article class="slo-column slo-column--conversation"><small>Conversational SLO</small><strong>Did the agent do the right thing?</strong><ul><li>Understood the caller</li><li>Responded at the right time</li><li>Changed the correct business state</li><li>Clarified, recovered, or handed off safely</li></ul></article></div><div class="slo-measures"><div class="slo-measure"><strong>Response onset</strong><span>First audible response within target</span></div><div class="slo-measure"><strong>Task outcome</strong><span>Correct state or correct handoff</span></div><div class="slo-measure"><strong>Floor control</strong><span>Fast barge-in; few false interruptions</span></div><div class="slo-measure"><strong>Policy integrity</strong><span>Zero unauthorized consequential actions</span></div></div><div class="slo-foot"><span><strong>Evals gate a release.</strong> Conversational SLOs show whether it stays good in production.</span><span class="slo-sources"><a href="https://sre.google/workbook/implementing-slos/" target="_blank" rel="noreferrer">Google SRE Workbook ↗</a><a href="https://www.itu.int/rec/T-REC-P.851-200311-I/en" target="_blank" rel="noreferrer">ITU-T P.851 ↗</a></span></div></section>
     <section class="section-band slide" data-slide="10" id="security"><span class="kicker">Security boundary</span><h2>Minimize sensitive data crossing the LLM boundary.</h2><p class="subhead">Screen locally, minimize context, authorize tools outside the model, and govern any raw data that is explicitly required.</p><div class="security-layout"><div class="security-boundary"><div class="security-flow"><div class="security-node"><small>Controlled media</small><strong>Caller audio</strong></div><div class="security-node"><small>Inside boundary</small><strong>STT transcript</strong></div><div class="security-node security-node--guard"><small>Local enforcement</small><strong>PII / PHI / PCI guardrail</strong></div><div class="security-node security-node--provider"><small>Third party</small><strong>Minimum LLM context</strong></div><div class="security-node security-node--guard"><small>Before TTS</small><strong>Response policy gate</strong></div><div class="security-node"><small>Realtime media</small><strong>TTS / caller</strong></div></div><div class="security-gate"><div class="security-pane"><strong>Final transcript inside our boundary</strong><pre id="security-input">I need help understanding my renewal options.</pre></div><div class="security-pane"><strong>What crosses the LLM boundary</strong><span class="badge ready" id="security-action">allow</span><pre id="security-output">I need help understanding my renewal options.</pre><span class="muted" id="security-note">No sensitive data detected; the minimum required text crosses the provider boundary.</span></div></div></div><aside class="security-result"><strong>Try the policy boundary</strong><div class="actions" id="security-actions"></div><ul class="security-controls" id="security-controls"></ul><div class="security-links"><a class="mode-link" href="${payload.securityPanel.articleUrl}" target="_blank" rel="noreferrer">Architecture article ↗</a><a class="mode-link" href="${payload.securityPanel.referenceRepoUrl}" target="_blank" rel="noreferrer">Guardrails demo ↗</a></div><span class="muted">Sensitive values that must be collected belong in an authorized application flow. The LLM receives only state such as <code>payment_method_collected</code>.</span></aside></div></section>
-    <section class="section-band slide finale" data-slide="13" id="finale"><span class="kicker">Open source, open invitation</span><h2>Every enterprise workflow can now begin with a conversation.</h2><div class="finale-callback" aria-label="The evolution from rigid systems to conversational interfaces"><span>2017 · People adapted to systems.</span><b aria-hidden="true">→</b><strong>Now · Systems can adapt to people.</strong></div><p class="subhead"><span>The conversation can be open-ended.</span><strong>Identity, authority, and outcomes cannot be.</strong></p><div class="finale-invitation"><strong>Run it. Break it. Make it better.</strong><span>Open source projects to try below:</span></div><div class="finale-layout"><div class="project-links"><a class="project-link" href="${payload.sourceRepos.agenticContactCenter}" target="_blank" rel="noreferrer"><small>Reference target</small><strong>Agentic Contact Center ↗</strong><span>SIP/WebRTC voice-agent architecture, failure controls, and proof.</span></a><a class="project-link" href="${payload.sourceRepos.rtcAsr}" target="_blank" rel="noreferrer"><small>Local speech</small><strong>rtc-asr ↗</strong><span>Streaming STT boundary and reproducible benchmark lab.</span></a><a class="project-link" href="${payload.sourceRepos.conversationAgentEvals}" target="_blank" rel="noreferrer"><small>Evaluation</small><strong>ConversationAgentEvals ↗</strong><span>Scenarios, simulated calls, runs, evidence, and regression reports.</span></a></div><aside class="finale-contact"><div class="finale-contact__details"><a href="${payload.contactPanel.websiteUrl}" target="_blank" rel="noreferrer"><img class="finale-logo" src="${payload.contactPanel.logoUrl}" alt="WebRTC.ventures"></a><strong>${escapeHtml(payload.contactPanel.name)} · ${escapeHtml(payload.contactPanel.role)}</strong><a href="mailto:${escapeHtml(payload.contactPanel.email)}">${escapeHtml(payload.contactPanel.email)}</a><a href="${payload.contactPanel.websiteUrl}" target="_blank" rel="noreferrer">webrtc.ventures ↗</a></div><a class="finale-linkedin" href="${payload.contactPanel.linkedinUrl}" target="_blank" rel="noreferrer" aria-label="Connect with Alberto Gonzalez on LinkedIn"><img src="${escapeHtml(linkedinQrUrl)}" alt="QR code linking to Alberto Gonzalez on LinkedIn"><span>Connect on LinkedIn</span></a></aside></div></section>
+    <section class="section-band slide finale" data-slide="13" id="finale"><span class="kicker">Open source, open invitation</span><h2>Every enterprise workflow can now begin with a conversation.</h2><div class="finale-callback" aria-label="The evolution from rigid systems to conversational interfaces"><span>2017 · People adapted to systems.</span><b aria-hidden="true">→</b><strong>Now · Systems can adapt to people.</strong></div><div class="finale-invitation"><strong>Run it. Break it. Make it better.</strong><span>Open source projects to try below:</span></div><div class="finale-layout"><div class="project-links"><a class="project-link" href="${payload.sourceRepos.agenticContactCenter}" target="_blank" rel="noreferrer"><small>Reference target</small><strong>Agentic Contact Center ↗</strong><span>SIP/WebRTC voice-agent architecture, failure controls, and proof.</span></a><a class="project-link" href="${payload.sourceRepos.rtcAsr}" target="_blank" rel="noreferrer"><small>Local speech</small><strong>rtc-asr ↗</strong><span>Streaming STT boundary and reproducible benchmark lab.</span></a><a class="project-link" href="${payload.sourceRepos.conversationAgentEvals}" target="_blank" rel="noreferrer"><small>Evaluation</small><strong>ConversationAgentEvals ↗</strong><span>Scenarios, simulated calls, runs, evidence, and regression reports.</span></a></div><aside class="finale-contact"><div class="finale-contact__details"><a href="${payload.contactPanel.websiteUrl}" target="_blank" rel="noreferrer"><img class="finale-logo" src="${payload.contactPanel.logoUrl}" alt="WebRTC.ventures"></a><strong>${escapeHtml(payload.contactPanel.name)} · ${escapeHtml(payload.contactPanel.role)}</strong><a href="mailto:${escapeHtml(payload.contactPanel.email)}">${escapeHtml(payload.contactPanel.email)}</a><a href="${payload.contactPanel.websiteUrl}" target="_blank" rel="noreferrer">webrtc.ventures ↗</a></div><a class="finale-linkedin" href="${payload.contactPanel.linkedinUrl}" target="_blank" rel="noreferrer" aria-label="Connect with Alberto Gonzalez on LinkedIn"><img src="${escapeHtml(linkedinQrUrl)}" alt="QR code linking to Alberto Gonzalez on LinkedIn"><span>Connect on LinkedIn</span></a></aside></div></section>
     <pre id="proof-json" hidden aria-hidden="true"></pre>
   </main>
   <script>window.__CLUECON__ = ${data};</script>
@@ -1763,6 +1753,8 @@ def collect_identity_node() -> NodeConfig:
     slideOrder.forEach((id, index) => { const slide = document.getElementById(id); if (slide) { slide.dataset.slide = String(index); main?.appendChild(slide); } });
     const state = { slide: 0, slideCount: slideOrder.length, isPresent: document.body.classList.contains("present"), proof: null, brain: JSON.parse(JSON.stringify(data.brainBlocks)), brainSession: null, asrCapture: null, asrStopping: false, asrModels: [], asrLive: null, ttsStream: null, ttsStreamToken: 0, failureAudio: null, failureAudioUrl: null, vad: null, vadStarting: false, vadStartToken: 0, vadPendingStream: null, vadBotSpeaking: false, vadBotTimer: null, vadTurnTimer: null, vadOutputTimer: null, vadOutputCleanupTimer: null, vadSimulationTimers: [] };
     const VAD_END_OF_TURN_MS = Number(data.turnTiming?.endOfTurnSilenceMs) || 2000;
+    const LIVE_TTS_FETCH_TIMEOUT_MS = 12_000;
+    const LIVE_TTS_READ_TIMEOUT_MS = 10_000;
     function esc(value) { return String(value).replace(/[&<>\"]/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;"); }
     let agentCodeTrigger = null;
     function closeAgentCode() { const modal = document.getElementById("agent-code-modal"); if (!modal || modal.hidden) return; modal.hidden = true; modal.setAttribute("aria-hidden", "true"); document.querySelectorAll("[data-agent-code]").forEach(button => button.setAttribute("aria-expanded", "false")); if (agentCodeTrigger) agentCodeTrigger.focus(); agentCodeTrigger = null; }
@@ -1772,7 +1764,12 @@ def collect_identity_node() -> NodeConfig:
     function renderSecurityPanel() { document.getElementById("security-actions").innerHTML = data.securityPanel.scenarios.map(scenario => '<button type="button" data-security-scenario="' + esc(scenario.id) + '">' + esc(scenario.label) + '</button>').join(""); document.getElementById("security-controls").innerHTML = data.securityPanel.controls.map(control => '<li>' + esc(control) + '</li>').join(""); document.querySelectorAll("[data-security-scenario]").forEach(button => button.addEventListener("click", () => renderSecurityScenario(button.dataset.securityScenario))); renderSecurityScenario("safe"); }
     function stopFailureAudio() { if (state.failureAudio) { state.failureAudio.pause(); state.failureAudio.removeAttribute("src"); state.failureAudio.load(); state.failureAudio = null; } if (state.failureAudioUrl) { URL.revokeObjectURL(state.failureAudioUrl); state.failureAudioUrl = null; } }
     function prerecordedFailureAudio() { const audio = new Audio("/cluecon/system-unavailable.mp3"); state.failureAudio = audio; return { audio, source: "Prerecorded failover prompt" }; }
-    async function synthesizedAsrFailureAudio() { const provider = selectedTtsProvider(); const response = await fetch(data.ttsPanel.synthesizeRoute, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: provider.id, model: provider.model, voice: provider.voice, text: "We are sorry. I cannot hear you right now. Please hold while I connect you with a human agent." }) }); if (!response.ok) { const failure = await response.json().catch(() => ({ error: "HTTP " + response.status })); throw new Error(failure.detail || failure.nextStep || failure.error || provider.label + " synthesis failed."); } const contentType = (response.headers.get("content-type") || "audio/mpeg").split(";")[0]; const bytes = await readTtsAudioResponse(response, () => undefined); state.failureAudioUrl = URL.createObjectURL(new Blob([bytes], { type: contentType })); const audio = new Audio(state.failureAudioUrl); state.failureAudio = audio; return { audio, source: provider.label + " · " + provider.model + " live TTS" }; }
+    function buildTtsSynthesisRequest(provider, text) {
+      const request = { provider: provider.id, text, voice: provider.voice };
+      if (provider.id !== "pocket" && provider.model) request.model = provider.model;
+      return request;
+    }
+    async function synthesizedAsrFailureAudio() { const provider = selectedTtsProvider(); const response = await fetch(data.ttsPanel.synthesizeRoute, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(buildTtsSynthesisRequest(provider, "We are sorry. I cannot hear you right now. Please hold while I connect you with a human agent.")) }); if (!response.ok) { const failure = await response.json().catch(() => ({ error: "HTTP " + response.status })); throw new Error(failure.detail || failure.nextStep || failure.error || provider.label + " synthesis failed."); } const contentType = (response.headers.get("content-type") || "audio/mpeg").split(";")[0]; const bytes = await readTtsAudioResponse(response, () => undefined); state.failureAudioUrl = URL.createObjectURL(new Blob([bytes], { type: contentType })); const audio = new Audio(state.failureAudioUrl); state.failureAudio = audio; return { audio, source: provider.label + " · " + provider.model + " live TTS" }; }
     async function playFailureAudio(kind) { stopFailureAudio(); let playback; if (kind === "rtc_asr_unavailable") { try { playback = await synthesizedAsrFailureAudio(); } catch { playback = prerecordedFailureAudio(); playback.source += " · live TTS unavailable"; } } else { playback = prerecordedFailureAudio(); } let autoplayBlocked = false; try { await playback.audio.play(); } catch { autoplayBlocked = true; } return { ...playback, autoplayBlocked }; }
     function attachFailureAudio(playback) { const screen = document.getElementById("demo-screen"); const panel = document.createElement("div"); panel.className = "demo-failure-audio"; const label = document.createElement("span"); label.innerHTML = '<small>Audible caller prompt</small><strong>' + esc(playback.source) + (playback.autoplayBlocked ? " · press play" : " · playing") + '</strong>'; playback.audio.controls = true; playback.audio.preload = "auto"; panel.append(label, playback.audio); screen.appendChild(panel); }
     async function runMediaFailureDrill(kind) { const playbackPromise = playFailureAudio(kind); const drillPromise = runOperatorDrill(kind); const [playback] = await Promise.all([playbackPromise, drillPromise]); attachFailureAudio(playback); }
@@ -1909,13 +1906,24 @@ def collect_identity_node() -> NodeConfig:
       document.getElementById("tts-run").disabled = false;
       document.getElementById("tts-provider").disabled = false;
     }
-    async function readTtsAudioResponse(response, onChunk) {
+    async function readTtsChunk(reader, timeoutMs, context) {
+      let timeoutId;
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(context + " did not return data within " + timeoutMs + " ms.")), timeoutMs);
+      });
+      try {
+        return await Promise.race([reader.read(), timeout]);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+    async function readTtsAudioResponse(response, onChunk, readTimeoutMs = LIVE_TTS_READ_TIMEOUT_MS) {
       if (!response.body) throw new Error("The browser did not expose the streaming response body.");
       const reader = response.body.getReader();
       const parts = [];
       let total = 0;
       while (true) {
-        const chunk = await reader.read();
+        const chunk = await readTtsChunk(reader, readTimeoutMs, "The live TTS audio stream");
         if (chunk.done) break;
         if (!chunk.value?.byteLength) continue;
         parts.push(chunk.value);
@@ -1963,7 +1971,7 @@ def collect_identity_node() -> NodeConfig:
         const response = await fetch(data.ttsPanel.synthesizeRoute, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ provider: provider.id, model: provider.model, text, voice: provider.voice }),
+          body: JSON.stringify(buildTtsSynthesisRequest(provider, text)),
         });
         if (!response.ok) {
           const failure = await response.json().catch(() => ({ error: "HTTP " + response.status }));
@@ -2057,6 +2065,7 @@ def collect_identity_node() -> NodeConfig:
       if (!text) { status.textContent = "Enter text before running " + provider.label + "."; return; }
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextClass) { status.textContent = "Web Audio is unavailable in this browser."; return; }
+      stopFailureAudio();
       stopTtsStream();
       const segments = renderTtsTextProgress();
       const token = state.ttsStreamToken;
@@ -2081,26 +2090,33 @@ def collect_identity_node() -> NodeConfig:
       let completedSegments = 0;
       let scheduledUntil = context.currentTime;
       try {
-        for (let index = 0; index < segments.length; index += 1) {
+      for (let index = 0; index < segments.length; index += 1) {
+        if (token !== state.ttsStreamToken) return;
+        status.textContent = (playbackMs === null ? "Synthesizing" : "Playing queued audio while synthesizing") + " chunk " + (index + 1) + " of " + segments.length + "…";
+        stream.controller = new AbortController();
+        const requestController = stream.controller;
+        const requestTimeout = setTimeout(() => requestController.abort(), LIVE_TTS_FETCH_TIMEOUT_MS);
+        const response = await fetch(data.ttsPanel.synthesizeRoute, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(buildTtsSynthesisRequest(provider, segments[index])),
+          signal: requestController.signal,
+        }).finally(() => clearTimeout(requestTimeout));
+        if (token !== state.ttsStreamToken) return;
+        if (!response.ok) {
+          const failure = await response.json().catch(() => ({ error: "HTTP " + response.status }));
+          throw new Error(failure.detail || failure.nextStep || failure.error || provider.label + " synthesis failed.");
+        }
+        const contentType = (response.headers.get("content-type") || "").split(";")[0].toLowerCase();
+        if (contentType && !contentType.startsWith("audio/")) {
+          throw new Error(provider.label + " returned non-audio content (" + contentType + "); check POCKET_TTS_SPEECH_PATH and provider compatibility.");
+        }
+        const audioBytes = await readTtsAudioResponse(response, byteLength => {
           if (token !== state.ttsStreamToken) return;
-          status.textContent = (playbackMs === null ? "Synthesizing" : "Playing queued audio while synthesizing") + " chunk " + (index + 1) + " of " + segments.length + "…";
-          const response = await fetch(data.ttsPanel.synthesizeRoute, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ provider: provider.id, model: provider.model, text: segments[index], voice: provider.voice }),
-            signal: stream.controller.signal,
-          });
-          if (token !== state.ttsStreamToken) return;
-          if (!response.ok) {
-            const failure = await response.json().catch(() => ({ error: "HTTP " + response.status }));
-            throw new Error(failure.detail || failure.nextStep || failure.error || provider.label + " synthesis failed.");
+          if (firstByteMs === null) {
+            firstByteMs = performance.now() - started;
+            document.getElementById("tts-ttfb").textContent = Math.round(firstByteMs) + " ms";
           }
-          const audioBytes = await readTtsAudioResponse(response, byteLength => {
-            if (token !== state.ttsStreamToken) return;
-            if (firstByteMs === null) {
-              firstByteMs = performance.now() - started;
-              document.getElementById("tts-ttfb").textContent = Math.round(firstByteMs) + " ms";
-            }
             bytes += byteLength;
             document.getElementById("tts-bytes").textContent = completedSegments + " / " + segments.length + " · " + new Intl.NumberFormat().format(bytes) + " B";
           });
@@ -2148,7 +2164,12 @@ def collect_identity_node() -> NodeConfig:
         stopTtsStream();
         badge.textContent = "blocked";
         badge.className = "badge blocked";
-        status.textContent = String(error.message || error);
+        if (error?.name === "AbortError") {
+          const providerBaseUrlEnv = provider.id === "pocket" ? "POCKET_TTS_BASE_URL" : "KOKORO_BASE_URL";
+          status.textContent = provider.label + " request timed out. Confirm " + providerBaseUrlEnv + " is a real reachable endpoint and retry.";
+        } else {
+          status.textContent = String(error.message || error);
+        }
       } finally {
         if (token === state.ttsStreamToken) {
           button.disabled = false;

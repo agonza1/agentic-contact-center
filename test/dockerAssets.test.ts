@@ -7,7 +7,7 @@ const repoRoot = join(__dirname, "..", "..");
 
 test("Docker runtime assets keep the documented health and proof contract", () => {
   const dockerfile = readFileSync(join(repoRoot, "Dockerfile"), "utf8");
-  const compose = readFileSync(join(repoRoot, "docker-compose.yml"), "utf8");
+  const compose = readFileSync(join(repoRoot, "docker-compose.yml"), "utf8").replace(/\r\n/g, "\n");
   const freeswitchDialplan = readFileSync(join(repoRoot, "freeswitch", "conf", "dialplan", "default", "acc_local_sip.xml"), "utf8");
   const readme = readFileSync(join(repoRoot, "README.md"), "utf8");
   const runtimeReference = readFileSync(join(repoRoot, "docs", "runtime-reference.md"), "utf8");
@@ -39,6 +39,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.equal((compose.match(/POCKET_TTS_HEALTH_PATH: \$\{POCKET_TTS_HEALTH_PATH:-\/health\}/g) ?? []).length, 3);
   assert.equal((compose.match(/POCKET_TTS_SPEECH_PATH: \$\{POCKET_TTS_SPEECH_PATH:-\/v1\/audio\/speech\}/g) ?? []).length, 3);
   assert.equal((compose.match(/"host\.docker\.internal:host-gateway"/g) ?? []).length, 3);
+  assert.match(compose, /\.\/freeswitch\/conf\/sip_profiles\/internal\.xml:\/etc\/freeswitch\/sip_profiles\/internal\.xml:ro/);
   assert.doesNotMatch(compose, /POCKET_TTS_BASE_URL: \$\{POCKET_TTS_BASE_URL:-http:\/\/127\.0\.0\.1:8881\}/);
   assert.doesNotMatch(compose, /POCKET_TTS_BASE_URL: \$\{POCKET_TTS_CONTAINER_BASE_URL:-http:\/\/host\.docker\.internal:8881\}/);
   assert.match(compose, /proof:\n[\s\S]*profiles: \["proof"\]/);
