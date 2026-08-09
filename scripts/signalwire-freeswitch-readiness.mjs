@@ -235,7 +235,7 @@ function fieldAliasesPattern(aliases) {
 }
 
 function gatewayFieldValues(output, aliases) {
-  const pattern = new RegExp(`^\\s*(?:${fieldAliasesPattern(aliases)})\\s*(?::|=)\\s*(.+?)\\s*$`, "gim");
+  const pattern = new RegExp(`^\\s*(?:${fieldAliasesPattern(aliases)})(?:\\s*(?::|=)\\s*|\\s+)(.+?)\\s*$`, "gim");
   return [...output.matchAll(pattern)].map((match) => clean(match[1]).replace(/^"|"$/g, ""));
 }
 

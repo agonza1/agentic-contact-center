@@ -234,7 +234,7 @@ test("SignalWire FreeSWITCH readiness redacts normalized SIP hosts from fs_cli p
 case "$2" in
   "sofia status profile external") printf '%s\\n' "external profile RUNNING" "SIP-IP 192.168.50.4" "RTP-IP 10.0.0.8" "Ext-SIP-IP fd00::1234" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
-  "sofia status gateway signalwire") printf '%s\\n' "State: REGED" "Realm: example.sip.signalwire.com" "Proxy: example.sip.signalwire.com" "Username: acc-sip-user" ;;
+  "sofia status gateway signalwire") printf '%s\\n' "State REGED" "Realm example.sip.signalwire.com" "Proxy example.sip.signalwire.com" "Username acc-sip-user" ;;
   "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><condition field="\${acl(\${network_addr} signalwire_trunk)}" expression="^true$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="{absolute_codec_string=PCMU}verto_contact(acc-pipecat@example.test)"/></condition></extension>' ;;
   *) printf '%s\\n' "acc-pipecat@example.test REGED" ;;
 esac
@@ -281,7 +281,7 @@ esac
     assert.doesNotMatch(stdout, /192\.168\.50\.4|10\.0\.0\.8|fd00::1234/);
     assert.doesNotMatch(stdout, /12029687351|2029687351/);
     assert.match(stdout, /\[redacted-address\]/);
-    assert.match(stdout, /Realm: \[redacted\]/);
+    assert.match(stdout, /Realm:? \[redacted\]/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

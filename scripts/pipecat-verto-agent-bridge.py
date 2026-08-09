@@ -91,7 +91,7 @@ def safe_artifact_id(value: Any) -> str | None:
 
 SECRET_PARAM_KEY_PATTERN = re.compile(r"(authorization|password|passwd|token|secret|credential|api[_-]?key|access[_-]?key)", re.IGNORECASE)
 CALLER_IDENTITY_PARAM_KEY_PATTERN = re.compile(
-    r"(caller[-_\s]?id|caller[-_\s]?(?:name|number)|effective[-_\s]?caller|origination[-_\s]?caller|cid[-_\s]?(?:name|num|number)?|ani|clid|sip[-_\s]?from[-_\s]?(?:user|number|name)|from[-_\s]?(?:user|number|name))",
+    r"(caller[-_\s]?id|caller[-_\s]?(?:name|number|uri)|effective[-_\s]?caller|origination[-_\s]?caller|cid[-_\s]?(?:name|num|number)?|ani|clid|(?:variable[-_\s]?)?sip[-_\s]?(?:full[-_\s]?from|from[-_\s]?(?:uri|user|number|name))|full[-_\s]?from|from[-_\s]?(?:uri|user|number|name))",
     re.IGNORECASE,
 )
 
