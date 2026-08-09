@@ -82,6 +82,21 @@ function redact(value) {
   return `${text.slice(0, 2)}...[redacted]...${text.slice(-2)}`;
 }
 
+function redactIpLiterals(text) {
+  return text
+    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[redacted-address]")
+    .replace(/\[[0-9a-f:.]+\]/gi, "[redacted-address]")
+    .replace(
+      /(^|[^0-9a-f:])([0-9a-f]{0,4}:(?=[0-9a-f:.]*:)[0-9a-f:.]+)(?=$|[^0-9a-f:])/gi,
+      (match, prefix, candidate) => {
+        const suffixMatch = candidate.match(/([,;)>\]]+)$/);
+        const suffix = suffixMatch ? suffixMatch[1] : "";
+        const address = suffix ? candidate.slice(0, -suffix.length) : candidate;
+        return isIP(address) === 6 ? `${prefix}[redacted-address]${suffix}` : match;
+      },
+    );
+}
+
 function buildRedactor(values) {
   const secrets = values.filter(Boolean).sort((a, b) => b.length - a.length);
   return (text) => {
@@ -89,13 +104,12 @@ function buildRedactor(values) {
     for (const secret of secrets) {
       redacted = redacted.split(secret).join("[redacted]");
     }
-    return redacted
+    redacted = redacted
       .replace(
         /^(\s*(?:ext-)?(?:sip|rtp)-ip(?:\s*[:=]\s*|\s+))\S+/gim,
         "$1[redacted-address]",
-      )
-      .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[redacted-address]")
-      .replace(/\[[0-9a-f:]+\]/gi, "[redacted-address]");
+      );
+    return redactIpLiterals(redacted);
   };
 }
 
