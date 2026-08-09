@@ -2162,7 +2162,8 @@ def collect_identity_node() -> NodeConfig:
         badge.textContent = "blocked";
         badge.className = "badge blocked";
         if (error?.name === "AbortError") {
-          status.textContent = "TTS request timed out. Confirm POCKET_TTS_BASE_URL is a real reachable endpoint and retry.";
+          const providerBaseUrlEnv = provider.id === "pocket" ? "POCKET_TTS_BASE_URL" : "KOKORO_BASE_URL";
+          status.textContent = provider.label + " request timed out. Confirm " + providerBaseUrlEnv + " is a real reachable endpoint and retry.";
         } else {
           status.textContent = String(error.message || error);
         }

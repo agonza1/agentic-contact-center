@@ -1303,6 +1303,8 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /function resetTtsMeasurements\(\)/);
   assert.match(narrative.body, /controller: new AbortController\(\)/);
   assert.match(narrative.body, /signal: requestController\.signal/);
+  assert.match(narrative.body, /provider\.id === "pocket" \? "POCKET_TTS_BASE_URL" : "KOKORO_BASE_URL"/);
+  assert.match(narrative.body, /provider\.label \+ " request timed out\. Confirm "/);
   assert.match(narrative.body, /if \(token !== state\.ttsStreamToken\) return;\s+if \(firstByteMs === null\)/);
   assert.match(narrative.body, /if \(token !== state\.ttsStreamToken\) return;\s+stopTtsStream\(\);/);
   assert.match(narrative.body, /providerSelect\.disabled = true/);
