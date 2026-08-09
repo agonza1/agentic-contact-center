@@ -41,6 +41,13 @@ const REGISTRATION_REQUIRED_ENV = [
 ];
 const ALL_ENV = [...COMMON_REQUIRED_ENV, ...REGISTRATION_REQUIRED_ENV];
 const DEFAULT_SIGNALWIRE_SOURCE_ACL_NAME = "signalwire_trunk";
+const SOURCE_ACL_REJECT_PROBE_CANDIDATES = [
+  "8.8.8.8",
+  "1.1.1.1",
+  "9.9.9.9",
+  "208.67.222.222",
+  "2606:4700:4700::1111",
+];
 
 function hasFlag(name) {
   return args.includes(name);
@@ -203,6 +210,13 @@ function isSignalWireSourceAclProven(entry) {
   return /\b(?:true|allow|allowed|pass|passed|ok)\b/i.test(output);
 }
 
+function isSignalWireSourceAclRejected(entry) {
+  if (!entry) return false;
+  const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
+  if (/\b(?:true|allow|allowed|pass|passed|ok)\b/i.test(output)) return false;
+  return /\b(?:false|deny|denied|reject|rejected|not\s+found)\b/i.test(output);
+}
+
 function ipv4ToNumber(address) {
   const parts = clean(address).split(".").map(Number);
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return null;
@@ -246,6 +260,14 @@ function cidrContainsIp(cidr, address) {
 
 function isSignalWireProviderIngressProbe(address, providerCidrs) {
   return providerCidrs.some((cidr) => cidrContainsIp(cidr, address));
+}
+
+function nonProviderSourceAclRejectProbe(providerCidrs, approvedProbe) {
+  return SOURCE_ACL_REJECT_PROBE_CANDIDATES.find((candidate) => (
+    candidate !== approvedProbe
+    && isPublicIpAddress(candidate)
+    && !isSignalWireProviderIngressProbe(candidate, providerCidrs)
+  )) ?? "";
 }
 
 function fieldAliasesPattern(aliases) {
@@ -499,6 +521,7 @@ const signalwireDid = signalwireDidDigits(env.SIGNALWIRE_FROM_NUMBER);
 const signalwireSourceAclName = clean(process.env.SIGNALWIRE_SOURCE_ACL_NAME) || DEFAULT_SIGNALWIRE_SOURCE_ACL_NAME;
 const signalwireSourceIpProbe = clean(process.env.SIGNALWIRE_SOURCE_IP_PROBE);
 const signalwireProviderIngressCidrs = parseProviderIngressCidrs(process.env.SIGNALWIRE_PROVIDER_INGRESS_CIDRS);
+const signalwireSourceRejectProbe = nonProviderSourceAclRejectProbe(signalwireProviderIngressCidrs, signalwireSourceIpProbe);
 const signalwireDidNational = signalwireDid.length === 11 && signalwireDid.startsWith("1")
   ? signalwireDid.slice(1)
   : "";
@@ -520,6 +543,7 @@ const redactor = buildRedactor([
   process.env.SIGNALWIRE_SIP_REALM,
   process.env.SIGNALWIRE_SIP_PROXY,
   signalwireSourceIpProbe,
+  signalwireSourceRejectProbe,
   ...signalwireProviderIngressCidrs,
 ]);
 
@@ -542,9 +566,11 @@ const summary = {
     type: "freeswitch_acl",
     aclName: signalwireSourceAclName,
     probeIp: signalwireSourceIpProbe ? redactor(signalwireSourceIpProbe) : null,
+    rejectProbeIp: signalwireSourceRejectProbe ? redactor(signalwireSourceRejectProbe) : null,
     providerIngressCidrs: signalwireProviderIngressCidrs.map(redactor),
     providerOwnedProbe: false,
     activeAclProven: false,
+    activeAclRejectsNonProvider: false,
   },
   gatewayRegistration: trunkMode === "registration"
     ? {
@@ -589,6 +615,8 @@ if (summary.blockers.length === 0 && !hasFlag("--skip-fs-cli")) {
     summary.blockers.push("signalwire_provider_ingress_cidrs_missing");
   } else if (!isSignalWireProviderIngressProbe(signalwireSourceIpProbe, signalwireProviderIngressCidrs)) {
     summary.blockers.push("signalwire_source_probe_not_provider_owned");
+  } else if (!signalwireSourceRejectProbe) {
+    summary.blockers.push("signalwire_source_acl_reject_probe_unavailable");
   } else {
     summary.sourceRestriction.providerOwnedProbe = true;
   }
@@ -655,9 +683,10 @@ const rawFsCli = new Map();
 if (summary.blockers.length === 0 && !fsCliSkipped) {
   const dialplanCommand = "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn";
   const aclCommand = `acl ${signalwireSourceIpProbe} ${signalwireSourceAclName}`;
+  const aclRejectCommand = `acl ${signalwireSourceRejectProbe} ${signalwireSourceAclName}`;
   const commands = trunkMode === "ip_auth"
-    ? ["sofia status profile external", aclCommand, "show registrations", dialplanCommand]
-    : ["sofia status profile external", "sofia status gateway signalwire", aclCommand, "show registrations", dialplanCommand];
+    ? ["sofia status profile external", aclCommand, aclRejectCommand, "show registrations", dialplanCommand]
+    : ["sofia status profile external", "sofia status gateway signalwire", aclCommand, aclRejectCommand, "show registrations", dialplanCommand];
   for (const command of commands) {
     try {
       const result = await runFsCli(command, redactor);
@@ -712,10 +741,14 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
 
 if (summary.blockers.length === 0 && !fsCliSkipped) {
   const acl = rawFsCli.get(`acl ${signalwireSourceIpProbe} ${signalwireSourceAclName}`);
+  const rejectAcl = rawFsCli.get(`acl ${signalwireSourceRejectProbe} ${signalwireSourceAclName}`);
   if (!isSignalWireSourceAclProven(acl)) {
     summary.blockers.push("signalwire_source_acl_not_proven");
+  } else if (!isSignalWireSourceAclRejected(rejectAcl)) {
+    summary.blockers.push("signalwire_source_acl_too_permissive");
   } else {
     summary.sourceRestriction.activeAclProven = true;
+    summary.sourceRestriction.activeAclRejectsNonProvider = true;
   }
 }
 
