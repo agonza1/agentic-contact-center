@@ -347,7 +347,7 @@ npm run proof:live-sip-bundle -- --live-manifest artifacts/local-sip-selftest/lo
 
 FreeSWITCH local SIP target:
 
-- SIP account: `1000` / `pass` at `localhost:5060` UDP
+- SIP account: `1000` / `pass` at `127.0.0.1:5060` UDP
 - Dial: `8611` for the normal credential-free local conversation, `8612` for the deterministic failure-control script, or `8600` for an OpenAI-backed live LLM conversation
 - ESL bridge: `npm run freeswitch:bridge -- --acc-url http://127.0.0.1:8026`
 - Docker profile: `npm run docker:freeswitch` when Docker is available

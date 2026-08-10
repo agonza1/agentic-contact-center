@@ -11,6 +11,7 @@ Primary actions:
 - Run the default deterministic proof: `npm install && npm test && npm run proof`
 - Start the local app: `npm start`
 - Start the live ClueCon presentation with rtc-asr readiness: `npm run cluecon`
+- Enable live STT and TTS models for the presentation labs: [docs/speech-models.md](docs/speech-models.md)
 - Open the reliability guide: `http://127.0.0.1:8026/reliability`
 - Inspect the ClueCon walkthrough: `http://127.0.0.1:8026/cluecon`
 - Check the reliability-lab integration status: `npm run reliability:lab`

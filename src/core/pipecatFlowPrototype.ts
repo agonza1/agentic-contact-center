@@ -32,14 +32,12 @@ export const SCRIPTED_CALLER_TURNS = [
 ] as const;
 
 export const CLUECON_CANCELLATION_CALLER_TURNS = [
-  "I'm thinking about canceling my policy.",
-  "My renewal went up a lot, and I can't afford it.",
-  "Yes, please check.",
-  "Yes.",
-  "Keep it active until the review.",
+  "My account ends in 4821, and I want to cancel my plan.",
+  "Yes, please check the price first.",
+  "Yes, please cancel it.",
 ] as const;
 
-export const CLUECON_CANCELLATION_AFTER_DENIAL_TURN = "Continue with cancellation.";
+export const CLUECON_CANCELLATION_AFTER_DENIAL_TURN = "Yes, please cancel it.";
 
 export const PIPECAT_TOOL_COVERAGE = [
   "get_current_slide",
@@ -132,7 +130,7 @@ function computeScriptProgress(snapshot: CallSnapshot): ScriptProgress {
 
 function buildSteeredResponse(action: OperatorSteerAction): string {
   if (action === "approve_retention_review") {
-    return "The review has been approved. I can arrange a follow-up with a retention specialist. Would you like to keep the policy active until that review, or continue with cancellation now?";
+    return "The review is complete, and I can't offer a lower price. Would you like me to go ahead and cancel the plan?";
   }
 
   if (action === "deny_offer") {
@@ -160,6 +158,127 @@ function buildSteeredResponse(action: OperatorSteerAction): string {
   }
 
   return "Thanks for waiting. I can review approved next steps like a coverage fit check or a retention specialist follow-up, and I will not promise any billing credit on this call.";
+}
+
+function applyClueConCancellationFlow(
+  snapshot: CallSnapshot,
+  config: PocConfig,
+  turn: TranscriptTurn,
+  callerTurnCount: number,
+): void {
+  if (callerTurnCount === 1) {
+    snapshot.pipecatFlow.activeTool = "goto_slide";
+    transitionFlowState(snapshot, "policy_hold", turn.timestamp, "risky_retention_boundary");
+    recordEvent(snapshot, "cancellation_concern_captured", turn.timestamp, {
+      concern: "cancel_plan",
+      source: "caller",
+    });
+    recordEvent(snapshot, "account_validated", turn.timestamp, {
+      accountEnding: "4821",
+      accountStatus: "active",
+      sessionAuthenticated: true,
+    });
+    recordEvent(snapshot, "policy_hold_entered", turn.timestamp, {
+      reason: "optional_price_review_requires_approval",
+      toolScope: config.policy.toolScope,
+    });
+    appendAgentTurn(
+      snapshot,
+      "I found the plan on the account ending in 4821. Before I cancel it, would you like me to run a quick price review to see whether a lower price is available?",
+      turn.timestamp,
+    );
+    return;
+  }
+
+  if (callerTurnCount === 2) {
+    snapshot.pipecatFlow.activeTool = "ask_operator";
+    setOperatorSteerState(snapshot, true, turn.timestamp, "approve_retention_review", "price_review_requested");
+    transitionFlowState(snapshot, "operator_steer", turn.timestamp, "price_review_requested");
+    recordEvent(snapshot, "eligible_options_retrieved", turn.timestamp, {
+      options: "same_call_price_review",
+      discountGuaranteed: false,
+    });
+    recordEvent(snapshot, "customer_consent_recorded", turn.timestamp, {
+      consent: "run_price_review",
+      explicit: true,
+    });
+    recordEvent(snapshot, "operator_steer_requested", turn.timestamp, {
+      recommendation: "approve_price_review",
+      operatorChannel: snapshot.scenario.operatorChannel,
+      operation: "same_call_price_review",
+      maximumWaitSeconds: 60,
+    });
+    appendAgentTurn(
+      snapshot,
+      "Okay. I'll ask for approval to run the price review. This can take up to a minute, and your plan stays the same while I check.",
+      turn.timestamp,
+    );
+    return;
+  }
+
+  if (callerTurnCount !== 3) return;
+
+  const reviewApproved = snapshot.events.some((event) => event.type === "retention_review_approved");
+  const reviewDenied = snapshot.events.some((event) => event.type === "retention_review_denied");
+  snapshot.pipecatFlow.activeTool = "pause_presentation";
+
+  if (reviewDenied) {
+    recordEvent(snapshot, "customer_final_path_selected", turn.timestamp, {
+      selection: "cancel_at_period_end_after_unavailable_review",
+    });
+    recordEvent(snapshot, "cancellation_scheduled", turn.timestamp, {
+      effectiveDate: "2026-08-31",
+      renewalDisabled: true,
+      reversibleUntilEffectiveDate: true,
+    });
+    recordEvent(snapshot, "final_policy_state_recorded", turn.timestamp, {
+      policyStatus: "active_through_2026-08-31",
+      pendingOperation: "cancel_at_period_end",
+      pricingChangeApplied: false,
+      rollbackAvailable: true,
+    });
+    transitionFlowState(snapshot, "wrap", turn.timestamp, "cancellation_scheduled_after_unavailable_review");
+    appendAgentTurn(
+      snapshot,
+      "Done. Your plan will stay active through August 31 and will not renew. You can change your mind before then.",
+      turn.timestamp,
+    );
+    snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
+    return;
+  }
+
+  if (!reviewApproved) {
+    snapshot.pipecatFlow.activeTool = "ask_operator";
+    transitionFlowState(snapshot, "operator_steer", turn.timestamp, "price_review_approval_required");
+    appendAgentTurn(snapshot, "I'm still waiting for approval. Nothing has changed on your policy.", turn.timestamp);
+    return;
+  }
+
+  recordEvent(snapshot, "customer_final_path_selected", turn.timestamp, {
+    selection: "cancel_at_period_end_after_no_price_reduction",
+  });
+  recordEvent(snapshot, "cancellation_scheduled", turn.timestamp, {
+    effectiveDate: "2026-08-31",
+    renewalDisabled: true,
+    reversibleUntilEffectiveDate: true,
+  });
+  recordEvent(snapshot, "final_policy_state_recorded", turn.timestamp, {
+    policyStatus: "active_through_2026-08-31",
+    pendingOperation: "cancel_at_period_end",
+    pricingChangeApplied: false,
+    rollbackAvailable: true,
+  });
+  transitionFlowState(snapshot, "wrap", turn.timestamp, "cancellation_scheduled_at_period_end");
+  appendAgentTurn(
+    snapshot,
+    "Done. Your plan will stay active through August 31 and will not renew. You can change your mind before then.",
+    turn.timestamp,
+  );
+  snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
+}
+
+function usesClueConCancellationFlow(config: PocConfig): boolean {
+  return config.policy.defaultSupervisorSteer === "approve_retention_review";
 }
 
 function setDemoFallback(
@@ -299,6 +418,11 @@ export function applyDeterministicPipecatFlow(
       "This demo is tuned to the approved cancellation-rescue script. I am pausing here and requesting operator guidance before continuing.",
       turn.timestamp,
     );
+    return;
+  }
+
+  if (usesClueConCancellationFlow(config)) {
+    applyClueConCancellationFlow(snapshot, config, turn, callerTurnCount);
     return;
   }
 
@@ -796,9 +920,14 @@ export function applyOperatorSteer(
 
   if (action === "approve_retention_review") {
     recordEvent(snapshot, "retention_review_approved", timestamp, {
-      reviewType: "retention_specialist_followup",
+      reviewType: "same_call_price_review",
       discountGuaranteed: false,
       source: "operator_steer",
+    });
+    recordEvent(snapshot, "price_review_completed", timestamp, {
+      result: "no_lower_price_available",
+      reductionAvailable: false,
+      pricingChangeApplied: false,
     });
     transitionFlowState(snapshot, "steered_response", timestamp, "retention_review_approved");
     appendAgentTurn(snapshot, buildSteeredResponse(action), timestamp);
@@ -896,13 +1025,13 @@ export function applyOperatorSteer(
     });
     if (deniedRetentionReview) {
       recordEvent(snapshot, "retention_review_denied", timestamp, {
-        reviewType: "retention_specialist_followup",
+        reviewType: "same_call_price_review",
         source: "operator_steer",
       });
       snapshot.pipecatFlow.script = {
         ...snapshot.pipecatFlow.script,
         expectedCallerTurns: [
-          ...snapshot.pipecatFlow.script.expectedCallerTurns.slice(0, 4),
+          ...snapshot.pipecatFlow.script.expectedCallerTurns.slice(0, 2),
           CLUECON_CANCELLATION_AFTER_DENIAL_TURN,
         ],
       };
@@ -911,7 +1040,7 @@ export function applyOperatorSteer(
     appendAgentTurn(
       snapshot,
       deniedRetentionReview
-        ? "Thanks for waiting. The retention review was not approved. Your policy is unchanged, and you can continue with cancellation or ask to speak with a licensed specialist."
+        ? "I can't run the price review right now. Would you like me to go ahead and cancel the plan?"
         : buildSteeredResponse(action),
       timestamp,
     );

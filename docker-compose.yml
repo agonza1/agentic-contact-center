@@ -109,6 +109,7 @@ services:
       - ./freeswitch/conf/autoload_configs/switch.conf.xml:/etc/freeswitch/autoload_configs/switch.conf.xml:ro
       - ./freeswitch/conf/autoload_configs/event_socket.conf.xml:/etc/freeswitch/autoload_configs/event_socket.conf.xml:ro
       - ./freeswitch/conf/autoload_configs/verto.conf.xml:/etc/freeswitch/autoload_configs/verto.conf.xml:ro
+      - ./freeswitch/conf/sip_profiles/internal.xml:/etc/freeswitch/sip_profiles/internal.xml:ro
       - ./artifacts/freeswitch-live:/var/log/freeswitch/acc
     environment:
       ACC_BASE_URL: http://app:8026
