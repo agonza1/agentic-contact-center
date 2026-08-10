@@ -464,7 +464,7 @@ function isPublicIpAddress(address) {
       || (a === 100 && b >= 64 && b <= 127)
       || (a === 169 && b === 254)
       || (a === 172 && b >= 16 && b <= 31)
-      || (a === 192 && b === 0)
+      || (a === 192 && b === 0 && (c === 0 || c === 2))
       || (a === 192 && b === 168)
       || (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100)))
       || (a === 203 && b === 0 && c === 113)
@@ -640,20 +640,18 @@ async function externalSipReachabilityProof(proofPath, expectedEndpoint, now) {
     const checkedAtMs = Date.parse(checkedAt);
     const transport = clean(proof.transport || "udp").toLowerCase();
     const sipResponseCode = Number(proof.sipResponseCode ?? proof.responseCode);
-    const result = clean(proof.result).toLowerCase();
     const sourceIsExternal = /(?:signalwire|provider|external)/i.test(source);
     const targetMatches = proofHost === expectedHost && proofPort === expectedPort;
     const fresh = Number.isFinite(checkedAtMs) && Math.abs(now - checkedAtMs) <= EXTERNAL_REACHABILITY_PROOF_MAX_AGE_MS;
     const sipResponseProvesReachability = Number.isInteger(sipResponseCode)
       && sipResponseCode >= 100
       && sipResponseCode <= 699;
-    const resultProvesReachability = /\b(?:sip_options_response|sip_response|reachable)\b/.test(result);
     const proven = proof.reachable === true
       && sourceIsExternal
       && targetMatches
       && fresh
       && ["udp", "tcp", "tls"].includes(transport)
-      && (sipResponseProvesReachability || resultProvesReachability);
+      && sipResponseProvesReachability;
     return {
       proven,
       missing: false,
