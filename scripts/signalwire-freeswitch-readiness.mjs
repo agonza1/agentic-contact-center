@@ -178,6 +178,26 @@ function expectedDidValues(value) {
   ].filter((candidate, index, candidates) => candidate && candidates.indexOf(candidate) === index);
 }
 
+function signalWireDialplanTargetValues(expectedDid) {
+  return [...expectedDidValues(expectedDid), "8600", "acc"]
+    .filter((candidate, index, candidates) => candidate && candidates.indexOf(candidate) === index);
+}
+
+function signalWireDialplanNonTargetValues(expectedDid) {
+  const didValues = expectedDidValues(expectedDid);
+  const appendedDigitValues = didValues.map((value) => `${value}0`);
+  return [
+    ...appendedDigitValues,
+    "1000",
+    "8611",
+    "9999",
+    "support",
+    "accidental",
+    "+13125550100",
+    "13125550100",
+  ].filter((candidate, index, candidates) => candidate && candidates.indexOf(candidate) === index);
+}
+
 function isExternalProfileRunning(entry) {
   if (!entry) return false;
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
@@ -221,15 +241,17 @@ function activeSignalWireAclCondition(entry, expectedDid, sourceAclName) {
 
 function didExpressionMatchesExpectedValues(expression, expectedDid) {
   const pattern = clean(expression);
-  const expectedValues = expectedDidValues(expectedDid);
-  if (!pattern || expectedValues.length === 0) return false;
+  const targetValues = signalWireDialplanTargetValues(expectedDid);
+  const nonTargetValues = signalWireDialplanNonTargetValues(expectedDid);
+  if (!pattern || targetValues.length === 0 || nonTargetValues.length === 0) return false;
   let regexp;
   try {
     regexp = new RegExp(pattern);
   } catch {
     return false;
   }
-  return expectedValues.every((value) => regexp.test(value));
+  return targetValues.every((value) => regexp.test(value))
+    && nonTargetValues.every((value) => !regexp.test(value));
 }
 
 function parseXmlTree(value) {
@@ -298,6 +320,7 @@ function guardedSignalWireBridgeContacts(aclCondition) {
     .filter((action) => (
       action.application === "bridge"
       && /absolute_codec_string=PCMU/i.test(action.data)
+      && /(?:^|[,;{])acc_route=signalwire_live(?:[,;} ]|$)/i.test(action.data)
     ))
     .flatMap((action) => vertoAgentContactsFromBridgeData(action.data));
   const hasGuardedRouteMetadata = hasActionData("set", /(?:^|[,;{])acc_route=signalwire_live(?:[,;} ]|$)/i)
