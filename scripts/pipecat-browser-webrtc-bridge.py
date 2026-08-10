@@ -109,33 +109,40 @@ class BrowserWebrtcBridge:
             raise RuntimeError("ACC Pipecat session registration did not return callId")
         return registered_call_id, payload.get("idempotent") is not True
 
-    async def end_acc_call(self, *, acc_url: str, call_id: str, session_id: str, reason: str) -> None:
-        try:
-            await asyncio.to_thread(
-                json_http,
-                "POST",
-                join_url(acc_url, "/api/pipecat/sessions/end-call"),
-                {
-                    "callId": call_id,
-                    "sessionId": session_id,
-                    "transport": "browser_webrtc",
-                    "reason": reason,
-                },
-                2.0,
-            )
-        except Exception as exc:
-            print(
-                json.dumps(
+    async def end_acc_call(self, *, acc_url: str, call_id: str, session_id: str, reason: str) -> bool:
+        for attempt in range(1, 4):
+            try:
+                await asyncio.to_thread(
+                    json_http,
+                    "POST",
+                    join_url(acc_url, "/api/pipecat/sessions/end-call"),
                     {
-                        "type": "pipecat.small_webrtc.acc_call_end_failed",
                         "callId": call_id,
                         "sessionId": session_id,
+                        "transport": "browser_webrtc",
                         "reason": reason,
-                        "detail": str(exc),
-                    }
-                ),
-                flush=True,
-            )
+                    },
+                    2.0,
+                )
+                return True
+            except Exception as exc:
+                print(
+                    json.dumps(
+                        {
+                            "type": "pipecat.small_webrtc.acc_call_end_failed",
+                            "callId": call_id,
+                            "sessionId": session_id,
+                            "reason": reason,
+                            "attempt": attempt,
+                            "retrying": attempt < 3,
+                            "detail": str(exc),
+                        }
+                    ),
+                    flush=True,
+                )
+                if attempt < 3:
+                    await asyncio.sleep(0.25 * attempt)
+        return False
 
     async def retire_failed_offer(
         self,
@@ -391,14 +398,14 @@ class BrowserWebrtcBridge:
             session["closedAt"] = session.get("closedAt") or datetime.now(UTC).isoformat(timespec="seconds")
             session["closeReason"] = session.get("closeReason") or reason
             if not session.get("accCallEnded"):
-                await self.end_acc_call(
+                session["accCallEnded"] = await self.end_acc_call(
                     acc_url=str(session.get("accUrl") or DEFAULT_ACC_URL),
                     call_id=str(session.get("callId") or ""),
                     session_id=str(session.get("requestedSessionId") or session_id),
                     reason=str(session.get("closeReason") or reason),
                 )
-                session["accCallEnded"] = True
-            self.forget_session_record(session)
+            if session.get("accCallEnded"):
+                self.forget_session_record(session)
         runner = session.get("runner")
         turn_session = session.get("turnSession")
         if isinstance(turn_session, AccVoicePipelineSession):

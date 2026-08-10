@@ -5282,6 +5282,7 @@ async function routeRequest(
   liveSipCallMap: Map<string, string>,
   liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>,
   liveSipCallLocks: Map<string, Promise<void>>,
+  pipecatSessionRegistrationLocks: Map<string, Promise<void>>,
   liveSipOpenAiGenerationLocks: Map<string, Promise<void>>,
   callerTurnDeliveryAckPreviews: Map<string, CallerTurnDeliveryAckPreview>,
   callerTurnDeliveryAckPreviewReservations: Set<string>,
@@ -6241,6 +6242,9 @@ async function routeRequest(
       writeBadRequest(response, "pipecat_conversation_mode_invalid");
       return;
     }
+    const conversationMode: ConversationMode = isConversationMode(body.conversationMode)
+      ? body.conversationMode
+      : "free_caller";
 
     const requestedCallId = getOptionalTrimmedString(body.callId);
     if (requestedCallId) {
@@ -6263,45 +6267,53 @@ async function routeRequest(
 
     const transportLabel = transport.replace("_", "-");
     const openclawSessionId = `pipecat-${transportLabel}-${sessionId}`;
-    const existingSnapshot = (await ingress.listSnapshots({ openclawSessionId }))
-      .find((snapshot) => !isLiveSipCallEnded(snapshot));
-    if (existingSnapshot) {
-      writeJson(response, 200, {
-        ok: true,
-        route: "/api/pipecat/sessions/ensure-call",
-        callId: existingSnapshot.session.callId,
-        sessionId,
-        transport,
-        idempotent: true,
-        call: buildCallPayload(existingSnapshot),
-      });
-      return;
-    }
+    const registration = await withLiveSipCallLock(pipecatSessionRegistrationLocks, openclawSessionId, async () => {
+      const existingSnapshot = (await ingress.listSnapshots({ openclawSessionId }))
+        .find((snapshot) => !isLiveSipCallEnded(snapshot));
+      if (existingSnapshot) {
+        return {
+          status: 200,
+          payload: {
+            ok: true,
+            route: "/api/pipecat/sessions/ensure-call",
+            callId: existingSnapshot.session.callId,
+            sessionId,
+            transport,
+            idempotent: true,
+            call: buildCallPayload(existingSnapshot),
+          },
+        };
+      }
 
-    const browserTransport = transport === "browser_webrtc";
-    const snapshot = await ingress.startCall(config, {
-      providerName: browserTransport ? "pipecat-browser-webrtc" : "freeswitch-verto",
-      providerCallId: sessionId,
-      openclawSessionId,
-      openclawSessionLabel: `pipecat/${transportLabel}/${sessionId}`,
-      source: browserTransport ? "mock_http_route" : "freeswitch_verto",
-      conversationMode: body.conversationMode ?? "free_caller",
-      runtimeModeLabels: {
-        telephony: browserTransport ? "mocked_telephony" : "local_sip",
-        media: "live_capture",
-        rtcAsr: "rtc_asr_live",
-        credentialsMode: "mocked",
-      },
-    } satisfies StartCallOptions);
-    writeJson(response, 201, {
-      ok: true,
-      route: "/api/pipecat/sessions/ensure-call",
-      callId: snapshot.session.callId,
-      sessionId,
-      transport,
-      idempotent: false,
-      call: buildCallPayload(snapshot),
+      const browserTransport = transport === "browser_webrtc";
+      const snapshot = await ingress.startCall(config, {
+        providerName: browserTransport ? "pipecat-browser-webrtc" : "freeswitch-verto",
+        providerCallId: sessionId,
+        openclawSessionId,
+        openclawSessionLabel: `pipecat/${transportLabel}/${sessionId}`,
+        source: browserTransport ? "mock_http_route" : "freeswitch_verto",
+        conversationMode,
+        runtimeModeLabels: {
+          telephony: browserTransport ? "mocked_telephony" : "local_sip",
+          media: "live_capture",
+          rtcAsr: "rtc_asr_live",
+          credentialsMode: "mocked",
+        },
+      } satisfies StartCallOptions);
+      return {
+        status: 201,
+        payload: {
+          ok: true,
+          route: "/api/pipecat/sessions/ensure-call",
+          callId: snapshot.session.callId,
+          sessionId,
+          transport,
+          idempotent: false,
+          call: buildCallPayload(snapshot),
+        },
+      };
     });
+    writeJson(response, registration.status, registration.payload);
     return;
   }
 
@@ -8654,13 +8666,14 @@ export function buildHttpServer(config: PocConfig) {
   const liveSipCallMap = new Map<string, string>();
   const liveSipEndedCallMap = new Map<string, LiveSipEndedCallAlias>();
   const liveSipCallLocks = new Map<string, Promise<void>>();
+  const pipecatSessionRegistrationLocks = new Map<string, Promise<void>>();
   const liveSipOpenAiGenerationLocks = new Map<string, Promise<void>>();
   const callerTurnDeliveryAckPreviews = new Map<string, CallerTurnDeliveryAckPreview>();
   const callerTurnDeliveryAckPreviewReservations = new Set<string>();
   const voiceSessions = new RealtimeVoiceSessionStore();
 
   const server = createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, pipecatSessionRegistrationLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;
