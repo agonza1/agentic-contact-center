@@ -122,7 +122,7 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.ok(callStartedIndex >= 0);
   assert.ok(bridge.indexOf("\"rtcAsrMode\": \"rtc_asr_live\"", callStartedIndex) > callStartedIndex);
   assert.match(bridge, /def telephony_mode\(self, params: dict\[str, Any\]\) -> str:/);
-  assert.match(bridge, /"sip_h_X-ACC-Telephony-Mode"/);
+  assert.match(bridge, /"acc_route"/);
   assert.match(bridge, /"telephonyMode": telephony_mode/);
   assert.ok(queueFramesIndex >= 0);
   assert.ok(finishIntroIndex > queueFramesIndex);

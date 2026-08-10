@@ -42,6 +42,8 @@ const REGISTRATION_REQUIRED_ENV = [
 const ALL_ENV = [...COMMON_REQUIRED_ENV, ...REGISTRATION_REQUIRED_ENV];
 const DEFAULT_SIGNALWIRE_SOURCE_ACL_NAME = "signalwire_trunk";
 const EXTERNAL_REACHABILITY_PROOF_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const EXTERNAL_REACHABILITY_PROOF_CLOCK_SKEW_MS = 5 * 60 * 1000;
+const EXPECTED_SIGNALWIRE_SIP_TRANSPORT = "udp";
 const SOURCE_ACL_REJECT_PROBE_CANDIDATES = [
   "8.8.8.8",
   "1.1.1.1",
@@ -388,21 +390,26 @@ function activeAclAllowSet(entry, aclName) {
   const networkList = output.match(networkListPattern)?.[0] ?? output;
   const listOpenTag = networkList.match(/<(?:network-)?list\b[^>]*>/i)?.[0] ?? "";
   const listAttributes = parseXmlAttributes(listOpenTag);
-  const allowCidrs = [...networkList.matchAll(/<node\b[^>]*>/gi)]
+  const allowNodes = [...networkList.matchAll(/<node\b[^>]*>/gi)]
     .map((match) => parseXmlAttributes(match[0]))
-    .filter((attributes) => clean(attributes.type).toLowerCase() === "allow")
-    .map((attributes) => clean(attributes.cidr))
-    .filter(Boolean);
+    .filter((attributes) => clean(attributes.type).toLowerCase() === "allow");
+  const allowCidrs = allowNodes.map((attributes) => clean(attributes.cidr)).filter(Boolean);
   return {
     found: Boolean(networkList.match(/<(?:network-)?list\b/i)),
     defaultPolicy: clean(listAttributes.default).toLowerCase(),
+    allowNodeCount: allowNodes.length,
     allowCidrs,
   };
 }
 
 function activeAclAllowsOnlyProviderCidrs(entry, aclName, providerCidrs) {
   const allowSet = activeAclAllowSet(entry, aclName);
-  if (!allowSet.found || allowSet.defaultPolicy === "allow" || allowSet.allowCidrs.length === 0) {
+  if (
+    !allowSet.found
+    || allowSet.defaultPolicy === "allow"
+    || allowSet.allowCidrs.length === 0
+    || allowSet.allowCidrs.length !== allowSet.allowNodeCount
+  ) {
     return false;
   }
   return allowSet.allowCidrs.every((allowCidr) => (
@@ -609,9 +616,10 @@ function isPublicEndpointAdvertised(entry, expectedAddresses) {
   return expectedAddresses.some((address) => advertised.includes(address));
 }
 
-async function externalSipReachabilityProof(proofPath, expectedEndpoint, now) {
+async function externalSipReachabilityProof(proofPath, expectedEndpoint, now, expectedTransport) {
   const expectedHost = normalizeSipEndpointHost(expectedEndpoint).toLowerCase();
   const expectedPort = normalizeSipEndpointPort(expectedEndpoint);
+  const requiredTransport = clean(expectedTransport).toLowerCase();
   const empty = {
     proven: false,
     missing: !proofPath,
@@ -642,22 +650,29 @@ async function externalSipReachabilityProof(proofPath, expectedEndpoint, now) {
     const sipResponseCode = Number(proof.sipResponseCode ?? proof.responseCode);
     const sourceIsExternal = /(?:signalwire|provider|external)/i.test(source);
     const targetMatches = proofHost === expectedHost && proofPort === expectedPort;
-    const fresh = Number.isFinite(checkedAtMs) && Math.abs(now - checkedAtMs) <= EXTERNAL_REACHABILITY_PROOF_MAX_AGE_MS;
+    const futureDated = Number.isFinite(checkedAtMs)
+      && checkedAtMs - now > EXTERNAL_REACHABILITY_PROOF_CLOCK_SKEW_MS;
+    const fresh = Number.isFinite(checkedAtMs)
+      && !futureDated
+      && now - checkedAtMs <= EXTERNAL_REACHABILITY_PROOF_MAX_AGE_MS;
     const sipResponseProvesReachability = Number.isInteger(sipResponseCode)
       && sipResponseCode >= 100
       && sipResponseCode <= 699;
+    const transportMatches = transport === requiredTransport;
     const proven = proof.reachable === true
       && sourceIsExternal
       && targetMatches
       && fresh
-      && ["udp", "tcp", "tls"].includes(transport)
+      && transportMatches
       && sipResponseProvesReachability;
     return {
       proven,
       missing: false,
-      blocker: fresh
-        ? "invalid_freeswitch_external_sip_reachability_proof"
-        : "stale_freeswitch_external_sip_reachability_proof",
+      blocker: futureDated
+        ? "future_dated_freeswitch_external_sip_reachability_proof"
+        : fresh
+          ? "invalid_freeswitch_external_sip_reachability_proof"
+          : "stale_freeswitch_external_sip_reachability_proof",
       proofPath: resolvedPath,
       source: source || null,
       checkedAt: checkedAt || null,
@@ -1040,6 +1055,7 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
     externalSipReachabilityProofPath,
     env.FREESWITCH_PUBLIC_SIP_HOST,
     Date.now(),
+    EXPECTED_SIGNALWIRE_SIP_TRANSPORT,
   );
   summary.endpoint.externalSipReachability = {
     proven: reachability.proven,

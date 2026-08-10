@@ -42,7 +42,9 @@ def main() -> None:
             "dialogParams": {
                 "variables": {
                     "sip_h_X-ACC-Proof-Call-ID": "proof-call-1",
+                    "sip_h_X-ACC-Telephony-Mode": "signalwire_live",
                     "acc_linked_sip_call_id": "linked-call-1",
+                    "acc_route": "local_sip",
                     "acc_destination_number": "8600",
                     "acc_conversation_mode": "openai_llm",
                     "caller_id_number": "+12025550123",
@@ -93,6 +95,8 @@ def main() -> None:
                 and bridge.linked_sip_call_id(nested_params) == "linked-call-1"
                 and bridge.destination_number(nested_params) == "8600"
                 and bridge.conversation_mode(nested_params, "8600") == "openai_llm"
+                and bridge.telephony_mode(nested_params) == "local_sip"
+                and bridge.telephony_mode({"dialogParams": {"variables": {"acc_route": "signalwire_live"}}}) == "signalwire_live"
                 and sanitized_params["dialogParams"]["variables"]["sip_h_Authorization"] == "<redacted secret>"
                 and sanitized_params["dialogParams"]["variables"]["acc_api_token"] == "<redacted secret>"
                 and sanitized_params["dialogParams"]["variables"]["nested"]["password"] == "<redacted secret>"
@@ -114,6 +118,7 @@ def main() -> None:
             "callBStage": call_b.get("pipelineEvidence", [{}])[0].get("stage"),
             "nestedProofSipCallId": bridge.proof_sip_call_id(nested_params),
             "nestedLinkedSipCallId": bridge.linked_sip_call_id(nested_params),
+            "nestedTelephonyMode": bridge.telephony_mode(nested_params),
             "sanitizedParams": sanitized_params,
         }
         print(json.dumps(result))

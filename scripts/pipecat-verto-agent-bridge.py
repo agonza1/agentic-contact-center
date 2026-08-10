@@ -511,17 +511,11 @@ class VertoAgentBridge:
         return "openai_llm" if destination_number == "8600" else "scripted"
 
     def telephony_mode(self, params: dict[str, Any]) -> str:
-        value = self.first_param_string(params, (
-            "sip_h_X-ACC-Telephony-Mode",
-            "variable_sip_h_X-ACC-Telephony-Mode",
-            "sip_h_X_ACC_Telephony_Mode",
-            "variable_sip_h_X_ACC_Telephony_Mode",
-            "X-ACC-Telephony-Mode",
+        trusted_route = self.first_param_string(params, (
             "acc_route",
             "variable_acc_route",
-            "telephonyMode",
         ))
-        if value == "signalwire_live":
+        if trusted_route == "signalwire_live":
             return "signalwire_live"
         return "local_sip"
 

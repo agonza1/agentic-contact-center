@@ -813,6 +813,128 @@ esac
   }
 });
 
+test("SignalWire FreeSWITCH readiness rejects reachability proof for the wrong SIP transport", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status gateway signalwire") printf '%s\\n' "State REGED" "Realm example.sip.signalwire.com" "Proxy example.sip.signalwire.com" "Username acc-sip-user" ;;
+  "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
+  "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
+  "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><condition field="\${acl(\${network_addr} signalwire_trunk)}" expression="^true$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="{absolute_codec_string=PCMU}verto_contact(acc-pipecat@example.test)"/></condition></extension>' ;;
+  *) printf '%s\\n' "acc-pipecat@example.test REGED" ;;
+esac
+`,
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir, "8.8.8.8", 5060, {
+      transport: "tcp",
+    });
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_SPACE_URL: "https://example.signalwire.com",
+          SIGNALWIRE_SIP_USERNAME: "acc-sip-user",
+          SIGNALWIRE_SIP_PASSWORD: "example-rendered-sip-password",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+          SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+          SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+          SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const result = error as { stdout?: string; code?: number };
+        assert.equal(result.code, 2);
+        const payload = JSON.parse(result.stdout ?? "{}");
+        assert.equal(payload.manualCallReady, false);
+        assert.ok(payload.blockers.includes("invalid_freeswitch_external_sip_reachability_proof"));
+        assert.equal(payload.endpoint.externalSipReachability.transport, "tcp");
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("SignalWire FreeSWITCH readiness rejects future-dated reachability proof", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
+  "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
+  "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><condition field="\${acl(\${network_addr} signalwire_trunk)}" expression="^true$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="{absolute_codec_string=PCMU}verto_contact(acc-pipecat@example.test)"/></condition></extension>' ;;
+  *) printf '%s\\n' "acc-pipecat@example.test REGED" ;;
+esac
+`,
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir, "8.8.8.8", 5060, {
+      checkedAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_TRUNK_MODE: "ip_auth",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+          SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+          SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+          SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const result = error as { stdout?: string; code?: number };
+        assert.equal(result.code, 2);
+        const payload = JSON.parse(result.stdout ?? "{}");
+        assert.equal(payload.manualCallReady, false);
+        assert.ok(payload.blockers.includes("future_dated_freeswitch_external_sip_reachability_proof"));
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("SignalWire FreeSWITCH readiness rejects a broad source ACL that allows non-provider sources", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
   const fsCliBin = path.join(tempDir, "fs_cli");
@@ -923,6 +1045,64 @@ esac
         assert.equal(payload.manualCallReady, false);
         assert.equal(payload.sourceRestriction.activeAclProven, false);
         assert.equal(payload.sourceRestriction.activeAclRejectsNonProvider, false);
+        assert.equal(payload.sourceRestriction.activeAclAllowSetProviderOnly, false);
+        assert.ok(payload.blockers.includes("signalwire_source_acl_too_permissive"));
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("SignalWire FreeSWITCH readiness rejects non-CIDR ACL allow nodes", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/><node type="allow" domain="example.com"/></list>' ;;
+  "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
+  "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><condition field="\${acl(\${network_addr} signalwire_trunk)}" expression="^true$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="{absolute_codec_string=PCMU}verto_contact(acc-pipecat@example.test)"/></condition></extension>' ;;
+  *) printf '%s\\n' "acc-pipecat@example.test REGED" ;;
+esac
+`,
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_TRUNK_MODE: "ip_auth",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+          SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+          SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+          SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const result = error as { stdout?: string; code?: number };
+        assert.equal(result.code, 2);
+        const payload = JSON.parse(result.stdout ?? "{}");
+        assert.equal(payload.manualCallReady, false);
         assert.equal(payload.sourceRestriction.activeAclAllowSetProviderOnly, false);
         assert.ok(payload.blockers.includes("signalwire_source_acl_too_permissive"));
         return true;
