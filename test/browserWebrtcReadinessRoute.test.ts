@@ -76,7 +76,11 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(bridge, /api\/pipecat\/sessions\/ensure-call/);
   assert.match(bridge, /api\/pipecat\/sessions\/end-call/);
   assert.match(bridge, /await self\.end_acc_call/);
-  assert.match(bridge, /call_id = await self\.ensure_acc_call/);
+  assert.match(bridge, /call_id, registered_here = await self\.ensure_acc_call/);
+  assert.match(bridge, /async def retire_failed_offer/);
+  assert.match(bridge, /reason="webrtc_offer_setup_failed"/);
+  assert.match(bridge, /reason="webrtc_answer_unavailable"/);
+  assert.match(bridge, /elif registered_here:\s+await self\.end_acc_call/);
   assert.match(bridge, /"transport": "browser_webrtc"/);
   assert.match(sharedPipeline, /silence_finalize_task/);
   assert.match(sharedPipeline, /finalize_after_silence/);
@@ -868,6 +872,11 @@ test("POST /api/pipecat/sessions/ensure-call registers direct Pipecat transports
     assert.equal(browserEndedAgain.status, 200);
     assert.equal(browserEndedAgain.payload.idempotent, true);
 
+    const browserReconnect = await post({ sessionId: "direct-browser-1", transport: "browser_webrtc" });
+    assert.equal(browserReconnect.status, 201);
+    assert.equal(browserReconnect.payload.idempotent, false);
+    assert.notEqual(browserReconnect.payload.callId, browser.payload.callId);
+
     const consolePayload = await new Promise<{ calls: { items: Array<{ session: { callId: string; providerName: string }; controlMarkers: { liveCall: { status: string } } }> } }>((resolve, reject) => {
       const req = request({ host: "127.0.0.1", port: address.port, path: "/api/operator/console", method: "GET" }, (response) => {
         let body = "";
@@ -879,10 +888,12 @@ test("POST /api/pipecat/sessions/ensure-call registers direct Pipecat transports
       req.end();
     });
     const providers = consolePayload.calls.items.map((call) => call.session.providerName);
-    assert.equal(consolePayload.calls.items.length, 2);
+    assert.equal(consolePayload.calls.items.length, 3);
     assert.deepEqual(new Set(providers), new Set(["pipecat-browser-webrtc", "freeswitch-verto"]));
     const endedBrowserCall = consolePayload.calls.items.find((call) => call.session.callId === browser.payload.callId);
     assert.equal(endedBrowserCall?.controlMarkers.liveCall.status, "ended");
+    const reconnectedBrowserCall = consolePayload.calls.items.find((call) => call.session.callId === browserReconnect.payload.callId);
+    assert.equal(reconnectedBrowserCall?.controlMarkers.liveCall.status, "active");
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

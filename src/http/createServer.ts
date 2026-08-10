@@ -71,6 +71,7 @@ const operatorConsoleWorkboardCard = "82771d3a-de4d-4b6e-869c-328e8264d01e";
 const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
 const defaultBrowserWebrtcBridgeTimeoutMs = 5000;
 const defaultTtsIdleTimeoutMs = 30_000;
+const defaultKokoroTtsIdleTimeoutMs = 45_000;
 const maxVoiceSessionPlayAudioBytes = 2 * 1024 * 1024;
 const supportedVoiceSessionPlayMimeTypes = new Set(["audio/l16", "audio/pcm", "audio/wav", "audio/wave", "audio/x-wav"]);
 const clueConSystemUnavailableAudio = readFileSync(resolve(process.cwd(), "assets/cluecon/system-unavailable.mp3"));
@@ -274,7 +275,9 @@ export async function warmConfiguredKokoro(): Promise<KokoroWarmupResult> {
 function getTtsIdleTimeoutMs(provider: "kokoro" | "pocket" = getConfiguredTtsProvider()): number {
   const providerTimeout = provider === "pocket" ? process.env.POCKET_TTS_IDLE_TIMEOUT_MS : process.env.KOKORO_TTS_IDLE_TIMEOUT_MS;
   const parsed = Number(process.env.CLUECON_TTS_IDLE_TIMEOUT_MS ?? process.env.ACC_TTS_IDLE_TIMEOUT_MS ?? providerTimeout ?? "");
-  if (!Number.isFinite(parsed) || parsed <= 0) return defaultTtsIdleTimeoutMs;
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return provider === "kokoro" ? defaultKokoroTtsIdleTimeoutMs : defaultTtsIdleTimeoutMs;
+  }
   return Math.min(Math.max(Math.trunc(parsed), 50), 300_000);
 }
 
@@ -6260,7 +6263,8 @@ async function routeRequest(
 
     const transportLabel = transport.replace("_", "-");
     const openclawSessionId = `pipecat-${transportLabel}-${sessionId}`;
-    const [existingSnapshot] = await ingress.listSnapshots({ openclawSessionId });
+    const existingSnapshot = (await ingress.listSnapshots({ openclawSessionId }))
+      .find((snapshot) => !isLiveSipCallEnded(snapshot));
     if (existingSnapshot) {
       writeJson(response, 200, {
         ok: true,

@@ -93,7 +93,7 @@ class BrowserWebrtcBridge:
         readiness = await asyncio.to_thread(check_readiness, acc_url, skip_acc)
         return web.json_response(ready_payload(readiness, self.host, self.port), status=200 if readiness.ok else 503)
 
-    async def ensure_acc_call(self, *, acc_url: str, call_id: str, session_id: str) -> str:
+    async def ensure_acc_call(self, *, acc_url: str, call_id: str, session_id: str) -> tuple[str, bool]:
         payload = await asyncio.to_thread(
             json_http,
             "POST",
@@ -107,7 +107,7 @@ class BrowserWebrtcBridge:
         registered_call_id = str(payload.get("callId") or "").strip()
         if not registered_call_id:
             raise RuntimeError("ACC Pipecat session registration did not return callId")
-        return registered_call_id
+        return registered_call_id, payload.get("idempotent") is not True
 
     async def end_acc_call(self, *, acc_url: str, call_id: str, session_id: str, reason: str) -> None:
         try:
@@ -136,6 +136,21 @@ class BrowserWebrtcBridge:
                 ),
                 flush=True,
             )
+
+    async def retire_failed_offer(
+        self,
+        *,
+        acc_url: str,
+        call_id: str,
+        session_id: str,
+        registered_here: bool,
+        reason: str,
+    ) -> None:
+        session_record = self.sessions.get(session_id)
+        if session_record:
+            await self.close_session(session_id, session_record=session_record, reason=reason)
+        elif registered_here:
+            await self.end_acc_call(acc_url=acc_url, call_id=call_id, session_id=session_id, reason=reason)
 
     async def start_pipeline(self, *, connection: Any, session_id: str, acc_url: str, call_id: str, readiness: BridgeReadiness) -> AccVoicePipelineSession:
         session = AccVoicePipelineSession(acc_url=acc_url, call_id=call_id, readiness=readiness)
@@ -205,24 +220,42 @@ class BrowserWebrtcBridge:
         readiness = await asyncio.to_thread(check_readiness, acc_url)
         if not readiness.ok:
             return web.json_response({"ok": False, "error": "sidecar_unavailable", "ready": ready_payload(readiness, self.host, self.port)}, status=503)
+        registered_here = False
         try:
-            call_id = await self.ensure_acc_call(acc_url=acc_url, call_id=call_id, session_id=session_id)
+            call_id, registered_here = await self.ensure_acc_call(acc_url=acc_url, call_id=call_id, session_id=session_id)
         except Exception as exc:
             return web.json_response({"ok": False, "error": "acc_call_registration_failed", "detail": str(exc)}, status=503)
 
-        small_request = SmallWebRTCRequest.from_dict({
-            "sdp": payload["sdp"],
-            "type": payload["type"],
-            "pc_id": payload.get("pcId") or payload.get("pc_id"),
-            "restart_pc": payload.get("restartPc") or payload.get("restart_pc"),
-            "request_data": {"sessionId": session_id, "callId": call_id},
-        })
+        try:
+            small_request = SmallWebRTCRequest.from_dict({
+                "sdp": payload["sdp"],
+                "type": payload["type"],
+                "pc_id": payload.get("pcId") or payload.get("pc_id"),
+                "restart_pc": payload.get("restartPc") or payload.get("restart_pc"),
+                "request_data": {"sessionId": session_id, "callId": call_id},
+            })
 
-        async def on_connection(connection: Any) -> None:
-            await self.start_pipeline(connection=connection, session_id=session_id, acc_url=acc_url, call_id=call_id, readiness=readiness)
+            async def on_connection(connection: Any) -> None:
+                await self.start_pipeline(connection=connection, session_id=session_id, acc_url=acc_url, call_id=call_id, readiness=readiness)
 
-        answer = await self.request_handler.handle_web_request(small_request, on_connection)
+            answer = await self.request_handler.handle_web_request(small_request, on_connection)
+        except Exception as exc:
+            await self.retire_failed_offer(
+                acc_url=acc_url,
+                call_id=call_id,
+                session_id=session_id,
+                registered_here=registered_here,
+                reason="webrtc_offer_setup_failed",
+            )
+            return web.json_response({"ok": False, "error": "webrtc_offer_setup_failed", "detail": str(exc)}, status=502)
         if not answer:
+            await self.retire_failed_offer(
+                acc_url=acc_url,
+                call_id=call_id,
+                session_id=session_id,
+                registered_here=registered_here,
+                reason="webrtc_answer_unavailable",
+            )
             return web.json_response({"ok": False, "error": "webrtc_answer_unavailable"}, status=502)
 
         pc_id = str(answer.get("pc_id") or answer.get("sessionId") or payload.get("pcId") or payload.get("pc_id") or session_id)

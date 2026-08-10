@@ -1753,8 +1753,10 @@ def collect_identity_node() -> NodeConfig:
     slideOrder.forEach((id, index) => { const slide = document.getElementById(id); if (slide) { slide.dataset.slide = String(index); main?.appendChild(slide); } });
     const state = { slide: 0, slideCount: slideOrder.length, isPresent: document.body.classList.contains("present"), proof: null, brain: JSON.parse(JSON.stringify(data.brainBlocks)), brainSession: null, asrCapture: null, asrStopping: false, asrModels: [], asrLive: null, ttsStream: null, ttsStreamToken: 0, failureAudio: null, failureAudioUrl: null, vad: null, vadStarting: false, vadStartToken: 0, vadPendingStream: null, vadBotSpeaking: false, vadBotTimer: null, vadTurnTimer: null, vadOutputTimer: null, vadOutputCleanupTimer: null, vadSimulationTimers: [] };
     const VAD_END_OF_TURN_MS = Number(data.turnTiming?.endOfTurnSilenceMs) || 2000;
-    const LIVE_TTS_FETCH_TIMEOUT_MS = 12_000;
-    const LIVE_TTS_READ_TIMEOUT_MS = 10_000;
+    const LIVE_TTS_FAST_FETCH_TIMEOUT_MS = 12_000;
+    const LIVE_TTS_KOKORO_FETCH_TIMEOUT_MS = 45_000;
+    const LIVE_TTS_FAST_READ_TIMEOUT_MS = 10_000;
+    const LIVE_TTS_KOKORO_READ_TIMEOUT_MS = 45_000;
     function esc(value) { return String(value).replace(/[&<>\"]/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;"); }
     let agentCodeTrigger = null;
     function closeAgentCode() { const modal = document.getElementById("agent-code-modal"); if (!modal || modal.hidden) return; modal.hidden = true; modal.setAttribute("aria-hidden", "true"); document.querySelectorAll("[data-agent-code]").forEach(button => button.setAttribute("aria-expanded", "false")); if (agentCodeTrigger) agentCodeTrigger.focus(); agentCodeTrigger = null; }
@@ -1917,7 +1919,12 @@ def collect_identity_node() -> NodeConfig:
         clearTimeout(timeoutId);
       }
     }
-    async function readTtsAudioResponse(response, onChunk, readTimeoutMs = LIVE_TTS_READ_TIMEOUT_MS) {
+    function liveTtsTimeouts(provider) {
+      return provider.id === "kokoro"
+        ? { fetchMs: LIVE_TTS_KOKORO_FETCH_TIMEOUT_MS, readMs: LIVE_TTS_KOKORO_READ_TIMEOUT_MS }
+        : { fetchMs: LIVE_TTS_FAST_FETCH_TIMEOUT_MS, readMs: LIVE_TTS_FAST_READ_TIMEOUT_MS };
+    }
+    async function readTtsAudioResponse(response, onChunk, readTimeoutMs = LIVE_TTS_FAST_READ_TIMEOUT_MS) {
       if (!response.body) throw new Error("The browser did not expose the streaming response body.");
       const reader = response.body.getReader();
       const parts = [];
@@ -2061,6 +2068,7 @@ def collect_identity_node() -> NodeConfig:
       const badge = document.getElementById("tts-badge");
       const status = document.getElementById("tts-status");
       const provider = selectedTtsProvider();
+      const timeouts = liveTtsTimeouts(provider);
       const text = document.getElementById("tts-text").value.trim();
       if (!text) { status.textContent = "Enter text before running " + provider.label + "."; return; }
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -2095,7 +2103,7 @@ def collect_identity_node() -> NodeConfig:
         status.textContent = (playbackMs === null ? "Synthesizing" : "Playing queued audio while synthesizing") + " chunk " + (index + 1) + " of " + segments.length + "…";
         stream.controller = new AbortController();
         const requestController = stream.controller;
-        const requestTimeout = setTimeout(() => requestController.abort(), LIVE_TTS_FETCH_TIMEOUT_MS);
+        const requestTimeout = setTimeout(() => requestController.abort(), timeouts.fetchMs);
         const response = await fetch(data.ttsPanel.synthesizeRoute, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -2119,7 +2127,7 @@ def collect_identity_node() -> NodeConfig:
           }
             bytes += byteLength;
             document.getElementById("tts-bytes").textContent = completedSegments + " / " + segments.length + " · " + new Intl.NumberFormat().format(bytes) + " B";
-          });
+          }, timeouts.readMs);
           if (token !== state.ttsStreamToken) return;
           const buffer = await context.decodeAudioData(audioBytes.slice(0));
           const source = context.createBufferSource();
