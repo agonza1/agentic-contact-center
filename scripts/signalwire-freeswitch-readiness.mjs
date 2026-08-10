@@ -263,6 +263,11 @@ function guardedSignalWireBridgeReady(aclCondition) {
   const hasActionData = (application, pattern) => actions.some((action) => (
     action.application === application && pattern.test(action.data)
   ));
+  const hasPcmuVertoBridge = actions.some((action) => (
+    action.application === "bridge"
+    && /absolute_codec_string=PCMU/i.test(action.data)
+    && /verto_contact\(\s*acc-pipecat@/i.test(action.data)
+  ));
   return hasActionData("set", /(?:^|[,;{])acc_route=signalwire_live(?:[,;} ]|$)/i)
     && hasActionData("set", /(?:^|[,;{])acc_destination_number=8600(?:[,;} ]|$)/i)
     && hasActionData("set", /(?:^|[,;{])acc_conversation_mode=openai_llm(?:[,;} ]|$)/i)
@@ -270,8 +275,7 @@ function guardedSignalWireBridgeReady(aclCondition) {
     && hasActionData("export", /(?:sip_h_X-ACC-Telephony-Mode|X-ACC-Telephony-Mode)=signalwire_live/i)
     && hasActionData("export", /(?:sip_h_X-ACC-Destination|X-ACC-Destination)=8600/i)
     && hasActionData("export", /(?:sip_h_X-ACC-Conversation-Mode|X-ACC-Conversation-Mode)=openai_llm/i)
-    && hasActionData("bridge", /absolute_codec_string=PCMU/i)
-    && hasActionData("bridge", /verto_contact\(\s*acc-pipecat@/i);
+    && hasPcmuVertoBridge;
 }
 
 function expectedVertoAgentContactsFromDialplan(entry) {
@@ -610,7 +614,7 @@ function removeEndpointPort(value) {
 function isPublicEndpointAdvertised(entry, expectedAddresses) {
   if (!entry || expectedAddresses.length === 0) return false;
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
-  const advertised = [...output.matchAll(/^\s*(?:ext-)?sip-ip(?:\s*[:=]\s*|\s+)(\S+)/gim)]
+  const advertised = [...output.matchAll(/^\s*ext-sip-ip(?:\s*[:=]\s*|\s+)(\S+)/gim)]
     .map((match) => canonicalizeIpAddress(removeEndpointPort(match[1])))
     .filter(Boolean);
   return expectedAddresses.some((address) => advertised.includes(address));
