@@ -80,8 +80,10 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(bridge, /for attempt in range\(1, 4\)/);
   assert.match(bridge, /"retrying": attempt < 3/);
   assert.match(bridge, /session\["accCallEnded"\] = await self\.end_acc_call/);
-  assert.match(bridge, /if session\.get\("accCallEnded"\):\s+self\.forget_session_record/);
-  assert.match(bridge, /call_id, registered_here = await self\.ensure_acc_call/);
+  assert.match(bridge, /if not session\.get\("endCallOnClose", True\) or session\.get\("accCallEnded"\):\s+self\.forget_session_record/);
+  assert.match(bridge, /call_id, registered_here, end_call_on_close = await self\.ensure_acc_call/);
+  assert.match(bridge, /"endCallOnClose": end_call_on_close/);
+  assert.match(bridge, /if session\.get\("endCallOnClose", True\) and not session\.get\("accCallEnded"\)/);
   assert.match(bridge, /async def retire_failed_offer/);
   assert.match(bridge, /reason="webrtc_offer_setup_failed"/);
   assert.match(bridge, /reason="webrtc_answer_unavailable"/);
@@ -863,10 +865,19 @@ test("POST /api/pipecat/sessions/ensure-call registers direct Pipecat transports
     assert.equal(browserRetry.status, 200);
     assert.equal(browserRetry.payload.idempotent, true);
     assert.equal(browserRetry.payload.callId, browser.payload.callId);
+    assert.equal(browser.payload.endCallOnClose, true);
     assert.deepEqual([concurrentBrowserA.status, concurrentBrowserB.status].sort((left, right) => left - right), [200, 201]);
     assert.equal(concurrentBrowserA.payload.callId, concurrentBrowserB.payload.callId);
     assert.equal([concurrentBrowserA.payload.idempotent, concurrentBrowserB.payload.idempotent].filter(Boolean).length, 1);
     assert.equal(freeswitch.status, 201);
+    const borrowedBrowser = await post({
+      callId: freeswitch.payload.callId,
+      sessionId: "operator-console-voice-1",
+      transport: "browser_webrtc",
+    });
+    assert.equal(borrowedBrowser.status, 200);
+    assert.equal(borrowedBrowser.payload.callId, freeswitch.payload.callId);
+    assert.equal(borrowedBrowser.payload.endCallOnClose, false);
 
     const browserEnded = await post({
       callId: browser.payload.callId,

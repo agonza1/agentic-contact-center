@@ -93,7 +93,7 @@ class BrowserWebrtcBridge:
         readiness = await asyncio.to_thread(check_readiness, acc_url, skip_acc)
         return web.json_response(ready_payload(readiness, self.host, self.port), status=200 if readiness.ok else 503)
 
-    async def ensure_acc_call(self, *, acc_url: str, call_id: str, session_id: str) -> tuple[str, bool]:
+    async def ensure_acc_call(self, *, acc_url: str, call_id: str, session_id: str) -> tuple[str, bool, bool]:
         payload = await asyncio.to_thread(
             json_http,
             "POST",
@@ -107,7 +107,11 @@ class BrowserWebrtcBridge:
         registered_call_id = str(payload.get("callId") or "").strip()
         if not registered_call_id:
             raise RuntimeError("ACC Pipecat session registration did not return callId")
-        return registered_call_id, payload.get("idempotent") is not True
+        return (
+            registered_call_id,
+            payload.get("idempotent") is not True,
+            payload.get("endCallOnClose") is not False,
+        )
 
     async def end_acc_call(self, *, acc_url: str, call_id: str, session_id: str, reason: str) -> bool:
         for attempt in range(1, 4):
@@ -159,7 +163,16 @@ class BrowserWebrtcBridge:
         elif registered_here:
             await self.end_acc_call(acc_url=acc_url, call_id=call_id, session_id=session_id, reason=reason)
 
-    async def start_pipeline(self, *, connection: Any, session_id: str, acc_url: str, call_id: str, readiness: BridgeReadiness) -> AccVoicePipelineSession:
+    async def start_pipeline(
+        self,
+        *,
+        connection: Any,
+        session_id: str,
+        acc_url: str,
+        call_id: str,
+        end_call_on_close: bool,
+        readiness: BridgeReadiness,
+    ) -> AccVoicePipelineSession:
         session = AccVoicePipelineSession(acc_url=acc_url, call_id=call_id, readiness=readiness)
         transport = SmallWebRTCTransport(
             webrtc_connection=connection,
@@ -197,6 +210,7 @@ class BrowserWebrtcBridge:
             "callId": call_id,
             "accUrl": acc_url,
             "requestedSessionId": session_id,
+            "endCallOnClose": end_call_on_close,
             "startedAt": datetime.now(UTC).isoformat(timespec="seconds"),
             "closedAt": None,
             "closeReason": None,
@@ -228,8 +242,13 @@ class BrowserWebrtcBridge:
         if not readiness.ok:
             return web.json_response({"ok": False, "error": "sidecar_unavailable", "ready": ready_payload(readiness, self.host, self.port)}, status=503)
         registered_here = False
+        end_call_on_close = True
         try:
-            call_id, registered_here = await self.ensure_acc_call(acc_url=acc_url, call_id=call_id, session_id=session_id)
+            call_id, registered_here, end_call_on_close = await self.ensure_acc_call(
+                acc_url=acc_url,
+                call_id=call_id,
+                session_id=session_id,
+            )
         except Exception as exc:
             return web.json_response({"ok": False, "error": "acc_call_registration_failed", "detail": str(exc)}, status=503)
 
@@ -243,7 +262,14 @@ class BrowserWebrtcBridge:
             })
 
             async def on_connection(connection: Any) -> None:
-                await self.start_pipeline(connection=connection, session_id=session_id, acc_url=acc_url, call_id=call_id, readiness=readiness)
+                await self.start_pipeline(
+                    connection=connection,
+                    session_id=session_id,
+                    acc_url=acc_url,
+                    call_id=call_id,
+                    end_call_on_close=end_call_on_close,
+                    readiness=readiness,
+                )
 
             answer = await self.request_handler.handle_web_request(small_request, on_connection)
         except Exception as exc:
@@ -397,14 +423,14 @@ class BrowserWebrtcBridge:
         if session:
             session["closedAt"] = session.get("closedAt") or datetime.now(UTC).isoformat(timespec="seconds")
             session["closeReason"] = session.get("closeReason") or reason
-            if not session.get("accCallEnded"):
+            if session.get("endCallOnClose", True) and not session.get("accCallEnded"):
                 session["accCallEnded"] = await self.end_acc_call(
                     acc_url=str(session.get("accUrl") or DEFAULT_ACC_URL),
                     call_id=str(session.get("callId") or ""),
                     session_id=str(session.get("requestedSessionId") or session_id),
                     reason=str(session.get("closeReason") or reason),
                 )
-            if session.get("accCallEnded"):
+            if not session.get("endCallOnClose", True) or session.get("accCallEnded"):
                 self.forget_session_record(session)
         runner = session.get("runner")
         turn_session = session.get("turnSession")

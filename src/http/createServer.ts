@@ -6260,6 +6260,8 @@ async function routeRequest(
         sessionId,
         transport,
         idempotent: true,
+        endCallOnClose: existingSnapshot.session.providerName === "pipecat-browser-webrtc"
+          && existingSnapshot.session.providerCallId === sessionId,
         call: buildCallPayload(existingSnapshot),
       });
       return;
@@ -6280,6 +6282,7 @@ async function routeRequest(
             sessionId,
             transport,
             idempotent: true,
+            endCallOnClose: true,
             call: buildCallPayload(existingSnapshot),
           },
         };
@@ -6309,6 +6312,7 @@ async function routeRequest(
           sessionId,
           transport,
           idempotent: false,
+          endCallOnClose: true,
           call: buildCallPayload(snapshot),
         },
       };
