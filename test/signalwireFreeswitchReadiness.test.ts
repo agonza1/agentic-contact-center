@@ -1371,6 +1371,55 @@ test("SignalWire FreeSWITCH readiness rejects public ACL probes outside provider
   }
 });
 
+test("SignalWire FreeSWITCH readiness rejects malformed provider ingress CIDRs before fs_cli", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      "#!/bin/sh\nprintf '%s\\n' 'unexpected fs_cli invocation'\n",
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_TRUNK_MODE: "ip_auth",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+          SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+          SIGNALWIRE_PROVIDER_INGRESS_CIDRS: "54.172.60.0/30,54.172.60.0/99",
+          SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const result = error as { stdout?: string; code?: number };
+        assert.equal(result.code, 2);
+        const payload = JSON.parse(result.stdout ?? "{}");
+        assert.equal(payload.manualCallReady, false);
+        assert.ok(payload.blockers.includes("invalid_signalwire_provider_ingress_cidrs"));
+        assert.deepEqual(payload.freeswitchCli, []);
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("SignalWire FreeSWITCH readiness preserves bracketed IPv6 endpoint hosts", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
   const fsCliBin = path.join(tempDir, "fs_cli");

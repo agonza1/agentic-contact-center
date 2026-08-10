@@ -379,6 +379,10 @@ function parseProviderIngressCidrs(value) {
     .filter(Boolean);
 }
 
+function invalidProviderIngressCidrs(cidrs) {
+  return cidrs.filter((cidr) => !cidrRange(cidr));
+}
+
 function cidrContainsIp(cidr, address) {
   const [cidrAddress, prefixText] = clean(cidr).split("/");
   const addressVersion = isIP(address);
@@ -842,6 +846,7 @@ const signalwireDid = signalwireDidDigits(env.SIGNALWIRE_FROM_NUMBER);
 const signalwireSourceAclName = clean(process.env.SIGNALWIRE_SOURCE_ACL_NAME) || DEFAULT_SIGNALWIRE_SOURCE_ACL_NAME;
 const signalwireSourceIpProbe = clean(process.env.SIGNALWIRE_SOURCE_IP_PROBE);
 const signalwireProviderIngressCidrs = parseProviderIngressCidrs(process.env.SIGNALWIRE_PROVIDER_INGRESS_CIDRS);
+const invalidSignalwireProviderIngressCidrs = invalidProviderIngressCidrs(signalwireProviderIngressCidrs);
 const signalwireSourceRejectProbe = nonProviderSourceAclRejectProbe(signalwireProviderIngressCidrs, signalwireSourceIpProbe);
 const externalSipReachabilityProofPath = clean(process.env.SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH);
 const signalwireSourceAclConfigCommand = `xml_locate configuration list name ${signalwireSourceAclName}`;
@@ -946,6 +951,8 @@ if (summary.blockers.length === 0 && !hasFlag("--skip-fs-cli")) {
   } else if (signalwireProviderIngressCidrs.length === 0) {
     summary.missingEnv.push("SIGNALWIRE_PROVIDER_INGRESS_CIDRS");
     summary.blockers.push("signalwire_provider_ingress_cidrs_missing");
+  } else if (invalidSignalwireProviderIngressCidrs.length > 0) {
+    summary.blockers.push("invalid_signalwire_provider_ingress_cidrs");
   } else if (!isSignalWireProviderIngressProbe(signalwireSourceIpProbe, signalwireProviderIngressCidrs)) {
     summary.blockers.push("signalwire_source_probe_not_provider_owned");
   } else if (!signalwireSourceRejectProbe) {
