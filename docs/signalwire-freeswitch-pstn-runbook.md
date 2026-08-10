@@ -25,9 +25,10 @@ export FREESWITCH_PUBLIC_SIP_HOST="PUBLIC_SIP_HOST_OR_TUNNEL_PLACEHOLDER"
 export SIGNALWIRE_SOURCE_ACL_NAME="signalwire_trunk"
 export SIGNALWIRE_SOURCE_IP_PROBE="APPROVED_SIGNALWIRE_SOURCE_IP_PLACEHOLDER"
 export SIGNALWIRE_PROVIDER_INGRESS_CIDRS="APPROVED_SIGNALWIRE_INGRESS_CIDRS_PLACEHOLDER"
+export SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH="artifacts/freeswitch-signalwire/external-sip-reachability.json"
 ```
 
-IP-auth trunks require only `SIGNALWIRE_TRUNK_MODE=ip_auth`, `SIGNALWIRE_FROM_NUMBER`, `FREESWITCH_PUBLIC_SIP_HOST`, `SIGNALWIRE_SOURCE_IP_PROBE`, and provider-owned ingress CIDR evidence; they do not require a Space URL or SIP registration credentials.
+IP-auth trunks require only `SIGNALWIRE_TRUNK_MODE=ip_auth`, `SIGNALWIRE_FROM_NUMBER`, `FREESWITCH_PUBLIC_SIP_HOST`, `SIGNALWIRE_SOURCE_IP_PROBE`, provider-owned ingress CIDR evidence, and external SIP reachability proof; they do not require a Space URL or SIP registration credentials.
 
 Optional overrides:
 
@@ -39,7 +40,24 @@ export SIGNALWIRE_TRUNK_MODE="registration"
 
 When `SIGNALWIRE_SIP_REALM` and `SIGNALWIRE_SIP_PROXY` are omitted, the readiness script derives `SPACE.sip.signalwire.com` from `SIGNALWIRE_SPACE_URL=https://SPACE.signalwire.com`. Set `SIGNALWIRE_TRUNK_MODE=ip_auth` only for documented IP-auth trunking where SignalWire routes directly to `sip:8600@FREESWITCH_PUBLIC_SIP_HOST` and no FreeSWITCH gateway registration is expected.
 
-`SIGNALWIRE_SOURCE_ACL_NAME` defaults to `signalwire_trunk`. The public dialplan is gated by `${acl(${network_addr} SIGNALWIRE_SOURCE_ACL_NAME)}` so an arbitrary Internet SIP sender cannot reach the live agent by guessing the DID. Configure that FreeSWITCH ACL with approved SignalWire source ranges or an equivalent authenticated trunk predicate before opening the manual-call gate. `SIGNALWIRE_SOURCE_IP_PROBE` must be one approved SignalWire source IP from that ACL, and it must fall inside the provider-owned ingress CIDRs used to build the ACL. `SIGNALWIRE_PROVIDER_INGRESS_CIDRS` accepts a comma or space-separated set of CIDR blocks from SignalWire support, dashboard/provider documentation, or the approved trunk configuration. The readiness probe redacts these values, inspects the active `SIGNALWIRE_SOURCE_ACL_NAME` network-list, and runs `fs_cli -x 'acl SIGNALWIRE_SOURCE_IP_PROBE SIGNALWIRE_SOURCE_ACL_NAME'` only after the provider-owned probe check passes. It also probes a public non-provider canary source and requires the active allow set to contain only CIDRs contained by `SIGNALWIRE_PROVIDER_INGRESS_CIDRS`, so broad or mixed allow rules such as `0.0.0.0/0` cannot open the manual-call gate even if one canary is rejected.
+`SIGNALWIRE_SOURCE_ACL_NAME` defaults to `signalwire_trunk`. The public dialplan is gated by `${acl(${network_addr} SIGNALWIRE_SOURCE_ACL_NAME)}` so an arbitrary Internet SIP sender cannot reach the live agent by guessing the DID. Configure that FreeSWITCH ACL with approved SignalWire source ranges or an equivalent authenticated trunk predicate before opening the manual-call gate. `SIGNALWIRE_SOURCE_IP_PROBE` must be one approved SignalWire source IP from that ACL, and it must fall inside the provider-owned ingress CIDRs used to build the ACL. `SIGNALWIRE_PROVIDER_INGRESS_CIDRS` accepts a comma or space-separated set of CIDR blocks from SignalWire support, dashboard/provider documentation, or the approved trunk configuration. The readiness probe redacts these values, inspects the active `SIGNALWIRE_SOURCE_ACL_NAME` network-list, and runs `fs_cli -x 'acl SIGNALWIRE_SOURCE_IP_PROBE SIGNALWIRE_SOURCE_ACL_NAME'` only after the provider-owned probe check passes. It also probes a public non-provider canary source and requires the active allow set to contain only CIDRs contained by `SIGNALWIRE_PROVIDER_INGRESS_CIDRS`, so broad or mixed allow rules such as `0.0.0.0/0` cannot open the manual-call gate even if one canary is rejected. The active dialplan XML must also structurally nest the PCMU Verto bridge action inside the matching DID condition and the approved ACL condition; a sibling or unguarded bridge action fails readiness.
+
+`SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH` points to a local, gitignored JSON proof created by an external or provider-side SIP probe. DNS and `Ext-SIP-IP` agreement are not enough because NAT, firewall, or tunnel state can still block inbound SIP. The proof must be fresh, target `FREESWITCH_PUBLIC_SIP_HOST` on the SIP port, come from a SignalWire/provider/external vantage point, set `reachable: true`, and include SIP response evidence such as a SIP OPTIONS response code. Example shape:
+
+```json
+{
+  "source": "external-provider-probe",
+  "targetHost": "PUBLIC_SIP_HOST_OR_TUNNEL_PLACEHOLDER",
+  "targetPort": 5060,
+  "transport": "udp",
+  "reachable": true,
+  "result": "sip_options_response",
+  "sipResponseCode": 401,
+  "checkedAt": "2026-08-09T00:00:00.000Z"
+}
+```
+
+Keep the proof file under ignored local artifacts and redact private hostnames or addresses before copying snippets into GitHub.
 
 ## Generate FreeSWITCH config
 
@@ -107,9 +125,10 @@ Expected proof:
 - For registration trunks, `freeswitchCli` includes redacted output for `sofia status profile external`, `sofia status gateway signalwire`, and `show registrations`; `gatewayRegistration` must prove the active `signalwire` gateway is `REGED` and its non-secret realm, proxy, and username match the requested trunk.
 - For IP-auth trunks, `freeswitchCli` includes redacted output for `sofia status profile external` and `show registrations`; `REGED` is not required because there is no outbound gateway registration.
 - Both modes prove `FREESWITCH_PUBLIC_SIP_HOST` resolves to a public address advertised by the active FreeSWITCH external profile before `manualCallReady` can become `true`.
+- Both modes require fresh external/provider SIP reachability proof through `SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH`; without it, readiness exits with `freeswitch_external_sip_reachability_not_proven` and keeps `manualCallReady` false.
 - Both modes include `xml_locate` proof that the active `agentic_contact_center_signalwire_pstn` extension routes to `acc_route=signalwire_live`.
 - Both modes include active ACL proof from `fs_cli -x 'xml_locate configuration list name SIGNALWIRE_SOURCE_ACL_NAME'`, `fs_cli -x 'acl SIGNALWIRE_SOURCE_IP_PROBE SIGNALWIRE_SOURCE_ACL_NAME'`, and a redacted non-provider reject probe; `sourceRestriction.providerOwnedProbe`, `sourceRestriction.activeAclProven`, `sourceRestriction.activeAclRejectsNonProvider`, and `sourceRestriction.activeAclAllowSetProviderOnly` must all be `true`.
-- The active dialplan proof includes the SignalWire source ACL predicate, a PCMU-only Verto bridge leg, and the Verto lane fields (`acc_destination_number=8600`, `acc_conversation_mode=openai_llm`, `sip_h_X-ACC-Telephony-Mode=signalwire_live`).
+- The active dialplan proof structurally nests the SignalWire source ACL predicate around the PCMU-only Verto bridge leg and the Verto lane fields (`acc_destination_number=8600`, `acc_conversation_mode=openai_llm`, `sip_h_X-ACC-Telephony-Mode=signalwire_live`).
 - `show registrations` proves the exact `acc-pipecat@<domain>` Verto contact referenced by the active dialplan is registered before the manual-call gate opens; a stale `acc-pipecat` registration under another domain is not sufficient.
 - `artifacts/freeswitch-signalwire/readiness.json` contains no live tokens, SIP passwords, project IDs, or private host values.
 - Verto bridge proof artifacts redact PSTN caller identity fields from persisted Verto parameters.

@@ -10,10 +10,30 @@ const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const artifactsRoot = path.join(repoRoot, "artifacts");
 const signalWireProviderIngressCidrs = "54.172.60.0/30";
+let reachabilityProofPath = "";
 
 async function mkArtifactTempDir(prefix: string) {
   await mkdir(artifactsRoot, { recursive: true });
   return mkdtemp(path.join(artifactsRoot, prefix));
+}
+
+async function writeExternalSipReachabilityProof(tempDir: string, host = "8.8.8.8", port = 5060) {
+  const proofPath = path.join(tempDir, "external-sip-reachability.json");
+  await writeFile(
+    proofPath,
+    JSON.stringify({
+      source: "external-provider-probe",
+      targetHost: host,
+      targetPort: port,
+      transport: "udp",
+      reachable: true,
+      result: "sip_options_response",
+      sipResponseCode: 401,
+      checkedAt: new Date().toISOString(),
+    }),
+    "utf8",
+  );
+  return proofPath;
 }
 
 test("SignalWire FreeSWITCH readiness fails closed when required env is missing", async () => {
@@ -60,6 +80,7 @@ test("SignalWire FreeSWITCH readiness rejects digitless SignalWire numbers befor
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -103,6 +124,7 @@ for (const invalidDid of ["abc123", "1"]) {
             FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
             SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
             SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
           },
           encoding: "utf8",
         }),
@@ -150,6 +172,7 @@ test("SignalWire FreeSWITCH readiness renders ignored config without leaking sec
         FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
         SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
         SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
       },
       encoding: "utf8",
     });
@@ -211,6 +234,7 @@ test("SignalWire FreeSWITCH readiness does not report rendered status without re
         FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
         SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
         SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
       },
       encoding: "utf8",
     });
@@ -247,6 +271,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     const { stdout } = await execFileAsync(process.execPath, [
       "scripts/signalwire-freeswitch-readiness.mjs",
       "--fs-cli-bin",
@@ -264,6 +290,7 @@ esac
         FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
         SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
         SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
       },
       encoding: "utf8",
     });
@@ -315,6 +342,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir, "2001:4860:4860::8888");
+
     await assert.rejects(
       execFileAsync(process.execPath, [
         "scripts/signalwire-freeswitch-readiness.mjs",
@@ -333,6 +362,7 @@ esac
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -376,6 +406,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     await assert.rejects(
       execFileAsync(process.execPath, [
         "scripts/signalwire-freeswitch-readiness.mjs",
@@ -394,6 +426,7 @@ esac
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -439,6 +472,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     await assert.rejects(
       execFileAsync(process.execPath, [
         "scripts/signalwire-freeswitch-readiness.mjs",
@@ -457,6 +492,7 @@ esac
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -495,6 +531,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     const { stdout } = await execFileAsync(process.execPath, [
       "scripts/signalwire-freeswitch-readiness.mjs",
       "--fs-cli-bin",
@@ -510,6 +548,7 @@ esac
         FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
         SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
         SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
       },
       encoding: "utf8",
     });
@@ -544,6 +583,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     const { stdout } = await execFileAsync(process.execPath, [
       "scripts/signalwire-freeswitch-readiness.mjs",
       "--fs-cli-bin",
@@ -559,6 +600,7 @@ esac
         FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
         SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
         SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
       },
       encoding: "utf8",
     });
@@ -589,6 +631,121 @@ esac
   }
 });
 
+test("SignalWire FreeSWITCH readiness rejects sibling bridges outside the approved ACL condition", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
+  "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
+  "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><condition field="\${acl(\${network_addr} signalwire_trunk)}" expression="^true$"><action application="set" data="acc_route=signalwire_live"/></condition><condition field="caller_id_number" expression=".*"><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="{absolute_codec_string=PCMU}verto_contact(acc-pipecat@example.test)"/></condition></condition></extension>' ;;
+  *) printf '%s\\n' "acc-pipecat@example.test REGED" ;;
+esac
+`,
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_TRUNK_MODE: "ip_auth",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+          SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+          SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const result = error as { stdout?: string; code?: number };
+        assert.equal(result.code, 2);
+        const payload = JSON.parse(result.stdout ?? "{}");
+        assert.equal(payload.manualCallReady, false);
+        assert.ok(payload.blockers.includes("signalwire_inbound_dialplan_not_proven"));
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("SignalWire FreeSWITCH readiness keeps manual call closed without external SIP reachability proof", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
+  "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
+  "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351)$"><condition field="\${acl(\${network_addr} signalwire_trunk)}" expression="^true$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="{absolute_codec_string=PCMU}verto_contact(acc-pipecat@example.test)"/></condition></extension>' ;;
+  *) printf '%s\\n' "acc-pipecat@example.test REGED" ;;
+esac
+`,
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+    const reachabilityProofPath = "";
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_TRUNK_MODE: "ip_auth",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+          SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+          SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const result = error as { stdout?: string; code?: number };
+        assert.equal(result.code, 2);
+        const payload = JSON.parse(result.stdout ?? "{}");
+        assert.equal(payload.manualCallReady, false);
+        assert.ok(payload.missingEnv.includes("SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH"));
+        assert.ok(payload.blockers.includes("freeswitch_external_sip_reachability_not_proven"));
+        assert.equal(payload.endpoint.externalSipReachability.proven, false);
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("SignalWire FreeSWITCH readiness rejects a broad source ACL that allows non-provider sources", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
   const fsCliBin = path.join(tempDir, "fs_cli");
@@ -610,6 +767,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     await assert.rejects(
       execFileAsync(process.execPath, [
         "scripts/signalwire-freeswitch-readiness.mjs",
@@ -626,6 +785,7 @@ esac
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -667,6 +827,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     await assert.rejects(
       execFileAsync(process.execPath, [
         "scripts/signalwire-freeswitch-readiness.mjs",
@@ -683,6 +845,7 @@ esac
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -714,6 +877,8 @@ test("SignalWire FreeSWITCH readiness requires an ACL probe before manual call r
       "utf8",
     );
     await chmod(fsCliBin, 0o700);
+
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
 
     await assert.rejects(
       execFileAsync(process.execPath, [
@@ -767,6 +932,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     await assert.rejects(
       execFileAsync(process.execPath, [
         "scripts/signalwire-freeswitch-readiness.mjs",
@@ -783,6 +950,7 @@ esac
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -861,6 +1029,8 @@ test("SignalWire FreeSWITCH readiness rejects public ACL probes outside provider
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     await assert.rejects(
       execFileAsync(process.execPath, [
         "scripts/signalwire-freeswitch-readiness.mjs",
@@ -877,6 +1047,7 @@ test("SignalWire FreeSWITCH readiness rejects public ACL probes outside provider
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "8.8.8.8",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -917,6 +1088,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir, "2001:4860:4860::8888");
+
     const { stdout } = await execFileAsync(process.execPath, [
       "scripts/signalwire-freeswitch-readiness.mjs",
       "--fs-cli-bin",
@@ -932,6 +1105,7 @@ esac
         FREESWITCH_PUBLIC_SIP_HOST: "[2001:4860:4860::8888]:5060",
         SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
         SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
       },
       encoding: "utf8",
     });
@@ -966,6 +1140,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir, "2001:4860:4860::8888");
+
     const { stdout } = await execFileAsync(process.execPath, [
       "scripts/signalwire-freeswitch-readiness.mjs",
       "--fs-cli-bin",
@@ -981,6 +1157,7 @@ esac
         FREESWITCH_PUBLIC_SIP_HOST: "[2001:4860:4860::8888]:5060",
         SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
         SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
       },
       encoding: "utf8",
     });
@@ -1018,6 +1195,7 @@ test("SignalWire FreeSWITCH readiness renders only the inbound dialplan for IP-a
         FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
         SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
         SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
       },
       encoding: "utf8",
     });
@@ -1060,6 +1238,7 @@ test("SignalWire FreeSWITCH readiness rejects render output outside ignored arti
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -1106,6 +1285,7 @@ test("SignalWire FreeSWITCH readiness rejects symlinked artifact output dirs", a
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -1153,6 +1333,7 @@ test("SignalWire FreeSWITCH readiness rejects symlinked generated config childre
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -1197,6 +1378,7 @@ test("SignalWire FreeSWITCH readiness replaces symlinked manifests without touch
         FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
         SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
         SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
       },
       encoding: "utf8",
     });
@@ -1234,6 +1416,7 @@ test("SignalWire FreeSWITCH readiness replaces hard-linked manifests without tou
         FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
         SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
         SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
       },
       encoding: "utf8",
     });
@@ -1274,6 +1457,7 @@ test("SignalWire FreeSWITCH readiness rejects manifest paths below symlinked dir
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -1320,6 +1504,7 @@ test("SignalWire FreeSWITCH readiness restores credential file permissions when 
         FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
         SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
         SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
       },
       encoding: "utf8",
     });
@@ -1360,6 +1545,7 @@ test("SignalWire FreeSWITCH readiness rejects hard-linked generated credential f
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -1399,6 +1585,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     await assert.rejects(
       execFileAsync(process.execPath, [
         "scripts/signalwire-freeswitch-readiness.mjs",
@@ -1415,6 +1603,7 @@ esac
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -1453,6 +1642,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     await assert.rejects(
       execFileAsync(process.execPath, [
         "scripts/signalwire-freeswitch-readiness.mjs",
@@ -1469,6 +1660,7 @@ esac
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -1505,6 +1697,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     await assert.rejects(
       execFileAsync(process.execPath, [
         "scripts/signalwire-freeswitch-readiness.mjs",
@@ -1521,6 +1715,7 @@ esac
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -1557,6 +1752,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     await assert.rejects(
       execFileAsync(process.execPath, [
         "scripts/signalwire-freeswitch-readiness.mjs",
@@ -1573,6 +1770,7 @@ esac
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -1600,6 +1798,8 @@ test("SignalWire FreeSWITCH readiness rejects an unadvertised IP-auth endpoint",
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     await assert.rejects(
       execFileAsync(process.execPath, [
         "scripts/signalwire-freeswitch-readiness.mjs",
@@ -1616,6 +1816,7 @@ test("SignalWire FreeSWITCH readiness rejects an unadvertised IP-auth endpoint",
           FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
           SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
           SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
         },
         encoding: "utf8",
       }),
@@ -1669,6 +1870,7 @@ esac
             FREESWITCH_PUBLIC_SIP_HOST: unroutableHost,
             SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
             SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
           },
           encoding: "utf8",
         }),
@@ -1710,6 +1912,7 @@ for (const profileOutput of ["Invalid Profile!", "external profile DOWN"]) {
             FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
             SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
             SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
           },
           encoding: "utf8",
         }),
@@ -1750,6 +1953,8 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
     const { stdout } = await execFileAsync(process.execPath, [
       "scripts/signalwire-freeswitch-readiness.mjs",
       "--fs-cli-bin",
@@ -1765,6 +1970,7 @@ esac
         FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
         SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
         SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
       },
       encoding: "utf8",
     });

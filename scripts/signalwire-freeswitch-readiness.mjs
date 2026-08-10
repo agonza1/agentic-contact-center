@@ -41,6 +41,7 @@ const REGISTRATION_REQUIRED_ENV = [
 ];
 const ALL_ENV = [...COMMON_REQUIRED_ENV, ...REGISTRATION_REQUIRED_ENV];
 const DEFAULT_SIGNALWIRE_SOURCE_ACL_NAME = "signalwire_trunk";
+const EXTERNAL_REACHABILITY_PROOF_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const SOURCE_ACL_REJECT_PROBE_CANDIDATES = [
   "8.8.8.8",
   "1.1.1.1",
@@ -185,19 +186,90 @@ function isInboundDialplanActive(entry, expectedDidPattern, sourceAclName) {
   if (!entry) return false;
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
   if (/can't\s+find|not\s+found|invalid/i.test(output)) return false;
+  const root = parseXmlTree(output);
+  const extension = findDescendant(root, (node) => (
+    node.name === "extension"
+    && clean(node.attributes.name).toLowerCase() === "agentic_contact_center_signalwire_pstn"
+  ));
+  if (!extension) return false;
+  const didCondition = findDescendant(extension, (node) => (
+    node.name === "condition"
+    && clean(node.attributes.field).toLowerCase() === "destination_number"
+    && clean(node.attributes.expression).includes(expectedDidPattern)
+  ));
+  if (!didCondition) return false;
+  const aclCondition = findDescendant(didCondition, (node) => isSignalWireAclCondition(node, sourceAclName));
+  if (!aclCondition) return false;
+  return guardedSignalWireBridgeReady(aclCondition);
+}
+
+function parseXmlTree(value) {
+  const root = { name: "#root", attributes: {}, children: [] };
+  const stack = [root];
+  const withoutComments = clean(value).replace(/<!--[\s\S]*?-->/g, "");
+  for (const match of withoutComments.matchAll(/<\s*(\/)?\s*([A-Za-z0-9_.:-]+)\b([^<>]*?)(\/?)\s*>/g)) {
+    const [, closing, rawName, rawAttributes = "", selfClosing] = match;
+    const name = rawName.toLowerCase();
+    if (closing) {
+      const index = stack.findLastIndex((node) => node.name === name);
+      if (index > 0) stack.length = index;
+      continue;
+    }
+    const node = {
+      name,
+      attributes: parseXmlAttributes(rawAttributes),
+      children: [],
+    };
+    stack.at(-1).children.push(node);
+    if (!selfClosing) stack.push(node);
+  }
+  return root;
+}
+
+function findDescendant(node, predicate) {
+  for (const child of node.children ?? []) {
+    if (predicate(child)) return child;
+    const nested = findDescendant(child, predicate);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function descendants(node, predicate) {
+  const results = [];
+  for (const child of node.children ?? []) {
+    if (predicate(child)) results.push(child);
+    results.push(...descendants(child, predicate));
+  }
+  return results;
+}
+
+function isSignalWireAclCondition(node, sourceAclName) {
+  if (node.name !== "condition") return false;
+  const field = clean(node.attributes.field);
+  const expression = clean(node.attributes.expression).toLowerCase();
   const aclPattern = new RegExp(`acl\\(\\$\\{network_addr\\}\\s+${regexpLiteral(sourceAclName)}\\)`, "i");
-  const pcMuVertoBridgePattern = /bridge[^>]+data=["'][^"']*absolute_codec_string=PCMU[^"']*verto_contact\(acc-pipecat@/i;
-  return /agentic_contact_center_signalwire_pstn/i.test(output)
-    && /acc_route=signalwire_live/i.test(output)
-    && aclPattern.test(output)
-    && /acc_destination_number=8600/i.test(output)
-    && /acc_conversation_mode=openai_llm/i.test(output)
-    && /(?:sip_h_X-ACC-Telephony-Mode|X-ACC-Telephony-Mode)=signalwire_live/i.test(output)
-    && /(?:sip_h_X-ACC-Destination|X-ACC-Destination)=8600/i.test(output)
-    && /(?:sip_h_X-ACC-Conversation-Mode|X-ACC-Conversation-Mode)=openai_llm/i.test(output)
-    && /acc_media_bridge=pipecat_verto_agent_leg/i.test(output)
-    && pcMuVertoBridgePattern.test(output)
-    && output.includes(expectedDidPattern);
+  return aclPattern.test(field) && /^\^?true\$?$/.test(expression);
+}
+
+function guardedSignalWireBridgeReady(aclCondition) {
+  const actions = descendants(aclCondition, (node) => node.name === "action")
+    .map((node) => ({
+      application: clean(node.attributes.application).toLowerCase(),
+      data: clean(node.attributes.data),
+    }));
+  const hasActionData = (application, pattern) => actions.some((action) => (
+    action.application === application && pattern.test(action.data)
+  ));
+  return hasActionData("set", /(?:^|[,;{])acc_route=signalwire_live(?:[,;} ]|$)/i)
+    && hasActionData("set", /(?:^|[,;{])acc_destination_number=8600(?:[,;} ]|$)/i)
+    && hasActionData("set", /(?:^|[,;{])acc_conversation_mode=openai_llm(?:[,;} ]|$)/i)
+    && hasActionData("set", /(?:^|[,;{])acc_media_bridge=pipecat_verto_agent_leg(?:[,;} ]|$)/i)
+    && hasActionData("export", /(?:sip_h_X-ACC-Telephony-Mode|X-ACC-Telephony-Mode)=signalwire_live/i)
+    && hasActionData("export", /(?:sip_h_X-ACC-Destination|X-ACC-Destination)=8600/i)
+    && hasActionData("export", /(?:sip_h_X-ACC-Conversation-Mode|X-ACC-Conversation-Mode)=openai_llm/i)
+    && hasActionData("bridge", /absolute_codec_string=PCMU/i)
+    && hasActionData("bridge", /verto_contact\(\s*acc-pipecat@/i);
 }
 
 function expectedVertoAgentContactsFromDialplan(entry) {
@@ -451,6 +523,20 @@ function normalizeSipEndpointHost(value) {
   }
 }
 
+function normalizeSipEndpointPort(value) {
+  const raw = clean(value);
+  if (!raw) return 5060;
+  try {
+    const parsed = new URL(raw.includes("://") ? raw : `sip://${raw}`);
+    return parsed.port ? Number(parsed.port) : 5060;
+  } catch {
+    const bracketed = raw.match(/^\[[^\]]+\]:(\d+)$/);
+    if (bracketed) return Number(bracketed[1]);
+    const singlePort = raw.match(/^[^:]+:(\d+)$/);
+    return singlePort ? Number(singlePort[1]) : 5060;
+  }
+}
+
 async function resolvePublicEndpointAddresses(value) {
   const host = normalizeSipEndpointHost(value);
   if (!host) return [];
@@ -521,6 +607,68 @@ function isPublicEndpointAdvertised(entry, expectedAddresses) {
     .map((match) => canonicalizeIpAddress(removeEndpointPort(match[1])))
     .filter(Boolean);
   return expectedAddresses.some((address) => advertised.includes(address));
+}
+
+async function externalSipReachabilityProof(proofPath, expectedEndpoint, now) {
+  const expectedHost = normalizeSipEndpointHost(expectedEndpoint).toLowerCase();
+  const expectedPort = normalizeSipEndpointPort(expectedEndpoint);
+  const empty = {
+    proven: false,
+    missing: !proofPath,
+    blocker: "freeswitch_external_sip_reachability_not_proven",
+    proofPath: proofPath ? path.resolve(repoRoot, proofPath) : "",
+    source: null,
+    checkedAt: null,
+    transport: null,
+    sipResponseCode: null,
+  };
+  if (!proofPath) return empty;
+
+  const resolvedPath = path.resolve(repoRoot, proofPath);
+  try {
+    if (await hasSymlinkedDirectoryAncestor(resolvedPath)) {
+      return { ...empty, missing: false, blocker: "unsafe_freeswitch_external_sip_reachability_proof_path" };
+    }
+    if (!(await lstat(resolvedPath)).isFile()) {
+      return { ...empty, missing: false, blocker: "invalid_freeswitch_external_sip_reachability_proof" };
+    }
+    const proof = JSON.parse(await readFile(resolvedPath, "utf8"));
+    const source = clean(proof.source);
+    const proofHost = normalizeSipEndpointHost(proof.targetHost ?? proof.host ?? proof.endpoint?.host).toLowerCase();
+    const proofPort = Number(proof.targetPort ?? proof.port ?? proof.endpoint?.port ?? 5060);
+    const checkedAt = clean(proof.checkedAt);
+    const checkedAtMs = Date.parse(checkedAt);
+    const transport = clean(proof.transport || "udp").toLowerCase();
+    const sipResponseCode = Number(proof.sipResponseCode ?? proof.responseCode);
+    const result = clean(proof.result).toLowerCase();
+    const sourceIsExternal = /(?:signalwire|provider|external)/i.test(source);
+    const targetMatches = proofHost === expectedHost && proofPort === expectedPort;
+    const fresh = Number.isFinite(checkedAtMs) && Math.abs(now - checkedAtMs) <= EXTERNAL_REACHABILITY_PROOF_MAX_AGE_MS;
+    const sipResponseProvesReachability = Number.isInteger(sipResponseCode)
+      && sipResponseCode >= 100
+      && sipResponseCode <= 699;
+    const resultProvesReachability = /\b(?:sip_options_response|sip_response|reachable)\b/.test(result);
+    const proven = proof.reachable === true
+      && sourceIsExternal
+      && targetMatches
+      && fresh
+      && ["udp", "tcp", "tls"].includes(transport)
+      && (sipResponseProvesReachability || resultProvesReachability);
+    return {
+      proven,
+      missing: false,
+      blocker: fresh
+        ? "invalid_freeswitch_external_sip_reachability_proof"
+        : "stale_freeswitch_external_sip_reachability_proof",
+      proofPath: resolvedPath,
+      source: source || null,
+      checkedAt: checkedAt || null,
+      transport: transport || null,
+      sipResponseCode: Number.isInteger(sipResponseCode) ? sipResponseCode : null,
+    };
+  } catch {
+    return { ...empty, missing: false, blocker: "invalid_freeswitch_external_sip_reachability_proof" };
+  }
 }
 
 function isVertoAgentContactRegistered(entry, expectedContacts) {
@@ -618,6 +766,7 @@ const signalwireSourceAclName = clean(process.env.SIGNALWIRE_SOURCE_ACL_NAME) ||
 const signalwireSourceIpProbe = clean(process.env.SIGNALWIRE_SOURCE_IP_PROBE);
 const signalwireProviderIngressCidrs = parseProviderIngressCidrs(process.env.SIGNALWIRE_PROVIDER_INGRESS_CIDRS);
 const signalwireSourceRejectProbe = nonProviderSourceAclRejectProbe(signalwireProviderIngressCidrs, signalwireSourceIpProbe);
+const externalSipReachabilityProofPath = clean(process.env.SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH);
 const signalwireSourceAclConfigCommand = `xml_locate configuration list name ${signalwireSourceAclName}`;
 const signalwireDidNational = signalwireDid.length === 11 && signalwireDid.startsWith("1")
   ? signalwireDid.slice(1)
@@ -659,6 +808,14 @@ const summary = {
     sipUsername: env.SIGNALWIRE_SIP_USERNAME ? redact(env.SIGNALWIRE_SIP_USERNAME) : null,
     fromNumber: env.SIGNALWIRE_FROM_NUMBER ? redact(env.SIGNALWIRE_FROM_NUMBER) : null,
     freeswitchPublicSipHost: env.FREESWITCH_PUBLIC_SIP_HOST ? redact(env.FREESWITCH_PUBLIC_SIP_HOST) : null,
+    externalSipReachability: {
+      proven: false,
+      proofPath: externalSipReachabilityProofPath ? path.relative(repoRoot, path.resolve(repoRoot, externalSipReachabilityProofPath)) : null,
+      source: null,
+      checkedAt: null,
+      transport: null,
+      sipResponseCode: null,
+    },
   },
   sourceRestriction: {
     type: "freeswitch_acl",
@@ -877,6 +1034,28 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
   summary.vertoRegistration.registered = isVertoAgentContactRegistered(registrations, expectedContacts);
   if (!summary.vertoRegistration.registered) {
     summary.blockers.push("verto_agent_contact_not_proven");
+  }
+}
+
+if (summary.blockers.length === 0 && !fsCliSkipped) {
+  const reachability = await externalSipReachabilityProof(
+    externalSipReachabilityProofPath,
+    env.FREESWITCH_PUBLIC_SIP_HOST,
+    Date.now(),
+  );
+  summary.endpoint.externalSipReachability = {
+    proven: reachability.proven,
+    proofPath: reachability.proofPath ? path.relative(repoRoot, reachability.proofPath) : summary.endpoint.externalSipReachability.proofPath,
+    source: reachability.source,
+    checkedAt: reachability.checkedAt,
+    transport: reachability.transport,
+    sipResponseCode: reachability.sipResponseCode,
+  };
+  if (reachability.missing) {
+    summary.missingEnv.push("SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH");
+    summary.blockers.push("freeswitch_external_sip_reachability_not_proven");
+  } else if (!reachability.proven) {
+    summary.blockers.push(reachability.blocker);
   }
 }
 
