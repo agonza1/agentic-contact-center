@@ -168,6 +168,16 @@ function didPattern(value) {
   return [withOptionalPlus, withoutCountry].filter(Boolean).join("|");
 }
 
+function expectedDidValues(value) {
+  const digits = signalwireDidDigits(value);
+  if (!digits) return [];
+  return [
+    `+${digits}`,
+    digits,
+    digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : "",
+  ].filter((candidate, index, candidates) => candidate && candidates.indexOf(candidate) === index);
+}
+
 function isExternalProfileRunning(entry) {
   if (!entry) return false;
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
@@ -184,7 +194,12 @@ function regexpLiteral(value) {
   return clean(value).replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
 }
 
-function isInboundDialplanActive(entry, expectedDidPattern, sourceAclName) {
+function isInboundDialplanActive(entry, expectedDid, sourceAclName) {
+  const aclCondition = activeSignalWireAclCondition(entry, expectedDid, sourceAclName);
+  return Boolean(aclCondition && guardedSignalWireBridgeReady(aclCondition));
+}
+
+function activeSignalWireAclCondition(entry, expectedDid, sourceAclName) {
   if (!entry) return false;
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
   if (/can't\s+find|not\s+found|invalid/i.test(output)) return false;
@@ -197,12 +212,24 @@ function isInboundDialplanActive(entry, expectedDidPattern, sourceAclName) {
   const didCondition = findDescendant(extension, (node) => (
     node.name === "condition"
     && clean(node.attributes.field).toLowerCase() === "destination_number"
-    && clean(node.attributes.expression).includes(expectedDidPattern)
+    && didExpressionMatchesExpectedValues(node.attributes.expression, expectedDid)
   ));
   if (!didCondition) return false;
   const aclCondition = findDescendant(didCondition, (node) => isSignalWireAclCondition(node, sourceAclName));
-  if (!aclCondition) return false;
-  return guardedSignalWireBridgeReady(aclCondition);
+  return aclCondition || false;
+}
+
+function didExpressionMatchesExpectedValues(expression, expectedDid) {
+  const pattern = clean(expression);
+  const expectedValues = expectedDidValues(expectedDid);
+  if (!pattern || expectedValues.length === 0) return false;
+  let regexp;
+  try {
+    regexp = new RegExp(pattern);
+  } catch {
+    return false;
+  }
+  return expectedValues.every((value) => regexp.test(value));
 }
 
 function parseXmlTree(value) {
@@ -255,6 +282,10 @@ function isSignalWireAclCondition(node, sourceAclName) {
 }
 
 function guardedSignalWireBridgeReady(aclCondition) {
+  return Boolean(guardedSignalWireBridgeContacts(aclCondition).length);
+}
+
+function guardedSignalWireBridgeContacts(aclCondition) {
   const actions = descendants(aclCondition, (node) => node.name === "action")
     .map((node) => ({
       application: clean(node.attributes.application).toLowerCase(),
@@ -263,27 +294,33 @@ function guardedSignalWireBridgeReady(aclCondition) {
   const hasActionData = (application, pattern) => actions.some((action) => (
     action.application === application && pattern.test(action.data)
   ));
-  const hasPcmuVertoBridge = actions.some((action) => (
-    action.application === "bridge"
-    && /absolute_codec_string=PCMU/i.test(action.data)
-    && /verto_contact\(\s*acc-pipecat@/i.test(action.data)
-  ));
-  return hasActionData("set", /(?:^|[,;{])acc_route=signalwire_live(?:[,;} ]|$)/i)
+  const pcmuVertoContacts = actions
+    .filter((action) => (
+      action.application === "bridge"
+      && /absolute_codec_string=PCMU/i.test(action.data)
+    ))
+    .flatMap((action) => vertoAgentContactsFromBridgeData(action.data));
+  const hasGuardedRouteMetadata = hasActionData("set", /(?:^|[,;{])acc_route=signalwire_live(?:[,;} ]|$)/i)
     && hasActionData("set", /(?:^|[,;{])acc_destination_number=8600(?:[,;} ]|$)/i)
     && hasActionData("set", /(?:^|[,;{])acc_conversation_mode=openai_llm(?:[,;} ]|$)/i)
     && hasActionData("set", /(?:^|[,;{])acc_media_bridge=pipecat_verto_agent_leg(?:[,;} ]|$)/i)
     && hasActionData("export", /(?:sip_h_X-ACC-Telephony-Mode|X-ACC-Telephony-Mode)=signalwire_live/i)
     && hasActionData("export", /(?:sip_h_X-ACC-Destination|X-ACC-Destination)=8600/i)
-    && hasActionData("export", /(?:sip_h_X-ACC-Conversation-Mode|X-ACC-Conversation-Mode)=openai_llm/i)
-    && hasPcmuVertoBridge;
+    && hasActionData("export", /(?:sip_h_X-ACC-Conversation-Mode|X-ACC-Conversation-Mode)=openai_llm/i);
+  return hasGuardedRouteMetadata
+    ? pcmuVertoContacts.filter((contact, index, contacts) => contacts.indexOf(contact) === index)
+    : [];
 }
 
-function expectedVertoAgentContactsFromDialplan(entry) {
-  if (!entry) return [];
-  const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
-  return [...output.matchAll(/verto_contact\(\s*acc-pipecat@([^)'"<>\s]+)\s*\)/gi)]
-    .map((match) => `acc-pipecat@${clean(match[1]).toLowerCase()}`)
-    .filter((contact, index, contacts) => contact && contacts.indexOf(contact) === index);
+function vertoAgentContactsFromBridgeData(value) {
+  return [...clean(value).matchAll(/verto_contact\(\s*acc-pipecat@([^)'"<>\s]+)\s*\)/gi)]
+    .map((match) => `acc-pipecat@${clean(match[1]).toLowerCase().replace(/[);]+$/g, "")}`)
+    .filter(Boolean);
+}
+
+function expectedVertoAgentContactsFromDialplan(entry, expectedDid, sourceAclName) {
+  const aclCondition = activeSignalWireAclCondition(entry, expectedDid, sourceAclName);
+  return aclCondition ? guardedSignalWireBridgeContacts(aclCondition) : [];
 }
 
 function isSignalWireSourceAclProven(entry) {
@@ -1034,10 +1071,14 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
 
 if (summary.blockers.length === 0 && !fsCliSkipped) {
   const dialplan = rawFsCli.get("xml_locate dialplan extension name agentic_contact_center_signalwire_pstn");
-  if (!isInboundDialplanActive(dialplan, signalwireDidPattern, signalwireSourceAclName)) {
+  if (!isInboundDialplanActive(dialplan, env.SIGNALWIRE_FROM_NUMBER, signalwireSourceAclName)) {
     summary.blockers.push("signalwire_inbound_dialplan_not_proven");
   } else {
-    summary.vertoRegistration.expectedContacts = expectedVertoAgentContactsFromDialplan(dialplan).map(redactor);
+    summary.vertoRegistration.expectedContacts = expectedVertoAgentContactsFromDialplan(
+      dialplan,
+      env.SIGNALWIRE_FROM_NUMBER,
+      signalwireSourceAclName,
+    ).map(redactor);
     if (summary.vertoRegistration.expectedContacts.length === 0) {
       summary.blockers.push("verto_agent_contact_not_proven");
     }
@@ -1047,7 +1088,11 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
 if (summary.blockers.length === 0 && !fsCliSkipped) {
   const registrations = rawFsCli.get("show registrations");
   const dialplan = rawFsCli.get("xml_locate dialplan extension name agentic_contact_center_signalwire_pstn");
-  const expectedContacts = expectedVertoAgentContactsFromDialplan(dialplan);
+  const expectedContacts = expectedVertoAgentContactsFromDialplan(
+    dialplan,
+    env.SIGNALWIRE_FROM_NUMBER,
+    signalwireSourceAclName,
+  );
   summary.vertoRegistration.registered = isVertoAgentContactRegistered(registrations, expectedContacts);
   if (!summary.vertoRegistration.registered) {
     summary.blockers.push("verto_agent_contact_not_proven");
