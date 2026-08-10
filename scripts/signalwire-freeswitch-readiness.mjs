@@ -336,7 +336,7 @@ function guardedSignalWireBridgeContacts(aclCondition) {
 }
 
 function vertoAgentContactsFromBridgeData(value) {
-  return [...clean(value).matchAll(/verto_contact\(\s*acc-pipecat@([^)'"<>\s]+)\s*\)/gi)]
+  return [...clean(value).matchAll(/\$\{\s*verto_contact\(\s*acc-pipecat@([^)'"<>\s]+)\s*\)\s*\}/gi)]
     .map((match) => `acc-pipecat@${clean(match[1]).toLowerCase().replace(/[);]+$/g, "")}`)
     .filter(Boolean);
 }
