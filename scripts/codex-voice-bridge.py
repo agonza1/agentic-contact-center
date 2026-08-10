@@ -53,7 +53,7 @@ def _account_summary(account_response: Any) -> dict[str, Any]:
     account_wrapper = getattr(account_response, "account", None)
     account = getattr(account_wrapper, "root", None)
     if account is None:
-        return {"authenticated": False, "accountType": None, "email": None, "planType": None}
+        return {"authenticated": False, "accountType": None, "planType": None}
     account_type = getattr(account, "type", None)
     plan_type = getattr(account, "plan_type", None)
     if hasattr(plan_type, "value"):
@@ -61,7 +61,6 @@ def _account_summary(account_response: Any) -> dict[str, Any]:
     return {
         "authenticated": True,
         "accountType": str(account_type) if account_type else None,
-        "email": getattr(account, "email", None),
         "planType": str(plan_type) if plan_type else None,
     }
 
@@ -118,7 +117,6 @@ class CodexVoiceBridge:
                 "model": PINNED_MODEL,
                 "authenticated": False,
                 "accountType": None,
-                "email": None,
                 "planType": None,
                 "error": _safe_error(error),
             }
@@ -176,14 +174,21 @@ class CodexVoiceBridge:
             self.calls[call_id] = created
             return created
 
+    def release_call(self, call_instance_id: str) -> bool:
+        with self.state_lock:
+            return self.calls.pop(call_instance_id, None) is not None
+
     def respond(self, body: Any) -> tuple[int, dict[str, Any]]:
         if not isinstance(body, dict):
             return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "json_object_required", "model": PINNED_MODEL}
         call_id = body.get("callId")
+        call_instance_id = body.get("callInstanceId") or call_id
         model = body.get("model")
         prompt = body.get("prompt")
         if not isinstance(call_id, str) or not call_id.strip() or len(call_id) > 200:
             return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "call_id_invalid", "model": PINNED_MODEL}
+        if not isinstance(call_instance_id, str) or not call_instance_id.strip() or len(call_instance_id) > 300:
+            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "call_instance_id_invalid", "model": PINNED_MODEL}
         if model != PINNED_MODEL:
             return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "codex_model_must_be_gpt-5.4-mini", "model": PINNED_MODEL}
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > MAX_PROMPT_CHARS:
@@ -191,7 +196,7 @@ class CodexVoiceBridge:
         if not self.auth_status().get("authenticated"):
             return HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "codex_oauth_login_required", "model": PINNED_MODEL}
         try:
-            call = self._call_thread(call_id.strip())
+            call = self._call_thread(call_instance_id.strip())
             with call.lock:
                 result = call.thread.run(
                     prompt.strip(),
@@ -274,6 +279,19 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._write(status, payload)
             return
         self._write(HTTPStatus.NOT_FOUND, {"ok": False, "error": "route_not_found"})
+
+    def do_DELETE(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API.
+        path = urlparse(self.path).path
+        match = re.fullmatch(r"/calls/([^/]+)", path)
+        if not match:
+            self._write(HTTPStatus.NOT_FOUND, {"ok": False, "error": "route_not_found"})
+            return
+        call_instance_id = unquote(match.group(1)).strip()
+        if not call_instance_id or len(call_instance_id) > 300:
+            self._write(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "call_instance_id_invalid"})
+            return
+        released = self.bridge.release_call(call_instance_id)
+        self._write(HTTPStatus.OK, {"ok": True, "released": released, "model": PINNED_MODEL})
 
 
 def _self_test() -> None:

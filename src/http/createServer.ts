@@ -2649,6 +2649,7 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
 function buildOperatorControlMarkers(snapshot: CallSnapshot) {
   const attention = getAttentionMetadata(snapshot);
   const latestEvent = snapshot.events.at(-1);
+  const endedEvent = getLatestEvent(snapshot, "sip_call_ended");
   const latestTranscriptTurn = snapshot.transcript.at(-1);
   const latestLatencyTrail = buildLatestLatencyTrail(snapshot);
   const holdActive =
@@ -2656,7 +2657,7 @@ function buildOperatorControlMarkers(snapshot: CallSnapshot) {
     snapshot.flowState === "operator_steer" ||
     snapshot.operatorSteer.pending ||
     snapshot.demoFallback.armed;
-  const liveCallStatus = snapshot.flowState === "wrap" ? "ended" : holdActive ? "held" : "active";
+  const liveCallStatus = endedEvent || snapshot.flowState === "wrap" ? "ended" : holdActive ? "held" : "active";
   const pendingApprovalTrail = snapshot.operatorSteer.pending
     ? snapshot.session.openclawSession.artifactLinks.events + "?type=operator_steer_requested&limit=1&order=desc"
     : null;
@@ -4852,6 +4853,29 @@ async function requestCodexVoiceBridge(
   }
 }
 
+function buildPublicCodexAuthPayload(payload: Record<string, unknown>) {
+  const publicPayload: Record<string, unknown> = {
+    ok: payload.ok === true,
+    configuredForVoice: openAiConversationAuthMode() === "codex_oauth",
+    model: codexVoiceModel,
+  };
+  if (typeof payload.authenticated === "boolean") publicPayload.authenticated = payload.authenticated;
+  for (const key of ["status", "error", "loginId", "verificationUrl", "userCode"] as const) {
+    const value = getOptionalTrimmedString(payload[key]);
+    if (value) publicPayload[key] = value;
+  }
+  return publicPayload;
+}
+
+async function releaseCodexVoiceCall(snapshot: CallSnapshot, env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  if (openAiConversationAuthMode(env) !== "codex_oauth") return;
+  await requestCodexVoiceBridge(
+    `/calls/${encodeURIComponent(snapshot.session.openclawSession.sessionId)}`,
+    { method: "DELETE" },
+    env,
+  );
+}
+
 function openAiConversationGatewayAgentId(env: NodeJS.ProcessEnv = process.env): string {
   return env.ACC_OPENCLAW_AGENT_ID?.trim() || "acc-voice";
 }
@@ -4956,7 +4980,12 @@ async function generateOpenAiLiveSipResponse(
       "/respond",
       {
         method: "POST",
-        body: JSON.stringify({ callId: snapshot.session.callId, model: codexVoiceModel, prompt: userPromptText }),
+        body: JSON.stringify({
+          callId: snapshot.session.callId,
+          callInstanceId: snapshot.session.openclawSession.sessionId,
+          model: codexVoiceModel,
+          prompt: userPromptText,
+        }),
       },
       env,
     );
@@ -6272,23 +6301,83 @@ async function routeRequest(
     return;
   }
 
+  if (request.method === "POST" && pathname === "/api/pipecat/sessions/end-call") {
+    const body = await readJsonBody<unknown>(request);
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+    const callId = getOptionalTrimmedString(body.callId);
+    const sessionId = getOptionalTrimmedString(body.sessionId);
+    if (!callId) {
+      writeBadRequest(response, "pipecat_call_id_required");
+      return;
+    }
+    if (!sessionId) {
+      writeBadRequest(response, "pipecat_session_id_required");
+      return;
+    }
+    if (body.transport !== "browser_webrtc") {
+      writeBadRequest(response, "pipecat_transport_invalid");
+      return;
+    }
+    const timestamp = normalizeTimestamp(body.timestamp, "pipecat_session_end_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+    const existing = await ingress.getSnapshot(callId);
+    if (!existing) {
+      writeNotFound(response);
+      return;
+    }
+    if (existing.session.providerName !== "pipecat-browser-webrtc" || existing.session.providerCallId !== sessionId) {
+      writeBadRequest(response, "pipecat_session_call_mismatch");
+      return;
+    }
+    if (isLiveSipCallEnded(existing)) {
+      writeJson(response, 200, {
+        ok: true,
+        route: "/api/pipecat/sessions/end-call",
+        callId,
+        sessionId,
+        idempotent: true,
+        call: buildCallPayload(existing),
+      });
+      return;
+    }
+    const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+      eventType: "sip_call_ended",
+      timestamp,
+      detail: {
+        hangupCause: getOptionalTrimmedString(body.reason) ?? "browser_webrtc_peer_closed",
+        durationSeconds: null,
+        transport: "browser_webrtc",
+        sessionId,
+      },
+    });
+    purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
+    await releaseCodexVoiceCall(snapshot);
+    writeJson(response, 200, {
+      ok: true,
+      route: "/api/pipecat/sessions/end-call",
+      callId,
+      sessionId,
+      idempotent: false,
+      call: buildCallPayload(snapshot),
+    });
+    return;
+  }
+
   if (request.method === "GET" && pathname === "/api/codex-auth/status") {
     const bridge = await requestCodexVoiceBridge("/auth/status");
-    writeJson(response, bridge.status, {
-      ...bridge.payload,
-      configuredForVoice: openAiConversationAuthMode() === "codex_oauth",
-      model: codexVoiceModel,
-    });
+    writeJson(response, bridge.status, buildPublicCodexAuthPayload(bridge.payload));
     return;
   }
 
   if (request.method === "POST" && pathname === "/api/codex-auth/device/start") {
     const bridge = await requestCodexVoiceBridge("/auth/device/start", { method: "POST" });
-    writeJson(response, bridge.status, {
-      ...bridge.payload,
-      configuredForVoice: openAiConversationAuthMode() === "codex_oauth",
-      model: codexVoiceModel,
-    });
+    writeJson(response, bridge.status, buildPublicCodexAuthPayload(bridge.payload));
     return;
   }
 
@@ -6296,11 +6385,7 @@ async function routeRequest(
   if (request.method === "GET" && codexDeviceLoginMatch) {
     const loginId = decodeURIComponent(codexDeviceLoginMatch[1]);
     const bridge = await requestCodexVoiceBridge(`/auth/device/${encodeURIComponent(loginId)}`);
-    writeJson(response, bridge.status, {
-      ...bridge.payload,
-      configuredForVoice: openAiConversationAuthMode() === "codex_oauth",
-      model: codexVoiceModel,
-    });
+    writeJson(response, bridge.status, buildPublicCodexAuthPayload(bridge.payload));
     return;
   }
 
@@ -7102,6 +7187,7 @@ async function routeRequest(
         },
       });
       purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, snapshot.session.callId);
+      await releaseCodexVoiceCall(snapshot);
       const endedAliases = uniqueLiveSipCallIds(
         ...liveSipCallAliasesForCall(liveSipCallMap, snapshot.session.callId),
         ...liveSipCorrelationIds,
@@ -8189,6 +8275,7 @@ async function routeRequest(
       );
       if (parsedSteer.action === "end_call") {
         purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, snapshot.session.callId);
+        await releaseCodexVoiceCall(snapshot);
       }
       writeJson(response, 200, buildCallPayload(snapshot));
     } catch (error) {

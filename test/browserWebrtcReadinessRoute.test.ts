@@ -74,6 +74,8 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(bridge, /reason="small_webrtc_peer_closed"/);
   assert.match(bridge, /forget_session_record/);
   assert.match(bridge, /api\/pipecat\/sessions\/ensure-call/);
+  assert.match(bridge, /api\/pipecat\/sessions\/end-call/);
+  assert.match(bridge, /await self\.end_acc_call/);
   assert.match(bridge, /call_id = await self\.ensure_acc_call/);
   assert.match(bridge, /"transport": "browser_webrtc"/);
   assert.match(sharedPipeline, /silence_finalize_task/);
@@ -821,11 +823,11 @@ test("POST /api/pipecat/sessions/ensure-call registers direct Pipecat transports
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Expected an ephemeral TCP port");
 
-  const post = (payload: object) => new Promise<{ status: number; payload: Record<string, unknown> }>((resolve, reject) => {
+  const post = (payload: object, path = "/api/pipecat/sessions/ensure-call") => new Promise<{ status: number; payload: Record<string, unknown> }>((resolve, reject) => {
     const req = request({
       host: "127.0.0.1",
       port: address.port,
-      path: "/api/pipecat/sessions/ensure-call",
+      path,
       method: "POST",
       headers: { "content-type": "application/json" },
     }, (response) => {
@@ -849,12 +851,29 @@ test("POST /api/pipecat/sessions/ensure-call registers direct Pipecat transports
     assert.equal(browserRetry.payload.callId, browser.payload.callId);
     assert.equal(freeswitch.status, 201);
 
-    const consolePayload = await new Promise<{ calls: { items: Array<{ session: { callId: string; providerName: string } }> } }>((resolve, reject) => {
+    const browserEnded = await post({
+      callId: browser.payload.callId,
+      sessionId: "direct-browser-1",
+      transport: "browser_webrtc",
+      reason: "small_webrtc_peer_closed",
+    }, "/api/pipecat/sessions/end-call");
+    const browserEndedAgain = await post({
+      callId: browser.payload.callId,
+      sessionId: "direct-browser-1",
+      transport: "browser_webrtc",
+      reason: "small_webrtc_peer_closed",
+    }, "/api/pipecat/sessions/end-call");
+    assert.equal(browserEnded.status, 200);
+    assert.equal(browserEnded.payload.idempotent, false);
+    assert.equal(browserEndedAgain.status, 200);
+    assert.equal(browserEndedAgain.payload.idempotent, true);
+
+    const consolePayload = await new Promise<{ calls: { items: Array<{ session: { callId: string; providerName: string }; controlMarkers: { liveCall: { status: string } } }> } }>((resolve, reject) => {
       const req = request({ host: "127.0.0.1", port: address.port, path: "/api/operator/console", method: "GET" }, (response) => {
         let body = "";
         response.setEncoding("utf8");
         response.on("data", (chunk) => { body += chunk; });
-        response.on("end", () => resolve(JSON.parse(body) as { calls: { items: Array<{ session: { callId: string; providerName: string } }> } }));
+        response.on("end", () => resolve(JSON.parse(body) as { calls: { items: Array<{ session: { callId: string; providerName: string }; controlMarkers: { liveCall: { status: string } } }> } }));
       });
       req.on("error", reject);
       req.end();
@@ -862,6 +881,8 @@ test("POST /api/pipecat/sessions/ensure-call registers direct Pipecat transports
     const providers = consolePayload.calls.items.map((call) => call.session.providerName);
     assert.equal(consolePayload.calls.items.length, 2);
     assert.deepEqual(new Set(providers), new Set(["pipecat-browser-webrtc", "freeswitch-verto"]));
+    const endedBrowserCall = consolePayload.calls.items.find((call) => call.session.callId === browser.payload.callId);
+    assert.equal(endedBrowserCall?.controlMarkers.liveCall.status, "ended");
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

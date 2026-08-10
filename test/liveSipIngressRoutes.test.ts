@@ -814,7 +814,7 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
   const bridgeServer = createTestServer((req, res) => {
     if (req.method === "GET" && req.url === "/auth/status") {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, authenticated: true, accountType: "chatgpt", model: "gpt-5.4-mini" }));
+      res.end(JSON.stringify({ ok: true, authenticated: true, accountType: "chatgpt", email: "operator@example.test", planType: "team", model: "gpt-5.4-mini" }));
       return;
     }
     if (req.method === "POST" && req.url === "/auth/device/start") {
@@ -855,6 +855,9 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
     assert.equal(authStatus.payload.authenticated, true);
     assert.equal(authStatus.payload.configuredForVoice, true);
     assert.equal(authStatus.payload.model, "gpt-5.4-mini");
+    assert.equal("email" in authStatus.payload, false);
+    assert.equal("accountType" in authStatus.payload, false);
+    assert.equal("planType" in authStatus.payload, false);
 
     const loginStart = await requestJson(address.port, "POST", "/api/codex-auth/device/start");
     assert.equal(loginStart.statusCode, 202);
@@ -887,12 +890,24 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
     assert.equal(bridgeRequests.length, 1);
     assert.equal(bridgeRequests[0].url, "/respond");
     assert.equal(bridgeRequests[0].body.callId, transcript.payload.call.session.callId);
+    assert.equal(bridgeRequests[0].body.callInstanceId, "live-sip-sip-codex-oauth-8600");
     assert.equal(bridgeRequests[0].body.model, "gpt-5.4-mini");
     assert.match(bridgeRequests[0].body.prompt, /Latest caller turn: Can you help with my renewal\?/);
     assert.equal(
       transcript.payload.call.events.some((event: any) => event.type === "openai_conversation_turn_processed" && event.detail.model === "gpt-5.4-mini"),
       true,
     );
+
+    const ended = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.ended",
+      timestamp: "2026-08-04T12:00:02.000Z",
+      sipCallId: "sip-codex-oauth-8600",
+      hangupCause: "normal_clearing",
+    });
+    assert.equal(ended.statusCode, 200);
+    assert.equal(bridgeRequests.length, 2);
+    assert.equal(bridgeRequests[1].method, "DELETE");
+    assert.equal(bridgeRequests[1].url, "/calls/live-sip-sip-codex-oauth-8600");
   } finally {
     Object.assign(process.env, originalEnv);
     for (const [key, value] of Object.entries(originalEnv)) {

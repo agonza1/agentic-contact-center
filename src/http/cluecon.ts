@@ -671,7 +671,7 @@ function buildBasePayload(
       scorecardChecks: ["task_completion", "policy_hold", "operator_approval", "final_state", "latency_evidence", "fallback_caveats"],
     },
     caePanel: {
-      webBaseUrl: trimEnv(process.env.CAE_WEB_URL) ?? "http://127.0.0.1:3010",
+      webBaseUrl: trimEnv(process.env.CAE_WEB_URL) ?? "http://127.0.0.1:3012",
       scenariosPath: "/scenarios",
       runsPath: "/runs",
       repoUrl: "https://github.com/agonza1/ConversationAgentEvals",

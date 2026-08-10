@@ -109,6 +109,34 @@ class BrowserWebrtcBridge:
             raise RuntimeError("ACC Pipecat session registration did not return callId")
         return registered_call_id
 
+    async def end_acc_call(self, *, acc_url: str, call_id: str, session_id: str, reason: str) -> None:
+        try:
+            await asyncio.to_thread(
+                json_http,
+                "POST",
+                join_url(acc_url, "/api/pipecat/sessions/end-call"),
+                {
+                    "callId": call_id,
+                    "sessionId": session_id,
+                    "transport": "browser_webrtc",
+                    "reason": reason,
+                },
+                2.0,
+            )
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "type": "pipecat.small_webrtc.acc_call_end_failed",
+                        "callId": call_id,
+                        "sessionId": session_id,
+                        "reason": reason,
+                        "detail": str(exc),
+                    }
+                ),
+                flush=True,
+            )
+
     async def start_pipeline(self, *, connection: Any, session_id: str, acc_url: str, call_id: str, readiness: BridgeReadiness) -> AccVoicePipelineSession:
         session = AccVoicePipelineSession(acc_url=acc_url, call_id=call_id, readiness=readiness)
         transport = SmallWebRTCTransport(
@@ -145,6 +173,8 @@ class BrowserWebrtcBridge:
             "pipelineTask": task,
             "turnSession": session,
             "callId": call_id,
+            "accUrl": acc_url,
+            "requestedSessionId": session_id,
             "startedAt": datetime.now(UTC).isoformat(timespec="seconds"),
             "closedAt": None,
             "closeReason": None,
@@ -327,6 +357,14 @@ class BrowserWebrtcBridge:
         if session:
             session["closedAt"] = session.get("closedAt") or datetime.now(UTC).isoformat(timespec="seconds")
             session["closeReason"] = session.get("closeReason") or reason
+            if not session.get("accCallEnded"):
+                await self.end_acc_call(
+                    acc_url=str(session.get("accUrl") or DEFAULT_ACC_URL),
+                    call_id=str(session.get("callId") or ""),
+                    session_id=str(session.get("requestedSessionId") or session_id),
+                    reason=str(session.get("closeReason") or reason),
+                )
+                session["accCallEnded"] = True
             self.forget_session_record(session)
         runner = session.get("runner")
         turn_session = session.get("turnSession")
