@@ -96,7 +96,14 @@ class BrowserWebrtcBridge:
         readiness = await asyncio.to_thread(check_readiness, acc_url, skip_acc)
         return web.json_response(ready_payload(readiness, self.host, self.port), status=200 if readiness.ok else 503)
 
-    async def ensure_acc_call(self, *, acc_url: str, call_id: str, session_id: str) -> tuple[str, bool, bool]:
+    async def ensure_acc_call(
+        self,
+        *,
+        acc_url: str,
+        call_id: str,
+        session_id: str,
+        conversation_mode: str,
+    ) -> tuple[str, bool, bool, str]:
         payload = await asyncio.to_thread(
             json_http,
             "POST",
@@ -105,15 +112,20 @@ class BrowserWebrtcBridge:
                 "callId": call_id or None,
                 "sessionId": session_id,
                 "transport": "browser_webrtc",
+                "conversationMode": conversation_mode,
             },
         )
         registered_call_id = str(payload.get("callId") or "").strip()
         if not registered_call_id:
             raise RuntimeError("ACC Pipecat session registration did not return callId")
+        registered_conversation_mode = str(payload.get("conversationMode") or "").strip()
+        if registered_conversation_mode not in {"free_caller", "scripted", "openai_llm"}:
+            raise RuntimeError("ACC Pipecat session registration did not return a valid conversationMode")
         return (
             registered_call_id,
             payload.get("idempotent") is not True,
             payload.get("endCallOnClose") is not False,
+            registered_conversation_mode,
         )
 
     async def end_acc_call(self, *, acc_url: str, call_id: str, session_id: str, reason: str) -> bool:
@@ -251,10 +263,16 @@ class BrowserWebrtcBridge:
         session_id: str,
         acc_url: str,
         call_id: str,
+        conversation_mode: str,
         end_call_on_close: bool,
         readiness: BridgeReadiness,
     ) -> AccVoicePipelineSession:
-        session = AccVoicePipelineSession(acc_url=acc_url, call_id=call_id, readiness=readiness)
+        session = AccVoicePipelineSession(
+            acc_url=acc_url,
+            call_id=call_id,
+            readiness=readiness,
+            conversation_mode=conversation_mode,
+        )
         transport = SmallWebRTCTransport(
             webrtc_connection=connection,
             params=TransportParams(
@@ -289,6 +307,7 @@ class BrowserWebrtcBridge:
             "pipelineTask": task,
             "turnSession": session,
             "callId": call_id,
+            "conversationMode": conversation_mode,
             "accUrl": acc_url,
             "requestedSessionId": session_id,
             "endCallOnClose": end_call_on_close,
@@ -319,6 +338,9 @@ class BrowserWebrtcBridge:
         acc_url = str(payload.get("accUrl") or DEFAULT_ACC_URL).rstrip("/")
         call_id = str(payload.get("callId") or "").strip()
         session_id = str(payload.get("sessionId") or f"browser-webrtc-{uuid4()}")
+        conversation_mode = str(payload.get("conversationMode") or "free_caller").strip()
+        if conversation_mode not in {"free_caller", "scripted", "openai_llm"}:
+            return web.json_response({"ok": False, "error": "webrtc_conversation_mode_invalid"}, status=400)
         if session_id in self.offer_sessions_in_flight or session_id in self.sessions:
             return web.json_response(
                 {"ok": False, "error": "webrtc_session_active", "sessionId": session_id},
@@ -326,7 +348,13 @@ class BrowserWebrtcBridge:
             )
         self.offer_sessions_in_flight.add(session_id)
         try:
-            return await self.create_offer(payload, acc_url=acc_url, call_id=call_id, session_id=session_id)
+            return await self.create_offer(
+                payload,
+                acc_url=acc_url,
+                call_id=call_id,
+                session_id=session_id,
+                conversation_mode=conversation_mode,
+            )
         finally:
             self.offer_sessions_in_flight.discard(session_id)
 
@@ -337,6 +365,7 @@ class BrowserWebrtcBridge:
         acc_url: str,
         call_id: str,
         session_id: str,
+        conversation_mode: str,
     ) -> web.Response:
         readiness = await asyncio.to_thread(check_readiness, acc_url)
         if not readiness.ok:
@@ -344,10 +373,11 @@ class BrowserWebrtcBridge:
         registered_here = False
         end_call_on_close = True
         try:
-            call_id, registered_here, end_call_on_close = await self.ensure_acc_call(
+            call_id, registered_here, end_call_on_close, conversation_mode = await self.ensure_acc_call(
                 acc_url=acc_url,
                 call_id=call_id,
                 session_id=session_id,
+                conversation_mode=conversation_mode,
             )
         except Exception as exc:
             return web.json_response({"ok": False, "error": "acc_call_registration_failed", "detail": str(exc)}, status=503)
@@ -367,6 +397,7 @@ class BrowserWebrtcBridge:
                     session_id=session_id,
                     acc_url=acc_url,
                     call_id=call_id,
+                    conversation_mode=conversation_mode,
                     end_call_on_close=end_call_on_close,
                     readiness=readiness,
                 )
@@ -408,6 +439,7 @@ class BrowserWebrtcBridge:
             "sessionId": pc_id,
             "requestedSessionId": session_id,
             "pcId": pc_id,
+            "conversationMode": conversation_mode,
             "callId": call_id,
             "mediaRecorderRequired": False,
             "ffmpegRequired": False,

@@ -108,7 +108,9 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(bridge, /self\.schedule_acc_call_end_retry\(session, session_id\)/);
   assert.match(bridge, /self\.acc_call_end_retry_tasks: dict\[int, asyncio\.Task\[None\]\] = \{\}/);
   assert.match(bridge, /if not session\.get\("endCallOnClose", True\) or session\.get\("accCallEnded"\):\s+self\.forget_session_record/);
-  assert.match(bridge, /call_id, registered_here, end_call_on_close = await self\.ensure_acc_call/);
+  assert.match(bridge, /call_id, registered_here, end_call_on_close, conversation_mode = await self\.ensure_acc_call/);
+  assert.match(bridge, /"conversationMode": conversation_mode/);
+  assert.match(bridge, /conversation_mode=conversation_mode/);
   assert.match(bridge, /"endCallOnClose": end_call_on_close/);
   assert.match(bridge, /if session\.get\("endCallOnClose", True\) and not session\.get\("accCallEnded"\)/);
   assert.match(bridge, /self\.offer_sessions_in_flight: set\[str\] = set\(\)/);
@@ -748,7 +750,7 @@ test("GET /api/browser-webrtc/readiness reports bridge offline before live media
 
 
 test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bridge", async () => {
-  const bridgeRequests: Array<{ callId?: string; sdp?: string; type?: string; accUrl?: string; sessionId?: string }> = [];
+  const bridgeRequests: Array<{ callId?: string; sdp?: string; type?: string; accUrl?: string; sessionId?: string; conversationMode?: string }> = [];
   let activeConcurrentOffers = 0;
   let maxConcurrentOffers = 0;
   const bridge = createServer(async (request, response) => {
@@ -814,7 +816,7 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
         },
       );
       req.on("error", reject);
-      req.end(JSON.stringify({ type: "offer", sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=browser\r\nt=0 0\r\n" }));
+      req.end(JSON.stringify({ type: "offer", sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=browser\r\nt=0 0\r\n", conversationMode: "scripted" }));
     });
 
     const payload = JSON.parse(responseBody) as {
@@ -843,6 +845,7 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
     const bridgeRequest = bridgeRequests[0];
     assert.equal(bridgeRequest?.type, "offer");
     assert.equal(bridgeRequest?.callId, payload.callId);
+    assert.equal(bridgeRequest?.conversationMode, "scripted");
     assert.match(bridgeRequest?.accUrl ?? "", new RegExp(String(address.port)));
 
     const consoleBody = await new Promise<string>((resolve, reject) => {
@@ -932,7 +935,7 @@ test("POST /api/pipecat/sessions/ensure-call registers direct Pipecat transports
   });
 
   try {
-    const browser = await post({ sessionId: "direct-browser-1", transport: "browser_webrtc" });
+    const browser = await post({ sessionId: "direct-browser-1", transport: "browser_webrtc", conversationMode: "scripted" });
     const browserRetry = await post({ sessionId: "direct-browser-1", transport: "browser_webrtc" });
     const concurrentSessionId = "direct-browser-concurrent";
     const [concurrentBrowserA, concurrentBrowserB] = await Promise.all([
@@ -946,10 +949,13 @@ test("POST /api/pipecat/sessions/ensure-call registers direct Pipecat transports
     assert.equal(browserRetry.payload.idempotent, true);
     assert.equal(browserRetry.payload.callId, browser.payload.callId);
     assert.equal(browser.payload.endCallOnClose, true);
+    assert.equal(browser.payload.conversationMode, "scripted");
+    assert.equal(browserRetry.payload.conversationMode, "scripted");
     assert.deepEqual([concurrentBrowserA.status, concurrentBrowserB.status].sort((left, right) => left - right), [200, 201]);
     assert.equal(concurrentBrowserA.payload.callId, concurrentBrowserB.payload.callId);
     assert.equal([concurrentBrowserA.payload.idempotent, concurrentBrowserB.payload.idempotent].filter(Boolean).length, 1);
     assert.equal(freeswitch.status, 201);
+    assert.equal(freeswitch.payload.conversationMode, "openai_llm");
     const borrowedBrowser = await post({
       callId: freeswitch.payload.callId,
       sessionId: "operator-console-voice-1",
@@ -958,6 +964,7 @@ test("POST /api/pipecat/sessions/ensure-call registers direct Pipecat transports
     assert.equal(borrowedBrowser.status, 200);
     assert.equal(borrowedBrowser.payload.callId, freeswitch.payload.callId);
     assert.equal(borrowedBrowser.payload.endCallOnClose, false);
+    assert.equal(borrowedBrowser.payload.conversationMode, "openai_llm");
 
     const browserEnded = await post({
       callId: browser.payload.callId,
