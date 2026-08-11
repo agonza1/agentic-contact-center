@@ -17,8 +17,10 @@ for (const [address, prefix] of [
   ["64:ff9b::", 96],
   ["64:ff9b:1::", 48],
   ["100::", 64],
-  ["2001::", 23],
+  ["2001::", 32],
   ["2001:2::", 48],
+  ["2001:10::", 28],
+  ["2001:20::", 28],
   ["2001:db8::", 32],
   ["2002::", 16],
   ["3fff::", 20],
@@ -445,8 +447,22 @@ function guardedSignalWireBridgeContactsFromActions(actions) {
       && bridgeVariableValue(action.data, "absolute_codec_string") === "PCMU"
       && bridgeVariableValue(action.data, "acc_route") === "signalwire_live"
       && hasGuardedRouteMetadata(actions.slice(0, index))
+      && !hasPriorTerminalAction(actions.slice(0, index))
     ))
     .flatMap((action) => vertoAgentContactsFromBridgeData(action.data));
+}
+
+function hasPriorTerminalAction(actions) {
+  const terminalApplications = new Set([
+    "bridge",
+    "deflect",
+    "hangup",
+    "redirect",
+    "respond",
+    "return",
+    "transfer",
+  ]);
+  return actions.some((action) => terminalApplications.has(action.application));
 }
 
 function bridgeVariableValue(value, name) {
@@ -818,13 +834,27 @@ function removeEndpointPort(value) {
   return raw;
 }
 
-function isPublicEndpointAdvertised(entry, expectedAddresses) {
+function isPublicEndpointAdvertised(entry, expectedAddresses, expectedPort) {
   if (!entry || expectedAddresses.length === 0) return false;
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
   const advertised = [...output.matchAll(/^\s*ext-sip-ip(?:\s*[:=]\s*|\s+)(\S+)/gim)]
     .map((match) => canonicalizeIpAddress(removeEndpointPort(match[1])))
     .filter(Boolean);
-  return expectedAddresses.some((address) => advertised.includes(address));
+  const addressMatches = expectedAddresses.some((address) => advertised.includes(address));
+  if (!addressMatches) return false;
+  if (expectedPort === 5060) return true;
+  return externalProfileSipPorts(output).includes(expectedPort);
+}
+
+function externalProfileSipPorts(output) {
+  const ports = new Set();
+  for (const match of output.matchAll(/^\s*(?:sip[-_\s]*port|bind[-_\s]*port|ext[-_\s]*sip[-_\s]*port)(?:\s*[:=]\s*|\s+)(\d+)\s*$/gim)) {
+    ports.add(Number(match[1]));
+  }
+  for (const match of output.matchAll(/\bsip:[^\s@]+@[^\s:;]+:(\d+)\b/gim)) {
+    ports.add(Number(match[1]));
+  }
+  return [...ports].filter((port) => Number.isInteger(port) && port > 0 && port <= 65535);
 }
 
 async function externalSipReachabilityProof(proofPath, expectedEndpoint, now, expectedTransport) {
@@ -1202,8 +1232,9 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
 
 if (summary.blockers.length === 0 && !fsCliSkipped) {
   const publicAddresses = await resolvePublicEndpointAddresses(env.FREESWITCH_PUBLIC_SIP_HOST);
+  const publicPort = normalizeSipEndpointPort(env.FREESWITCH_PUBLIC_SIP_HOST);
   const externalProfile = rawFsCli.get("sofia status profile external");
-  if (!isPublicEndpointAdvertised(externalProfile, publicAddresses)) {
+  if (!isPublicEndpointAdvertised(externalProfile, publicAddresses, publicPort)) {
     summary.blockers.push("freeswitch_public_sip_endpoint_not_proven");
   }
 }
