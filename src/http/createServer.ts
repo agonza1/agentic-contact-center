@@ -5393,6 +5393,10 @@ async function routeRequest(
       writeBadRequest(response, "browser_webrtc_call_not_found");
       return;
     }
+    if (existingSnapshot && isLiveSipCallEnded(existingSnapshot)) {
+      writeJson(response, 409, { ok: false, error: "browser_webrtc_call_ended", callId: requestedCallId });
+      return;
+    }
     const snapshot = existingSnapshot ?? await ingress.startCall(config, {
       providerName: "pipecat-browser-webrtc",
       providerCallId: sessionId,
@@ -5408,6 +5412,22 @@ async function routeRequest(
       },
     } satisfies StartCallOptions);
     const callId = snapshot.session.callId;
+    const retireProxyCreatedCall = async (reason: string): Promise<void> => {
+      if (existingSnapshot) return;
+      const current = await ingress.getSnapshot(callId);
+      if (!current || isLiveSipCallEnded(current)) return;
+      await ingress.recordLiveTelephonyEvidence(callId, {
+        eventType: "sip_call_ended",
+        timestamp: new Date().toISOString(),
+        detail: {
+          hangupCause: reason,
+          durationSeconds: null,
+          transport: "browser_webrtc",
+          sessionId,
+        },
+      });
+      purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
+    };
     const host = request.headers.host ?? "127.0.0.1:8026";
     const protocol = host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "http";
 
@@ -5429,6 +5449,7 @@ async function routeRequest(
       });
 
       if (!isRecord(bridgeResponse.payload)) {
+        await retireProxyCreatedCall("pipecat_webrtc_bridge_invalid_response");
         writeJson(response, 502, {
           ok: false,
           error: "pipecat_webrtc_bridge_invalid_response",
@@ -5440,6 +5461,7 @@ async function routeRequest(
       const answerType = getOptionalTrimmedString(bridgeResponse.payload.type);
       const answerSdp = typeof bridgeResponse.payload.sdp === "string" ? bridgeResponse.payload.sdp : "";
       if (!bridgeResponse.status.toString().startsWith("2") || answerType !== "answer" || !answerSdp.trim()) {
+        await retireProxyCreatedCall("pipecat_webrtc_bridge_offer_failed");
         writeJson(response, 502, {
           ok: false,
           error: "pipecat_webrtc_bridge_offer_failed",
@@ -5475,6 +5497,7 @@ async function routeRequest(
         },
       });
     } catch (error) {
+      await retireProxyCreatedCall("pipecat_webrtc_bridge_unavailable");
       writeJson(response, 503, buildBrowserWebrtcBridgeUnavailablePayload(error));
     }
     return;
@@ -6251,6 +6274,10 @@ async function routeRequest(
       const existingSnapshot = await ingress.getSnapshot(requestedCallId);
       if (!existingSnapshot) {
         writeJson(response, 404, { ok: false, error: "pipecat_call_not_found" });
+        return;
+      }
+      if (isLiveSipCallEnded(existingSnapshot)) {
+        writeJson(response, 409, { ok: false, error: "pipecat_call_ended", callId: requestedCallId });
         return;
       }
       writeJson(response, 200, {
