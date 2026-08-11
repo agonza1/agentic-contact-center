@@ -1378,7 +1378,14 @@ test("POST /api/browser-webrtc/session fails closed when Pipecat bridge is unava
 });
 
 test("POST /api/browser-webrtc/session times out stalled Pipecat bridge offers", async () => {
-  const bridge = createServer((_request, response) => {
+  const bridgeRequests: Array<{ method: string | undefined; url: string | undefined }> = [];
+  const bridge = createServer((request, response) => {
+    bridgeRequests.push({ method: request.method, url: request.url });
+    if (request.method === "DELETE") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true, closed: true }));
+      return;
+    }
     response.on("close", () => {
       response.destroy();
     });
@@ -1418,7 +1425,11 @@ test("POST /api/browser-webrtc/session times out stalled Pipecat bridge offers",
         },
       );
       req.on("error", reject);
-      req.end(JSON.stringify({ type: "offer", sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=browser\r\nt=0 0\r\n" }));
+      req.end(JSON.stringify({
+        type: "offer",
+        sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=browser\r\nt=0 0\r\n",
+        sessionId: "browser-webrtc-timeout",
+      }));
     });
 
     const payload = JSON.parse(responseBody) as {
@@ -1437,6 +1448,12 @@ test("POST /api/browser-webrtc/session times out stalled Pipecat bridge offers",
     const consoleAfterTimeout = await callJsonRoute(address.port, "/api/operator/console");
     assert.equal(consoleAfterTimeout.payload.calls.items.length, 1);
     assert.equal(consoleAfterTimeout.payload.calls.items[0].controlMarkers.liveCall.status, "ended");
+    assert.equal(
+      bridgeRequests.some((entry) =>
+        entry.method === "DELETE"
+        && entry.url === "/api/webrtc/sessions/browser-webrtc-timeout"),
+      true,
+    );
   } finally {
     if (previousBridgeUrl === undefined) {
       delete process.env.BROWSER_WEBRTC_BRIDGE_URL;

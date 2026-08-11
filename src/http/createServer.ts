@@ -5477,6 +5477,7 @@ async function routeRequest(
     const sessionId = getOptionalTrimmedString(body.sessionId) ?? `browser-webrtc-${randomUUID()}`;
     const sessionOfferAbortController = new AbortController();
     let sessionOfferResponseClosed = false;
+    let cleanupFailedOffer: ((reason: string) => Promise<void>) | null = null;
     let cleanupDisconnectedOffer: (() => Promise<void>) | null = null;
     response.once("close", () => {
       if (response.writableEnded || response.writableFinished) return;
@@ -5502,11 +5503,11 @@ async function routeRequest(
     }
     const openclawSessionId = `pipecat-browser-webrtc-${sessionId}`;
     const registration = existingSnapshot
-      ? { snapshot: existingSnapshot, created: false }
+      ? { snapshot: existingSnapshot, endCallOnClose: false }
       : await withLiveSipCallLock(pipecatSessionRegistrationLocks, openclawSessionId, async () => {
         const activeSnapshot = (await ingress.listSnapshots({ openclawSessionId }))
           .find((candidate) => !isLiveSipCallEnded(candidate));
-        if (activeSnapshot) return { snapshot: activeSnapshot, created: false };
+        if (activeSnapshot) return { snapshot: activeSnapshot, endCallOnClose: true };
 
         const createdSnapshot = await ingress.startCall(config, {
           providerName: "pipecat-browser-webrtc",
@@ -5522,12 +5523,12 @@ async function routeRequest(
             credentialsMode: "mocked",
           },
         } satisfies StartCallOptions);
-        return { snapshot: createdSnapshot, created: true };
+        return { snapshot: createdSnapshot, endCallOnClose: true };
       });
     const snapshot = registration.snapshot;
     const callId = snapshot.session.callId;
-    const retireProxyCreatedCall = async (reason: string): Promise<void> => {
-      if (!registration.created) return;
+    const retireProxyOwnedCall = async (reason: string): Promise<void> => {
+      if (!registration.endCallOnClose) return;
       const current = await ingress.getSnapshot(callId);
       if (!current || isLiveSipCallEnded(current)) return;
       await ingress.recordLiveTelephonyEvidence(callId, {
@@ -5542,14 +5543,15 @@ async function routeRequest(
       });
       purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
     };
-    let disconnectCleanupPromise: Promise<void> | null = null;
-    cleanupDisconnectedOffer = () => {
-      disconnectCleanupPromise ??= Promise.all([
-        retireProxyCreatedCall("pipecat_webrtc_client_disconnected"),
+    let failedOfferCleanupPromise: Promise<void> | null = null;
+    cleanupFailedOffer = (reason: string) => {
+      failedOfferCleanupPromise ??= Promise.all([
+        retireProxyOwnedCall(reason),
         deleteBrowserWebrtcSessionFromBridge(sessionId),
       ]).then(() => undefined);
-      return disconnectCleanupPromise;
+      return failedOfferCleanupPromise;
     };
+    cleanupDisconnectedOffer = () => cleanupFailedOffer!("pipecat_webrtc_client_disconnected");
     if (sessionOfferResponseClosed || response.destroyed) {
       await cleanupDisconnectedOffer();
       return;
@@ -5581,7 +5583,7 @@ async function routeRequest(
       }
 
       if (!isRecord(bridgeResponse.payload)) {
-        await retireProxyCreatedCall("pipecat_webrtc_bridge_invalid_response");
+        await cleanupFailedOffer("pipecat_webrtc_bridge_invalid_response");
         writeJson(response, 502, {
           ok: false,
           error: "pipecat_webrtc_bridge_invalid_response",
@@ -5593,7 +5595,7 @@ async function routeRequest(
       const answerType = getOptionalTrimmedString(bridgeResponse.payload.type);
       const answerSdp = typeof bridgeResponse.payload.sdp === "string" ? bridgeResponse.payload.sdp : "";
       if (!bridgeResponse.status.toString().startsWith("2") || answerType !== "answer" || !answerSdp.trim()) {
-        await retireProxyCreatedCall("pipecat_webrtc_bridge_offer_failed");
+        await cleanupFailedOffer("pipecat_webrtc_bridge_offer_failed");
         writeJson(response, 502, {
           ok: false,
           error: "pipecat_webrtc_bridge_offer_failed",
@@ -5631,7 +5633,7 @@ async function routeRequest(
     } catch (error) {
       const clientDisconnected = sessionOfferResponseClosed || response.destroyed || sessionOfferAbortController.signal.aborted;
       if (clientDisconnected) await cleanupDisconnectedOffer();
-      else await retireProxyCreatedCall("pipecat_webrtc_bridge_unavailable");
+      else await cleanupFailedOffer("pipecat_webrtc_bridge_unavailable");
       if (!clientDisconnected) writeJson(response, 503, buildBrowserWebrtcBridgeUnavailablePayload(error));
     }
     } finally {
