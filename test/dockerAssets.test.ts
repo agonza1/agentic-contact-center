@@ -103,6 +103,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
     "docker compose --profile sip-verto up --build app freeswitch rtc-asr kokoro pipecat-verto-bridge",
   );
   assert.equal(packageJson.scripts?.["pipecat:verto:live-proof"], "node scripts/verto-sip-live-proof.mjs");
+  assert.equal(packageJson.scripts?.["signalwire:freeswitch:readiness"], "node scripts/signalwire-freeswitch-readiness.mjs");
   assert.equal(packageJson.scripts?.["docker:sip"], "docker compose --profile sip up --build app freeswitch rtc-asr kokoro freeswitch-bridge");
   assert.equal(packageJson.scripts?.["docker:assert"], "docker compose --profile eval up --build assert-viewer");
   assert.equal(packageJson.scripts?.["docker:full"], "ACC_VERTO_OWNS_GREETING=true ACC_VERTO_OWNS_MEDIA=true docker compose --profile full up --build");
@@ -114,6 +115,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(readme, /npm run docker:voice/);
   assert.match(readme, /npm run docker:browser-webrtc/);
   assert.match(readme, /npm run docker:sip-verto/);
+  assert.match(readme, /npm run signalwire:freeswitch:readiness/);
   assert.match(readme, /npm run docker:sip/);
   assert.match(readme, /npm run docker:assert/);
   assert.match(readme, /npm run docker:full/);

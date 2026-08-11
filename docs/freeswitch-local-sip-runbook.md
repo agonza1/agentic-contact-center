@@ -214,11 +214,19 @@ If `RTC_ASR_WS_URL` is absent, the bridge records an explicit `rtc_asr_blocked` 
 
 ## SignalWire inbound readiness
 
-When Alberto approves credentials/DID routing, point the SignalWire SIP trunk at FreeSWITCH, route the DID to extension `8600`, and run the same bridge with:
+When Alberto approves credentials/DID routing, use the SignalWire PSTN runbook to render the credential-bearing FreeSWITCH gateway config into ignored artifacts, point the SignalWire SIP trunk at FreeSWITCH, route the DID to extension `8600`, and run the same bridge with:
 
 ```sh
 ACC_TELEPHONY_MODE=signalwire_live ACC_BASE_URL=http://127.0.0.1:8026 node scripts/freeswitch-acc-bridge.mjs
 ```
+
+Start with:
+
+```sh
+npm run signalwire:freeswitch:readiness -- --render
+```
+
+See [docs/signalwire-freeswitch-pstn-runbook.md](signalwire-freeswitch-pstn-runbook.md) for required env vars, generated FreeSWITCH config paths, redacted verification commands, and the manual PSTN call gate.
 
 No production SignalWire secrets are stored in this repo.
 
