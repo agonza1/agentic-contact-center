@@ -5503,11 +5503,11 @@ async function routeRequest(
     }
     const registrationKey = `pipecat-browser-webrtc-${sessionId}`;
     const registration = existingSnapshot
-      ? { snapshot: existingSnapshot, endCallOnClose: false }
+      ? { snapshot: existingSnapshot, endCallOnClose: false, createdByRequest: false }
       : await withLiveSipCallLock(pipecatSessionRegistrationLocks, registrationKey, async () => {
         const activeSnapshot = (await ingress.listSnapshots({ providerCallId: sessionId }))
           .find((candidate) => candidate.session.providerName === "pipecat-browser-webrtc" && !isLiveSipCallEnded(candidate));
-        if (activeSnapshot) return { snapshot: activeSnapshot, endCallOnClose: true };
+        if (activeSnapshot) return { snapshot: activeSnapshot, endCallOnClose: true, createdByRequest: false };
 
         const createdSnapshot = await ingress.startCall(config, {
           providerName: "pipecat-browser-webrtc",
@@ -5523,7 +5523,7 @@ async function routeRequest(
             credentialsMode: "mocked",
           },
         } satisfies StartCallOptions);
-        return { snapshot: createdSnapshot, endCallOnClose: true };
+        return { snapshot: createdSnapshot, endCallOnClose: true, createdByRequest: true };
       });
     const snapshot = registration.snapshot;
     const callId = snapshot.session.callId;
@@ -5597,6 +5597,9 @@ async function routeRequest(
       const answerSdp = typeof bridgeResponse.payload.sdp === "string" ? bridgeResponse.payload.sdp : "";
       const bridgeError = getOptionalTrimmedString(bridgeResponse.payload.error);
       if (bridgeResponse.status === 409 && bridgeError === "webrtc_session_active") {
+        if (registration.createdByRequest) {
+          await retireProxyOwnedCall("pipecat_webrtc_bridge_session_conflict");
+        }
         writeJson(response, 409, {
           ok: false,
           error: "browser_webrtc_session_active",
