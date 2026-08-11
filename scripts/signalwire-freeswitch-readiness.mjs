@@ -340,7 +340,7 @@ function regexLiteralAlternativeValue(value) {
   let escaped = false;
   for (const char of value) {
     if (escaped) {
-      if (!/[+A-Za-z0-9_-]/.test(char)) return "";
+      if (char !== "+") return "";
       literal += char;
       escaped = false;
       continue;
