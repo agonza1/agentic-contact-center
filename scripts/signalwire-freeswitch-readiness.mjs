@@ -235,7 +235,8 @@ function activeSignalWireAclCondition(entry, expectedDid, sourceAclName) {
     && didExpressionMatchesExpectedValues(node.attributes.expression, expectedDid)
   ));
   if (!didCondition) return false;
-  const aclCondition = findDescendant(didCondition, (node) => isSignalWireAclCondition(node, sourceAclName));
+  const aclCondition = (didCondition.children ?? [])
+    .find((node) => isSignalWireAclCondition(node, sourceAclName));
   return aclCondition || false;
 }
 
@@ -401,7 +402,7 @@ function isSignalWireAclCondition(node, sourceAclName) {
   if (node.name !== "condition") return false;
   const field = clean(node.attributes.field);
   const expression = clean(node.attributes.expression).toLowerCase();
-  const aclPattern = new RegExp(`acl\\(\\$\\{network_addr\\}\\s+${regexpLiteral(sourceAclName)}\\)`, "i");
+  const aclPattern = new RegExp(`^\\$\\{\\s*acl\\(\\$\\{network_addr\\}\\s+${regexpLiteral(sourceAclName)}\\)\\s*\\}$`, "i");
   return aclPattern.test(field) && /^\^?true\$?$/.test(expression);
 }
 
@@ -422,11 +423,7 @@ function executableActionPaths(condition) {
       application: clean(node.attributes.application).toLowerCase(),
       data: clean(node.attributes.data),
     }));
-  const childConditions = (condition.children ?? []).filter((node) => node.name === "condition");
-  if (childConditions.length === 0) return [directActions];
-  return childConditions.flatMap((childCondition) => (
-    executableActionPaths(childCondition).map((actions) => [...directActions, ...actions])
-  ));
+  return [directActions];
 }
 
 function guardedSignalWireBridgeContactsFromActions(actions) {
@@ -445,11 +442,35 @@ function guardedSignalWireBridgeContactsFromActions(actions) {
   return actions
     .filter((action, index) => (
       action.application === "bridge"
-      && /absolute_codec_string=PCMU/i.test(action.data)
-      && /(?:^|[,;{])acc_route=signalwire_live(?:[,;} ]|$)/i.test(action.data)
+      && bridgeVariableValue(action.data, "absolute_codec_string") === "PCMU"
+      && bridgeVariableValue(action.data, "acc_route") === "signalwire_live"
       && hasGuardedRouteMetadata(actions.slice(0, index))
     ))
     .flatMap((action) => vertoAgentContactsFromBridgeData(action.data));
+}
+
+function bridgeVariableValue(value, name) {
+  const variables = bridgeVariables(value);
+  return variables.get(clean(name).toLowerCase()) || "";
+}
+
+function bridgeVariables(value) {
+  const variables = new Map();
+  let rest = clean(value);
+  while (rest.startsWith("{")) {
+    const end = rest.indexOf("}");
+    if (end <= 0) break;
+    const block = rest.slice(1, end);
+    for (const part of block.split(",")) {
+      const separator = part.indexOf("=");
+      if (separator <= 0) continue;
+      const key = clean(part.slice(0, separator)).toLowerCase();
+      const variableValue = clean(part.slice(separator + 1));
+      if (key) variables.set(key, variableValue);
+    }
+    rest = rest.slice(end + 1).trimStart();
+  }
+  return variables;
 }
 
 function vertoAgentContactsFromBridgeData(value) {
