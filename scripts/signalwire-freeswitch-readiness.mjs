@@ -229,7 +229,7 @@ function activeSignalWireAclCondition(entry, expectedDid, sourceAclName) {
     && clean(node.attributes.name).toLowerCase() === "agentic_contact_center_signalwire_pstn"
   ));
   if (!extension) return false;
-  const didCondition = findDescendant(extension, (node) => (
+  const didCondition = (extension.children ?? []).find((node) => (
     node.name === "condition"
     && clean(node.attributes.field).toLowerCase() === "destination_number"
     && didExpressionMatchesExpectedValues(node.attributes.expression, expectedDid)
@@ -436,7 +436,7 @@ function guardedSignalWireBridgeContactsFromActions(actions) {
     && hasActionData(candidateActions, "set", /(?:^|[,;{])acc_conversation_mode=openai_llm(?:[,;} ]|$)/i)
     && hasActionData(candidateActions, "set", /(?:^|[,;{])acc_media_bridge=pipecat_verto_agent_leg(?:[,;} ]|$)/i)
     && hasActionData(candidateActions, "export", /(?:sip_h_X-ACC-Telephony-Mode|X-ACC-Telephony-Mode)=signalwire_live/i)
-    && hasActionData(candidateActions, "export", /(?:sip_h_X-ACC-Destination|X-ACC-Destination)=8600/i)
+    && hasActionData(candidateActions, "export", /(?:^|[,;{:\s])(?:sip_h_X-ACC-Destination|X-ACC-Destination)=8600(?:[,;} ]|$)/i)
     && hasActionData(candidateActions, "export", /(?:sip_h_X-ACC-Conversation-Mode|X-ACC-Conversation-Mode)=openai_llm/i)
   );
   return actions
