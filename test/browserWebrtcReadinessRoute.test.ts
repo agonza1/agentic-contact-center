@@ -106,6 +106,10 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(bridge, /call_id, registered_here, end_call_on_close = await self\.ensure_acc_call/);
   assert.match(bridge, /"endCallOnClose": end_call_on_close/);
   assert.match(bridge, /if session\.get\("endCallOnClose", True\) and not session\.get\("accCallEnded"\)/);
+  assert.match(bridge, /self\.offer_sessions_in_flight: set\[str\] = set\(\)/);
+  assert.match(bridge, /session_id in self\.offer_sessions_in_flight or session_id in self\.sessions/);
+  assert.match(bridge, /"error": "webrtc_session_active"/);
+  assert.match(bridge, /self\.offer_sessions_in_flight\.discard\(session_id\)/);
   assert.match(bridge, /async def retire_failed_offer/);
   assert.match(bridge, /reason="webrtc_offer_setup_failed"/);
   assert.match(bridge, /reason="webrtc_answer_unavailable"/);
@@ -854,6 +858,27 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
     assert.equal(rejectedAttachment.status, 409);
     assert.equal(rejectedAttachment.payload.error, "browser_webrtc_call_ended");
     assert.equal(bridgeRequests.length, 1);
+
+    const concurrentSessionId = "proxy-browser-concurrent";
+    const concurrentOffer = {
+      sessionId: concurrentSessionId,
+      type: "offer",
+      sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=browser\r\nt=0 0\r\n",
+    };
+    const [concurrentA, concurrentB] = await Promise.all([
+      callJsonRoute(address.port, "/api/browser-webrtc/session", "POST", concurrentOffer),
+      callJsonRoute(address.port, "/api/browser-webrtc/session", "POST", concurrentOffer),
+    ]);
+    assert.equal(concurrentA.status, 201);
+    assert.equal(concurrentB.status, 201);
+    assert.equal(concurrentA.payload.callId, concurrentB.payload.callId);
+
+    const concurrentConsole = await callJsonRoute(address.port, "/api/operator/console");
+    const concurrentCalls = concurrentConsole.payload.calls.items.filter(
+      (call: any) => call.session.providerName === "pipecat-browser-webrtc"
+        && call.session.providerCallId === concurrentSessionId,
+    );
+    assert.equal(concurrentCalls.length, 1);
   } finally {
     if (previousBridgeUrl === undefined) {
       delete process.env.BROWSER_WEBRTC_BRIDGE_URL;

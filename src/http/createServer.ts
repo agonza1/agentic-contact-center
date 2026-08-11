@@ -4870,9 +4870,9 @@ function buildPublicCodexAuthPayload(payload: Record<string, unknown>) {
   return publicPayload;
 }
 
-async function releaseCodexVoiceCall(snapshot: CallSnapshot, env: NodeJS.ProcessEnv = process.env): Promise<void> {
+function releaseCodexVoiceCall(snapshot: CallSnapshot, env: NodeJS.ProcessEnv = process.env): void {
   if (openAiConversationAuthMode(env) !== "codex_oauth") return;
-  await requestCodexVoiceBridge(
+  void requestCodexVoiceBridge(
     `/calls/${encodeURIComponent(snapshot.session.openclawSession.sessionId)}`,
     { method: "DELETE" },
     env,
@@ -5385,6 +5385,7 @@ async function routeRequest(
       writeBadRequest(response, "browser_webrtc_conversation_mode_invalid");
       return;
     }
+    const conversationMode = isConversationMode(body.conversationMode) ? body.conversationMode : "free_caller";
 
     const sessionId = getOptionalTrimmedString(body.sessionId) ?? `browser-webrtc-${randomUUID()}`;
     const requestedCallId = getOptionalTrimmedString(body.callId);
@@ -5397,23 +5398,34 @@ async function routeRequest(
       writeJson(response, 409, { ok: false, error: "browser_webrtc_call_ended", callId: requestedCallId });
       return;
     }
-    const snapshot = existingSnapshot ?? await ingress.startCall(config, {
-      providerName: "pipecat-browser-webrtc",
-      providerCallId: sessionId,
-      openclawSessionId: `pipecat-browser-webrtc-${sessionId}`,
-      openclawSessionLabel: `pipecat/browser-webrtc/${sessionId}`,
-      source: "mock_http_route",
-      conversationMode: body.conversationMode ?? "free_caller",
-      runtimeModeLabels: {
-        telephony: "mocked_telephony",
-        media: "live_capture",
-        rtcAsr: "rtc_asr_live",
-        credentialsMode: "mocked",
-      },
-    } satisfies StartCallOptions);
+    const openclawSessionId = `pipecat-browser-webrtc-${sessionId}`;
+    const registration = existingSnapshot
+      ? { snapshot: existingSnapshot, created: false }
+      : await withLiveSipCallLock(pipecatSessionRegistrationLocks, openclawSessionId, async () => {
+        const activeSnapshot = (await ingress.listSnapshots({ openclawSessionId }))
+          .find((candidate) => !isLiveSipCallEnded(candidate));
+        if (activeSnapshot) return { snapshot: activeSnapshot, created: false };
+
+        const createdSnapshot = await ingress.startCall(config, {
+          providerName: "pipecat-browser-webrtc",
+          providerCallId: sessionId,
+          openclawSessionId,
+          openclawSessionLabel: `pipecat/browser-webrtc/${sessionId}`,
+          source: "mock_http_route",
+          conversationMode,
+          runtimeModeLabels: {
+            telephony: "mocked_telephony",
+            media: "live_capture",
+            rtcAsr: "rtc_asr_live",
+            credentialsMode: "mocked",
+          },
+        } satisfies StartCallOptions);
+        return { snapshot: createdSnapshot, created: true };
+      });
+    const snapshot = registration.snapshot;
     const callId = snapshot.session.callId;
     const retireProxyCreatedCall = async (reason: string): Promise<void> => {
-      if (existingSnapshot) return;
+      if (!registration.created) return;
       const current = await ingress.getSnapshot(callId);
       if (!current || isLiveSipCallEnded(current)) return;
       await ingress.recordLiveTelephonyEvidence(callId, {
@@ -6404,7 +6416,7 @@ async function routeRequest(
       },
     });
     purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
-    await releaseCodexVoiceCall(snapshot);
+    releaseCodexVoiceCall(snapshot);
     writeJson(response, 200, {
       ok: true,
       route: "/api/pipecat/sessions/end-call",
@@ -7234,7 +7246,7 @@ async function routeRequest(
         },
       });
       purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, snapshot.session.callId);
-      await releaseCodexVoiceCall(snapshot);
+      releaseCodexVoiceCall(snapshot);
       const endedAliases = uniqueLiveSipCallIds(
         ...liveSipCallAliasesForCall(liveSipCallMap, snapshot.session.callId),
         ...liveSipCorrelationIds,
@@ -8322,7 +8334,7 @@ async function routeRequest(
       );
       if (parsedSteer.action === "end_call") {
         purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, snapshot.session.callId);
-        await releaseCodexVoiceCall(snapshot);
+        releaseCodexVoiceCall(snapshot);
       }
       writeJson(response, 200, buildCallPayload(snapshot));
     } catch (error) {

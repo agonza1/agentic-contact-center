@@ -809,6 +809,7 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
     ACC_OPENAI_AUTH_MODE: process.env.ACC_OPENAI_AUTH_MODE,
     ACC_OPENAI_CONVERSATION_MODEL: process.env.ACC_OPENAI_CONVERSATION_MODEL,
     ACC_CODEX_VOICE_BRIDGE_URL: process.env.ACC_CODEX_VOICE_BRIDGE_URL,
+    ACC_OPENAI_REQUEST_TIMEOUT_MS: process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS,
   };
   const bridgeRequests: Array<{ method: string | undefined; url: string | undefined; body: any }> = [];
   const bridgeServer = createTestServer((req, res) => {
@@ -832,6 +833,7 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
     req.on("data", (chunk) => { body += chunk; });
     req.on("end", () => {
       bridgeRequests.push({ method: req.method, url: req.url, body: body ? JSON.parse(body) : null });
+      if (req.method === "DELETE") return;
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, model: "gpt-5.4-mini", text: "I can help with that safely. What would you like me to review?", threadId: "codex-thread-1" }));
     });
@@ -843,6 +845,7 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
   process.env.ACC_OPENAI_AUTH_MODE = "codex_oauth";
   process.env.ACC_OPENAI_CONVERSATION_MODEL = "gpt-5.4-mini";
   process.env.ACC_CODEX_VOICE_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
+  process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS = "12000";
 
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -898,6 +901,7 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
       true,
     );
 
+    const endStartedAt = Date.now();
     const ended = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "call.ended",
       timestamp: "2026-08-04T12:00:02.000Z",
@@ -905,6 +909,10 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
       hangupCause: "normal_clearing",
     });
     assert.equal(ended.statusCode, 200);
+    assert.ok(Date.now() - endStartedAt < 1_000, "call end must not wait for Codex thread eviction");
+    for (let attempt = 0; attempt < 20 && bridgeRequests.length < 2; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
     assert.equal(bridgeRequests.length, 2);
     assert.equal(bridgeRequests[1].method, "DELETE");
     assert.equal(bridgeRequests[1].url, "/calls/live-sip-sip-codex-oauth-8600");
@@ -914,6 +922,7 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
       if (value === undefined) delete process.env[key as keyof NodeJS.ProcessEnv];
     }
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    bridgeServer.closeAllConnections();
     await new Promise<void>((resolve, reject) => bridgeServer.close((error) => error ? reject(error) : resolve()));
   }
 });

@@ -77,6 +77,7 @@ class BrowserWebrtcBridge:
         self.port = port
         self.request_handler = SmallWebRTCRequestHandler(host=host)
         self.sessions: dict[str, dict[str, Any]] = {}
+        self.offer_sessions_in_flight: set[str] = set()
 
     def remember_session_alias(self, alias: str | None, session: dict[str, Any]) -> None:
         if isinstance(alias, str) and alias.strip():
@@ -238,6 +239,25 @@ class BrowserWebrtcBridge:
         acc_url = str(payload.get("accUrl") or DEFAULT_ACC_URL).rstrip("/")
         call_id = str(payload.get("callId") or "").strip()
         session_id = str(payload.get("sessionId") or f"browser-webrtc-{uuid4()}")
+        if session_id in self.offer_sessions_in_flight or session_id in self.sessions:
+            return web.json_response(
+                {"ok": False, "error": "webrtc_session_active", "sessionId": session_id},
+                status=409,
+            )
+        self.offer_sessions_in_flight.add(session_id)
+        try:
+            return await self.create_offer(payload, acc_url=acc_url, call_id=call_id, session_id=session_id)
+        finally:
+            self.offer_sessions_in_flight.discard(session_id)
+
+    async def create_offer(
+        self,
+        payload: dict[str, Any],
+        *,
+        acc_url: str,
+        call_id: str,
+        session_id: str,
+    ) -> web.Response:
         readiness = await asyncio.to_thread(check_readiness, acc_url)
         if not readiness.ok:
             return web.json_response({"ok": False, "error": "sidecar_unavailable", "ready": ready_payload(readiness, self.host, self.port)}, status=503)
