@@ -812,6 +812,7 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
     ACC_OPENAI_REQUEST_TIMEOUT_MS: process.env.ACC_OPENAI_REQUEST_TIMEOUT_MS,
   };
   const bridgeRequests: Array<{ method: string | undefined; url: string | undefined; body: any }> = [];
+  let releaseAttempts = 0;
   const bridgeServer = createTestServer((req, res) => {
     if (req.method === "GET" && req.url === "/auth/status") {
       res.writeHead(200, { "content-type": "application/json" });
@@ -833,7 +834,14 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
     req.on("data", (chunk) => { body += chunk; });
     req.on("end", () => {
       bridgeRequests.push({ method: req.method, url: req.url, body: body ? JSON.parse(body) : null });
-      if (req.method === "DELETE") return;
+      if (req.method === "DELETE") {
+        releaseAttempts += 1;
+        res.writeHead(releaseAttempts === 1 ? 503 : 200, { "content-type": "application/json" });
+        res.end(JSON.stringify(releaseAttempts === 1
+          ? { ok: false, error: "temporary_bridge_unavailable" }
+          : { ok: true, released: true, model: "gpt-5.4-mini" }));
+        return;
+      }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, model: "gpt-5.4-mini", text: "I can help with that safely. What would you like me to review?", threadId: "codex-thread-1" }));
     });
@@ -910,12 +918,24 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
     });
     assert.equal(ended.statusCode, 200);
     assert.ok(Date.now() - endStartedAt < 1_000, "call end must not wait for Codex thread eviction");
-    for (let attempt = 0; attempt < 20 && bridgeRequests.length < 2; attempt += 1) {
+    for (let attempt = 0; attempt < 100 && releaseAttempts < 2; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    assert.equal(bridgeRequests.length, 2);
+    assert.equal(releaseAttempts, 2);
+    assert.equal(bridgeRequests.length, 3);
     assert.equal(bridgeRequests[1].method, "DELETE");
     assert.equal(bridgeRequests[1].url, "/calls/live-sip-sip-codex-oauth-8600");
+    assert.equal(bridgeRequests[2].method, "DELETE");
+    assert.equal(bridgeRequests[2].url, "/calls/live-sip-sip-codex-oauth-8600");
+
+    const endedAgain = await requestJson(address.port, "POST", "/api/live-sip/events", {
+      eventType: "call.ended",
+      timestamp: "2026-08-04T12:00:03.000Z",
+      sipCallId: "sip-codex-oauth-8600",
+      hangupCause: "normal_clearing",
+    });
+    assert.equal(endedAgain.statusCode, 200);
+    assert.equal(endedAgain.payload.idempotent, true);
   } finally {
     Object.assign(process.env, originalEnv);
     for (const [key, value] of Object.entries(originalEnv)) {

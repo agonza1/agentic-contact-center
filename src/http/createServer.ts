@@ -4900,13 +4900,36 @@ function buildPublicCodexAuthPayload(payload: Record<string, unknown>) {
   return publicPayload;
 }
 
+const codexVoiceReleaseRetryDelaysMs = [0, 100, 500] as const;
+const codexVoiceReleaseTasks = new Map<string, Promise<void>>();
+
+function waitForCodexVoiceReleaseRetry(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, delayMs);
+    timer.unref();
+  });
+}
+
 function releaseCodexVoiceCall(snapshot: CallSnapshot, env: NodeJS.ProcessEnv = process.env): void {
   if (openAiConversationAuthMode(env) !== "codex_oauth") return;
-  void requestCodexVoiceBridge(
-    `/calls/${encodeURIComponent(snapshot.session.openclawSession.sessionId)}`,
-    { method: "DELETE" },
-    env,
-  );
+  const sessionId = snapshot.session.openclawSession.sessionId;
+  if (codexVoiceReleaseTasks.has(sessionId)) return;
+
+  const releaseTask = (async () => {
+    for (const delayMs of codexVoiceReleaseRetryDelaysMs) {
+      if (delayMs > 0) await waitForCodexVoiceReleaseRetry(delayMs);
+      const bridge = await requestCodexVoiceBridge(
+        `/calls/${encodeURIComponent(sessionId)}`,
+        { method: "DELETE" },
+        env,
+      );
+      if (bridge.status >= 200 && bridge.status < 300) return;
+    }
+  })().finally(() => {
+    codexVoiceReleaseTasks.delete(sessionId);
+  });
+  codexVoiceReleaseTasks.set(sessionId, releaseTask);
+  void releaseTask;
 }
 
 function openAiConversationGatewayAgentId(env: NodeJS.ProcessEnv = process.env): string {
@@ -6468,6 +6491,7 @@ async function routeRequest(
       return;
     }
     if (isLiveSipCallEnded(existing)) {
+      releaseCodexVoiceCall(existing);
       writeJson(response, 200, {
         ok: true,
         route: "/api/pipecat/sessions/end-call",
@@ -6937,6 +6961,7 @@ async function routeRequest(
         if (endedSnapshot && isLiveSipCallEnded(endedSnapshot)) {
           if (eventType === "call.ended") {
             purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, endedSnapshot.session.callId);
+            releaseCodexVoiceCall(endedSnapshot);
             writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(endedSnapshot), idempotent: true });
           } else {
             writeBadRequest(response, "live_sip_call_not_started");
@@ -6952,6 +6977,7 @@ async function routeRequest(
           const alreadyEnded = matchingSnapshot.events.some((event) => event.type === "sip_call_ended");
           if (alreadyEnded) {
             purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, matchingSnapshot.session.callId);
+            releaseCodexVoiceCall(matchingSnapshot);
             writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(matchingSnapshot), idempotent: true });
             return;
           }
@@ -6965,6 +6991,7 @@ async function routeRequest(
         const existingSnapshot = await ingress.getSnapshot(callId);
         if (existingSnapshot?.events.some((event) => event.type === "sip_call_ended")) {
           purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
+          releaseCodexVoiceCall(existingSnapshot);
           writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(existingSnapshot), idempotent: true });
           return;
         }
