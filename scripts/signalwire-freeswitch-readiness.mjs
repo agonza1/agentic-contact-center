@@ -94,6 +94,10 @@ function redact(value) {
   return `${text.slice(0, 2)}...[redacted]...${text.slice(-2)}`;
 }
 
+function redactProofSource(value) {
+  return clean(value) ? "[redacted]" : null;
+}
+
 function redactIpLiterals(text) {
   return text
     .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[redacted-address]")
@@ -957,7 +961,7 @@ async function externalSipReachabilityProof(proofPath, expectedEndpoint, now, ex
           ? "invalid_freeswitch_external_sip_reachability_proof"
           : "stale_freeswitch_external_sip_reachability_proof",
       proofPath: resolvedPath,
-      source: source || null,
+      source: redactProofSource(source),
       checkedAt: checkedAt || null,
       transport: transport || null,
       sipResponseCode: Number.isInteger(sipResponseCode) ? sipResponseCode : null,
@@ -1396,11 +1400,10 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
     Date.now(),
     EXPECTED_SIGNALWIRE_SIP_TRANSPORT,
   );
-  if (reachability.source) redactionValues.push(reachability.source);
   summary.endpoint.externalSipReachability = {
     proven: reachability.proven,
     proofPath: reachability.proofPath ? path.relative(repoRoot, reachability.proofPath) : summary.endpoint.externalSipReachability.proofPath,
-    source: reachability.source ? redactor(reachability.source) : null,
+    source: reachability.source,
     checkedAt: reachability.checkedAt,
     transport: reachability.transport,
     sipResponseCode: reachability.sipResponseCode,
