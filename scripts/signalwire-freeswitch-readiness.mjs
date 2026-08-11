@@ -308,21 +308,29 @@ function guardedSignalWireBridgeReady(aclCondition) {
 }
 
 function guardedSignalWireBridgeContacts(aclCondition) {
-  const actions = descendants(aclCondition, (node) => node.name === "action")
+  return executableActionPaths(aclCondition)
+    .flatMap((actions) => guardedSignalWireBridgeContactsFromActions(actions))
+    .filter((contact, index, contacts) => contacts.indexOf(contact) === index);
+}
+
+function executableActionPaths(condition) {
+  const directActions = (condition.children ?? [])
+    .filter((node) => node.name === "action")
     .map((node) => ({
       application: clean(node.attributes.application).toLowerCase(),
       data: clean(node.attributes.data),
     }));
+  const childConditions = (condition.children ?? []).filter((node) => node.name === "condition");
+  if (childConditions.length === 0) return [directActions];
+  return childConditions.flatMap((childCondition) => (
+    executableActionPaths(childCondition).map((actions) => [...directActions, ...actions])
+  ));
+}
+
+function guardedSignalWireBridgeContactsFromActions(actions) {
   const hasActionData = (application, pattern) => actions.some((action) => (
     action.application === application && pattern.test(action.data)
   ));
-  const pcmuVertoContacts = actions
-    .filter((action) => (
-      action.application === "bridge"
-      && /absolute_codec_string=PCMU/i.test(action.data)
-      && /(?:^|[,;{])acc_route=signalwire_live(?:[,;} ]|$)/i.test(action.data)
-    ))
-    .flatMap((action) => vertoAgentContactsFromBridgeData(action.data));
   const hasGuardedRouteMetadata = hasActionData("set", /(?:^|[,;{])acc_route=signalwire_live(?:[,;} ]|$)/i)
     && hasActionData("set", /(?:^|[,;{])acc_destination_number=8600(?:[,;} ]|$)/i)
     && hasActionData("set", /(?:^|[,;{])acc_conversation_mode=openai_llm(?:[,;} ]|$)/i)
@@ -330,15 +338,20 @@ function guardedSignalWireBridgeContacts(aclCondition) {
     && hasActionData("export", /(?:sip_h_X-ACC-Telephony-Mode|X-ACC-Telephony-Mode)=signalwire_live/i)
     && hasActionData("export", /(?:sip_h_X-ACC-Destination|X-ACC-Destination)=8600/i)
     && hasActionData("export", /(?:sip_h_X-ACC-Conversation-Mode|X-ACC-Conversation-Mode)=openai_llm/i);
-  return hasGuardedRouteMetadata
-    ? pcmuVertoContacts.filter((contact, index, contacts) => contacts.indexOf(contact) === index)
-    : [];
+  if (!hasGuardedRouteMetadata) return [];
+  return actions
+    .filter((action) => (
+      action.application === "bridge"
+      && /absolute_codec_string=PCMU/i.test(action.data)
+      && /(?:^|[,;{])acc_route=signalwire_live(?:[,;} ]|$)/i.test(action.data)
+    ))
+    .flatMap((action) => vertoAgentContactsFromBridgeData(action.data));
 }
 
 function vertoAgentContactsFromBridgeData(value) {
-  return [...clean(value).matchAll(/\$\{\s*verto_contact\(\s*acc-pipecat@([^)'"<>\s]+)\s*\)\s*\}/gi)]
-    .map((match) => `acc-pipecat@${clean(match[1]).toLowerCase().replace(/[);]+$/g, "")}`)
-    .filter(Boolean);
+  const target = clean(value).replace(/^(?:\s*\{[^{}]*\})+/, "");
+  const match = target.match(/^\s*\$\{\s*verto_contact\(\s*acc-pipecat@([^)'"<>\s]+)\s*\)\s*\}\s*$/i);
+  return match ? [`acc-pipecat@${clean(match[1]).toLowerCase()}`] : [];
 }
 
 function expectedVertoAgentContactsFromDialplan(entry, expectedDid, sourceAclName) {
@@ -598,6 +611,11 @@ function normalizeSipEndpointHost(value) {
   }
 }
 
+function canonicalSipEndpointHost(value) {
+  const host = normalizeSipEndpointHost(value).toLowerCase();
+  return canonicalizeIpAddress(host) || host;
+}
+
 function normalizeSipEndpointPort(value) {
   const raw = clean(value);
   if (!raw) return 5060;
@@ -685,7 +703,7 @@ function isPublicEndpointAdvertised(entry, expectedAddresses) {
 }
 
 async function externalSipReachabilityProof(proofPath, expectedEndpoint, now, expectedTransport) {
-  const expectedHost = normalizeSipEndpointHost(expectedEndpoint).toLowerCase();
+  const expectedHost = canonicalSipEndpointHost(expectedEndpoint);
   const expectedPort = normalizeSipEndpointPort(expectedEndpoint);
   const requiredTransport = clean(expectedTransport).toLowerCase();
   const empty = {
@@ -710,7 +728,7 @@ async function externalSipReachabilityProof(proofPath, expectedEndpoint, now, ex
     }
     const proof = JSON.parse(await readFile(resolvedPath, "utf8"));
     const source = clean(proof.source);
-    const proofHost = normalizeSipEndpointHost(proof.targetHost ?? proof.host ?? proof.endpoint?.host).toLowerCase();
+    const proofHost = canonicalSipEndpointHost(proof.targetHost ?? proof.host ?? proof.endpoint?.host);
     const proofPort = Number(proof.targetPort ?? proof.port ?? proof.endpoint?.port ?? 5060);
     const checkedAt = clean(proof.checkedAt);
     const checkedAtMs = Date.parse(checkedAt);
