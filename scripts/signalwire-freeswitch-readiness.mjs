@@ -1396,10 +1396,11 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
     Date.now(),
     EXPECTED_SIGNALWIRE_SIP_TRANSPORT,
   );
+  if (reachability.source) redactionValues.push(reachability.source);
   summary.endpoint.externalSipReachability = {
     proven: reachability.proven,
     proofPath: reachability.proofPath ? path.relative(repoRoot, reachability.proofPath) : summary.endpoint.externalSipReachability.proofPath,
-    source: reachability.source,
+    source: reachability.source ? redactor(reachability.source) : null,
     checkedAt: reachability.checkedAt,
     transport: reachability.transport,
     sipResponseCode: reachability.sipResponseCode,

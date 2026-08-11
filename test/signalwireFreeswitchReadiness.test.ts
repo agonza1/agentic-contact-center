@@ -3482,14 +3482,18 @@ esac
     );
     await chmod(fsCliBin, 0o700);
 
-    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir, "192.0.8.1");
+    const privateSource = "external-probe 10.0.0.4 private-pbx.lan";
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir, "192.0.8.1", 5060, {
+      source: privateSource,
+    });
+    const manifestPath = path.join(tempDir, "readiness.json");
 
     const { stdout } = await execFileAsync(process.execPath, [
       "scripts/signalwire-freeswitch-readiness.mjs",
       "--fs-cli-bin",
       fsCliBin,
       "--manifest",
-      path.join(tempDir, "readiness.json"),
+      manifestPath,
     ], {
       cwd: repoRoot,
       env: {
@@ -3508,6 +3512,9 @@ esac
     assert.equal(payload.status, "ready_for_manual_pstn_call");
     assert.equal(payload.manualCallReady, true);
     assert.equal(payload.endpoint.externalSipReachability.proven, true);
+    assert.equal(payload.endpoint.externalSipReachability.source, "[redacted]");
+    assert.doesNotMatch(stdout, /10\.0\.0\.4|private-pbx\.lan/);
+    assert.doesNotMatch(await readFile(manifestPath, "utf8"), /10\.0\.0\.4|private-pbx\.lan/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
