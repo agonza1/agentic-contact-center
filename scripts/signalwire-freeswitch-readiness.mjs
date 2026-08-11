@@ -101,16 +101,7 @@ function redactProofSource(value) {
 function redactProofPath(value, redactor) {
   const text = clean(value);
   if (!text) return null;
-  return redactIpLiterals(redactor(text)).replace(/[^/\\]+/g, (segment) => {
-    if (
-      /\[redacted(?:-address)?\]/i.test(segment)
-      || /@/.test(segment)
-      || /\b(?:authorization|password|passwd|token|secret|credential|api[-_]?key|access[-_]?key|private|internal|corp|lan|local|pbx)\b/i.test(segment)
-    ) {
-      return "[redacted]";
-    }
-    return segment;
-  });
+  return redactIpLiterals(redactor(text)).replace(/[^/\\]+/g, "[redacted]");
 }
 
 function redactIpLiterals(text) {
