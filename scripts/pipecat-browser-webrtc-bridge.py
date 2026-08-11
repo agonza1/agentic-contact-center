@@ -240,17 +240,19 @@ class BrowserWebrtcBridge:
         call_id: str,
         session_id: str,
         registered_here: bool,
+        end_call_on_close: bool,
         reason: str,
     ) -> None:
         session_record = self.sessions.get(session_id)
         if session_record:
             await self.close_session(session_id, session_record=session_record, reason=reason)
-        elif registered_here:
+        elif end_call_on_close:
             cleanup_record = {
                 "accUrl": acc_url,
                 "callId": call_id,
                 "requestedSessionId": session_id,
                 "endCallOnClose": True,
+                "registeredHere": registered_here,
                 "closeReason": reason,
                 "closedAt": datetime.now(UTC).isoformat(timespec="seconds"),
             }
@@ -415,6 +417,7 @@ class BrowserWebrtcBridge:
                 call_id=call_id,
                 session_id=session_id,
                 registered_here=registered_here,
+                end_call_on_close=end_call_on_close,
                 reason="webrtc_offer_setup_failed",
             )
             return web.json_response({"ok": False, "error": "webrtc_offer_setup_failed", "detail": str(exc)}, status=502)
@@ -424,6 +427,7 @@ class BrowserWebrtcBridge:
                 call_id=call_id,
                 session_id=session_id,
                 registered_here=registered_here,
+                end_call_on_close=end_call_on_close,
                 reason="webrtc_answer_unavailable",
             )
             return web.json_response({"ok": False, "error": "webrtc_answer_unavailable"}, status=502)
@@ -433,6 +437,7 @@ class BrowserWebrtcBridge:
                 call_id=call_id,
                 session_id=session_id,
                 registered_here=registered_here,
+                end_call_on_close=end_call_on_close,
                 reason="signaling_client_disconnected",
             )
             return web.json_response({"ok": False, "error": "webrtc_session_cancelled"}, status=409)

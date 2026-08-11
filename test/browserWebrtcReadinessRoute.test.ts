@@ -123,7 +123,9 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(bridge, /async def retire_failed_offer/);
   assert.match(bridge, /reason="webrtc_offer_setup_failed"/);
   assert.match(bridge, /reason="webrtc_answer_unavailable"/);
-  assert.match(bridge, /elif registered_here:\s+cleanup_record =/);
+  assert.match(bridge, /elif end_call_on_close:\s+cleanup_record =/);
+  assert.match(bridge, /"registeredHere": registered_here/);
+  assert.match(bridge, /end_call_on_close=end_call_on_close/);
   assert.match(bridge, /self\.remember_session_alias\(session_id, cleanup_record\)/);
   assert.match(bridge, /self\.schedule_acc_call_end_retry\(cleanup_record, session_id\)/);
   assert.match(bridge, /task\.cancel\(\)/);
@@ -146,6 +148,23 @@ test("browser WebRTC close interrupts rtc-asr before awaiting runner shutdown", 
   assert.ok(taskCancelIndex > 0, "expected close_session to cancel the runner task");
   assert.ok(closeIndex < cancelIndex, "rtc-asr should close before runner cancellation is awaited");
   assert.ok(closeIndex < taskCancelIndex, "rtc-asr should close before runner task shutdown is awaited");
+});
+
+test("failed WebRTC offers retire idempotently reused ACC-owned calls", () => {
+  const bridge = readFileSync("scripts/pipecat-browser-webrtc-bridge.py", "utf8");
+
+  assert.match(
+    bridge,
+    /async def retire_failed_offer\([\s\S]*?registered_here: bool,[\s\S]*?end_call_on_close: bool,[\s\S]*?elif end_call_on_close:\s+cleanup_record =/,
+  );
+  assert.match(bridge, /"registeredHere": registered_here/);
+  for (const reason of ["webrtc_offer_setup_failed", "webrtc_answer_unavailable", "signaling_client_disconnected"]) {
+    assert.match(
+      bridge,
+      new RegExp(`retire_failed_offer\\([\\s\\S]*?end_call_on_close=end_call_on_close,[\\s\\S]*?reason="${reason}"`),
+    );
+  }
+  assert.doesNotMatch(bridge, /elif registered_here:\s+cleanup_record =/);
 });
 
 const hasOptionalPipecatRuntime = existsSync(".pipecat-runtime");
