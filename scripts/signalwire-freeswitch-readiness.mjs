@@ -615,6 +615,15 @@ function invalidProviderIngressCidrs(cidrs) {
   return cidrs.filter((cidr) => !cidrRange(cidr));
 }
 
+function broadProviderIngressCidrs(cidrs) {
+  return cidrs.filter((cidr) => {
+    const range = cidrRange(cidr);
+    if (!range) return false;
+    const minimumProviderPrefix = range.version === 4 ? 8 : 24;
+    return range.prefix < minimumProviderPrefix;
+  });
+}
+
 function cidrContainsIp(cidr, address) {
   const [cidrAddress, prefixText] = clean(cidr).split("/");
   const addressVersion = isIP(address);
@@ -650,14 +659,14 @@ function cidrRange(cidr) {
     const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
     const start = BigInt(base & mask);
     const size = 1n << BigInt(32 - prefix);
-    return { version, start, end: start + size - 1n };
+    return { version, prefix, start, end: start + size - 1n };
   }
   const base = ipv6ToBigInt(cidrAddress);
   if (base === null) return null;
   const mask = prefix === 0 ? 0n : ((1n << BigInt(prefix)) - 1n) << BigInt(128 - prefix);
   const start = base & mask;
   const size = 1n << BigInt(128 - prefix);
-  return { version, start, end: start + size - 1n };
+  return { version, prefix, start, end: start + size - 1n };
 }
 
 function cidrIsSubsetOf(childCidr, parentCidr) {
@@ -1155,6 +1164,7 @@ const signalwireSourceAclName = clean(process.env.SIGNALWIRE_SOURCE_ACL_NAME) ||
 const signalwireSourceIpProbe = clean(process.env.SIGNALWIRE_SOURCE_IP_PROBE);
 const signalwireProviderIngressCidrs = parseProviderIngressCidrs(process.env.SIGNALWIRE_PROVIDER_INGRESS_CIDRS);
 const invalidSignalwireProviderIngressCidrs = invalidProviderIngressCidrs(signalwireProviderIngressCidrs);
+const broadSignalwireProviderIngressCidrs = broadProviderIngressCidrs(signalwireProviderIngressCidrs);
 const signalwireSourceRejectProbe = nonProviderSourceAclRejectProbe(signalwireProviderIngressCidrs, signalwireSourceIpProbe);
 const externalSipReachabilityProofPath = clean(process.env.SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH);
 const signalwireSourceAclConfigCommand = `xml_locate configuration list name ${signalwireSourceAclName}`;
@@ -1264,6 +1274,8 @@ if (summary.blockers.length === 0 && !hasFlag("--skip-fs-cli")) {
     summary.blockers.push("signalwire_provider_ingress_cidrs_missing");
   } else if (invalidSignalwireProviderIngressCidrs.length > 0) {
     summary.blockers.push("invalid_signalwire_provider_ingress_cidrs");
+  } else if (broadSignalwireProviderIngressCidrs.length > 0) {
+    summary.blockers.push("broad_signalwire_provider_ingress_cidrs");
   } else if (!isSignalWireProviderIngressProbe(signalwireSourceIpProbe, signalwireProviderIngressCidrs)) {
     summary.blockers.push("signalwire_source_probe_not_provider_owned");
   } else if (!signalwireSourceRejectProbe) {
