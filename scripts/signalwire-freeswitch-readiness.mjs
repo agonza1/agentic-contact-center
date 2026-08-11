@@ -104,6 +104,18 @@ function redactProofPath(value, redactor) {
   return redactIpLiterals(redactor(text)).replace(/[^/\\]+/g, "[redacted]");
 }
 
+function redactGeneratedConfigPath(value, redactor) {
+  const text = clean(value);
+  if (!text) return null;
+  const normalized = redactIpLiterals(redactor(text)).replace(/\\/g, "/");
+  const parts = normalized.split("/").filter(Boolean);
+  const freeswitchPathIndex = parts.findIndex((part) => part === "sip_profiles" || part === "dialplan");
+  if (freeswitchPathIndex < 0) return redactProofPath(normalized, redactor);
+  const redactedPrefix = parts.slice(0, freeswitchPathIndex)
+    .map((part, index) => (index === 0 && part === "artifacts" ? part : "[redacted]"));
+  return [...redactedPrefix, ...parts.slice(freeswitchPathIndex)].join("/");
+}
+
 function redactIpLiterals(text) {
   return text
     .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[redacted-address]")
@@ -911,18 +923,47 @@ function isPublicEndpointAdvertised(entry, expectedAddresses, expectedPort) {
     .filter(Boolean);
   const addressMatches = expectedAddresses.some((address) => advertised.includes(address));
   if (!addressMatches) return false;
-  return externalProfileSipPorts(output).includes(expectedPort);
+  return externalProfileEffectiveSipPorts(output).includes(expectedPort);
 }
 
-function externalProfileSipPorts(output) {
+function validSipPorts(values) {
+  return [...new Set(values)]
+    .filter((port) => Number.isInteger(port) && port > 0 && port <= 65535);
+}
+
+function externalProfileEffectiveSipPorts(output) {
+  const bindUrlPorts = validSipPorts([...output.matchAll(/^\s*bind[-_\s]*url(?:\s*[:=]\s*|\s+)(\S+)/gim)]
+    .map((match) => sipPortFromBindUrl(match[1])));
+  if (bindUrlPorts.length > 0) return bindUrlPorts;
+
+  const bindPorts = externalProfileFieldPorts(output, "bind");
+  if (bindPorts.length > 0) return bindPorts;
+
+  const extSipPorts = externalProfileFieldPorts(output, "ext-sip");
+  if (extSipPorts.length > 0) return extSipPorts;
+
+  const sipPorts = externalProfileFieldPorts(output, "sip");
+  if (sipPorts.length > 0) return sipPorts;
+
+  return validSipPorts([...output.matchAll(/\bsip:[^\s@]+@[^\s:;]+:(\d+)\b/gim)]
+    .map((match) => Number(match[1])));
+}
+
+function sipPortFromBindUrl(value) {
+  const raw = clean(value);
+  const authorityPort = raw.match(/@(?:\[[^\]]+\]|[^:;\s]+):(\d+)(?:[;\s]|$)/);
+  if (authorityPort) return Number(authorityPort[1]);
+  return normalizeSipEndpointPort(raw);
+}
+
+function externalProfileFieldPorts(output, fieldPrefix) {
+  const escapedPrefix = regexpEscape(fieldPrefix);
   const ports = new Set();
-  for (const match of output.matchAll(/^\s*(?:sip[-_\s]*port|bind[-_\s]*port|ext[-_\s]*sip[-_\s]*port)(?:\s*[:=]\s*|\s+)(\d+)\s*$/gim)) {
+  const pattern = new RegExp(`^\\s*${escapedPrefix}[-_\\s]*port(?:\\s*[:=]\\s*|\\s+)(\\d+)\\s*$`, "gim");
+  for (const match of output.matchAll(pattern)) {
     ports.add(Number(match[1]));
   }
-  for (const match of output.matchAll(/\bsip:[^\s@]+@[^\s:;]+:(\d+)\b/gim)) {
-    ports.add(Number(match[1]));
-  }
-  return [...ports].filter((port) => Number.isInteger(port) && port > 0 && port <= 65535);
+  return validSipPorts([...ports]);
 }
 
 async function externalSipReachabilityProof(proofPath, expectedEndpoint, now, expectedTransport) {
@@ -1284,8 +1325,8 @@ if (hasFlag("--render") && summary.blockers.length === 0) {
     replacements,
   );
   summary.generatedConfig = {
-    gatewayPath: gatewayPath ? path.relative(repoRoot, gatewayPath) : null,
-    dialplanPath: path.relative(repoRoot, dialplanPath),
+    gatewayPath: gatewayPath ? redactGeneratedConfigPath(path.relative(repoRoot, gatewayPath), redactor) : null,
+    dialplanPath: redactGeneratedConfigPath(path.relative(repoRoot, dialplanPath), redactor),
     gitignored: outputDirIsArtifact,
   };
 }

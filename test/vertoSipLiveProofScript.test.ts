@@ -159,6 +159,7 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.match(bridge, /"accCallId": acc_call_id/);
   assert.match(bridge, /"vertoParams": sanitize_verto_params\(params\)/);
   assert.doesNotMatch(bridge, /"vertoParams": \{key: value for key, value in params\.items\(\) if key != "sdp"\}/);
+  assert.match(bridge, /diversion\|history\[-_\\s\]\*info\|referred\[-_\\s\]\*by/);
   assert.match(bridge, /greeting\.owner_selected/);
   assert.match(bridge, /asyncio\.create_task\(session\.prewarm_conversation_tts_cache\(\)\)/);
   assert.match(bridge, /session_record\["prewarmTask"\] = prewarm_task/);
