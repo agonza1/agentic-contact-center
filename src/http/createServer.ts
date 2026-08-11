@@ -4732,6 +4732,18 @@ async function withLiveSipCallLock<T>(
   sipCallId: string,
   run: () => Promise<T>,
 ): Promise<T> {
+  const release = await acquireLiveSipCallLock(locks, sipCallId);
+  try {
+    return await run();
+  } finally {
+    release();
+  }
+}
+
+async function acquireLiveSipCallLock(
+  locks: Map<string, Promise<void>>,
+  sipCallId: string,
+): Promise<() => void> {
   const previous = locks.get(sipCallId) ?? Promise.resolve();
   let releaseCurrent!: () => void;
   const current = new Promise<void>((resolve) => {
@@ -4740,14 +4752,15 @@ async function withLiveSipCallLock<T>(
   const queued = previous.catch(() => undefined).then(() => current);
   locks.set(sipCallId, queued);
   await previous.catch(() => undefined);
-  try {
-    return await run();
-  } finally {
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
     releaseCurrent();
     if (locks.get(sipCallId) === queued) {
       locks.delete(sipCallId);
     }
-  }
+  };
 }
 
 async function withLiveSipOpenAiGenerationLock<T>(
@@ -5283,6 +5296,7 @@ async function routeRequest(
   liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>,
   liveSipCallLocks: Map<string, Promise<void>>,
   pipecatSessionRegistrationLocks: Map<string, Promise<void>>,
+  browserWebrtcSessionOfferLocks: Map<string, Promise<void>>,
   liveSipOpenAiGenerationLocks: Map<string, Promise<void>>,
   callerTurnDeliveryAckPreviews: Map<string, CallerTurnDeliveryAckPreview>,
   callerTurnDeliveryAckPreviewReservations: Set<string>,
@@ -5388,6 +5402,18 @@ async function routeRequest(
     const conversationMode = isConversationMode(body.conversationMode) ? body.conversationMode : "free_caller";
 
     const sessionId = getOptionalTrimmedString(body.sessionId) ?? `browser-webrtc-${randomUUID()}`;
+    let releaseSessionOffer: (() => void) | null = null;
+    let sessionOfferResponseClosed = false;
+    response.once("close", () => {
+      sessionOfferResponseClosed = true;
+      releaseSessionOffer?.();
+    });
+    releaseSessionOffer = await acquireLiveSipCallLock(browserWebrtcSessionOfferLocks, sessionId);
+    if (sessionOfferResponseClosed || response.destroyed) {
+      releaseSessionOffer();
+      return;
+    }
+    response.once("finish", releaseSessionOffer);
     const requestedCallId = getOptionalTrimmedString(body.callId);
     const existingSnapshot = requestedCallId ? await ingress.getSnapshot(requestedCallId) : null;
     if (requestedCallId && !existingSnapshot) {
@@ -8710,13 +8736,14 @@ export function buildHttpServer(config: PocConfig) {
   const liveSipEndedCallMap = new Map<string, LiveSipEndedCallAlias>();
   const liveSipCallLocks = new Map<string, Promise<void>>();
   const pipecatSessionRegistrationLocks = new Map<string, Promise<void>>();
+  const browserWebrtcSessionOfferLocks = new Map<string, Promise<void>>();
   const liveSipOpenAiGenerationLocks = new Map<string, Promise<void>>();
   const callerTurnDeliveryAckPreviews = new Map<string, CallerTurnDeliveryAckPreview>();
   const callerTurnDeliveryAckPreviewReservations = new Set<string>();
   const voiceSessions = new RealtimeVoiceSessionStore();
 
   const server = createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, pipecatSessionRegistrationLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, pipecatSessionRegistrationLocks, browserWebrtcSessionOfferLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;

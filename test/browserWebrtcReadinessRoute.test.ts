@@ -742,6 +742,8 @@ test("GET /api/browser-webrtc/readiness reports bridge offline before live media
 
 test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bridge", async () => {
   const bridgeRequests: Array<{ callId?: string; sdp?: string; type?: string; accUrl?: string; sessionId?: string }> = [];
+  let activeConcurrentOffers = 0;
+  let maxConcurrentOffers = 0;
   const bridge = createServer(async (request, response) => {
     if (request.method !== "POST" || request.url !== "/api/webrtc/offer") {
       response.statusCode = 404;
@@ -752,7 +754,14 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
     for await (const chunk of request) {
       chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
     }
-    bridgeRequests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+    const bridgeRequest = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    bridgeRequests.push(bridgeRequest);
+    if (bridgeRequest.sessionId === "proxy-browser-concurrent") {
+      activeConcurrentOffers += 1;
+      maxConcurrentOffers = Math.max(maxConcurrentOffers, activeConcurrentOffers);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      activeConcurrentOffers -= 1;
+    }
     response.statusCode = 200;
     response.setHeader("content-type", "application/json; charset=utf-8");
     response.end(JSON.stringify({
@@ -872,6 +881,7 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
     assert.equal(concurrentA.status, 201);
     assert.equal(concurrentB.status, 201);
     assert.equal(concurrentA.payload.callId, concurrentB.payload.callId);
+    assert.equal(maxConcurrentOffers, 1);
 
     const concurrentConsole = await callJsonRoute(address.port, "/api/operator/console");
     const concurrentCalls = concurrentConsole.payload.calls.items.filter(

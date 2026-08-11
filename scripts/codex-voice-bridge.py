@@ -30,6 +30,16 @@ if LOCAL_RUNTIME_PATH.exists():
 PINNED_MODEL = "gpt-5.4-mini"
 MAX_BODY_BYTES = 64 * 1024
 MAX_PROMPT_CHARS = 12_000
+VOICE_THREAD_CONFIG: dict[str, Any] = {
+    "apps": {"_default": {"enabled": False, "default_tools_enabled": False}},
+    "features": {
+        "shell_tool": False,
+        "unified_exec": False,
+        "skill_mcp_dependency_install": False,
+    },
+    "tools": {"view_image": False, "web_search": False},
+    "web_search": "disabled",
+}
 VOICE_DEVELOPER_INSTRUCTIONS = " ".join(
     (
         "You are the conversational reasoning component for ACC SIP extension 8600.",
@@ -163,6 +173,7 @@ class CodexVoiceBridge:
                 return existing
             thread = self.codex.thread_start(
                 approval_mode=self.approval_mode,
+                config=VOICE_THREAD_CONFIG,
                 cwd=str(self.workspace),
                 developer_instructions=VOICE_DEVELOPER_INSTRUCTIONS,
                 ephemeral=True,

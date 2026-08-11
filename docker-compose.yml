@@ -316,6 +316,7 @@ services:
       - "127.0.0.1:8771:8771"
     volumes:
       - codex-voice-auth:/root/.codex
+      - ./config/codex-voice-requirements.toml:/etc/codex/requirements.toml:ro
     environment:
       CODEX_HOME: /root/.codex
       CODEX_VOICE_WORKSPACE: /tmp/acc-codex-voice

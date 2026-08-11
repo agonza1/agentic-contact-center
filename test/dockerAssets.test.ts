@@ -13,6 +13,8 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   const freeswitchLocalSipProfile = readFileSync(join(repoRoot, "freeswitch", "conf", "sip_profiles", "acc-local.xml"), "utf8");
   const readme = readFileSync(join(repoRoot, "README.md"), "utf8");
   const runtimeReference = readFileSync(join(repoRoot, "docs", "runtime-reference.md"), "utf8");
+  const codexVoiceBridge = readFileSync(join(repoRoot, "scripts", "codex-voice-bridge.py"), "utf8");
+  const codexVoiceRequirements = readFileSync(join(repoRoot, "config", "codex-voice-requirements.toml"), "utf8");
   const packageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as {
     scripts?: Record<string, string>;
   };
@@ -98,6 +100,16 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /codex-voice-bridge:\n[\s\S]*scripts\/codex-voice-bridge\.py/);
   assert.match(compose, /codex-voice-bridge:\n[\s\S]*"127\.0\.0\.1:8771:8771"/);
   assert.match(compose, /codex-voice-bridge:\n[\s\S]*codex-voice-auth:\/root\/\.codex/);
+  assert.match(compose, /codex-voice-bridge:\n[\s\S]*\.\/config\/codex-voice-requirements\.toml:\/etc\/codex\/requirements\.toml:ro/);
+  assert.match(codexVoiceBridge, /"shell_tool": False/);
+  assert.match(codexVoiceBridge, /"web_search": "disabled"/);
+  assert.match(codexVoiceBridge, /config=VOICE_THREAD_CONFIG/);
+  assert.match(codexVoiceRequirements, /allowed_approval_policies = \["never"\]/);
+  assert.match(codexVoiceRequirements, /allowed_sandbox_modes = \["read-only"\]/);
+  assert.match(codexVoiceRequirements, /allowed_web_search_modes = \[\]/);
+  assert.match(codexVoiceRequirements, /\[mcp_servers\]/);
+  assert.match(codexVoiceRequirements, /shell_tool = false/);
+  assert.match(codexVoiceRequirements, /plugins = false/);
   assert.match(compose, /app:\n[\s\S]*ACC_OPENAI_CONVERSATION_MODEL: \${ACC_OPENAI_CONVERSATION_MODEL:-gpt-5\.4-mini}/);
   assert.match(compose, /app:\n[\s\S]*ACC_OPENAI_AUTH_MODE: \${ACC_OPENAI_AUTH_MODE:-codex_oauth}/);
   assert.match(compose, /app:\n[\s\S]*ACC_CODEX_VOICE_BRIDGE_URL: http:\/\/codex-voice-bridge:8771/);
