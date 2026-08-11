@@ -326,6 +326,61 @@ esac
   }
 });
 
+test("SignalWire FreeSWITCH readiness redacts dynamically discovered private Verto domains", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
+  "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
+  "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
+  "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351|8600|acc)$"><condition field="\${acl(\${network_addr} signalwire_trunk)}" expression="^true$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="{absolute_codec_string=PCMU,acc_route=signalwire_live}\${verto_contact(acc-pipecat@pbx.private.lan)}"/></condition></extension>' ;;
+  *) printf '%s\\n' "acc-pipecat@pbx.private.lan REGED" ;;
+esac
+`,
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      "scripts/signalwire-freeswitch-readiness.mjs",
+      "--fs-cli-bin",
+      fsCliBin,
+      "--manifest",
+      path.join(tempDir, "readiness.json"),
+    ], {
+      cwd: repoRoot,
+      env: {
+        PATH: process.env.PATH ?? "",
+        SIGNALWIRE_TRUNK_MODE: "ip_auth",
+        SIGNALWIRE_FROM_NUMBER: "+12029687351",
+        FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+        SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+        SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+        SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
+      },
+      encoding: "utf8",
+    });
+
+    const manifest = await readFile(path.join(tempDir, "readiness.json"), "utf8");
+    const payload = JSON.parse(stdout);
+    assert.equal(payload.status, "ready_for_manual_pstn_call");
+    assert.equal(payload.manualCallReady, true);
+    assert.deepEqual(payload.vertoRegistration.expectedContacts, ["acc-pipecat@[redacted]"]);
+    assert.doesNotMatch(stdout, /pbx\.private\.lan/i);
+    assert.doesNotMatch(manifest, /pbx\.private\.lan/i);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("SignalWire FreeSWITCH readiness rejects stale Verto agent registrations", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
   const fsCliBin = path.join(tempDir, "fs_cli");
@@ -448,6 +503,65 @@ esac
           proxyMatches: false,
           usernameMatches: false,
         });
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("SignalWire FreeSWITCH readiness requires the gateway authentication username", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
+  "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
+  "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
+  "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
+  "sofia status gateway signalwire") printf '%s\\n' "State REGED" "Realm example.sip.signalwire.com" "Proxy example.sip.signalwire.com" "Auth-Username wrong-sip-user" "From-User acc-sip-user" "Extension acc-sip-user" ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351|8600|acc)$"><condition field="\${acl(\${network_addr} signalwire_trunk)}" expression="^true$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="{absolute_codec_string=PCMU,acc_route=signalwire_live}\${verto_contact(acc-pipecat@example.test)}"/></condition></extension>' ;;
+  *) printf '%s\\n' "acc-pipecat@example.test REGED" ;;
+esac
+`,
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_SPACE_URL: "https://example.signalwire.com",
+          SIGNALWIRE_SIP_USERNAME: "acc-sip-user",
+          SIGNALWIRE_SIP_PASSWORD: "example-rendered-sip-password",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+          SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+          SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+          SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const payload = JSON.parse((error as { stdout?: string }).stdout ?? "{}");
+        assert.equal(payload.manualCallReady, false);
+        assert.equal(payload.gatewayRegistration.usernameMatches, false);
+        assert.ok(payload.blockers.includes("signalwire_gateway_identity_mismatch"));
         return true;
       },
     );
@@ -985,6 +1099,61 @@ case "$2" in
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
   "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351|8600|acc)$"><condition field="\${acl(\${network_addr} signalwire_trunk)}" expression="^true$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="hangup" data="NORMAL_CLEARING"/><action application="bridge" data="{absolute_codec_string=PCMU,acc_route=signalwire_live}\${verto_contact(acc-pipecat@example.test)}"/></condition></extension>' ;;
+  *) printf '%s\\n' "acc-pipecat@example.test REGED" ;;
+esac
+`,
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_TRUNK_MODE: "ip_auth",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+          SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+          SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+          SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const payload = JSON.parse((error as { stdout?: string }).stdout ?? "{}");
+        assert.equal(payload.manualCallReady, false);
+        assert.ok(payload.blockers.includes("signalwire_inbound_dialplan_not_proven"));
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("SignalWire FreeSWITCH readiness rejects park before the accepted bridge", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
+  "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
+  "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
+  "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351|8600|acc)$"><condition field="\${acl(\${network_addr} signalwire_trunk)}" expression="^true$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="park"/><action application="bridge" data="{absolute_codec_string=PCMU,acc_route=signalwire_live}\${verto_contact(acc-pipecat@example.test)}"/></condition></extension>' ;;
   *) printf '%s\\n' "acc-pipecat@example.test REGED" ;;
 esac
 `,

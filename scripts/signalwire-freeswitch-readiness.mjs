@@ -110,11 +110,11 @@ function redactIpLiterals(text) {
 }
 
 function buildRedactor(values) {
-  const secrets = [...new Set(values
-    .flatMap(redactionVariants)
-    .filter(Boolean))]
-    .sort((a, b) => b.length - a.length);
   return (text) => {
+    const secrets = [...new Set(values
+      .flatMap(redactionVariants)
+      .filter(Boolean))]
+      .sort((a, b) => b.length - a.length);
     let redacted = text;
     for (const secret of secrets) {
       redacted = redacted.replace(new RegExp(regexpEscape(secret), "gi"), "[redacted]");
@@ -447,22 +447,14 @@ function guardedSignalWireBridgeContactsFromActions(actions) {
       && bridgeVariableValue(action.data, "absolute_codec_string") === "PCMU"
       && bridgeVariableValue(action.data, "acc_route") === "signalwire_live"
       && hasGuardedRouteMetadata(actions.slice(0, index))
-      && !hasPriorTerminalAction(actions.slice(0, index))
+      && priorActionsAreBridgeSetupOnly(actions.slice(0, index))
     ))
     .flatMap((action) => vertoAgentContactsFromBridgeData(action.data));
 }
 
-function hasPriorTerminalAction(actions) {
-  const terminalApplications = new Set([
-    "bridge",
-    "deflect",
-    "hangup",
-    "redirect",
-    "respond",
-    "return",
-    "transfer",
-  ]);
-  return actions.some((action) => terminalApplications.has(action.application));
+function priorActionsAreBridgeSetupOnly(actions) {
+  const setupApplications = new Set(["export", "set"]);
+  return actions.every((action) => setupApplications.has(action.application));
 }
 
 function bridgeVariableValue(value, name) {
@@ -672,8 +664,11 @@ function outputHasGatewayHost(output, aliases, expectedHost) {
 function outputHasGatewayUser(output, expectedUser) {
   const expected = clean(expectedUser);
   if (!expected) return false;
-  return gatewayFieldValues(output, ["username", "user", "auth-username", "auth username", "from-user", "from user", "extension"])
-    .includes(expected);
+  const authValues = gatewayFieldValues(output, ["auth-username", "auth username", "username", "user"]);
+  const identityValues = gatewayFieldValues(output, ["from-user", "from user", "extension"]);
+  return authValues.length > 0
+    && authValues.every((value) => value === expected)
+    && identityValues.every((value) => value === expected);
 }
 
 function signalWireGatewayIdentity(entry, expected) {
@@ -926,12 +921,38 @@ async function externalSipReachabilityProof(proofPath, expectedEndpoint, now, ex
 
 function isVertoAgentContactRegistered(entry, expectedContacts) {
   if (!entry) return false;
+  const registeredContacts = registeredVertoAgentContacts(entry);
+  return expectedContacts.some((contact) => registeredContacts.includes(contact));
+}
+
+function registeredVertoAgentContacts(entry) {
+  if (!entry) return [];
   const output = `${entry.stdout ?? ""}\n${entry.stderr ?? ""}`;
-  if (/\b0\s+total\s+registrations\b/i.test(output)) return false;
-  const registeredContacts = [...output.matchAll(/\bacc-pipecat@([^\s;,'"<>]+)/gi)]
+  if (/\b0\s+total\s+registrations\b/i.test(output)) return [];
+  return [...output.matchAll(/\bacc-pipecat@([^\s;,'"<>]+)/gi)]
     .map((match) => `acc-pipecat@${clean(match[1]).toLowerCase().replace(/[);]+$/g, "")}`)
     .filter(Boolean);
-  return expectedContacts.some((contact) => registeredContacts.includes(contact));
+}
+
+function privateVertoDomainsFromContacts(contacts) {
+  return [...new Set(contacts
+    .map((contact) => clean(contact).split("@").at(1)?.toLowerCase() ?? "")
+    .filter((domain) => domain && shouldRedactDiscoveredDomain(domain)))];
+}
+
+function shouldRedactDiscoveredDomain(domain) {
+  if (!domain) return false;
+  if (domain === "example.test" || domain.endsWith(".example") || domain.endsWith(".example.test")) return false;
+  return true;
+}
+
+function redactProofEntry(entry, redactor) {
+  return Object.fromEntries(
+    Object.entries(entry).map(([key, value]) => [
+      key,
+      typeof value === "string" ? redactor(value) : value,
+    ]),
+  );
 }
 
 async function renderTemplate(templatePath, outputPath, replacements) {
@@ -1032,7 +1053,7 @@ const artifactsRoot = path.resolve(repoRoot, "artifacts");
 const outputDirIsArtifact = isPathInside(artifactsRoot, outputDir)
   && !(await hasSymlinkedAncestor(artifactsRoot, outputDir));
 const manifestPathHasSymlinkedAncestor = await hasSymlinkedDirectoryAncestor(manifestPath);
-const redactor = buildRedactor([
+const redactionValues = [
   ...Object.values(env),
   signalwireRealm,
   signalwireProxy,
@@ -1046,7 +1067,8 @@ const redactor = buildRedactor([
   signalwireSourceIpProbe,
   signalwireSourceRejectProbe,
   ...signalwireProviderIngressCidrs,
-]);
+];
+const redactor = buildRedactor(redactionValues);
 
 const summary = {
   ok: false,
@@ -1220,6 +1242,23 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
       break;
     }
   }
+}
+
+if (!fsCliSkipped && rawFsCli.size > 0) {
+  const dialplan = rawFsCli.get("xml_locate dialplan extension name agentic_contact_center_signalwire_pstn");
+  const expectedContacts = expectedVertoAgentContactsFromDialplan(
+    dialplan,
+    env.SIGNALWIRE_FROM_NUMBER,
+    signalwireSourceAclName,
+  );
+  const registeredContacts = registeredVertoAgentContacts(rawFsCli.get("show registrations"));
+  redactionValues.push(
+    ...privateVertoDomainsFromContacts([
+      ...expectedContacts,
+      ...registeredContacts,
+    ]),
+  );
+  summary.freeswitchCli = summary.freeswitchCli.map((entry) => redactProofEntry(entry, redactor));
 }
 
 if (summary.blockers.length === 0 && !fsCliSkipped) {
