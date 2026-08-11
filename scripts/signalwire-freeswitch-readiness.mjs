@@ -842,7 +842,6 @@ function isPublicEndpointAdvertised(entry, expectedAddresses, expectedPort) {
     .filter(Boolean);
   const addressMatches = expectedAddresses.some((address) => advertised.includes(address));
   if (!addressMatches) return false;
-  if (expectedPort === 5060) return true;
   return externalProfileSipPorts(output).includes(expectedPort);
 }
 

@@ -264,7 +264,7 @@ test("SignalWire FreeSWITCH readiness redacts normalized SIP hosts from fs_cli p
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-IP 192.168.50.4" "RTP-IP 10.0.0.8" "Ext-SIP-IP fd00::1234" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" "SIP-IP 192.168.50.4" "RTP-IP 10.0.0.8" "Ext-SIP-IP fd00::1234" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -335,7 +335,7 @@ test("SignalWire FreeSWITCH readiness rejects stale Verto agent registrations", 
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-IP 192.168.50.4" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" "SIP-IP 192.168.50.4" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -399,7 +399,7 @@ test("SignalWire FreeSWITCH readiness rejects stale registration gateways", asyn
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-IP 192.168.50.4" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" "SIP-IP 192.168.50.4" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -465,7 +465,7 @@ test("SignalWire FreeSWITCH readiness rejects registration trunks without public
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 192.168.50.4" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 192.168.50.4" "SIP-Port 5060" ;;
   "sofia status gateway signalwire") printf '%s\\n' "State REGED" "Realm example.sip.signalwire.com" "Proxy example.sip.signalwire.com" "Username acc-sip-user" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
@@ -525,7 +525,7 @@ test("SignalWire FreeSWITCH readiness redacts unbracketed IPv6 values from fs_cl
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -577,7 +577,7 @@ test("SignalWire FreeSWITCH readiness supports IP-auth trunks without REGED", as
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -646,7 +646,7 @@ test("SignalWire FreeSWITCH readiness rejects sibling bridges outside the approv
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -703,7 +703,7 @@ test("SignalWire FreeSWITCH readiness rejects partial ACL field expansions", asy
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -758,7 +758,7 @@ test("SignalWire FreeSWITCH readiness rejects aggregated actions from mutually e
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -815,7 +815,7 @@ test("SignalWire FreeSWITCH readiness rejects bridge paths behind unproven neste
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -870,7 +870,7 @@ test("SignalWire FreeSWITCH readiness requires the DID condition as a direct ext
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -925,7 +925,7 @@ test("SignalWire FreeSWITCH readiness rejects route metadata after the accepted 
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -980,7 +980,7 @@ test("SignalWire FreeSWITCH readiness rejects terminal actions before the accept
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -1035,7 +1035,7 @@ test("SignalWire FreeSWITCH readiness requires PCMU on the Verto bridge action",
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -1092,7 +1092,7 @@ test("SignalWire FreeSWITCH readiness rejects malformed PCMU bridge assignments"
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -1147,7 +1147,7 @@ test("SignalWire FreeSWITCH readiness keeps manual call closed without external 
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -1205,7 +1205,7 @@ test("SignalWire FreeSWITCH readiness rejects generic reachability proof without
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -1266,7 +1266,7 @@ test("SignalWire FreeSWITCH readiness rejects reachability proof without declare
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -1326,7 +1326,7 @@ test("SignalWire FreeSWITCH readiness rejects reachability proof for the wrong S
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "sofia status gateway signalwire") printf '%s\\n' "State REGED" "Realm example.sip.signalwire.com" "Proxy example.sip.signalwire.com" "Username acc-sip-user" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
@@ -1389,7 +1389,7 @@ test("SignalWire FreeSWITCH readiness rejects future-dated reachability proof", 
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -1448,7 +1448,7 @@ test("SignalWire FreeSWITCH readiness rejects a broad source ACL that allows non
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "true" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="0.0.0.0/0"/></list>' ;;
@@ -1508,7 +1508,7 @@ test("SignalWire FreeSWITCH readiness rejects non-provider ACL allow entries eve
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/><node type="allow" cidr="0.0.0.0/0"/></list>' ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
@@ -1568,7 +1568,7 @@ test("SignalWire FreeSWITCH readiness rejects non-CIDR ACL allow nodes", async (
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/><node type="allow" domain="example.com"/></list>' ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
@@ -1673,7 +1673,7 @@ test("SignalWire FreeSWITCH readiness rejects a source IP outside the active ACL
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351|8600|acc)$"><condition field="\${acl(\${network_addr} signalwire_trunk)}" expression="^true$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="{absolute_codec_string=PCMU,acc_route=signalwire_live}\${verto_contact(acc-pipecat@example.test)}"/></condition></extension>' ;;
   *) printf '%s\\n' "acc-pipecat@example.test REGED" ;;
@@ -1876,7 +1876,7 @@ test("SignalWire FreeSWITCH readiness preserves bracketed IPv6 endpoint hosts", 
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 2001:4860:4860::8888" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 2001:4860:4860::8888" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -1931,7 +1931,7 @@ test("SignalWire FreeSWITCH readiness matches equivalent IPv6 endpoint notation"
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 2001:4860:4860:0000:0000:0000:0000:8888" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 2001:4860:4860:0000:0000:0000:0000:8888" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -2376,7 +2376,7 @@ test("SignalWire FreeSWITCH readiness rejects an inactive inbound dialplan", asy
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -2433,7 +2433,7 @@ test("SignalWire FreeSWITCH readiness rejects a stale inbound DID", async () => 
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -2488,7 +2488,7 @@ test("SignalWire FreeSWITCH readiness rejects semantic escapes in DID alternativ
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -2543,7 +2543,7 @@ test("SignalWire FreeSWITCH readiness rejects broad active DID regex behavior", 
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -2598,7 +2598,7 @@ test("SignalWire FreeSWITCH readiness rejects extra accepted DID values", async 
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -2653,7 +2653,7 @@ test("SignalWire FreeSWITCH readiness rejects active dialplan without Verto agen
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -2708,7 +2708,7 @@ test("SignalWire FreeSWITCH readiness rejects bridge targets with trailing non-V
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -2763,7 +2763,7 @@ test("SignalWire FreeSWITCH readiness requires acc_route on the bridged Verto le
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -2818,7 +2818,7 @@ test("SignalWire FreeSWITCH readiness rejects malformed destination export suffi
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -2873,7 +2873,7 @@ test("SignalWire FreeSWITCH readiness rejects an inactive Verto agent registrati
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -2928,7 +2928,7 @@ test("SignalWire FreeSWITCH readiness matches registration to the guarded PCMU b
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -3030,7 +3030,62 @@ test("SignalWire FreeSWITCH readiness requires the public endpoint in Ext-SIP-IP
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "SIP-IP 8.8.8.8" "Ext-SIP-IP 10.0.0.8" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "SIP-IP 8.8.8.8" "Ext-SIP-IP 10.0.0.8" "SIP-Port 5060" ;;
+  "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
+  "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
+  "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351|8600|acc)$"><condition field="\${acl(\${network_addr} signalwire_trunk)}" expression="^true$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="{absolute_codec_string=PCMU,acc_route=signalwire_live}\${verto_contact(acc-pipecat@example.test)}"/></condition></extension>' ;;
+  *) printf '%s\\n' "acc-pipecat@example.test REGED" ;;
+esac
+`,
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_TRUNK_MODE: "ip_auth",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+          SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+          SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+          SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const payload = JSON.parse((error as { stdout?: string }).stdout ?? "{}");
+        assert.equal(payload.manualCallReady, false);
+        assert.ok(payload.blockers.includes("freeswitch_public_sip_endpoint_not_proven"));
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("SignalWire FreeSWITCH readiness validates default public SIP port", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5070" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -3140,7 +3195,7 @@ test("SignalWire FreeSWITCH readiness accepts matching non-default public SIP po
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "BIND-URL sip:mod_sofia@8.8.8.8:5070;maddr=8.8.8.8;transport=udp" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" "BIND-URL sip:mod_sofia@8.8.8.8:5070;maddr=8.8.8.8;transport=udp" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -3191,7 +3246,7 @@ test("SignalWire FreeSWITCH readiness accepts globally routable 192.0.0.0/16 add
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 192.0.8.1" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 192.0.8.1" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -3243,7 +3298,7 @@ test("SignalWire FreeSWITCH readiness accepts globally routable 2001::/23 except
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 2001:3::1" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 2001:3::1" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -3296,7 +3351,7 @@ for (const unroutableHost of ["192.0.2.10", "198.51.100.7", "203.0.113.9", "2001
         fsCliBin,
         `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP ${unroutableHost}" ;;
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP ${unroutableHost}" "SIP-Port 5060" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
@@ -3395,7 +3450,7 @@ test("SignalWire FreeSWITCH readiness accepts running profiles with failure coun
       fsCliBin,
       `#!/bin/sh
 case "$2" in
-  "sofia status profile external") printf '%s\\n' "Name external" "State RUNNING" "Ext-SIP-IP 8.8.8.8" "FAILED-CALLS-IN 3" "FAILED-CALLS-OUT 5" ;;
+  "sofia status profile external") printf '%s\\n' "Name external" "State RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" "FAILED-CALLS-IN 3" "FAILED-CALLS-OUT 5" ;;
   "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
   "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
   "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
