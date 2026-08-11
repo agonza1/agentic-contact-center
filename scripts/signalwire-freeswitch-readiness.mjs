@@ -438,14 +438,14 @@ function guardedSignalWireBridgeContactsFromActions(actions) {
       action.application === "bridge"
       && bridgeVariableValue(action.data, "absolute_codec_string") === "PCMU"
       && bridgeVariableValue(action.data, "acc_route") === "signalwire_live"
-      && hasEffectiveGuardedRouteMetadata(actions.slice(0, index))
+      && hasEffectiveGuardedRouteMetadata(actions.slice(0, index), action.data)
       && priorActionsAreBridgeSetupOnly(actions.slice(0, index))
     ))
     .flatMap((action) => vertoAgentContactsFromBridgeData(action.data));
 }
 
-function hasEffectiveGuardedRouteMetadata(actions) {
-  const metadata = effectiveRouteMetadata(actions);
+function hasEffectiveGuardedRouteMetadata(actions, bridgeData = "") {
+  const metadata = effectiveRouteMetadata(actions, bridgeData);
   return metadata.get("set:acc_route") === "signalwire_live"
     && metadata.get("set:acc_destination_number") === "8600"
     && metadata.get("set:acc_conversation_mode") === "openai_llm"
@@ -455,11 +455,14 @@ function hasEffectiveGuardedRouteMetadata(actions) {
     && metadata.get("export:sip_h_x-acc-conversation-mode") === "openai_llm";
 }
 
-function effectiveRouteMetadata(actions) {
+function effectiveRouteMetadata(actions, bridgeData = "") {
   const metadata = new Map();
   for (const action of actions) {
     const assignment = routeMetadataAssignment(action);
     if (assignment) metadata.set(assignment.key, assignment.value);
+  }
+  for (const assignment of bridgeRouteMetadataAssignments(bridgeData)) {
+    metadata.set(assignment.key, assignment.value);
   }
   return metadata;
 }
@@ -476,6 +479,19 @@ function routeMetadataAssignment(action) {
 
   const key = normalizedExportMetadataKey(assignment.key);
   return key ? { key: `export:${key}`, value: assignment.value } : null;
+}
+
+function bridgeRouteMetadataAssignments(value) {
+  const assignments = [];
+  for (const [rawKey, rawValue] of bridgeVariables(value)) {
+    const value = clean(rawValue).toLowerCase();
+    if (!value) continue;
+    const setKey = normalizedSetMetadataKey(rawKey);
+    if (setKey) assignments.push({ key: `set:${setKey}`, value });
+    const exportKey = normalizedExportMetadataKey(rawKey);
+    if (exportKey) assignments.push({ key: `export:${exportKey}`, value });
+  }
+  return assignments;
 }
 
 function dialplanAssignment(value) {
@@ -735,12 +751,12 @@ function signalWireGatewayIdentity(entry, expected) {
 
 function isPublicIpAddress(address) {
   if (isIP(address) === 4) {
-    const [a, b, c] = address.split(".").map(Number);
+    const [a, b, c, d] = address.split(".").map(Number);
     return !(a === 0 || a === 10 || a === 127 || a >= 224
       || (a === 100 && b >= 64 && b <= 127)
       || (a === 169 && b === 254)
       || (a === 172 && b >= 16 && b <= 31)
-      || (a === 192 && b === 0 && (c === 0 || c === 2))
+      || (a === 192 && b === 0 && ((c === 0 && d !== 9 && d !== 10) || c === 2))
       || (a === 192 && b === 168)
       || (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100)))
       || (a === 203 && b === 0 && c === 113)

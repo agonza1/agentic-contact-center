@@ -3088,6 +3088,61 @@ esac
   }
 });
 
+test("SignalWire FreeSWITCH readiness rejects route metadata overrides on the accepted bridge", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+  const fsCliBin = path.join(tempDir, "fs_cli");
+
+  try {
+    await writeFile(
+      fsCliBin,
+      `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP 8.8.8.8" "SIP-Port 5060" ;;
+  "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
+  "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
+  "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351|8600|acc)$"><condition field="\${acl(\${network_addr} signalwire_trunk)}" expression="^true$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="{absolute_codec_string=PCMU,acc_route=signalwire_live,sip_h_X-ACC-Destination=8611,sip_h_X-ACC-Conversation-Mode=scripted}\${verto_contact(acc-pipecat@example.test)}"/></condition></extension>' ;;
+  *) printf '%s\\n' "acc-pipecat@example.test REGED" ;;
+esac
+`,
+      "utf8",
+    );
+    await chmod(fsCliBin, 0o700);
+
+    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir);
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_TRUNK_MODE: "ip_auth",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: "8.8.8.8",
+          SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+          SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+          SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
+        },
+        encoding: "utf8",
+      }),
+      (error: unknown) => {
+        const payload = JSON.parse((error as { stdout?: string }).stdout ?? "{}");
+        assert.equal(payload.manualCallReady, false);
+        assert.ok(payload.blockers.includes("signalwire_inbound_dialplan_not_proven"));
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("SignalWire FreeSWITCH readiness rejects an inactive Verto agent registration", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
   const fsCliBin = path.join(tempDir, "fs_cli");
@@ -3519,6 +3574,59 @@ esac
     await rm(tempDir, { recursive: true, force: true });
   }
 });
+
+for (const anycastAddress of ["192.0.0.9", "192.0.0.10"]) {
+  test(`SignalWire FreeSWITCH readiness accepts globally reachable IPv4 anycast endpoint ${anycastAddress}`, async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
+    const fsCliBin = path.join(tempDir, "fs_cli");
+
+    try {
+      await writeFile(
+        fsCliBin,
+        `#!/bin/sh
+case "$2" in
+  "sofia status profile external") printf '%s\\n' "external profile RUNNING" "Ext-SIP-IP ${anycastAddress}" "SIP-Port 5060" ;;
+  "acl 54.172.60.0 signalwire_trunk") printf '%s\\n' "true" ;;
+  "acl 8.8.8.8 signalwire_trunk") printf '%s\\n' "false" ;;
+  "xml_locate configuration list name signalwire_trunk") printf '%s\\n' '<list name="signalwire_trunk" default="deny"><node type="allow" cidr="54.172.60.0/30"/></list>' ;;
+  "xml_locate dialplan extension name agentic_contact_center_signalwire_pstn") printf '%s\\n' '<extension name="agentic_contact_center_signalwire_pstn"><condition field="destination_number" expression="^(\\+?12029687351|2029687351|8600|acc)$"><condition field="\${acl(\${network_addr} signalwire_trunk)}" expression="^true$"><action application="set" data="acc_route=signalwire_live"/><action application="set" data="acc_destination_number=8600"/><action application="set" data="acc_conversation_mode=openai_llm"/><action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/><action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/><action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/><action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/><action application="bridge" data="{absolute_codec_string=PCMU,acc_route=signalwire_live}\${verto_contact(acc-pipecat@example.test)}"/></condition></extension>' ;;
+  *) printf '%s\\n' "acc-pipecat@example.test REGED" ;;
+esac
+`,
+        "utf8",
+      );
+      await chmod(fsCliBin, 0o700);
+
+      reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir, anycastAddress);
+
+      const { stdout } = await execFileAsync(process.execPath, [
+        "scripts/signalwire-freeswitch-readiness.mjs",
+        "--fs-cli-bin",
+        fsCliBin,
+        "--manifest",
+        path.join(tempDir, "readiness.json"),
+      ], {
+        cwd: repoRoot,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SIGNALWIRE_TRUNK_MODE: "ip_auth",
+          SIGNALWIRE_FROM_NUMBER: "+12029687351",
+          FREESWITCH_PUBLIC_SIP_HOST: anycastAddress,
+          SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+          SIGNALWIRE_PROVIDER_INGRESS_CIDRS: signalWireProviderIngressCidrs,
+          SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: reachabilityProofPath,
+        },
+        encoding: "utf8",
+      });
+
+      const payload = JSON.parse(stdout);
+      assert.equal(payload.status, "ready_for_manual_pstn_call");
+      assert.equal(payload.manualCallReady, true);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+}
 
 test("SignalWire FreeSWITCH readiness accepts globally routable 2001::/23 exceptions", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "acc-signalwire-fs-"));
