@@ -429,27 +429,75 @@ function executableActionPaths(condition) {
 }
 
 function guardedSignalWireBridgeContactsFromActions(actions) {
-  const hasActionData = (candidateActions, application, pattern) => candidateActions.some((action) => (
-    action.application === application && pattern.test(action.data)
-  ));
-  const hasGuardedRouteMetadata = (candidateActions) => (
-    hasActionData(candidateActions, "set", /(?:^|[,;{])acc_route=signalwire_live(?:[,;} ]|$)/i)
-    && hasActionData(candidateActions, "set", /(?:^|[,;{])acc_destination_number=8600(?:[,;} ]|$)/i)
-    && hasActionData(candidateActions, "set", /(?:^|[,;{])acc_conversation_mode=openai_llm(?:[,;} ]|$)/i)
-    && hasActionData(candidateActions, "set", /(?:^|[,;{])acc_media_bridge=pipecat_verto_agent_leg(?:[,;} ]|$)/i)
-    && hasActionData(candidateActions, "export", /(?:sip_h_X-ACC-Telephony-Mode|X-ACC-Telephony-Mode)=signalwire_live/i)
-    && hasActionData(candidateActions, "export", /(?:^|[,;{:\s])(?:sip_h_X-ACC-Destination|X-ACC-Destination)=8600(?:[,;} ]|$)/i)
-    && hasActionData(candidateActions, "export", /(?:sip_h_X-ACC-Conversation-Mode|X-ACC-Conversation-Mode)=openai_llm/i)
-  );
   return actions
     .filter((action, index) => (
       action.application === "bridge"
       && bridgeVariableValue(action.data, "absolute_codec_string") === "PCMU"
       && bridgeVariableValue(action.data, "acc_route") === "signalwire_live"
-      && hasGuardedRouteMetadata(actions.slice(0, index))
+      && hasEffectiveGuardedRouteMetadata(actions.slice(0, index))
       && priorActionsAreBridgeSetupOnly(actions.slice(0, index))
     ))
     .flatMap((action) => vertoAgentContactsFromBridgeData(action.data));
+}
+
+function hasEffectiveGuardedRouteMetadata(actions) {
+  const metadata = effectiveRouteMetadata(actions);
+  return metadata.get("set:acc_route") === "signalwire_live"
+    && metadata.get("set:acc_destination_number") === "8600"
+    && metadata.get("set:acc_conversation_mode") === "openai_llm"
+    && metadata.get("set:acc_media_bridge") === "pipecat_verto_agent_leg"
+    && metadata.get("export:sip_h_x-acc-telephony-mode") === "signalwire_live"
+    && metadata.get("export:sip_h_x-acc-destination") === "8600"
+    && metadata.get("export:sip_h_x-acc-conversation-mode") === "openai_llm";
+}
+
+function effectiveRouteMetadata(actions) {
+  const metadata = new Map();
+  for (const action of actions) {
+    const assignment = routeMetadataAssignment(action);
+    if (assignment) metadata.set(assignment.key, assignment.value);
+  }
+  return metadata;
+}
+
+function routeMetadataAssignment(action) {
+  if (!["export", "set"].includes(action.application)) return null;
+  const assignment = dialplanAssignment(action.data);
+  if (!assignment) return null;
+
+  if (action.application === "set") {
+    const key = normalizedSetMetadataKey(assignment.key);
+    return key ? { key: `set:${key}`, value: assignment.value } : null;
+  }
+
+  const key = normalizedExportMetadataKey(assignment.key);
+  return key ? { key: `export:${key}`, value: assignment.value } : null;
+}
+
+function dialplanAssignment(value) {
+  const separator = clean(value).indexOf("=");
+  if (separator <= 0) return null;
+  const key = clean(value.slice(0, separator)).replace(/^nolocal:/i, "").toLowerCase();
+  const assignmentValue = clean(value.slice(separator + 1)).toLowerCase();
+  return key && assignmentValue ? { key, value: assignmentValue } : null;
+}
+
+function normalizedSetMetadataKey(key) {
+  return new Set([
+    "acc_route",
+    "acc_destination_number",
+    "acc_conversation_mode",
+    "acc_media_bridge",
+  ]).has(key) ? key : "";
+}
+
+function normalizedExportMetadataKey(key) {
+  const normalized = key.startsWith("x-acc-") ? `sip_h_${key}` : key;
+  return new Set([
+    "sip_h_x-acc-telephony-mode",
+    "sip_h_x-acc-destination",
+    "sip_h_x-acc-conversation-mode",
+  ]).has(normalized) ? normalized : "";
 }
 
 function priorActionsAreBridgeSetupOnly(actions) {
