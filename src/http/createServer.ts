@@ -510,6 +510,11 @@ function buildBrowserWebrtcBridgeSessionProofUrl(sessionId: string): string {
   return `${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/sessions/${encodeURIComponent(sessionId)}/proof`;
 }
 
+function buildBrowserWebrtcBridgeSessionUrl(sessionId: string): string {
+  const browserWebrtcBridgeBaseUrl = getBrowserWebrtcBridgeBaseUrl();
+  return `${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/sessions/${encodeURIComponent(sessionId)}`;
+}
+
 async function getBrowserWebrtcSessionProofFromBridge(sessionId: string): Promise<{ status: number; payload: unknown }> {
   const response = await fetch(buildBrowserWebrtcBridgeSessionProofUrl(sessionId), {
     method: "GET",
@@ -521,16 +526,28 @@ async function getBrowserWebrtcSessionProofFromBridge(sessionId: string): Promis
   return { status: response.status, payload: responsePayload };
 }
 
-async function postBrowserWebrtcOfferToBridge(payload: object): Promise<{ status: number; payload: unknown }> {
+async function postBrowserWebrtcOfferToBridge(payload: object, clientSignal?: AbortSignal): Promise<{ status: number; payload: unknown }> {
+  const timeoutSignal = AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs());
   const response = await fetch(buildBrowserWebrtcBridgeOfferUrl(), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs()),
+    signal: clientSignal ? AbortSignal.any([clientSignal, timeoutSignal]) : timeoutSignal,
   });
   const contentType = response.headers.get("content-type") ?? "";
   const responsePayload = contentType.includes("json") ? await response.json() : { detail: await response.text() };
   return { status: response.status, payload: responsePayload };
+}
+
+async function deleteBrowserWebrtcSessionFromBridge(sessionId: string): Promise<void> {
+  try {
+    await fetch(buildBrowserWebrtcBridgeSessionUrl(sessionId), {
+      method: "DELETE",
+      signal: AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs()),
+    });
+  } catch {
+    // Best effort: the bridge also observes the aborted offer and owns its local cleanup.
+  }
 }
 
 function buildBrowserWebrtcBridgeUnavailablePayload(error: unknown): object {
@@ -5402,18 +5419,21 @@ async function routeRequest(
     const conversationMode = isConversationMode(body.conversationMode) ? body.conversationMode : "free_caller";
 
     const sessionId = getOptionalTrimmedString(body.sessionId) ?? `browser-webrtc-${randomUUID()}`;
-    let releaseSessionOffer: (() => void) | null = null;
+    const sessionOfferAbortController = new AbortController();
     let sessionOfferResponseClosed = false;
+    let cleanupDisconnectedOffer: (() => Promise<void>) | null = null;
     response.once("close", () => {
+      if (response.writableEnded || response.writableFinished) return;
       sessionOfferResponseClosed = true;
-      releaseSessionOffer?.();
+      sessionOfferAbortController.abort(new Error("browser_webrtc_client_disconnected"));
+      void cleanupDisconnectedOffer?.().catch(() => undefined);
     });
-    releaseSessionOffer = await acquireLiveSipCallLock(browserWebrtcSessionOfferLocks, sessionId);
+    const releaseSessionOffer = await acquireLiveSipCallLock(browserWebrtcSessionOfferLocks, sessionId);
     if (sessionOfferResponseClosed || response.destroyed) {
       releaseSessionOffer();
       return;
     }
-    response.once("finish", releaseSessionOffer);
+    try {
     const requestedCallId = getOptionalTrimmedString(body.callId);
     const existingSnapshot = requestedCallId ? await ingress.getSnapshot(requestedCallId) : null;
     if (requestedCallId && !existingSnapshot) {
@@ -5466,6 +5486,18 @@ async function routeRequest(
       });
       purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
     };
+    let disconnectCleanupPromise: Promise<void> | null = null;
+    cleanupDisconnectedOffer = () => {
+      disconnectCleanupPromise ??= Promise.all([
+        retireProxyCreatedCall("pipecat_webrtc_client_disconnected"),
+        deleteBrowserWebrtcSessionFromBridge(sessionId),
+      ]).then(() => undefined);
+      return disconnectCleanupPromise;
+    };
+    if (sessionOfferResponseClosed || response.destroyed) {
+      await cleanupDisconnectedOffer();
+      return;
+    }
     const host = request.headers.host ?? "127.0.0.1:8026";
     const protocol = host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "http";
 
@@ -5485,7 +5517,12 @@ async function routeRequest(
           ffmpegRequired: false,
           preservation: ["callState", "transcript", "eventTrail", "latencyEvidence", "proofRoutes"],
         },
-      });
+      }, sessionOfferAbortController.signal);
+
+      if (sessionOfferResponseClosed || response.destroyed) {
+        await cleanupDisconnectedOffer();
+        return;
+      }
 
       if (!isRecord(bridgeResponse.payload)) {
         await retireProxyCreatedCall("pipecat_webrtc_bridge_invalid_response");
@@ -5536,8 +5573,14 @@ async function routeRequest(
         },
       });
     } catch (error) {
-      await retireProxyCreatedCall("pipecat_webrtc_bridge_unavailable");
-      writeJson(response, 503, buildBrowserWebrtcBridgeUnavailablePayload(error));
+      const clientDisconnected = sessionOfferResponseClosed || response.destroyed || sessionOfferAbortController.signal.aborted;
+      if (clientDisconnected) await cleanupDisconnectedOffer();
+      else await retireProxyCreatedCall("pipecat_webrtc_bridge_unavailable");
+      if (!clientDisconnected) writeJson(response, 503, buildBrowserWebrtcBridgeUnavailablePayload(error));
+    }
+    } finally {
+      if (sessionOfferResponseClosed && cleanupDisconnectedOffer) await cleanupDisconnectedOffer();
+      releaseSessionOffer();
     }
     return;
   }

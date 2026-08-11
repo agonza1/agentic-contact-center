@@ -79,6 +79,7 @@ class BrowserWebrtcBridge:
         self.sessions: dict[str, dict[str, Any]] = {}
         self.offer_sessions_in_flight: set[str] = set()
         self.acc_call_end_retry_tasks: dict[int, asyncio.Task[None]] = {}
+        self.cancelled_session_ids: set[str] = set()
         self.shutting_down = False
 
     def remember_session_alias(self, alias: str | None, session: dict[str, Any]) -> None:
@@ -346,6 +347,7 @@ class BrowserWebrtcBridge:
                 {"ok": False, "error": "webrtc_session_active", "sessionId": session_id},
                 status=409,
             )
+        self.cancelled_session_ids.discard(session_id)
         self.offer_sessions_in_flight.add(session_id)
         try:
             return await self.create_offer(
@@ -357,6 +359,7 @@ class BrowserWebrtcBridge:
             )
         finally:
             self.offer_sessions_in_flight.discard(session_id)
+            self.cancelled_session_ids.discard(session_id)
 
     async def create_offer(
         self,
@@ -401,6 +404,8 @@ class BrowserWebrtcBridge:
                     end_call_on_close=end_call_on_close,
                     readiness=readiness,
                 )
+                if session_id in self.cancelled_session_ids:
+                    await self.close_session(session_id, reason="signaling_client_disconnected")
 
             answer = await self.request_handler.handle_web_request(small_request, on_connection)
         except Exception as exc:
@@ -421,6 +426,15 @@ class BrowserWebrtcBridge:
                 reason="webrtc_answer_unavailable",
             )
             return web.json_response({"ok": False, "error": "webrtc_answer_unavailable"}, status=502)
+        if session_id in self.cancelled_session_ids:
+            await self.retire_failed_offer(
+                acc_url=acc_url,
+                call_id=call_id,
+                session_id=session_id,
+                registered_here=registered_here,
+                reason="signaling_client_disconnected",
+            )
+            return web.json_response({"ok": False, "error": "webrtc_session_cancelled"}, status=409)
 
         pc_id = str(answer.get("pc_id") or answer.get("sessionId") or payload.get("pcId") or payload.get("pc_id") or session_id)
         session_record = self.sessions.get(session_id) or self.sessions.get(pc_id)
@@ -546,6 +560,18 @@ class BrowserWebrtcBridge:
             }
         )
 
+    async def delete_session(self, request: web.Request) -> web.Response:
+        session_id = request.match_info.get("session_id", "")
+        offer_in_flight = session_id in self.offer_sessions_in_flight
+        if offer_in_flight:
+            self.cancelled_session_ids.add(session_id)
+        session = self.sessions.get(session_id)
+        if session:
+            await self.close_session(session_id, session_record=session, reason="signaling_client_disconnected")
+        return web.json_response(
+            {"ok": True, "sessionId": session_id, "closed": bool(session), "offerInFlight": offer_in_flight}
+        )
+
     async def close_session(
         self,
         session_id: str,
@@ -601,6 +627,7 @@ class BrowserWebrtcBridge:
         app.router.add_get("/api/webrtc/readiness", self.readiness)
         app.router.add_post("/api/webrtc/offer", self.offer)
         app.router.add_patch("/api/webrtc/offer", self.patch_offer)
+        app.router.add_delete("/api/webrtc/sessions/{session_id}", self.delete_session)
         app.router.add_get("/api/webrtc/sessions/{session_id}/proof", self.session_proof)
         app.on_shutdown.append(lambda _app: self.close_all())
         return app

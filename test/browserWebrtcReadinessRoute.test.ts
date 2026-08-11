@@ -107,6 +107,9 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(bridge, /delay_seconds = min\(delay_seconds \* 2, 30\.0\)/);
   assert.match(bridge, /self\.schedule_acc_call_end_retry\(session, session_id\)/);
   assert.match(bridge, /self\.acc_call_end_retry_tasks: dict\[int, asyncio\.Task\[None\]\] = \{\}/);
+  assert.match(bridge, /self\.cancelled_session_ids: set\[str\] = set\(\)/);
+  assert.match(bridge, /async def delete_session/);
+  assert.match(bridge, /app\.router\.add_delete\("\/api\/webrtc\/sessions\/\{session_id\}"/);
   assert.match(bridge, /if not session\.get\("endCallOnClose", True\) or session\.get\("accCallEnded"\):\s+self\.forget_session_record/);
   assert.match(bridge, /call_id, registered_here, end_call_on_close, conversation_mode = await self\.ensure_acc_call/);
   assert.match(bridge, /"conversationMode": conversation_mode/);
@@ -751,9 +754,19 @@ test("GET /api/browser-webrtc/readiness reports bridge offline before live media
 
 test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bridge", async () => {
   const bridgeRequests: Array<{ callId?: string; sdp?: string; type?: string; accUrl?: string; sessionId?: string; conversationMode?: string }> = [];
+  const bridgeCleanupRequests: string[] = [];
+  let markDisconnectOfferStarted!: () => void;
+  const disconnectOfferStarted = new Promise<void>((resolve) => { markDisconnectOfferStarted = resolve; });
   let activeConcurrentOffers = 0;
   let maxConcurrentOffers = 0;
   const bridge = createServer(async (request, response) => {
+    if (request.method === "DELETE" && request.url?.startsWith("/api/webrtc/sessions/")) {
+      bridgeCleanupRequests.push(request.url);
+      response.statusCode = 200;
+      response.setHeader("content-type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({ ok: true }));
+      return;
+    }
     if (request.method !== "POST" || request.url !== "/api/webrtc/offer") {
       response.statusCode = 404;
       response.end();
@@ -765,6 +778,10 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
     }
     const bridgeRequest = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     bridgeRequests.push(bridgeRequest);
+    if (bridgeRequest.sessionId === "proxy-browser-disconnect") {
+      markDisconnectOfferStarted();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
     if (bridgeRequest.sessionId === "proxy-browser-concurrent") {
       activeConcurrentOffers += 1;
       maxConcurrentOffers = Math.max(maxConcurrentOffers, activeConcurrentOffers);
@@ -877,6 +894,39 @@ test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bri
     assert.equal(rejectedAttachment.status, 409);
     assert.equal(rejectedAttachment.payload.error, "browser_webrtc_call_ended");
     assert.equal(bridgeRequests.length, 1);
+
+    const disconnectedRequest = request({
+      host: "127.0.0.1",
+      port: address.port,
+      path: "/api/browser-webrtc/session",
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+    const disconnectedRequestClosed = new Promise<void>((resolve) => {
+      disconnectedRequest.on("error", () => resolve());
+      disconnectedRequest.on("response", (incoming) => {
+        incoming.resume();
+        incoming.on("end", () => resolve());
+      });
+    });
+    disconnectedRequest.end(JSON.stringify({
+      sessionId: "proxy-browser-disconnect",
+      type: "offer",
+      sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=browser\r\nt=0 0\r\n",
+    }));
+    await disconnectOfferStarted;
+    disconnectedRequest.destroy();
+    await disconnectedRequestClosed;
+    for (let attempt = 0; attempt < 20 && bridgeCleanupRequests.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.deepEqual(bridgeCleanupRequests, ["/api/webrtc/sessions/proxy-browser-disconnect"]);
+    const disconnectedConsole = await callJsonRoute(address.port, "/api/operator/console");
+    const disconnectedCall = disconnectedConsole.payload.calls.items.find(
+      (call: any) => call.session.providerName === "pipecat-browser-webrtc"
+        && call.session.providerCallId === "proxy-browser-disconnect",
+    );
+    assert.equal(disconnectedCall?.controlMarkers.liveCall.status, "ended");
 
     const concurrentSessionId = "proxy-browser-concurrent";
     const concurrentOffer = {
