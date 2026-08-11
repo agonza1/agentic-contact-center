@@ -226,7 +226,7 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.match(closePrewarmCancelBlock, /await prewarm_task/);
 });
 
-test("Verto bridge scopes FreeSWITCH WebRTC behavior without process-global patches", () => {
+test("Verto bridge uses the FreeSWITCH request handler without active private aiortc mutations", () => {
   const bridge = readFileSync("scripts/pipecat-verto-agent-bridge.py", "utf8");
   const browserBridge = readFileSync("scripts/pipecat-browser-webrtc-bridge.py", "utf8");
 
@@ -240,8 +240,12 @@ test("Verto bridge scopes FreeSWITCH WebRTC behavior without process-global patc
   assert.doesNotMatch(bridge, /SmallWebRTCConnection\._create_answer\s*=/);
   assert.doesNotMatch(bridge, /RTCDtlsTransport\._write_ssl\s*=/);
   assert.doesNotMatch(bridge, /RTCDtlsTransport\._send_rtp\s*=/);
-  assert.match(bridge, /transport\._write_ssl = MethodType\(flush_all_ssl_datagrams, transport\)/);
-  assert.match(bridge, /transport\._send_rtp = MethodType\(send_rtp_without_repeated_audio_marker, transport\)/);
+  assert.doesNotMatch(bridge, /_RTCPeerConnection__certificates/);
+  assert.doesNotMatch(bridge, /\._set_role\(/);
+  assert.doesNotMatch(bridge, /transport\._write_ssl\s*=/);
+  assert.doesNotMatch(bridge, /transport\._send_rtp\s*=/);
+  assert.doesNotMatch(bridge, /_RTCDtlsTransport__tx_(?:bytes|packets)/);
+  assert.doesNotMatch(bridge, /\._ssl\b/);
   assert.match(browserBridge, /self\.request_handler = SmallWebRTCRequestHandler\(host=host\)/);
   assert.doesNotMatch(browserBridge, /FreeSwitchSmallWebRTCRequestHandler|FreeSwitchWebRTCConnection/);
 });
