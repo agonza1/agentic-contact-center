@@ -1018,6 +1018,10 @@ test("POST /api/pipecat/sessions/ensure-call registers direct Pipecat transports
     assert.equal(browserRetry.status, 200);
     assert.equal(browserRetry.payload.idempotent, true);
     assert.equal(browserRetry.payload.callId, browser.payload.callId);
+    assert.equal(
+      (browserRetry.payload.call as any).session.openclawSession.sessionId,
+      (browser.payload.call as any).session.openclawSession.sessionId,
+    );
     assert.equal(browser.payload.endCallOnClose, true);
     assert.equal(browser.payload.conversationMode, "scripted");
     assert.equal(browserRetry.payload.conversationMode, "scripted");
@@ -1065,6 +1069,10 @@ test("POST /api/pipecat/sessions/ensure-call registers direct Pipecat transports
     assert.equal(browserReconnect.status, 201);
     assert.equal(browserReconnect.payload.idempotent, false);
     assert.notEqual(browserReconnect.payload.callId, browser.payload.callId);
+    assert.notEqual(
+      (browserReconnect.payload.call as any).session.openclawSession.sessionId,
+      (browser.payload.call as any).session.openclawSession.sessionId,
+    );
 
     const consolePayload = await new Promise<{ calls: { items: Array<{ session: { callId: string; providerName: string }; controlMarkers: { liveCall: { status: string } } }> } }>((resolve, reject) => {
       const req = request({ host: "127.0.0.1", port: address.port, path: "/api/operator/console", method: "GET" }, (response) => {
@@ -1385,11 +1393,14 @@ test("POST /api/browser-webrtc/session fails closed when Pipecat bridge is unava
     assert.equal(payload.bridge.error, "bridge_booting");
     const consoleAfterFailure = await callJsonRoute(address.port, "/api/operator/console");
     assert.equal(consoleAfterFailure.payload.calls.items.length, 1);
-    assert.equal(consoleAfterFailure.payload.calls.items[0].controlMarkers.liveCall.status, "ended");
+    const failedCall = consoleAfterFailure.payload.calls.items[0];
+    assert.equal(failedCall.controlMarkers.liveCall.status, "ended");
+    const codexThreadId = failedCall.session.openclawSession.sessionId;
+    assert.match(codexThreadId, /^pipecat-browser-webrtc-browser-webrtc-codex-release-[0-9a-f-]{36}$/);
     for (let attempt = 0; attempt < 50 && codexReleaseRequests.length === 0; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    assert.deepEqual(codexReleaseRequests, ["DELETE /calls/pipecat-browser-webrtc-browser-webrtc-codex-release"]);
+    assert.deepEqual(codexReleaseRequests, [`DELETE /calls/${codexThreadId}`]);
   } finally {
     if (previousBridgeUrl === undefined) {
       delete process.env.BROWSER_WEBRTC_BRIDGE_URL;

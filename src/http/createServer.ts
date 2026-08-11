@@ -5501,18 +5501,18 @@ async function routeRequest(
       writeJson(response, 409, { ok: false, error: "browser_webrtc_call_ended", callId: requestedCallId });
       return;
     }
-    const openclawSessionId = `pipecat-browser-webrtc-${sessionId}`;
+    const registrationKey = `pipecat-browser-webrtc-${sessionId}`;
     const registration = existingSnapshot
       ? { snapshot: existingSnapshot, endCallOnClose: false }
-      : await withLiveSipCallLock(pipecatSessionRegistrationLocks, openclawSessionId, async () => {
-        const activeSnapshot = (await ingress.listSnapshots({ openclawSessionId }))
-          .find((candidate) => !isLiveSipCallEnded(candidate));
+      : await withLiveSipCallLock(pipecatSessionRegistrationLocks, registrationKey, async () => {
+        const activeSnapshot = (await ingress.listSnapshots({ providerCallId: sessionId }))
+          .find((candidate) => candidate.session.providerName === "pipecat-browser-webrtc" && !isLiveSipCallEnded(candidate));
         if (activeSnapshot) return { snapshot: activeSnapshot, endCallOnClose: true };
 
         const createdSnapshot = await ingress.startCall(config, {
           providerName: "pipecat-browser-webrtc",
           providerCallId: sessionId,
-          openclawSessionId,
+          openclawSessionId: `${registrationKey}-${randomUUID()}`,
           openclawSessionLabel: `pipecat/browser-webrtc/${sessionId}`,
           source: "mock_http_route",
           conversationMode,
@@ -6450,10 +6450,12 @@ async function routeRequest(
     }
 
     const transportLabel = transport.replace("_", "-");
-    const openclawSessionId = `pipecat-${transportLabel}-${sessionId}`;
-    const registration = await withLiveSipCallLock(pipecatSessionRegistrationLocks, openclawSessionId, async () => {
-      const existingSnapshot = (await ingress.listSnapshots({ openclawSessionId }))
-        .find((snapshot) => !isLiveSipCallEnded(snapshot));
+    const browserTransport = transport === "browser_webrtc";
+    const providerName = browserTransport ? "pipecat-browser-webrtc" : "freeswitch-verto";
+    const registrationKey = `pipecat-${transportLabel}-${sessionId}`;
+    const registration = await withLiveSipCallLock(pipecatSessionRegistrationLocks, registrationKey, async () => {
+      const existingSnapshot = (await ingress.listSnapshots({ providerCallId: sessionId }))
+        .find((snapshot) => snapshot.session.providerName === providerName && !isLiveSipCallEnded(snapshot));
       if (existingSnapshot) {
         return {
           status: 200,
@@ -6471,11 +6473,10 @@ async function routeRequest(
         };
       }
 
-      const browserTransport = transport === "browser_webrtc";
       const snapshot = await ingress.startCall(config, {
-        providerName: browserTransport ? "pipecat-browser-webrtc" : "freeswitch-verto",
+        providerName,
         providerCallId: sessionId,
-        openclawSessionId,
+        openclawSessionId: `${registrationKey}-${randomUUID()}`,
         openclawSessionLabel: `pipecat/${transportLabel}/${sessionId}`,
         source: browserTransport ? "mock_http_route" : "freeswitch_verto",
         conversationMode,
