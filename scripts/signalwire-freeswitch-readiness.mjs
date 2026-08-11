@@ -732,7 +732,7 @@ async function externalSipReachabilityProof(proofPath, expectedEndpoint, now, ex
     const proofPort = Number(proof.targetPort ?? proof.port ?? proof.endpoint?.port ?? 5060);
     const checkedAt = clean(proof.checkedAt);
     const checkedAtMs = Date.parse(checkedAt);
-    const transport = clean(proof.transport || "udp").toLowerCase();
+    const transport = clean(proof.transport).toLowerCase();
     const sipResponseCode = Number(proof.sipResponseCode ?? proof.responseCode);
     const sourceIsExternal = /(?:signalwire|provider|external)/i.test(source);
     const targetMatches = proofHost === expectedHost && proofPort === expectedPort;
@@ -744,7 +744,7 @@ async function externalSipReachabilityProof(proofPath, expectedEndpoint, now, ex
     const sipResponseProvesReachability = Number.isInteger(sipResponseCode)
       && sipResponseCode >= 100
       && sipResponseCode <= 699;
-    const transportMatches = transport === requiredTransport;
+    const transportMatches = Boolean(transport) && transport === requiredTransport;
     const proven = proof.reachable === true
       && sourceIsExternal
       && targetMatches
