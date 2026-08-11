@@ -25,6 +25,10 @@ import {
 } from "../core/assertEvaluationSpec";
 import { compareTimestamps, getAttentionMetadata } from "../core/attention";
 import {
+  CONVERSATION_PROPOSAL_JSON_SCHEMA,
+  parseConversationProposal,
+} from "../core/conversationProposal";
+import {
   hasActiveTerminalOperatorStop,
   InMemoryTelephonyIngress,
   shouldForceScriptedRetentionFinalTurn,
@@ -1767,7 +1771,8 @@ function buildOperatorConsoleHtml(): string {
         const status = isCompleted ? "Sent" : isNext ? "Next" : "Queued";
         return '<button type="button" data-scripted-turn="' + index + '" ' + disabled + '><span class="meta">' + status + ' | Turn ' + (index + 1) + '</span><br>' + escapeHtml(text) + '</button>';
       }).join("");
-      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + pendingHtml + '</div><div class="workbench"><div class="stack">' + voiceControlsHtml() + '<section class="section"><h3 class="section-title">Call Controls</h3><div class="actions">' + actionHtml + '</div><details class="section-drawer"><summary>Advanced controls</summary><div class="drawer-content"><div class="actions">' + advancedActionHtml + '</div></div></details></section><details class="section-drawer"><summary>Test tools</summary><div class="drawer-content"><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></div></details><details class="section-drawer"' + (call.flowState === "wrap" ? " open" : "") + '><summary>Notes & disposition</summary><div class="drawer-content"><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></div></details></div><div class="stack"><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section><details class="section-drawer"><summary>Evidence & QA</summary><div class="drawer-content">' + assertHtml + liveProofHtml + markerHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section></div></details></div></div>';
+      const routingMetricHtml = call.conversationControl && call.conversationControl.node ? '<div class="metric compact"><span class="meta">Conversation node</span><strong>' + escapeHtml(call.conversationControl.node) + '</strong><span class="meta">ACC-authorized route</span></div>' : '';
+      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div>' + routingMetricHtml + '<div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + pendingHtml + '</div><div class="workbench"><div class="stack">' + voiceControlsHtml() + '<section class="section"><h3 class="section-title">Call Controls</h3><div class="actions">' + actionHtml + '</div><details class="section-drawer"><summary>Advanced controls</summary><div class="drawer-content"><div class="actions">' + advancedActionHtml + '</div></div></details></section><details class="section-drawer"><summary>Test tools</summary><div class="drawer-content"><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></div></details><details class="section-drawer"' + (call.flowState === "wrap" ? " open" : "") + '><summary>Notes & disposition</summary><div class="drawer-content"><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></div></details></div><div class="stack"><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section><details class="section-drawer"><summary>Evidence & QA</summary><div class="drawer-content">' + assertHtml + liveProofHtml + markerHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section></div></details></div></div>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\\n\\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       root.querySelectorAll("button[data-scripted-turn]").forEach(function(button) { button.addEventListener("click", function() { const index = Number(button.dataset.scriptedTurn); if (Number.isInteger(index)) postScriptedTurn(index).catch(function(error) { setStatus(error.message); }); }); });
       attachVoiceControls();
@@ -5016,14 +5021,20 @@ async function generateOpenAiLiveSipResponse(
     .join("\n");
   const systemPromptText = [
     "You are the live OpenAI-backed conversation path for ACC SIP extension 8600.",
-    "Answer in one or two short sentences suitable for TTS.",
+    "Classify the latest caller request and propose one short reply suitable for TTS.",
+    "Return only the requested structured request-proposal object; do not return prose outside it.",
+    "The intent must be cancellation, billing, account_update, service_information, human_handoff, or unsupported.",
+    "Match requestedOperation respectively to cancel_policy, review_billing, update_account, get_service_information, handoff, or null.",
+    "Set needsClarification only for unsupported requests.",
     "Do not promise discounts, refunds, cancellation completion, policy changes, or regulated advice.",
     "When a request requires approval, account access, or a human decision, say you will prepare a safe handoff.",
     "Ask at most one focused follow-up question.",
+    "This routing slice does not verify identity, authorize an operation, or execute a business action.",
   ].join(" ");
   const userPromptText = [
     `Timestamp: ${timestamp}`,
     `Flow state: ${snapshot.flowState}`,
+    `Conversation node: ${snapshot.conversationControl.node ?? "understand_request"}`,
     `Recent transcript:\n${transcript || "(none)"}`,
     `Latest caller turn: ${callerText}`,
   ].join("\n");
@@ -5053,13 +5064,18 @@ async function generateOpenAiLiveSipResponse(
         status: bridge.status,
       };
     }
-    const text = getOptionalTrimmedString(bridge.payload.text) ?? "";
+    const proposalText = getOptionalTrimmedString(bridge.payload.text) ?? "";
+    const parsed = parseConversationProposal(proposalText);
+    if (!parsed.ok) return { ok: false, model, error: parsed.error, status: bridge.status };
+    const text = parsed.proposal.proposedReply;
     const validationError = validateOpenAiAgentText(text);
     if (validationError) return { ok: false, model, error: validationError, status: bridge.status };
     return {
       ok: true,
       model,
       text,
+      proposal: parsed.proposal,
+      targetNode: parsed.targetNode,
       responseId: getOptionalTrimmedString(bridge.payload.threadId) ?? null,
       status: bridge.status,
     };
@@ -5096,6 +5112,14 @@ async function generateOpenAiLiveSipResponse(
     store: false,
     max_output_tokens: 160,
     input,
+    text: {
+      format: {
+        type: "json_schema",
+        name: "conversation_request_proposal",
+        strict: true,
+        schema: CONVERSATION_PROPOSAL_JSON_SCHEMA,
+      },
+    },
   };
 
   const controller = new AbortController();
@@ -5116,7 +5140,12 @@ async function generateOpenAiLiveSipResponse(
       const errorMessage = isRecord(payload) && isRecord(payload.error) ? getOptionalTrimmedString(payload.error.message) : null;
       return { ok: false, model, error: redactOpenAiError(errorMessage ?? response.statusText), status: response.status };
     }
-    const text = extractOpenAiResponseText(payload);
+    const proposalText = extractOpenAiResponseText(payload);
+    const parsed = parseConversationProposal(proposalText);
+    if (!parsed.ok) {
+      return { ok: false, model, error: parsed.error, status: response.status };
+    }
+    const text = parsed.proposal.proposedReply;
     const validationError = validateOpenAiAgentText(text);
     if (validationError) {
       return { ok: false, model, error: validationError, status: response.status };
@@ -5125,6 +5154,8 @@ async function generateOpenAiLiveSipResponse(
       ok: true,
       model,
       text,
+      proposal: parsed.proposal,
+      targetNode: parsed.targetNode,
       responseId: isRecord(payload) ? getOptionalTrimmedString(payload.id) ?? null : null,
       status: response.status,
     };

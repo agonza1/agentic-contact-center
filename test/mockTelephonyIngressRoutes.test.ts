@@ -1835,6 +1835,8 @@ test("GET /operator/console serves a compact console with contextual controls", 
     assert.match(response.body, /<details class="toolbar-menu"><summary>More<\/summary>/);
     assert.match(response.body, /\.toolbar-menu:not\(\[open\]\) > \.menu-panel \{ display: none; \}/);
     assert.match(response.body, /Needs attention/);
+    assert.match(response.body, /Conversation node/);
+    assert.match(response.body, /ACC-authorized route/);
     assert.match(response.body, /aria-label="Search calls"/);
     assert.match(response.body, /<details class="filter-drawer"><summary>Filters<\/summary>/);
     assert.match(response.body, /\.filter-drawer:not\(\[open\]\) > \.filters-advanced \{ display: none; \}/);

@@ -5,6 +5,25 @@ import { createServer as createTestServer, request } from "node:http";
 import { loadPocConfig } from "../src/config/loadPocConfig";
 import { buildHttpServer } from "../src/http/createServer";
 
+function conversationProposalOutput(
+  proposedReply: string,
+  overrides: Partial<{
+    intent: string;
+    requestedOperation: string | null;
+    needsClarification: boolean;
+    reason: string | null;
+  }> = {},
+): string {
+  return JSON.stringify({
+    schemaVersion: 1,
+    intent: overrides.intent ?? "unsupported",
+    requestedOperation: overrides.requestedOperation ?? null,
+    needsClarification: overrides.needsClarification ?? true,
+    slots: { reason: overrides.reason ?? null },
+    proposedReply,
+  });
+}
+
 function requestJson(port: number, method: string, route: string, body?: unknown): Promise<{ statusCode: number; payload: any }> {
   const rawBody = body === undefined ? undefined : JSON.stringify(body);
   return new Promise((resolve, reject) => {
@@ -689,7 +708,13 @@ test("live SIP separates 8611 free caller, 8612 scripted failure, and 8600 OpenA
     req.on("end", () => {
       openAiRequests.push({ url: req.url, authorization: req.headers.authorization, body: JSON.parse(body) });
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ id: "resp-live-8600", output_text: "I can help review that safely. What account detail should I check first?" }));
+      res.end(JSON.stringify({
+        id: "resp-live-8600",
+        output_text: conversationProposalOutput(
+          "I can help review that safely. What account detail should I check first?",
+          { intent: "account_update", requestedOperation: "update_account", needsClarification: false },
+        ),
+      }));
     });
   });
   await new Promise<void>((resolve) => openAiServer.listen(0, "127.0.0.1", resolve));
@@ -790,6 +815,18 @@ test("live SIP separates 8611 free caller, 8612 scripted failure, and 8600 OpenA
     assert.equal(openAiRequests[0].url, "/v1/responses");
     assert.equal(openAiRequests[0].authorization, "Bearer test-openai-key");
     assert.equal(openAiRequests[0].body.model, "gpt-5.4-mini");
+    assert.equal(openAiRequests[0].body.text.format.type, "json_schema");
+    assert.equal(openAiRequests[0].body.text.format.strict, true);
+    assert.equal(llmTranscript.payload.call.conversationControl.node, "collect_identity");
+    assert.equal(llmTranscript.payload.call.conversationControl.lastProposal.intent, "account_update");
+    assert.equal(llmTranscript.payload.call.conversationControl.lastDecision.status, "accepted");
+    assert.equal(
+      llmTranscript.payload.call.events.some((event: any) =>
+        event.type === "conversation_proposal_accepted"
+        && event.detail.targetNode === "collect_identity"
+        && event.detail.businessStateChanged === false),
+      true,
+    );
     assert.equal(
       llmTranscript.payload.call.events.some((event: any) => event.type === "openai_conversation_turn_processed" && event.detail.model === "gpt-5.4-mini"),
       true,
@@ -843,7 +880,7 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
         return;
       }
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, model: "gpt-5.4-mini", text: "I can help with that safely. What would you like me to review?", threadId: "codex-thread-1" }));
+      res.end(JSON.stringify({ ok: true, model: "gpt-5.4-mini", text: conversationProposalOutput("I can help with that safely. What would you like me to review?"), threadId: "codex-thread-1" }));
     });
   });
   await new Promise<void>((resolve) => bridgeServer.listen(0, "127.0.0.1", resolve));
@@ -973,7 +1010,7 @@ test("live SIP 8600 can use the OpenClaw OAuth Responses gateway", async () => {
         body: JSON.parse(body),
       });
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ id: "resp-openclaw-oauth", output_text: "I can help safely through the live path. What should I verify first?" }));
+      res.end(JSON.stringify({ id: "resp-openclaw-oauth", output_text: conversationProposalOutput("I can help safely through the live path. What should I verify first?") }));
     });
   });
   await new Promise<void>((resolve) => gatewayServer.listen(0, "127.0.0.1", resolve));
@@ -1172,7 +1209,7 @@ test("delivery-ack commits must match the server-side OpenAI preview", async () 
     req.resume();
     req.on("end", () => {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ id: "resp-bound-preview", output_text: "I can help with that safely. What should I review first?" }));
+      res.end(JSON.stringify({ id: "resp-bound-preview", output_text: conversationProposalOutput("I can help with that safely. What should I review first?") }));
     });
   });
   await new Promise<void>((resolve) => openAiServer.listen(0, "127.0.0.1", resolve));
@@ -1258,7 +1295,7 @@ test("delivery-ack OpenAI previews reject a concurrent preview for the same snap
     req.on("end", () => {
       setTimeout(() => {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ id: "resp-concurrent-preview", output_text: "I can help with the live AI path." }));
+        res.end(JSON.stringify({ id: "resp-concurrent-preview", output_text: conversationProposalOutput("I can help with the live AI path.") }));
       }, 25);
     });
   });
@@ -1373,7 +1410,7 @@ test("live SIP immediate OpenAI caller turns serialize concurrent generation per
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({
           id: firstTurn ? "resp-live-serial-1" : "resp-live-serial-2",
-          output_text: responseText,
+          output_text: conversationProposalOutput(responseText),
         }));
       }, delayMs);
     });
@@ -1506,7 +1543,7 @@ test("live SIP media transcript OpenAI generation serializes with immediate call
           res.writeHead(200, { "content-type": "application/json" });
           res.end(JSON.stringify({
             id: "resp-media-transcript-serial",
-            output_text: "Legacy media transcript response.",
+            output_text: conversationProposalOutput("Legacy media transcript response."),
           }));
           return;
         }
@@ -1514,7 +1551,7 @@ test("live SIP media transcript OpenAI generation serializes with immediate call
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({
           id: "resp-media-transcript-direct",
-          output_text: "Direct response after media transcript.",
+          output_text: conversationProposalOutput("Direct response after media transcript."),
         }));
       })().catch((error) => {
         res.writeHead(500, { "content-type": "application/json" });
@@ -1623,7 +1660,7 @@ test("live SIP media transcript OpenAI generation does not block hangup lifecycl
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({
           id: "resp-media-transcript-hangup",
-          output_text: "This response should not be appended after hangup.",
+          output_text: conversationProposalOutput("This response should not be appended after hangup."),
         }));
       })().catch((error) => {
         res.writeHead(500, { "content-type": "application/json" });
@@ -1743,7 +1780,7 @@ test("live SIP delivery-ack OpenAI previews serialize with immediate caller turn
           res.writeHead(200, { "content-type": "application/json" });
           res.end(JSON.stringify({
             id: "resp-delivery-ack-serial-preview",
-            output_text: "Delivery ack preview response.",
+            output_text: conversationProposalOutput("Delivery ack preview response."),
           }));
           return;
         }
@@ -1751,7 +1788,7 @@ test("live SIP delivery-ack OpenAI previews serialize with immediate caller turn
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({
           id: "resp-delivery-ack-serial-immediate",
-          output_text: "Immediate response after delivery ack preview.",
+          output_text: conversationProposalOutput("Immediate response after delivery ack preview."),
         }));
       })().catch((error) => {
         res.writeHead(500, { "content-type": "application/json" });
@@ -2196,7 +2233,7 @@ test("direct OpenAI caller turns recheck SIP termination after async generation"
     req.resume();
     releaseOpenAiResponse = () => {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ id: "resp-ended-call", output_text: "I can help safely after checking the account." }));
+      res.end(JSON.stringify({ id: "resp-ended-call", output_text: conversationProposalOutput("I can help safely after checking the account.") }));
     };
     markOpenAiRequestSeen?.();
   });
@@ -2288,7 +2325,7 @@ test("direct OpenAI caller turns preserve operator holds after async generation"
     req.resume();
     releaseOpenAiResponse = () => {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ id: "resp-operator-hold", output_text: "I can keep helping safely." }));
+      res.end(JSON.stringify({ id: "resp-operator-hold", output_text: conversationProposalOutput("I can keep helping safely.") }));
     };
     markOpenAiRequestSeen?.();
   });
@@ -2388,7 +2425,7 @@ test("live SIP media transcripts preserve operator holds after async OpenAI gene
     req.resume();
     releaseOpenAiResponse = () => {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ id: "resp-media-operator-hold", output_text: "I can continue the live call safely." }));
+      res.end(JSON.stringify({ id: "resp-media-operator-hold", output_text: conversationProposalOutput("I can continue the live call safely.") }));
     };
     markOpenAiRequestSeen?.();
   });
@@ -2483,7 +2520,7 @@ test("live SIP terminal operator actions stop OpenAI automation until operator r
     req.resume();
     openAiRequests.push({ url: req.url });
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ id: "resp-terminal-release", output_text: "Automation is explicitly released." }));
+    res.end(JSON.stringify({ id: "resp-terminal-release", output_text: conversationProposalOutput("Automation is explicitly released.") }));
   });
   await new Promise<void>((resolve) => openAiServer.listen(0, "127.0.0.1", resolve));
   const openAiAddress = openAiServer.address();

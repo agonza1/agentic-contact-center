@@ -2,8 +2,8 @@
 """Local Codex OAuth bridge for the ACC voice demo.
 
 The bridge owns ChatGPT/Codex authentication. ACC and the browser receive only
-device-login metadata and final assistant text; OAuth credentials never cross
-this HTTP boundary.
+device-login metadata and a typed conversation proposal; OAuth credentials
+never cross this HTTP boundary.
 """
 
 from __future__ import annotations
@@ -43,11 +43,17 @@ VOICE_THREAD_CONFIG: dict[str, Any] = {
 VOICE_DEVELOPER_INSTRUCTIONS = " ".join(
     (
         "You are the conversational reasoning component for ACC SIP extension 8600.",
-        "Return only the words the voice agent should say, in one or two short sentences suitable for TTS.",
+        "Return only a JSON object with exactly these fields: schemaVersion, intent, requestedOperation, needsClarification, slots, and proposedReply.",
+        "schemaVersion must be 1.",
+        "intent must be cancellation, billing, account_update, service_information, human_handoff, or unsupported.",
+        "requestedOperation must respectively be cancel_policy, review_billing, update_account, get_service_information, handoff, or null.",
+        "needsClarification is true only for unsupported; slots contains exactly reason, which is a string or null.",
+        "proposedReply is one or two short sentences suitable for TTS. Do not use Markdown or JSON fences.",
         "Do not use tools, inspect files, run commands, or discuss software implementation.",
         "Do not promise discounts, refunds, cancellation completion, policy changes, or regulated advice.",
         "When a request requires approval, account access, or a human decision, offer a safe handoff.",
         "Ask at most one focused follow-up question.",
+        "This routing slice does not verify identity, authorize an operation, or execute a business action.",
     )
 )
 

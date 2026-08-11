@@ -46,6 +46,13 @@ function cloneSnapshot(snapshot: CallSnapshot): CallSnapshot {
         expectedCallerTurns: [...snapshot.pipecatFlow.script.expectedCallerTurns],
       },
     },
+    conversationControl: {
+      ...snapshot.conversationControl,
+      lastProposal: snapshot.conversationControl.lastProposal
+        ? { ...snapshot.conversationControl.lastProposal, slots: { ...snapshot.conversationControl.lastProposal.slots } }
+        : null,
+      lastDecision: snapshot.conversationControl.lastDecision ? { ...snapshot.conversationControl.lastDecision } : null,
+    },
     flowState: snapshot.flowState,
     transcript: snapshot.transcript.map((turn) => ({ ...turn })),
     events: snapshot.events.map((event) => ({ ...event, detail: { ...event.detail } })),
@@ -328,6 +335,11 @@ export class InMemoryTelephonyIngress {
         source: null,
       },
       pipecatFlow: buildPipecatFlowPrototypeStatus(config.policy.defaultSupervisorSteer),
+      conversationControl: {
+        node: conversationMode === "openai_llm" ? "understand_request" : null,
+        lastProposal: null,
+        lastDecision: null,
+      },
       flowState: "call_started",
       transcript: [],
       events: [

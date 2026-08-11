@@ -24,12 +24,36 @@ FLOW_MANAGER_REQUIRED_VERSIONS = {
 }
 
 FLOW_MANAGER_ALLOWED_TRANSITIONS: dict[str, set[str]] = {
-    "call_started": {"call_started", "greet", "diagnose", "wrap"},
-    "greet": {"greet", "diagnose", "wrap"},
-    "diagnose": {"diagnose", "policy_hold", "wrap"},
+    "call_started": {"call_started", "greet", "diagnose", "understand_request", "wrap"},
+    "greet": {"greet", "diagnose", "understand_request", "wrap"},
+    "diagnose": {"diagnose", "policy_hold", "understand_request", "wrap"},
     "policy_hold": {"policy_hold", "operator_steer", "wrap"},
     "operator_steer": {"operator_steer", "steered_response", "wrap"},
     "steered_response": {"steered_response", "diagnose", "wrap"},
+    "understand_request": {
+        "understand_request", "collect_identity", "understand_billing",
+        "provide_service_information", "prepare_handoff", "clarify_request", "wrap",
+    },
+    "collect_identity": {
+        "understand_request", "collect_identity", "understand_billing",
+        "provide_service_information", "prepare_handoff", "clarify_request", "wrap",
+    },
+    "understand_billing": {
+        "understand_request", "collect_identity", "understand_billing",
+        "provide_service_information", "prepare_handoff", "clarify_request", "wrap",
+    },
+    "provide_service_information": {
+        "understand_request", "collect_identity", "understand_billing",
+        "provide_service_information", "prepare_handoff", "clarify_request", "wrap",
+    },
+    "prepare_handoff": {
+        "understand_request", "collect_identity", "understand_billing",
+        "provide_service_information", "prepare_handoff", "clarify_request", "wrap",
+    },
+    "clarify_request": {
+        "understand_request", "collect_identity", "understand_billing",
+        "provide_service_information", "prepare_handoff", "clarify_request", "wrap",
+    },
     "wrap": {"wrap"},
 }
 
@@ -40,7 +64,22 @@ FLOW_MANAGER_NODE_INTENTS = {
     "policy_hold": "Fail closed before any unapproved retention offer language.",
     "operator_steer": "Wait for ACC-owned bounded operator approval or denial.",
     "steered_response": "Deliver only the bounded response approved by ACC operator controls.",
+    "understand_request": "Classify the caller's request; treat the model result only as a proposal for ACC validation.",
+    "collect_identity": "Collect identity inputs without treating them as verified business state.",
+    "understand_billing": "Clarify the billing question without changing an account or promising an outcome.",
+    "provide_service_information": "Provide non-account-specific service information within the approved response boundary.",
+    "prepare_handoff": "Prepare a human handoff without claiming that an operation was approved or completed.",
+    "clarify_request": "Ask one focused question when the request cannot be routed safely.",
     "wrap": "Stop automated retention handling and preserve handoff or close proof.",
+}
+
+FLOW_MANAGER_NODE_ALLOWED_FUNCTIONS = {
+    "understand_request": ["route_request", "transfer_to_human"],
+    "collect_identity": ["submit_identity", "transfer_to_human"],
+    "understand_billing": ["submit_billing_question", "transfer_to_human"],
+    "provide_service_information": ["get_service_information", "transfer_to_human"],
+    "prepare_handoff": ["transfer_to_human"],
+    "clarify_request": ["route_request", "transfer_to_human"],
 }
 
 HELD_CALLER_TURN_ERRORS = {
@@ -182,6 +221,7 @@ class AccPipecatFlowManagerAdapter:
                 "runtimeAdapter": "pipecat.flows.FlowManager",
                 "runtimeVersions": versions,
                 "currentNode": self.manager.current_node,
+                "allowedFunctions": FLOW_MANAGER_NODE_ALLOWED_FUNCTIONS.get(self.manager.current_node, []),
                 "retainedAccOwnership": ["product_state", "operator_controls", "proof_artifacts", "queue_state"],
                 "queuedFrameTypes": list(self.frame_sink.queued_frame_types),
             }
@@ -210,6 +250,7 @@ class AccPipecatFlowManagerAdapter:
             **self.last_evidence,
             "ok": True,
             "currentNode": self.manager.current_node,
+            "allowedFunctions": FLOW_MANAGER_NODE_ALLOWED_FUNCTIONS.get(self.manager.current_node, []),
             "lastTransition": transition,
             "transitionCount": len(self.transition_trace),
             "queuedFrameTypes": list(self.frame_sink.queued_frame_types),
@@ -336,6 +377,7 @@ class AccPipecatFlowManagerAdapter:
             "ok": True,
             "currentNode": current_node,
             "pendingNode": target_node,
+            "pendingAllowedFunctions": FLOW_MANAGER_NODE_ALLOWED_FUNCTIONS.get(target_node, []),
             "pendingTransition": dict(self.pending_transition),
             "transitionCount": len(self.transition_trace),
         }
@@ -658,9 +700,21 @@ class AccPipecatFlowManagerAdapter:
                     if cached_terminal_result is not None:
                         return cached_terminal_result
                     raise
-                target_node = preview.get("flowState")
+                conversation_control = preview.get("conversationControl")
+                structured_routing = (
+                    conversation_mode == "openai_llm"
+                    and isinstance(conversation_control, dict)
+                    and isinstance(conversation_control.get("node"), str)
+                )
+                target_node = (
+                    conversation_control.get("node")
+                    if structured_routing
+                    else preview.get("flowState")
+                )
                 if not isinstance(target_node, str):
-                    raise FlowManagerRuntimeError("ACC caller-turn preview did not return flowState")
+                    raise FlowManagerRuntimeError("ACC caller-turn preview did not return an authorized conversation node")
+                if structured_routing and self.manager.current_node in {"call_started", "greet", "diagnose"}:
+                    await self.activate_node("understand_request", reason="openai_routing_envelope")
                 if cached_terminal_result is not None:
                     if not self._released_fail_closed_after_stop(preview):
                         return cached_terminal_result
