@@ -98,6 +98,19 @@ async def run_regression() -> dict[str, Any]:
     )
     await structured_adapter.commit_pending_transition()
 
+    structured_discard_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-structured-routing-discarded",
+        request_json=structured_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    structured_discard_preview = await structured_discard_adapter.preview_caller_turn(
+        text="I want to close my policy",
+        conversation_mode="openai_llm",
+    )
+    structured_discard_adapter.discard_pending_transition("barge_in_cancelled_before_delivery")
+
     discarded_nodes = iter(["greet", "greet"])
 
     def discarded_http(_method: str, _url: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -485,6 +498,14 @@ async def run_regression() -> dict[str, Any]:
             and structured_adapter.manager.current_node == "collect_identity"
             and [step["to"] for step in structured_adapter.transition_trace]
             == ["understand_request", "collect_identity"]
+        ),
+        "structuredRoutingEnvelopeWaitsForDeliveryAck": (
+            structured_discard_preview["flowManagerRuntime"]["pendingTransition"]["path"]
+            == ["understand_request", "collect_identity"]
+            and structured_discard_adapter.manager.current_node == "call_started"
+            and structured_discard_adapter.pending_transition is None
+            and structured_discard_adapter.transition_trace == []
+            and structured_discard_adapter.last_evidence["commitPolicy"] == "preview_discarded"
         ),
         "bargeInDiscardsUnheardTransition": (
             discarded_adapter.manager.current_node == "call_started"

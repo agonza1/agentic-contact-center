@@ -360,14 +360,29 @@ class AccPipecatFlowManagerAdapter:
             evidence.pop(key, None)
         self.last_evidence = evidence
 
-    def stage_transition(self, target_node: str, *, reason: str) -> None:
+    def stage_transition(
+        self,
+        target_node: str,
+        *,
+        reason: str,
+        via_nodes: list[str] | None = None,
+    ) -> None:
         if self.pending_transition is not None:
             raise FlowManagerRuntimeError("FlowManager already has a pending delivery-ack transition")
-        current_node = self.validate_transition(target_node)
+        if not self.manager or not self.initialized:
+            raise FlowManagerRuntimeError("FlowManager must be initialized before staging a transition")
+        current_node = self.manager.current_node
+        path = [*(via_nodes or []), target_node]
+        path_source = current_node
+        for path_target in path:
+            if path_target not in FLOW_MANAGER_ALLOWED_TRANSITIONS.get(path_source, set()):
+                raise FlowManagerRuntimeError(f"unsafe FlowManager transition rejected: {path_source}->{path_target}")
+            path_source = path_target
         self._prepared_transition_trace_start = None
         self.pending_transition = {
             "from": current_node,
             "to": target_node,
+            "path": path,
             "reason": reason,
             "stagedAt": datetime.now(UTC).isoformat(timespec="milliseconds"),
         }
@@ -388,7 +403,16 @@ class AccPipecatFlowManagerAdapter:
             raise FlowManagerRuntimeError("FlowManager has no pending delivery-ack transition")
         self._prepared_transition_trace_start = len(self.transition_trace)
         try:
-            await self.activate_node(pending["to"], reason="caller_turn_delivery_ack")
+            transition_path = pending.get("path")
+            if not isinstance(transition_path, list) or not transition_path:
+                transition_path = [pending["to"]]
+            for index, path_target in enumerate(transition_path):
+                transition_reason = (
+                    "caller_turn_delivery_ack"
+                    if index == len(transition_path) - 1
+                    else "openai_routing_envelope_delivery_ack"
+                )
+                await self.activate_node(path_target, reason=transition_reason)
         except asyncio.CancelledError:
             await self._restore_prepared_transition(pending, "delivery_ack_activation_cancelled")
             raise
@@ -713,14 +737,17 @@ class AccPipecatFlowManagerAdapter:
                 )
                 if not isinstance(target_node, str):
                     raise FlowManagerRuntimeError("ACC caller-turn preview did not return an authorized conversation node")
-                if structured_routing and self.manager.current_node in {"call_started", "greet", "diagnose"}:
-                    await self.activate_node("understand_request", reason="openai_routing_envelope")
                 if cached_terminal_result is not None:
                     if not self._released_fail_closed_after_stop(preview):
                         return cached_terminal_result
                     self._terminal_result = None
                 await self.resync_released_fail_closed_state(preview, target_node)
-                self.stage_transition(target_node, reason="caller_turn_preview")
+                route_via = (
+                    ["understand_request"]
+                    if structured_routing and self.manager.current_node in {"call_started", "greet", "diagnose"}
+                    else None
+                )
+                self.stage_transition(target_node, reason="caller_turn_preview", via_nodes=route_via)
                 evidence = {
                     **self.last_evidence,
                     "commitPolicy": "preview_until_output_delivery_ack",
