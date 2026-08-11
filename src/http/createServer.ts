@@ -5594,6 +5594,19 @@ async function routeRequest(
 
       const answerType = getOptionalTrimmedString(bridgeResponse.payload.type);
       const answerSdp = typeof bridgeResponse.payload.sdp === "string" ? bridgeResponse.payload.sdp : "";
+      const bridgeError = getOptionalTrimmedString(bridgeResponse.payload.error);
+      if (bridgeResponse.status === 409 && bridgeError === "webrtc_session_active") {
+        writeJson(response, 409, {
+          ok: false,
+          error: "browser_webrtc_session_active",
+          sessionId,
+          callId,
+          bridgeStatus: bridgeResponse.status,
+          bridgeOfferRoute: buildBrowserWebrtcBridgeOfferUrl(),
+          bridge: bridgeResponse.payload,
+        });
+        return;
+      }
       if (!bridgeResponse.status.toString().startsWith("2") || answerType !== "answer" || !answerSdp.trim()) {
         await cleanupFailedOffer("pipecat_webrtc_bridge_offer_failed");
         writeJson(response, 502, {

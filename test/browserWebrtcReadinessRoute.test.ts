@@ -1377,6 +1377,82 @@ test("POST /api/browser-webrtc/session fails closed when Pipecat bridge is unava
   }
 });
 
+test("POST /api/browser-webrtc/session preserves an active peer when a duplicate offer is rejected", async () => {
+  const bridgeRequests: Array<{ method: string | undefined; url: string | undefined }> = [];
+  let offerCount = 0;
+  const bridge = createServer((request, response) => {
+    bridgeRequests.push({ method: request.method, url: request.url });
+    response.setHeader("content-type", "application/json; charset=utf-8");
+    if (request.method === "DELETE") {
+      response.statusCode = 200;
+      response.end(JSON.stringify({ ok: true, closed: true }));
+      return;
+    }
+    offerCount += 1;
+    if (offerCount > 1) {
+      response.statusCode = 409;
+      response.end(JSON.stringify({
+        ok: false,
+        error: "webrtc_session_active",
+        sessionId: "browser-webrtc-active-peer",
+      }));
+      return;
+    }
+    response.statusCode = 200;
+    response.end(JSON.stringify({
+      ok: true,
+      type: "answer",
+      sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=ACC Pipecat WebRTC\r\nt=0 0\r\n",
+      sessionId: "browser-webrtc-active-peer",
+    }));
+  });
+  await new Promise<void>((resolve) => bridge.listen(0, "127.0.0.1", resolve));
+  const bridgeAddress = bridge.address();
+  if (!bridgeAddress || typeof bridgeAddress === "string") {
+    throw new Error("Expected an ephemeral bridge TCP port");
+  }
+  const previousBridgeUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL;
+  process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const offer = {
+      type: "offer",
+      sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=browser\r\nt=0 0\r\n",
+      sessionId: "browser-webrtc-active-peer",
+    };
+    const established = await callJsonRoute(address.port, "/api/browser-webrtc/session", "POST", offer);
+    assert.equal(established.status, 201);
+
+    const duplicate = await callJsonRoute(address.port, "/api/browser-webrtc/session", "POST", offer);
+    assert.equal(duplicate.status, 409);
+    assert.equal(duplicate.payload.error, "browser_webrtc_session_active");
+    assert.equal(duplicate.payload.callId, established.payload.callId);
+    assert.equal(duplicate.payload.bridge.error, "webrtc_session_active");
+    assert.equal(offerCount, 2);
+    assert.equal(bridgeRequests.some((entry) => entry.method === "DELETE"), false);
+
+    const call = await callJsonRoute(address.port, `/api/calls/${established.payload.callId}`);
+    assert.equal(call.status, 200);
+    assert.equal(call.payload.events.some((event: { type: string }) => event.type === "sip_call_ended"), false);
+  } finally {
+    if (previousBridgeUrl === undefined) {
+      delete process.env.BROWSER_WEBRTC_BRIDGE_URL;
+    } else {
+      process.env.BROWSER_WEBRTC_BRIDGE_URL = previousBridgeUrl;
+    }
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    bridge.closeAllConnections();
+    await new Promise<void>((resolve, reject) => bridge.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("POST /api/browser-webrtc/session times out stalled Pipecat bridge offers", async () => {
   const bridgeRequests: Array<{ method: string | undefined; url: string | undefined }> = [];
   const bridge = createServer((request, response) => {
