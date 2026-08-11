@@ -5531,7 +5531,7 @@ async function routeRequest(
       if (!registration.endCallOnClose) return;
       const current = await ingress.getSnapshot(callId);
       if (!current || isLiveSipCallEnded(current)) return;
-      await ingress.recordLiveTelephonyEvidence(callId, {
+      const endedSnapshot = await ingress.recordLiveTelephonyEvidence(callId, {
         eventType: "sip_call_ended",
         timestamp: new Date().toISOString(),
         detail: {
@@ -5542,6 +5542,7 @@ async function routeRequest(
         },
       });
       purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
+      releaseCodexVoiceCall(endedSnapshot);
     };
     let failedOfferCleanupPromise: Promise<void> | null = null;
     cleanupFailedOffer = (reason: string) => {

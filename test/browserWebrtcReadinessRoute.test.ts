@@ -1309,6 +1309,18 @@ test("GET /api/browser-webrtc/session/:sessionId/proof proxies Pipecat bridge tu
 });
 
 test("POST /api/browser-webrtc/session fails closed when Pipecat bridge is unavailable", async () => {
+  const codexReleaseRequests: string[] = [];
+  const codexBridge = createServer((request, response) => {
+    codexReleaseRequests.push(`${request.method} ${request.url}`);
+    response.statusCode = 200;
+    response.setHeader("content-type", "application/json; charset=utf-8");
+    response.end(JSON.stringify({ ok: true, released: true }));
+  });
+  await new Promise<void>((resolve) => codexBridge.listen(0, "127.0.0.1", resolve));
+  const codexBridgeAddress = codexBridge.address();
+  if (!codexBridgeAddress || typeof codexBridgeAddress === "string") {
+    throw new Error("Expected an ephemeral Codex bridge TCP port");
+  }
   const bridge = createServer((_request, response) => {
     response.statusCode = 503;
     response.setHeader("content-type", "application/json; charset=utf-8");
@@ -1320,7 +1332,11 @@ test("POST /api/browser-webrtc/session fails closed when Pipecat bridge is unava
     throw new Error("Expected an ephemeral bridge TCP port");
   }
   const previousBridgeUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL;
+  const previousCodexAuthMode = process.env.ACC_OPENAI_AUTH_MODE;
+  const previousCodexBridgeUrl = process.env.ACC_CODEX_VOICE_BRIDGE_URL;
   process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
+  process.env.ACC_OPENAI_AUTH_MODE = "codex_oauth";
+  process.env.ACC_CODEX_VOICE_BRIDGE_URL = `http://127.0.0.1:${codexBridgeAddress.port}`;
 
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -1347,7 +1363,12 @@ test("POST /api/browser-webrtc/session fails closed when Pipecat bridge is unava
         },
       );
       req.on("error", reject);
-      req.end(JSON.stringify({ type: "offer", sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=browser\r\nt=0 0\r\n" }));
+      req.end(JSON.stringify({
+        type: "offer",
+        sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=browser\r\nt=0 0\r\n",
+        sessionId: "browser-webrtc-codex-release",
+        conversationMode: "openai_llm",
+      }));
     });
 
     const payload = JSON.parse(responseBody) as {
@@ -1365,15 +1386,31 @@ test("POST /api/browser-webrtc/session fails closed when Pipecat bridge is unava
     const consoleAfterFailure = await callJsonRoute(address.port, "/api/operator/console");
     assert.equal(consoleAfterFailure.payload.calls.items.length, 1);
     assert.equal(consoleAfterFailure.payload.calls.items[0].controlMarkers.liveCall.status, "ended");
+    for (let attempt = 0; attempt < 50 && codexReleaseRequests.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.deepEqual(codexReleaseRequests, ["DELETE /calls/pipecat-browser-webrtc-browser-webrtc-codex-release"]);
   } finally {
     if (previousBridgeUrl === undefined) {
       delete process.env.BROWSER_WEBRTC_BRIDGE_URL;
     } else {
       process.env.BROWSER_WEBRTC_BRIDGE_URL = previousBridgeUrl;
     }
+    if (previousCodexAuthMode === undefined) {
+      delete process.env.ACC_OPENAI_AUTH_MODE;
+    } else {
+      process.env.ACC_OPENAI_AUTH_MODE = previousCodexAuthMode;
+    }
+    if (previousCodexBridgeUrl === undefined) {
+      delete process.env.ACC_CODEX_VOICE_BRIDGE_URL;
+    } else {
+      process.env.ACC_CODEX_VOICE_BRIDGE_URL = previousCodexBridgeUrl;
+    }
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     bridge.closeAllConnections();
     await new Promise<void>((resolve, reject) => bridge.close((error) => error ? reject(error) : resolve()));
+    codexBridge.closeAllConnections();
+    await new Promise<void>((resolve, reject) => codexBridge.close((error) => error ? reject(error) : resolve()));
   }
 });
 
