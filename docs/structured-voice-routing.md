@@ -12,6 +12,7 @@ speech -> ASR final -> LLM request proposal -> ACC validation -> Pipecat Flow no
 - The LLM proposes `intent`, `requestedOperation`, clarification state, a small slot set, and a short reply.
 - ACC strictly validates the schema, checks the intent/operation pairing, applies the output guardrail, and selects the next node.
 - Pipecat `FlowManager` owns the conversation-node transition. The transition is staged during preview and committed only after first audio is delivered and ACC receives the delivery acknowledgement.
+- Codex delivery previews use a stateless thread seeded from ACC's committed transcript, so canceled or zero-audio output cannot leak into the next model turn.
 - ACC remains authoritative for identity, customer/account data, approvals, tools, and resulting business state.
 
 The first graph routes `understand_request` to one of:

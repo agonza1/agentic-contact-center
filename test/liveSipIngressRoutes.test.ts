@@ -940,11 +940,30 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
     assert.equal(bridgeRequests[0].body.callId, transcript.payload.call.session.callId);
     assert.equal(bridgeRequests[0].body.callInstanceId, "live-sip-sip-codex-oauth-8600");
     assert.equal(bridgeRequests[0].body.model, "gpt-5.4-mini");
+    assert.equal(bridgeRequests[0].body.stateless, false);
     assert.match(bridgeRequests[0].body.prompt, /Latest caller turn: Can you help with my renewal\?/);
     assert.equal(
       transcript.payload.call.events.some((event: any) => event.type === "openai_conversation_turn_processed" && event.detail.model === "gpt-5.4-mini"),
       true,
     );
+
+    const preview = await requestJson(
+      address.port,
+      "POST",
+      `/api/calls/${encodeURIComponent(started.payload.call.session.callId)}/caller-turn`,
+      {
+        text: "I may cancel if the renewal cannot be reduced.",
+        timestamp: "2026-08-04T12:00:01.500Z",
+        conversationMode: "openai_llm",
+        commitMode: "delivery_ack",
+      },
+    );
+    assert.equal(preview.statusCode, 200);
+    assert.equal(preview.payload.callerTurnCommit.status, "pending");
+    assert.equal(bridgeRequests.length, 2);
+    assert.equal(bridgeRequests[1].url, "/respond");
+    assert.equal(bridgeRequests[1].body.callInstanceId, "live-sip-sip-codex-oauth-8600");
+    assert.equal(bridgeRequests[1].body.stateless, true);
 
     const endStartedAt = Date.now();
     const ended = await requestJson(address.port, "POST", "/api/live-sip/events", {
@@ -959,11 +978,11 @@ test("live SIP 8600 uses backend Codex OAuth with the pinned gpt-5.4-mini model"
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     assert.equal(releaseAttempts, 2);
-    assert.equal(bridgeRequests.length, 3);
-    assert.equal(bridgeRequests[1].method, "DELETE");
-    assert.equal(bridgeRequests[1].url, "/calls/live-sip-sip-codex-oauth-8600");
+    assert.equal(bridgeRequests.length, 4);
     assert.equal(bridgeRequests[2].method, "DELETE");
     assert.equal(bridgeRequests[2].url, "/calls/live-sip-sip-codex-oauth-8600");
+    assert.equal(bridgeRequests[3].method, "DELETE");
+    assert.equal(bridgeRequests[3].url, "/calls/live-sip-sip-codex-oauth-8600");
 
     const endedAgain = await requestJson(address.port, "POST", "/api/live-sip/events", {
       eventType: "call.ended",

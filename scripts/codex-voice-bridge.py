@@ -172,22 +172,25 @@ class CodexVoiceBridge:
             payload.update(self.auth_status())
         return HTTPStatus.OK, payload
 
+    def _start_thread(self) -> CallThread:
+        thread = self.codex.thread_start(
+            approval_mode=self.approval_mode,
+            config=VOICE_THREAD_CONFIG,
+            cwd=str(self.workspace),
+            developer_instructions=VOICE_DEVELOPER_INSTRUCTIONS,
+            ephemeral=True,
+            model=PINNED_MODEL,
+            sandbox=self.sandbox,
+            service_name="acc-voice-demo",
+        )
+        return CallThread(thread=thread)
+
     def _call_thread(self, call_id: str) -> CallThread:
         with self.state_lock:
             existing = self.calls.get(call_id)
             if existing is not None:
                 return existing
-            thread = self.codex.thread_start(
-                approval_mode=self.approval_mode,
-                config=VOICE_THREAD_CONFIG,
-                cwd=str(self.workspace),
-                developer_instructions=VOICE_DEVELOPER_INSTRUCTIONS,
-                ephemeral=True,
-                model=PINNED_MODEL,
-                sandbox=self.sandbox,
-                service_name="acc-voice-demo",
-            )
-            created = CallThread(thread=thread)
+            created = self._start_thread()
             self.calls[call_id] = created
             return created
 
@@ -202,18 +205,23 @@ class CodexVoiceBridge:
         call_instance_id = body.get("callInstanceId") or call_id
         model = body.get("model")
         prompt = body.get("prompt")
+        stateless = body.get("stateless", False)
         if not isinstance(call_id, str) or not call_id.strip() or len(call_id) > 200:
             return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "call_id_invalid", "model": PINNED_MODEL}
         if not isinstance(call_instance_id, str) or not call_instance_id.strip() or len(call_instance_id) > 300:
             return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "call_instance_id_invalid", "model": PINNED_MODEL}
         if model != PINNED_MODEL:
             return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "codex_model_must_be_gpt-5.4-mini", "model": PINNED_MODEL}
+        if not isinstance(stateless, bool):
+            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "stateless_invalid", "model": PINNED_MODEL}
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > MAX_PROMPT_CHARS:
             return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "prompt_invalid", "model": PINNED_MODEL}
         if not self.auth_status().get("authenticated"):
             return HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "codex_oauth_login_required", "model": PINNED_MODEL}
         try:
-            call = self._call_thread(call_instance_id.strip())
+            # Delivery-ack previews must not mutate persistent model history:
+            # ACC becomes authoritative only after caller-audible output commits.
+            call = self._start_thread() if stateless else self._call_thread(call_instance_id.strip())
             with call.lock:
                 result = call.thread.run(
                     prompt.strip(),
@@ -230,6 +238,7 @@ class CodexVoiceBridge:
                 "model": PINNED_MODEL,
                 "text": text,
                 "threadId": call.thread.id,
+                "stateless": stateless,
             }
         except Exception as error:
             return HTTPStatus.BAD_GATEWAY, {"ok": False, "error": _safe_error(error), "model": PINNED_MODEL}

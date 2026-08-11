@@ -105,6 +105,8 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(codexVoiceBridge, /"shell_tool": False/);
   assert.match(codexVoiceBridge, /"web_search": "disabled"/);
   assert.match(codexVoiceBridge, /config=VOICE_THREAD_CONFIG/);
+  assert.match(codexVoiceBridge, /call = self\._start_thread\(\) if stateless else self\._call_thread/);
+  assert.match(codexVoiceBridge, /"stateless": stateless/);
   assert.match(codexVoiceRequirements, /allowed_approval_policies = \["never"\]/);
   assert.match(codexVoiceRequirements, /allowed_sandbox_modes = \["read-only"\]/);
   assert.match(codexVoiceRequirements, /allowed_web_search_modes = \[\]/);

@@ -5013,6 +5013,7 @@ async function generateOpenAiLiveSipResponse(
   callerText: string,
   timestamp: string,
   env: NodeJS.ProcessEnv = process.env,
+  options: { stateless?: boolean } = {},
 ): Promise<OpenAiLlmTurnResult> {
   const model = openAiConversationModel(env);
   const transcript = snapshot.transcript
@@ -5052,6 +5053,7 @@ async function generateOpenAiLiveSipResponse(
           callInstanceId: snapshot.session.openclawSession.sessionId,
           model: codexVoiceModel,
           prompt: userPromptText,
+          stateless: options.stateless === true,
         }),
       },
       env,
@@ -7979,7 +7981,7 @@ async function routeRequest(
               return undefined;
             }
             currentSnapshot = lockedSnapshot;
-            return generateOpenAiLiveSipResponse(lockedSnapshot, text, timestamp);
+            return generateOpenAiLiveSipResponse(lockedSnapshot, text, timestamp, process.env, { stateless: true });
           })
         : undefined;
       if (deliveryAckOpenAiResponseHandled) return;
