@@ -78,6 +78,8 @@ class BrowserWebrtcBridge:
         self.request_handler = SmallWebRTCRequestHandler(host=host)
         self.sessions: dict[str, dict[str, Any]] = {}
         self.offer_sessions_in_flight: set[str] = set()
+        self.acc_call_end_retry_tasks: dict[int, asyncio.Task[None]] = {}
+        self.shutting_down = False
 
     def remember_session_alias(self, alias: str | None, session: dict[str, Any]) -> None:
         if isinstance(alias, str) and alias.strip():
@@ -149,6 +151,75 @@ class BrowserWebrtcBridge:
                     await asyncio.sleep(0.25 * attempt)
         return False
 
+    async def try_end_acc_call(self, session: dict[str, Any], session_id: str) -> bool:
+        if session.get("accCallEnded"):
+            return True
+        lock = session.setdefault("accCallEndLock", asyncio.Lock())
+        async with lock:
+            if session.get("accCallEnded"):
+                return True
+            session["accCallEnded"] = await self.end_acc_call(
+                acc_url=str(session.get("accUrl") or DEFAULT_ACC_URL),
+                call_id=str(session.get("callId") or ""),
+                session_id=str(session.get("requestedSessionId") or session_id),
+                reason=str(session.get("closeReason") or "browser WebRTC session closed"),
+            )
+            if session["accCallEnded"]:
+                session["accCallEndRetrying"] = False
+                self.forget_session_record(session)
+            return bool(session["accCallEnded"])
+
+    async def retry_acc_call_end(self, session: dict[str, Any], session_id: str) -> None:
+        delay_seconds = 2.0
+        while not self.shutting_down and not session.get("accCallEnded"):
+            await asyncio.sleep(delay_seconds)
+            if await self.try_end_acc_call(session, session_id):
+                print(
+                    json.dumps(
+                        {
+                            "type": "pipecat.small_webrtc.acc_call_end_recovered",
+                            "callId": session.get("callId"),
+                            "sessionId": session.get("requestedSessionId") or session_id,
+                        }
+                    ),
+                    flush=True,
+                )
+                return
+            delay_seconds = min(delay_seconds * 2, 30.0)
+
+    def schedule_acc_call_end_retry(self, session: dict[str, Any], session_id: str) -> None:
+        if self.shutting_down or session.get("accCallEnded") or not session.get("endCallOnClose", True):
+            return
+        retry_key = id(session)
+        existing_task = self.acc_call_end_retry_tasks.get(retry_key)
+        if existing_task and not existing_task.done():
+            return
+        session["accCallEndRetrying"] = True
+        retry_task = asyncio.create_task(self.retry_acc_call_end(session, session_id))
+        self.acc_call_end_retry_tasks[retry_key] = retry_task
+
+        def finish_retry(task: asyncio.Task[None]) -> None:
+            if self.acc_call_end_retry_tasks.get(retry_key) is task:
+                self.acc_call_end_retry_tasks.pop(retry_key, None)
+            if not session.get("accCallEnded"):
+                session["accCallEndRetrying"] = False
+            with contextlib.suppress(asyncio.CancelledError):
+                error = task.exception()
+                if error:
+                    print(
+                        json.dumps(
+                            {
+                                "type": "pipecat.small_webrtc.acc_call_end_retry_failed",
+                                "callId": session.get("callId"),
+                                "sessionId": session.get("requestedSessionId") or session_id,
+                                "detail": str(error),
+                            }
+                        ),
+                        flush=True,
+                    )
+
+        retry_task.add_done_callback(finish_retry)
+
     async def retire_failed_offer(
         self,
         *,
@@ -162,7 +233,16 @@ class BrowserWebrtcBridge:
         if session_record:
             await self.close_session(session_id, session_record=session_record, reason=reason)
         elif registered_here:
-            await self.end_acc_call(acc_url=acc_url, call_id=call_id, session_id=session_id, reason=reason)
+            cleanup_record = {
+                "accUrl": acc_url,
+                "callId": call_id,
+                "requestedSessionId": session_id,
+                "endCallOnClose": True,
+                "closeReason": reason,
+                "closedAt": datetime.now(UTC).isoformat(timespec="seconds"),
+            }
+            if not await self.try_end_acc_call(cleanup_record, session_id):
+                self.schedule_acc_call_end_retry(cleanup_record, session_id)
 
     async def start_pipeline(
         self,
@@ -407,6 +487,8 @@ class BrowserWebrtcBridge:
                 "startedAt": session.get("startedAt"),
                 "closedAt": session.get("closedAt"),
                 "closeReason": session.get("closeReason"),
+                "accCallEnded": bool(session.get("accCallEnded")),
+                "accCallEndRetrying": bool(session.get("accCallEndRetrying")),
                 "transport": "SmallWebRTCTransport",
                 "pipeline": ACC_VOICE_PIPELINE_CONTRACT,
                 "turnEvidence": evidence,
@@ -444,12 +526,8 @@ class BrowserWebrtcBridge:
             session["closedAt"] = session.get("closedAt") or datetime.now(UTC).isoformat(timespec="seconds")
             session["closeReason"] = session.get("closeReason") or reason
             if session.get("endCallOnClose", True) and not session.get("accCallEnded"):
-                session["accCallEnded"] = await self.end_acc_call(
-                    acc_url=str(session.get("accUrl") or DEFAULT_ACC_URL),
-                    call_id=str(session.get("callId") or ""),
-                    session_id=str(session.get("requestedSessionId") or session_id),
-                    reason=str(session.get("closeReason") or reason),
-                )
+                if not await self.try_end_acc_call(session, session_id):
+                    self.schedule_acc_call_end_retry(session, session_id)
             if not session.get("endCallOnClose", True) or session.get("accCallEnded"):
                 self.forget_session_record(session)
         runner = session.get("runner")
@@ -466,7 +544,23 @@ class BrowserWebrtcBridge:
                 await task
 
     async def close_all(self) -> None:
-        await asyncio.gather(*(self.close_session(session_id) for session_id in list(self.sessions)), return_exceptions=True)
+        self.shutting_down = True
+        unique_sessions: dict[int, tuple[str, dict[str, Any]]] = {}
+        for session_id, session in list(self.sessions.items()):
+            unique_sessions.setdefault(id(session), (session_id, session))
+        await asyncio.gather(
+            *(
+                self.close_session(session_id, session_record=session)
+                for session_id, session in unique_sessions.values()
+            ),
+            return_exceptions=True,
+        )
+        retry_tasks = list(self.acc_call_end_retry_tasks.values())
+        for task in retry_tasks:
+            task.cancel()
+        if retry_tasks:
+            await asyncio.gather(*retry_tasks, return_exceptions=True)
+        self.acc_call_end_retry_tasks.clear()
         await self.request_handler.close()
 
     def app(self) -> web.Application:

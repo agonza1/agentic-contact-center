@@ -101,7 +101,12 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(bridge, /async def end_acc_call[^\n]+-> bool/);
   assert.match(bridge, /for attempt in range\(1, 4\)/);
   assert.match(bridge, /"retrying": attempt < 3/);
+  assert.match(bridge, /async def try_end_acc_call/);
   assert.match(bridge, /session\["accCallEnded"\] = await self\.end_acc_call/);
+  assert.match(bridge, /async def retry_acc_call_end/);
+  assert.match(bridge, /delay_seconds = min\(delay_seconds \* 2, 30\.0\)/);
+  assert.match(bridge, /self\.schedule_acc_call_end_retry\(session, session_id\)/);
+  assert.match(bridge, /self\.acc_call_end_retry_tasks: dict\[int, asyncio\.Task\[None\]\] = \{\}/);
   assert.match(bridge, /if not session\.get\("endCallOnClose", True\) or session\.get\("accCallEnded"\):\s+self\.forget_session_record/);
   assert.match(bridge, /call_id, registered_here, end_call_on_close = await self\.ensure_acc_call/);
   assert.match(bridge, /"endCallOnClose": end_call_on_close/);
@@ -113,7 +118,9 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(bridge, /async def retire_failed_offer/);
   assert.match(bridge, /reason="webrtc_offer_setup_failed"/);
   assert.match(bridge, /reason="webrtc_answer_unavailable"/);
-  assert.match(bridge, /elif registered_here:\s+await self\.end_acc_call/);
+  assert.match(bridge, /elif registered_here:\s+cleanup_record =/);
+  assert.match(bridge, /self\.schedule_acc_call_end_retry\(cleanup_record, session_id\)/);
+  assert.match(bridge, /task\.cancel\(\)/);
   assert.match(bridge, /"transport": "browser_webrtc"/);
   assert.match(sharedPipeline, /silence_finalize_task/);
   assert.match(sharedPipeline, /finalize_after_silence/);
