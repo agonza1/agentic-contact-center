@@ -124,6 +124,7 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(bridge, /reason="webrtc_offer_setup_failed"/);
   assert.match(bridge, /reason="webrtc_answer_unavailable"/);
   assert.match(bridge, /elif registered_here:\s+cleanup_record =/);
+  assert.match(bridge, /self\.remember_session_alias\(session_id, cleanup_record\)/);
   assert.match(bridge, /self\.schedule_acc_call_end_retry\(cleanup_record, session_id\)/);
   assert.match(bridge, /task\.cancel\(\)/);
   assert.match(bridge, /"transport": "browser_webrtc"/);

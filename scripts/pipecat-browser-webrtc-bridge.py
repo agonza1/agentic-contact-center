@@ -254,6 +254,7 @@ class BrowserWebrtcBridge:
                 "closeReason": reason,
                 "closedAt": datetime.now(UTC).isoformat(timespec="seconds"),
             }
+            self.remember_session_alias(session_id, cleanup_record)
             if not await self.try_end_acc_call(cleanup_record, session_id):
                 self.schedule_acc_call_end_retry(cleanup_record, session_id)
 
