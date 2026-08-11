@@ -10,7 +10,13 @@ Do not put live SignalWire values in Git, docs, issue comments, screenshots, or 
 
 ## Required local environment
 
-Keep these values in a local `.env` or shell session. `.env` and `artifacts/` are gitignored.
+Keep these values in a local `.env` or shell session. `.env` and `artifacts/` are gitignored. The readiness script reads the process environment and does not load `.env` files itself; if you keep these values in `.env`, explicitly load it before running any readiness command:
+
+```sh
+set -a
+. ./.env
+set +a
+```
 
 Registration trunks require:
 

@@ -69,9 +69,9 @@ function normalizeSpaceHost(value) {
   const raw = clean(value);
   if (!raw) return "";
   try {
-    return new URL(raw.includes("://") ? raw : `https://${raw}`).host;
+    return new URL(raw.includes("://") ? raw : `https://${raw}`).hostname.replace(/^\[|\]$/g, "");
   } catch {
-    return raw.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    return removeEndpointPort(raw.replace(/^https?:\/\//, "").replace(/\/.*$/, ""));
   }
 }
 
@@ -240,18 +240,120 @@ function activeSignalWireAclCondition(entry, expectedDid, sourceAclName) {
 }
 
 function didExpressionMatchesExpectedValues(expression, expectedDid) {
-  const pattern = clean(expression);
   const targetValues = signalWireDialplanTargetValues(expectedDid);
-  const nonTargetValues = signalWireDialplanNonTargetValues(expectedDid);
-  if (!pattern || targetValues.length === 0 || nonTargetValues.length === 0) return false;
-  let regexp;
-  try {
-    regexp = new RegExp(pattern);
-  } catch {
-    return false;
+  const acceptedValues = acceptedDidExpressionValues(expression);
+  return acceptedValues
+    && targetValues.length > 0
+    && setEquals(new Set(acceptedValues), new Set(targetValues));
+}
+
+function acceptedDidExpressionValues(expression) {
+  const body = anchoredRegexBody(expression);
+  if (!body) return null;
+  const values = [];
+  for (const alternative of splitTopLevelAlternatives(body)) {
+    const expanded = acceptedDidAlternativeValues(alternative);
+    if (!expanded) return null;
+    values.push(...expanded);
   }
-  return targetValues.every((value) => regexp.test(value))
-    && nonTargetValues.every((value) => !regexp.test(value));
+  return [...new Set(values)];
+}
+
+function anchoredRegexBody(expression) {
+  const pattern = clean(expression);
+  if (!pattern.startsWith("^") || !pattern.endsWith("$")) return "";
+  return stripWholeRegexGroups(pattern.slice(1, -1));
+}
+
+function stripWholeRegexGroups(value) {
+  let body = clean(value);
+  while (body.startsWith("(") && body.endsWith(")") && wholeRegexGroupEndIndex(body) === body.length - 1) {
+    body = clean(body.startsWith("(?:") ? body.slice(3, -1) : body.slice(1, -1));
+  }
+  return body;
+}
+
+function wholeRegexGroupEndIndex(value) {
+  let escaped = false;
+  let depth = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === "(") depth += 1;
+    if (char === ")") {
+      depth -= 1;
+      if (depth === 0) return index;
+      if (depth < 0) return -1;
+    }
+  }
+  return -1;
+}
+
+function splitTopLevelAlternatives(value) {
+  const alternatives = [];
+  let escaped = false;
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === "(") depth += 1;
+    if (char === ")") depth -= 1;
+    if (char === "|" && depth === 0) {
+      alternatives.push(value.slice(start, index));
+      start = index + 1;
+    }
+  }
+  alternatives.push(value.slice(start));
+  return alternatives.map(stripWholeRegexGroups);
+}
+
+function acceptedDidAlternativeValues(value) {
+  const alternative = clean(value);
+  if (/^\\\+\?\d+$/.test(alternative)) {
+    const digits = alternative.slice(3);
+    return [`+${digits}`, digits];
+  }
+  const literal = regexLiteralAlternativeValue(alternative);
+  return literal ? [literal] : null;
+}
+
+function regexLiteralAlternativeValue(value) {
+  let literal = "";
+  let escaped = false;
+  for (const char of value) {
+    if (escaped) {
+      if (!/[+A-Za-z0-9_-]/.test(char)) return "";
+      literal += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (/[()[\]{}|.*?^$]/.test(char)) return "";
+    literal += char;
+  }
+  return escaped ? "" : clean(literal);
+}
+
+function setEquals(left, right) {
+  return left.size === right.size && [...left].every((value) => right.has(value));
 }
 
 function parseXmlTree(value) {
@@ -328,22 +430,24 @@ function executableActionPaths(condition) {
 }
 
 function guardedSignalWireBridgeContactsFromActions(actions) {
-  const hasActionData = (application, pattern) => actions.some((action) => (
+  const hasActionData = (candidateActions, application, pattern) => candidateActions.some((action) => (
     action.application === application && pattern.test(action.data)
   ));
-  const hasGuardedRouteMetadata = hasActionData("set", /(?:^|[,;{])acc_route=signalwire_live(?:[,;} ]|$)/i)
-    && hasActionData("set", /(?:^|[,;{])acc_destination_number=8600(?:[,;} ]|$)/i)
-    && hasActionData("set", /(?:^|[,;{])acc_conversation_mode=openai_llm(?:[,;} ]|$)/i)
-    && hasActionData("set", /(?:^|[,;{])acc_media_bridge=pipecat_verto_agent_leg(?:[,;} ]|$)/i)
-    && hasActionData("export", /(?:sip_h_X-ACC-Telephony-Mode|X-ACC-Telephony-Mode)=signalwire_live/i)
-    && hasActionData("export", /(?:sip_h_X-ACC-Destination|X-ACC-Destination)=8600/i)
-    && hasActionData("export", /(?:sip_h_X-ACC-Conversation-Mode|X-ACC-Conversation-Mode)=openai_llm/i);
-  if (!hasGuardedRouteMetadata) return [];
+  const hasGuardedRouteMetadata = (candidateActions) => (
+    hasActionData(candidateActions, "set", /(?:^|[,;{])acc_route=signalwire_live(?:[,;} ]|$)/i)
+    && hasActionData(candidateActions, "set", /(?:^|[,;{])acc_destination_number=8600(?:[,;} ]|$)/i)
+    && hasActionData(candidateActions, "set", /(?:^|[,;{])acc_conversation_mode=openai_llm(?:[,;} ]|$)/i)
+    && hasActionData(candidateActions, "set", /(?:^|[,;{])acc_media_bridge=pipecat_verto_agent_leg(?:[,;} ]|$)/i)
+    && hasActionData(candidateActions, "export", /(?:sip_h_X-ACC-Telephony-Mode|X-ACC-Telephony-Mode)=signalwire_live/i)
+    && hasActionData(candidateActions, "export", /(?:sip_h_X-ACC-Destination|X-ACC-Destination)=8600/i)
+    && hasActionData(candidateActions, "export", /(?:sip_h_X-ACC-Conversation-Mode|X-ACC-Conversation-Mode)=openai_llm/i)
+  );
   return actions
-    .filter((action) => (
+    .filter((action, index) => (
       action.application === "bridge"
       && /absolute_codec_string=PCMU/i.test(action.data)
       && /(?:^|[,;{])acc_route=signalwire_live(?:[,;} ]|$)/i.test(action.data)
+      && hasGuardedRouteMetadata(actions.slice(0, index))
     ))
     .flatMap((action) => vertoAgentContactsFromBridgeData(action.data));
 }
