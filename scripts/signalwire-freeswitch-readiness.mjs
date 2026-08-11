@@ -98,6 +98,21 @@ function redactProofSource(value) {
   return clean(value) ? "[redacted]" : null;
 }
 
+function redactProofPath(value, redactor) {
+  const text = clean(value);
+  if (!text) return null;
+  return redactIpLiterals(redactor(text)).replace(/[^/\\]+/g, (segment) => {
+    if (
+      /\[redacted(?:-address)?\]/i.test(segment)
+      || /@/.test(segment)
+      || /\b(?:authorization|password|passwd|token|secret|credential|api[-_]?key|access[-_]?key|private|internal|corp|lan|local|pbx)\b/i.test(segment)
+    ) {
+      return "[redacted]";
+    }
+    return segment;
+  });
+}
+
 function redactIpLiterals(text) {
   return text
     .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[redacted-address]")
@@ -1154,7 +1169,9 @@ const summary = {
     freeswitchPublicSipHost: env.FREESWITCH_PUBLIC_SIP_HOST ? redact(env.FREESWITCH_PUBLIC_SIP_HOST) : null,
     externalSipReachability: {
       proven: false,
-      proofPath: externalSipReachabilityProofPath ? path.relative(repoRoot, path.resolve(repoRoot, externalSipReachabilityProofPath)) : null,
+      proofPath: externalSipReachabilityProofPath
+        ? redactProofPath(path.relative(repoRoot, path.resolve(repoRoot, externalSipReachabilityProofPath)), redactor)
+        : null,
       source: null,
       checkedAt: null,
       transport: null,
@@ -1418,7 +1435,9 @@ if (summary.blockers.length === 0 && !fsCliSkipped) {
   );
   summary.endpoint.externalSipReachability = {
     proven: reachability.proven,
-    proofPath: reachability.proofPath ? path.relative(repoRoot, reachability.proofPath) : summary.endpoint.externalSipReachability.proofPath,
+    proofPath: reachability.proofPath
+      ? redactProofPath(path.relative(repoRoot, reachability.proofPath), redactor)
+      : summary.endpoint.externalSipReachability.proofPath,
     source: reachability.source,
     checkedAt: reachability.checkedAt,
     transport: reachability.transport,

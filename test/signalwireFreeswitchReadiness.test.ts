@@ -3538,7 +3538,9 @@ esac
     await chmod(fsCliBin, 0o700);
 
     const privateSource = "external-probe 10.0.0.4 private-pbx.lan";
-    reachabilityProofPath = await writeExternalSipReachabilityProof(tempDir, "192.0.8.1", 5060, {
+    const privateProofDir = path.join(tempDir, "private-pbx.lan", "token-cache");
+    await mkdir(privateProofDir, { recursive: true });
+    reachabilityProofPath = await writeExternalSipReachabilityProof(privateProofDir, "192.0.8.1", 5060, {
       source: privateSource,
     });
     const manifestPath = path.join(tempDir, "readiness.json");
@@ -3567,9 +3569,10 @@ esac
     assert.equal(payload.status, "ready_for_manual_pstn_call");
     assert.equal(payload.manualCallReady, true);
     assert.equal(payload.endpoint.externalSipReachability.proven, true);
+    assert.doesNotMatch(payload.endpoint.externalSipReachability.proofPath, /private-pbx\.lan|token-cache/);
     assert.equal(payload.endpoint.externalSipReachability.source, "[redacted]");
-    assert.doesNotMatch(stdout, /10\.0\.0\.4|private-pbx\.lan/);
-    assert.doesNotMatch(await readFile(manifestPath, "utf8"), /10\.0\.0\.4|private-pbx\.lan/);
+    assert.doesNotMatch(stdout, /10\.0\.0\.4|private-pbx\.lan|token-cache/);
+    assert.doesNotMatch(await readFile(manifestPath, "utf8"), /10\.0\.0\.4|private-pbx\.lan|token-cache/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
