@@ -112,6 +112,8 @@ npm start
 
 Open `http://127.0.0.1:8026/` or `http://127.0.0.1:8026/operator/console`, then click **Run Demo Flow**. The app listens on `8026` by default.
 
+The Compose stack publishes the operator application only on host loopback. This keeps the local Codex device-enrollment flow and operator controls unavailable to remote network clients by default.
+
 ### Browser voice
 
 ```bash

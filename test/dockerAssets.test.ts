@@ -30,7 +30,8 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(dockerfile, /CMD \["node", "dist\/src\/index\.js"\]/);
 
   assert.match(compose, /app:\n[\s\S]*target: runtime/);
-  assert.match(compose, /app:\n[\s\S]*ports:\n[\s\S]*- "8026:8026"/);
+  assert.match(compose, /app:\n[\s\S]*ports:\n[\s\S]*- "127\.0\.0\.1:8026:8026"/);
+  assert.doesNotMatch(compose, /app:\n[\s\S]*ports:\n[\s\S]*- "8026:8026"/);
   assert.match(compose, /app:\n[\s\S]*healthcheck:/);
   assert.match(compose, /app:\n[\s\S]*scripts\/health-smoke\.mjs/);
   assert.match(compose, /app:\n[\s\S]*--expect-pipecat-prototype-mode/);

@@ -5,7 +5,7 @@ services:
       target: runtime
     image: agentic-contact-center:local
     ports:
-      - "8026:8026"
+      - "127.0.0.1:8026:8026"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
