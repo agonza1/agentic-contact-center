@@ -35,6 +35,8 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.doesNotMatch(compose, /app:\n[\s\S]*ports:\n[\s\S]*- "8026:8026"/);
   assert.match(compose, /app:\n[\s\S]*healthcheck:/);
   assert.match(compose, /app:\n[\s\S]*scripts\/health-smoke\.mjs/);
+  assert.match(compose, /app:\n[\s\S]*--timeout-ms\n\s+- "8000"/);
+  assert.match(compose, /app:\n[\s\S]*timeout: 10s/);
   assert.match(compose, /app:\n[\s\S]*--expect-pipecat-prototype-mode/);
   assert.match(compose, /app:\n[\s\S]*npm run pipecat:check/);
   assert.match(compose, /app:\n[\s\S]*--expect-production-ready/);
@@ -66,13 +68,15 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /browser-webrtc-bridge:\n[\s\S]*RTC_ASR_WS_URL: ws:\/\/rtc-asr:8080\/v1\/stt\/stream/);
   assert.match(compose, /freeswitch:\n[\s\S]*profiles: \["freeswitch", "sip", "sip-verto", "full"\]/);
   assert.match(compose, /freeswitch:\n[\s\S]*"127\.0\.0\.1:8081:8081\/tcp"/);
-  assert.match(compose, /freeswitch:\n[\s\S]*"127\.0\.0\.1:5060:5062\/udp"/);
+  assert.match(compose, /freeswitch:\n[\s\S]*"127\.0\.0\.1:5060:5060\/udp"/);
+  assert.match(compose, /freeswitch:\n[\s\S]*"127\.0\.0\.1:5060:5060\/tcp"/);
   assert.match(compose, /freeswitch:\n[\s\S]*"127\.0\.0\.1:8021:8021\/tcp"/);
   assert.doesNotMatch(freeswitchEventSocket, /apply-inbound-acl/);
   assert.match(freeswitchLocalSipProfile, /apply-candidate-acl" value="rfc1918\.auto"/);
   assert.match(freeswitchLocalSipProfile, /apply-candidate-acl" value="loopback\.auto"/);
   assert.match(freeswitchLocalSipProfile, /ext-sip-ip" value="127\.0\.0\.1"/);
   assert.match(freeswitchLocalSipProfile, /ext-sip-port" value="5060"/);
+  assert.match(freeswitchLocalSipProfile, /sip-port" value="5060"/);
   assert.match(compose, /freeswitch:\n[\s\S]*freeswitch\/conf\/sip_profiles\/acc-local\.xml/);
   assert.match(compose, /freeswitch:\n[\s\S]*freeswitch\/conf\/directory\/localhost\.xml/);
   assert.match(compose, /freeswitch:\n[\s\S]*freeswitch\/conf\/autoload_configs\/switch\.conf\.xml/);
@@ -101,6 +105,9 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_VERTO_AUDIO_OUT_SAMPLE_RATE: \$\{ACC_VERTO_AUDIO_OUT_SAMPLE_RATE:-8000\}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_WEBRTC_SILENCE_RMS: \$\{ACC_WEBRTC_SILENCE_RMS:-120\}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_TTS_REQUEST_TIMEOUT_SEC: \$\{ACC_TTS_REQUEST_TIMEOUT_SEC:-60\}/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_HEALTH_PATH: \/api\/pipecat-media-engine\/readiness/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*RTC_ASR_HEALTH_PATH: \/ready/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_VOICE_READINESS_TIMEOUT_SEC: "3"/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*\.\/artifacts:\/app\/artifacts/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_VERTO_OWNS_GREETING: \${ACC_VERTO_OWNS_GREETING:-true}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_SIP_GREETING_PREROLL_MS: \${ACC_SIP_GREETING_PREROLL_MS:-300}/);

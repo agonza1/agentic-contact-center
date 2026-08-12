@@ -35,6 +35,7 @@ from acc_pipecat_flow_manager import AccPipecatFlowManagerAdapter
 from acc_track_recorder import SeparateTrackRecorder
 
 DEFAULT_ACC_URL = os.environ.get("ACC_URL", "http://127.0.0.1:8026")
+DEFAULT_ACC_HEALTH_PATH = os.environ.get("ACC_HEALTH_PATH", "/api/pipecat-media-engine/readiness")
 DEFAULT_RTC_ASR_BASE_URL = os.environ.get("RTC_ASR_BASE_URL", "http://127.0.0.1:8080")
 DEFAULT_RTC_ASR_WS_URL = os.environ.get("RTC_ASR_WS_URL", "ws://127.0.0.1:8080/v1/stt/stream")
 DEFAULT_RTC_ASR_HEALTH_PATH = os.environ.get("RTC_ASR_HEALTH_PATH", "/health")
@@ -50,6 +51,7 @@ DEFAULT_POCKET_TTS_HEALTH_PATH = os.environ.get("POCKET_TTS_HEALTH_PATH", "/heal
 DEFAULT_POCKET_TTS_SPEECH_PATH = os.environ.get("POCKET_TTS_SPEECH_PATH", "/v1/audio/speech")
 DEFAULT_POCKET_TTS_VOICE = os.environ.get("POCKET_TTS_VOICE", "alloy")
 DEFAULT_POCKET_TTS_MODEL = os.environ.get("POCKET_TTS_MODEL", "pocket-tts")
+DEFAULT_READINESS_TIMEOUT_SEC = float(os.environ.get("ACC_VOICE_READINESS_TIMEOUT_SEC", "3"))
 
 
 def configured_tts_provider() -> str:
@@ -234,15 +236,27 @@ def pick_model_metadata(health: dict[str, Any], models_payload: dict[str, Any] |
 
 def check_readiness(acc_url: str = DEFAULT_ACC_URL, skip_acc: bool = False) -> BridgeReadiness:
     tts_config = active_tts_config()
-    rtc_probe = probe_json(join_url(DEFAULT_RTC_ASR_BASE_URL, DEFAULT_RTC_ASR_HEALTH_PATH), "rtc-asr")
-    kokoro_probe = probe_json(join_url(tts_config["base_url"], tts_config["health_path"]), tts_config["engine"])
+    rtc_probe = probe_json(
+        join_url(DEFAULT_RTC_ASR_BASE_URL, DEFAULT_RTC_ASR_HEALTH_PATH),
+        "rtc-asr",
+        timeout=DEFAULT_READINESS_TIMEOUT_SEC,
+    )
+    kokoro_probe = probe_json(
+        join_url(tts_config["base_url"], tts_config["health_path"]),
+        tts_config["engine"],
+        timeout=DEFAULT_READINESS_TIMEOUT_SEC,
+    )
     acc_probe = ProbeResult(
         id="acc",
         ok=True,
         status="skipped",
-        url=join_url(acc_url, "/health"),
+        url=join_url(acc_url, DEFAULT_ACC_HEALTH_PATH),
         detail="ACC probe skipped by caller to avoid recursive /health checks",
-    ) if skip_acc else probe_json(join_url(acc_url, "/health"), "acc")
+    ) if skip_acc else probe_json(
+        join_url(acc_url, DEFAULT_ACC_HEALTH_PATH),
+        "acc",
+        timeout=DEFAULT_READINESS_TIMEOUT_SEC,
+    )
     models_payload = None
     if rtc_probe.ok:
         with contextlib.suppress(Exception):

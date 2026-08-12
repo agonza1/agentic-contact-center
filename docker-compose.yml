@@ -40,7 +40,7 @@ services:
         - --url
         - http://127.0.0.1:8026/health
         - --timeout-ms
-        - "2500"
+        - "8000"
         - --interval-ms
         - "250"
         - --expect-pipecat-ready
@@ -66,7 +66,7 @@ services:
         - --expect-production-readiness-blocker
         - state_store_in_memory
       interval: 10s
-      timeout: 3s
+      timeout: 10s
       retries: 5
       start_period: 5s
 
@@ -95,10 +95,11 @@ services:
     depends_on:
       - app
     ports:
-      # Stable host-only Linphone ingress. The container's normal authenticated
-      # internal profile remains on 5060 for Docker-network traffic.
-      - "127.0.0.1:5060:5062/udp"
-      - "127.0.0.1:5060:5062/tcp"
+      # Stable host-only Linphone ingress. The acc-local profile binds the
+      # container's bridge address on 5060 while the vanilla internal profile
+      # remains isolated on container loopback at the same port.
+      - "127.0.0.1:5060:5060/udp"
+      - "127.0.0.1:5060:5060/tcp"
       - "127.0.0.1:8021:8021/tcp"
       - "127.0.0.1:8081:8081/tcp"
       - "127.0.0.1:8082:8082/tcp"
@@ -184,8 +185,11 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       ACC_URL: http://app:8026
+      ACC_HEALTH_PATH: /api/pipecat-media-engine/readiness
       RTC_ASR_BASE_URL: http://rtc-asr:8080
+      RTC_ASR_HEALTH_PATH: /ready
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
+      ACC_VOICE_READINESS_TIMEOUT_SEC: "3"
       RTC_ASR_MODEL: ${RTC_ASR_MODEL:-mlx-community/parakeet-tdt_ctc-110m}
       ACC_TTS_PROVIDER: ${ACC_TTS_PROVIDER:-}
       POCKET_TTS_BASE_URL: ${POCKET_TTS_CONTAINER_BASE_URL:-}
@@ -270,8 +274,11 @@ services:
       - ./artifacts:/app/artifacts
     environment:
       ACC_URL: http://app:8026
+      ACC_HEALTH_PATH: /api/pipecat-media-engine/readiness
       RTC_ASR_BASE_URL: http://rtc-asr:8080
+      RTC_ASR_HEALTH_PATH: /ready
       RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
+      ACC_VOICE_READINESS_TIMEOUT_SEC: "3"
       ACC_TTS_PROVIDER: ${ACC_TTS_PROVIDER:-}
       POCKET_TTS_BASE_URL: ${POCKET_TTS_CONTAINER_BASE_URL:-}
       POCKET_TTS_VOICE: ${POCKET_TTS_VOICE:-alloy}
