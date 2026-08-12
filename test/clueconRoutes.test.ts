@@ -403,7 +403,7 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.equal(payload.proofPreview.runRoute, "/api/cluecon/eval/run");
   assert.ok(payload.proofPreview.includes.includes("ASR/TTS caveats"));
   assert.ok(payload.proofPreview.scorecardChecks.includes("operator_approval"));
-  assert.equal(payload.caePanel.webBaseUrl, "http://127.0.0.1:3010");
+  assert.equal(payload.caePanel.webBaseUrl, "http://127.0.0.1:3012");
   assert.equal(payload.caePanel.scenariosPath, "/scenarios");
   assert.equal(payload.caePanel.runsPath, "/runs");
   assert.match(payload.caePanel.relationship, /ACC runs the local scorecard/);
@@ -1303,6 +1303,10 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /function resetTtsMeasurements\(\)/);
   assert.match(narrative.body, /controller: new AbortController\(\)/);
   assert.match(narrative.body, /signal: requestController\.signal/);
+  assert.match(narrative.body, /LIVE_TTS_KOKORO_FETCH_TIMEOUT_MS = 45_000/);
+  assert.match(narrative.body, /provider\.id === "kokoro"/);
+  assert.match(narrative.body, /readTtsAudioResponse\(response, byteLength =>/);
+  assert.match(narrative.body, /}, timeouts\.readMs\)/);
   assert.match(narrative.body, /provider\.id === "pocket" \? "POCKET_TTS_BASE_URL" : "KOKORO_BASE_URL"/);
   assert.match(narrative.body, /provider\.label \+ " request timed out\. Confirm "/);
   assert.match(narrative.body, /if \(token !== state\.ttsStreamToken\) return;\s+if \(firstByteMs === null\)/);
@@ -1389,7 +1393,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Conversational SLO/);
   assert.match(narrative.body, /Google SRE Workbook ↗/);
   assert.match(narrative.body, /ITU-T P\.851 ↗/);
-  assert.match(narrative.body, /class="ecosystem-card ecosystem-card--primary" href="http:\/\/127\.0\.0\.1:3010\/scenarios"/);
+  assert.match(narrative.body, /class="ecosystem-card ecosystem-card--primary" href="http:\/\/127\.0\.0\.1:3012\/scenarios"/);
   assert.match(narrative.body, /class="ecosystem-card" href="https:\/\/github\.com\/responsibleai\/ASSERT"/);
   assert.match(narrative.body, /class="ecosystem-card ecosystem-card--target" href="http:\/\/127\.0\.0\.1:8026\/operator\/console"/);
   assert.match(narrative.body, /class="ecosystem-card" href="http:\/\/127\.0\.0\.1:8090\/rtc-asr"/);

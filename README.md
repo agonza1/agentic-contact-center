@@ -12,6 +12,7 @@ Primary actions:
 - Start the local app: `npm start`
 - Start the live ClueCon presentation with rtc-asr readiness: `npm run cluecon`
 - Enable live STT and TTS models for the presentation labs: [docs/speech-models.md](docs/speech-models.md)
+- Review the 8600 typed request-routing boundary: [docs/structured-voice-routing.md](docs/structured-voice-routing.md)
 - Open the reliability guide: `http://127.0.0.1:8026/reliability`
 - Inspect the ClueCon walkthrough: `http://127.0.0.1:8026/cluecon`
 - Check the reliability-lab integration status: `npm run reliability:lab`
@@ -111,6 +112,8 @@ npm start
 ```
 
 Open `http://127.0.0.1:8026/` or `http://127.0.0.1:8026/operator/console`, then click **Run Demo Flow**. The app listens on `8026` by default.
+
+The Compose stack publishes the operator application only on host loopback. This keeps the local Codex device-enrollment flow and operator controls unavailable to remote network clients by default.
 
 ### Browser voice
 
@@ -215,7 +218,7 @@ npm run docker:freeswitch:only
 
 - `voice`: rtc-asr on `8080` and Kokoro on `8880`.
 - `browser-webrtc`: voice sidecars plus the Pipecat browser WebRTC bridge on `8766`.
-- `sip-verto`: FreeSWITCH, rtc-asr, Kokoro, and the preferred Pipecat Verto/WebRTC agent-leg bridge. Dial `8600` for the OpenAI-backed `openai_llm` flow (`OPENAI_API_KEY` or `ACC_OPENAI_API_KEY`, or local `ACC_OPENAI_AUTH_MODE=openclaw_oauth` via the OpenClaw Responses gateway; default model `GPT-5.4-mini`) and `8611` for the deterministic scripted flow.
+- `sip-verto`: FreeSWITCH, rtc-asr, Kokoro, the preferred Pipecat Verto/WebRTC agent-leg bridge, and a backend-owned Codex OAuth bridge. Dial `8611` for the normal credential-free `free_caller` flow, `8612` for the deterministic scripted failure-control flow, or `8600` for the live model flow. For `8600`, open the operator console, select **Connect Codex**, complete the device login, and call with the pinned `gpt-5.4-mini` model. OAuth credentials stay in the backend bridge and never enter browser JavaScript.
 - `sip`: legacy FreeSWITCH-to-ACC ESL proof/debug bridge with rtc-asr and Kokoro.
 - `eval`: ASSERT artifact export/viewer on `5174`.
 - `full`: all optional ACC-local services; this is not yet a full CAE-backed reliability lab.

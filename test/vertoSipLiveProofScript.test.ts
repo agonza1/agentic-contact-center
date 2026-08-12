@@ -23,6 +23,7 @@ test("Verto SIP live proof self-test validates digest, SDP, and RTP packet helpe
     authorizationUriReady: boolean;
     sdpTarget: { host: string; port: number };
     packetCount: number;
+    continuedRtpClock: { sequence: number; timestamp: number };
     responsePlayback: { packetCount: number; confirmed: boolean };
     inferredLocalHost: { host: string; source: string };
     loopbackRejected: boolean;
@@ -33,6 +34,7 @@ test("Verto SIP live proof self-test validates digest, SDP, and RTP packet helpe
   assert.equal(summary.authorizationUriReady, true);
   assert.deepEqual(summary.sdpTarget, { host: "127.0.0.1", port: 29790 });
   assert.ok(summary.packetCount > 0);
+  assert.deepEqual(summary.continuedRtpClock, { sequence: 13, timestamp: 1920 });
   assert.equal(summary.responsePlayback.packetCount, 10);
   assert.equal(summary.responsePlayback.confirmed, true);
   assert.deepEqual(summary.inferredLocalHost, { host: "192.168.86.28", source: "network_interface" });
@@ -40,7 +42,7 @@ test("Verto SIP live proof self-test validates digest, SDP, and RTP packet helpe
 });
 
 test("Verto SIP proof requires transcript-backed non-silent caller playback", () => {
-  const script = readFileSync("scripts/verto-sip-live-proof.mjs", "utf8");
+  const script = readFileSync("scripts/verto-sip-live-proof.mjs", "utf8").replaceAll("\r\n", "\n");
 
   assert.match(script, /--caller-audio/);
   assert.match(script, /--tail-silence-ms/);
@@ -71,6 +73,9 @@ test("Verto SIP proof requires transcript-backed non-silent caller playback", ()
   assert.match(script, /this\.returnPacketCount >= 10/);
   assert.match(script, /playbackRms >= 50/);
   assert.match(script, /waitForObservableIntroCompletion/);
+  assert.match(script, /rtp\.media_path_primed/);
+  assert.match(script, /startSequence: primePacketCount \+ 1/);
+  assert.match(script, /startTimestamp: primePacketCount \* 160/);
   assert.match(script, /rtp\.prerecorded_intro_completed/);
   assert.match(script, /caller_rtp_non_silent_then_240ms_silence/);
   assert.match(script, /responsePlaybackBoundaryAt = latestTimestamp/);
@@ -111,7 +116,7 @@ test("Verto SIP proof does not accept unrelated rtc-asr evidence while waiting f
 });
 
 test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and call cleanup evidence", () => {
-  const bridge = readFileSync("scripts/pipecat-verto-agent-bridge.py", "utf8");
+  const bridge = readFileSync("scripts/pipecat-verto-agent-bridge.py", "utf8").replaceAll("\r\n", "\n");
   const callStartedIndex = bridge.indexOf("\"eventType\": \"call.started\"");
   const queueFramesIndex = bridge.indexOf("await task.queue_frames(intro_frames)");
   const finishIntroIndex = bridge.indexOf("async def finish_intro_output_stream");

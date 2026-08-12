@@ -1,5 +1,7 @@
 import type {
   CallSnapshot,
+  ConversationNode,
+  ConversationProposal,
   ConversationMode,
   EventTrailEntry,
   FlowState,
@@ -16,6 +18,8 @@ export interface OpenAiLlmTurnResult {
   ok: boolean;
   model: string;
   text?: string;
+  proposal?: ConversationProposal;
+  targetNode?: ConversationNode;
   responseId?: string | null;
   error?: string;
   status?: number | null;
@@ -370,8 +374,8 @@ export function triggerFailClosedFallback(
   const fallbackReason = reason?.trim() || mode;
   const handoffSource = mode === "runtime_failure" ? "pipecat_runtime_failure_fail_closed" : "tool_timeout_fail_closed";
   const agentMessage = mode === "runtime_failure"
-    ? "The local Pipecat runtime reported a failure, so I am failing closed and connecting you to a licensed retention specialist instead of improvising an offer or promising any billing credit."
-    : "A required tool timed out, so I am failing closed and connecting you to a licensed retention specialist instead of improvising an offer or promising any billing credit.";
+    ? "The runtime reported a failure. I can't complete this safely or promise a billing credit, so I'll connect you with a licensed retention specialist."
+    : "A required tool timed out. I can't complete this safely or promise a billing credit, so I'll connect you with a licensed retention specialist.";
 
   snapshot.pipecatFlow.activeTool = "pause_presentation";
   setDemoFallback(snapshot, true, timestamp, fallbackReason, mode);
@@ -839,7 +843,7 @@ export function applyOpenAiLlmPipecatFlow(
   const callerTurnCount = snapshot.transcript.filter((entry) => entry.speaker === "caller").length;
   snapshot.pipecatFlow.script = computeScriptProgress(snapshot);
 
-  if (!llm?.ok || !llm.text?.trim()) {
+  if (!llm?.ok || !llm.text?.trim() || !llm.proposal || !llm.targetNode) {
     if (!options.failClosedAlreadyPersisted) {
       applyOpenAiLlmFailClosedState(snapshot, turn, llm);
     }
@@ -848,11 +852,34 @@ export function applyOpenAiLlmPipecatFlow(
   }
 
   snapshot.pipecatFlow.activeTool = "conversation_agent";
+  snapshot.conversationControl = {
+    node: llm.targetNode,
+    lastProposal: { ...llm.proposal, slots: { ...llm.proposal.slots } },
+    lastDecision: {
+      status: "accepted",
+      targetNode: llm.targetNode,
+      reason: "validated_structured_request_proposal",
+    },
+  };
+  recordEvent(snapshot, "conversation_intent_proposed", turn.timestamp, {
+    schemaVersion: llm.proposal.schemaVersion,
+    intent: llm.proposal.intent,
+    requestedOperation: llm.proposal.requestedOperation,
+    needsClarification: llm.proposal.needsClarification,
+    model: llm.model,
+  });
+  recordEvent(snapshot, "conversation_proposal_accepted", turn.timestamp, {
+    targetNode: llm.targetNode,
+    reason: "validated_structured_request_proposal",
+    authority: "acc_application",
+    businessStateChanged: false,
+  });
   recordEvent(snapshot, "openai_conversation_turn_processed", turn.timestamp, {
     conversationMode: "openai_llm",
     model: llm.model,
     responseId: llm.responseId ?? null,
     callerTurnCount,
+    conversationNode: llm.targetNode,
     noScriptedFallback: true,
   });
 
@@ -871,6 +898,21 @@ export function applyOpenAiLlmFailClosedState(
   llm: OpenAiLlmTurnResult | undefined,
 ): void {
   const reason = llm?.error ?? "openai_llm_response_missing";
+  snapshot.conversationControl = {
+    ...snapshot.conversationControl,
+    node: "prepare_handoff",
+    lastDecision: {
+      status: "rejected",
+      targetNode: "prepare_handoff",
+      reason,
+    },
+  };
+  recordEvent(snapshot, "conversation_proposal_rejected", turn.timestamp, {
+    reason,
+    targetNode: "prepare_handoff",
+    authority: "acc_application",
+    businessStateChanged: false,
+  });
   snapshot.pipecatFlow.activeTool = "pause_presentation";
   setDemoFallback(snapshot, true, turn.timestamp, reason, "runtime_failure");
   setOperatorSteerState(snapshot, false, turn.timestamp, "escalate_to_human", "openai_llm_fail_closed");

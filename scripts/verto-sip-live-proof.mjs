@@ -503,10 +503,15 @@ async function waitForRtcAsrEvidence(evidencePath, options, { timeoutMs = 8_000,
   return latest;
 }
 
-function ulawPacketsFromPcm(pcm, { payloadSamples = 160, ssrc = 0xacc222 }) {
+function ulawPacketsFromPcm(pcm, {
+  payloadSamples = 160,
+  ssrc = 0xacc222,
+  startSequence = 1,
+  startTimestamp = 0,
+} = {}) {
   const packets = [];
-  let sequence = 1;
-  let timestamp = 0;
+  let sequence = startSequence;
+  let timestamp = startTimestamp;
   for (let offset = 0; offset < pcm.length; offset += payloadSamples * 2) {
     const slice = pcm.subarray(offset, offset + payloadSamples * 2);
     const payload = Buffer.alloc(Math.ceil(slice.length / 2));
@@ -717,13 +722,48 @@ class SipProofCall {
       this.record("rtp.caller_audio_blocked", { blocker: "No remote RTP target was discovered from FreeSWITCH answer SDP." });
       return;
     }
-    if (this.options.mediaDelayMs > 0) {
-      this.record("rtp.caller_audio_waiting", { mediaDelayMs: this.options.mediaDelayMs });
-      await new Promise((resolve) => setTimeout(resolve, this.options.mediaDelayMs));
+    // Linphone sends a continuous RTP clock even while the caller is silent.
+    // Mirror that behavior while waiting for the greeting: FreeSWITCH learns
+    // the symmetric route and its bridge keeps producing caller-bound audio.
+    const primeStartedAtMs = Date.now();
+    const introNotBeforeMs = primeStartedAtMs + this.options.mediaDelayMs;
+    const introDeadlineMs = introNotBeforeMs + this.options.introWaitTimeoutMs;
+    let primePacketCount = 0;
+    while (
+      primePacketCount < this.options.rtpPrimePackets
+      || Date.now() < introNotBeforeMs
+      || (!this.observableIntroCompletedAt && Date.now() < introDeadlineMs)
+    ) {
+      const [packet] = ulawPacketsFromPcm(Buffer.alloc(160 * 2), {
+        ssrc: this.options.ssrc,
+        startSequence: primePacketCount + 1,
+        startTimestamp: primePacketCount * 160,
+      });
+      await new Promise((resolve, reject) => {
+        this.rtpSocket.send(packet, this.remoteRtp.port, this.remoteRtp.host, (error) => error ? reject(error) : resolve());
+      });
+      primePacketCount += 1;
+      await new Promise((resolve) => setTimeout(resolve, 20));
     }
-    await this.waitForObservableIntroCompletion();
+    this.record("rtp.media_path_primed", {
+      packetCount: primePacketCount,
+      durationMs: Date.now() - primeStartedAtMs,
+      remoteRtp: this.remoteRtp,
+      observableIntroCompletedAt: this.observableIntroCompletedAt,
+    });
+    if (!this.observableIntroCompletedAt) {
+      this.record("rtp.prerecorded_intro_completion_timeout", {
+        timeoutMs: this.options.introWaitTimeoutMs,
+        nonSilentPacketCount: this.introNonSilentPacketCount,
+        consecutiveSilentPacketCount: this.introConsecutiveSilentPacketCount,
+      });
+    }
     this.callerAudioStartedAtMs = Date.now();
-    const packets = ulawPacketsFromPcm(this.callerPcm, { ssrc: this.options.ssrc });
+    const packets = ulawPacketsFromPcm(this.callerPcm, {
+      ssrc: this.options.ssrc,
+      startSequence: primePacketCount + 1,
+      startTimestamp: primePacketCount * 160,
+    });
     this.record("rtp.caller_audio_started", { packetCount: packets.length, remoteRtp: this.remoteRtp, audioBytes: this.callerPcm.length });
     for (const packet of packets) {
       await new Promise((resolve, reject) => {
@@ -1001,6 +1041,15 @@ function runSelfTest() {
   const sdpTarget = parseRtpTargetFromSdp("v=0\r\nc=IN IP4 127.0.0.1\r\nm=audio 29790 RTP/AVP 0\r\n", "fallback");
   const pcm = tonePcm16({ durationMs: 40 });
   const packets = ulawPacketsFromPcm(pcm, { ssrc: 1 });
+  const continuedPackets = ulawPacketsFromPcm(pcm, {
+    ssrc: 1,
+    startSequence: 13,
+    startTimestamp: 1920,
+  });
+  const continuedRtpClock = {
+    sequence: continuedPackets[0]?.readUInt16BE(2),
+    timestamp: continuedPackets[0]?.readUInt32BE(4),
+  };
   const loudIntroPcm = Buffer.alloc(160 * 2 * 10);
   for (let offset = 0; offset < loudIntroPcm.length; offset += 2) loudIntroPcm.writeInt16LE(5000, offset);
   const introObserver = new SipProofCall({});
@@ -1035,6 +1084,8 @@ function runSelfTest() {
     && authorizationUriReady
     && sdpTarget?.port === 29790
     && packets.length > 0
+    && continuedRtpClock.sequence === 13
+    && continuedRtpClock.timestamp === 1920
     && responsePlayback.packetCount === 10
     && responsePlayback.confirmed === true
     && Boolean(introObserver.observableIntroCompletedAt)
@@ -1048,6 +1099,7 @@ function runSelfTest() {
     authorizationUriReady,
     sdpTarget,
     packetCount: packets.length,
+    continuedRtpClock,
     responsePlayback,
     observableIntroCompletion: {
       completedAt: introObserver.observableIntroCompletedAt,
@@ -1201,6 +1253,7 @@ async function main() {
     toneMs: Number(argValue("--tone-ms", "1800")),
     tailSilenceMs: Number(argValue("--tail-silence-ms", process.env.ACC_SIP_PROOF_TAIL_SILENCE_MS || "10000")),
     mediaDelayMs: Number(argValue("--media-delay-ms", process.env.ACC_SIP_PROOF_MEDIA_DELAY_MS || "1000")),
+    rtpPrimePackets: Number(argValue("--rtp-prime-packets", process.env.ACC_SIP_PROOF_RTP_PRIME_PACKETS || "12")),
     introWaitTimeoutMs: Number(argValue("--intro-wait-timeout-ms", process.env.ACC_SIP_PROOF_INTRO_WAIT_TIMEOUT_MS || "8000")),
     callMs: Number(argValue("--call-ms", "10000")),
     frequency: Number(argValue("--frequency", "440")),

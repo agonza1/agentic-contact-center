@@ -25,6 +25,10 @@ import {
 } from "../core/assertEvaluationSpec";
 import { compareTimestamps, getAttentionMetadata } from "../core/attention";
 import {
+  CONVERSATION_PROPOSAL_JSON_SCHEMA,
+  parseConversationProposal,
+} from "../core/conversationProposal";
+import {
   hasActiveTerminalOperatorStop,
   InMemoryTelephonyIngress,
   shouldForceScriptedRetentionFinalTurn,
@@ -71,6 +75,7 @@ const operatorConsoleWorkboardCard = "82771d3a-de4d-4b6e-869c-328e8264d01e";
 const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
 const defaultBrowserWebrtcBridgeTimeoutMs = 5000;
 const defaultTtsIdleTimeoutMs = 30_000;
+const defaultKokoroTtsIdleTimeoutMs = 45_000;
 const maxVoiceSessionPlayAudioBytes = 2 * 1024 * 1024;
 const supportedVoiceSessionPlayMimeTypes = new Set(["audio/l16", "audio/pcm", "audio/wav", "audio/wave", "audio/x-wav"]);
 const clueConSystemUnavailableAudio = readFileSync(resolve(process.cwd(), "assets/cluecon/system-unavailable.mp3"));
@@ -274,7 +279,9 @@ export async function warmConfiguredKokoro(): Promise<KokoroWarmupResult> {
 function getTtsIdleTimeoutMs(provider: "kokoro" | "pocket" = getConfiguredTtsProvider()): number {
   const providerTimeout = provider === "pocket" ? process.env.POCKET_TTS_IDLE_TIMEOUT_MS : process.env.KOKORO_TTS_IDLE_TIMEOUT_MS;
   const parsed = Number(process.env.CLUECON_TTS_IDLE_TIMEOUT_MS ?? process.env.ACC_TTS_IDLE_TIMEOUT_MS ?? providerTimeout ?? "");
-  if (!Number.isFinite(parsed) || parsed <= 0) return defaultTtsIdleTimeoutMs;
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return provider === "kokoro" ? defaultKokoroTtsIdleTimeoutMs : defaultTtsIdleTimeoutMs;
+  }
   return Math.min(Math.max(Math.trunc(parsed), 50), 300_000);
 }
 
@@ -507,6 +514,11 @@ function buildBrowserWebrtcBridgeSessionProofUrl(sessionId: string): string {
   return `${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/sessions/${encodeURIComponent(sessionId)}/proof`;
 }
 
+function buildBrowserWebrtcBridgeSessionUrl(sessionId: string): string {
+  const browserWebrtcBridgeBaseUrl = getBrowserWebrtcBridgeBaseUrl();
+  return `${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/sessions/${encodeURIComponent(sessionId)}`;
+}
+
 async function getBrowserWebrtcSessionProofFromBridge(sessionId: string): Promise<{ status: number; payload: unknown }> {
   const response = await fetch(buildBrowserWebrtcBridgeSessionProofUrl(sessionId), {
     method: "GET",
@@ -518,16 +530,28 @@ async function getBrowserWebrtcSessionProofFromBridge(sessionId: string): Promis
   return { status: response.status, payload: responsePayload };
 }
 
-async function postBrowserWebrtcOfferToBridge(payload: object): Promise<{ status: number; payload: unknown }> {
+async function postBrowserWebrtcOfferToBridge(payload: object, clientSignal?: AbortSignal): Promise<{ status: number; payload: unknown }> {
+  const timeoutSignal = AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs());
   const response = await fetch(buildBrowserWebrtcBridgeOfferUrl(), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs()),
+    signal: clientSignal ? AbortSignal.any([clientSignal, timeoutSignal]) : timeoutSignal,
   });
   const contentType = response.headers.get("content-type") ?? "";
   const responsePayload = contentType.includes("json") ? await response.json() : { detail: await response.text() };
   return { status: response.status, payload: responsePayload };
+}
+
+async function deleteBrowserWebrtcSessionFromBridge(sessionId: string): Promise<void> {
+  try {
+    await fetch(buildBrowserWebrtcBridgeSessionUrl(sessionId), {
+      method: "DELETE",
+      signal: AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs()),
+    });
+  } catch {
+    // Best effort: the bridge also observes the aborted offer and owns its local cleanup.
+  }
 }
 
 function buildBrowserWebrtcBridgeUnavailablePayload(error: unknown): object {
@@ -963,14 +987,14 @@ function buildOperatorConsoleHtml(): string {
 <body>
   <header>
     <div class="brand"><span class="brand-kicker">Agentic Contact Center</span><h1>Operator Console</h1></div>
-    <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" class="primary" id="run-demo-flow">Run Demo</button><details class="toolbar-menu"><summary>More</summary><div class="menu-panel"><button type="button" id="start-demo">Start empty call</button><a class="nav-link" href="/assert/full">Evidence viewer</a><a class="nav-link" href="/assert">ACC artifacts</a><a class="nav-link" href="/assert/spec">Eval spec</a></div></details></div>
+    <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" class="primary" id="run-demo-flow">Run Demo</button><details class="toolbar-menu" id="codex-auth"><summary id="codex-auth-summary">Codex login</summary><div class="menu-panel"><span class="meta" id="codex-auth-detail">Checking backend session…</span><button type="button" id="codex-auth-connect">Connect Codex</button><a class="nav-link" id="codex-auth-link" target="_blank" rel="noreferrer" hidden>Open device login</a><strong id="codex-auth-code" hidden></strong><span class="meta">Voice model: gpt-5.4-mini</span></div></details><details class="toolbar-menu"><summary>More</summary><div class="menu-panel"><button type="button" id="start-demo">Start empty call</button><a class="nav-link" href="/assert/full">Evidence viewer</a><a class="nav-link" href="/assert">ACC artifacts</a><a class="nav-link" href="/assert/spec">Eval spec</a></div></details></div>
   </header>
   <main>
     <section class="panel" aria-label="Live calls"><div class="panel-header"><h2>Live Calls</h2><span class="queue-count" id="queue-count">0 queued</span></div><div class="filters filters-primary"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Needs attention</label><input id="transcript-filter" aria-label="Search calls" placeholder="Search calls"></div><details class="filter-drawer"><summary>Filters</summary><div class="filters filters-advanced"><label class="filter-toggle"><input type="checkbox" id="latency-over-budget-filter">Over-budget latency</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><select id="fallback-filter" aria-label="Fallback mode filter"><option value="">All fallback modes</option><option value="tool_timeout">Tool Timeout</option><option value="runtime_failure">Runtime Failure</option></select><select id="fallback-source-filter" aria-label="Fallback source filter"><option value="">All fallback sources</option><option value="tool_timeout_fail_closed">Tool Timeout Source</option><option value="pipecat_runtime_failure_fail_closed">Runtime Failure Source</option></select><input id="fallback-reason-filter" aria-label="Fallback reason filter" placeholder="Fallback reason"><select id="tool-filter" aria-label="Active tool filter"><option value="">All active tools</option><option value="get_current_slide">Get Current Slide</option><option value="goto_slide">Go To Slide</option><option value="pause_presentation">Pause Presentation</option><option value="ask_operator">Ask Operator</option></select><select id="script-completed-filter" aria-label="Script status filter"><option value="">All script states</option><option value="false">In progress</option><option value="true">Complete</option></select><select id="script-progress-filter" aria-label="Script minimum progress filter"><option value="">Any min progress</option><option value="25">25%+ scripted</option><option value="50">50%+ scripted</option><option value="75">75%+ scripted</option><option value="100">100% scripted</option></select><select id="script-max-progress-filter" aria-label="Script maximum progress filter"><option value="">Any max progress</option><option value="0">0% or less scripted</option><option value="25">25% or less scripted</option><option value="50">50% or less scripted</option><option value="75">75% or less scripted</option></select><button type="button" id="clear-filters">Clear filters</button></div></details><div class="call-list" id="calls"></div></section>
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceRemoteTrackReceived: false, voiceRemoteAudioStarted: false, voiceLiveAudioVerified: false, voiceLiveTurnVerified: false, voiceAudioWatchdog: null, voiceSessionProofTimer: null, voiceLastProofTurnCount: 0, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, codexLoginId: null, codexAuthTimer: null, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceRemoteTrackReceived: false, voiceRemoteAudioStarted: false, voiceLiveAudioVerified: false, voiceLiveTurnVerified: false, voiceAudioWatchdog: null, voiceSessionProofTimer: null, voiceLastProofTurnCount: 0, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
     const repoHeadEvidence = ${JSON.stringify(getRepoHeadEvidence())};
     const advancedActions = ["escalate_to_human", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
@@ -981,6 +1005,47 @@ function buildOperatorConsoleHtml(): string {
     function linkHtml(href, text) { return href ? '<a href="' + escapeHtml(href) + '">' + escapeHtml(text) + '</a>' : '<span class="meta">' + escapeHtml(text) + ': unavailable</span>'; }
     function pathHtml(path, label) { return path ? '<span class="meta">' + escapeHtml(label) + ': ' + escapeHtml(path) + '</span>' : '<span class="meta">' + escapeHtml(label) + ': not attached</span>'; }
     function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
+    function scheduleCodexAuthRefresh() {
+      if (state.codexAuthTimer) clearTimeout(state.codexAuthTimer);
+      if (!state.codexLoginId) return;
+      state.codexAuthTimer = setTimeout(function() { refreshCodexAuth().catch(function(error) { renderCodexAuth({ ok: false, error: error.message }); }); }, 1500);
+    }
+    function renderCodexAuth(payload) {
+      const summary = document.getElementById("codex-auth-summary");
+      const detail = document.getElementById("codex-auth-detail");
+      const connect = document.getElementById("codex-auth-connect");
+      const link = document.getElementById("codex-auth-link");
+      const code = document.getElementById("codex-auth-code");
+      const connected = payload.authenticated === true || payload.status === "connected";
+      summary.textContent = connected ? "Codex connected" : payload.status === "pending" ? "Complete Codex login" : "Codex login";
+      detail.textContent = connected ? "Backend OAuth session ready for extension 8600." : payload.error ? "Codex bridge unavailable: " + payload.error : "Connect the backend without exposing credentials to this browser.";
+      connect.hidden = connected || payload.status === "pending";
+      if (payload.verificationUrl && payload.userCode && !connected) {
+        link.hidden = false;
+        link.href = payload.verificationUrl;
+        link.textContent = "Open device login";
+        code.hidden = false;
+        code.textContent = "Code: " + payload.userCode;
+      } else {
+        link.hidden = true;
+        code.hidden = true;
+      }
+      if (payload.status === "pending") scheduleCodexAuthRefresh();
+      else { state.codexLoginId = null; if (state.codexAuthTimer) clearTimeout(state.codexAuthTimer); }
+    }
+    async function refreshCodexAuth() {
+      const path = state.codexLoginId ? "/api/codex-auth/device/" + encodeURIComponent(state.codexLoginId) : "/api/codex-auth/status";
+      const response = await fetch(path, { cache: "no-store" });
+      const payload = await response.json().catch(function() { return {}; });
+      renderCodexAuth(payload);
+    }
+    async function startCodexAuth() {
+      const response = await fetch("/api/codex-auth/device/start", { method: "POST" });
+      const payload = await response.json().catch(function() { return {}; });
+      if (payload.loginId) state.codexLoginId = payload.loginId;
+      renderCodexAuth(payload);
+      document.getElementById("codex-auth").open = true;
+    }
     function operatorConsoleQuery() {
       const params = new URLSearchParams({ sort: "attentionStartedAt", order: "asc", limit: "25" });
       if (document.getElementById("attention-filter").checked) params.set("attentionRequired", "true");
@@ -1607,7 +1672,7 @@ function buildOperatorConsoleHtml(): string {
       document.getElementById("queue-count").textContent = state.calls.length + (state.calls.length === 1 ? " call" : " calls");
       root.innerHTML = state.calls.map(function(call) {
         const labels = call.liveProof ? call.liveProof.labels : call.session.runtimeModeLabels;
-        const labelText = labels ? [labels.telephony, labels.media, labels.rtcAsr].filter(Boolean).join(" | ") : "runtime labels unavailable";
+        const labelText = [call.session.providerName, labels && labels.telephony, labels && labels.media, labels && labels.rtcAsr].filter(Boolean).join(" | ") || "runtime labels unavailable";
         const scriptedState = call.actionState.scriptedCallerTurnState || { matchedTurns: 0, totalTurns: (state.scriptedCallerTurns || []).length, remainingTurns: (state.scriptedCallerTurns || []).length, progressPct: 0, nextTurnIndex: 0, nextTurnText: null, completed: false };
         const scriptedLabel = scriptedState.completed ? "script complete" : ("script " + scriptedState.matchedTurns + "/" + scriptedState.totalTurns + " | next: " + (scriptedState.nextTurnText || "queued"));
         const proofStatus = call.liveProof && call.liveProof.eval ? call.liveProof.eval.status : "not_review_ready";
@@ -1706,7 +1771,8 @@ function buildOperatorConsoleHtml(): string {
         const status = isCompleted ? "Sent" : isNext ? "Next" : "Queued";
         return '<button type="button" data-scripted-turn="' + index + '" ' + disabled + '><span class="meta">' + status + ' | Turn ' + (index + 1) + '</span><br>' + escapeHtml(text) + '</button>';
       }).join("");
-      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + pendingHtml + '</div><div class="workbench"><div class="stack">' + voiceControlsHtml() + '<section class="section"><h3 class="section-title">Call Controls</h3><div class="actions">' + actionHtml + '</div><details class="section-drawer"><summary>Advanced controls</summary><div class="drawer-content"><div class="actions">' + advancedActionHtml + '</div></div></details></section><details class="section-drawer"><summary>Test tools</summary><div class="drawer-content"><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></div></details><details class="section-drawer"' + (call.flowState === "wrap" ? " open" : "") + '><summary>Notes & disposition</summary><div class="drawer-content"><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></div></details></div><div class="stack"><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section><details class="section-drawer"><summary>Evidence & QA</summary><div class="drawer-content">' + assertHtml + liveProofHtml + markerHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section></div></details></div></div>';
+      const routingMetricHtml = call.conversationControl && call.conversationControl.node ? '<div class="metric compact"><span class="meta">Conversation node</span><strong>' + escapeHtml(call.conversationControl.node) + '</strong><span class="meta">ACC-authorized route</span></div>' : '';
+      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div>' + routingMetricHtml + '<div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + pendingHtml + '</div><div class="workbench"><div class="stack">' + voiceControlsHtml() + '<section class="section"><h3 class="section-title">Call Controls</h3><div class="actions">' + actionHtml + '</div><details class="section-drawer"><summary>Advanced controls</summary><div class="drawer-content"><div class="actions">' + advancedActionHtml + '</div></div></details></section><details class="section-drawer"><summary>Test tools</summary><div class="drawer-content"><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></div></details><details class="section-drawer"' + (call.flowState === "wrap" ? " open" : "") + '><summary>Notes & disposition</summary><div class="drawer-content"><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></div></details></div><div class="stack"><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section><details class="section-drawer"><summary>Evidence & QA</summary><div class="drawer-content">' + assertHtml + liveProofHtml + markerHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section></div></details></div></div>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\\n\\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       root.querySelectorAll("button[data-scripted-turn]").forEach(function(button) { button.addEventListener("click", function() { const index = Number(button.dataset.scriptedTurn); if (Number.isInteger(index)) postScriptedTurn(index).catch(function(error) { setStatus(error.message); }); }); });
       attachVoiceControls();
@@ -1722,6 +1788,7 @@ function buildOperatorConsoleHtml(): string {
     }
     document.addEventListener("visibilitychange", function() { if (document.hidden && state.refreshTimer) clearTimeout(state.refreshTimer); else refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("run-demo-flow").addEventListener("click", function() { runDemoFlow().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("codex-auth-connect").addEventListener("click", function() { startCodexAuth().catch(function(error) { renderCodexAuth({ ok: false, error: error.message }); }); });
     document.getElementById("start-demo").addEventListener("click", function() { startDemoCall().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("attention-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("latency-over-budget-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
@@ -1735,7 +1802,7 @@ function buildOperatorConsoleHtml(): string {
     document.getElementById("script-progress-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("script-max-progress-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("clear-filters").addEventListener("click", function() { document.getElementById("attention-filter").checked = false; document.getElementById("latency-over-budget-filter").checked = false; document.getElementById("flow-filter").value = ""; document.getElementById("fallback-filter").value = ""; document.getElementById("fallback-source-filter").value = ""; document.getElementById("fallback-reason-filter").value = ""; document.getElementById("tool-filter").value = ""; document.getElementById("script-completed-filter").value = ""; document.getElementById("script-progress-filter").value = ""; document.getElementById("script-max-progress-filter").value = ""; document.getElementById("transcript-filter").value = ""; refresh().catch(function(error) { setStatus(error.message); }); });
-    refresh()
+    Promise.all([refresh(), refreshCodexAuth()])
       .then(startVoiceBridgeProbing)
       .catch(function(error) { setStatus(error.message); startVoiceBridgeProbing(); });
   </script>
@@ -2603,6 +2670,7 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
 function buildOperatorControlMarkers(snapshot: CallSnapshot) {
   const attention = getAttentionMetadata(snapshot);
   const latestEvent = snapshot.events.at(-1);
+  const endedEvent = getLatestEvent(snapshot, "sip_call_ended");
   const latestTranscriptTurn = snapshot.transcript.at(-1);
   const latestLatencyTrail = buildLatestLatencyTrail(snapshot);
   const holdActive =
@@ -2610,7 +2678,7 @@ function buildOperatorControlMarkers(snapshot: CallSnapshot) {
     snapshot.flowState === "operator_steer" ||
     snapshot.operatorSteer.pending ||
     snapshot.demoFallback.armed;
-  const liveCallStatus = snapshot.flowState === "wrap" ? "ended" : holdActive ? "held" : "active";
+  const liveCallStatus = endedEvent || snapshot.flowState === "wrap" ? "ended" : holdActive ? "held" : "active";
   const pendingApprovalTrail = snapshot.operatorSteer.pending
     ? snapshot.session.openclawSession.artifactLinks.events + "?type=operator_steer_requested&limit=1&order=desc"
     : null;
@@ -4682,6 +4750,18 @@ async function withLiveSipCallLock<T>(
   sipCallId: string,
   run: () => Promise<T>,
 ): Promise<T> {
+  const release = await acquireLiveSipCallLock(locks, sipCallId);
+  try {
+    return await run();
+  } finally {
+    release();
+  }
+}
+
+async function acquireLiveSipCallLock(
+  locks: Map<string, Promise<void>>,
+  sipCallId: string,
+): Promise<() => void> {
   const previous = locks.get(sipCallId) ?? Promise.resolve();
   let releaseCurrent!: () => void;
   const current = new Promise<void>((resolve) => {
@@ -4690,14 +4770,15 @@ async function withLiveSipCallLock<T>(
   const queued = previous.catch(() => undefined).then(() => current);
   locks.set(sipCallId, queued);
   await previous.catch(() => undefined);
-  try {
-    return await run();
-  } finally {
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
     releaseCurrent();
     if (locks.get(sipCallId) === queued) {
       locks.delete(sipCallId);
     }
-  }
+  };
 }
 
 async function withLiveSipOpenAiGenerationLock<T>(
@@ -4733,11 +4814,12 @@ function normalizeLiveSipDestination(value: unknown): string | null {
   const destination = getOptionalTrimmedString(value);
   if (!destination) return null;
   const normalized = destination.toLowerCase() === "acc" ? "8600" : destination;
-  return /^(8600|8611)$/.test(normalized) ? normalized : destination;
+  return /^(8600|8611|8612)$/.test(normalized) ? normalized : destination;
 }
 
 function conversationModeForLiveSipDestination(destination: string | null): ConversationMode {
   if (destination === "8600") return "openai_llm";
+  if (destination === "8611") return "free_caller";
   return "scripted";
 }
 
@@ -4747,7 +4829,7 @@ function normalizeLiveSipConversationMode(value: unknown, destination: string | 
 }
 
 function openAiConversationModel(env: NodeJS.ProcessEnv = process.env): string {
-  return env.ACC_OPENAI_CONVERSATION_MODEL?.trim() || "GPT-5.4-mini";
+  return env.ACC_OPENAI_CONVERSATION_MODEL?.trim() || "gpt-5.4-mini";
 }
 
 function openAiConversationTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
@@ -4755,7 +4837,7 @@ function openAiConversationTimeoutMs(env: NodeJS.ProcessEnv = process.env): numb
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 12000;
 }
 
-type OpenAiConversationAuthMode = "api_key" | "openclaw_oauth";
+type OpenAiConversationAuthMode = "api_key" | "openclaw_oauth" | "codex_oauth";
 
 type OpenAiConversationRequestConfig = {
   model: string;
@@ -4768,7 +4850,87 @@ type OpenAiConversationRequestConfig = {
 };
 
 function openAiConversationAuthMode(env: NodeJS.ProcessEnv = process.env): OpenAiConversationAuthMode {
-  return env.ACC_OPENAI_AUTH_MODE?.trim().toLowerCase() === "openclaw_oauth" ? "openclaw_oauth" : "api_key";
+  const configured = env.ACC_OPENAI_AUTH_MODE?.trim().toLowerCase();
+  if (configured === "openclaw_oauth" || configured === "codex_oauth") return configured;
+  return "api_key";
+}
+
+const codexVoiceModel = "gpt-5.4-mini";
+
+function codexVoiceBridgeBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return (env.ACC_CODEX_VOICE_BRIDGE_URL?.trim() || "http://127.0.0.1:8771").replace(/\/+$/, "");
+}
+
+async function requestCodexVoiceBridge(
+  path: string,
+  init: RequestInit = {},
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ status: number; payload: Record<string, unknown> }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), openAiConversationTimeoutMs(env));
+  try {
+    const response = await fetch(`${codexVoiceBridgeBaseUrl(env)}${path}`, {
+      ...init,
+      headers: {
+        ...(init.body ? { "content-type": "application/json" } : {}),
+        ...init.headers,
+      },
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => ({}));
+    return { status: response.status, payload: isRecord(payload) ? payload : {} };
+  } catch (error) {
+    const detail = error instanceof Error && error.name === "AbortError" ? "codex_bridge_timeout" : redactOpenAiError(error);
+    return { status: 503, payload: { ok: false, error: detail, model: codexVoiceModel } };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function buildPublicCodexAuthPayload(payload: Record<string, unknown>) {
+  const publicPayload: Record<string, unknown> = {
+    ok: payload.ok === true,
+    configuredForVoice: openAiConversationAuthMode() === "codex_oauth",
+    model: codexVoiceModel,
+  };
+  if (typeof payload.authenticated === "boolean") publicPayload.authenticated = payload.authenticated;
+  for (const key of ["status", "error", "loginId", "verificationUrl", "userCode"] as const) {
+    const value = getOptionalTrimmedString(payload[key]);
+    if (value) publicPayload[key] = value;
+  }
+  return publicPayload;
+}
+
+const codexVoiceReleaseRetryDelaysMs = [0, 100, 500] as const;
+const codexVoiceReleaseTasks = new Map<string, Promise<void>>();
+
+function waitForCodexVoiceReleaseRetry(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, delayMs);
+    timer.unref();
+  });
+}
+
+function releaseCodexVoiceCall(snapshot: CallSnapshot, env: NodeJS.ProcessEnv = process.env): void {
+  if (openAiConversationAuthMode(env) !== "codex_oauth") return;
+  const sessionId = snapshot.session.openclawSession.sessionId;
+  if (codexVoiceReleaseTasks.has(sessionId)) return;
+
+  const releaseTask = (async () => {
+    for (const delayMs of codexVoiceReleaseRetryDelaysMs) {
+      if (delayMs > 0) await waitForCodexVoiceReleaseRetry(delayMs);
+      const bridge = await requestCodexVoiceBridge(
+        `/calls/${encodeURIComponent(sessionId)}`,
+        { method: "DELETE" },
+        env,
+      );
+      if (bridge.status >= 200 && bridge.status < 300) return;
+    }
+  })().finally(() => {
+    codexVoiceReleaseTasks.delete(sessionId);
+  });
+  codexVoiceReleaseTasks.set(sessionId, releaseTask);
+  void releaseTask;
 }
 
 function openAiConversationGatewayAgentId(env: NodeJS.ProcessEnv = process.env): string {
@@ -4847,29 +5009,80 @@ async function generateOpenAiLiveSipResponse(
   callerText: string,
   timestamp: string,
   env: NodeJS.ProcessEnv = process.env,
+  options: { stateless?: boolean } = {},
 ): Promise<OpenAiLlmTurnResult> {
   const model = openAiConversationModel(env);
-  const requestConfig = buildOpenAiConversationRequestConfig(model, env);
-  if (!requestConfig.bearerToken) {
-    return { ok: false, model, error: requestConfig.missingCredentialError, status: null };
-  }
   const transcript = snapshot.transcript
     .slice(-8)
     .map((turn) => `${turn.speaker}: ${turn.text}`)
     .join("\n");
   const systemPromptText = [
     "You are the live OpenAI-backed conversation path for ACC SIP extension 8600.",
-    "Answer in one or two short sentences suitable for TTS.",
+    "Classify the latest caller request and propose one short reply suitable for TTS.",
+    "Return only the requested structured request-proposal object; do not return prose outside it.",
+    "The intent must be cancellation, billing, account_update, service_information, human_handoff, or unsupported.",
+    "Match requestedOperation respectively to cancel_policy, review_billing, update_account, get_service_information, handoff, or null.",
+    "Set needsClarification only for unsupported requests.",
     "Do not promise discounts, refunds, cancellation completion, policy changes, or regulated advice.",
     "When a request requires approval, account access, or a human decision, say you will prepare a safe handoff.",
     "Ask at most one focused follow-up question.",
+    "This routing slice does not verify identity, authorize an operation, or execute a business action.",
   ].join(" ");
   const userPromptText = [
     `Timestamp: ${timestamp}`,
     `Flow state: ${snapshot.flowState}`,
+    `Conversation node: ${snapshot.conversationControl.node ?? "understand_request"}`,
     `Recent transcript:\n${transcript || "(none)"}`,
     `Latest caller turn: ${callerText}`,
   ].join("\n");
+
+  if (openAiConversationAuthMode(env) === "codex_oauth") {
+    if (model !== codexVoiceModel) {
+      return { ok: false, model, error: "codex_model_must_be_gpt-5.4-mini", status: null };
+    }
+    const bridge = await requestCodexVoiceBridge(
+      "/respond",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          callId: snapshot.session.callId,
+          callInstanceId: snapshot.session.openclawSession.sessionId,
+          model: codexVoiceModel,
+          prompt: userPromptText,
+          stateless: options.stateless === true,
+        }),
+      },
+      env,
+    );
+    if (bridge.status < 200 || bridge.status >= 300 || bridge.payload.ok !== true) {
+      return {
+        ok: false,
+        model,
+        error: getOptionalTrimmedString(bridge.payload.error) ?? "codex_bridge_request_failed",
+        status: bridge.status,
+      };
+    }
+    const proposalText = getOptionalTrimmedString(bridge.payload.text) ?? "";
+    const parsed = parseConversationProposal(proposalText);
+    if (!parsed.ok) return { ok: false, model, error: parsed.error, status: bridge.status };
+    const text = parsed.proposal.proposedReply;
+    const validationError = validateOpenAiAgentText(text);
+    if (validationError) return { ok: false, model, error: validationError, status: bridge.status };
+    return {
+      ok: true,
+      model,
+      text,
+      proposal: parsed.proposal,
+      targetNode: parsed.targetNode,
+      responseId: getOptionalTrimmedString(bridge.payload.threadId) ?? null,
+      status: bridge.status,
+    };
+  }
+
+  const requestConfig = buildOpenAiConversationRequestConfig(model, env);
+  if (!requestConfig.bearerToken) {
+    return { ok: false, model, error: requestConfig.missingCredentialError, status: null };
+  }
   const input = requestConfig.useStringInput
     ? `${systemPromptText}\n\n${userPromptText}`
     : [
@@ -4897,6 +5110,14 @@ async function generateOpenAiLiveSipResponse(
     store: false,
     max_output_tokens: 160,
     input,
+    text: {
+      format: {
+        type: "json_schema",
+        name: "conversation_request_proposal",
+        strict: true,
+        schema: CONVERSATION_PROPOSAL_JSON_SCHEMA,
+      },
+    },
   };
 
   const controller = new AbortController();
@@ -4917,7 +5138,12 @@ async function generateOpenAiLiveSipResponse(
       const errorMessage = isRecord(payload) && isRecord(payload.error) ? getOptionalTrimmedString(payload.error.message) : null;
       return { ok: false, model, error: redactOpenAiError(errorMessage ?? response.statusText), status: response.status };
     }
-    const text = extractOpenAiResponseText(payload);
+    const proposalText = extractOpenAiResponseText(payload);
+    const parsed = parseConversationProposal(proposalText);
+    if (!parsed.ok) {
+      return { ok: false, model, error: parsed.error, status: response.status };
+    }
+    const text = parsed.proposal.proposedReply;
     const validationError = validateOpenAiAgentText(text);
     if (validationError) {
       return { ok: false, model, error: validationError, status: response.status };
@@ -4926,6 +5152,8 @@ async function generateOpenAiLiveSipResponse(
       ok: true,
       model,
       text,
+      proposal: parsed.proposal,
+      targetNode: parsed.targetNode,
       responseId: isRecord(payload) ? getOptionalTrimmedString(payload.id) ?? null : null,
       status: response.status,
     };
@@ -5136,6 +5364,8 @@ async function routeRequest(
   liveSipCallMap: Map<string, string>,
   liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>,
   liveSipCallLocks: Map<string, Promise<void>>,
+  pipecatSessionRegistrationLocks: Map<string, Promise<void>>,
+  browserWebrtcSessionOfferLocks: Map<string, Promise<void>>,
   liveSipOpenAiGenerationLocks: Map<string, Promise<void>>,
   callerTurnDeliveryAckPreviews: Map<string, CallerTurnDeliveryAckPreview>,
   callerTurnDeliveryAckPreviewReservations: Set<string>,
@@ -5234,18 +5464,95 @@ async function routeRequest(
       return;
     }
 
+    if (body.conversationMode !== undefined && !isConversationMode(body.conversationMode)) {
+      writeBadRequest(response, "browser_webrtc_conversation_mode_invalid");
+      return;
+    }
+    const conversationMode = isConversationMode(body.conversationMode) ? body.conversationMode : "free_caller";
+
+    const sessionId = getOptionalTrimmedString(body.sessionId) ?? `browser-webrtc-${randomUUID()}`;
+    const sessionOfferAbortController = new AbortController();
+    let sessionOfferResponseClosed = false;
+    let cleanupFailedOffer: ((reason: string) => Promise<void>) | null = null;
+    let cleanupDisconnectedOffer: (() => Promise<void>) | null = null;
+    response.once("close", () => {
+      if (response.writableEnded || response.writableFinished) return;
+      sessionOfferResponseClosed = true;
+      sessionOfferAbortController.abort(new Error("browser_webrtc_client_disconnected"));
+      void cleanupDisconnectedOffer?.().catch(() => undefined);
+    });
+    const releaseSessionOffer = await acquireLiveSipCallLock(browserWebrtcSessionOfferLocks, sessionId);
+    if (sessionOfferResponseClosed || response.destroyed) {
+      releaseSessionOffer();
+      return;
+    }
+    try {
     const requestedCallId = getOptionalTrimmedString(body.callId);
     const existingSnapshot = requestedCallId ? await ingress.getSnapshot(requestedCallId) : null;
     if (requestedCallId && !existingSnapshot) {
       writeBadRequest(response, "browser_webrtc_call_not_found");
       return;
     }
-    const snapshot = existingSnapshot ?? await ingress.startCall(config, {
-      openclawSessionId: `browser-webrtc-${randomUUID()}`,
-      openclawSessionLabel: "browser-webrtc/pipecat",
-    } satisfies StartCallOptions);
+    if (existingSnapshot && isLiveSipCallEnded(existingSnapshot)) {
+      writeJson(response, 409, { ok: false, error: "browser_webrtc_call_ended", callId: requestedCallId });
+      return;
+    }
+    const registrationKey = `pipecat-browser-webrtc-${sessionId}`;
+    const registration = existingSnapshot
+      ? { snapshot: existingSnapshot, endCallOnClose: false, createdByRequest: false }
+      : await withLiveSipCallLock(pipecatSessionRegistrationLocks, registrationKey, async () => {
+        const activeSnapshot = (await ingress.listSnapshots({ providerCallId: sessionId }))
+          .find((candidate) => candidate.session.providerName === "pipecat-browser-webrtc" && !isLiveSipCallEnded(candidate));
+        if (activeSnapshot) return { snapshot: activeSnapshot, endCallOnClose: true, createdByRequest: false };
+
+        const createdSnapshot = await ingress.startCall(config, {
+          providerName: "pipecat-browser-webrtc",
+          providerCallId: sessionId,
+          openclawSessionId: `${registrationKey}-${randomUUID()}`,
+          openclawSessionLabel: `pipecat/browser-webrtc/${sessionId}`,
+          source: "mock_http_route",
+          conversationMode,
+          runtimeModeLabels: {
+            telephony: "mocked_telephony",
+            media: "live_capture",
+            rtcAsr: "rtc_asr_live",
+            credentialsMode: "mocked",
+          },
+        } satisfies StartCallOptions);
+        return { snapshot: createdSnapshot, endCallOnClose: true, createdByRequest: true };
+      });
+    const snapshot = registration.snapshot;
     const callId = snapshot.session.callId;
-    const sessionId = getOptionalTrimmedString(body.sessionId) ?? `browser-webrtc-${randomUUID()}`;
+    const retireProxyOwnedCall = async (reason: string): Promise<void> => {
+      if (!registration.endCallOnClose) return;
+      const current = await ingress.getSnapshot(callId);
+      if (!current || isLiveSipCallEnded(current)) return;
+      const endedSnapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+        eventType: "sip_call_ended",
+        timestamp: new Date().toISOString(),
+        detail: {
+          hangupCause: reason,
+          durationSeconds: null,
+          transport: "browser_webrtc",
+          sessionId,
+        },
+      });
+      purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
+      releaseCodexVoiceCall(endedSnapshot);
+    };
+    let failedOfferCleanupPromise: Promise<void> | null = null;
+    cleanupFailedOffer = (reason: string) => {
+      failedOfferCleanupPromise ??= Promise.all([
+        retireProxyOwnedCall(reason),
+        deleteBrowserWebrtcSessionFromBridge(sessionId),
+      ]).then(() => undefined);
+      return failedOfferCleanupPromise;
+    };
+    cleanupDisconnectedOffer = () => cleanupFailedOffer!("pipecat_webrtc_client_disconnected");
+    if (sessionOfferResponseClosed || response.destroyed) {
+      await cleanupDisconnectedOffer();
+      return;
+    }
     const host = request.headers.host ?? "127.0.0.1:8026";
     const protocol = host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "http";
 
@@ -5255,6 +5562,7 @@ async function routeRequest(
         sdp,
         sessionId,
         callId,
+        conversationMode: snapshot.scenario.conversationMode,
         accUrl: `${protocol}://${host}`,
         stt: { engine: "rtc-asr", contract: "local-stt.v1" },
         tts: { engine: "kokoro" },
@@ -5264,9 +5572,15 @@ async function routeRequest(
           ffmpegRequired: false,
           preservation: ["callState", "transcript", "eventTrail", "latencyEvidence", "proofRoutes"],
         },
-      });
+      }, sessionOfferAbortController.signal);
+
+      if (sessionOfferResponseClosed || response.destroyed) {
+        await cleanupDisconnectedOffer();
+        return;
+      }
 
       if (!isRecord(bridgeResponse.payload)) {
+        await cleanupFailedOffer("pipecat_webrtc_bridge_invalid_response");
         writeJson(response, 502, {
           ok: false,
           error: "pipecat_webrtc_bridge_invalid_response",
@@ -5277,7 +5591,24 @@ async function routeRequest(
 
       const answerType = getOptionalTrimmedString(bridgeResponse.payload.type);
       const answerSdp = typeof bridgeResponse.payload.sdp === "string" ? bridgeResponse.payload.sdp : "";
+      const bridgeError = getOptionalTrimmedString(bridgeResponse.payload.error);
+      if (bridgeResponse.status === 409 && bridgeError === "webrtc_session_active") {
+        if (registration.createdByRequest) {
+          await retireProxyOwnedCall("pipecat_webrtc_bridge_session_conflict");
+        }
+        writeJson(response, 409, {
+          ok: false,
+          error: "browser_webrtc_session_active",
+          sessionId,
+          callId,
+          bridgeStatus: bridgeResponse.status,
+          bridgeOfferRoute: buildBrowserWebrtcBridgeOfferUrl(),
+          bridge: bridgeResponse.payload,
+        });
+        return;
+      }
       if (!bridgeResponse.status.toString().startsWith("2") || answerType !== "answer" || !answerSdp.trim()) {
+        await cleanupFailedOffer("pipecat_webrtc_bridge_offer_failed");
         writeJson(response, 502, {
           ok: false,
           error: "pipecat_webrtc_bridge_offer_failed",
@@ -5313,7 +5644,14 @@ async function routeRequest(
         },
       });
     } catch (error) {
-      writeJson(response, 503, buildBrowserWebrtcBridgeUnavailablePayload(error));
+      const clientDisconnected = sessionOfferResponseClosed || response.destroyed || sessionOfferAbortController.signal.aborted;
+      if (clientDisconnected) await cleanupDisconnectedOffer();
+      else await cleanupFailedOffer("pipecat_webrtc_bridge_unavailable");
+      if (!clientDisconnected) writeJson(response, 503, buildBrowserWebrtcBridgeUnavailablePayload(error));
+    }
+    } finally {
+      if (sessionOfferResponseClosed && cleanupDisconnectedOffer) await cleanupDisconnectedOffer();
+      releaseSessionOffer();
     }
     return;
   }
@@ -6059,6 +6397,203 @@ async function routeRequest(
     return;
   }
 
+  if (request.method === "POST" && pathname === "/api/pipecat/sessions/ensure-call") {
+    const body = await readJsonBody<unknown>(request);
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const sessionId = getOptionalTrimmedString(body.sessionId);
+    if (!sessionId) {
+      writeBadRequest(response, "pipecat_session_id_required");
+      return;
+    }
+    const transport = getOptionalTrimmedString(body.transport);
+    if (transport !== "browser_webrtc" && transport !== "freeswitch_verto") {
+      writeBadRequest(response, "pipecat_transport_invalid");
+      return;
+    }
+    if (body.conversationMode !== undefined && !isConversationMode(body.conversationMode)) {
+      writeBadRequest(response, "pipecat_conversation_mode_invalid");
+      return;
+    }
+    const conversationMode: ConversationMode = isConversationMode(body.conversationMode)
+      ? body.conversationMode
+      : "free_caller";
+
+    const requestedCallId = getOptionalTrimmedString(body.callId);
+    if (requestedCallId) {
+      const existingSnapshot = await ingress.getSnapshot(requestedCallId);
+      if (!existingSnapshot) {
+        writeJson(response, 404, { ok: false, error: "pipecat_call_not_found" });
+        return;
+      }
+      if (isLiveSipCallEnded(existingSnapshot)) {
+        writeJson(response, 409, { ok: false, error: "pipecat_call_ended", callId: requestedCallId });
+        return;
+      }
+      writeJson(response, 200, {
+        ok: true,
+        route: "/api/pipecat/sessions/ensure-call",
+        callId: existingSnapshot.session.callId,
+        sessionId,
+        transport,
+        conversationMode: existingSnapshot.scenario.conversationMode,
+        idempotent: true,
+        endCallOnClose: existingSnapshot.session.providerName === "pipecat-browser-webrtc"
+          && existingSnapshot.session.providerCallId === sessionId,
+        call: buildCallPayload(existingSnapshot),
+      });
+      return;
+    }
+
+    const transportLabel = transport.replace("_", "-");
+    const browserTransport = transport === "browser_webrtc";
+    const providerName = browserTransport ? "pipecat-browser-webrtc" : "freeswitch-verto";
+    const registrationKey = `pipecat-${transportLabel}-${sessionId}`;
+    const registration = await withLiveSipCallLock(pipecatSessionRegistrationLocks, registrationKey, async () => {
+      const existingSnapshot = (await ingress.listSnapshots({ providerCallId: sessionId }))
+        .find((snapshot) => snapshot.session.providerName === providerName && !isLiveSipCallEnded(snapshot));
+      if (existingSnapshot) {
+        return {
+          status: 200,
+          payload: {
+            ok: true,
+            route: "/api/pipecat/sessions/ensure-call",
+            callId: existingSnapshot.session.callId,
+            sessionId,
+            transport,
+            conversationMode: existingSnapshot.scenario.conversationMode,
+            idempotent: true,
+            endCallOnClose: true,
+            call: buildCallPayload(existingSnapshot),
+          },
+        };
+      }
+
+      const snapshot = await ingress.startCall(config, {
+        providerName,
+        providerCallId: sessionId,
+        openclawSessionId: `${registrationKey}-${randomUUID()}`,
+        openclawSessionLabel: `pipecat/${transportLabel}/${sessionId}`,
+        source: browserTransport ? "mock_http_route" : "freeswitch_verto",
+        conversationMode,
+        runtimeModeLabels: {
+          telephony: browserTransport ? "mocked_telephony" : "local_sip",
+          media: "live_capture",
+          rtcAsr: "rtc_asr_live",
+          credentialsMode: "mocked",
+        },
+      } satisfies StartCallOptions);
+      return {
+        status: 201,
+        payload: {
+          ok: true,
+          route: "/api/pipecat/sessions/ensure-call",
+          callId: snapshot.session.callId,
+          sessionId,
+          transport,
+          conversationMode: snapshot.scenario.conversationMode,
+          idempotent: false,
+          endCallOnClose: true,
+          call: buildCallPayload(snapshot),
+        },
+      };
+    });
+    writeJson(response, registration.status, registration.payload);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/pipecat/sessions/end-call") {
+    const body = await readJsonBody<unknown>(request);
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+    const callId = getOptionalTrimmedString(body.callId);
+    const sessionId = getOptionalTrimmedString(body.sessionId);
+    if (!callId) {
+      writeBadRequest(response, "pipecat_call_id_required");
+      return;
+    }
+    if (!sessionId) {
+      writeBadRequest(response, "pipecat_session_id_required");
+      return;
+    }
+    if (body.transport !== "browser_webrtc") {
+      writeBadRequest(response, "pipecat_transport_invalid");
+      return;
+    }
+    const timestamp = normalizeTimestamp(body.timestamp, "pipecat_session_end_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+    const existing = await ingress.getSnapshot(callId);
+    if (!existing) {
+      writeNotFound(response);
+      return;
+    }
+    if (existing.session.providerName !== "pipecat-browser-webrtc" || existing.session.providerCallId !== sessionId) {
+      writeBadRequest(response, "pipecat_session_call_mismatch");
+      return;
+    }
+    if (isLiveSipCallEnded(existing)) {
+      releaseCodexVoiceCall(existing);
+      writeJson(response, 200, {
+        ok: true,
+        route: "/api/pipecat/sessions/end-call",
+        callId,
+        sessionId,
+        idempotent: true,
+        call: buildCallPayload(existing),
+      });
+      return;
+    }
+    const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+      eventType: "sip_call_ended",
+      timestamp,
+      detail: {
+        hangupCause: getOptionalTrimmedString(body.reason) ?? "browser_webrtc_peer_closed",
+        durationSeconds: null,
+        transport: "browser_webrtc",
+        sessionId,
+      },
+    });
+    purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
+    releaseCodexVoiceCall(snapshot);
+    writeJson(response, 200, {
+      ok: true,
+      route: "/api/pipecat/sessions/end-call",
+      callId,
+      sessionId,
+      idempotent: false,
+      call: buildCallPayload(snapshot),
+    });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/codex-auth/status") {
+    const bridge = await requestCodexVoiceBridge("/auth/status");
+    writeJson(response, bridge.status, buildPublicCodexAuthPayload(bridge.payload));
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/codex-auth/device/start") {
+    const bridge = await requestCodexVoiceBridge("/auth/device/start", { method: "POST" });
+    writeJson(response, bridge.status, buildPublicCodexAuthPayload(bridge.payload));
+    return;
+  }
+
+  const codexDeviceLoginMatch = pathname.match(/^\/api\/codex-auth\/device\/([^/]+)$/);
+  if (request.method === "GET" && codexDeviceLoginMatch) {
+    const loginId = decodeURIComponent(codexDeviceLoginMatch[1]);
+    const bridge = await requestCodexVoiceBridge(`/auth/device/${encodeURIComponent(loginId)}`);
+    writeJson(response, bridge.status, buildPublicCodexAuthPayload(bridge.payload));
+    return;
+  }
+
   if (request.method === "GET" && (pathname === "/" || pathname === "/operator" || pathname === "/operator/console")) {
     writeHtml(response, 200, buildOperatorConsoleHtml());
     return;
@@ -6475,6 +7010,7 @@ async function routeRequest(
         if (endedSnapshot && isLiveSipCallEnded(endedSnapshot)) {
           if (eventType === "call.ended") {
             purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, endedSnapshot.session.callId);
+            releaseCodexVoiceCall(endedSnapshot);
             writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(endedSnapshot), idempotent: true });
           } else {
             writeBadRequest(response, "live_sip_call_not_started");
@@ -6490,6 +7026,7 @@ async function routeRequest(
           const alreadyEnded = matchingSnapshot.events.some((event) => event.type === "sip_call_ended");
           if (alreadyEnded) {
             purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, matchingSnapshot.session.callId);
+            releaseCodexVoiceCall(matchingSnapshot);
             writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(matchingSnapshot), idempotent: true });
             return;
           }
@@ -6503,6 +7040,7 @@ async function routeRequest(
         const existingSnapshot = await ingress.getSnapshot(callId);
         if (existingSnapshot?.events.some((event) => event.type === "sip_call_ended")) {
           purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
+          releaseCodexVoiceCall(existingSnapshot);
           writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(existingSnapshot), idempotent: true });
           return;
         }
@@ -6857,6 +7395,7 @@ async function routeRequest(
         },
       });
       purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, snapshot.session.callId);
+      releaseCodexVoiceCall(snapshot);
       const endedAliases = uniqueLiveSipCallIds(
         ...liveSipCallAliasesForCall(liveSipCallMap, snapshot.session.callId),
         ...liveSipCorrelationIds,
@@ -7458,7 +7997,7 @@ async function routeRequest(
               return undefined;
             }
             currentSnapshot = lockedSnapshot;
-            return generateOpenAiLiveSipResponse(lockedSnapshot, text, timestamp);
+            return generateOpenAiLiveSipResponse(lockedSnapshot, text, timestamp, process.env, { stateless: true });
           })
         : undefined;
       if (deliveryAckOpenAiResponseHandled) return;
@@ -7944,6 +8483,7 @@ async function routeRequest(
       );
       if (parsedSteer.action === "end_call") {
         purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, snapshot.session.callId);
+        releaseCodexVoiceCall(snapshot);
       }
       writeJson(response, 200, buildCallPayload(snapshot));
     } catch (error) {
@@ -8318,13 +8858,15 @@ export function buildHttpServer(config: PocConfig) {
   const liveSipCallMap = new Map<string, string>();
   const liveSipEndedCallMap = new Map<string, LiveSipEndedCallAlias>();
   const liveSipCallLocks = new Map<string, Promise<void>>();
+  const pipecatSessionRegistrationLocks = new Map<string, Promise<void>>();
+  const browserWebrtcSessionOfferLocks = new Map<string, Promise<void>>();
   const liveSipOpenAiGenerationLocks = new Map<string, Promise<void>>();
   const callerTurnDeliveryAckPreviews = new Map<string, CallerTurnDeliveryAckPreview>();
   const callerTurnDeliveryAckPreviewReservations = new Set<string>();
   const voiceSessions = new RealtimeVoiceSessionStore();
 
   const server = createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, pipecatSessionRegistrationLocks, browserWebrtcSessionOfferLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;

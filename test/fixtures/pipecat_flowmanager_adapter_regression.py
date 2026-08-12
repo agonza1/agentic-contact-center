@@ -70,6 +70,47 @@ async def run_regression() -> dict[str, Any]:
         normal_results.append(await adapter.preview_caller_turn(text=text, conversation_mode="free_caller"))
         await adapter.commit_pending_transition()
 
+    def structured_http(_method: str, _url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "flowState": "greet",
+            "conversationControl": {
+                "node": "collect_identity",
+                "lastProposal": {"intent": "cancellation", "requestedOperation": "cancel_policy"},
+                "lastDecision": {"status": "accepted", "targetNode": "collect_identity"},
+            },
+            "callerTurnCommit": {"mode": "delivery_ack", "status": "pending"},
+            "transcript": [
+                {"speaker": "caller", "text": payload["text"]},
+                {"speaker": "agent", "text": "Please provide your full name and ZIP code."},
+            ],
+        }
+
+    structured_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-structured-routing",
+        request_json=structured_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    structured_preview = await structured_adapter.preview_caller_turn(
+        text="I want to close my policy",
+        conversation_mode="openai_llm",
+    )
+    await structured_adapter.commit_pending_transition()
+
+    structured_discard_adapter = AccPipecatFlowManagerAdapter(
+        acc_url="http://acc.test",
+        call_id="flowmanager-structured-routing-discarded",
+        request_json=structured_http,
+        manager_factory=FakeFlowManager,
+        version_provider=matching_version,
+    )
+    structured_discard_preview = await structured_discard_adapter.preview_caller_turn(
+        text="I want to close my policy",
+        conversation_mode="openai_llm",
+    )
+    structured_discard_adapter.discard_pending_transition("barge_in_cancelled_before_delivery")
+
     discarded_nodes = iter(["greet", "greet"])
 
     def discarded_http(_method: str, _url: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -450,6 +491,22 @@ async def run_regression() -> dict[str, Any]:
         "actualFlowManagerFactoryOwnsNodes": adapter.manager is not None and adapter.manager.current_node == "wrap",
         "normalCancellationTransitionsGuarded": [step["to"] for step in adapter.transition_trace] == ["greet", "diagnose", "diagnose", "wrap"],
         "normalTurnsRemainDeliveryAckPreviews": all(result["flowManagerRuntime"]["commitPolicy"] == "preview_until_output_delivery_ack" for result in normal_results),
+        "structuredProposalUsesAuthorizedConversationGraph": (
+            structured_preview["flowManagerRuntime"]["pendingNode"] == "collect_identity"
+            and structured_preview["flowManagerRuntime"]["pendingAllowedFunctions"]
+            == ["submit_identity", "transfer_to_human"]
+            and structured_adapter.manager.current_node == "collect_identity"
+            and [step["to"] for step in structured_adapter.transition_trace]
+            == ["understand_request", "collect_identity"]
+        ),
+        "structuredRoutingEnvelopeWaitsForDeliveryAck": (
+            structured_discard_preview["flowManagerRuntime"]["pendingTransition"]["path"]
+            == ["understand_request", "collect_identity"]
+            and structured_discard_adapter.manager.current_node == "call_started"
+            and structured_discard_adapter.pending_transition is None
+            and structured_discard_adapter.transition_trace == []
+            and structured_discard_adapter.last_evidence["commitPolicy"] == "preview_discarded"
+        ),
         "bargeInDiscardsUnheardTransition": (
             discarded_adapter.manager.current_node == "call_started"
             and discarded_result["flowManagerRuntime"]["pendingNode"] == "greet"
@@ -518,6 +575,7 @@ async def run_regression() -> dict[str, Any]:
         "requiredVersions": {"pipecat-ai": "1.7.0", },
         "normalTransitionTrace": adapter.transition_trace,
         "normalPreviewRequests": len(requests),
+        "structuredRoutingEvidence": structured_preview["flowManagerRuntime"],
         "unsafeEvidence": unsafe_result["flowManagerRuntime"],
         "missingRuntimeEvidence": missing_result["flowManagerRuntime"],
         "heldEvidence": held_result["flowManagerRuntime"],

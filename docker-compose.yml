@@ -5,7 +5,7 @@ services:
       target: runtime
     image: agentic-contact-center:local
     ports:
-      - "8026:8026"
+      - "127.0.0.1:8026:8026"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -21,8 +21,9 @@ services:
       POCKET_TTS_SPEECH_PATH: ${POCKET_TTS_SPEECH_PATH:-/v1/audio/speech}
       KOKORO_BASE_URL: http://kokoro:8880
       BROWSER_WEBRTC_BRIDGE_URL: http://browser-webrtc-bridge:8766
-      ACC_OPENAI_CONVERSATION_MODEL: ${ACC_OPENAI_CONVERSATION_MODEL:-GPT-5.4-mini}
-      ACC_OPENAI_AUTH_MODE: ${ACC_OPENAI_AUTH_MODE:-api_key}
+      ACC_OPENAI_CONVERSATION_MODEL: ${ACC_OPENAI_CONVERSATION_MODEL:-gpt-5.4-mini}
+      ACC_OPENAI_AUTH_MODE: ${ACC_OPENAI_AUTH_MODE:-codex_oauth}
+      ACC_CODEX_VOICE_BRIDGE_URL: http://codex-voice-bridge:8771
       ACC_OPENAI_AUTH_TOKEN: ${ACC_OPENAI_AUTH_TOKEN:-}
       ACC_OPENCLAW_AGENT_ID: ${ACC_OPENCLAW_AGENT_ID:-acc-voice}
       ACC_OPENAI_BASE_URL: ${ACC_OPENAI_BASE_URL:-https://api.openai.com/v1}
@@ -91,8 +92,10 @@ services:
     depends_on:
       - app
     ports:
-      - "127.0.0.1:5060:5060/udp"
-      - "127.0.0.1:5060:5060/tcp"
+      # Stable host-only Linphone ingress. The container's normal authenticated
+      # internal profile remains on 5060 for Docker-network traffic.
+      - "127.0.0.1:5060:5062/udp"
+      - "127.0.0.1:5060:5062/tcp"
       - "127.0.0.1:8021:8021/tcp"
       - "127.0.0.1:8081:8081/tcp"
       - "127.0.0.1:8082:8082/tcp"
@@ -101,6 +104,9 @@ services:
       - ./freeswitch/conf/dialplan/default/acc_local_sip.xml:/etc/freeswitch/dialplan/default/acc_local_sip.xml:ro
       - ./freeswitch/conf/directory/default/1000.xml:/etc/freeswitch/directory/default/1000.xml:ro
       - ./freeswitch/conf/directory/default/acc-pipecat.xml:/etc/freeswitch/directory/default/acc-pipecat.xml:ro
+      - ./freeswitch/conf/directory/localhost.xml:/etc/freeswitch/directory/localhost.xml:ro
+      - ./freeswitch/conf/sip_profiles/acc-local.xml:/etc/freeswitch/sip_profiles/acc-local.xml:ro
+      - ./freeswitch/conf/autoload_configs/switch.conf.xml:/etc/freeswitch/autoload_configs/switch.conf.xml:ro
       - ./freeswitch/conf/autoload_configs/event_socket.conf.xml:/etc/freeswitch/autoload_configs/event_socket.conf.xml:ro
       - ./freeswitch/conf/autoload_configs/verto.conf.xml:/etc/freeswitch/autoload_configs/verto.conf.xml:ro
       - ./freeswitch/conf/sip_profiles/internal.xml:/etc/freeswitch/sip_profiles/internal.xml:ro
@@ -222,6 +228,9 @@ services:
       ACC_VERTO_OWNS_MEDIA: ${ACC_VERTO_OWNS_MEDIA:-false}
 
   pipecat-verto-bridge:
+    # The regex runtime intentionally refuses imports from the process CWD.
+    # Run outside /app while keeping all application paths explicit.
+    working_dir: /tmp
     build:
       context: .
       target: voice-runtime
@@ -229,12 +238,13 @@ services:
     profiles: ["sip-verto", "full"]
     depends_on:
       - app
+      - codex-voice-bridge
       - freeswitch
       - rtc-asr
       - kokoro
     command:
       - python3
-      - scripts/pipecat-verto-agent-bridge.py
+      - /app/scripts/pipecat-verto-agent-bridge.py
       - --host
       - 0.0.0.0
       - --port
@@ -268,16 +278,52 @@ services:
       FREESWITCH_VERTO_PASSWORD: local-verto-pass
       ACC_VERTO_OWNS_GREETING: ${ACC_VERTO_OWNS_GREETING:-true}
       ACC_SIP_GREETING_PREROLL_MS: ${ACC_SIP_GREETING_PREROLL_MS:-300}
+      # G.711 softphone speech arrives quieter than browser microphone PCM.
+      # The measured idle floor is near zero, so 120 retains useful margin.
+      ACC_WEBRTC_SILENCE_RMS: ${ACC_WEBRTC_SILENCE_RMS:-120}
       ACC_WEBRTC_SILENCE_MS: ${ACC_WEBRTC_SILENCE_MS:-600}
       ACC_WEBRTC_MIN_TURN_MS: ${ACC_WEBRTC_MIN_TURN_MS:-300}
       ACC_WEBRTC_MAX_TURN_MS: ${ACC_WEBRTC_MAX_TURN_MS:-5000}
       ACC_TTS_OUTPUT_CHUNK_YIELD_MS: ${ACC_TTS_OUTPUT_CHUNK_YIELD_MS:-20}
       ACC_TTS_EVIDENCE_EVERY_N_CHUNKS: ${ACC_TTS_EVIDENCE_EVERY_N_CHUNKS:-50}
+      ACC_TTS_REQUEST_TIMEOUT_SEC: ${ACC_TTS_REQUEST_TIMEOUT_SEC:-60}
+      ACC_VERTO_AUDIO_OUT_SAMPLE_RATE: ${ACC_VERTO_AUDIO_OUT_SAMPLE_RATE:-8000}
       PIPECAT_VERTO_PROOF_OUT: /app/artifacts/freeswitch-live/pipecat-verto-proof.json
     healthcheck:
       test:
         - CMD-SHELL
         - python3 -c 'import json, urllib.request; payload = json.load(urllib.request.urlopen("http://127.0.0.1:8770/health", timeout=2)); raise SystemExit(0 if payload.get("ok") else 1)'
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  codex-voice-bridge:
+    build:
+      context: .
+      target: voice-runtime
+    image: agentic-contact-center:voice-local
+    profiles: ["sip-verto", "full"]
+    working_dir: /tmp
+    command:
+      - python3
+      - /app/scripts/codex-voice-bridge.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8771"
+    ports:
+      - "127.0.0.1:8771:8771"
+    volumes:
+      - codex-voice-auth:/root/.codex
+      - ./config/codex-voice-requirements.toml:/etc/codex/requirements.toml:ro
+    environment:
+      CODEX_HOME: /root/.codex
+      CODEX_VOICE_WORKSPACE: /tmp/acc-codex-voice
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c 'import json, urllib.request; payload = json.load(urllib.request.urlopen("http://127.0.0.1:8771/health", timeout=2)); raise SystemExit(0 if payload.get("ok") else 1)'
       interval: 10s
       timeout: 3s
       retries: 12
@@ -300,3 +346,6 @@ services:
       - ./.assert-viewer:/app/.assert-viewer
     environment:
       ARTIFACTS_ROOT: /app/artifacts/results
+
+volumes:
+  codex-voice-auth:
