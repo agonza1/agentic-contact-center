@@ -4,6 +4,7 @@ services:
       context: .
       target: runtime
     image: agentic-contact-center:local
+    restart: unless-stopped
     ports:
       - "127.0.0.1:8026:8026"
     extra_hosts:
@@ -11,7 +12,9 @@ services:
     environment:
       PORT: "8026"
       RTC_ASR_BASE_URL: http://rtc-asr:8080
-      RTC_ASR_WS_URL: ws://rtc-asr:8080/v1/stt/stream
+      # Keep browser audio on the presentation origin; ACC tunnels this path
+      # to the rtc-asr service inside the Compose network.
+      RTC_ASR_WS_URL: ${RTC_ASR_BROWSER_WS_URL:-/api/cluecon/asr/stream}
       RTC_ASR_MODEL: ${RTC_ASR_MODEL:-mlx-community/parakeet-tdt_ctc-110m}
       ACC_TTS_PROVIDER: ${ACC_TTS_PROVIDER:-}
       POCKET_TTS_BASE_URL: ${POCKET_TTS_CONTAINER_BASE_URL:-}
@@ -117,11 +120,13 @@ services:
   rtc-asr:
     image: ${RTC_ASR_IMAGE:-rtc-asr:local}
     profiles: ["voice", "browser-webrtc", "sip", "sip-verto", "full"]
+    restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
     environment:
-      ASR_BACKEND: ${ASR_BACKEND:-faster-whisper}
-      ASR_MODEL: ${ASR_MODEL:-base.en}
+      ASR_BACKEND: ${ASR_BACKEND:-parakeet-nemo}
+      ASR_PARAKEET_MODEL: ${ASR_PARAKEET_MODEL:-nvidia/parakeet-tdt_ctc-110m}
+      HF_HUB_DISABLE_XET: ${HF_HUB_DISABLE_XET:-1}
       ASR_DEVICE: ${ASR_DEVICE:-cpu}
       ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-int8}
       ASR_PRELOAD_MODEL: ${ASR_PRELOAD_MODEL:-true}
@@ -129,11 +134,13 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - python -c 'import json, urllib.request; payload = json.load(urllib.request.urlopen("http://127.0.0.1:8080/health", timeout=2)); raise SystemExit(0 if payload.get("ok", True) and payload.get("status", "ready") not in {"offline", "error", "failed", "degraded"} else 1)'
+        - python -c 'import json, urllib.request; payload = json.load(urllib.request.urlopen("http://127.0.0.1:8080/ready", timeout=2)); raise SystemExit(0 if payload.get("ready") is True and payload.get("model_loaded") is True else 1)'
       interval: 10s
       timeout: 3s
       retries: 12
-      start_period: 20s
+      # A first Parakeet download can take several minutes on conference Wi-Fi.
+      # Once started, steady-state readiness is still checked every 10 seconds.
+      start_period: 10m
 
   kokoro:
     image: ${KOKORO_IMAGE:-ghcr.io/remsky/kokoro-fastapi-cpu:latest}

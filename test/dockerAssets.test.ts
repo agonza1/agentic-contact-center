@@ -30,6 +30,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(dockerfile, /CMD \["node", "dist\/src\/index\.js"\]/);
 
   assert.match(compose, /app:\n[\s\S]*target: runtime/);
+  assert.match(compose, /app:\n[\s\S]*restart: unless-stopped/);
   assert.match(compose, /app:\n[\s\S]*ports:\n[\s\S]*- "127\.0\.0\.1:8026:8026"/);
   assert.doesNotMatch(compose, /app:\n[\s\S]*ports:\n[\s\S]*- "8026:8026"/);
   assert.match(compose, /app:\n[\s\S]*healthcheck:/);
@@ -38,6 +39,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /app:\n[\s\S]*npm run pipecat:check/);
   assert.match(compose, /app:\n[\s\S]*--expect-production-ready/);
   assert.match(compose, /app:\n[\s\S]*provider_credentials_mocked/);
+  assert.match(compose, /app:\n[\s\S]*RTC_ASR_WS_URL: \$\{RTC_ASR_BROWSER_WS_URL:-\/api\/cluecon\/asr\/stream\}/);
   assert.equal((compose.match(/ACC_TTS_PROVIDER: \$\{ACC_TTS_PROVIDER:-\}/g) ?? []).length, 3);
   assert.doesNotMatch(compose, /ACC_TTS_PROVIDER: \$\{ACC_TTS_PROVIDER:-kokoro\}/);
   assert.equal((compose.match(/POCKET_TTS_BASE_URL: \$\{POCKET_TTS_CONTAINER_BASE_URL:-\}/g) ?? []).length, 3);
@@ -52,6 +54,12 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /proof:\n[\s\S]*artifacts\/demo-proof-docker\.json/);
   assert.match(compose, /proof:\n[\s\S]*\.\/artifacts:\/app\/artifacts/);
   assert.match(compose, /rtc-asr:\n[\s\S]*profiles: \["voice", "browser-webrtc", "sip", "sip-verto", "full"\]/);
+  assert.match(compose, /rtc-asr:\n[\s\S]*restart: unless-stopped/);
+  assert.match(compose, /rtc-asr:\n[\s\S]*ASR_BACKEND: \$\{ASR_BACKEND:-parakeet-nemo\}/);
+  assert.match(compose, /rtc-asr:\n[\s\S]*ASR_PARAKEET_MODEL: \$\{ASR_PARAKEET_MODEL:-nvidia\/parakeet-tdt_ctc-110m\}/);
+  assert.match(compose, /rtc-asr:\n[\s\S]*HF_HUB_DISABLE_XET: \$\{HF_HUB_DISABLE_XET:-1\}/);
+  assert.match(compose, /rtc-asr:\n[\s\S]*\/ready[\s\S]*payload\.get\("ready"\) is True[\s\S]*payload\.get\("model_loaded"\) is True/);
+  assert.match(compose, /rtc-asr:\n[\s\S]*start_period: 10m/);
   assert.match(compose, /rtc-asr:\n[\s\S]*ASR_VAD_FILTER: \${ASR_VAD_FILTER:-false}/);
   assert.match(compose, /kokoro:\n[\s\S]*profiles: \["voice", "browser-webrtc", "sip", "sip-verto", "full"\]/);
   assert.match(compose, /browser-webrtc-bridge:\n[\s\S]*target: voice-runtime/);

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createServer, request, type Server } from "node:http";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
-import { buildHttpServer, warmConfiguredKokoro } from "../src/http/createServer";
+import { buildHttpServer, getRtcAsrUpstreamStreamPath, warmConfiguredKokoro } from "../src/http/createServer";
 
 async function requestPath(
   path: string,
@@ -958,6 +958,84 @@ test("Pocket TTS route ignores model mismatch and keeps using the configured mod
   }
 });
 
+test("ClueCon ASR model discovery preserves a same-origin websocket proxy path", async () => {
+  const rtcAsr = await startRtcAsrServer();
+  try {
+    await withEnv({ RTC_ASR_BASE_URL: rtcAsr.baseUrl, RTC_ASR_WS_URL: "/api/cluecon/asr/stream" }, async () => {
+      const response = await get("/api/cluecon/asr/models");
+      assert.equal(response.statusCode, 200);
+      const payload = JSON.parse(response.body) as { models: Array<{ websocketUrl: string }> };
+      assert.equal(payload.models[0]?.websocketUrl, "/api/cluecon/asr/stream?targetId=primary");
+    });
+  } finally {
+    await closeServer(rtcAsr.server);
+  }
+});
+
+test("ClueCon ASR same-origin websocket paths preserve the selected warmed target", async () => {
+  const first = await startRtcAsrServer();
+  const second = await startRtcAsrServer();
+  try {
+    await withEnv(
+      {
+        RTC_ASR_BASE_URL: undefined,
+        RTC_ASR_WS_URL: undefined,
+        RTC_ASR_MODEL_ENDPOINTS: JSON.stringify([
+          { id: "parakeet-a", label: "Parakeet A", baseUrl: first.baseUrl, websocketUrl: "/api/cluecon/asr/stream" },
+          { id: "parakeet-b", label: "Parakeet B", baseUrl: second.baseUrl, websocketUrl: "/api/cluecon/asr/stream" },
+        ]),
+      },
+      async () => {
+        const response = await get("/api/cluecon/asr/models");
+        assert.equal(response.statusCode, 200);
+        const payload = JSON.parse(response.body) as { models: Array<{ targetId: string; websocketUrl: string }> };
+        assert.deepEqual(
+          payload.models.map((model) => [model.targetId, model.websocketUrl]),
+          [
+            ["parakeet-a", "/api/cluecon/asr/stream?targetId=parakeet-a"],
+            ["parakeet-b", "/api/cluecon/asr/stream?targetId=parakeet-b"],
+          ],
+        );
+      },
+    );
+  } finally {
+    await closeServer(first.server);
+    await closeServer(second.server);
+  }
+});
+
+test("ClueCon ASR websocket proxy preserves an upstream base-path prefix", () => {
+  assert.equal(getRtcAsrUpstreamStreamPath("https://speech.example.test/asr"), "/asr/v1/stt/stream");
+  assert.equal(getRtcAsrUpstreamStreamPath("https://speech.example.test/asr/"), "/asr/v1/stt/stream");
+  assert.equal(getRtcAsrUpstreamStreamPath("http://rtc-asr:8080"), "/v1/stt/stream");
+});
+
+test("Pocket TTS route replaces the legacy alloy placeholder with the configured local voice", async () => {
+  const pocket = await startPocketTtsServer();
+  try {
+    await withEnv(
+      {
+        ACC_TTS_PROVIDER: "kokoro",
+        POCKET_TTS_BASE_URL: pocket.baseUrl,
+        POCKET_TTS_MODEL: "pocket-tts",
+        POCKET_TTS_VOICE: "alba",
+      },
+      async () => {
+        const response = await post("/api/cluecon/tts/synthesize", {
+          provider: "pocket",
+          voice: "alloy",
+          text: "A stale presentation tab should still use the configured Pocket voice.",
+        });
+        assert.equal(response.statusCode, 200);
+        assert.equal(response.headers["x-acc-tts-voice"], "alba");
+        assert.equal(pocket.requests[0]?.voice, "alba");
+      },
+    );
+  } finally {
+    await closeServer(pocket.server);
+  }
+});
+
 test("ClueCon TTS route refreshes its idle timeout while audio keeps arriving", async () => {
   const kokoro = await startKokoroServer([
     { delayMs: 60, value: "audio-1" },
@@ -1263,6 +1341,13 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Bright = stable across 3 revisions · cyan = may change/);
   assert.match(narrative.body, /FINAL · FULL UTTERANCE/);
   assert.match(narrative.body, /full-buffer partials keep earlier words visible/);
+  assert.match(narrative.body, /async function openAsrRealtimeSocket\(url\)/);
+  assert.match(narrative.body, /attempt <= 3/);
+  assert.match(narrative.body, /rtc-asr is starting · retry/);
+  assert.match(narrative.body, /catch \(error\) \{\s*setAsrRealtimeControls\(false\);\s*throw error;/);
+  assert.match(narrative.body, /asrConnecting: false/);
+  assert.match(narrative.body, /setAsrRealtimeControls\(true, false, true\)/);
+  assert.match(narrative.body, /realtimeButton\.disabled = stopping \|\| connecting/);
   assert.match(narrative.body, /partial_strategy: "full_buffer_stability"/);
   assert.doesNotMatch(narrative.body, /partial_window_seconds: 2/);
   assert.match(narrative.body, /captureClosePromise/);
