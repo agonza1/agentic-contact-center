@@ -2,7 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { connect as connectTcp } from "node:net";
 import { resolve } from "node:path";
+import type { Duplex } from "node:stream";
+import { connect as connectTls } from "node:tls";
 
 import {
   buildClueConBrainPreview,
@@ -97,6 +100,10 @@ interface RtcAsrModelTarget {
   websocketUrl?: string;
 }
 
+function isRtcAsrBrowserWebsocketUrl(value: string): boolean {
+  return /^wss?:\/\//i.test(value) || value.startsWith("/");
+}
+
 function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
   const configured: RtcAsrModelTarget[] = [];
   const rawTargets = process.env.RTC_ASR_MODEL_ENDPOINTS;
@@ -116,7 +123,7 @@ function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
               id,
               label: label || id,
               baseUrl,
-              ...(/^wss?:\/\//i.test(websocketUrl) ? { websocketUrl } : {}),
+              ...(isRtcAsrBrowserWebsocketUrl(websocketUrl) ? { websocketUrl } : {}),
             });
           }
         }
@@ -131,13 +138,13 @@ function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
   if (primaryBaseUrl && /^https?:\/\//i.test(primaryBaseUrl)) {
     const existingPrimary = configured.find((target) => target.baseUrl === primaryBaseUrl);
     if (existingPrimary) {
-      if (/^wss?:\/\//i.test(primaryWebsocketUrl ?? "")) existingPrimary.websocketUrl = primaryWebsocketUrl;
+      if (isRtcAsrBrowserWebsocketUrl(primaryWebsocketUrl ?? "")) existingPrimary.websocketUrl = primaryWebsocketUrl;
     } else {
       configured.unshift({
         id: "primary",
         label: "Active local model",
         baseUrl: primaryBaseUrl,
-        ...(/^wss?:\/\//i.test(primaryWebsocketUrl ?? "") ? { websocketUrl: primaryWebsocketUrl } : {}),
+        ...(isRtcAsrBrowserWebsocketUrl(primaryWebsocketUrl ?? "") ? { websocketUrl: primaryWebsocketUrl } : {}),
       });
     }
   }
@@ -148,6 +155,57 @@ function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
 function getRtcAsrWebsocketUrl(target: RtcAsrModelTarget): string {
   return target.websocketUrl
     ?? `${target.baseUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/v1/stt/stream`;
+}
+
+function proxyRtcAsrWebsocket(request: IncomingMessage, clientSocket: Duplex, head: Buffer): void {
+  const baseUrl = process.env.RTC_ASR_BASE_URL?.trim();
+  let target: URL;
+  try {
+    target = new URL(baseUrl ?? "");
+    if (target.protocol !== "http:" && target.protocol !== "https:") throw new Error("unsupported protocol");
+  } catch {
+    clientSocket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
+    return;
+  }
+
+  const secure = target.protocol === "https:";
+  const port = Number(target.port || (secure ? 443 : 80));
+  const upstream = secure
+    ? connectTls({ host: target.hostname, port, servername: target.hostname })
+    : connectTcp({ host: target.hostname, port });
+  let connected = false;
+
+  upstream.once("connect", () => {
+    connected = true;
+    const forwardedHeaders = [
+      `GET /v1/stt/stream HTTP/1.1`,
+      `Host: ${target.host}`,
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+    ];
+    for (const name of ["sec-websocket-key", "sec-websocket-version", "sec-websocket-protocol", "sec-websocket-extensions", "origin", "user-agent"]) {
+      const value = request.headers[name];
+      if (Array.isArray(value)) {
+        for (const item of value) forwardedHeaders.push(`${name}: ${item}`);
+      } else if (value) {
+        forwardedHeaders.push(`${name}: ${value}`);
+      }
+    }
+    upstream.write(`${forwardedHeaders.join("\r\n")}\r\n\r\n`);
+    if (head.length) upstream.write(head);
+    clientSocket.pipe(upstream);
+    upstream.pipe(clientSocket);
+  });
+
+  upstream.on("error", () => {
+    if (!connected && !clientSocket.destroyed) {
+      clientSocket.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n");
+      return;
+    }
+    clientSocket.destroy();
+  });
+  clientSocket.on("error", () => upstream.destroy());
+  clientSocket.on("close", () => upstream.destroy());
 }
 
 async function fetchRtcAsrJson(target: RtcAsrModelTarget, path: string, init?: RequestInit): Promise<{
@@ -6112,7 +6170,17 @@ async function routeRequest(
       }
     }
     const requestedVoice = getOptionalTrimmedString(body.voice);
-    const voice = requestedVoice && /^[a-z0-9_-]{1,64}$/i.test(requestedVoice) ? requestedVoice : target.voice;
+    const validRequestedVoice = requestedVoice && /^[a-z0-9_-]{1,64}$/i.test(requestedVoice)
+      ? requestedVoice
+      : null;
+    // Older ClueCon tabs advertised the OpenAI-style `alloy` placeholder for
+    // Pocket. Prefer the configured local voice so a stale presentation tab
+    // cannot forward a voice that the selected Pocket sidecar does not expose.
+    const voice = provider === "pocket"
+      && validRequestedVoice?.toLowerCase() === "alloy"
+      && target.voice.toLowerCase() !== "alloy"
+      ? target.voice
+      : validRequestedVoice ?? target.voice;
     const startedAt = performance.now();
     const idleTimeoutMs = getTtsIdleTimeoutMs(provider);
     const controller = new AbortController();
@@ -8877,8 +8945,12 @@ export function buildHttpServer(config: PocConfig) {
     });
   });
 
-  server.on("upgrade", (request, socket) => {
+  server.on("upgrade", (request, socket, head) => {
     const requestUrl = new URL(request.url ?? "/", "http://localhost");
+    if (requestUrl.pathname === "/api/cluecon/asr/stream") {
+      proxyRtcAsrWebsocket(request, socket, head);
+      return;
+    }
     const match = requestUrl.pathname.match(/^\/api\/voice\/sessions\/([^/]+)\/media\/input$/);
     if (!match) {
       socket.destroy();

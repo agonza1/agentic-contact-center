@@ -958,6 +958,46 @@ test("Pocket TTS route ignores model mismatch and keeps using the configured mod
   }
 });
 
+test("ClueCon ASR model discovery preserves a same-origin websocket proxy path", async () => {
+  const rtcAsr = await startRtcAsrServer();
+  try {
+    await withEnv({ RTC_ASR_BASE_URL: rtcAsr.baseUrl, RTC_ASR_WS_URL: "/api/cluecon/asr/stream" }, async () => {
+      const response = await get("/api/cluecon/asr/models");
+      assert.equal(response.statusCode, 200);
+      const payload = JSON.parse(response.body) as { models: Array<{ websocketUrl: string }> };
+      assert.equal(payload.models[0]?.websocketUrl, "/api/cluecon/asr/stream");
+    });
+  } finally {
+    await closeServer(rtcAsr.server);
+  }
+});
+
+test("Pocket TTS route replaces the legacy alloy placeholder with the configured local voice", async () => {
+  const pocket = await startPocketTtsServer();
+  try {
+    await withEnv(
+      {
+        ACC_TTS_PROVIDER: "kokoro",
+        POCKET_TTS_BASE_URL: pocket.baseUrl,
+        POCKET_TTS_MODEL: "pocket-tts",
+        POCKET_TTS_VOICE: "alba",
+      },
+      async () => {
+        const response = await post("/api/cluecon/tts/synthesize", {
+          provider: "pocket",
+          voice: "alloy",
+          text: "A stale presentation tab should still use the configured Pocket voice.",
+        });
+        assert.equal(response.statusCode, 200);
+        assert.equal(response.headers["x-acc-tts-voice"], "alba");
+        assert.equal(pocket.requests[0]?.voice, "alba");
+      },
+    );
+  } finally {
+    await closeServer(pocket.server);
+  }
+});
+
 test("ClueCon TTS route refreshes its idle timeout while audio keeps arriving", async () => {
   const kokoro = await startKokoroServer([
     { delayMs: 60, value: "audio-1" },
@@ -1263,6 +1303,9 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /Bright = stable across 3 revisions · cyan = may change/);
   assert.match(narrative.body, /FINAL · FULL UTTERANCE/);
   assert.match(narrative.body, /full-buffer partials keep earlier words visible/);
+  assert.match(narrative.body, /async function openAsrRealtimeSocket\(url\)/);
+  assert.match(narrative.body, /attempt <= 3/);
+  assert.match(narrative.body, /rtc-asr is starting · retry/);
   assert.match(narrative.body, /partial_strategy: "full_buffer_stability"/);
   assert.doesNotMatch(narrative.body, /partial_window_seconds: 2/);
   assert.match(narrative.body, /captureClosePromise/);
