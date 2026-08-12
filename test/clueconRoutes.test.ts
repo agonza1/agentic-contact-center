@@ -965,10 +965,42 @@ test("ClueCon ASR model discovery preserves a same-origin websocket proxy path",
       const response = await get("/api/cluecon/asr/models");
       assert.equal(response.statusCode, 200);
       const payload = JSON.parse(response.body) as { models: Array<{ websocketUrl: string }> };
-      assert.equal(payload.models[0]?.websocketUrl, "/api/cluecon/asr/stream");
+      assert.equal(payload.models[0]?.websocketUrl, "/api/cluecon/asr/stream?targetId=primary");
     });
   } finally {
     await closeServer(rtcAsr.server);
+  }
+});
+
+test("ClueCon ASR same-origin websocket paths preserve the selected warmed target", async () => {
+  const first = await startRtcAsrServer();
+  const second = await startRtcAsrServer();
+  try {
+    await withEnv(
+      {
+        RTC_ASR_BASE_URL: undefined,
+        RTC_ASR_WS_URL: undefined,
+        RTC_ASR_MODEL_ENDPOINTS: JSON.stringify([
+          { id: "parakeet-a", label: "Parakeet A", baseUrl: first.baseUrl, websocketUrl: "/api/cluecon/asr/stream" },
+          { id: "parakeet-b", label: "Parakeet B", baseUrl: second.baseUrl, websocketUrl: "/api/cluecon/asr/stream" },
+        ]),
+      },
+      async () => {
+        const response = await get("/api/cluecon/asr/models");
+        assert.equal(response.statusCode, 200);
+        const payload = JSON.parse(response.body) as { models: Array<{ targetId: string; websocketUrl: string }> };
+        assert.deepEqual(
+          payload.models.map((model) => [model.targetId, model.websocketUrl]),
+          [
+            ["parakeet-a", "/api/cluecon/asr/stream?targetId=parakeet-a"],
+            ["parakeet-b", "/api/cluecon/asr/stream?targetId=parakeet-b"],
+          ],
+        );
+      },
+    );
+  } finally {
+    await closeServer(first.server);
+    await closeServer(second.server);
   }
 });
 
@@ -1306,6 +1338,7 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /async function openAsrRealtimeSocket\(url\)/);
   assert.match(narrative.body, /attempt <= 3/);
   assert.match(narrative.body, /rtc-asr is starting · retry/);
+  assert.match(narrative.body, /catch \(error\) \{\s*setAsrRealtimeControls\(false\);\s*throw error;/);
   assert.match(narrative.body, /partial_strategy: "full_buffer_stability"/);
   assert.doesNotMatch(narrative.body, /partial_window_seconds: 2/);
   assert.match(narrative.body, /captureClosePromise/);

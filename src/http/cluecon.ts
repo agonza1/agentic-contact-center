@@ -1858,7 +1858,13 @@ def collect_identity_node() -> NodeConfig:
       setAsrRealtimeControls(true);
       document.getElementById("asr-live-result").textContent = "Connecting to " + model.backend + " / " + model.model + "…";
       setAsrLiveStatus("Opening Local STT v1 websocket…", "connecting");
-      const socket = await openAsrRealtimeSocket(websocketUrl);
+      let socket;
+      try {
+        socket = await openAsrRealtimeSocket(websocketUrl);
+      } catch (error) {
+        setAsrRealtimeControls(false);
+        throw error;
+      }
       const live = { socket, model, pending: [], partialHistory: [], stream: null, context: null, source: null, processor: null, mute: null, timer: null, readyResolve: null, readyReject: null, finalResolve: null, finalReject: null, stopPromise: null, captureClosePromise: null, finalText: "", displayText: "", intentionalClose: false };
       state.asrLive = live;
       const ready = new Promise((resolve, reject) => { live.readyResolve = resolve; live.readyReject = reject; });

@@ -101,7 +101,7 @@ interface RtcAsrModelTarget {
 }
 
 function isRtcAsrBrowserWebsocketUrl(value: string): boolean {
-  return /^wss?:\/\//i.test(value) || value.startsWith("/");
+  return /^wss?:\/\//i.test(value) || value === "/api/cluecon/asr/stream";
 }
 
 function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
@@ -153,15 +153,25 @@ function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
 }
 
 function getRtcAsrWebsocketUrl(target: RtcAsrModelTarget): string {
+  if (target.websocketUrl?.startsWith("/")) {
+    return `${target.websocketUrl}?targetId=${encodeURIComponent(target.id)}`;
+  }
   return target.websocketUrl
     ?? `${target.baseUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/v1/stt/stream`;
 }
 
-function proxyRtcAsrWebsocket(request: IncomingMessage, clientSocket: Duplex, head: Buffer): void {
-  const baseUrl = process.env.RTC_ASR_BASE_URL?.trim();
+function proxyRtcAsrWebsocket(request: IncomingMessage, clientSocket: Duplex, head: Buffer, targetId: string | null): void {
+  const targets = getRtcAsrModelTargets();
+  const selectedTarget = targetId
+    ? targets.find((target) => target.id === targetId)
+    : targets.find((target) => target.id === "primary") ?? targets[0];
+  if (!selectedTarget) {
+    clientSocket.end(`HTTP/1.1 ${targetId ? "404 Not Found" : "503 Service Unavailable"}\r\nConnection: close\r\n\r\n`);
+    return;
+  }
   let target: URL;
   try {
-    target = new URL(baseUrl ?? "");
+    target = new URL(selectedTarget.baseUrl);
     if (target.protocol !== "http:" && target.protocol !== "https:") throw new Error("unsupported protocol");
   } catch {
     clientSocket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
@@ -8948,7 +8958,7 @@ export function buildHttpServer(config: PocConfig) {
   server.on("upgrade", (request, socket, head) => {
     const requestUrl = new URL(request.url ?? "/", "http://localhost");
     if (requestUrl.pathname === "/api/cluecon/asr/stream") {
-      proxyRtcAsrWebsocket(request, socket, head);
+      proxyRtcAsrWebsocket(request, socket, head, requestUrl.searchParams.get("targetId"));
       return;
     }
     const match = requestUrl.pathname.match(/^\/api\/voice\/sessions\/([^/]+)\/media\/input$/);
