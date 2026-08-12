@@ -654,9 +654,9 @@ function buildBasePayload(
       actions: ["pause", "resume", "approve_offer", "approve_retention_review", "ask_operator", "escalate_to_human", "fallback", "transfer", "takeover", "end_call"],
       telephonyControlBoundary: {
         command: "structured JSON from ACC",
-        adapters: ["FreeSWITCH ESL", "SIP media server", "CPaaS call-control API"],
-        standardPatterns: ["SIP REFER", "B2BUA outbound INVITE + bridge", "SIP BYE"],
-        responsibility: "The adapter/media server owns SIP dialogs and RTP; ACC owns the policy decision and auditable command.",
+        adapters: ["FreeSWITCH mod_event_socket / ESL", "SIP media server", "CPaaS call-control API"],
+        standardPatterns: ["ESL uuid_transfer → dialplan / mod_callcenter", "ESL bgapi originate + uuid_bridge", "SIP REFER via deflect", "SIP BYE"],
+        responsibility: "ACC owns the policy decision and audit record; the adapter maps callId to FreeSWITCH Unique-ID, and FreeSWITCH owns SIP/RTP execution.",
       },
       proofLinks: ["/api/operator/console", "/api/queue?attentionRequired=true", "/api/demo/run-end-to-end"],
       caveat: "Cockpit drills reuse the local call/session APIs; #222 still needs fixture/tester and SIP adapters sharing the same Pipeline processors.",
@@ -671,11 +671,11 @@ function buildBasePayload(
       scorecardChecks: ["task_completion", "policy_hold", "operator_approval", "final_state", "latency_evidence", "fallback_caveats"],
     },
     caePanel: {
-      webBaseUrl: trimEnv(process.env.CAE_WEB_URL) ?? "http://127.0.0.1:3010",
+      webBaseUrl: trimEnv(process.env.CAE_WEB_URL) ?? "http://127.0.0.1:3012",
       scenariosPath: "/scenarios",
       runsPath: "/runs",
       repoUrl: "https://github.com/agonza1/ConversationAgentEvals",
-      relationship: "ConversationAgentEvals drives scenarios and runs independently; ACC remains an optional target adapter that returns evidence.",
+      relationship: "ACC runs the local scorecard and emits a CAE-compatible handoff; ConversationAgentEvals owns imported runs, reports, and comparisons.",
     },
     contactPanel: {
       name: "Alberto Gonzalez",
@@ -882,7 +882,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(payload.title)}</title>
   <style>
-    :root { --bg: #f5f7f8; --panel: #fff; --ink: #17202a; --muted: #5d6b78; --line: #d8e0e7; --teal: #0f766e; --blue: #2457a6; --red: #b42318; --amber: #9a5b04; --green: #167247; --shadow: 0 14px 34px rgba(20, 34, 46, 0.09); }
+    :root { --bg: #f5f7f8; --panel: #fff; --ink: #17202a; --muted: #5d6b78; --line: #d8e0e7; --teal: #0f766e; --blue: #2457a6; --red: #b42318; --amber: #9a5b04; --green: #167247; --shadow: 0 14px 34px rgba(20, 34, 46, 0.09); --topbar-height: 48px; }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
     body { margin: 0; background: var(--bg); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -892,17 +892,20 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     button.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
     button.danger { color: var(--red); border-color: #efb4ac; background: #fff4f2; }
     button:disabled { opacity: 0.52; cursor: wait; }
-    .topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 22px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.96); backdrop-filter: blur(12px); }
-    .brand { display: grid; gap: 2px; min-width: 240px; }
+    .topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--topbar-height); padding: 6px 14px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.96); backdrop-filter: blur(12px); }
+    .brand { display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; }
+    .brand .kicker { font-size: 10px; }
+    .brand strong { font-size: 14px; }
     .kicker { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
     h1, h2, h3, p { margin-top: 0; letter-spacing: 0; }
     h1, h2 { text-wrap: balance; }
     h1 { max-width: 980px; font-size: clamp(36px, 7vw, 78px); line-height: .96; margin-bottom: 14px; }
     h2 { max-width: 920px; font-size: clamp(28px, 4vw, 48px); line-height: 1.02; margin-bottom: 6px; }
     h3 { font-size: 15px; margin-bottom: 8px; }
-    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
-    .toolbar a, .mode-link { display: inline-flex; align-items: center; min-height: 36px; padding: 0 10px; border: 1px solid #b9c6d2; border-radius: 6px; background: #fff; color: var(--ink); font-size: 13px; }
-    .hero, .slide { min-height: calc(100vh - 62px); padding: 48px clamp(18px, 5vw, 72px); display: grid; align-content: center; gap: 16px; border-bottom: 1px solid var(--line); }
+    .toolbar { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+    .toolbar a, .mode-link { display: inline-flex; align-items: center; min-height: 30px; padding: 0 8px; border: 1px solid #b9c6d2; border-radius: 6px; background: #fff; color: var(--ink); font-size: 12px; }
+    .toolbar button { min-height: 30px; padding: 0 9px; font-size: 12px; }
+    .hero, .slide { min-height: calc(100vh - var(--topbar-height)); padding: 48px clamp(18px, 5vw, 72px); display: grid; align-content: center; gap: 16px; border-bottom: 1px solid var(--line); }
     .hero { background: linear-gradient(180deg, #ffffff 0%, #eef4f4 100%); }
     .subhead { max-width: 760px; margin-bottom: 2px; color: #334155; font-size: clamp(17px, 1.8vw, 22px); line-height: 1.34; }
     .section-band { padding: 36px clamp(18px, 5vw, 72px); border-bottom: 1px solid var(--line); }
@@ -934,7 +937,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .line--control.line--forward { marker-end: url(#arrow-control); }
     .line--control.line--bidirectional { marker-start: url(#arrow-control); marker-end: url(#arrow-control); }
     .arch-legend { font: 750 11px system-ui,sans-serif; fill: #5d6b78; }
-    .flow-hero { align-content: start; min-height: calc(100vh - 62px); gap: 20px; }
+    .flow-hero { align-content: start; min-height: calc(100vh - var(--topbar-height)); gap: 20px; }
     .flow-header { display: grid; gap: 8px; max-width: 920px; }
     .flow-header h1 { font-size: clamp(32px, 5vw, 58px); line-height: 1; margin-bottom: 0; }
     .flow-header .subhead { max-width: 720px; font-size: clamp(16px, 1.5vw, 20px); }
@@ -1130,6 +1133,10 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .demo-result-item:not(:last-child) { margin-right: 12px; border-right: 1px solid rgba(125,211,252,.18); }
     .demo-result-item small { color: #67e8f9; font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
     .demo-result-item span { color: #dbeafe; font: 11.5px/1.35 system-ui,sans-serif; }
+    .demo-failure-audio { display: flex; align-items: center; gap: 10px; padding-top: 8px; border-top: 1px solid rgba(125,211,252,.18); color: #dbeafe; }
+    .demo-failure-audio > span { display: grid; gap: 1px; min-width: 180px; font-size: 11px; }
+    .demo-failure-audio small { color: #67e8f9; font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+    .demo-failure-audio audio { width: min(100%, 420px); height: 34px; }
     .demo-evidence { border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: var(--shadow); }
     .demo-evidence summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; padding: 9px 13px; cursor: pointer; list-style: none; }
     .demo-evidence summary::-webkit-details-marker { display: none; }
@@ -1228,13 +1235,6 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .transport-node strong { font-size: clamp(16px,1.8vw,22px); line-height: 1.12; }
     .transport-node code { color: var(--blue); font-size: clamp(13px,1vw,14px); line-height: 1.4; overflow-wrap: anywhere; }
     .transport-arrow { display: grid; place-items: center; color: var(--blue); font-size: 24px; font-weight: 900; }
-    .shared-pipeline { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; padding: 15px; border: 1px solid rgba(15,118,110,.28); border-radius: 14px; background: linear-gradient(135deg,rgba(15,118,110,.08),rgba(36,87,166,.06)); }
-    .shared-stage { display: grid; gap: 5px; min-width: 0; padding: 12px; border: 1px solid rgba(15,118,110,.2); border-radius: 10px; background: #fff; text-align: center; }
-    .shared-stage small { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
-    .shared-stage strong { font-size: 14px; }
-    .shared-stage code { color: var(--blue); font-size: 10.5px; line-height: 1.45; overflow-wrap: anywhere; }
-    .shared-stage a { color: inherit; text-decoration: none; }
-    .shared-stage a:hover { color: var(--blue); }
     .integration-truths { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 0; padding-top: 10px; border-top: 1px solid var(--line); }
     .integration-truth { padding: 4px 12px; color: var(--ink); text-align: center; }
     .integration-truth:not(:last-child) { border-right: 1px solid var(--line); }
@@ -1276,11 +1276,11 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .tts-candidate a { width: fit-content; font-size: 10.5px; }
     @keyframes liveAsrWave { from { transform: scaleY(.35); } to { transform: scaleY(1.25); } }
     .brain { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
-    .voice-origin { position: relative; isolation: isolate; overflow: hidden; min-height: calc(100vh - 62px); padding: 0; border-bottom: 0; background: #071019; color: #f8fafc; }
+    .voice-origin { position: relative; isolation: isolate; overflow: hidden; min-height: calc(100vh - var(--topbar-height)); padding: 0; border-bottom: 0; background: #071019; color: #f8fafc; }
     .voice-origin__photo { position: absolute; z-index: -4; inset: -2%; width: 104%; height: 104%; object-fit: cover; object-position: 50% 38%; filter: saturate(.82) contrast(1.06) brightness(.82); transform: scale(1.015); }
     .voice-origin::before { content: ""; position: absolute; z-index: -3; inset: 0; background: radial-gradient(ellipse 72% 66% at 15% 23%,rgba(3,7,12,.94) 0%,rgba(3,7,12,.78) 44%,rgba(3,7,12,.18) 79%,transparent 100%),linear-gradient(90deg,rgba(3,7,12,.64) 0%,rgba(3,7,12,.38) 48%,rgba(3,7,12,.08) 78%,rgba(3,7,12,.03) 100%),linear-gradient(0deg,rgba(3,7,12,.38),transparent 52%); }
     .voice-origin::after { content: ""; position: absolute; z-index: -2; inset: 0; pointer-events: none; opacity: .48; background: radial-gradient(circle at 24% 72%,rgba(103,232,249,.16),transparent 10%),linear-gradient(105deg,transparent 0 43%,rgba(255,255,255,.055) 49%,transparent 55%); mix-blend-mode: screen; }
-    .voice-origin__content { position: relative; display: grid; align-content: start; gap: clamp(10px,1.55vh,17px); width: min(74vw,1180px); min-height: calc(100vh - 62px); padding: clamp(38px,4.8vh,58px) clamp(24px,2.6vw,46px) clamp(34px,4vh,52px) clamp(46px,6vw,96px); }
+    .voice-origin__content { position: relative; display: grid; align-content: start; gap: clamp(10px,1.55vh,17px); width: min(74vw,1180px); min-height: calc(100vh - var(--topbar-height)); padding: clamp(38px,4.8vh,58px) clamp(24px,2.6vw,46px) clamp(34px,4vh,52px) clamp(46px,6vw,96px); }
     @media (min-width: 921px) { .present .voice-origin__content { padding-top: clamp(60px,7.5vh,84px); padding-bottom: clamp(150px,18vh,190px); } .present .voice-origin__turn { position: absolute; right: clamp(24px,2.6vw,46px); bottom: clamp(42px,5vh,64px); left: clamp(46px,6vw,96px); } }
     .voice-origin__eyebrow { display: flex; align-items: center; gap: 11px; color: #a5f3fc; font-size: clamp(10px,1vw,13px); font-weight: 850; letter-spacing: .16em; text-transform: uppercase; opacity: 0; transform: translateY(12px); }
     .voice-origin__eyebrow::before { content: ""; width: clamp(34px,4vw,62px); border-top: 2px solid #67e8f9; box-shadow: 0 0 18px rgba(103,232,249,.48); }
@@ -1369,13 +1369,13 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     textarea { width: 100%; min-height: 88px; resize: vertical; border: 1px solid var(--line); border-radius: 7px; padding: 11px; color: var(--ink); font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .proof-pre { margin: 0; min-height: 260px; max-height: 460px; overflow: auto; border-radius: 8px; padding: 15px; background: #0d1117; color: #e6edf3; font: 13px/1.58 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .talk-attribution { margin: 0; color: var(--muted); font-size: 13px; font-weight: 650; letter-spacing: .01em; }
-    .slide-status { min-width: 76px; text-align: center; color: var(--muted); font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .slide-status { min-width: 58px; text-align: center; color: var(--muted); font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .present .topbar { position: fixed; width: 100%; }
-    .present main { padding-top: 62px; }
-    .present .slide, .present .hero { min-height: calc(100vh - 62px); }
+    .present main { padding-top: var(--topbar-height); }
+    .present .slide, .present .hero { min-height: calc(100vh - var(--topbar-height)); }
     .present #asr { align-content: center; }
     .present #demo, .present #tts { align-content: start; padding-top: clamp(16px, 2.4vh, 24px); }
-    .present #demo { height: calc(100vh - 62px); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+    .present #demo { height: calc(100vh - var(--topbar-height)); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
     .present .section-band:not(.active), .present .hero:not(.active) { display: none; }
 
     .security-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); gap: 16px; align-items: stretch; }
@@ -1402,7 +1402,10 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     @media (max-width: 920px) { .security-layout { grid-template-columns: 1fr; } .security-flow { display: flex; overflow-x: auto; } .security-node { flex: 0 0 150px; } .security-gate { grid-template-columns: 1fr; } }
     .ecosystem-diagram { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, .38fr) minmax(0, 1fr); gap: 18px; align-items: start; }
     .ecosystem-lane { display: grid; gap: 10px; align-items: start; }
-    .ecosystem-card { min-height: 150px; display: grid; align-content: center; gap: 7px; padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: var(--shadow); }
+    .ecosystem-card { position: relative; min-height: 150px; display: grid; align-content: center; gap: 7px; padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: inherit; text-decoration: none; box-shadow: var(--shadow); transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
+    .ecosystem-card::after { content: "↗"; position: absolute; top: 14px; right: 16px; color: var(--blue); font-size: 16px; font-weight: 900; }
+    .ecosystem-card:hover { transform: translateY(-2px); border-color: rgba(36,87,166,.52); box-shadow: 0 14px 32px rgba(15,23,42,.14); }
+    .ecosystem-card:focus-visible { outline: 3px solid rgba(14,116,144,.4); outline-offset: 3px; }
     .ecosystem-card--primary { border-color: rgba(45, 212, 191, .54); background: linear-gradient(145deg, rgba(13, 45, 50, .92), rgba(8, 24, 42, .96)); }
     .ecosystem-card--target { border-color: rgba(56, 189, 248, .48); background: linear-gradient(145deg, rgba(8, 47, 73, .9), rgba(9, 24, 45, .96)); }
     .ecosystem-card small { color: #526273; font-size: 11px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
@@ -1416,9 +1419,25 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
     .ecosystem-handoff { min-height: 150px; display: grid; align-content: center; justify-items: center; gap: 12px; text-align: center; }
     .ecosystem-handoff span { display: inline-flex; width: 100%; justify-content: center; padding: 8px 10px; border: 1px solid rgba(125, 162, 201, .3); border-radius: 999px; background: rgba(15, 27, 50, .78); color: #d9f7ff; font-size: 12px; font-weight: 800; }
     .ecosystem-foot { display: flex; justify-content: center; margin-top: 2px; color: var(--muted); font-size: 13px; }
-    .cae-actions { display: flex; flex-wrap: wrap; gap: 9px; }
-    .cae-actions a { min-height: 42px; padding: 0 15px; }
-    .cae-note { max-width: 880px; padding: 10px 12px; border-left: 3px solid var(--teal); background: rgba(15,118,110,.06); color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .slo-layout { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); gap: 20px; align-items: stretch; }
+    .slo-column { display: grid; gap: 15px; padding: 22px 24px; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: var(--shadow); }
+    .slo-column--conversation { border-color: rgba(36,87,166,.32); background: linear-gradient(145deg,rgba(36,87,166,.08),#fff); }
+    .slo-column small { color: var(--muted); font-size: 11px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
+    .slo-column strong { font-size: clamp(24px,2.7vw,34px); line-height: 1.08; }
+    .slo-column ul { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 16px; line-height: 1.35; }
+    .slo-column li { position: relative; padding-left: 20px; }
+    .slo-column li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 900; }
+    .slo-bridge { display: grid; align-content: center; justify-items: center; gap: 6px; color: var(--blue); }
+    .slo-bridge b { font-size: 32px; line-height: 1; }
+    .slo-bridge span { max-width: 100px; color: var(--muted); font-size: 11px; font-weight: 800; line-height: 1.25; text-align: center; text-transform: uppercase; }
+    .slo-measures { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; padding: 15px 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .slo-measure { display: grid; gap: 3px; }
+    .slo-measure strong { font-size: 15px; }
+    .slo-measure span { color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .slo-foot { display: flex; justify-content: space-between; align-items: center; gap: 18px; color: var(--muted); font-size: 12px; }
+    .slo-foot strong { color: var(--ink); }
+    .slo-sources { display: flex; gap: 12px; }
+    .slo-sources a { color: var(--blue); font-weight: 750; }
     .finale { color: #e8f4ff; background: radial-gradient(circle at 10% 10%,rgba(34,211,238,.18),transparent 34%),radial-gradient(circle at 92% 84%,rgba(168,85,247,.18),transparent 32%),linear-gradient(145deg,#06111f,#0a1830 58%,#07101d); }
     .finale .kicker { color: #67e8f9; }
     .finale h2 { max-width: 1080px; color: #f8fafc; font-size: clamp(34px,4.6vw,60px); }
@@ -1470,10 +1489,11 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
       .voice-origin__eyebrow, .voice-origin__title span, .voice-origin__fallback, .voice-origin__turn { opacity: 1; transform: none; filter: none; }
       .voice-origin__title .voice-origin__accent::after { transform: scaleX(1); }
     }
-    @media (max-width: 920px) { .ecosystem-diagram { grid-template-columns: minmax(0, 1fr); } .ecosystem-handoff { min-height: auto; grid-template-columns: 1fr 1fr; } .ecosystem-card { min-height: 132px; } .two, .vad-layout, .transport-paths, .finale-layout { grid-template-columns: 1fr; } .shared-pipeline, .integration-truths, .control-stack, .contract-evidence, .agent-max-impact, .project-links { grid-template-columns: 1fr; } .finale-callback, .finale-invitation { align-items: flex-start; flex-direction: column; gap: 5px; } .finale-callback b { transform: rotate(90deg); } .control-layer:not(:last-child)::after { content: "↓"; right: auto; left: 50%; top: auto; bottom: -21px; transform: translateX(-50%); } .contrast-grid { grid-template-columns: 1fr; } .versus { width: auto; height: 34px; border-radius: 999px; } .contrast-card { min-height: 0; } .boundary-strip { grid-template-columns: 1fr; } .boundary-gate { justify-self: center; } .pipecat-flow { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 8px; } .pipecat-node { flex: 0 0 min(70vw,220px); scroll-snap-align: start; } .turn-references { grid-template-columns: 1fr; } .present .topbar { position: static; width: auto; } .present main { padding-top: 0; } .present .slide, .present .hero { min-height: calc(100vh - 62px); } .present #demo { height: auto; min-height: calc(100vh - 62px); overflow: visible; } .topbar { align-items: stretch; flex-direction: column; } .toolbar { justify-content: flex-start; } .hero, .slide, .section-band { padding: 28px 14px; } h1 { font-size: 38px; } .event, #demo .event { grid-template-columns: minmax(0, 1fr); } #demo .actions { grid-template-columns: repeat(2, minmax(0, 1fr)); } #demo .screen, #demo .timeline, .present #demo .screen, .present #demo .timeline { max-height: min(48vh, 380px); } .asr-live-controls { grid-template-columns: minmax(0, 1fr); } .voice-pipeline__chrome { padding: 16px 14px 10px; } .voice-pipeline__canvas { padding: 8px 8px 14px; } .xform-rail { display: none; } .voice-pipeline__stages { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 12px 4px 4px; -webkit-overflow-scrolling: touch; } .voice-pipeline__stage { flex: 0 0 min(82vw, 300px); scroll-snap-align: start; min-height: 260px; } }
+    @media (max-width: 920px) { .ecosystem-diagram { grid-template-columns: minmax(0, 1fr); } .ecosystem-handoff { min-height: auto; grid-template-columns: 1fr 1fr; } .ecosystem-card { min-height: 132px; } .two, .vad-layout, .transport-paths, .finale-layout { grid-template-columns: 1fr; } .integration-truths, .control-stack, .contract-evidence, .agent-max-impact, .project-links { grid-template-columns: 1fr; } .finale-callback, .finale-invitation { align-items: flex-start; flex-direction: column; gap: 5px; } .finale-callback b { transform: rotate(90deg); } .control-layer:not(:last-child)::after { content: "↓"; right: auto; left: 50%; top: auto; bottom: -21px; transform: translateX(-50%); } .contrast-grid { grid-template-columns: 1fr; } .versus { width: auto; height: 34px; border-radius: 999px; } .contrast-card { min-height: 0; } .boundary-strip { grid-template-columns: 1fr; } .boundary-gate { justify-self: center; } .pipecat-flow { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 8px; } .pipecat-node { flex: 0 0 min(70vw,220px); scroll-snap-align: start; } .turn-references { grid-template-columns: 1fr; } .present .topbar { position: static; width: auto; } .present main { padding-top: 0; } .present .slide, .present .hero { min-height: calc(100vh - var(--topbar-height)); } .present #demo { height: auto; min-height: calc(100vh - var(--topbar-height)); overflow: visible; } .topbar { align-items: stretch; flex-direction: column; } .toolbar { justify-content: flex-start; } .hero, .slide, .section-band { padding: 28px 14px; } h1 { font-size: 38px; } .event, #demo .event { grid-template-columns: minmax(0, 1fr); } #demo .actions { grid-template-columns: repeat(2, minmax(0, 1fr)); } #demo .screen, #demo .timeline, .present #demo .screen, .present #demo .timeline { max-height: min(48vh, 380px); } .asr-live-controls { grid-template-columns: minmax(0, 1fr); } .voice-pipeline__chrome { padding: 16px 14px 10px; } .voice-pipeline__canvas { padding: 8px 8px 14px; } .xform-rail { display: none; } .voice-pipeline__stages { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 12px 4px 4px; -webkit-overflow-scrolling: touch; } .voice-pipeline__stage { flex: 0 0 min(82vw, 300px); scroll-snap-align: start; min-height: 260px; } }
     @media (max-width: 920px) { .tts-layout, .asr-noise-guidance { grid-template-columns: minmax(0,1fr); } .asr-noise-guidance ul { grid-template-columns: minmax(0,1fr); } .asr-noise-foot { grid-column: auto; align-items: flex-start; flex-direction: column; } }
     @media (max-width: 920px) { .asr-app-flow { display: flex; overflow-x: auto; } .asr-app-node { flex: 0 0 min(70vw,260px); min-height: 210px; } .asr-app-link { flex: 0 0 105px; } .asr-benefits { grid-template-columns: repeat(2,minmax(0,1fr)); } }
     @media (max-width: 920px) { .demo-commandbar { grid-template-columns: 1fr; } .demo-control-story { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; } .demo-control-story::before, .demo-control-step:not(:last-child)::after { display: none; } .demo-result-grid, .demo-evidence-grid { grid-template-columns: 1fr; } .demo-result-item:not(:last-child) { margin-right: 0; padding-bottom: 8px; border-right: 0; border-bottom: 1px solid rgba(125,211,252,.18); } }
+    @media (max-width: 920px) { .slo-layout { grid-template-columns: 1fr; } .slo-bridge { min-height: 46px; } .slo-bridge b { transform: rotate(90deg); } .slo-measures { grid-template-columns: repeat(2,minmax(0,1fr)); } .slo-foot { align-items: flex-start; flex-direction: column; } }
     @media (max-width: 520px) { #demo .actions { grid-template-columns: minmax(0, 1fr); } #demo .screen { min-height: 240px; } .transcript-turn { grid-template-columns: minmax(0, 1fr); gap: 4px; } #asr-benchmarks { grid-template-columns: minmax(0, 1fr); } .asr-benchmark-source { grid-column: auto; align-items: flex-start; flex-direction: column; } }
     @media (max-width: 520px) { .demo-drill-picker, .demo-control-story { grid-template-columns: 1fr; } .demo-drill-picker label { grid-column: auto; } .demo-control-step:not(:last-child)::after { display: none; } #demo .screen { min-height: 0; } }
     @media (max-width: 520px) { .present.voice-story-active .brand { display: none; } .present.voice-story-active .topbar { justify-content: flex-end; } }
@@ -1493,7 +1513,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
       .present #vad-interruption .turn-diagram { padding: 5px; }
       .present #vad-interruption .turn-diagram svg { min-height: 100px; max-height: 112px; }
       .present #map .arch { min-height: 0; max-height: 372px; }
-      .present #agent, .present #proof { height: calc(100vh - 62px); min-height: 0; overflow-y: auto; align-content: start; }
+      .present #agent, .present #slo, .present #proof { height: calc(100vh - var(--topbar-height)); min-height: 0; overflow-y: auto; align-content: start; }
     }
   </style>
 </head>
@@ -1570,12 +1590,6 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
             <div class="transport-node"><small>FreeSWITCH ↔ Pipecat</small><strong>SmallWebRTC / aiortc</strong><code>signaling: Verto JSON-RPC · WebSocket<br>media: ICE · DTLS-SRTP · RTP/RTCP</code></div>
           </article>
         </div>
-        <div class="shared-pipeline" aria-label="Shared streaming Pipecat voice-agent pipeline">
-          <div class="shared-stage"><small>Stream in</small><strong>rtc-asr socket stream</strong><code>persistent WebSocket · 16 kHz PCM16<br>20 ms / 640 B · interim events</code></div>
-          <div class="shared-stage"><small>Structure</small><strong><a href="https://docs.pipecat.ai/overview/flows" target="_blank" rel="noreferrer">Pipecat Flows / FlowManager ↗</a></strong><code>open-source node graph<br>scoped prompts + tools · explicit transitions</code></div>
-          <div class="shared-stage"><small>Bound actions</small><strong>Agentic Call Center Reference App</strong><code>business state · policy gates<br>human approval · fallback · proof</code></div>
-          <div class="shared-stage"><small>Stream out</small><strong>Incremental TTS audio</strong><code>first playable chunk → transport<br>synthesis and playback overlap</code></div>
-        </div>
         <div class="integration-truths">
           <div class="integration-truth"><strong>Transcribe while speech arrives</strong></div>
           <div class="integration-truth"><strong>Keep authority outside the model</strong></div>
@@ -1583,7 +1597,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
         </div>
       </div>
     </section>
-    <section class="section-band slide" data-slide="5" id="demo"><span class="kicker">Failure-control example</span><h2>Cancellation rescue, end to end.</h2><p class="subhead">Understand concern → check options → authorize review → record the final state.</p><div class="demo-shell"><div class="demo-commandbar"><button class="primary" id="run-demo" type="button">Run cancellation scenario</button><div class="demo-drill-picker"><label for="demo-drill-select">Try another control</label><select id="demo-drill-select"><optgroup label="Fail closed"><option value="tool_timeout">Tool timeout</option><option value="runtime_failure">Runtime failure</option><option value="rtc_asr_unavailable">ASR unavailable</option><option value="tts_unavailable">TTS unavailable</option></optgroup><optgroup label="Call control"><option value="transfer">Transfer</option><option value="takeover">Takeover</option><option value="end_call">End call</option></optgroup></select><button id="run-demo-drill" type="button">Run selected drill</button></div></div><div class="demo-control-story" id="demo-control-story" aria-label="Cancellation rescue control sequence"><div class="demo-control-step" data-step="1"><small>Understand</small><strong>Caller concern</strong><span>Capture the reason without blocking cancellation.</span></div><div class="demo-control-step" data-step="2"><small>Prepare</small><strong>Eligible options</strong><span>Offer review paths without promising a discount.</span></div><div class="demo-control-step" data-step="3"><small>Authorize</small><strong>Exact review</strong><span>Bind approval to the requested operation.</span></div><div class="demo-control-step" data-step="4"><small>Record</small><strong>Final state</strong><span>Persist the caller's choice and outcome.</span></div></div><div class="screen" id="demo-screen"><div class="demo-result-head"><small>Ready</small><strong>The caller chooses. The application authorizes.</strong><p>Run the scenario to see a retention review approved without promising a discount or changing the policy.</p></div></div><details class="demo-evidence" id="demo-evidence"><summary><span><strong>Conversation + audit evidence</strong><small id="demo-evidence-count">Available after the run</small></span><b id="demo-evidence-toggle">Expand</b></summary><div class="demo-evidence-grid"><div><h3>Customer conversation</h3><div class="demo-transcript-detail" id="demo-transcript-detail"></div></div><div><h3>Authoritative events</h3><div class="timeline" id="timeline"></div></div></div></details></div></section>
+    <section class="section-band slide" data-slide="5" id="demo"><span class="kicker">Policy-control example</span><h2>A cancellation request, resolved on the call.</h2><p class="subhead">Validate the account → check the price → confirm cancellation → preserve an undo window.</p><div class="demo-shell"><div class="demo-commandbar"><button class="primary" id="run-demo" type="button">Run cancellation scenario</button><div class="demo-drill-picker"><label for="demo-drill-select">Try another control</label><select id="demo-drill-select"><optgroup label="Fail closed"><option value="tool_timeout">Tool timeout</option><option value="runtime_failure">Runtime failure</option><option value="rtc_asr_unavailable">ASR unavailable</option><option value="tts_unavailable">TTS unavailable</option></optgroup><optgroup label="Call control"><option value="transfer">Transfer</option><option value="takeover">Takeover</option><option value="end_call">End call</option></optgroup></select><button id="run-demo-drill" type="button">Run selected drill</button></div></div><div class="demo-control-story" id="demo-control-story" aria-label="Cancellation request control sequence"><div class="demo-control-step" data-step="1"><small>Validate</small><strong>Account ····4821</strong><span>Match the requested plan.</span></div><div class="demo-control-step" data-step="2"><small>Review</small><strong>Quick price check</strong><span>One optional save attempt.</span></div><div class="demo-control-step" data-step="3"><small>Confirm</small><strong>No lower price</strong><span>The caller chooses cancellation.</span></div><div class="demo-control-step" data-step="4"><small>Schedule</small><strong>Ends August 31</strong><span>Reversible until the end date.</span></div></div><div class="screen" id="demo-screen"><div class="demo-result-head"><small>Ready</small><strong>Simple for the caller. Controlled underneath.</strong><p>Run the scenario to see account validation, a same-call price review, and a reversible cancellation.</p></div></div><details class="demo-evidence" id="demo-evidence"><summary><span><strong>Conversation + audit evidence</strong><small id="demo-evidence-count">Available after the run</small></span><b id="demo-evidence-toggle">Expand</b></summary><div class="demo-evidence-grid"><div><h3>Customer conversation</h3><div class="demo-transcript-detail" id="demo-transcript-detail"></div></div><div><h3>Authoritative events</h3><div class="timeline" id="timeline"></div></div></div></details></div></section>
     <section class="section-band slide" data-slide="6" id="asr-architecture">
       <span class="kicker">Live ASR · app flow</span><h2>Audio in. Transcript events out.</h2>
       <div class="asr-app-flow" aria-label="Pipecat, FreeSWITCH, or another WebRTC media server sends PCM audio over a persistent Local STT v1 WebSocket to rtc-asr. rtc-asr normalizes PCM16 to an in-memory float32 array and dispatches it to a preloaded model on a worker thread.">
@@ -1637,7 +1651,7 @@ export function buildClueConHtml(config: PocConfig, mode: "scroll" | "present", 
           <pre><code id="agent-code-content"></code></pre>
         </div>
       </div>
-      <template id="agent-code-identity">from pipecat.flows import NodeConfig
+      <template id="agent-code-identity">from pipecat.flows import ConsolidatedFunctionResult, FlowManager, NodeConfig
 
 def collect_identity_node() -> NodeConfig:
     return NodeConfig(
@@ -1646,30 +1660,25 @@ def collect_identity_node() -> NodeConfig:
             "You are a concise voice support agent. "
             "Never reveal account data before verification."
         ),
-        # Node objective; Pipecat adapts this across LLM providers.
         task_messages=[{
             "role": "developer",
             "content": (
-                "Collect the caller's full name and billing ZIP. "
-                "Treat them only as lookup inputs—not proof of identity. "
-                "Confirm both, then call submit_identity. "
-                "If the caller declines, offer a human handoff."
+                "Collect full name and billing ZIP as lookup inputs—not proof. "
+                "Confirm both, then call submit_identity; if declined, "
+                "offer a human handoff."
             ),
         }],
         functions=[submit_identity, transfer_to_human],
-        respond_immediately=True,
     )</template>
       <template id="agent-code-request">def understand_request_node() -> NodeConfig:
     return NodeConfig(
         name="understand_request",
         task_messages=[{
             "role": "developer",
-            "content": """
-            Ask how you can help.
-            Classify the request as account_information,
-            change_plan, cancellation, or other.
-            Call route_request after the request is clear.
-            """,
+            "content": (
+                "Ask how you can help. Classify as account_information, "
+                "change_plan, cancellation, or other; then call route_request."
+            ),
         }],
         functions=[route_request, transfer_to_human],
     )</template>
@@ -1678,68 +1687,76 @@ def collect_identity_node() -> NodeConfig:
     full_name: str,
     zip_code: str,
 ) -> ConsolidatedFunctionResult:
-    """Look up the caller and run the configured identity check."""
+    """Verify caller-provided lookup inputs.
+
+    Args:
+        full_name: Caller name.
+        zip_code: Billing ZIP.
+    """
+    call_id = flow_manager.state["call_id"]  # Seeded before initialize().
     candidate = await customers.lookup(
         full_name=normalize_name(full_name),
         zip_code=normalize_zip(zip_code),
     )
     verification = await identity_service.verify(
-        call_id=flow_manager.state["call_id"],
+        call_id=call_id,
         candidate=candidate,
     )
 
     if not verification.verified:
         return {"status": "not_verified"}, identity_retry_or_handoff()
 
+    state = await call_state.reload(call_id)
     await call_state.bind_verified_customer(
-        call_id=flow_manager.state["call_id"],
+        call_id=call_id,
         customer_id=verification.customer_id,
-        expected_version=flow_manager.state["state_version"],
+        expected_version=state.version,
     )
     return {"status": "verified"}, understand_request_node()</template>
-      <template id="agent-code-approval">async def authorize_operation(operation, call_state):
-    decision = await approvals.resolve(
-        customer_id=call_state.customer_id,
-        operation_id=operation.id,
-        state_version=call_state.version,
-    )
-
-    if decision.status != "approved":
-        return {"authorized": False}, transfer_to_human_node()
-
-    return {
-        "authorized": True,
-        "approval_id": decision.id,
-        "operation_id": operation.id,
-        "state_version": call_state.version,
-    }</template>
-      <template id="agent-code-execute">async def execute_approved_operation(call_id, operation, approval_id):
+      <template id="agent-code-approval">async def authorize_operation(call_id, operation_id):
     state = await call_state.reload(call_id)
-    approval = await approvals.get(approval_id)
-
-    if not approval.matches(operation.id, state.version):
-        return transfer_to_human_node()
-
-    result = await operations.execute_once(
-        operation,
-        idempotency_key=f"{call_id}:{operation.id}:{state.version}",
+    operation = await operations.get_confirmed(call_id, operation_id)
+    return await approvals.resolve(
+        customer_id=state.customer_id,
+        operation_id=operation.id,
+        operation_digest=operation.digest,
+        state_version=state.version,
     )
-    await events.record("operation_completed", result)
-    return explain_result_node(result)</template>
+</template>
+      <template id="agent-code-execute">async def execute_approved_operation(call_id, approval_id):
+    async with db.transaction():
+        state, approval = await reload_authoritative_inputs(call_id, approval_id)
+        operation = await operations.get_confirmed(call_id, approval.operation_id)
+        approval.require_valid_for(
+            customer_id=state.customer_id,
+            operation=operation,
+            state_version=state.version,
+        )  # Checks binding, status, expiry, and prior use.
+        result = await operations.execute_once(
+            operation,
+            idempotency_key=approval.id,
+        )
+        await events.record_in_transaction("operation_completed", result)
+        return result</template>
     </section>
-    <section class="section-band slide" data-slide="11" id="ecosystem"><span class="kicker">WebRTC.ventures open source</span><h2>Three projects. One reliability loop.</h2><p class="subhead">Execution, speech, evidence, and evaluation stay independently useful—and integrate through explicit contracts.</p><div class="ecosystem-diagram"><div class="ecosystem-lane"><article class="ecosystem-card ecosystem-card--primary"><small>Orchestration + evidence</small><strong>ConversationAgentEvals</strong><span>Runs scenarios, normalizes proof, and compares regressions.</span></article><div class="ecosystem-arrow-down"><span>canonical evaluation</span><b>↓</b></div><article class="ecosystem-card"><small>Upstream engine</small><strong>ASSERT</strong><span>Generates and judges requirement-driven evaluations.</span></article></div><div class="ecosystem-handoff" aria-label="Bidirectional test and evidence handoff"><span>test scenarios →</span><span>← proof bundle</span></div><div class="ecosystem-lane"><article class="ecosystem-card ecosystem-card--target"><small>Reference target</small><strong>Agentic Contact Center</strong><span>Demonstrates the realtime voice-agent path and deterministic failure controls.</span></article><div class="ecosystem-arrow-down"><span>optional local STT</span><b>↓</b></div><article class="ecosystem-card"><small>Speech sidecar</small><strong>rtc-asr</strong><span>Streams transcripts and publishes reproducible ASR benchmarks.</span></article></div></div><div class="ecosystem-foot">Open components connected by explicit adapters and reviewable evidence.</div></section>
-    <section class="section-band slide" data-slide="12" id="proof"><span class="kicker">ConversationAgentEvals demo</span><h2>The talk ends at proof.</h2><p class="subhead">Define the scenario, simulate the voice call, inspect the run, and prove the final state.</p><div class="cae-actions"><button id="run-eval" type="button" class="primary">Run ACC proof</button><a class="mode-link" href="${escapeHtml(joinUrl(payload.caePanel.webBaseUrl, payload.caePanel.scenariosPath))}" target="_blank" rel="noreferrer">Open CAE scenarios ↗</a><a class="mode-link" href="${escapeHtml(joinUrl(payload.caePanel.webBaseUrl, payload.caePanel.runsPath))}" target="_blank" rel="noreferrer">Simulate voice call in CAE ↗</a><a class="mode-link" href="${payload.caePanel.repoUrl}" target="_blank" rel="noreferrer">CAE source ↗</a></div><div class="cae-note">${escapeHtml(payload.caePanel.relationship)} Configure <code>CAE_WEB_URL</code> for the hosted or local CAE web application.</div><div class="two"><div><div class="grid" id="proof-cards"></div><div class="timeline" id="eval-scorecard"></div></div><pre class="proof-pre" id="proof-json">Run the demo to generate proof.</pre></div></section>
+    <section class="section-band slide" data-slide="11" id="ecosystem"><span class="kicker">WebRTC.ventures open source</span><h2>Three projects. One reliability loop.</h2><p class="subhead">Start the demo from either side: click ConversationAgentEvals for scenarios, or Agentic Contact Center for the live operator view.</p><div class="ecosystem-diagram"><div class="ecosystem-lane"><a class="ecosystem-card ecosystem-card--primary" href="${payload.caePanel.webBaseUrl}${payload.caePanel.scenariosPath}" target="_blank" rel="noreferrer" aria-label="Start the demo in ConversationAgentEvals scenarios"><small>Demo entry · scenarios</small><strong>ConversationAgentEvals</strong><span>Runs scenarios, normalizes proof, and compares regressions.</span></a><div class="ecosystem-arrow-down"><span>canonical evaluation</span><b>↓</b></div><a class="ecosystem-card" href="${payload.sourceRepos.assert}" target="_blank" rel="noreferrer" aria-label="Open the ASSERT repository"><small>Upstream engine</small><strong>ASSERT</strong><span>Generates and judges requirement-driven evaluations.</span></a></div><div class="ecosystem-handoff" aria-label="Bidirectional test and evidence handoff"><span>test scenarios →</span><span>← proof bundle</span></div><div class="ecosystem-lane"><a class="ecosystem-card ecosystem-card--target" href="http://127.0.0.1:8026/operator/console" target="_blank" rel="noreferrer" aria-label="Start the demo in the Agentic Contact Center operator view"><small>Demo entry · operator</small><strong>Agentic Contact Center</strong><span>Demonstrates the realtime voice-agent path and deterministic failure controls.</span></a><div class="ecosystem-arrow-down"><span>optional local STT</span><b>↓</b></div><a class="ecosystem-card" href="http://127.0.0.1:8090/rtc-asr" target="_blank" rel="noreferrer" aria-label="Open the local rtc-asr browser app"><small>Speech sidecar</small><strong>rtc-asr</strong><span>Streams transcripts and publishes reproducible ASR benchmarks.</span></a></div></div><div class="ecosystem-foot">Open components connected by explicit adapters and reviewable evidence.</div></section>
+    <section class="section-band slide" data-slide="12" id="slo"><span class="kicker">Reliability targets</span><h2>Reliable audio is necessary. Reliable conversation is the outcome.</h2><p class="subhead">Traditional SLOs tell us whether the service answered. Conversational SLOs tell us whether the agent understood, acted correctly, and recovered safely.</p><div class="slo-layout"><article class="slo-column"><small>Traditional service SLO</small><strong>Did the system answer reliably?</strong><ul><li>Call connected</li><li>Two-way audio stayed available</li><li>Latency met its target</li><li>Infrastructure stayed healthy</li></ul></article><div class="slo-bridge"><b aria-hidden="true">→</b><span>same call · wider outcome</span></div><article class="slo-column slo-column--conversation"><small>Conversational SLO</small><strong>Did the agent do the right thing?</strong><ul><li>Understood the caller</li><li>Responded at the right time</li><li>Changed the correct business state</li><li>Clarified, recovered, or handed off safely</li></ul></article></div><div class="slo-measures"><div class="slo-measure"><strong>Response onset</strong><span>First audible response within target</span></div><div class="slo-measure"><strong>Task outcome</strong><span>Correct state or correct handoff</span></div><div class="slo-measure"><strong>Floor control</strong><span>Fast barge-in; few false interruptions</span></div><div class="slo-measure"><strong>Policy integrity</strong><span>Zero unauthorized consequential actions</span></div></div><div class="slo-foot"><span><strong>Evals gate a release.</strong> Conversational SLOs show whether it stays good in production.</span><span class="slo-sources"><a href="https://sre.google/workbook/implementing-slos/" target="_blank" rel="noreferrer">Google SRE Workbook ↗</a><a href="https://www.itu.int/rec/T-REC-P.851-200311-I/en" target="_blank" rel="noreferrer">ITU-T P.851 ↗</a></span></div></section>
     <section class="section-band slide" data-slide="10" id="security"><span class="kicker">Security boundary</span><h2>Minimize sensitive data crossing the LLM boundary.</h2><p class="subhead">Screen locally, minimize context, authorize tools outside the model, and govern any raw data that is explicitly required.</p><div class="security-layout"><div class="security-boundary"><div class="security-flow"><div class="security-node"><small>Controlled media</small><strong>Caller audio</strong></div><div class="security-node"><small>Inside boundary</small><strong>STT transcript</strong></div><div class="security-node security-node--guard"><small>Local enforcement</small><strong>PII / PHI / PCI guardrail</strong></div><div class="security-node security-node--provider"><small>Third party</small><strong>Minimum LLM context</strong></div><div class="security-node security-node--guard"><small>Before TTS</small><strong>Response policy gate</strong></div><div class="security-node"><small>Realtime media</small><strong>TTS / caller</strong></div></div><div class="security-gate"><div class="security-pane"><strong>Final transcript inside our boundary</strong><pre id="security-input">I need help understanding my renewal options.</pre></div><div class="security-pane"><strong>What crosses the LLM boundary</strong><span class="badge ready" id="security-action">allow</span><pre id="security-output">I need help understanding my renewal options.</pre><span class="muted" id="security-note">No sensitive data detected; the minimum required text crosses the provider boundary.</span></div></div></div><aside class="security-result"><strong>Try the policy boundary</strong><div class="actions" id="security-actions"></div><ul class="security-controls" id="security-controls"></ul><div class="security-links"><a class="mode-link" href="${payload.securityPanel.articleUrl}" target="_blank" rel="noreferrer">Architecture article ↗</a><a class="mode-link" href="${payload.securityPanel.referenceRepoUrl}" target="_blank" rel="noreferrer">Guardrails demo ↗</a></div><span class="muted">Sensitive values that must be collected belong in an authorized application flow. The LLM receives only state such as <code>payment_method_collected</code>.</span></aside></div></section>
-    <section class="section-band slide finale" data-slide="13" id="finale"><span class="kicker">Open source, open invitation</span><h2>Every enterprise workflow can now begin with a conversation.</h2><div class="finale-callback" aria-label="The evolution from rigid systems to conversational interfaces"><span>2017 · People adapted to systems.</span><b aria-hidden="true">→</b><strong>Now · Systems can adapt to people.</strong></div><p class="subhead"><span>The conversation can be open-ended.</span><strong>Identity, authority, and outcomes cannot be.</strong></p><div class="finale-invitation"><strong>Run it. Break it. Make it better.</strong><span>Open source projects to try below:</span></div><div class="finale-layout"><div class="project-links"><a class="project-link" href="${payload.sourceRepos.agenticContactCenter}" target="_blank" rel="noreferrer"><small>Reference target</small><strong>Agentic Contact Center ↗</strong><span>SIP/WebRTC voice-agent architecture, failure controls, and proof.</span></a><a class="project-link" href="${payload.sourceRepos.rtcAsr}" target="_blank" rel="noreferrer"><small>Local speech</small><strong>rtc-asr ↗</strong><span>Streaming STT boundary and reproducible benchmark lab.</span></a><a class="project-link" href="${payload.sourceRepos.conversationAgentEvals}" target="_blank" rel="noreferrer"><small>Evaluation</small><strong>ConversationAgentEvals ↗</strong><span>Scenarios, simulated calls, runs, evidence, and regression reports.</span></a></div><aside class="finale-contact"><div class="finale-contact__details"><a href="${payload.contactPanel.websiteUrl}" target="_blank" rel="noreferrer"><img class="finale-logo" src="${payload.contactPanel.logoUrl}" alt="WebRTC.ventures"></a><strong>${escapeHtml(payload.contactPanel.name)} · ${escapeHtml(payload.contactPanel.role)}</strong><a href="mailto:${escapeHtml(payload.contactPanel.email)}">${escapeHtml(payload.contactPanel.email)}</a><a href="${payload.contactPanel.websiteUrl}" target="_blank" rel="noreferrer">webrtc.ventures ↗</a></div><a class="finale-linkedin" href="${payload.contactPanel.linkedinUrl}" target="_blank" rel="noreferrer" aria-label="Connect with Alberto Gonzalez on LinkedIn"><img src="${escapeHtml(linkedinQrUrl)}" alt="QR code linking to Alberto Gonzalez on LinkedIn"><span>Connect on LinkedIn</span></a></aside></div></section>
+    <section class="section-band slide finale" data-slide="13" id="finale"><span class="kicker">Open source, open invitation</span><h2>Every enterprise workflow can now begin with a conversation.</h2><div class="finale-callback" aria-label="The evolution from rigid systems to conversational interfaces"><span>2017 · People adapted to systems.</span><b aria-hidden="true">→</b><strong>Now · Systems can adapt to people.</strong></div><div class="finale-invitation"><strong>Run it. Break it. Make it better.</strong><span>Open source projects to try below:</span></div><div class="finale-layout"><div class="project-links"><a class="project-link" href="${payload.sourceRepos.agenticContactCenter}" target="_blank" rel="noreferrer"><small>Reference target</small><strong>Agentic Contact Center ↗</strong><span>SIP/WebRTC voice-agent architecture, failure controls, and proof.</span></a><a class="project-link" href="${payload.sourceRepos.rtcAsr}" target="_blank" rel="noreferrer"><small>Local speech</small><strong>rtc-asr ↗</strong><span>Streaming STT boundary and reproducible benchmark lab.</span></a><a class="project-link" href="${payload.sourceRepos.conversationAgentEvals}" target="_blank" rel="noreferrer"><small>Evaluation</small><strong>ConversationAgentEvals ↗</strong><span>Scenarios, simulated calls, runs, evidence, and regression reports.</span></a></div><aside class="finale-contact"><div class="finale-contact__details"><a href="${payload.contactPanel.websiteUrl}" target="_blank" rel="noreferrer"><img class="finale-logo" src="${payload.contactPanel.logoUrl}" alt="WebRTC.ventures"></a><strong>${escapeHtml(payload.contactPanel.name)} · ${escapeHtml(payload.contactPanel.role)}</strong><a href="mailto:${escapeHtml(payload.contactPanel.email)}">${escapeHtml(payload.contactPanel.email)}</a><a href="${payload.contactPanel.websiteUrl}" target="_blank" rel="noreferrer">webrtc.ventures ↗</a></div><a class="finale-linkedin" href="${payload.contactPanel.linkedinUrl}" target="_blank" rel="noreferrer" aria-label="Connect with Alberto Gonzalez on LinkedIn"><img src="${escapeHtml(linkedinQrUrl)}" alt="QR code linking to Alberto Gonzalez on LinkedIn"><span>Connect on LinkedIn</span></a></aside></div></section>
+    <pre id="proof-json" hidden aria-hidden="true"></pre>
   </main>
   <script>window.__CLUECON__ = ${data};</script>
   <script>
     let data = window.__CLUECON__;
-    const slideOrder = ["flow", "voice-evolution", "realtime-problem", "map", "integration", "vad-interruption", "asr-architecture", "asr", "security", "agent", "demo", "tts", "ecosystem", "proof", "finale"];
+    const slideOrder = ["flow", "voice-evolution", "realtime-problem", "map", "integration", "vad-interruption", "asr-architecture", "asr", "security", "agent", "demo", "tts", "ecosystem", "slo", "finale"];
     const main = document.querySelector("main");
     slideOrder.forEach((id, index) => { const slide = document.getElementById(id); if (slide) { slide.dataset.slide = String(index); main?.appendChild(slide); } });
-    const state = { slide: 0, slideCount: slideOrder.length, isPresent: document.body.classList.contains("present"), proof: null, brain: JSON.parse(JSON.stringify(data.brainBlocks)), brainSession: null, asrCapture: null, asrStopping: false, asrModels: [], asrLive: null, ttsStream: null, ttsStreamToken: 0, failureAudio: null, vad: null, vadStarting: false, vadStartToken: 0, vadPendingStream: null, vadBotSpeaking: false, vadBotTimer: null, vadTurnTimer: null, vadOutputTimer: null, vadOutputCleanupTimer: null, vadSimulationTimers: [] };
+    const state = { slide: 0, slideCount: slideOrder.length, isPresent: document.body.classList.contains("present"), proof: null, brain: JSON.parse(JSON.stringify(data.brainBlocks)), brainSession: null, asrCapture: null, asrStopping: false, asrConnecting: false, asrModels: [], asrLive: null, ttsStream: null, ttsStreamToken: 0, failureAudio: null, failureAudioUrl: null, vad: null, vadStarting: false, vadStartToken: 0, vadPendingStream: null, vadBotSpeaking: false, vadBotTimer: null, vadTurnTimer: null, vadOutputTimer: null, vadOutputCleanupTimer: null, vadSimulationTimers: [] };
     const VAD_END_OF_TURN_MS = Number(data.turnTiming?.endOfTurnSilenceMs) || 2000;
+    const LIVE_TTS_FAST_FETCH_TIMEOUT_MS = 12_000;
+    const LIVE_TTS_KOKORO_FETCH_TIMEOUT_MS = 45_000;
+    const LIVE_TTS_FAST_READ_TIMEOUT_MS = 10_000;
+    const LIVE_TTS_KOKORO_READ_TIMEOUT_MS = 45_000;
     function esc(value) { return String(value).replace(/[&<>\"]/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;"); }
     let agentCodeTrigger = null;
     function closeAgentCode() { const modal = document.getElementById("agent-code-modal"); if (!modal || modal.hidden) return; modal.hidden = true; modal.setAttribute("aria-hidden", "true"); document.querySelectorAll("[data-agent-code]").forEach(button => button.setAttribute("aria-expanded", "false")); if (agentCodeTrigger) agentCodeTrigger.focus(); agentCodeTrigger = null; }
@@ -1747,8 +1764,17 @@ def collect_identity_node() -> NodeConfig:
     function setupAgentCode() { const modal = document.getElementById("agent-code-modal"); document.querySelectorAll("[data-agent-code]").forEach(button => button.addEventListener("click", () => openAgentCode(button))); document.getElementById("agent-code-close").addEventListener("click", closeAgentCode); modal.addEventListener("click", event => { if (event.target === modal) closeAgentCode(); }); document.addEventListener("keydown", event => { if (event.key === "Escape") closeAgentCode(); }); }
     function renderSecurityScenario(id) { const scenario = data.securityPanel.scenarios.find(item => item.id === id) || data.securityPanel.scenarios[0]; const action = document.getElementById("security-action"); document.getElementById("security-input").textContent = scenario.input; document.getElementById("security-output").textContent = scenario.llmInput || "NOT SENT TO LLM\\nRoute the caller to an authorized application or human workflow."; document.getElementById("security-note").textContent = scenario.note; action.textContent = scenario.action; action.className = "badge " + (scenario.action === "allow" ? "ready" : scenario.action === "redact" ? "fixture" : "blocked"); document.querySelectorAll("[data-security-scenario]").forEach(button => button.classList.toggle("primary", button.dataset.securityScenario === scenario.id)); }
     function renderSecurityPanel() { document.getElementById("security-actions").innerHTML = data.securityPanel.scenarios.map(scenario => '<button type="button" data-security-scenario="' + esc(scenario.id) + '">' + esc(scenario.label) + '</button>').join(""); document.getElementById("security-controls").innerHTML = data.securityPanel.controls.map(control => '<li>' + esc(control) + '</li>').join(""); document.querySelectorAll("[data-security-scenario]").forEach(button => button.addEventListener("click", () => renderSecurityScenario(button.dataset.securityScenario))); renderSecurityScenario("safe"); }
-    function playFailureAudio() { if (state.failureAudio) { state.failureAudio.pause(); state.failureAudio.currentTime = 0; } const audio = new Audio("/cluecon/system-unavailable.mp3"); state.failureAudio = audio; return audio.play(); }
-    function runMediaFailureDrill(kind) { const playback = playFailureAudio().catch(error => { const screen = document.getElementById("demo-screen"); screen.textContent = "The prerecorded fallback prompt could not autoplay: " + String(error.message || error) + ". The handoff command still proceeds."; }); return Promise.all([playback, runOperatorDrill(kind)]); }
+    function stopFailureAudio() { if (state.failureAudio) { state.failureAudio.pause(); state.failureAudio.removeAttribute("src"); state.failureAudio.load(); state.failureAudio = null; } if (state.failureAudioUrl) { URL.revokeObjectURL(state.failureAudioUrl); state.failureAudioUrl = null; } }
+    function prerecordedFailureAudio() { const audio = new Audio("/cluecon/system-unavailable.mp3"); state.failureAudio = audio; return { audio, source: "Prerecorded failover prompt" }; }
+    function buildTtsSynthesisRequest(provider, text) {
+      const request = { provider: provider.id, text, voice: provider.voice };
+      if (provider.id !== "pocket" && provider.model) request.model = provider.model;
+      return request;
+    }
+    async function synthesizedAsrFailureAudio() { const provider = selectedTtsProvider(); const response = await fetch(data.ttsPanel.synthesizeRoute, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(buildTtsSynthesisRequest(provider, "We are sorry. I cannot hear you right now. Please hold while I connect you with a human agent.")) }); if (!response.ok) { const failure = await response.json().catch(() => ({ error: "HTTP " + response.status })); throw new Error(failure.detail || failure.nextStep || failure.error || provider.label + " synthesis failed."); } const contentType = (response.headers.get("content-type") || "audio/mpeg").split(";")[0]; const bytes = await readTtsAudioResponse(response, () => undefined); state.failureAudioUrl = URL.createObjectURL(new Blob([bytes], { type: contentType })); const audio = new Audio(state.failureAudioUrl); state.failureAudio = audio; return { audio, source: provider.label + " · " + provider.model + " live TTS" }; }
+    async function playFailureAudio(kind) { stopFailureAudio(); let playback; if (kind === "rtc_asr_unavailable") { try { playback = await synthesizedAsrFailureAudio(); } catch { playback = prerecordedFailureAudio(); playback.source += " · live TTS unavailable"; } } else { playback = prerecordedFailureAudio(); } let autoplayBlocked = false; try { await playback.audio.play(); } catch { autoplayBlocked = true; } return { ...playback, autoplayBlocked }; }
+    function attachFailureAudio(playback) { const screen = document.getElementById("demo-screen"); const panel = document.createElement("div"); panel.className = "demo-failure-audio"; const label = document.createElement("span"); label.innerHTML = '<small>Audible caller prompt</small><strong>' + esc(playback.source) + (playback.autoplayBlocked ? " · press play" : " · playing") + '</strong>'; playback.audio.controls = true; playback.audio.preload = "auto"; panel.append(label, playback.audio); screen.appendChild(panel); }
+    async function runMediaFailureDrill(kind) { const playbackPromise = playFailureAudio(kind); const drillPromise = runOperatorDrill(kind); const [playback] = await Promise.all([playbackPromise, drillPromise]); attachFailureAudio(playback); }
     function vadLog(type, detail) { const events = document.getElementById("vad-events"); const row = document.createElement("div"); row.className = "vad-event"; const now = new Date(); const stamp = now.toLocaleTimeString([], { minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 }); row.innerHTML = '<code>' + esc(stamp) + '</code><span><strong>' + esc(type) + '</strong><br>' + esc(detail) + '</span>'; events.prepend(row); while (events.children.length > 8) events.lastElementChild.remove(); }
     function vadStatus(label, tone) { const badge = document.getElementById("vad-state"); badge.textContent = label; badge.className = "badge " + (tone || "fixture"); }
     function vadNodes(active, speaking, interrupted) { document.querySelectorAll(".pipecat-node").forEach(node => { node.classList.toggle("active", active.includes(node.id)); node.classList.toggle("speaking", speaking === node.id); node.classList.toggle("interrupted", interrupted === node.id); }); }
@@ -1780,7 +1806,7 @@ def collect_identity_node() -> NodeConfig:
     async function toggleAsrRecording() { const button = document.getElementById("asr-record"); const realtimeButton = document.getElementById("asr-realtime"); button.disabled = true; realtimeButton.disabled = true; try { if (state.asrCapture) await stopAsrRecording(); else await startAsrRecording(); } catch (error) { state.asrStopping = false; document.getElementById("asr-live-wave").classList.remove("recording"); document.getElementById("asr-live-result").textContent = "Live transcription failed: " + String(error.message || error); setAsrLiveStatus(String(error.message || error), "error"); } finally { button.disabled = false; realtimeButton.disabled = Boolean(state.asrCapture || state.asrStopping || state.asrLive) || !selectedAsrModel()?.websocketUrl; } }
     function selectedAsrModel() { const targetId = document.getElementById("asr-model-select").value; return state.asrModels.find(model => model.targetId === targetId); }
     function resampleAsrPcm16(input, inputRate) { const ratio = inputRate / 16000; const sampleCount = Math.max(1, Math.floor(input.length / ratio)); const output = new Int16Array(sampleCount); for (let index = 0; index < sampleCount; index += 1) { const sample = Math.max(-1, Math.min(1, input[Math.min(input.length - 1, Math.floor(index * ratio))])); output[index] = sample < 0 ? sample * 32768 : sample * 32767; } return output; }
-    function setAsrRealtimeControls(running, stopping = false) { const select = document.getElementById("asr-model-select"); const batchButton = document.getElementById("asr-record"); const realtimeButton = document.getElementById("asr-realtime"); select.disabled = running; batchButton.disabled = running; realtimeButton.disabled = stopping; realtimeButton.textContent = stopping ? "Finalizing…" : running ? "Stop + finalize" : "Start realtime"; }
+    function setAsrRealtimeControls(running, stopping = false, connecting = false) { const select = document.getElementById("asr-model-select"); const batchButton = document.getElementById("asr-record"); const realtimeButton = document.getElementById("asr-realtime"); select.disabled = running; batchButton.disabled = running; realtimeButton.disabled = stopping || connecting; realtimeButton.textContent = connecting ? "Connecting…" : stopping ? "Finalizing…" : running ? "Stop + finalize" : "Start realtime"; }
     function asrRealtimeTokens(value) { return String(value || "").trim().split(/\\s+/).filter(Boolean); }
     function asrRealtimeTokenKey(value) { return String(value || "").toLocaleLowerCase().replace(/^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$/gu, ""); }
     function asrStablePrefixCount(history) { if (history.length < 3) return 0; const revisions = history.slice(-3).map(asrRealtimeTokens); const limit = Math.min(...revisions.map(tokens => tokens.length)); let count = 0; while (count < limit && revisions.every(tokens => asrRealtimeTokenKey(tokens[count]) === asrRealtimeTokenKey(revisions[0][count]))) count += 1; return Math.max(0, count - 2); }
@@ -1789,19 +1815,65 @@ def collect_identity_node() -> NodeConfig:
     function stopAsrRealtimeCapture(live) { if (!live) return Promise.resolve(); if (live.captureClosePromise) return live.captureClosePromise; live.captureClosePromise = (async () => { if (live.processor) live.processor.onaudioprocess = null; try { if (live.source) live.source.disconnect(); } catch {} try { if (live.processor) live.processor.disconnect(); } catch {} try { if (live.mute) live.mute.disconnect(); } catch {} if (live.stream) live.stream.getTracks().forEach(track => track.stop()); if (live.context && live.context.state !== "closed") await live.context.close().catch(() => undefined); })(); return live.captureClosePromise; }
     function closeAsrRealtime(target = state.asrLive) { const live = target; if (!live) return; live.intentionalClose = true; clearTimeout(live.timer); stopAsrRealtimeCapture(live).catch(() => undefined); if (live.socket && live.socket.readyState < WebSocket.CLOSING) live.socket.close(); if (state.asrLive === live) state.asrLive = null; document.getElementById("asr-live-wave").classList.remove("recording"); setAsrRealtimeControls(false); }
     function handleAsrRealtimeMessage(event, live) { if (!live || state.asrLive !== live) return; let message; try { message = JSON.parse(event.data); } catch { return; } if (message.type === "ready") { if (live.readyResolve) live.readyResolve(); setAsrLiveStatus("Ready · full-buffer partials keep earlier words visible; finalization remains authoritative.", "streaming"); return; } if (message.type === "transcript") { const result = document.getElementById("asr-live-result"); const text = String(message.text || "").trim(); const transcript = updateAsrRealtimeTranscript(live, text, message); const capturedSeconds = (Number(message.audio_received_ms || 0) / 1000).toFixed(1); if (message.is_final) { result.textContent = "FINAL · FULL UTTERANCE\\n" + (transcript.text || "(No speech detected.)"); } else { const stable = transcript.stableText ? '<span class="asr-live-stable">' + esc(transcript.stableText) + '</span>' : ""; const provisional = transcript.provisionalText ? '<span class="asr-live-provisional">' + esc(transcript.provisionalText) + '</span>' : "(Listening…)"; result.innerHTML = '<span class="asr-live-label">LIVE · GROWING TRANSCRIPT</span>' + stable + (stable && provisional ? " " : "") + provisional + '<span class="asr-live-note">Bright = stable across 3 revisions · cyan = may change</span>'; } result.classList.toggle("partial", !message.is_final); setAsrLiveStatus(message.is_final ? "Final transcript · " + capturedSeconds + " s captured" : "Listening · " + capturedSeconds + " s captured · " + transcript.stableCount + " stable words", message.is_final ? "transcribed" : "streaming"); if (message.is_final && live.finalResolve) { const resolve = live.finalResolve; live.finalResolve = null; live.finalReject = null; resolve(); } return; } if (message.type === "warning") { setAsrLiveStatus("rtc-asr warning: " + message.message, "streaming"); return; } if (message.type === "error") { const error = new Error(message.message || message.code || "rtc-asr stream failed"); if (live.readyReject) live.readyReject(error); if (live.finalReject) live.finalReject(error); renderAsrRealtimeError(error, live); } }
+    async function openAsrRealtimeSocket(url) {
+      let lastError = null;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          return await new Promise((resolve, reject) => {
+            const socket = new WebSocket(url);
+            const timer = setTimeout(() => {
+              socket.close();
+              reject(new Error("rtc-asr websocket connection timed out."));
+            }, 2500);
+            socket.addEventListener("open", () => {
+              clearTimeout(timer);
+              resolve(socket);
+            }, { once: true });
+            socket.addEventListener("error", () => {
+              clearTimeout(timer);
+              reject(new Error("Could not connect to the rtc-asr websocket."));
+            }, { once: true });
+          });
+        } catch (error) {
+          lastError = error;
+          if (attempt < 3) {
+            setAsrLiveStatus("rtc-asr is starting · retry " + attempt + "/3…", "connecting");
+            await new Promise(resolve => setTimeout(resolve, 250 * Math.pow(2, attempt - 1)));
+          }
+        }
+      }
+      throw lastError || new Error("Could not connect to the rtc-asr websocket.");
+    }
     async function startAsrRealtime() {
       if (state.asrLive) return;
+      if (state.asrConnecting) return;
       if (state.asrCapture || state.asrStopping) throw new Error("Stop the batch recording before starting realtime transcription.");
       const model = selectedAsrModel();
       if (!model || !model.websocketUrl) throw new Error("The selected model does not expose a Local STT websocket.");
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("Microphone capture requires localhost or HTTPS.");
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextClass) throw new Error("Web Audio is unavailable in this browser.");
-      const socket = new WebSocket(model.websocketUrl);
+      const websocketUrl = model.websocketUrl.startsWith("/")
+        ? (window.location.protocol === "https:" ? "wss:" : "ws:") + "//" + window.location.host + model.websocketUrl
+        : model.websocketUrl;
+      state.asrConnecting = true;
+      setAsrRealtimeControls(true, false, true);
+      document.getElementById("asr-live-result").textContent = "Connecting to " + model.backend + " / " + model.model + "…";
+      setAsrLiveStatus("Opening Local STT v1 websocket…", "connecting");
+      let socket;
+      try {
+        socket = await openAsrRealtimeSocket(websocketUrl);
+      } catch (error) {
+        setAsrRealtimeControls(false);
+        throw error;
+      } finally {
+        state.asrConnecting = false;
+      }
+      setAsrRealtimeControls(true);
       const live = { socket, model, pending: [], partialHistory: [], stream: null, context: null, source: null, processor: null, mute: null, timer: null, readyResolve: null, readyReject: null, finalResolve: null, finalReject: null, stopPromise: null, captureClosePromise: null, finalText: "", displayText: "", intentionalClose: false };
       state.asrLive = live;
       const ready = new Promise((resolve, reject) => { live.readyResolve = resolve; live.readyReject = reject; });
-      socket.addEventListener("open", () => { if (state.asrLive !== live || live.intentionalClose) return; socket.send(JSON.stringify({
+      socket.send(JSON.stringify({
         type: "start",
         version: "local-stt.v1",
         audio: { sample_rate: 16000, channels: 1, format: "pcm_s16le", frame_ms: 20, bytes_per_frame: 640 },
@@ -1811,13 +1883,10 @@ def collect_identity_node() -> NodeConfig:
         max_buffer_seconds: 12,
         client_stream_id: "cluecon-live-" + Date.now(),
         metadata: { presentation: "cluecon-2026", model_target: model.targetId, partial_strategy: "full_buffer_stability" },
-      })); });
+      }));
       socket.addEventListener("message", event => handleAsrRealtimeMessage(event, live));
       socket.addEventListener("error", () => { if (live.readyReject) live.readyReject(new Error("Could not connect to the rtc-asr websocket.")); });
       socket.addEventListener("close", () => { if (!live.intentionalClose && state.asrLive === live) { renderAsrRealtimeError(new Error("rtc-asr realtime stream closed unexpectedly."), live); closeAsrRealtime(live); } });
-      setAsrRealtimeControls(true);
-      document.getElementById("asr-live-result").textContent = "Connecting to " + model.backend + " / " + model.model + "…";
-      setAsrLiveStatus("Opening Local STT v1 websocket…", "connecting");
       await Promise.race([ready, new Promise((_, reject) => setTimeout(() => reject(new Error("rtc-asr websocket readiness timed out.")), 5000))]);
       live.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false });
       live.context = new AudioContextClass();
@@ -1882,13 +1951,29 @@ def collect_identity_node() -> NodeConfig:
       document.getElementById("tts-run").disabled = false;
       document.getElementById("tts-provider").disabled = false;
     }
-    async function readTtsAudioResponse(response, onChunk) {
+    async function readTtsChunk(reader, timeoutMs, context) {
+      let timeoutId;
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(context + " did not return data within " + timeoutMs + " ms.")), timeoutMs);
+      });
+      try {
+        return await Promise.race([reader.read(), timeout]);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+    function liveTtsTimeouts(provider) {
+      return provider.id === "kokoro"
+        ? { fetchMs: LIVE_TTS_KOKORO_FETCH_TIMEOUT_MS, readMs: LIVE_TTS_KOKORO_READ_TIMEOUT_MS }
+        : { fetchMs: LIVE_TTS_FAST_FETCH_TIMEOUT_MS, readMs: LIVE_TTS_FAST_READ_TIMEOUT_MS };
+    }
+    async function readTtsAudioResponse(response, onChunk, readTimeoutMs = LIVE_TTS_FAST_READ_TIMEOUT_MS) {
       if (!response.body) throw new Error("The browser did not expose the streaming response body.");
       const reader = response.body.getReader();
       const parts = [];
       let total = 0;
       while (true) {
-        const chunk = await reader.read();
+        const chunk = await readTtsChunk(reader, readTimeoutMs, "The live TTS audio stream");
         if (chunk.done) break;
         if (!chunk.value?.byteLength) continue;
         parts.push(chunk.value);
@@ -1936,7 +2021,7 @@ def collect_identity_node() -> NodeConfig:
         const response = await fetch(data.ttsPanel.synthesizeRoute, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ provider: provider.id, text, voice: provider.voice }),
+          body: JSON.stringify(buildTtsSynthesisRequest(provider, text)),
         });
         if (!response.ok) {
           const failure = await response.json().catch(() => ({ error: "HTTP " + response.status }));
@@ -2026,10 +2111,12 @@ def collect_identity_node() -> NodeConfig:
       const badge = document.getElementById("tts-badge");
       const status = document.getElementById("tts-status");
       const provider = selectedTtsProvider();
+      const timeouts = liveTtsTimeouts(provider);
       const text = document.getElementById("tts-text").value.trim();
       if (!text) { status.textContent = "Enter text before running " + provider.label + "."; return; }
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextClass) { status.textContent = "Web Audio is unavailable in this browser."; return; }
+      stopFailureAudio();
       stopTtsStream();
       const segments = renderTtsTextProgress();
       const token = state.ttsStreamToken;
@@ -2054,29 +2141,36 @@ def collect_identity_node() -> NodeConfig:
       let completedSegments = 0;
       let scheduledUntil = context.currentTime;
       try {
-        for (let index = 0; index < segments.length; index += 1) {
+      for (let index = 0; index < segments.length; index += 1) {
+        if (token !== state.ttsStreamToken) return;
+        status.textContent = (playbackMs === null ? "Synthesizing" : "Playing queued audio while synthesizing") + " chunk " + (index + 1) + " of " + segments.length + "…";
+        stream.controller = new AbortController();
+        const requestController = stream.controller;
+        const requestTimeout = setTimeout(() => requestController.abort(), timeouts.fetchMs);
+        const response = await fetch(data.ttsPanel.synthesizeRoute, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(buildTtsSynthesisRequest(provider, segments[index])),
+          signal: requestController.signal,
+        }).finally(() => clearTimeout(requestTimeout));
+        if (token !== state.ttsStreamToken) return;
+        if (!response.ok) {
+          const failure = await response.json().catch(() => ({ error: "HTTP " + response.status }));
+          throw new Error(failure.detail || failure.nextStep || failure.error || provider.label + " synthesis failed.");
+        }
+        const contentType = (response.headers.get("content-type") || "").split(";")[0].toLowerCase();
+        if (contentType && !contentType.startsWith("audio/")) {
+          throw new Error(provider.label + " returned non-audio content (" + contentType + "); check POCKET_TTS_SPEECH_PATH and provider compatibility.");
+        }
+        const audioBytes = await readTtsAudioResponse(response, byteLength => {
           if (token !== state.ttsStreamToken) return;
-          status.textContent = (playbackMs === null ? "Synthesizing" : "Playing queued audio while synthesizing") + " chunk " + (index + 1) + " of " + segments.length + "…";
-          const response = await fetch(data.ttsPanel.synthesizeRoute, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ provider: provider.id, text: segments[index], voice: provider.voice }),
-            signal: stream.controller.signal,
-          });
-          if (token !== state.ttsStreamToken) return;
-          if (!response.ok) {
-            const failure = await response.json().catch(() => ({ error: "HTTP " + response.status }));
-            throw new Error(failure.detail || failure.nextStep || failure.error || provider.label + " synthesis failed.");
+          if (firstByteMs === null) {
+            firstByteMs = performance.now() - started;
+            document.getElementById("tts-ttfb").textContent = Math.round(firstByteMs) + " ms";
           }
-          const audioBytes = await readTtsAudioResponse(response, byteLength => {
-            if (token !== state.ttsStreamToken) return;
-            if (firstByteMs === null) {
-              firstByteMs = performance.now() - started;
-              document.getElementById("tts-ttfb").textContent = Math.round(firstByteMs) + " ms";
-            }
             bytes += byteLength;
             document.getElementById("tts-bytes").textContent = completedSegments + " / " + segments.length + " · " + new Intl.NumberFormat().format(bytes) + " B";
-          });
+          }, timeouts.readMs);
           if (token !== state.ttsStreamToken) return;
           const buffer = await context.decodeAudioData(audioBytes.slice(0));
           const source = context.createBufferSource();
@@ -2121,7 +2215,12 @@ def collect_identity_node() -> NodeConfig:
         stopTtsStream();
         badge.textContent = "blocked";
         badge.className = "badge blocked";
-        status.textContent = String(error.message || error);
+        if (error?.name === "AbortError") {
+          const providerBaseUrlEnv = provider.id === "pocket" ? "POCKET_TTS_BASE_URL" : "KOKORO_BASE_URL";
+          status.textContent = provider.label + " request timed out. Confirm " + providerBaseUrlEnv + " is a real reachable endpoint and retry.";
+        } else {
+          status.textContent = String(error.message || error);
+        }
       } finally {
         if (token === state.ttsStreamToken) {
           button.disabled = false;
@@ -2129,28 +2228,24 @@ def collect_identity_node() -> NodeConfig:
         }
       }
     }
-    function renderProofCards() { document.getElementById("proof-cards").innerHTML = data.proofPreview.includes.map(item => '<article class="card proof-field"><strong>' + esc(item) + '</strong></article>').join(""); document.getElementById("eval-scorecard").innerHTML = data.proofPreview.scorecardChecks.map(item => '<div class="event"><strong>' + esc(item) + '</strong><span class="badge fixture">pending</span></div>').join(""); }
     function updateDemoEvidenceCount() { const transcript = document.getElementById("demo-transcript-detail"); const timeline = document.getElementById("timeline"); const turns = Number(transcript.dataset.turns || 0); const events = Number(timeline.dataset.events || 0); document.getElementById("demo-evidence-count").textContent = turns || events ? String(turns) + " turns · " + String(events) + " recent events" : "Available after the run"; }
     function setDemoStages(completedStages) { const count = completedStages === true ? 4 : completedStages === false ? 0 : Math.max(0, Number(completedStages) || 0); document.querySelectorAll(".demo-control-step").forEach(step => step.classList.toggle("complete", Number(step.dataset.step) <= count)); }
     function demoTurn(turns, speaker, needles, fallbackIndex) { const normalizedSpeaker = String(speaker).toLowerCase(); const match = turns.find(turn => String(turn.speaker || "").toLowerCase() === normalizedSpeaker && needles.some(needle => String(turn.text || "").toLowerCase().includes(needle))); return String(match?.text || turns[fallbackIndex]?.text || "Captured in the transcript."); }
-    function renderTimeline(call) { const timeline = document.getElementById("timeline"); const auditLabels = { cancellation_concern_captured: "Concern captured", eligible_options_retrieved: "Eligible options retrieved", customer_consent_recorded: "Customer consent recorded", operator_steer_requested: "Approval requested", retention_review_approved: "Operator decision applied", customer_final_path_selected: "Customer selected final path", retention_followup_created: "Follow-up created", final_policy_state_recorded: "Final policy state recorded" }; const allEvents = call && Array.isArray(call.events) ? call.events : []; const hasScenarioOutcome = allEvents.some(event => event.type === "final_policy_state_recorded"); const events = hasScenarioOutcome ? allEvents.filter(event => auditLabels[event.type]).slice(-8) : allEvents.slice(-8); timeline.dataset.events = String(events.length); timeline.innerHTML = events.map(event => '<div class="event"><strong>' + esc(auditLabels[event.type] || event.type) + '</strong><span class="muted">' + esc(JSON.stringify(event.detail)) + '</span></div>').join("") || '<div class="plain muted">Run the scenario or a drill to populate audit evidence.</div>'; updateDemoEvidenceCount(); }
-    function renderDemoTranscript(turns) { const screen = document.getElementById("demo-screen"); const transcript = document.getElementById("demo-transcript-detail"); const evidence = document.getElementById("demo-evidence"); const safeTurns = Array.isArray(turns) ? turns : []; const visibleTurns = safeTurns.filter(turn => String(turn.speaker || "").toLowerCase() !== "operator"); const concern = demoTurn(visibleTurns, "caller", ["renewal", "afford"], 2); const choice = demoTurn(visibleTurns, "caller", ["keep it active"], 7); const finalResponse = demoTurn(visibleTurns, "agent", ["policy remains active"], 8); screen.classList.remove("has-drill"); screen.classList.add("has-transcript"); screen.innerHTML = '<div class="demo-result-head"><small>Scenario complete</small><strong>Policy remains active. Retention review requested.</strong><p>The caller selected the final path; no discount or pricing change was promised or applied. Evidence records the result.</p></div><div class="demo-result-grid"><div class="demo-result-item"><small>Caller concern</small><span>' + esc(concern) + '</span></div><div class="demo-result-item"><small>Customer choice</small><span>' + esc(choice) + '</span></div><div class="demo-result-item"><small>Final state</small><span>' + esc(finalResponse.includes("policy remains active") ? "Active · review requested · no pricing change" : finalResponse) + '</span></div></div>'; transcript.dataset.turns = String(visibleTurns.length); transcript.innerHTML = visibleTurns.map(turn => { const speaker = String(turn.speaker || "agent"); const tone = speaker.toLowerCase() === "caller" ? "caller" : "agent"; return '<div class="transcript-turn transcript-turn--' + tone + '"><span class="transcript-turn__speaker">' + esc(speaker) + '</span><span class="transcript-turn__text">' + esc(turn.text) + '</span></div>'; }).join(""); evidence.open = true; setDemoStages(true); updateDemoEvidenceCount(); }
+    function renderTimeline(call) { const timeline = document.getElementById("timeline"); const auditLabels = { account_validated: "Account validated", cancellation_concern_captured: "Cancellation requested", customer_consent_recorded: "Price review accepted", operator_steer_requested: "Review approval requested", price_review_completed: "Price review completed", customer_final_path_selected: "Cancellation confirmed", cancellation_scheduled: "Cancellation scheduled", final_policy_state_recorded: "Final plan state recorded" }; const allEvents = call && Array.isArray(call.events) ? call.events : []; const hasScenarioOutcome = allEvents.some(event => event.type === "final_policy_state_recorded"); const events = hasScenarioOutcome ? allEvents.filter(event => auditLabels[event.type]).slice(-8) : allEvents.slice(-8); timeline.dataset.events = String(events.length); timeline.innerHTML = events.map(event => '<div class="event"><strong>' + esc(auditLabels[event.type] || event.type) + '</strong><span class="muted">' + esc(JSON.stringify(event.detail)) + '</span></div>').join("") || '<div class="plain muted">Run the scenario or a drill to populate audit evidence.</div>'; updateDemoEvidenceCount(); }
+    function renderDemoTranscript(turns) { const screen = document.getElementById("demo-screen"); const transcript = document.getElementById("demo-transcript-detail"); const evidence = document.getElementById("demo-evidence"); const safeTurns = Array.isArray(turns) ? turns : []; const visibleTurns = safeTurns.filter(turn => String(turn.speaker || "").toLowerCase() !== "operator"); const concern = demoTurn(visibleTurns, "caller", ["4821", "cancel my plan"], 0); const choice = demoTurn(visibleTurns, "caller", ["please cancel"], 5); const finalResponse = demoTurn(visibleTurns, "agent", ["august 31"], 6); screen.classList.remove("has-drill"); screen.classList.add("has-transcript"); screen.innerHTML = '<div class="demo-result-head"><small>Scenario complete</small><strong>Cancellation scheduled for August 31.</strong><p>The price review found no lower price, and the caller chose to cancel.</p></div><div class="demo-result-grid"><div class="demo-result-item"><small>Account</small><span>' + esc(concern) + '</span></div><div class="demo-result-item"><small>Customer choice</small><span>' + esc(choice) + '</span></div><div class="demo-result-item"><small>Final state</small><span>' + esc(finalResponse.toLowerCase().includes("august 31") ? "Active through August 31 · will not renew · can undo" : finalResponse) + '</span></div></div>'; transcript.dataset.turns = String(visibleTurns.length); transcript.innerHTML = visibleTurns.map(turn => { const speaker = String(turn.speaker || "agent"); const tone = speaker.toLowerCase() === "caller" ? "caller" : "agent"; return '<div class="transcript-turn transcript-turn--' + tone + '"><span class="transcript-turn__speaker">' + esc(speaker) + '</span><span class="transcript-turn__text">' + esc(turn.text) + '</span></div>'; }).join(""); evidence.open = true; setDemoStages(true); updateDemoEvidenceCount(); }
     function renderOperatorDrill(payload) { const screen = document.getElementById("demo-screen"); const transcript = document.getElementById("demo-transcript-detail"); const evidence = document.getElementById("demo-evidence"); const integration = payload.integration || {}; const patterns = Array.isArray(integration.executionPatterns) ? integration.executionPatterns : []; const command = integration.controlSequence || integration.controlMessage; const summary = String(payload.summary || "Control drill completed.").replace(/_/g, " ").replace(/ -> /g, " → "); const outcome = String(payload.outcome || "Recorded for review").replace(/_/g, " "); screen.classList.remove("has-transcript"); screen.classList.add("has-drill"); screen.innerHTML = '<div class="demo-result-head"><small>Control drill complete</small><strong>' + esc(summary) + '</strong><p>The application bounded the decision before the media adapter executed it.</p></div><div class="demo-result-grid"><div class="demo-result-item"><small>Control plane</small><span>' + esc(integration.controlPlane || "ACC records a bounded operator action.") + '</span></div><div class="demo-result-item"><small>Media plane</small><span>' + esc(integration.mediaPlane || "The configured telephony adapter executes it.") + '</span></div><div class="demo-result-item"><small>Outcome</small><span>' + esc(outcome) + '</span></div></div>'; transcript.dataset.turns = "0"; transcript.innerHTML = (command ? '<pre class="drill-command">' + esc(JSON.stringify(command, null, 2)) + '</pre>' : '') + (patterns.length ? '<ul class="drill-patterns">' + patterns.map(pattern => '<li>' + esc(pattern) + '</li>').join("") + '</ul>' : '') + (integration.demoCaveat ? '<span class="muted">' + esc(integration.demoCaveat) + '</span>' : ''); evidence.open = true; setDemoStages(Array.isArray(payload.completedControlStages) ? payload.completedControlStages.length : 0); updateDemoEvidenceCount(); }
     function renderSlides() { document.querySelectorAll("[data-slide]").forEach(el => el.classList.toggle("active", Number(el.dataset.slide) === state.slide)); document.body.classList.toggle("voice-story-active", state.isPresent && slideOrder[state.slide] === "voice-evolution"); const prev = document.getElementById("prev"); const next = document.getElementById("next"); const status = document.getElementById("slide-status"); if (prev) prev.disabled = state.slide <= 0; if (next) next.disabled = state.slide >= state.slideCount - 1; if (status) status.textContent = String(state.slide + 1) + " / " + String(state.slideCount); }
     function goToSlide(index) { const nextSlide = Math.max(0, Math.min(state.slideCount - 1, index)); if (slideOrder[state.slide] === "vad-interruption" && slideOrder[nextSlide] !== "vad-interruption") { stopVadMic(true); stopVadBot(false); } if (slideOrder[state.slide] === "tts" && slideOrder[nextSlide] !== "tts") stopTtsStream(); state.slide = nextSlide; renderSlides(); const target = document.querySelector('[data-slide="' + state.slide + '"]'); if (!state.isPresent && target) target.scrollIntoView({ behavior: "smooth", block: "start" }); }
     function goToNamedSlide(id) { const index = slideOrder.indexOf(id); if (index >= 0) goToSlide(index); }
     function summarizeProof(proof) { return { compatibleRequest: data.proofPreview.compatibleRequest, callId: proof.callId, outcome: proof.outcome, summary: proof.summary, transcriptTurns: Array.isArray(proof.transcript) ? proof.transcript.length : 0, eventCount: Array.isArray(proof.events) ? proof.events.length : 0, latencyMarks: Array.isArray(proof.latencyMarks) ? proof.latencyMarks.length : 0, fallback: proof.demoFallback, caveats: proof.pii, artifactLinks: proof.artifacts }; }
-    function renderScorecard(scorecard) { document.getElementById("eval-scorecard").innerHTML = scorecard.checks.map(check => '<div class="event"><strong>' + esc(check.label) + '</strong><span class="muted"><span class="badge ' + (check.passed ? 'ready' : 'blocked') + '">' + (check.passed ? 'pass' : 'fail') + '</span> ' + esc(check.evidence) + '</span></div>').join(""); }
-    async function runEvalProof() { const buttons = document.querySelectorAll("button"); buttons.forEach(button => button.disabled = true); document.getElementById("proof-json").textContent = "Running ClueCon ASSERT-style eval proof..."; try { const response = await fetch(data.proofPreview.runRoute, { method: "POST" }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "eval proof failed"); renderScorecard(payload.scorecard); document.getElementById("proof-json").textContent = JSON.stringify({ compatibleRequest: payload.compatibleRequest, summary: payload.summary, scorecard: payload.scorecard, assertRequestPreview: payload.assertRequestPreview, proofLinks: payload.proofLinks }, null, 2); goToNamedSlide("proof"); } catch (error) { document.getElementById("proof-json").textContent = "Eval proof failed: " + String(error.message || error); goToNamedSlide("proof"); } finally { buttons.forEach(button => button.disabled = false); renderSlides(); } }
     async function refreshLiveProbes() { try { const response = await fetch("/api/cluecon"); if (!response.ok) return; data = await response.json(); window.__CLUECON__ = data; renderReadiness(); renderAsrPanel(); renderTtsProviderSelection(); await loadAsrModels(); } catch (error) { console.warn("ClueCon live probe refresh failed", error); } }
-    async function runDemo() { const buttons = document.querySelectorAll("button"); buttons.forEach(button => button.disabled = true); goToNamedSlide("demo"); const screen = document.getElementById("demo-screen"); const evidence = document.getElementById("demo-evidence"); const transcript = document.getElementById("demo-transcript-detail"); screen.classList.remove("has-transcript", "has-drill"); screen.innerHTML = '<div class="demo-result-head"><small>Running</small><strong>Following the cancellation-rescue control path…</strong><p>Capturing the concern, checking eligible options, authorizing the review, and recording the caller’s final choice.</p></div>'; evidence.open = false; transcript.dataset.turns = "0"; transcript.innerHTML = ""; setDemoStages(false); renderTimeline(null); document.getElementById("proof-json").textContent = "Waiting for scenario proof..."; try { const response = await fetch(data.routes.scriptedDemo, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ openclawSessionLabel: "cluecon/2026-presentation" }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "demo failed"); state.proof = payload.proof; renderDemoTranscript(payload.call.transcript); document.getElementById("proof-json").textContent = JSON.stringify({ status: "control_scenario_ok", ...summarizeProof(payload.proof) }, null, 2); renderTimeline(payload.call); } catch (error) { const message = String(error.message || error); screen.classList.remove("has-transcript", "has-drill"); screen.innerHTML = '<div class="demo-result-head"><small>Scenario blocked</small><strong>Control scenario could not complete.</strong><p>' + esc(message) + '</p></div>'; setDemoStages(false); document.getElementById("proof-json").textContent = JSON.stringify({ status: "control_scenario_failed", error: message, nextStep: "Confirm npm start is serving /api/demo/run-end-to-end, then retry Run cancellation scenario." }, null, 2); } finally { buttons.forEach(button => button.disabled = false); renderSlides(); } }
+    async function runDemo() { const buttons = document.querySelectorAll("button"); buttons.forEach(button => button.disabled = true); goToNamedSlide("demo"); const screen = document.getElementById("demo-screen"); const evidence = document.getElementById("demo-evidence"); const transcript = document.getElementById("demo-transcript-detail"); screen.classList.remove("has-transcript", "has-drill"); screen.innerHTML = '<div class="demo-result-head"><small>Running</small><strong>Handling the cancellation request…</strong><p>Validating the account, running the price review, and scheduling the caller’s confirmed cancellation.</p></div>'; evidence.open = false; transcript.dataset.turns = "0"; transcript.innerHTML = ""; setDemoStages(false); renderTimeline(null); document.getElementById("proof-json").textContent = "Waiting for scenario proof..."; try { const response = await fetch(data.routes.scriptedDemo, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ openclawSessionLabel: "cluecon/2026-presentation" }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "demo failed"); state.proof = payload.proof; renderDemoTranscript(payload.call.transcript); document.getElementById("proof-json").textContent = JSON.stringify({ status: "control_scenario_ok", ...summarizeProof(payload.proof) }, null, 2); renderTimeline(payload.call); } catch (error) { const message = String(error.message || error); screen.classList.remove("has-transcript", "has-drill"); screen.innerHTML = '<div class="demo-result-head"><small>Scenario blocked</small><strong>Control scenario could not complete.</strong><p>' + esc(message) + '</p></div>'; setDemoStages(false); document.getElementById("proof-json").textContent = JSON.stringify({ status: "control_scenario_failed", error: message, nextStep: "Confirm npm start is serving /api/demo/run-end-to-end, then retry Run cancellation scenario." }, null, 2); } finally { buttons.forEach(button => button.disabled = false); renderSlides(); } }
     async function previewBrain() { const response = await fetch(data.brainPanel.previewRoute, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ blocks: state.brain }) }); const payload = await response.json(); document.getElementById("proof-json").textContent = JSON.stringify(payload, null, 2); goToNamedSlide("proof"); }
     async function applyBrain() { const response = await fetch(data.brainPanel.applyRoute, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ blocks: state.brain }) }); const payload = await response.json(); document.getElementById("proof-json").textContent = JSON.stringify(payload, null, 2); if (!response.ok) return; data.brainBlocks = payload.activeBrainBlocks; data.brainPanel = payload.brainPanel; state.brain = JSON.parse(JSON.stringify(payload.activeBrainBlocks)); renderBrain(); }
     async function resetBrain() { const response = await fetch(data.brainPanel.resetRoute, { method: "POST" }); const payload = await response.json(); document.getElementById("proof-json").textContent = JSON.stringify(payload, null, 2); data.brainBlocks = payload.activeBrainBlocks; data.brainPanel = payload.brainPanel; state.brain = JSON.parse(JSON.stringify(payload.activeBrainBlocks)); renderBrain(); }
     async function runOperatorDrill(kind) { const buttons = document.querySelectorAll("button"); buttons.forEach(button => button.disabled = true); goToNamedSlide("demo"); try { const response = await fetch(data.operatorCockpit.drillRoute, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "operator drill failed"); renderOperatorDrill(payload); document.getElementById("proof-json").textContent = JSON.stringify({ drill: payload.kind, outcome: payload.outcome, integration: payload.integration, workboardCard: payload.workboardCard, proofLinks: payload.proofLinks, finalState: payload.call.flowState, fallback: payload.call.demoFallback }, null, 2); renderTimeline(payload.call); } catch (error) { const screen = document.getElementById("demo-screen"); screen.classList.remove("has-transcript", "has-drill"); screen.textContent = "Operator drill failed: " + String(error.message || error); } finally { buttons.forEach(button => button.disabled = false); renderSlides(); } }
     async function runFallbackDrill(mode) { const buttons = document.querySelectorAll("button"); buttons.forEach(button => button.disabled = true); try { const start = await fetch("/api/demo/start", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ openclawSessionLabel: "cluecon/" + mode + "-drill" }) }); const started = await start.json(); if (!start.ok) throw new Error(started.error || "start failed"); const fallback = await fetch("/api/calls/" + encodeURIComponent(started.session.callId) + "/fallback", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode, reason: mode + " ClueCon drill" }) }); const call = await fallback.json(); if (!fallback.ok) throw new Error(call.error || "fallback failed"); const proofResponse = await fetch("/api/calls/" + encodeURIComponent(started.session.callId) + "/proof"); const proof = await proofResponse.json(); document.getElementById("demo-screen").textContent = mode + " -> fail-closed human handoff; no improvised offer."; document.getElementById("proof-json").textContent = JSON.stringify(summarizeProof(proof), null, 2); renderTimeline(call); } finally { buttons.forEach(button => button.disabled = false); renderSlides(); } }
     document.getElementById("asr-model-select").addEventListener("change", event => { const model = selectedAsrModel(); document.getElementById("asr-realtime").disabled = !model || !model.websocketUrl; renderAsrBenchmarks(model); setAsrLiveStatus("Selected: " + event.target.selectedOptions[0].textContent + ". Realtime and batch modes use this warmed endpoint.", "ready"); });
-    document.getElementById("run-eval").addEventListener("click", () => runEvalProof().catch(error => { document.getElementById("proof-json").textContent = String(error.message || error); }));
     document.getElementById("run-demo").addEventListener("click", () => runDemo().catch(error => { document.getElementById("demo-screen").textContent = String(error.message || error); }));
     document.getElementById("demo-evidence").addEventListener("toggle", event => { document.getElementById("demo-evidence-toggle").textContent = event.currentTarget.open ? "Collapse" : "Expand"; });
     document.getElementById("tts-provider").addEventListener("change", () => { stopTtsStream(); renderTtsProviderSelection(); resetTtsMeasurements(); });
@@ -2167,8 +2262,8 @@ def collect_identity_node() -> NodeConfig:
     document.getElementById("next").addEventListener("click", () => goToSlide(state.slide + 1));
     document.getElementById("prev").addEventListener("click", () => goToSlide(state.slide - 1));
     document.addEventListener("keydown", event => { if (event.key === "ArrowRight" || event.key === "PageDown") goToSlide(state.slide + 1); if (event.key === "ArrowLeft" || event.key === "PageUp") goToSlide(state.slide - 1); });
-    window.addEventListener("pagehide", () => { stopVadMic(true); stopVadBot(false); stopTtsStream(); if (state.failureAudio) state.failureAudio.pause(); });
-    updateVadThreshold(); renderReadiness(); renderAsrPanel(); renderTtsProviderSelection(); renderTtsTextProgress(); renderBrain(); renderSecurityPanel(); setupAgentCode(); renderProofCards(); renderTimeline(null); goToSlide(0); refreshLiveProbes();
+    window.addEventListener("pagehide", () => { stopVadMic(true); stopVadBot(false); stopTtsStream(); stopFailureAudio(); });
+    updateVadThreshold(); renderReadiness(); renderAsrPanel(); renderTtsProviderSelection(); renderTtsTextProgress(); renderBrain(); renderSecurityPanel(); setupAgentCode(); renderTimeline(null); goToSlide(0); refreshLiveProbes();
   </script>
 </body>
 </html>`;

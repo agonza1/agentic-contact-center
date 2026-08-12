@@ -2,7 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { connect as connectTcp } from "node:net";
 import { resolve } from "node:path";
+import type { Duplex } from "node:stream";
+import { connect as connectTls } from "node:tls";
 
 import {
   buildClueConBrainPreview,
@@ -24,6 +27,10 @@ import {
   type AssertEvaluationSpec,
 } from "../core/assertEvaluationSpec";
 import { compareTimestamps, getAttentionMetadata } from "../core/attention";
+import {
+  CONVERSATION_PROPOSAL_JSON_SCHEMA,
+  parseConversationProposal,
+} from "../core/conversationProposal";
 import {
   hasActiveTerminalOperatorStop,
   InMemoryTelephonyIngress,
@@ -71,6 +78,7 @@ const operatorConsoleWorkboardCard = "82771d3a-de4d-4b6e-869c-328e8264d01e";
 const operatorConsoleIssue = "agonza1/agentic-contact-center#62";
 const defaultBrowserWebrtcBridgeTimeoutMs = 5000;
 const defaultTtsIdleTimeoutMs = 30_000;
+const defaultKokoroTtsIdleTimeoutMs = 45_000;
 const maxVoiceSessionPlayAudioBytes = 2 * 1024 * 1024;
 const supportedVoiceSessionPlayMimeTypes = new Set(["audio/l16", "audio/pcm", "audio/wav", "audio/wave", "audio/x-wav"]);
 const clueConSystemUnavailableAudio = readFileSync(resolve(process.cwd(), "assets/cluecon/system-unavailable.mp3"));
@@ -92,6 +100,10 @@ interface RtcAsrModelTarget {
   websocketUrl?: string;
 }
 
+function isRtcAsrBrowserWebsocketUrl(value: string): boolean {
+  return /^wss?:\/\//i.test(value) || value === "/api/cluecon/asr/stream";
+}
+
 function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
   const configured: RtcAsrModelTarget[] = [];
   const rawTargets = process.env.RTC_ASR_MODEL_ENDPOINTS;
@@ -111,7 +123,7 @@ function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
               id,
               label: label || id,
               baseUrl,
-              ...(/^wss?:\/\//i.test(websocketUrl) ? { websocketUrl } : {}),
+              ...(isRtcAsrBrowserWebsocketUrl(websocketUrl) ? { websocketUrl } : {}),
             });
           }
         }
@@ -126,13 +138,13 @@ function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
   if (primaryBaseUrl && /^https?:\/\//i.test(primaryBaseUrl)) {
     const existingPrimary = configured.find((target) => target.baseUrl === primaryBaseUrl);
     if (existingPrimary) {
-      if (/^wss?:\/\//i.test(primaryWebsocketUrl ?? "")) existingPrimary.websocketUrl = primaryWebsocketUrl;
+      if (isRtcAsrBrowserWebsocketUrl(primaryWebsocketUrl ?? "")) existingPrimary.websocketUrl = primaryWebsocketUrl;
     } else {
       configured.unshift({
         id: "primary",
         label: "Active local model",
         baseUrl: primaryBaseUrl,
-        ...(/^wss?:\/\//i.test(primaryWebsocketUrl ?? "") ? { websocketUrl: primaryWebsocketUrl } : {}),
+        ...(isRtcAsrBrowserWebsocketUrl(primaryWebsocketUrl ?? "") ? { websocketUrl: primaryWebsocketUrl } : {}),
       });
     }
   }
@@ -141,8 +153,74 @@ function getRtcAsrModelTargets(): RtcAsrModelTarget[] {
 }
 
 function getRtcAsrWebsocketUrl(target: RtcAsrModelTarget): string {
+  if (target.websocketUrl?.startsWith("/")) {
+    return `${target.websocketUrl}?targetId=${encodeURIComponent(target.id)}`;
+  }
   return target.websocketUrl
     ?? `${target.baseUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/v1/stt/stream`;
+}
+
+export function getRtcAsrUpstreamStreamPath(baseUrl: string): string {
+  const pathname = new URL(baseUrl).pathname.replace(/\/+$/, "");
+  return `${pathname}/v1/stt/stream`;
+}
+
+function proxyRtcAsrWebsocket(request: IncomingMessage, clientSocket: Duplex, head: Buffer, targetId: string | null): void {
+  const targets = getRtcAsrModelTargets();
+  const selectedTarget = targetId
+    ? targets.find((target) => target.id === targetId)
+    : targets.find((target) => target.id === "primary") ?? targets[0];
+  if (!selectedTarget) {
+    clientSocket.end(`HTTP/1.1 ${targetId ? "404 Not Found" : "503 Service Unavailable"}\r\nConnection: close\r\n\r\n`);
+    return;
+  }
+  let target: URL;
+  try {
+    target = new URL(selectedTarget.baseUrl);
+    if (target.protocol !== "http:" && target.protocol !== "https:") throw new Error("unsupported protocol");
+  } catch {
+    clientSocket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
+    return;
+  }
+
+  const secure = target.protocol === "https:";
+  const port = Number(target.port || (secure ? 443 : 80));
+  const upstream = secure
+    ? connectTls({ host: target.hostname, port, servername: target.hostname })
+    : connectTcp({ host: target.hostname, port });
+  let connected = false;
+
+  upstream.once("connect", () => {
+    connected = true;
+    const forwardedHeaders = [
+      `GET ${getRtcAsrUpstreamStreamPath(selectedTarget.baseUrl)} HTTP/1.1`,
+      `Host: ${target.host}`,
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+    ];
+    for (const name of ["sec-websocket-key", "sec-websocket-version", "sec-websocket-protocol", "sec-websocket-extensions", "origin", "user-agent"]) {
+      const value = request.headers[name];
+      if (Array.isArray(value)) {
+        for (const item of value) forwardedHeaders.push(`${name}: ${item}`);
+      } else if (value) {
+        forwardedHeaders.push(`${name}: ${value}`);
+      }
+    }
+    upstream.write(`${forwardedHeaders.join("\r\n")}\r\n\r\n`);
+    if (head.length) upstream.write(head);
+    clientSocket.pipe(upstream);
+    upstream.pipe(clientSocket);
+  });
+
+  upstream.on("error", () => {
+    if (!connected && !clientSocket.destroyed) {
+      clientSocket.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n");
+      return;
+    }
+    clientSocket.destroy();
+  });
+  clientSocket.on("error", () => upstream.destroy());
+  clientSocket.on("close", () => upstream.destroy());
 }
 
 async function fetchRtcAsrJson(target: RtcAsrModelTarget, path: string, init?: RequestInit): Promise<{
@@ -274,7 +352,9 @@ export async function warmConfiguredKokoro(): Promise<KokoroWarmupResult> {
 function getTtsIdleTimeoutMs(provider: "kokoro" | "pocket" = getConfiguredTtsProvider()): number {
   const providerTimeout = provider === "pocket" ? process.env.POCKET_TTS_IDLE_TIMEOUT_MS : process.env.KOKORO_TTS_IDLE_TIMEOUT_MS;
   const parsed = Number(process.env.CLUECON_TTS_IDLE_TIMEOUT_MS ?? process.env.ACC_TTS_IDLE_TIMEOUT_MS ?? providerTimeout ?? "");
-  if (!Number.isFinite(parsed) || parsed <= 0) return defaultTtsIdleTimeoutMs;
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return provider === "kokoro" ? defaultKokoroTtsIdleTimeoutMs : defaultTtsIdleTimeoutMs;
+  }
   return Math.min(Math.max(Math.trunc(parsed), 50), 300_000);
 }
 
@@ -507,6 +587,11 @@ function buildBrowserWebrtcBridgeSessionProofUrl(sessionId: string): string {
   return `${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/sessions/${encodeURIComponent(sessionId)}/proof`;
 }
 
+function buildBrowserWebrtcBridgeSessionUrl(sessionId: string): string {
+  const browserWebrtcBridgeBaseUrl = getBrowserWebrtcBridgeBaseUrl();
+  return `${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/sessions/${encodeURIComponent(sessionId)}`;
+}
+
 async function getBrowserWebrtcSessionProofFromBridge(sessionId: string): Promise<{ status: number; payload: unknown }> {
   const response = await fetch(buildBrowserWebrtcBridgeSessionProofUrl(sessionId), {
     method: "GET",
@@ -518,16 +603,28 @@ async function getBrowserWebrtcSessionProofFromBridge(sessionId: string): Promis
   return { status: response.status, payload: responsePayload };
 }
 
-async function postBrowserWebrtcOfferToBridge(payload: object): Promise<{ status: number; payload: unknown }> {
+async function postBrowserWebrtcOfferToBridge(payload: object, clientSignal?: AbortSignal): Promise<{ status: number; payload: unknown }> {
+  const timeoutSignal = AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs());
   const response = await fetch(buildBrowserWebrtcBridgeOfferUrl(), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs()),
+    signal: clientSignal ? AbortSignal.any([clientSignal, timeoutSignal]) : timeoutSignal,
   });
   const contentType = response.headers.get("content-type") ?? "";
   const responsePayload = contentType.includes("json") ? await response.json() : { detail: await response.text() };
   return { status: response.status, payload: responsePayload };
+}
+
+async function deleteBrowserWebrtcSessionFromBridge(sessionId: string): Promise<void> {
+  try {
+    await fetch(buildBrowserWebrtcBridgeSessionUrl(sessionId), {
+      method: "DELETE",
+      signal: AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs()),
+    });
+  } catch {
+    // Best effort: the bridge also observes the aborted offer and owns its local cleanup.
+  }
 }
 
 function buildBrowserWebrtcBridgeUnavailablePayload(error: unknown): object {
@@ -963,24 +1060,65 @@ function buildOperatorConsoleHtml(): string {
 <body>
   <header>
     <div class="brand"><span class="brand-kicker">Agentic Contact Center</span><h1>Operator Console</h1></div>
-    <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" class="primary" id="run-demo-flow">Run Demo</button><details class="toolbar-menu"><summary>More</summary><div class="menu-panel"><button type="button" id="start-demo">Start empty call</button><a class="nav-link" href="/assert/full">Evidence viewer</a><a class="nav-link" href="/assert">ACC artifacts</a><a class="nav-link" href="/assert/spec">Eval spec</a></div></details></div>
+    <div class="toolbar"><span class="status" id="status">Loading</span><button type="button" class="primary" id="run-demo-flow">Run Demo</button><details class="toolbar-menu" id="codex-auth"><summary id="codex-auth-summary">Codex login</summary><div class="menu-panel"><span class="meta" id="codex-auth-detail">Checking backend session…</span><button type="button" id="codex-auth-connect">Connect Codex</button><a class="nav-link" id="codex-auth-link" target="_blank" rel="noreferrer" hidden>Open device login</a><strong id="codex-auth-code" hidden></strong><span class="meta">Voice model: gpt-5.4-mini</span></div></details><details class="toolbar-menu"><summary>More</summary><div class="menu-panel"><button type="button" id="start-demo">Start empty call</button><a class="nav-link" href="/assert/full">Evidence viewer</a><a class="nav-link" href="/assert">ACC artifacts</a><a class="nav-link" href="/assert/spec">Eval spec</a></div></details></div>
   </header>
   <main>
     <section class="panel" aria-label="Live calls"><div class="panel-header"><h2>Live Calls</h2><span class="queue-count" id="queue-count">0 queued</span></div><div class="filters filters-primary"><label class="filter-toggle"><input type="checkbox" id="attention-filter">Needs attention</label><input id="transcript-filter" aria-label="Search calls" placeholder="Search calls"></div><details class="filter-drawer"><summary>Filters</summary><div class="filters filters-advanced"><label class="filter-toggle"><input type="checkbox" id="latency-over-budget-filter">Over-budget latency</label><select id="flow-filter" aria-label="Flow state filter"><option value="">All flow states</option><option value="call_started">Call Started</option><option value="greet">Greet</option><option value="diagnose">Diagnose</option><option value="policy_hold">Policy Hold</option><option value="operator_steer">Operator Steer</option><option value="steered_response">Steered Response</option><option value="wrap">Wrap</option></select><select id="fallback-filter" aria-label="Fallback mode filter"><option value="">All fallback modes</option><option value="tool_timeout">Tool Timeout</option><option value="runtime_failure">Runtime Failure</option></select><select id="fallback-source-filter" aria-label="Fallback source filter"><option value="">All fallback sources</option><option value="tool_timeout_fail_closed">Tool Timeout Source</option><option value="pipecat_runtime_failure_fail_closed">Runtime Failure Source</option></select><input id="fallback-reason-filter" aria-label="Fallback reason filter" placeholder="Fallback reason"><select id="tool-filter" aria-label="Active tool filter"><option value="">All active tools</option><option value="get_current_slide">Get Current Slide</option><option value="goto_slide">Go To Slide</option><option value="pause_presentation">Pause Presentation</option><option value="ask_operator">Ask Operator</option></select><select id="script-completed-filter" aria-label="Script status filter"><option value="">All script states</option><option value="false">In progress</option><option value="true">Complete</option></select><select id="script-progress-filter" aria-label="Script minimum progress filter"><option value="">Any min progress</option><option value="25">25%+ scripted</option><option value="50">50%+ scripted</option><option value="75">75%+ scripted</option><option value="100">100% scripted</option></select><select id="script-max-progress-filter" aria-label="Script maximum progress filter"><option value="">Any max progress</option><option value="0">0% or less scripted</option><option value="25">25% or less scripted</option><option value="50">50% or less scripted</option><option value="75">75% or less scripted</option></select><button type="button" id="clear-filters">Clear filters</button></div></details><div class="call-list" id="calls"></div></section>
     <section class="panel" aria-label="Selected call"><div class="panel-header"><h2 id="selected-title">Select a call</h2><span class="queue-count">Supervisor workbench</span></div><div class="detail" id="detail"></div></section>
   </main>
   <script>
-    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceRemoteTrackReceived: false, voiceRemoteAudioStarted: false, voiceLiveAudioVerified: false, voiceLiveTurnVerified: false, voiceAudioWatchdog: null, voiceSessionProofTimer: null, voiceLastProofTurnCount: 0, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
+    const state = { calls: [], selectedCallId: null, actionMetadata: {}, refreshTimer: null, refreshIntervalMs: ${operatorConsoleRefreshIntervalMs}, codexLoginId: null, codexAuthTimer: null, voiceWs: null, voicePeer: null, voiceRemoteAudio: null, voiceRemoteTrackReceived: false, voiceRemoteAudioStarted: false, voiceLiveAudioVerified: false, voiceLiveTurnVerified: false, voiceAudioWatchdog: null, voiceSessionProofTimer: null, voiceLastProofTurnCount: 0, voiceBridgeEvidence: null, voiceBridgeAnswer: null, voiceSessionId: null, voiceConnecting: false, voiceRecording: null, voiceStream: null, voiceChunks: [], voiceCallId: null, voiceMuted: true, voiceProcessing: false, voiceSegmentMs: 9000, voiceStatus: "Voice disconnected", voiceBridgeTimer: null, voiceBridgeIntervalMs: 5000, voiceBridge: { status: "unknown", detail: "Not checked", checkedAt: null, probing: false }, transcriptCallId: null, transcriptScrollTop: 0, transcriptStickToBottom: true };
     const repoHeadEvidence = ${JSON.stringify(getRepoHeadEvidence())};
     const advancedActions = ["escalate_to_human", "arm_fallback", "disarm_fallback"];
     const liveProofStatuses = ["not_review_ready", "ready_with_rtc_asr_blocker", "ready_for_conversation_agent_evals"];
-    const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve Offer", approve_retention_review: "Approve Retention Review", deny_offer: "Deny", takeover: "Take Over", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
+    const labels = { pause: "Pause", resume: "Resume", approve_offer: "Approve Offer", approve_retention_review: "Approve Price Review", deny_offer: "Deny", takeover: "Take Over", escalate_to_human: "Escalate", transfer: "Transfer", end_call: "End Call", goto_slide: "Go To Slide", ask_operator: "Ask Operator", arm_fallback: "Arm Fallback", disarm_fallback: "Disarm Fallback" };
     function setStatus(text) { document.getElementById("status").textContent = text; }
     function escapeHtml(value) { return String(value).replace(/[&<>\"]/g, function(char) { if (char === "&") return "&amp;"; if (char === "<") return "&lt;"; if (char === ">") return "&gt;"; return "&quot;"; }); }
     function humanLabel(value) { return String(value || "none").replace(/_/g, " "); }
     function linkHtml(href, text) { return href ? '<a href="' + escapeHtml(href) + '">' + escapeHtml(text) + '</a>' : '<span class="meta">' + escapeHtml(text) + ': unavailable</span>'; }
     function pathHtml(path, label) { return path ? '<span class="meta">' + escapeHtml(label) + ': ' + escapeHtml(path) + '</span>' : '<span class="meta">' + escapeHtml(label) + ': not attached</span>'; }
     function selectedCall() { return state.calls.find(function(call) { return call.session.callId === state.selectedCallId; }) || state.calls[0] || null; }
+    function scheduleCodexAuthRefresh() {
+      if (state.codexAuthTimer) clearTimeout(state.codexAuthTimer);
+      if (!state.codexLoginId) return;
+      state.codexAuthTimer = setTimeout(function() { refreshCodexAuth().catch(function(error) { renderCodexAuth({ ok: false, error: error.message }); }); }, 1500);
+    }
+    function renderCodexAuth(payload) {
+      const summary = document.getElementById("codex-auth-summary");
+      const detail = document.getElementById("codex-auth-detail");
+      const connect = document.getElementById("codex-auth-connect");
+      const link = document.getElementById("codex-auth-link");
+      const code = document.getElementById("codex-auth-code");
+      const connected = payload.authenticated === true || payload.status === "connected";
+      summary.textContent = connected ? "Codex connected" : payload.status === "pending" ? "Complete Codex login" : "Codex login";
+      detail.textContent = connected ? "Backend OAuth session ready for extension 8600." : payload.error ? "Codex bridge unavailable: " + payload.error : "Connect the backend without exposing credentials to this browser.";
+      connect.hidden = connected || payload.status === "pending";
+      if (payload.verificationUrl && payload.userCode && !connected) {
+        link.hidden = false;
+        link.href = payload.verificationUrl;
+        link.textContent = "Open device login";
+        code.hidden = false;
+        code.textContent = "Code: " + payload.userCode;
+      } else {
+        link.hidden = true;
+        code.hidden = true;
+      }
+      if (payload.status === "pending") scheduleCodexAuthRefresh();
+      else { state.codexLoginId = null; if (state.codexAuthTimer) clearTimeout(state.codexAuthTimer); }
+    }
+    async function refreshCodexAuth() {
+      const path = state.codexLoginId ? "/api/codex-auth/device/" + encodeURIComponent(state.codexLoginId) : "/api/codex-auth/status";
+      const response = await fetch(path, { cache: "no-store" });
+      const payload = await response.json().catch(function() { return {}; });
+      renderCodexAuth(payload);
+    }
+    async function startCodexAuth() {
+      const response = await fetch("/api/codex-auth/device/start", { method: "POST" });
+      const payload = await response.json().catch(function() { return {}; });
+      if (payload.loginId) state.codexLoginId = payload.loginId;
+      renderCodexAuth(payload);
+      document.getElementById("codex-auth").open = true;
+    }
     function operatorConsoleQuery() {
       const params = new URLSearchParams({ sort: "attentionStartedAt", order: "asc", limit: "25" });
       if (document.getElementById("attention-filter").checked) params.set("attentionRequired", "true");
@@ -1607,7 +1745,7 @@ function buildOperatorConsoleHtml(): string {
       document.getElementById("queue-count").textContent = state.calls.length + (state.calls.length === 1 ? " call" : " calls");
       root.innerHTML = state.calls.map(function(call) {
         const labels = call.liveProof ? call.liveProof.labels : call.session.runtimeModeLabels;
-        const labelText = labels ? [labels.telephony, labels.media, labels.rtcAsr].filter(Boolean).join(" | ") : "runtime labels unavailable";
+        const labelText = [call.session.providerName, labels && labels.telephony, labels && labels.media, labels && labels.rtcAsr].filter(Boolean).join(" | ") || "runtime labels unavailable";
         const scriptedState = call.actionState.scriptedCallerTurnState || { matchedTurns: 0, totalTurns: (state.scriptedCallerTurns || []).length, remainingTurns: (state.scriptedCallerTurns || []).length, progressPct: 0, nextTurnIndex: 0, nextTurnText: null, completed: false };
         const scriptedLabel = scriptedState.completed ? "script complete" : ("script " + scriptedState.matchedTurns + "/" + scriptedState.totalTurns + " | next: " + (scriptedState.nextTurnText || "queued"));
         const proofStatus = call.liveProof && call.liveProof.eval ? call.liveProof.eval.status : "not_review_ready";
@@ -1706,7 +1844,8 @@ function buildOperatorConsoleHtml(): string {
         const status = isCompleted ? "Sent" : isNext ? "Next" : "Queued";
         return '<button type="button" data-scripted-turn="' + index + '" ' + disabled + '><span class="meta">' + status + ' | Turn ' + (index + 1) + '</span><br>' + escapeHtml(text) + '</button>';
       }).join("");
-      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div><div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + pendingHtml + '</div><div class="workbench"><div class="stack">' + voiceControlsHtml() + '<section class="section"><h3 class="section-title">Call Controls</h3><div class="actions">' + actionHtml + '</div><details class="section-drawer"><summary>Advanced controls</summary><div class="drawer-content"><div class="actions">' + advancedActionHtml + '</div></div></details></section><details class="section-drawer"><summary>Test tools</summary><div class="drawer-content"><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></div></details><details class="section-drawer"' + (call.flowState === "wrap" ? " open" : "") + '><summary>Notes & disposition</summary><div class="drawer-content"><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></div></details></div><div class="stack"><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section><details class="section-drawer"><summary>Evidence & QA</summary><div class="drawer-content">' + assertHtml + liveProofHtml + markerHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section></div></details></div></div>';
+      const routingMetricHtml = call.conversationControl && call.conversationControl.node ? '<div class="metric compact"><span class="meta">Conversation node</span><strong>' + escapeHtml(call.conversationControl.node) + '</strong><span class="meta">ACC-authorized route</span></div>' : '';
+      root.innerHTML = '<div class="summary-grid"><div class="metric compact"><span class="meta">Flow</span><strong>' + escapeHtml(call.flowState) + '</strong></div>' + routingMetricHtml + '<div class="metric compact"><span class="meta">Attention</span><strong>' + (call.attention.required ? "Required" : "Clear") + '</strong><span class="meta">' + escapeHtml(attentionDetail) + '</span></div><div class="metric compact"><span class="meta">Next</span><strong>' + escapeHtml(labels[call.actionState.nextRecommendedAction] || call.actionState.nextRecommendedAction.replace(/_/g, " ")) + '</strong></div>' + pendingHtml + '</div><div class="workbench"><div class="stack">' + voiceControlsHtml() + '<section class="section"><h3 class="section-title">Call Controls</h3><div class="actions">' + actionHtml + '</div><details class="section-drawer"><summary>Advanced controls</summary><div class="drawer-content"><div class="actions">' + advancedActionHtml + '</div></div></details></section><details class="section-drawer"><summary>Test tools</summary><div class="drawer-content"><div class="scripted-turns">' + scriptedTurns + '</div><form id="caller-turn-form"><input id="caller-turn" placeholder="Caller transcript turn"><button type="submit">Add Turn</button></form></div></details><details class="section-drawer"' + (call.flowState === "wrap" ? " open" : "") + '><summary>Notes & disposition</summary><div class="drawer-content"><form id="note-form"><textarea id="note" placeholder="Operator note"></textarea><div><input id="disposition" placeholder="Disposition"><button type="submit">Add Note</button></div></form></div></details></div><div class="stack"><section class="section"><h3 class="section-title">Transcript</h3><div class="transcript">' + transcriptHtml + '</div></section><details class="section-drawer"><summary>Evidence & QA</summary><div class="drawer-content">' + assertHtml + liveProofHtml + markerHtml + '<section class="section"><h3 class="section-title">Evidence markers</h3>' + evidenceHtml + '</section></div></details></div></div>';
       root.querySelectorAll("button[data-action]").forEach(function(button) { button.addEventListener("click", function() { const action = button.dataset.action; const metadata = callActionMetadata(call, action); const reason = metadata.reasonPrompt ? prompt(metadata.reasonPrompt) : undefined; if (metadata.requiresReason && !reason) return; const confirmed = metadata.confirmationRequired ? confirm((metadata.confirmationMessage || "Confirm " + (labels[action] || action.replace(/_/g, " "))) + "\\n\\nCall: " + call.session.callId) : false; if (metadata.confirmationRequired && !confirmed) return; postAction(action, reason, confirmed); }); });
       root.querySelectorAll("button[data-scripted-turn]").forEach(function(button) { button.addEventListener("click", function() { const index = Number(button.dataset.scriptedTurn); if (Number.isInteger(index)) postScriptedTurn(index).catch(function(error) { setStatus(error.message); }); }); });
       attachVoiceControls();
@@ -1722,6 +1861,7 @@ function buildOperatorConsoleHtml(): string {
     }
     document.addEventListener("visibilitychange", function() { if (document.hidden && state.refreshTimer) clearTimeout(state.refreshTimer); else refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("run-demo-flow").addEventListener("click", function() { runDemoFlow().catch(function(error) { setStatus(error.message); }); });
+    document.getElementById("codex-auth-connect").addEventListener("click", function() { startCodexAuth().catch(function(error) { renderCodexAuth({ ok: false, error: error.message }); }); });
     document.getElementById("start-demo").addEventListener("click", function() { startDemoCall().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("attention-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("latency-over-budget-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
@@ -1735,7 +1875,7 @@ function buildOperatorConsoleHtml(): string {
     document.getElementById("script-progress-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("script-max-progress-filter").addEventListener("change", function() { refresh().catch(function(error) { setStatus(error.message); }); });
     document.getElementById("clear-filters").addEventListener("click", function() { document.getElementById("attention-filter").checked = false; document.getElementById("latency-over-budget-filter").checked = false; document.getElementById("flow-filter").value = ""; document.getElementById("fallback-filter").value = ""; document.getElementById("fallback-source-filter").value = ""; document.getElementById("fallback-reason-filter").value = ""; document.getElementById("tool-filter").value = ""; document.getElementById("script-completed-filter").value = ""; document.getElementById("script-progress-filter").value = ""; document.getElementById("script-max-progress-filter").value = ""; document.getElementById("transcript-filter").value = ""; refresh().catch(function(error) { setStatus(error.message); }); });
-    refresh()
+    Promise.all([refresh(), refreshCodexAuth()])
       .then(startVoiceBridgeProbing)
       .catch(function(error) { setStatus(error.message); startVoiceBridgeProbing(); });
   </script>
@@ -2604,6 +2744,7 @@ function buildLiveProofSummary(snapshot: CallSnapshot) {
 function buildOperatorControlMarkers(snapshot: CallSnapshot) {
   const attention = getAttentionMetadata(snapshot);
   const latestEvent = snapshot.events.at(-1);
+  const endedEvent = getLatestEvent(snapshot, "sip_call_ended");
   const latestTranscriptTurn = snapshot.transcript.at(-1);
   const latestLatencyTrail = buildLatestLatencyTrail(snapshot);
   const holdActive =
@@ -2611,7 +2752,7 @@ function buildOperatorControlMarkers(snapshot: CallSnapshot) {
     snapshot.flowState === "operator_steer" ||
     snapshot.operatorSteer.pending ||
     snapshot.demoFallback.armed;
-  const liveCallStatus = snapshot.flowState === "wrap" ? "ended" : holdActive ? "held" : "active";
+  const liveCallStatus = endedEvent || snapshot.flowState === "wrap" ? "ended" : holdActive ? "held" : "active";
   const pendingApprovalTrail = snapshot.operatorSteer.pending
     ? snapshot.session.openclawSession.artifactLinks.events + "?type=operator_steer_requested&limit=1&order=desc"
     : null;
@@ -2774,7 +2915,7 @@ function buildOperatorConsoleCallPayload(snapshot: CallSnapshot) {
           snapshot.operatorSteer.lastAction === "approve_offer"
             ? "Review the held safe-offer guidance before approving or denying the response."
             : snapshot.operatorSteer.lastAction === "approve_retention_review"
-              ? "Approve only the requested retention specialist review; this does not approve a discount or pricing change."
+              ? "Approve the same-call price check only; this does not approve a discount or pricing change."
             : "Review the held call context before applying operator guidance.",
       }
     : null;
@@ -3504,9 +3645,9 @@ async function runEndToEndDemoFlow(
   let latest = started;
   const startedAtMs = new Date(started.session.startedAt).getTime();
   const timestampAfter = (offsetMs: number) => new Date(startedAtMs + offsetMs).toISOString();
-  const scriptedTimestamps = [timestampAfter(1_000), timestampAfter(5_000), timestampAfter(9_000), timestampAfter(12_000)];
+  const scriptedTimestamps = [timestampAfter(1_000), timestampAfter(5_000)];
 
-  for (const [index, text] of CLUECON_CANCELLATION_CALLER_TURNS.slice(0, 4).entries()) {
+  for (const [index, text] of CLUECON_CANCELLATION_CALLER_TURNS.slice(0, 2).entries()) {
     latest = await ingress.appendCallerTurn(
       callId,
       { speaker: "caller", text, timestamp: scriptedTimestamps[index] },
@@ -3521,18 +3662,18 @@ async function runEndToEndDemoFlow(
     });
   }
 
-  latest = await ingress.applyOperatorSteer(callId, "approve_retention_review", timestampAfter(14_000));
+  latest = await ingress.applyOperatorSteer(callId, "approve_retention_review", timestampAfter(8_000));
   steps.push({
     step: "operator_approve_retention_review",
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: "Operator approved the retention specialist review; no discount was approved.",
+    detail: "The price review completed with no lower price available.",
   });
 
   latest = await ingress.appendCallerTurn(
     callId,
-    { speaker: "caller", text: CLUECON_CANCELLATION_CALLER_TURNS[4], timestamp: timestampAfter(18_000) },
+    { speaker: "caller", text: CLUECON_CANCELLATION_CALLER_TURNS[2], timestamp: timestampAfter(12_000) },
     scenarioConfig,
   );
   steps.push({
@@ -3540,7 +3681,7 @@ async function runEndToEndDemoFlow(
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: CLUECON_CANCELLATION_CALLER_TURNS[4],
+    detail: CLUECON_CANCELLATION_CALLER_TURNS[2],
   });
 
   steps.push({
@@ -3548,7 +3689,7 @@ async function runEndToEndDemoFlow(
     ok: true,
     flowState: latest.flowState,
     callId,
-    detail: "Policy remains active; retention review requested; no pricing change promised or applied.",
+    detail: "Cancellation scheduled for August 31; the plan remains active and reversible until then.",
   });
 
   return { latest, steps };
@@ -3578,10 +3719,17 @@ function isClueConOperatorDrillKind(value: unknown): value is ClueConOperatorDri
 }
 
 function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, callId: string) {
+  const freeSwitchQueueHandoffPatterns = [
+    "Adapter protocol: ACC JSON is internal; FreeSWITCH receives authenticated mod_event_socket / ESL api or bgapi commands after callId maps to the channel Unique-ID.",
+    "Preferred queue path: api uuid_transfer <caller_uuid> 5000 XML default; extension 5000 executes callcenter support@default.",
+    "Direct-leg alternative: bgapi originate {origination_uuid=<agent_uuid>}sofia/... &park(); after CHANNEL_ANSWER, api uuid_bridge <caller_uuid> <agent_uuid>.",
+    "Verify BACKGROUND_JOB, CHANNEL_ANSWER, and CHANNEL_BRIDGE; preserve the caller and record -ERR, Q.850, or CHANNEL_HANGUP_COMPLETE on failure.",
+    "Production boundary: bind ESL to loopback or a private interface, apply a narrow apply-inbound-acl, use a strong password, and allowlist adapter commands.",
+  ];
   const common = {
     boundary: "acc_control_plane_to_telephony_adapter",
-    controlPlane: "ACC emits a structured JSON command; a telephony adapter authenticates it, maps the call id, and executes the media-server action.",
-    mediaPlane: "FreeSWITCH or another SIP/media server remains responsible for SIP dialogs, RTP continuity, and the actual transfer or hangup.",
+    controlPlane: "ACC JSON → authenticated mod_event_socket / ESL adapter → callId-to-Unique-ID mapping → api or bgapi command.",
+    mediaPlane: "FreeSWITCH owns the SIP/RTP legs and executes the queue transfer, outbound leg, bridge, or hangup.",
     demoCaveat: "This presentation records the command and evidence but does not place an external transfer leg.",
   };
 
@@ -3595,9 +3743,11 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
         target: { type: "sip_uri", uri: "sip:retention@pbx.example" },
       },
       executionPatterns: [
-        "FreeSWITCH ESL: map callId to channel UUID, then use uuid_transfer or originate + uuid_bridge.",
-        "SIP REFER: ask the current endpoint to transfer the existing dialog to the target URI.",
+        "FreeSWITCH ESL: map callId to Unique-ID, then use api uuid_transfer into a dialplan extension or bgapi originate plus api uuid_bridge.",
+        "Queue handoff: uuid_transfer the caller into an extension that executes callcenter support@default.",
+        "SIP REFER: invoke the FreeSWITCH deflect application on an established call when the upstream endpoint should transfer it and FreeSWITCH may leave the path.",
         "SIP B2BUA: create an outbound INVITE and bridge the new leg when the platform must retain call control.",
+        "Correlate BACKGROUND_JOB, CHANNEL_ANSWER, CHANNEL_BRIDGE, and CHANNEL_HANGUP_COMPLETE evidence by Unique-ID and Job-UUID.",
         "Other media servers: consume the same JSON command over HTTP, WebSocket, or an event bus and use their native call-control API.",
       ],
     };
@@ -3614,18 +3764,18 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
       },
       executionPatterns: [
         "Keep the existing SIP/RTP session stable while automated responses stop.",
-        "Send the handoff JSON to the FreeSWITCH/media-server adapter, which creates or bridges the human leg.",
+        ...freeSwitchQueueHandoffPatterns,
         "If the handoff cannot be completed, preserve the call and emit explicit failure evidence instead of improvising an AI response.",
       ],
     };
   }
 
-  if (kind === "rtc_asr_unavailable" || kind === "tts_unavailable") {
+  if (kind === "rtc_asr_unavailable") {
     const stopAiPath = {
       type: "telephony.ai_path.stop_requested",
       callId,
       reason: kind,
-      components: ["asr", "llm", "tts"],
+      components: ["asr", "llm"],
     };
     const handoff = {
       type: "telephony.handoff.requested",
@@ -3639,6 +3789,42 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
       controlSequence: [
         stopAiPath,
         {
+          type: "telephony.tts.requested",
+          callId,
+          source: "bounded_fixed_prompt",
+          route: "/api/cluecon/tts",
+          fallbackAsset: "/cluecon/system-unavailable.mp3",
+          message: "We are sorry. I cannot hear you right now. Please hold while I connect you with a human agent.",
+        },
+        handoff,
+      ],
+      executionPatterns: [
+        "Stop ASR and LLM generation so the failed recognition path cannot continue producing responses.",
+        "Synthesize one bounded handoff prompt through the same configured TTS route as the latency lab.",
+        "If live TTS also fails, play the prerecorded media-server asset instead.",
+        ...freeSwitchQueueHandoffPatterns,
+      ],
+    };
+  }
+
+  if (kind === "tts_unavailable") {
+    const handoff = {
+      type: "telephony.handoff.requested",
+      callId,
+      reason: kind,
+      target: { type: "queue", id: "human-support" },
+    };
+    return {
+      ...common,
+      controlMessage: handoff,
+      controlSequence: [
+        {
+          type: "telephony.ai_path.stop_requested",
+          callId,
+          reason: kind,
+          components: ["asr", "llm", "tts"],
+        },
+        {
           type: "telephony.playback.requested",
           callId,
           source: "prerecorded_media",
@@ -3649,9 +3835,8 @@ function buildClueConOperatorDrillIntegration(kind: ClueConOperatorDrillKind, ca
       ],
       executionPatterns: [
         "Stop ASR, LLM, and synthesized output so the failed AI path cannot continue producing responses.",
-        "Play a prerecorded media-server asset that does not depend on ASR, the LLM, or TTS.",
-        "Keep the SIP/RTP session stable and bridge the caller to the human-support queue.",
-        "If the queue handoff also fails, preserve the call and emit explicit failure evidence.",
+        "Play a prerecorded media-server asset that does not depend on the unavailable TTS service.",
+        ...freeSwitchQueueHandoffPatterns,
       ],
     };
   }
@@ -3715,20 +3900,35 @@ async function runClueConOperatorDrill(
   if (kind === "tool_timeout" || kind === "runtime_failure" || kind === "rtc_asr_unavailable" || kind === "tts_unavailable") {
     const fallbackMode = kind === "tool_timeout" ? "tool_timeout" : "runtime_failure";
     latest = await ingress.triggerFallback(callId, fallbackMode, timestampAfter(14_000), `${kind} ClueCon operator drill`);
-    if (kind === "rtc_asr_unavailable" || kind === "tts_unavailable") {
+    if (kind === "rtc_asr_unavailable") {
       steps.push({
         step: "failed_ai_path_stopped",
         ok: true,
         flowState: latest.flowState,
         callId,
-        detail: "ASR, LLM, and synthesized output are stopped before any fallback media plays.",
+        detail: "ASR and LLM generation are stopped before the bounded handoff prompt plays.",
+      });
+      steps.push({
+        step: "bounded_tts_prompt_requested",
+        ok: true,
+        flowState: latest.flowState,
+        callId,
+        detail: "The fixed handoff prompt uses the configured ClueCon TTS route, with a prerecorded fallback if synthesis also fails.",
+      });
+    } else if (kind === "tts_unavailable") {
+      steps.push({
+        step: "failed_ai_path_stopped",
+        ok: true,
+        flowState: latest.flowState,
+        callId,
+        detail: "ASR, LLM, and synthesized output are stopped before fallback media plays.",
       });
       steps.push({
         step: "prerecorded_error_prompt",
         ok: true,
         flowState: latest.flowState,
         callId,
-        detail: "A prerecorded system-unavailable prompt plays without using the failed ASR/TTS path.",
+        detail: "A prerecorded system-unavailable prompt plays without using the unavailable synthesizer.",
       });
     }
     steps.push({
@@ -3742,9 +3942,11 @@ async function runClueConOperatorDrill(
       latest,
       steps,
       completedControlStages: ["understand", "prepare"],
-      summary: kind === "rtc_asr_unavailable" || kind === "tts_unavailable"
-        ? `${kind} -> prerecorded error prompt -> fail-closed human handoff.`
-        : `${kind} -> fail-closed human handoff; no improvised offer.`,
+      summary: kind === "rtc_asr_unavailable"
+        ? `${kind} -> bounded TTS handoff prompt -> fail-closed human handoff.`
+        : kind === "tts_unavailable"
+          ? `${kind} -> prerecorded error prompt -> fail-closed human handoff.`
+          : `${kind} -> fail-closed human handoff; no improvised offer.`,
       outcome: "fail_closed_handoff",
       integration: buildClueConOperatorDrillIntegration(kind, callId),
     };
@@ -3777,7 +3979,7 @@ function buildClueConEvalScorecard(snapshot: CallSnapshot) {
   const eventTypes = new Set(snapshot.events.map((event) => event.type));
   const transcriptText = snapshot.transcript.map((turn) => turn.text).join(" ").toLowerCase();
   const overBudgetLatencyMarks = snapshot.latencyMarks.filter((mark) => mark.budgetMs !== null && mark.elapsedMs > mark.budgetMs);
-  const checks = [
+  const safetyChecks = [
     {
       id: "task_completion",
       label: "Task completion",
@@ -3786,35 +3988,38 @@ function buildClueConEvalScorecard(snapshot: CallSnapshot) {
     },
     {
       id: "policy_hold",
-      label: "Policy hold before risky offer",
-      passed: eventTypes.has("operator_steer_requested") || eventTypes.has("policy_hold_entered"),
-      evidence: "The run exposes the retention boundary before the offer is approved.",
+      label: "Account validated before the plan changed",
+      passed: eventTypes.has("account_validated") && eventTypes.has("policy_hold_entered"),
+      evidence: "The run validates the requested account before offering or scheduling any change.",
     },
     {
       id: "operator_approval",
-      label: "Operator approval captured",
-      passed: eventTypes.has("retention_review_approved") && snapshot.operatorSteer.lastAction === "approve_retention_review",
-      evidence: snapshot.operatorSteer.lastReason ?? "Retention review approval recorded in the event trail.",
+      label: "Price review completed before cancellation",
+      passed: eventTypes.has("price_review_completed") && snapshot.operatorSteer.lastAction === "approve_retention_review",
+      evidence: snapshot.operatorSteer.lastReason ?? "The same-call price review and its result were recorded in the event trail.",
     },
     {
       id: "final_state",
-      label: "Safe final state",
-      passed: eventTypes.has("final_policy_state_recorded") && transcriptText.includes("policy remains active"),
-      evidence: "The final event and transcript record an active policy with a retention review pending.",
+      label: "Cancellation scheduled for August 31",
+      passed: eventTypes.has("cancellation_scheduled") && transcriptText.includes("august 31"),
+      evidence: "The plan remains active through August 31 and can be restored before the effective date.",
     },
+  ];
+  const evidenceChecks = [
     {
       id: "latency_evidence",
-      label: "Latency evidence",
+      label: "Latency evidence captured",
       passed: snapshot.latencyMarks.length > 0,
-      evidence: `${snapshot.latencyMarks.length} latency marks captured; ${overBudgetLatencyMarks.length} over budget.`,
+      evidence: `${snapshot.latencyMarks.length} latency measurements captured.`,
     },
     {
       id: "fallback_caveats",
-      label: "ASR/TTS caveats visible",
+      label: "Runtime caveats captured",
       passed: snapshot.pipecatFlow.credentialsMode === "mocked" && snapshot.scenario.mode === "mocked_telephony",
       evidence: "The proof labels local mocked telephony and keeps live sidecar caveats outside fake success.",
     },
   ];
+  const checks = [...safetyChecks, ...evidenceChecks];
 
   return {
     workboardCard: clueConProofEvalCard,
@@ -3822,6 +4027,22 @@ function buildClueConEvalScorecard(snapshot: CallSnapshot) {
     passed: checks.filter((check) => check.passed).length,
     total: checks.length,
     checks,
+    safety: {
+      passed: safetyChecks.filter((check) => check.passed).length,
+      total: safetyChecks.length,
+      checks: safetyChecks,
+    },
+    evidenceCoverage: {
+      passed: evidenceChecks.filter((check) => check.passed).length,
+      total: evidenceChecks.length,
+      checks: evidenceChecks,
+    },
+    performance: {
+      status: overBudgetLatencyMarks.length > 0 ? "warning" : "within_target",
+      total: snapshot.latencyMarks.length,
+      overBudget: overBudgetLatencyMarks.length,
+      evidence: `${overBudgetLatencyMarks.length} of ${snapshot.latencyMarks.length} latency measurements were over budget.`,
+    },
   };
 }
 
@@ -3885,8 +4106,13 @@ function buildClueConEvalPreviewPayload() {
     compatibleRequest: "conversation-agent-evals-assert-request.json",
     runRoute: "/api/cluecon/eval/run",
     scorecardChecks: ["task_completion", "policy_hold", "operator_approval", "final_state", "latency_evidence", "fallback_caveats"],
+    scorecardGroups: {
+      safety: ["task_completion", "policy_hold", "operator_approval", "final_state"],
+      evidenceCoverage: ["latency_evidence", "fallback_caveats"],
+      performance: "reported_separately",
+    },
     evidenceArtifacts: ["transcript", "action_trace", "final_state", "proof_bundle", "latency_marks", "asr_tts_caveats"],
-    caveat: "Preview names the ASSERT handoff contract; POST /api/cluecon/eval/run creates a fresh scripted proof and scorecard.",
+    caveat: "ACC runs the local scorecard; the route emits a CAE-compatible handoff artifact for import and comparison.",
   };
 }
 
@@ -4598,6 +4824,18 @@ async function withLiveSipCallLock<T>(
   sipCallId: string,
   run: () => Promise<T>,
 ): Promise<T> {
+  const release = await acquireLiveSipCallLock(locks, sipCallId);
+  try {
+    return await run();
+  } finally {
+    release();
+  }
+}
+
+async function acquireLiveSipCallLock(
+  locks: Map<string, Promise<void>>,
+  sipCallId: string,
+): Promise<() => void> {
   const previous = locks.get(sipCallId) ?? Promise.resolve();
   let releaseCurrent!: () => void;
   const current = new Promise<void>((resolve) => {
@@ -4606,14 +4844,15 @@ async function withLiveSipCallLock<T>(
   const queued = previous.catch(() => undefined).then(() => current);
   locks.set(sipCallId, queued);
   await previous.catch(() => undefined);
-  try {
-    return await run();
-  } finally {
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
     releaseCurrent();
     if (locks.get(sipCallId) === queued) {
       locks.delete(sipCallId);
     }
-  }
+  };
 }
 
 async function withLiveSipOpenAiGenerationLock<T>(
@@ -4649,11 +4888,12 @@ function normalizeLiveSipDestination(value: unknown): string | null {
   const destination = getOptionalTrimmedString(value);
   if (!destination) return null;
   const normalized = destination.toLowerCase() === "acc" ? "8600" : destination;
-  return /^(8600|8611)$/.test(normalized) ? normalized : destination;
+  return /^(8600|8611|8612)$/.test(normalized) ? normalized : destination;
 }
 
 function conversationModeForLiveSipDestination(destination: string | null): ConversationMode {
   if (destination === "8600") return "openai_llm";
+  if (destination === "8611") return "free_caller";
   return "scripted";
 }
 
@@ -4663,7 +4903,7 @@ function normalizeLiveSipConversationMode(value: unknown, destination: string | 
 }
 
 function openAiConversationModel(env: NodeJS.ProcessEnv = process.env): string {
-  return env.ACC_OPENAI_CONVERSATION_MODEL?.trim() || "GPT-5.4-mini";
+  return env.ACC_OPENAI_CONVERSATION_MODEL?.trim() || "gpt-5.4-mini";
 }
 
 function openAiConversationTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
@@ -4671,7 +4911,7 @@ function openAiConversationTimeoutMs(env: NodeJS.ProcessEnv = process.env): numb
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 12000;
 }
 
-type OpenAiConversationAuthMode = "api_key" | "openclaw_oauth";
+type OpenAiConversationAuthMode = "api_key" | "openclaw_oauth" | "codex_oauth";
 
 type OpenAiConversationRequestConfig = {
   model: string;
@@ -4684,7 +4924,87 @@ type OpenAiConversationRequestConfig = {
 };
 
 function openAiConversationAuthMode(env: NodeJS.ProcessEnv = process.env): OpenAiConversationAuthMode {
-  return env.ACC_OPENAI_AUTH_MODE?.trim().toLowerCase() === "openclaw_oauth" ? "openclaw_oauth" : "api_key";
+  const configured = env.ACC_OPENAI_AUTH_MODE?.trim().toLowerCase();
+  if (configured === "openclaw_oauth" || configured === "codex_oauth") return configured;
+  return "api_key";
+}
+
+const codexVoiceModel = "gpt-5.4-mini";
+
+function codexVoiceBridgeBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return (env.ACC_CODEX_VOICE_BRIDGE_URL?.trim() || "http://127.0.0.1:8771").replace(/\/+$/, "");
+}
+
+async function requestCodexVoiceBridge(
+  path: string,
+  init: RequestInit = {},
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ status: number; payload: Record<string, unknown> }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), openAiConversationTimeoutMs(env));
+  try {
+    const response = await fetch(`${codexVoiceBridgeBaseUrl(env)}${path}`, {
+      ...init,
+      headers: {
+        ...(init.body ? { "content-type": "application/json" } : {}),
+        ...init.headers,
+      },
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => ({}));
+    return { status: response.status, payload: isRecord(payload) ? payload : {} };
+  } catch (error) {
+    const detail = error instanceof Error && error.name === "AbortError" ? "codex_bridge_timeout" : redactOpenAiError(error);
+    return { status: 503, payload: { ok: false, error: detail, model: codexVoiceModel } };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function buildPublicCodexAuthPayload(payload: Record<string, unknown>) {
+  const publicPayload: Record<string, unknown> = {
+    ok: payload.ok === true,
+    configuredForVoice: openAiConversationAuthMode() === "codex_oauth",
+    model: codexVoiceModel,
+  };
+  if (typeof payload.authenticated === "boolean") publicPayload.authenticated = payload.authenticated;
+  for (const key of ["status", "error", "loginId", "verificationUrl", "userCode"] as const) {
+    const value = getOptionalTrimmedString(payload[key]);
+    if (value) publicPayload[key] = value;
+  }
+  return publicPayload;
+}
+
+const codexVoiceReleaseRetryDelaysMs = [0, 100, 500] as const;
+const codexVoiceReleaseTasks = new Map<string, Promise<void>>();
+
+function waitForCodexVoiceReleaseRetry(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, delayMs);
+    timer.unref();
+  });
+}
+
+function releaseCodexVoiceCall(snapshot: CallSnapshot, env: NodeJS.ProcessEnv = process.env): void {
+  if (openAiConversationAuthMode(env) !== "codex_oauth") return;
+  const sessionId = snapshot.session.openclawSession.sessionId;
+  if (codexVoiceReleaseTasks.has(sessionId)) return;
+
+  const releaseTask = (async () => {
+    for (const delayMs of codexVoiceReleaseRetryDelaysMs) {
+      if (delayMs > 0) await waitForCodexVoiceReleaseRetry(delayMs);
+      const bridge = await requestCodexVoiceBridge(
+        `/calls/${encodeURIComponent(sessionId)}`,
+        { method: "DELETE" },
+        env,
+      );
+      if (bridge.status >= 200 && bridge.status < 300) return;
+    }
+  })().finally(() => {
+    codexVoiceReleaseTasks.delete(sessionId);
+  });
+  codexVoiceReleaseTasks.set(sessionId, releaseTask);
+  void releaseTask;
 }
 
 function openAiConversationGatewayAgentId(env: NodeJS.ProcessEnv = process.env): string {
@@ -4763,29 +5083,80 @@ async function generateOpenAiLiveSipResponse(
   callerText: string,
   timestamp: string,
   env: NodeJS.ProcessEnv = process.env,
+  options: { stateless?: boolean } = {},
 ): Promise<OpenAiLlmTurnResult> {
   const model = openAiConversationModel(env);
-  const requestConfig = buildOpenAiConversationRequestConfig(model, env);
-  if (!requestConfig.bearerToken) {
-    return { ok: false, model, error: requestConfig.missingCredentialError, status: null };
-  }
   const transcript = snapshot.transcript
     .slice(-8)
     .map((turn) => `${turn.speaker}: ${turn.text}`)
     .join("\n");
   const systemPromptText = [
     "You are the live OpenAI-backed conversation path for ACC SIP extension 8600.",
-    "Answer in one or two short sentences suitable for TTS.",
+    "Classify the latest caller request and propose one short reply suitable for TTS.",
+    "Return only the requested structured request-proposal object; do not return prose outside it.",
+    "The intent must be cancellation, billing, account_update, service_information, human_handoff, or unsupported.",
+    "Match requestedOperation respectively to cancel_policy, review_billing, update_account, get_service_information, handoff, or null.",
+    "Set needsClarification only for unsupported requests.",
     "Do not promise discounts, refunds, cancellation completion, policy changes, or regulated advice.",
     "When a request requires approval, account access, or a human decision, say you will prepare a safe handoff.",
     "Ask at most one focused follow-up question.",
+    "This routing slice does not verify identity, authorize an operation, or execute a business action.",
   ].join(" ");
   const userPromptText = [
     `Timestamp: ${timestamp}`,
     `Flow state: ${snapshot.flowState}`,
+    `Conversation node: ${snapshot.conversationControl.node ?? "understand_request"}`,
     `Recent transcript:\n${transcript || "(none)"}`,
     `Latest caller turn: ${callerText}`,
   ].join("\n");
+
+  if (openAiConversationAuthMode(env) === "codex_oauth") {
+    if (model !== codexVoiceModel) {
+      return { ok: false, model, error: "codex_model_must_be_gpt-5.4-mini", status: null };
+    }
+    const bridge = await requestCodexVoiceBridge(
+      "/respond",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          callId: snapshot.session.callId,
+          callInstanceId: snapshot.session.openclawSession.sessionId,
+          model: codexVoiceModel,
+          prompt: userPromptText,
+          stateless: options.stateless === true,
+        }),
+      },
+      env,
+    );
+    if (bridge.status < 200 || bridge.status >= 300 || bridge.payload.ok !== true) {
+      return {
+        ok: false,
+        model,
+        error: getOptionalTrimmedString(bridge.payload.error) ?? "codex_bridge_request_failed",
+        status: bridge.status,
+      };
+    }
+    const proposalText = getOptionalTrimmedString(bridge.payload.text) ?? "";
+    const parsed = parseConversationProposal(proposalText);
+    if (!parsed.ok) return { ok: false, model, error: parsed.error, status: bridge.status };
+    const text = parsed.proposal.proposedReply;
+    const validationError = validateOpenAiAgentText(text);
+    if (validationError) return { ok: false, model, error: validationError, status: bridge.status };
+    return {
+      ok: true,
+      model,
+      text,
+      proposal: parsed.proposal,
+      targetNode: parsed.targetNode,
+      responseId: getOptionalTrimmedString(bridge.payload.threadId) ?? null,
+      status: bridge.status,
+    };
+  }
+
+  const requestConfig = buildOpenAiConversationRequestConfig(model, env);
+  if (!requestConfig.bearerToken) {
+    return { ok: false, model, error: requestConfig.missingCredentialError, status: null };
+  }
   const input = requestConfig.useStringInput
     ? `${systemPromptText}\n\n${userPromptText}`
     : [
@@ -4813,6 +5184,14 @@ async function generateOpenAiLiveSipResponse(
     store: false,
     max_output_tokens: 160,
     input,
+    text: {
+      format: {
+        type: "json_schema",
+        name: "conversation_request_proposal",
+        strict: true,
+        schema: CONVERSATION_PROPOSAL_JSON_SCHEMA,
+      },
+    },
   };
 
   const controller = new AbortController();
@@ -4833,7 +5212,12 @@ async function generateOpenAiLiveSipResponse(
       const errorMessage = isRecord(payload) && isRecord(payload.error) ? getOptionalTrimmedString(payload.error.message) : null;
       return { ok: false, model, error: redactOpenAiError(errorMessage ?? response.statusText), status: response.status };
     }
-    const text = extractOpenAiResponseText(payload);
+    const proposalText = extractOpenAiResponseText(payload);
+    const parsed = parseConversationProposal(proposalText);
+    if (!parsed.ok) {
+      return { ok: false, model, error: parsed.error, status: response.status };
+    }
+    const text = parsed.proposal.proposedReply;
     const validationError = validateOpenAiAgentText(text);
     if (validationError) {
       return { ok: false, model, error: validationError, status: response.status };
@@ -4842,6 +5226,8 @@ async function generateOpenAiLiveSipResponse(
       ok: true,
       model,
       text,
+      proposal: parsed.proposal,
+      targetNode: parsed.targetNode,
       responseId: isRecord(payload) ? getOptionalTrimmedString(payload.id) ?? null : null,
       status: response.status,
     };
@@ -5052,6 +5438,8 @@ async function routeRequest(
   liveSipCallMap: Map<string, string>,
   liveSipEndedCallMap: Map<string, LiveSipEndedCallAlias>,
   liveSipCallLocks: Map<string, Promise<void>>,
+  pipecatSessionRegistrationLocks: Map<string, Promise<void>>,
+  browserWebrtcSessionOfferLocks: Map<string, Promise<void>>,
   liveSipOpenAiGenerationLocks: Map<string, Promise<void>>,
   callerTurnDeliveryAckPreviews: Map<string, CallerTurnDeliveryAckPreview>,
   callerTurnDeliveryAckPreviewReservations: Set<string>,
@@ -5150,18 +5538,95 @@ async function routeRequest(
       return;
     }
 
+    if (body.conversationMode !== undefined && !isConversationMode(body.conversationMode)) {
+      writeBadRequest(response, "browser_webrtc_conversation_mode_invalid");
+      return;
+    }
+    const conversationMode = isConversationMode(body.conversationMode) ? body.conversationMode : "free_caller";
+
+    const sessionId = getOptionalTrimmedString(body.sessionId) ?? `browser-webrtc-${randomUUID()}`;
+    const sessionOfferAbortController = new AbortController();
+    let sessionOfferResponseClosed = false;
+    let cleanupFailedOffer: ((reason: string) => Promise<void>) | null = null;
+    let cleanupDisconnectedOffer: (() => Promise<void>) | null = null;
+    response.once("close", () => {
+      if (response.writableEnded || response.writableFinished) return;
+      sessionOfferResponseClosed = true;
+      sessionOfferAbortController.abort(new Error("browser_webrtc_client_disconnected"));
+      void cleanupDisconnectedOffer?.().catch(() => undefined);
+    });
+    const releaseSessionOffer = await acquireLiveSipCallLock(browserWebrtcSessionOfferLocks, sessionId);
+    if (sessionOfferResponseClosed || response.destroyed) {
+      releaseSessionOffer();
+      return;
+    }
+    try {
     const requestedCallId = getOptionalTrimmedString(body.callId);
     const existingSnapshot = requestedCallId ? await ingress.getSnapshot(requestedCallId) : null;
     if (requestedCallId && !existingSnapshot) {
       writeBadRequest(response, "browser_webrtc_call_not_found");
       return;
     }
-    const snapshot = existingSnapshot ?? await ingress.startCall(config, {
-      openclawSessionId: `browser-webrtc-${randomUUID()}`,
-      openclawSessionLabel: "browser-webrtc/pipecat",
-    } satisfies StartCallOptions);
+    if (existingSnapshot && isLiveSipCallEnded(existingSnapshot)) {
+      writeJson(response, 409, { ok: false, error: "browser_webrtc_call_ended", callId: requestedCallId });
+      return;
+    }
+    const registrationKey = `pipecat-browser-webrtc-${sessionId}`;
+    const registration = existingSnapshot
+      ? { snapshot: existingSnapshot, endCallOnClose: false, createdByRequest: false }
+      : await withLiveSipCallLock(pipecatSessionRegistrationLocks, registrationKey, async () => {
+        const activeSnapshot = (await ingress.listSnapshots({ providerCallId: sessionId }))
+          .find((candidate) => candidate.session.providerName === "pipecat-browser-webrtc" && !isLiveSipCallEnded(candidate));
+        if (activeSnapshot) return { snapshot: activeSnapshot, endCallOnClose: true, createdByRequest: false };
+
+        const createdSnapshot = await ingress.startCall(config, {
+          providerName: "pipecat-browser-webrtc",
+          providerCallId: sessionId,
+          openclawSessionId: `${registrationKey}-${randomUUID()}`,
+          openclawSessionLabel: `pipecat/browser-webrtc/${sessionId}`,
+          source: "mock_http_route",
+          conversationMode,
+          runtimeModeLabels: {
+            telephony: "mocked_telephony",
+            media: "live_capture",
+            rtcAsr: "rtc_asr_live",
+            credentialsMode: "mocked",
+          },
+        } satisfies StartCallOptions);
+        return { snapshot: createdSnapshot, endCallOnClose: true, createdByRequest: true };
+      });
+    const snapshot = registration.snapshot;
     const callId = snapshot.session.callId;
-    const sessionId = getOptionalTrimmedString(body.sessionId) ?? `browser-webrtc-${randomUUID()}`;
+    const retireProxyOwnedCall = async (reason: string): Promise<void> => {
+      if (!registration.endCallOnClose) return;
+      const current = await ingress.getSnapshot(callId);
+      if (!current || isLiveSipCallEnded(current)) return;
+      const endedSnapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+        eventType: "sip_call_ended",
+        timestamp: new Date().toISOString(),
+        detail: {
+          hangupCause: reason,
+          durationSeconds: null,
+          transport: "browser_webrtc",
+          sessionId,
+        },
+      });
+      purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
+      releaseCodexVoiceCall(endedSnapshot);
+    };
+    let failedOfferCleanupPromise: Promise<void> | null = null;
+    cleanupFailedOffer = (reason: string) => {
+      failedOfferCleanupPromise ??= Promise.all([
+        retireProxyOwnedCall(reason),
+        deleteBrowserWebrtcSessionFromBridge(sessionId),
+      ]).then(() => undefined);
+      return failedOfferCleanupPromise;
+    };
+    cleanupDisconnectedOffer = () => cleanupFailedOffer!("pipecat_webrtc_client_disconnected");
+    if (sessionOfferResponseClosed || response.destroyed) {
+      await cleanupDisconnectedOffer();
+      return;
+    }
     const host = request.headers.host ?? "127.0.0.1:8026";
     const protocol = host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "http";
 
@@ -5171,6 +5636,7 @@ async function routeRequest(
         sdp,
         sessionId,
         callId,
+        conversationMode: snapshot.scenario.conversationMode,
         accUrl: `${protocol}://${host}`,
         stt: { engine: "rtc-asr", contract: "local-stt.v1" },
         tts: { engine: "kokoro" },
@@ -5180,9 +5646,15 @@ async function routeRequest(
           ffmpegRequired: false,
           preservation: ["callState", "transcript", "eventTrail", "latencyEvidence", "proofRoutes"],
         },
-      });
+      }, sessionOfferAbortController.signal);
+
+      if (sessionOfferResponseClosed || response.destroyed) {
+        await cleanupDisconnectedOffer();
+        return;
+      }
 
       if (!isRecord(bridgeResponse.payload)) {
+        await cleanupFailedOffer("pipecat_webrtc_bridge_invalid_response");
         writeJson(response, 502, {
           ok: false,
           error: "pipecat_webrtc_bridge_invalid_response",
@@ -5193,7 +5665,24 @@ async function routeRequest(
 
       const answerType = getOptionalTrimmedString(bridgeResponse.payload.type);
       const answerSdp = typeof bridgeResponse.payload.sdp === "string" ? bridgeResponse.payload.sdp : "";
+      const bridgeError = getOptionalTrimmedString(bridgeResponse.payload.error);
+      if (bridgeResponse.status === 409 && bridgeError === "webrtc_session_active") {
+        if (registration.createdByRequest) {
+          await retireProxyOwnedCall("pipecat_webrtc_bridge_session_conflict");
+        }
+        writeJson(response, 409, {
+          ok: false,
+          error: "browser_webrtc_session_active",
+          sessionId,
+          callId,
+          bridgeStatus: bridgeResponse.status,
+          bridgeOfferRoute: buildBrowserWebrtcBridgeOfferUrl(),
+          bridge: bridgeResponse.payload,
+        });
+        return;
+      }
       if (!bridgeResponse.status.toString().startsWith("2") || answerType !== "answer" || !answerSdp.trim()) {
+        await cleanupFailedOffer("pipecat_webrtc_bridge_offer_failed");
         writeJson(response, 502, {
           ok: false,
           error: "pipecat_webrtc_bridge_offer_failed",
@@ -5229,7 +5718,14 @@ async function routeRequest(
         },
       });
     } catch (error) {
-      writeJson(response, 503, buildBrowserWebrtcBridgeUnavailablePayload(error));
+      const clientDisconnected = sessionOfferResponseClosed || response.destroyed || sessionOfferAbortController.signal.aborted;
+      if (clientDisconnected) await cleanupDisconnectedOffer();
+      else await cleanupFailedOffer("pipecat_webrtc_bridge_unavailable");
+      if (!clientDisconnected) writeJson(response, 503, buildBrowserWebrtcBridgeUnavailablePayload(error));
+    }
+    } finally {
+      if (sessionOfferResponseClosed && cleanupDisconnectedOffer) await cleanupDisconnectedOffer();
+      releaseSessionOffer();
     }
     return;
   }
@@ -5675,8 +6171,32 @@ async function routeRequest(
       });
       return;
     }
+    const requestedModel = getOptionalTrimmedString(body.model);
+    if (requestedModel && requestedModel !== target.model) {
+      if (provider === "kokoro") {
+        writeJson(response, 409, {
+          ok: false,
+          provider,
+          error: "tts_model_selection_mismatch",
+          requestedModel,
+          selectedModel: target.model,
+          nextStep: "Refresh the ClueCon presentation and use the model selected in the Live TTS latency lab.",
+        });
+        return;
+      }
+    }
     const requestedVoice = getOptionalTrimmedString(body.voice);
-    const voice = requestedVoice && /^[a-z0-9_-]{1,64}$/i.test(requestedVoice) ? requestedVoice : target.voice;
+    const validRequestedVoice = requestedVoice && /^[a-z0-9_-]{1,64}$/i.test(requestedVoice)
+      ? requestedVoice
+      : null;
+    // Older ClueCon tabs advertised the OpenAI-style `alloy` placeholder for
+    // Pocket. Prefer the configured local voice so a stale presentation tab
+    // cannot forward a voice that the selected Pocket sidecar does not expose.
+    const voice = provider === "pocket"
+      && validRequestedVoice?.toLowerCase() === "alloy"
+      && target.voice.toLowerCase() !== "alloy"
+      ? target.voice
+      : validRequestedVoice ?? target.voice;
     const startedAt = performance.now();
     const idleTimeoutMs = getTtsIdleTimeoutMs(provider);
     const controller = new AbortController();
@@ -5874,7 +6394,7 @@ async function routeRequest(
       workboardCard: clueConProofEvalCard,
       compatibleRequest: "conversation-agent-evals-assert-request.json",
       summary: scorecard.overallPassed
-        ? "ClueCon scripted run passed the local ASSERT-style scorecard."
+        ? "The local ACC safety and evidence scorecard passed; a CAE-compatible handoff is ready."
         : "ClueCon scripted run produced failing checks for review.",
       steps,
       scorecard,
@@ -5958,6 +6478,203 @@ async function routeRequest(
   if (request.method === "GET" && pathname === "/cluecon/present") {
     response.setHeader("cache-control", "no-store, max-age=0");
     writeHtml(response, 200, buildClueConHtml(config, "present", activeClueConBrainBlocks));
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/pipecat/sessions/ensure-call") {
+    const body = await readJsonBody<unknown>(request);
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+
+    const sessionId = getOptionalTrimmedString(body.sessionId);
+    if (!sessionId) {
+      writeBadRequest(response, "pipecat_session_id_required");
+      return;
+    }
+    const transport = getOptionalTrimmedString(body.transport);
+    if (transport !== "browser_webrtc" && transport !== "freeswitch_verto") {
+      writeBadRequest(response, "pipecat_transport_invalid");
+      return;
+    }
+    if (body.conversationMode !== undefined && !isConversationMode(body.conversationMode)) {
+      writeBadRequest(response, "pipecat_conversation_mode_invalid");
+      return;
+    }
+    const conversationMode: ConversationMode = isConversationMode(body.conversationMode)
+      ? body.conversationMode
+      : "free_caller";
+
+    const requestedCallId = getOptionalTrimmedString(body.callId);
+    if (requestedCallId) {
+      const existingSnapshot = await ingress.getSnapshot(requestedCallId);
+      if (!existingSnapshot) {
+        writeJson(response, 404, { ok: false, error: "pipecat_call_not_found" });
+        return;
+      }
+      if (isLiveSipCallEnded(existingSnapshot)) {
+        writeJson(response, 409, { ok: false, error: "pipecat_call_ended", callId: requestedCallId });
+        return;
+      }
+      writeJson(response, 200, {
+        ok: true,
+        route: "/api/pipecat/sessions/ensure-call",
+        callId: existingSnapshot.session.callId,
+        sessionId,
+        transport,
+        conversationMode: existingSnapshot.scenario.conversationMode,
+        idempotent: true,
+        endCallOnClose: existingSnapshot.session.providerName === "pipecat-browser-webrtc"
+          && existingSnapshot.session.providerCallId === sessionId,
+        call: buildCallPayload(existingSnapshot),
+      });
+      return;
+    }
+
+    const transportLabel = transport.replace("_", "-");
+    const browserTransport = transport === "browser_webrtc";
+    const providerName = browserTransport ? "pipecat-browser-webrtc" : "freeswitch-verto";
+    const registrationKey = `pipecat-${transportLabel}-${sessionId}`;
+    const registration = await withLiveSipCallLock(pipecatSessionRegistrationLocks, registrationKey, async () => {
+      const existingSnapshot = (await ingress.listSnapshots({ providerCallId: sessionId }))
+        .find((snapshot) => snapshot.session.providerName === providerName && !isLiveSipCallEnded(snapshot));
+      if (existingSnapshot) {
+        return {
+          status: 200,
+          payload: {
+            ok: true,
+            route: "/api/pipecat/sessions/ensure-call",
+            callId: existingSnapshot.session.callId,
+            sessionId,
+            transport,
+            conversationMode: existingSnapshot.scenario.conversationMode,
+            idempotent: true,
+            endCallOnClose: true,
+            call: buildCallPayload(existingSnapshot),
+          },
+        };
+      }
+
+      const snapshot = await ingress.startCall(config, {
+        providerName,
+        providerCallId: sessionId,
+        openclawSessionId: `${registrationKey}-${randomUUID()}`,
+        openclawSessionLabel: `pipecat/${transportLabel}/${sessionId}`,
+        source: browserTransport ? "mock_http_route" : "freeswitch_verto",
+        conversationMode,
+        runtimeModeLabels: {
+          telephony: browserTransport ? "mocked_telephony" : "local_sip",
+          media: "live_capture",
+          rtcAsr: "rtc_asr_live",
+          credentialsMode: "mocked",
+        },
+      } satisfies StartCallOptions);
+      return {
+        status: 201,
+        payload: {
+          ok: true,
+          route: "/api/pipecat/sessions/ensure-call",
+          callId: snapshot.session.callId,
+          sessionId,
+          transport,
+          conversationMode: snapshot.scenario.conversationMode,
+          idempotent: false,
+          endCallOnClose: true,
+          call: buildCallPayload(snapshot),
+        },
+      };
+    });
+    writeJson(response, registration.status, registration.payload);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/pipecat/sessions/end-call") {
+    const body = await readJsonBody<unknown>(request);
+    if (!isRecord(body)) {
+      writeBadRequest(response, "json_object_required");
+      return;
+    }
+    const callId = getOptionalTrimmedString(body.callId);
+    const sessionId = getOptionalTrimmedString(body.sessionId);
+    if (!callId) {
+      writeBadRequest(response, "pipecat_call_id_required");
+      return;
+    }
+    if (!sessionId) {
+      writeBadRequest(response, "pipecat_session_id_required");
+      return;
+    }
+    if (body.transport !== "browser_webrtc") {
+      writeBadRequest(response, "pipecat_transport_invalid");
+      return;
+    }
+    const timestamp = normalizeTimestamp(body.timestamp, "pipecat_session_end_timestamp_invalid");
+    if (typeof timestamp !== "string") {
+      writeBadRequest(response, timestamp.error);
+      return;
+    }
+    const existing = await ingress.getSnapshot(callId);
+    if (!existing) {
+      writeNotFound(response);
+      return;
+    }
+    if (existing.session.providerName !== "pipecat-browser-webrtc" || existing.session.providerCallId !== sessionId) {
+      writeBadRequest(response, "pipecat_session_call_mismatch");
+      return;
+    }
+    if (isLiveSipCallEnded(existing)) {
+      releaseCodexVoiceCall(existing);
+      writeJson(response, 200, {
+        ok: true,
+        route: "/api/pipecat/sessions/end-call",
+        callId,
+        sessionId,
+        idempotent: true,
+        call: buildCallPayload(existing),
+      });
+      return;
+    }
+    const snapshot = await ingress.recordLiveTelephonyEvidence(callId, {
+      eventType: "sip_call_ended",
+      timestamp,
+      detail: {
+        hangupCause: getOptionalTrimmedString(body.reason) ?? "browser_webrtc_peer_closed",
+        durationSeconds: null,
+        transport: "browser_webrtc",
+        sessionId,
+      },
+    });
+    purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
+    releaseCodexVoiceCall(snapshot);
+    writeJson(response, 200, {
+      ok: true,
+      route: "/api/pipecat/sessions/end-call",
+      callId,
+      sessionId,
+      idempotent: false,
+      call: buildCallPayload(snapshot),
+    });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/api/codex-auth/status") {
+    const bridge = await requestCodexVoiceBridge("/auth/status");
+    writeJson(response, bridge.status, buildPublicCodexAuthPayload(bridge.payload));
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/api/codex-auth/device/start") {
+    const bridge = await requestCodexVoiceBridge("/auth/device/start", { method: "POST" });
+    writeJson(response, bridge.status, buildPublicCodexAuthPayload(bridge.payload));
+    return;
+  }
+
+  const codexDeviceLoginMatch = pathname.match(/^\/api\/codex-auth\/device\/([^/]+)$/);
+  if (request.method === "GET" && codexDeviceLoginMatch) {
+    const loginId = decodeURIComponent(codexDeviceLoginMatch[1]);
+    const bridge = await requestCodexVoiceBridge(`/auth/device/${encodeURIComponent(loginId)}`);
+    writeJson(response, bridge.status, buildPublicCodexAuthPayload(bridge.payload));
     return;
   }
 
@@ -6377,6 +7094,7 @@ async function routeRequest(
         if (endedSnapshot && isLiveSipCallEnded(endedSnapshot)) {
           if (eventType === "call.ended") {
             purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, endedSnapshot.session.callId);
+            releaseCodexVoiceCall(endedSnapshot);
             writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(endedSnapshot), idempotent: true });
           } else {
             writeBadRequest(response, "live_sip_call_not_started");
@@ -6392,6 +7110,7 @@ async function routeRequest(
           const alreadyEnded = matchingSnapshot.events.some((event) => event.type === "sip_call_ended");
           if (alreadyEnded) {
             purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, matchingSnapshot.session.callId);
+            releaseCodexVoiceCall(matchingSnapshot);
             writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(matchingSnapshot), idempotent: true });
             return;
           }
@@ -6405,6 +7124,7 @@ async function routeRequest(
         const existingSnapshot = await ingress.getSnapshot(callId);
         if (existingSnapshot?.events.some((event) => event.type === "sip_call_ended")) {
           purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, callId);
+          releaseCodexVoiceCall(existingSnapshot);
           writeJson(response, 200, { ok: true, route: "/api/live-sip/events", eventType, sipCallId, linkedSipCallId, vertoCallId, correlationIds: liveSipCorrelationIds, call: buildCallPayload(existingSnapshot), idempotent: true });
           return;
         }
@@ -6759,6 +7479,7 @@ async function routeRequest(
         },
       });
       purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, snapshot.session.callId);
+      releaseCodexVoiceCall(snapshot);
       const endedAliases = uniqueLiveSipCallIds(
         ...liveSipCallAliasesForCall(liveSipCallMap, snapshot.session.callId),
         ...liveSipCorrelationIds,
@@ -7360,7 +8081,7 @@ async function routeRequest(
               return undefined;
             }
             currentSnapshot = lockedSnapshot;
-            return generateOpenAiLiveSipResponse(lockedSnapshot, text, timestamp);
+            return generateOpenAiLiveSipResponse(lockedSnapshot, text, timestamp, process.env, { stateless: true });
           })
         : undefined;
       if (deliveryAckOpenAiResponseHandled) return;
@@ -7846,6 +8567,7 @@ async function routeRequest(
       );
       if (parsedSteer.action === "end_call") {
         purgeCallerTurnDeliveryAckPreviewsForCall(callerTurnDeliveryAckPreviews, snapshot.session.callId);
+        releaseCodexVoiceCall(snapshot);
       }
       writeJson(response, 200, buildCallPayload(snapshot));
     } catch (error) {
@@ -8220,13 +8942,15 @@ export function buildHttpServer(config: PocConfig) {
   const liveSipCallMap = new Map<string, string>();
   const liveSipEndedCallMap = new Map<string, LiveSipEndedCallAlias>();
   const liveSipCallLocks = new Map<string, Promise<void>>();
+  const pipecatSessionRegistrationLocks = new Map<string, Promise<void>>();
+  const browserWebrtcSessionOfferLocks = new Map<string, Promise<void>>();
   const liveSipOpenAiGenerationLocks = new Map<string, Promise<void>>();
   const callerTurnDeliveryAckPreviews = new Map<string, CallerTurnDeliveryAckPreview>();
   const callerTurnDeliveryAckPreviewReservations = new Set<string>();
   const voiceSessions = new RealtimeVoiceSessionStore();
 
   const server = createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, pipecatSessionRegistrationLocks, browserWebrtcSessionOfferLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;
@@ -8237,8 +8961,12 @@ export function buildHttpServer(config: PocConfig) {
     });
   });
 
-  server.on("upgrade", (request, socket) => {
+  server.on("upgrade", (request, socket, head) => {
     const requestUrl = new URL(request.url ?? "/", "http://localhost");
+    if (requestUrl.pathname === "/api/cluecon/asr/stream") {
+      proxyRtcAsrWebsocket(request, socket, head, requestUrl.searchParams.get("targetId"));
+      return;
+    }
     const match = requestUrl.pathname.match(/^\/api\/voice\/sessions\/([^/]+)\/media\/input$/);
     if (!match) {
       socket.destroy();

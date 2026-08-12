@@ -1,0 +1,46 @@
+<profile name="acc-local">
+  <aliases>
+    <alias name="acc-local"/>
+  </aliases>
+  <gateways/>
+  <domains>
+    <domain name="all" alias="true" parse="false"/>
+  </domains>
+  <settings>
+    <!-- Host port 5060 is bound to 127.0.0.1 by Compose, so this profile is
+         intentionally a no-auth demo ingress for local softphones only. -->
+    <param name="debug" value="0"/>
+    <param name="sip-trace" value="no"/>
+    <param name="context" value="default"/>
+    <param name="dialplan" value="XML"/>
+    <param name="sip-port" value="5062"/>
+    <param name="sip-ip" value="$${local_ip_v4}"/>
+    <param name="rtp-ip" value="$${local_ip_v4}"/>
+    <param name="ext-sip-ip" value="127.0.0.1"/>
+    <!-- Compose translates host 5060 to this profile's container port 5062.
+         Advertise the host port in Contact/Via so ACK and BYE return through
+         the published mapping instead of targeting unpublished host 5062. -->
+    <param name="ext-sip-port" value="5060"/>
+    <param name="ext-rtp-ip" value="127.0.0.1"/>
+    <param name="auth-calls" value="false"/>
+    <param name="auth-subscriptions" value="false"/>
+    <param name="inbound-codec-prefs" value="PCMU,PCMA"/>
+    <param name="outbound-codec-prefs" value="PCMU,PCMA"/>
+    <param name="inbound-late-negotiation" value="true"/>
+    <param name="rtp-timer-name" value="soft"/>
+    <param name="manage-presence" value="false"/>
+    <param name="apply-nat-acl" value="nat.auto"/>
+    <!-- Linphone can advertise both a private host candidate and a public STUN
+         candidate. This host-only demo must keep media on the local/private
+         path; otherwise FreeSWITCH's wan.auto fallback selects the public
+         candidate and the Docker-to-host RTP leg becomes silent. -->
+    <param name="apply-candidate-acl" value="rfc1918.auto"/>
+    <param name="apply-candidate-acl" value="loopback.auto"/>
+    <!-- Docker presents host traffic as the bridge gateway. Treat it as NAT so
+         SDP advertises the published host address and SIP replies use the
+         translated source port rather than the Via/Contact port. -->
+    <param name="local-network-acl" value="loopback.auto"/>
+    <param name="aggressive-nat-detection" value="true"/>
+    <param name="NDLB-force-rport" value="true"/>
+  </settings>
+</profile>

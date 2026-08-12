@@ -16,15 +16,15 @@
       <action application="export" data="nolocal:acc_destination_number=8600"/>
       <action application="export" data="nolocal:acc_conversation_mode=openai_llm"/>
       <action application="export" data="nolocal:rtp_jitter_buffer_during_bridge=true"/>
-      <action application="bridge" data="{absolute_codec_string=PCMU,jitterbuffer_msec=60:200:20,rtp_jitter_buffer_during_bridge=true,acc_linked_sip_call_id=${uuid},sip_h_X-ACC-Proof-Call-ID=${sip_h_X-ACC-Proof-Call-ID},acc_destination_number=8600,acc_conversation_mode=openai_llm,sip_h_X-ACC-Destination=8600,sip_h_X-ACC-Conversation-Mode=openai_llm}${verto_contact(acc-pipecat@$${domain})}"/>
+      <action application="bridge" data="{absolute_codec_string=PCMU,origination_caller_id_name=ACC-8600,jitterbuffer_msec=60:200:20,rtp_jitter_buffer_during_bridge=true,acc_linked_sip_call_id=${uuid},sip_h_X-ACC-Proof-Call-ID=${sip_h_X-ACC-Proof-Call-ID},acc_destination_number=8600,acc_conversation_mode=openai_llm,sip_h_X-ACC-Destination=8600,sip_h_X-ACC-Conversation-Mode=openai_llm}${verto_contact(acc-pipecat@$${domain})}"/>
     </condition>
   </extension>
-  <extension name="agentic_contact_center_local_sip_scripted_8611">
+  <extension name="agentic_contact_center_local_sip_free_caller_8611">
     <condition field="destination_number" expression="^8611$">
       <action application="answer"/>
       <action application="set" data="acc_route=local_sip"/>
       <action application="set" data="acc_destination_number=8611"/>
-      <action application="set" data="acc_conversation_mode=scripted"/>
+      <action application="set" data="acc_conversation_mode=free_caller"/>
       <action application="set" data="acc_signalwire_ready=true"/>
       <action application="set" data="hangup_after_bridge=false"/>
       <action application="set" data="acc_return_audio=pipecat_verto_webrtc"/>
@@ -34,9 +34,29 @@
       <action application="export" data="nolocal:acc_linked_sip_call_id=${uuid}"/>
       <action application="export" data="nolocal:sip_h_X-ACC-Proof-Call-ID=${sip_h_X-ACC-Proof-Call-ID}"/>
       <action application="export" data="nolocal:acc_destination_number=8611"/>
+      <action application="export" data="nolocal:acc_conversation_mode=free_caller"/>
+      <action application="export" data="nolocal:rtp_jitter_buffer_during_bridge=true"/>
+      <action application="bridge" data="{absolute_codec_string=PCMU,origination_caller_id_name=ACC-8611,jitterbuffer_msec=60:200:20,rtp_jitter_buffer_during_bridge=true,acc_linked_sip_call_id=${uuid},sip_h_X-ACC-Proof-Call-ID=${sip_h_X-ACC-Proof-Call-ID},acc_destination_number=8611,acc_conversation_mode=free_caller,sip_h_X-ACC-Destination=8611,sip_h_X-ACC-Conversation-Mode=free_caller}${verto_contact(acc-pipecat@$${domain})}"/>
+    </condition>
+  </extension>
+  <extension name="agentic_contact_center_local_sip_scripted_failure_8612">
+    <condition field="destination_number" expression="^8612$">
+      <action application="answer"/>
+      <action application="set" data="acc_route=local_sip"/>
+      <action application="set" data="acc_destination_number=8612"/>
+      <action application="set" data="acc_conversation_mode=scripted"/>
+      <action application="set" data="acc_signalwire_ready=true"/>
+      <action application="set" data="hangup_after_bridge=false"/>
+      <action application="set" data="acc_return_audio=pipecat_verto_webrtc"/>
+      <action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/>
+      <action application="set" data="acc_linked_sip_call_id=${uuid}"/>
+      <action application="set" data="acc_proof_sip_call_id=${sip_h_X-ACC-Proof-Call-ID}"/>
+      <action application="export" data="nolocal:acc_linked_sip_call_id=${uuid}"/>
+      <action application="export" data="nolocal:sip_h_X-ACC-Proof-Call-ID=${sip_h_X-ACC-Proof-Call-ID}"/>
+      <action application="export" data="nolocal:acc_destination_number=8612"/>
       <action application="export" data="nolocal:acc_conversation_mode=scripted"/>
       <action application="export" data="nolocal:rtp_jitter_buffer_during_bridge=true"/>
-      <action application="bridge" data="{absolute_codec_string=PCMU,jitterbuffer_msec=60:200:20,rtp_jitter_buffer_during_bridge=true,acc_linked_sip_call_id=${uuid},sip_h_X-ACC-Proof-Call-ID=${sip_h_X-ACC-Proof-Call-ID},acc_destination_number=8611,acc_conversation_mode=scripted,sip_h_X-ACC-Destination=8611,sip_h_X-ACC-Conversation-Mode=scripted}${verto_contact(acc-pipecat@$${domain})}"/>
+      <action application="bridge" data="{absolute_codec_string=PCMU,origination_caller_id_name=ACC-8612,jitterbuffer_msec=60:200:20,rtp_jitter_buffer_during_bridge=true,acc_linked_sip_call_id=${uuid},sip_h_X-ACC-Proof-Call-ID=${sip_h_X-ACC-Proof-Call-ID},acc_destination_number=8612,acc_conversation_mode=scripted,sip_h_X-ACC-Destination=8612,sip_h_X-ACC-Conversation-Mode=scripted}${verto_contact(acc-pipecat@$${domain})}"/>
     </condition>
   </extension>
 </include>

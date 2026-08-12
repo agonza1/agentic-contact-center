@@ -50,6 +50,8 @@ try:
         active_tts_config,
         build_acc_voice_pipeline,
         check_readiness,
+        json_http,
+        join_url,
         normalize_browser_answer_sdp,
         ready_payload,
     )
@@ -75,6 +77,10 @@ class BrowserWebrtcBridge:
         self.port = port
         self.request_handler = SmallWebRTCRequestHandler(host=host)
         self.sessions: dict[str, dict[str, Any]] = {}
+        self.offer_sessions_in_flight: set[str] = set()
+        self.acc_call_end_retry_tasks: dict[int, asyncio.Task[None]] = {}
+        self.cancelled_session_ids: set[str] = set()
+        self.shutting_down = False
 
     def remember_session_alias(self, alias: str | None, session: dict[str, Any]) -> None:
         if isinstance(alias, str) and alias.strip():
@@ -91,8 +97,186 @@ class BrowserWebrtcBridge:
         readiness = await asyncio.to_thread(check_readiness, acc_url, skip_acc)
         return web.json_response(ready_payload(readiness, self.host, self.port), status=200 if readiness.ok else 503)
 
-    async def start_pipeline(self, *, connection: Any, session_id: str, acc_url: str, call_id: str, readiness: BridgeReadiness) -> AccVoicePipelineSession:
-        session = AccVoicePipelineSession(acc_url=acc_url, call_id=call_id, readiness=readiness)
+    async def ensure_acc_call(
+        self,
+        *,
+        acc_url: str,
+        call_id: str,
+        session_id: str,
+        conversation_mode: str,
+    ) -> tuple[str, bool, bool, str]:
+        payload = await asyncio.to_thread(
+            json_http,
+            "POST",
+            join_url(acc_url, "/api/pipecat/sessions/ensure-call"),
+            {
+                "callId": call_id or None,
+                "sessionId": session_id,
+                "transport": "browser_webrtc",
+                "conversationMode": conversation_mode,
+            },
+        )
+        registered_call_id = str(payload.get("callId") or "").strip()
+        if not registered_call_id:
+            raise RuntimeError("ACC Pipecat session registration did not return callId")
+        registered_conversation_mode = str(payload.get("conversationMode") or "").strip()
+        if registered_conversation_mode not in {"free_caller", "scripted", "openai_llm"}:
+            raise RuntimeError("ACC Pipecat session registration did not return a valid conversationMode")
+        return (
+            registered_call_id,
+            payload.get("idempotent") is not True,
+            payload.get("endCallOnClose") is not False,
+            registered_conversation_mode,
+        )
+
+    async def end_acc_call(self, *, acc_url: str, call_id: str, session_id: str, reason: str) -> bool:
+        for attempt in range(1, 4):
+            try:
+                await asyncio.to_thread(
+                    json_http,
+                    "POST",
+                    join_url(acc_url, "/api/pipecat/sessions/end-call"),
+                    {
+                        "callId": call_id,
+                        "sessionId": session_id,
+                        "transport": "browser_webrtc",
+                        "reason": reason,
+                    },
+                    2.0,
+                )
+                return True
+            except Exception as exc:
+                print(
+                    json.dumps(
+                        {
+                            "type": "pipecat.small_webrtc.acc_call_end_failed",
+                            "callId": call_id,
+                            "sessionId": session_id,
+                            "reason": reason,
+                            "attempt": attempt,
+                            "retrying": attempt < 3,
+                            "detail": str(exc),
+                        }
+                    ),
+                    flush=True,
+                )
+                if attempt < 3:
+                    await asyncio.sleep(0.25 * attempt)
+        return False
+
+    async def try_end_acc_call(self, session: dict[str, Any], session_id: str) -> bool:
+        if session.get("accCallEnded"):
+            return True
+        lock = session.setdefault("accCallEndLock", asyncio.Lock())
+        async with lock:
+            if session.get("accCallEnded"):
+                return True
+            session["accCallEnded"] = await self.end_acc_call(
+                acc_url=str(session.get("accUrl") or DEFAULT_ACC_URL),
+                call_id=str(session.get("callId") or ""),
+                session_id=str(session.get("requestedSessionId") or session_id),
+                reason=str(session.get("closeReason") or "browser WebRTC session closed"),
+            )
+            if session["accCallEnded"]:
+                session["accCallEndRetrying"] = False
+                self.forget_session_record(session)
+            return bool(session["accCallEnded"])
+
+    async def retry_acc_call_end(self, session: dict[str, Any], session_id: str) -> None:
+        delay_seconds = 2.0
+        while not self.shutting_down and not session.get("accCallEnded"):
+            await asyncio.sleep(delay_seconds)
+            if await self.try_end_acc_call(session, session_id):
+                print(
+                    json.dumps(
+                        {
+                            "type": "pipecat.small_webrtc.acc_call_end_recovered",
+                            "callId": session.get("callId"),
+                            "sessionId": session.get("requestedSessionId") or session_id,
+                        }
+                    ),
+                    flush=True,
+                )
+                return
+            delay_seconds = min(delay_seconds * 2, 30.0)
+
+    def schedule_acc_call_end_retry(self, session: dict[str, Any], session_id: str) -> None:
+        if self.shutting_down or session.get("accCallEnded") or not session.get("endCallOnClose", True):
+            return
+        retry_key = id(session)
+        existing_task = self.acc_call_end_retry_tasks.get(retry_key)
+        if existing_task and not existing_task.done():
+            return
+        session["accCallEndRetrying"] = True
+        retry_task = asyncio.create_task(self.retry_acc_call_end(session, session_id))
+        self.acc_call_end_retry_tasks[retry_key] = retry_task
+
+        def finish_retry(task: asyncio.Task[None]) -> None:
+            if self.acc_call_end_retry_tasks.get(retry_key) is task:
+                self.acc_call_end_retry_tasks.pop(retry_key, None)
+            if not session.get("accCallEnded"):
+                session["accCallEndRetrying"] = False
+            with contextlib.suppress(asyncio.CancelledError):
+                error = task.exception()
+                if error:
+                    print(
+                        json.dumps(
+                            {
+                                "type": "pipecat.small_webrtc.acc_call_end_retry_failed",
+                                "callId": session.get("callId"),
+                                "sessionId": session.get("requestedSessionId") or session_id,
+                                "detail": str(error),
+                            }
+                        ),
+                        flush=True,
+                    )
+
+        retry_task.add_done_callback(finish_retry)
+
+    async def retire_failed_offer(
+        self,
+        *,
+        acc_url: str,
+        call_id: str,
+        session_id: str,
+        registered_here: bool,
+        end_call_on_close: bool,
+        reason: str,
+    ) -> None:
+        session_record = self.sessions.get(session_id)
+        if session_record:
+            await self.close_session(session_id, session_record=session_record, reason=reason)
+        elif end_call_on_close:
+            cleanup_record = {
+                "accUrl": acc_url,
+                "callId": call_id,
+                "requestedSessionId": session_id,
+                "endCallOnClose": True,
+                "registeredHere": registered_here,
+                "closeReason": reason,
+                "closedAt": datetime.now(UTC).isoformat(timespec="seconds"),
+            }
+            self.remember_session_alias(session_id, cleanup_record)
+            if not await self.try_end_acc_call(cleanup_record, session_id):
+                self.schedule_acc_call_end_retry(cleanup_record, session_id)
+
+    async def start_pipeline(
+        self,
+        *,
+        connection: Any,
+        session_id: str,
+        acc_url: str,
+        call_id: str,
+        conversation_mode: str,
+        end_call_on_close: bool,
+        readiness: BridgeReadiness,
+    ) -> AccVoicePipelineSession:
+        session = AccVoicePipelineSession(
+            acc_url=acc_url,
+            call_id=call_id,
+            readiness=readiness,
+            conversation_mode=conversation_mode,
+        )
         transport = SmallWebRTCTransport(
             webrtc_connection=connection,
             params=TransportParams(
@@ -127,6 +311,10 @@ class BrowserWebrtcBridge:
             "pipelineTask": task,
             "turnSession": session,
             "callId": call_id,
+            "conversationMode": conversation_mode,
+            "accUrl": acc_url,
+            "requestedSessionId": session_id,
+            "endCallOnClose": end_call_on_close,
             "startedAt": datetime.now(UTC).isoformat(timespec="seconds"),
             "closedAt": None,
             "closeReason": None,
@@ -154,24 +342,105 @@ class BrowserWebrtcBridge:
         acc_url = str(payload.get("accUrl") or DEFAULT_ACC_URL).rstrip("/")
         call_id = str(payload.get("callId") or "").strip()
         session_id = str(payload.get("sessionId") or f"browser-webrtc-{uuid4()}")
+        conversation_mode = str(payload.get("conversationMode") or "free_caller").strip()
+        if conversation_mode not in {"free_caller", "scripted", "openai_llm"}:
+            return web.json_response({"ok": False, "error": "webrtc_conversation_mode_invalid"}, status=400)
+        if session_id in self.offer_sessions_in_flight or session_id in self.sessions:
+            return web.json_response(
+                {"ok": False, "error": "webrtc_session_active", "sessionId": session_id},
+                status=409,
+            )
+        self.cancelled_session_ids.discard(session_id)
+        self.offer_sessions_in_flight.add(session_id)
+        try:
+            return await self.create_offer(
+                payload,
+                acc_url=acc_url,
+                call_id=call_id,
+                session_id=session_id,
+                conversation_mode=conversation_mode,
+            )
+        finally:
+            self.offer_sessions_in_flight.discard(session_id)
+            self.cancelled_session_ids.discard(session_id)
+
+    async def create_offer(
+        self,
+        payload: dict[str, Any],
+        *,
+        acc_url: str,
+        call_id: str,
+        session_id: str,
+        conversation_mode: str,
+    ) -> web.Response:
         readiness = await asyncio.to_thread(check_readiness, acc_url)
         if not readiness.ok:
             return web.json_response({"ok": False, "error": "sidecar_unavailable", "ready": ready_payload(readiness, self.host, self.port)}, status=503)
+        registered_here = False
+        end_call_on_close = True
+        try:
+            call_id, registered_here, end_call_on_close, conversation_mode = await self.ensure_acc_call(
+                acc_url=acc_url,
+                call_id=call_id,
+                session_id=session_id,
+                conversation_mode=conversation_mode,
+            )
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": "acc_call_registration_failed", "detail": str(exc)}, status=503)
 
-        small_request = SmallWebRTCRequest.from_dict({
-            "sdp": payload["sdp"],
-            "type": payload["type"],
-            "pc_id": payload.get("pcId") or payload.get("pc_id"),
-            "restart_pc": payload.get("restartPc") or payload.get("restart_pc"),
-            "request_data": {"sessionId": session_id, "callId": call_id},
-        })
+        try:
+            small_request = SmallWebRTCRequest.from_dict({
+                "sdp": payload["sdp"],
+                "type": payload["type"],
+                "pc_id": payload.get("pcId") or payload.get("pc_id"),
+                "restart_pc": payload.get("restartPc") or payload.get("restart_pc"),
+                "request_data": {"sessionId": session_id, "callId": call_id},
+            })
 
-        async def on_connection(connection: Any) -> None:
-            await self.start_pipeline(connection=connection, session_id=session_id, acc_url=acc_url, call_id=call_id, readiness=readiness)
+            async def on_connection(connection: Any) -> None:
+                await self.start_pipeline(
+                    connection=connection,
+                    session_id=session_id,
+                    acc_url=acc_url,
+                    call_id=call_id,
+                    conversation_mode=conversation_mode,
+                    end_call_on_close=end_call_on_close,
+                    readiness=readiness,
+                )
+                if session_id in self.cancelled_session_ids:
+                    await self.close_session(session_id, reason="signaling_client_disconnected")
 
-        answer = await self.request_handler.handle_web_request(small_request, on_connection)
+            answer = await self.request_handler.handle_web_request(small_request, on_connection)
+        except Exception as exc:
+            await self.retire_failed_offer(
+                acc_url=acc_url,
+                call_id=call_id,
+                session_id=session_id,
+                registered_here=registered_here,
+                end_call_on_close=end_call_on_close,
+                reason="webrtc_offer_setup_failed",
+            )
+            return web.json_response({"ok": False, "error": "webrtc_offer_setup_failed", "detail": str(exc)}, status=502)
         if not answer:
+            await self.retire_failed_offer(
+                acc_url=acc_url,
+                call_id=call_id,
+                session_id=session_id,
+                registered_here=registered_here,
+                end_call_on_close=end_call_on_close,
+                reason="webrtc_answer_unavailable",
+            )
             return web.json_response({"ok": False, "error": "webrtc_answer_unavailable"}, status=502)
+        if session_id in self.cancelled_session_ids:
+            await self.retire_failed_offer(
+                acc_url=acc_url,
+                call_id=call_id,
+                session_id=session_id,
+                registered_here=registered_here,
+                end_call_on_close=end_call_on_close,
+                reason="signaling_client_disconnected",
+            )
+            return web.json_response({"ok": False, "error": "webrtc_session_cancelled"}, status=409)
 
         pc_id = str(answer.get("pc_id") or answer.get("sessionId") or payload.get("pcId") or payload.get("pc_id") or session_id)
         session_record = self.sessions.get(session_id) or self.sessions.get(pc_id)
@@ -190,6 +459,7 @@ class BrowserWebrtcBridge:
             "sessionId": pc_id,
             "requestedSessionId": session_id,
             "pcId": pc_id,
+            "conversationMode": conversation_mode,
             "callId": call_id,
             "mediaRecorderRequired": False,
             "ffmpegRequired": False,
@@ -269,6 +539,8 @@ class BrowserWebrtcBridge:
                 "startedAt": session.get("startedAt"),
                 "closedAt": session.get("closedAt"),
                 "closeReason": session.get("closeReason"),
+                "accCallEnded": bool(session.get("accCallEnded")),
+                "accCallEndRetrying": bool(session.get("accCallEndRetrying")),
                 "transport": "SmallWebRTCTransport",
                 "pipeline": ACC_VOICE_PIPELINE_CONTRACT,
                 "turnEvidence": evidence,
@@ -294,6 +566,18 @@ class BrowserWebrtcBridge:
             }
         )
 
+    async def delete_session(self, request: web.Request) -> web.Response:
+        session_id = request.match_info.get("session_id", "")
+        offer_in_flight = session_id in self.offer_sessions_in_flight
+        if offer_in_flight:
+            self.cancelled_session_ids.add(session_id)
+        session = self.sessions.get(session_id)
+        if session:
+            await self.close_session(session_id, session_record=session, reason="signaling_client_disconnected")
+        return web.json_response(
+            {"ok": True, "sessionId": session_id, "closed": bool(session), "offerInFlight": offer_in_flight}
+        )
+
     async def close_session(
         self,
         session_id: str,
@@ -305,7 +589,11 @@ class BrowserWebrtcBridge:
         if session:
             session["closedAt"] = session.get("closedAt") or datetime.now(UTC).isoformat(timespec="seconds")
             session["closeReason"] = session.get("closeReason") or reason
-            self.forget_session_record(session)
+            if session.get("endCallOnClose", True) and not session.get("accCallEnded"):
+                if not await self.try_end_acc_call(session, session_id):
+                    self.schedule_acc_call_end_retry(session, session_id)
+            if not session.get("endCallOnClose", True) or session.get("accCallEnded"):
+                self.forget_session_record(session)
         runner = session.get("runner")
         turn_session = session.get("turnSession")
         if isinstance(turn_session, AccVoicePipelineSession):
@@ -320,7 +608,23 @@ class BrowserWebrtcBridge:
                 await task
 
     async def close_all(self) -> None:
-        await asyncio.gather(*(self.close_session(session_id) for session_id in list(self.sessions)), return_exceptions=True)
+        self.shutting_down = True
+        unique_sessions: dict[int, tuple[str, dict[str, Any]]] = {}
+        for session_id, session in list(self.sessions.items()):
+            unique_sessions.setdefault(id(session), (session_id, session))
+        await asyncio.gather(
+            *(
+                self.close_session(session_id, session_record=session)
+                for session_id, session in unique_sessions.values()
+            ),
+            return_exceptions=True,
+        )
+        retry_tasks = list(self.acc_call_end_retry_tasks.values())
+        for task in retry_tasks:
+            task.cancel()
+        if retry_tasks:
+            await asyncio.gather(*retry_tasks, return_exceptions=True)
+        self.acc_call_end_retry_tasks.clear()
         await self.request_handler.close()
 
     def app(self) -> web.Application:
@@ -329,6 +633,7 @@ class BrowserWebrtcBridge:
         app.router.add_get("/api/webrtc/readiness", self.readiness)
         app.router.add_post("/api/webrtc/offer", self.offer)
         app.router.add_patch("/api/webrtc/offer", self.patch_offer)
+        app.router.add_delete("/api/webrtc/sessions/{session_id}", self.delete_session)
         app.router.add_get("/api/webrtc/sessions/{session_id}/proof", self.session_proof)
         app.on_shutdown.append(lambda _app: self.close_all())
         return app

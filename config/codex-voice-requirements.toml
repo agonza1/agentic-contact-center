@@ -1,0 +1,17 @@
+# The voice prompt contains untrusted caller transcripts. Keep the Codex OAuth
+# thread text-only even if the persistent auth volume contains broader settings.
+allowed_approval_policies = ["never"]
+allowed_sandbox_modes = ["read-only"]
+allowed_web_search_modes = []
+allow_managed_hooks_only = true
+
+# An explicitly empty allowlist disables every configured MCP server.
+[mcp_servers]
+
+[features]
+apps = false
+computer_use = false
+multi_agent = false
+plugins = false
+shell_tool = false
+unified_exec = false

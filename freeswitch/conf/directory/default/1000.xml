@@ -1,7 +1,7 @@
 <include>
   <user id="1000">
     <params>
-      <param name="password" value="local-sip-pass"/>
+      <param name="password" value="pass"/>
       <param name="vm-password" value="1000"/>
     </params>
     <variables>

@@ -1,0 +1,7 @@
+<configuration name="switch.conf" description="Core Configuration">
+  <settings>
+    <!-- Keep every negotiated RTP port inside the host-published Docker range. -->
+    <param name="rtp-start-port" value="16384"/>
+    <param name="rtp-end-port" value="16484"/>
+  </settings>
+</configuration>

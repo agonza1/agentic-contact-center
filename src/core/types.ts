@@ -38,6 +38,53 @@ export type CredentialsMode = "mocked" | "signalwire_live";
 
 export type ConversationMode = "scripted" | "free_caller" | "openai_llm";
 
+export type ConversationIntent =
+  | "cancellation"
+  | "billing"
+  | "account_update"
+  | "service_information"
+  | "human_handoff"
+  | "unsupported";
+
+export type RequestedOperation =
+  | "cancel_policy"
+  | "review_billing"
+  | "update_account"
+  | "get_service_information"
+  | "handoff"
+  | null;
+
+export type ConversationNode =
+  | "understand_request"
+  | "collect_identity"
+  | "understand_billing"
+  | "provide_service_information"
+  | "prepare_handoff"
+  | "clarify_request";
+
+export interface ConversationProposal {
+  schemaVersion: 1;
+  intent: ConversationIntent;
+  requestedOperation: RequestedOperation;
+  needsClarification: boolean;
+  slots: {
+    reason: string | null;
+  };
+  proposedReply: string;
+}
+
+export interface ConversationDecision {
+  status: "accepted" | "rejected";
+  targetNode: ConversationNode;
+  reason: string;
+}
+
+export interface ConversationControlState {
+  node: ConversationNode | null;
+  lastProposal: ConversationProposal | null;
+  lastDecision: ConversationDecision | null;
+}
+
 export interface RuntimeModeLabels {
   telephony: TelephonyMode;
   media: MediaCaptureMode;
@@ -213,6 +260,7 @@ export interface CallSnapshot {
   demoFallback: DemoFallbackState;
   operatorSteer: OperatorSteerState;
   pipecatFlow: PipecatFlowPrototypeStatus;
+  conversationControl: ConversationControlState;
   flowState: FlowState;
   transcript: TranscriptTurn[];
   events: EventTrailEntry[];
