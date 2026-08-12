@@ -10,6 +10,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   const compose = readFileSync(join(repoRoot, "docker-compose.yml"), "utf8").replace(/\r\n/g, "\n");
   const freeswitchDialplan = readFileSync(join(repoRoot, "freeswitch", "conf", "dialplan", "default", "acc_local_sip.xml"), "utf8");
   const freeswitchEventSocket = readFileSync(join(repoRoot, "freeswitch", "conf", "autoload_configs", "event_socket.conf.xml"), "utf8");
+  const freeswitchLogfile = readFileSync(join(repoRoot, "freeswitch", "conf", "autoload_configs", "logfile.conf.xml"), "utf8");
   const freeswitchLocalSipProfile = readFileSync(join(repoRoot, "freeswitch", "conf", "sip_profiles", "acc-local.xml"), "utf8");
   const readme = readFileSync(join(repoRoot, "README.md"), "utf8");
   const runtimeReference = readFileSync(join(repoRoot, "docs", "runtime-reference.md"), "utf8");
@@ -72,6 +73,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /freeswitch:\n[\s\S]*"127\.0\.0\.1:5060:5060\/tcp"/);
   assert.match(compose, /freeswitch:\n[\s\S]*"127\.0\.0\.1:8021:8021\/tcp"/);
   assert.doesNotMatch(freeswitchEventSocket, /apply-inbound-acl/);
+  assert.match(freeswitchLogfile, /\/var\/log\/freeswitch\/acc\/freeswitch\.log/);
   assert.match(freeswitchLocalSipProfile, /apply-candidate-acl" value="rfc1918\.auto"/);
   assert.match(freeswitchLocalSipProfile, /apply-candidate-acl" value="loopback\.auto"/);
   assert.match(freeswitchLocalSipProfile, /ext-sip-ip" value="127\.0\.0\.1"/);
@@ -80,6 +82,7 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /freeswitch:\n[\s\S]*freeswitch\/conf\/sip_profiles\/acc-local\.xml/);
   assert.match(compose, /freeswitch:\n[\s\S]*freeswitch\/conf\/directory\/localhost\.xml/);
   assert.match(compose, /freeswitch:\n[\s\S]*freeswitch\/conf\/autoload_configs\/switch\.conf\.xml/);
+  assert.match(compose, /freeswitch:\n[\s\S]*freeswitch\/conf\/autoload_configs\/logfile\.conf\.xml/);
   assert.match(compose, /freeswitch:\n[\s\S]*acc-pipecat\.xml/);
   assert.match(compose, /freeswitch:\n[\s\S]*verto\.conf\.xml/);
   assert.match(freeswitchDialplan, /acc_linked_sip_call_id=\$\{uuid\}/);
