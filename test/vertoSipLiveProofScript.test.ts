@@ -237,7 +237,7 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.match(closePrewarmCancelBlock, /await prewarm_task/);
 });
 
-test("Verto bridge uses the FreeSWITCH request handler without active private aiortc mutations", () => {
+test("Verto bridge scopes FreeSWITCH compatibility hooks to its connection instances", () => {
   const bridge = readFileSync("scripts/pipecat-verto-agent-bridge.py", "utf8");
   const browserBridge = readFileSync("scripts/pipecat-browser-webrtc-bridge.py", "utf8");
 
@@ -251,14 +251,24 @@ test("Verto bridge uses the FreeSWITCH request handler without active private ai
   assert.doesNotMatch(bridge, /SmallWebRTCConnection\._create_answer\s*=/);
   assert.doesNotMatch(bridge, /RTCDtlsTransport\._write_ssl\s*=/);
   assert.doesNotMatch(bridge, /RTCDtlsTransport\._send_rtp\s*=/);
-  assert.doesNotMatch(bridge, /_RTCPeerConnection__certificates/);
-  assert.doesNotMatch(bridge, /\._set_role\(/);
-  assert.doesNotMatch(bridge, /transport\._write_ssl\s*=/);
-  assert.doesNotMatch(bridge, /transport\._send_rtp\s*=/);
-  assert.doesNotMatch(bridge, /_RTCDtlsTransport__tx_(?:bytes|packets)/);
-  assert.doesNotMatch(bridge, /\._ssl\b/);
+  assert.match(bridge, /transport\._write_ssl = MethodType\(flush_all_ssl_datagrams, transport\)/);
+  assert.match(bridge, /transport\._send_rtp = MethodType\(send_rtp_without_repeated_audio_marker, transport\)/);
+  assert.match(bridge, /await send_rtp\(normalize_verto_rtp_packet\(data\)\)/);
+  assert.match(bridge, /FREESWITCH_VERTO_DTLS_CERTIFICATE/);
+  assert.match(bridge, /FREESWITCH_VERTO_DTLS_ROLE/);
+  assert.match(bridge, /await _flush_all_pending_ssl_datagrams\(dtls\)/);
   assert.match(browserBridge, /self\.request_handler = SmallWebRTCRequestHandler\(host=host\)/);
   assert.doesNotMatch(browserBridge, /FreeSwitchSmallWebRTCRequestHandler|FreeSwitchWebRTCConnection/);
+});
+
+test("Verto request handler propagates pipeline callback failures", () => {
+  const bridge = readFileSync("scripts/pipecat-verto-agent-bridge.py", "utf8");
+  const callbackStart = bridge.indexOf("await webrtc_connection_callback(pipecat_connection)");
+  const callbackFailureBlock = bridge.slice(callbackStart, callbackStart + 640);
+
+  assert.ok(callbackStart >= 0);
+  assert.match(callbackFailureBlock, /"type": "verto\.connection_callback\.error"/);
+  assert.match(callbackFailureBlock, /\n\s+raise\n/);
 });
 
 test("Verto bridge scopes call artifact rewrites and lastError", { skip: !existsSync(optionalPipecatRuntime), timeout: 260_000 }, async () => {

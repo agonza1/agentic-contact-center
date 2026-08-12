@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import binascii
 import contextlib
 import importlib
 import importlib.metadata
@@ -25,8 +26,9 @@ import sys
 import time
 import wave
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import MethodType
 from typing import Any
 from uuid import uuid4
 
@@ -47,8 +49,14 @@ try:
     # regex from the local target runtime. Prime regex without changing cwd.
     importlib.import_module("regex")
     import websockets
-    from aiortc import RTCSessionDescription
+    from OpenSSL import SSL
+    from aiortc import RTCCertificate, RTCSessionDescription
+    from aiortc.rtcdtlstransport import RTCDtlsTransport
     from aiohttp import web
+    from cryptography import x509
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import rsa
     from pipecat.frames.frames import TTSAudioRawFrame, TTSStartedFrame, TTSStoppedFrame
     from pipecat.pipeline.runner import PipelineRunner
     from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -217,6 +225,52 @@ def normalize_verto_rtp_packet(data: bytes) -> bytes:
     return data
 
 
+class _RsaRtcCertificate(RTCCertificate):
+    def _create_ssl_context(self, srtp_profiles: list[Any]) -> SSL.Context:
+        context = SSL.Context(SSL.DTLS_METHOD)
+        context.set_verify(SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, lambda *args: True)
+        context.use_certificate(self._cert)
+        context.use_privatekey(self._key)
+        context.set_cipher_list(
+            b"ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES256-SHA"
+        )
+        context.set_tlsext_use_srtp(b":".join(profile.openssl_profile for profile in srtp_profiles))
+        return context
+
+
+def _create_rsa_certificate() -> _RsaRtcCertificate:
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
+    name = x509.Name(
+        [x509.NameAttribute(x509.NameOID.COMMON_NAME, binascii.hexlify(os.urandom(16)).decode("ascii"))]
+    )
+    now = datetime.now(tz=UTC)
+    certificate = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=30))
+        .sign(key, hashes.SHA256(), default_backend())
+    )
+    return _RsaRtcCertificate(key=key, cert=certificate)
+
+
+async def _flush_all_pending_ssl_datagrams(dtls: Any) -> None:
+    """Drain every DTLS datagram OpenSSL queued for the FreeSWITCH peer."""
+    while True:
+        try:
+            data = dtls._ssl.bio_read(1500)
+        except SSL.Error:
+            return
+        if not data:
+            return
+        await dtls.transport._send(data)
+        dtls._RTCDtlsTransport__tx_bytes += len(data)
+        dtls._RTCDtlsTransport__tx_packets += 1
+
+
 def assert_verto_webrtc_compatibility() -> None:
     expected_versions = {"pipecat-ai": "1.7.0", "aiortc": "1.14.0"}
     mismatched_versions = {
@@ -235,17 +289,23 @@ def assert_verto_webrtc_compatibility() -> None:
         name for name in sorted(required_connection_methods)
         if not callable(getattr(SmallWebRTCConnection, name, None))
     ]
+    required_dtls_methods = {"_write_ssl", "_send_rtp"}
+    missing_dtls_methods = [
+        name for name in sorted(required_dtls_methods)
+        if not callable(getattr(RTCDtlsTransport, name, None))
+    ]
     request_handler_params = set(inspect.signature(SmallWebRTCRequestHandler).parameters)
     missing_request_handler_params = [
         name for name in ("ice_servers", "esp32_mode", "host", "connection_mode")
         if name not in request_handler_params
     ]
-    if mismatched_versions or missing_connection_methods or missing_request_handler_params:
+    if mismatched_versions or missing_connection_methods or missing_dtls_methods or missing_request_handler_params:
         raise RuntimeError(
             "Unsupported Pipecat/Verto WebRTC runtime. "
             f"expectedVersions={expected_versions} "
             f"mismatchedVersions={mismatched_versions} "
             f"missingConnectionMethods={missing_connection_methods} "
+            f"missingDtlsMethods={missing_dtls_methods} "
             f"missingRequestHandlerParams={missing_request_handler_params}"
         )
 
@@ -253,19 +313,68 @@ def assert_verto_webrtc_compatibility() -> None:
 class FreeSwitchWebRTCConnection(SmallWebRTCConnection):
     """Verto-specific WebRTC connection scoped to FreeSWITCH agent-leg calls.
 
-    This adapter keeps the FreeSWITCH path on Pipecat's normal aiortc
-    connection object. It limits Verto-specific behavior to public SDP
-    normalization and request-handler construction, leaving browser SmallWebRTC
-    ingress on the stock handler.
+    Pipecat 1.7.0 does not expose public hooks for the DTLS certificate/role or
+    G.711 RTP marker behavior FreeSWITCH needs, so this subclass keeps the
+    compatibility work on the Verto connection instance instead of mutating
+    Pipecat or aiortc classes for the whole process.
     """
 
+    def _set_rsa_certificate_for_free_switch(self) -> None:
+        self._pc._RTCPeerConnection__certificates = [_create_rsa_certificate()]
+
+    def _force_dtls_server_role_for_free_switch(self) -> None:
+        for transceiver in getattr(self._pc, "_RTCPeerConnection__transceivers", []):
+            transceiver.receiver.transport._set_role("server")
+        sctp = getattr(self._pc, "_RTCPeerConnection__sctp", None)
+        if sctp is not None:
+            sctp.transport._set_role("server")
+
+    def _free_switch_dtls_transports(self) -> list[Any]:
+        transports: list[Any] = []
+        for transceiver in self._pc.getTransceivers():
+            for owner in (getattr(transceiver, "receiver", None), getattr(transceiver, "sender", None)):
+                transport = getattr(owner, "transport", None)
+                if transport is not None and transport not in transports:
+                    transports.append(transport)
+        sctp = getattr(self._pc, "_RTCPeerConnection__sctp", None)
+        sctp_transport = getattr(sctp, "transport", None)
+        if sctp_transport is not None and sctp_transport not in transports:
+            transports.append(sctp_transport)
+        return transports
+
+    def _install_free_switch_dtls_hooks(self) -> None:
+        async def flush_all_ssl_datagrams(dtls: Any) -> None:
+            await _flush_all_pending_ssl_datagrams(dtls)
+
+        for transport in self._free_switch_dtls_transports():
+            if getattr(transport, "_acc_verto_hooks_installed", False):
+                continue
+            original_send_rtp = transport._send_rtp
+
+            async def send_rtp_without_repeated_audio_marker(
+                dtls: Any,
+                data: bytes,
+                *,
+                send_rtp: Any = original_send_rtp,
+            ) -> None:
+                await send_rtp(normalize_verto_rtp_packet(data))
+
+            transport._write_ssl = MethodType(flush_all_ssl_datagrams, transport)
+            transport._send_rtp = MethodType(send_rtp_without_repeated_audio_marker, transport)
+            transport._acc_verto_hooks_installed = True
+
     async def _create_answer(self, sdp: str, type: str) -> None:
-        """Create a FreeSWITCH-compatible answer without private aiortc mutation."""
+        """Create a FreeSWITCH-compatible answer without process-global patches."""
+        if os.environ.get("FREESWITCH_VERTO_DTLS_CERTIFICATE", "rsa").strip().lower() == "rsa":
+            self._set_rsa_certificate_for_free_switch()
         offer = RTCSessionDescription(sdp=normalize_verto_offer_sdp(sdp), type=type)
         await self._pc.setRemoteDescription(offer)
+        if os.environ.get("FREESWITCH_VERTO_DTLS_ROLE", "active").strip().lower() == "passive":
+            self._force_dtls_server_role_for_free_switch()
         self.force_transceivers_to_send_recv()
         local_answer = await self._pc.createAnswer()
         await self._pc.setLocalDescription(local_answer)
+        self._install_free_switch_dtls_hooks()
         self._answer = self._pc.localDescription
 
 
@@ -310,6 +419,7 @@ class FreeSwitchSmallWebRTCRequestHandler(SmallWebRTCRequestHandler):
                     ),
                     flush=True,
                 )
+                raise
 
         answer = pipecat_connection.get_answer()
         if answer is None:
