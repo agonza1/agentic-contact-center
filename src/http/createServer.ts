@@ -160,6 +160,11 @@ function getRtcAsrWebsocketUrl(target: RtcAsrModelTarget): string {
     ?? `${target.baseUrl.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/v1/stt/stream`;
 }
 
+export function getRtcAsrUpstreamStreamPath(baseUrl: string): string {
+  const pathname = new URL(baseUrl).pathname.replace(/\/+$/, "");
+  return `${pathname}/v1/stt/stream`;
+}
+
 function proxyRtcAsrWebsocket(request: IncomingMessage, clientSocket: Duplex, head: Buffer, targetId: string | null): void {
   const targets = getRtcAsrModelTargets();
   const selectedTarget = targetId
@@ -188,7 +193,7 @@ function proxyRtcAsrWebsocket(request: IncomingMessage, clientSocket: Duplex, he
   upstream.once("connect", () => {
     connected = true;
     const forwardedHeaders = [
-      `GET /v1/stt/stream HTTP/1.1`,
+      `GET ${getRtcAsrUpstreamStreamPath(selectedTarget.baseUrl)} HTTP/1.1`,
       `Host: ${target.host}`,
       "Upgrade: websocket",
       "Connection: Upgrade",

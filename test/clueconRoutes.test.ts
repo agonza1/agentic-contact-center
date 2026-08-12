@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createServer, request, type Server } from "node:http";
 
 import { loadPocConfig } from "../src/config/loadPocConfig";
-import { buildHttpServer, warmConfiguredKokoro } from "../src/http/createServer";
+import { buildHttpServer, getRtcAsrUpstreamStreamPath, warmConfiguredKokoro } from "../src/http/createServer";
 
 async function requestPath(
   path: string,
@@ -1004,6 +1004,12 @@ test("ClueCon ASR same-origin websocket paths preserve the selected warmed targe
   }
 });
 
+test("ClueCon ASR websocket proxy preserves an upstream base-path prefix", () => {
+  assert.equal(getRtcAsrUpstreamStreamPath("https://speech.example.test/asr"), "/asr/v1/stt/stream");
+  assert.equal(getRtcAsrUpstreamStreamPath("https://speech.example.test/asr/"), "/asr/v1/stt/stream");
+  assert.equal(getRtcAsrUpstreamStreamPath("http://rtc-asr:8080"), "/v1/stt/stream");
+});
+
 test("Pocket TTS route replaces the legacy alloy placeholder with the configured local voice", async () => {
   const pocket = await startPocketTtsServer();
   try {
@@ -1339,6 +1345,9 @@ test("GET /cluecon and /cluecon/present render the interactive presentation shel
   assert.match(narrative.body, /attempt <= 3/);
   assert.match(narrative.body, /rtc-asr is starting · retry/);
   assert.match(narrative.body, /catch \(error\) \{\s*setAsrRealtimeControls\(false\);\s*throw error;/);
+  assert.match(narrative.body, /asrConnecting: false/);
+  assert.match(narrative.body, /setAsrRealtimeControls\(true, false, true\)/);
+  assert.match(narrative.body, /realtimeButton\.disabled = stopping \|\| connecting/);
   assert.match(narrative.body, /partial_strategy: "full_buffer_stability"/);
   assert.doesNotMatch(narrative.body, /partial_window_seconds: 2/);
   assert.match(narrative.body, /captureClosePromise/);

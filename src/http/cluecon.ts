@@ -1751,7 +1751,7 @@ def collect_identity_node() -> NodeConfig:
     const slideOrder = ["flow", "voice-evolution", "realtime-problem", "map", "integration", "vad-interruption", "asr-architecture", "asr", "security", "agent", "demo", "tts", "ecosystem", "slo", "finale"];
     const main = document.querySelector("main");
     slideOrder.forEach((id, index) => { const slide = document.getElementById(id); if (slide) { slide.dataset.slide = String(index); main?.appendChild(slide); } });
-    const state = { slide: 0, slideCount: slideOrder.length, isPresent: document.body.classList.contains("present"), proof: null, brain: JSON.parse(JSON.stringify(data.brainBlocks)), brainSession: null, asrCapture: null, asrStopping: false, asrModels: [], asrLive: null, ttsStream: null, ttsStreamToken: 0, failureAudio: null, failureAudioUrl: null, vad: null, vadStarting: false, vadStartToken: 0, vadPendingStream: null, vadBotSpeaking: false, vadBotTimer: null, vadTurnTimer: null, vadOutputTimer: null, vadOutputCleanupTimer: null, vadSimulationTimers: [] };
+    const state = { slide: 0, slideCount: slideOrder.length, isPresent: document.body.classList.contains("present"), proof: null, brain: JSON.parse(JSON.stringify(data.brainBlocks)), brainSession: null, asrCapture: null, asrStopping: false, asrConnecting: false, asrModels: [], asrLive: null, ttsStream: null, ttsStreamToken: 0, failureAudio: null, failureAudioUrl: null, vad: null, vadStarting: false, vadStartToken: 0, vadPendingStream: null, vadBotSpeaking: false, vadBotTimer: null, vadTurnTimer: null, vadOutputTimer: null, vadOutputCleanupTimer: null, vadSimulationTimers: [] };
     const VAD_END_OF_TURN_MS = Number(data.turnTiming?.endOfTurnSilenceMs) || 2000;
     const LIVE_TTS_FAST_FETCH_TIMEOUT_MS = 12_000;
     const LIVE_TTS_KOKORO_FETCH_TIMEOUT_MS = 45_000;
@@ -1806,7 +1806,7 @@ def collect_identity_node() -> NodeConfig:
     async function toggleAsrRecording() { const button = document.getElementById("asr-record"); const realtimeButton = document.getElementById("asr-realtime"); button.disabled = true; realtimeButton.disabled = true; try { if (state.asrCapture) await stopAsrRecording(); else await startAsrRecording(); } catch (error) { state.asrStopping = false; document.getElementById("asr-live-wave").classList.remove("recording"); document.getElementById("asr-live-result").textContent = "Live transcription failed: " + String(error.message || error); setAsrLiveStatus(String(error.message || error), "error"); } finally { button.disabled = false; realtimeButton.disabled = Boolean(state.asrCapture || state.asrStopping || state.asrLive) || !selectedAsrModel()?.websocketUrl; } }
     function selectedAsrModel() { const targetId = document.getElementById("asr-model-select").value; return state.asrModels.find(model => model.targetId === targetId); }
     function resampleAsrPcm16(input, inputRate) { const ratio = inputRate / 16000; const sampleCount = Math.max(1, Math.floor(input.length / ratio)); const output = new Int16Array(sampleCount); for (let index = 0; index < sampleCount; index += 1) { const sample = Math.max(-1, Math.min(1, input[Math.min(input.length - 1, Math.floor(index * ratio))])); output[index] = sample < 0 ? sample * 32768 : sample * 32767; } return output; }
-    function setAsrRealtimeControls(running, stopping = false) { const select = document.getElementById("asr-model-select"); const batchButton = document.getElementById("asr-record"); const realtimeButton = document.getElementById("asr-realtime"); select.disabled = running; batchButton.disabled = running; realtimeButton.disabled = stopping; realtimeButton.textContent = stopping ? "Finalizing…" : running ? "Stop + finalize" : "Start realtime"; }
+    function setAsrRealtimeControls(running, stopping = false, connecting = false) { const select = document.getElementById("asr-model-select"); const batchButton = document.getElementById("asr-record"); const realtimeButton = document.getElementById("asr-realtime"); select.disabled = running; batchButton.disabled = running; realtimeButton.disabled = stopping || connecting; realtimeButton.textContent = connecting ? "Connecting…" : stopping ? "Finalizing…" : running ? "Stop + finalize" : "Start realtime"; }
     function asrRealtimeTokens(value) { return String(value || "").trim().split(/\\s+/).filter(Boolean); }
     function asrRealtimeTokenKey(value) { return String(value || "").toLocaleLowerCase().replace(/^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$/gu, ""); }
     function asrStablePrefixCount(history) { if (history.length < 3) return 0; const revisions = history.slice(-3).map(asrRealtimeTokens); const limit = Math.min(...revisions.map(tokens => tokens.length)); let count = 0; while (count < limit && revisions.every(tokens => asrRealtimeTokenKey(tokens[count]) === asrRealtimeTokenKey(revisions[0][count]))) count += 1; return Math.max(0, count - 2); }
@@ -1846,6 +1846,7 @@ def collect_identity_node() -> NodeConfig:
     }
     async function startAsrRealtime() {
       if (state.asrLive) return;
+      if (state.asrConnecting) return;
       if (state.asrCapture || state.asrStopping) throw new Error("Stop the batch recording before starting realtime transcription.");
       const model = selectedAsrModel();
       if (!model || !model.websocketUrl) throw new Error("The selected model does not expose a Local STT websocket.");
@@ -1855,7 +1856,8 @@ def collect_identity_node() -> NodeConfig:
       const websocketUrl = model.websocketUrl.startsWith("/")
         ? (window.location.protocol === "https:" ? "wss:" : "ws:") + "//" + window.location.host + model.websocketUrl
         : model.websocketUrl;
-      setAsrRealtimeControls(true);
+      state.asrConnecting = true;
+      setAsrRealtimeControls(true, false, true);
       document.getElementById("asr-live-result").textContent = "Connecting to " + model.backend + " / " + model.model + "…";
       setAsrLiveStatus("Opening Local STT v1 websocket…", "connecting");
       let socket;
@@ -1864,7 +1866,10 @@ def collect_identity_node() -> NodeConfig:
       } catch (error) {
         setAsrRealtimeControls(false);
         throw error;
+      } finally {
+        state.asrConnecting = false;
       }
+      setAsrRealtimeControls(true);
       const live = { socket, model, pending: [], partialHistory: [], stream: null, context: null, source: null, processor: null, mute: null, timer: null, readyResolve: null, readyReject: null, finalResolve: null, finalReject: null, stopPromise: null, captureClosePromise: null, finalText: "", displayText: "", intentionalClose: false };
       state.asrLive = live;
       const ready = new Promise((resolve, reject) => { live.readyResolve = resolve; live.readyReject = reject; });
