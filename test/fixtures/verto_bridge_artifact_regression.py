@@ -42,13 +42,31 @@ def main() -> None:
             "dialogParams": {
                 "variables": {
                     "sip_h_X-ACC-Proof-Call-ID": "proof-call-1",
+                    "sip_h_X-ACC-Telephony-Mode": "signalwire_live",
                     "acc_linked_sip_call_id": "linked-call-1",
+                    "acc_route": "local_sip",
                     "acc_destination_number": "8600",
                     "acc_conversation_mode": "openai_llm",
+                    "caller_id_number": "+12025550123",
+                    "Caller-Caller-ID-Number": "+12025550123",
+                    "sip_from_user": "+12025550123",
+                    "sip_from_uri": "sip:+12025550123@example.signalwire.test",
+                    "variable_sip_from_uri": "sip:+12025550123@example.signalwire.test",
+                    "sip_full_from": "\"Caller\" <sip:+12025550123@example.signalwire.test>",
+                    "sip_h_P-Asserted-Identity": "<sip:+12025550123@example.signalwire.test>",
+                    "sip_h_P-Preferred-Identity": "<sip:+12025550123@example.signalwire.test>",
+                    "variable_sip_h_P-Asserted-Identity": "<sip:+12025550123@example.signalwire.test>",
+                    "variable_sip_h_P-Preferred-Identity": "<sip:+12025550123@example.signalwire.test>",
+                    "sip_h_Remote-Party-ID": "\"Caller\" <sip:+12025550123@example.signalwire.test>",
+                    "sip_h_Diversion": "<sip:+12025550123@example.signalwire.test>;reason=unconditional",
+                    "sip_h_History-Info": "<sip:+12025550123@example.signalwire.test>;index=1",
+                    "variable_sip_h_Diversion": "<sip:+12025550123@example.signalwire.test>;reason=unconditional",
+                    "variable_sip_h_History-Info": "<sip:+12025550123@example.signalwire.test>;index=1",
                     "sip_h_Authorization": "Digest username=\"1000\", response=\"super-secret\"",
                     "acc_api_token": "token-secret",
                     "nested": {
                         "password": "do-not-persist",
+                        "ani": "+12025550123",
                     },
                 }
             }
@@ -87,9 +105,28 @@ def main() -> None:
                 and bridge.destination_number({"caller_id_name": "ACC-8612"}) == "8612"
                 and bridge.conversation_mode({}, "8611") == "free_caller"
                 and bridge.conversation_mode({}, "8612") == "scripted"
+                and bridge.telephony_mode(nested_params) == "local_sip"
+                and bridge.telephony_mode({"dialogParams": {"variables": {"acc_route": "signalwire_live"}}}) == "signalwire_live"
                 and sanitized_params["dialogParams"]["variables"]["sip_h_Authorization"] == "<redacted secret>"
                 and sanitized_params["dialogParams"]["variables"]["acc_api_token"] == "<redacted secret>"
                 and sanitized_params["dialogParams"]["variables"]["nested"]["password"] == "<redacted secret>"
+                and sanitized_params["dialogParams"]["variables"]["caller_id_number"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["Caller-Caller-ID-Number"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["sip_from_user"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["sip_from_uri"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["variable_sip_from_uri"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["sip_full_from"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["sip_h_P-Asserted-Identity"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["sip_h_P-Preferred-Identity"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["variable_sip_h_P-Asserted-Identity"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["variable_sip_h_P-Preferred-Identity"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["sip_h_Remote-Party-ID"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["sip_h_Diversion"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["sip_h_History-Info"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["variable_sip_h_Diversion"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["variable_sip_h_History-Info"] == "<redacted caller identity>"
+                and sanitized_params["dialogParams"]["variables"]["nested"]["ani"] == "<redacted caller identity>"
+                and "+12025550123" not in json.dumps(sanitized_params)
             ),
             "callARewritten": call_a_path.read_text(encoding="utf8") != before_call_a,
             "callALastError": call_a.get("lastError"),
@@ -97,6 +134,7 @@ def main() -> None:
             "callBStage": call_b.get("pipelineEvidence", [{}])[0].get("stage"),
             "nestedProofSipCallId": bridge.proof_sip_call_id(nested_params),
             "nestedLinkedSipCallId": bridge.linked_sip_call_id(nested_params),
+            "nestedTelephonyMode": bridge.telephony_mode(nested_params),
             "sanitizedParams": sanitized_params,
         }
         print(json.dumps(result))

@@ -1,0 +1,25 @@
+<include>
+  <extension name="agentic_contact_center_signalwire_pstn">
+    <condition field="destination_number" expression="^(__SIGNALWIRE_TO_NUMBER_PATTERN__|8600|acc)$">
+      <condition field="${acl(${network_addr} __SIGNALWIRE_SOURCE_ACL_NAME__)}" expression="^true$">
+        <action application="set" data="acc_route=signalwire_live"/>
+        <action application="set" data="acc_destination_number=8600"/>
+        <action application="set" data="acc_conversation_mode=openai_llm"/>
+        <action application="set" data="acc_signalwire_ready=true"/>
+        <action application="set" data="acc_signalwire_from_number=__SIGNALWIRE_FROM_NUMBER_SAFE__"/>
+        <action application="set" data="acc_public_sip_host=__FREESWITCH_PUBLIC_SIP_HOST_SAFE__"/>
+        <action application="set" data="hangup_after_bridge=false"/>
+        <action application="set" data="acc_return_audio=pipecat_verto_webrtc"/>
+        <action application="set" data="acc_media_bridge=pipecat_verto_agent_leg"/>
+        <action application="set" data="absolute_codec_string=PCMU"/>
+        <action application="export" data="nolocal:acc_route=signalwire_live"/>
+        <action application="export" data="nolocal:acc_destination_number=8600"/>
+        <action application="export" data="nolocal:acc_conversation_mode=openai_llm"/>
+        <action application="export" data="nolocal:sip_h_X-ACC-Telephony-Mode=signalwire_live"/>
+        <action application="export" data="nolocal:sip_h_X-ACC-Destination=8600"/>
+        <action application="export" data="nolocal:sip_h_X-ACC-Conversation-Mode=openai_llm"/>
+        <action application="bridge" data="{absolute_codec_string=PCMU,acc_route=signalwire_live,acc_destination_number=8600,acc_conversation_mode=openai_llm,sip_h_X-ACC-Telephony-Mode=signalwire_live,sip_h_X-ACC-Destination=8600,sip_h_X-ACC-Conversation-Mode=openai_llm}${verto_contact(acc-pipecat@$${domain})}"/>
+      </condition>
+    </condition>
+  </extension>
+</include>

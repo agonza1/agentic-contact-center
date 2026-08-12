@@ -90,6 +90,10 @@ def safe_artifact_id(value: Any) -> str | None:
 
 
 SECRET_PARAM_KEY_PATTERN = re.compile(r"(authorization|password|passwd|token|secret|credential|api[_-]?key|access[_-]?key)", re.IGNORECASE)
+CALLER_IDENTITY_PARAM_KEY_PATTERN = re.compile(
+    r"(caller[-_\s]?id|caller[-_\s]?(?:name|number|uri)|effective[-_\s]?caller|origination[-_\s]?caller|cid[-_\s]?(?:name|num|number)?|ani|clid|(?:variable[-_\s]?)?sip[-_\s]?(?:full[-_\s]?from|from[-_\s]?(?:uri|user|number|name)|h[-_\s]?(?:p[-_\s]?(?:asserted|preferred)[-_\s]?identity|remote[-_\s]?party[-_\s]?id|diversion|history[-_\s]*info|referred[-_\s]*by))|p[-_\s]?(?:asserted|preferred)[-_\s]?identity|remote[-_\s]?party[-_\s]?id|diversion|history[-_\s]*info|referred[-_\s]*by|full[-_\s]?from|from[-_\s]?(?:uri|user|number|name))",
+    re.IGNORECASE,
+)
 
 
 def sanitize_verto_params(params: dict[str, Any]) -> dict[str, Any]:
@@ -97,6 +101,8 @@ def sanitize_verto_params(params: dict[str, Any]) -> dict[str, Any]:
     for key, value in params.items():
         if SECRET_PARAM_KEY_PATTERN.search(str(key)):
             sanitized[key] = "<redacted secret>"
+        elif CALLER_IDENTITY_PARAM_KEY_PATTERN.search(str(key)):
+            sanitized[key] = "<redacted caller identity>"
         elif key == "sdp":
             sanitized[key] = f"<redacted sdp bytes={len(value.encode('utf8'))}>" if isinstance(value, str) else "<redacted sdp>"
         elif isinstance(value, dict):
@@ -436,19 +442,17 @@ class VertoAgentBridge:
         return nested_param_value(
             params,
             (
-            "acc_linked_sip_call_id",
-            "variable_acc_linked_sip_call_id",
-            "linkedSipCallId",
-            "linked_sip_call_id",
-            "aleg_uuid",
-            "variable_originating_leg_uuid",
+                "acc_linked_sip_call_id",
+                "variable_acc_linked_sip_call_id",
+                "linkedSipCallId",
+                "linked_sip_call_id",
+                "aleg_uuid",
+                "variable_originating_leg_uuid",
             ),
         )
 
     def proof_sip_call_id(self, params: dict[str, Any]) -> str | None:
-        return nested_param_value(
-            params,
-            (
+        return self.first_param_string(params, (
             "sip_h_X-ACC-Proof-Call-ID",
             "variable_sip_h_X-ACC-Proof-Call-ID",
             "sip_h_X_ACC_Proof_Call_ID",
@@ -457,13 +461,23 @@ class VertoAgentBridge:
             "x-acc-proof-call-id",
             "proofSipCallId",
             "harnessSipCallId",
-            ),
-        )
+        ))
+
+    def first_param_string(self, params: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+        case_insensitive = {
+            str(key).lower(): value
+            for key, value in params.items()
+        }
+        for key in keys:
+            value = params.get(key)
+            if not isinstance(value, str):
+                value = case_insensitive.get(key.lower())
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return nested_param_value(params, keys)
 
     def destination_number(self, params: dict[str, Any]) -> str | None:
-        value = nested_param_value(
-            params,
-            (
+        value = self.first_param_string(params, (
             "sip_h_X-ACC-Destination",
             "variable_sip_h_X-ACC-Destination",
             "sip_h_X_ACC_Destination",
@@ -475,10 +489,10 @@ class VertoAgentBridge:
             "variable_destination_number",
             "destinationNumber",
             "destination",
-            ),
-        )
+        ))
         if value:
-            return "8600" if value.lower() == "acc" else value
+            destination = value.strip()
+            return "8600" if destination.lower() == "acc" else destination
         route_hint = nested_param_value(params, ("caller_id_name", "Caller-Caller-ID-Name"))
         route_match = re.fullmatch(r"ACC[-_ ](8600|8611|8612)", route_hint or "", flags=re.IGNORECASE)
         if route_match:
@@ -486,9 +500,7 @@ class VertoAgentBridge:
         return None
 
     def conversation_mode(self, params: dict[str, Any], destination_number: str | None) -> str:
-        value = nested_param_value(
-            params,
-            (
+        value = self.first_param_string(params, (
             "sip_h_X-ACC-Conversation-Mode",
             "variable_sip_h_X-ACC-Conversation-Mode",
             "sip_h_X_ACC_Conversation_Mode",
@@ -497,8 +509,7 @@ class VertoAgentBridge:
             "acc_conversation_mode",
             "variable_acc_conversation_mode",
             "conversationMode",
-            ),
-        )
+        ))
         if value and value in {"scripted", "free_caller", "openai_llm"}:
             return value
         if destination_number == "8600":
@@ -506,6 +517,15 @@ class VertoAgentBridge:
         if destination_number == "8611":
             return "free_caller"
         return "scripted"
+
+    def telephony_mode(self, params: dict[str, Any]) -> str:
+        trusted_route = self.first_param_string(params, (
+            "acc_route",
+            "variable_acc_route",
+        ))
+        if trusted_route == "signalwire_live":
+            return "signalwire_live"
+        return "local_sip"
 
     async def end_acc_call(self, call_id: str, *, reason: str, timestamp: str | None = None, timeout: float = 2.0, linked_sip_call_id: str | None = None) -> bool:
         try:
@@ -579,6 +599,7 @@ class VertoAgentBridge:
         proof_sip_call_id = self.proof_sip_call_id(params)
         destination_number = self.destination_number(params)
         conversation_mode = self.conversation_mode(params, destination_number)
+        telephony_mode = self.telephony_mode(params)
         offer_sdp = params.get("sdp") if isinstance(params.get("sdp"), str) else ""
         if not offer_sdp.strip():
             proof = {
@@ -591,6 +612,7 @@ class VertoAgentBridge:
                 "proofSipCallId": proof_sip_call_id,
                 "destinationNumber": destination_number,
                 "conversationMode": conversation_mode,
+                "telephonyMode": telephony_mode,
                 "mediaTarget": "pipecat_verto_webrtc_agent_leg",
                 "reviewReady": False,
                 "blocker": "Incoming FreeSWITCH Verto invite did not include SDP, so the Pipecat sidecar cannot create a WebRTC answer.",
@@ -625,6 +647,7 @@ class VertoAgentBridge:
             "proofSipCallId": proof_sip_call_id,
             "destinationNumber": destination_number,
             "conversationMode": conversation_mode,
+            "telephonyMode": telephony_mode,
             "mediaTarget": "pipecat_verto_webrtc_agent_leg",
             "reviewReady": False,
             "offerSdpBytes": len(offer_sdp.encode("utf-8")),
@@ -643,11 +666,12 @@ class VertoAgentBridge:
             proof_sip_call_id=proof_sip_call_id,
             destination_number=destination_number,
             conversation_mode=conversation_mode,
+            telephony_mode=telephony_mode,
             offer_sdp=offer_sdp,
             params=params,
         )
 
-    async def answer_invite(self, *, call_id: str, linked_sip_call_id: str | None, proof_sip_call_id: str | None, destination_number: str | None, conversation_mode: str, offer_sdp: str, params: dict[str, Any]) -> None:
+    async def answer_invite(self, *, call_id: str, linked_sip_call_id: str | None, proof_sip_call_id: str | None, destination_number: str | None, conversation_mode: str, telephony_mode: str, offer_sdp: str, params: dict[str, Any]) -> None:
         readiness = await asyncio.to_thread(check_readiness, self.acc_url)
         sip_call_id = linked_sip_call_id or call_id
         try:
@@ -664,7 +688,7 @@ class VertoAgentBridge:
                     **({"proofSipCallId": proof_sip_call_id} if proof_sip_call_id else {}),
                     **({"destinationNumber": destination_number} if destination_number else {}),
                     "conversationMode": conversation_mode,
-                    "telephonyMode": "local_sip",
+                    "telephonyMode": telephony_mode,
                     "source": "freeswitch_verto",
                     "rtcAsrMode": "rtc_asr_live" if readiness.ok else "rtc_asr_blocked",
                 },
@@ -703,6 +727,7 @@ class VertoAgentBridge:
                         **({"proofSipCallId": proof_sip_call_id} if proof_sip_call_id else {}),
                         **({"destinationNumber": destination_number} if destination_number else {}),
                         "conversationMode": conversation_mode,
+                        "telephonyMode": telephony_mode,
                         "blocker": readiness.detail,
                         "nextAction": "Restore ACC, rtc-asr, Kokoro, and Pipecat readiness before rerunning the Verto live SIP proof.",
                     },
@@ -731,6 +756,7 @@ class VertoAgentBridge:
                     "proofSipCallId": proof_sip_call_id,
                     "destinationNumber": destination_number,
                     "conversationMode": conversation_mode,
+                    "telephonyMode": telephony_mode,
                     "reviewReady": False,
                     "blocker": "ACC, rtc-asr, Kokoro, or Pipecat runtime readiness failed before answering Verto media.",
                     "blockedEvidencePosted": blocked_evidence_posted,
@@ -762,8 +788,9 @@ class VertoAgentBridge:
                     "proofSipCallId": proof_sip_call_id,
                     "destinationNumber": destination_number,
                     "conversationMode": conversation_mode,
+                    "telephonyMode": telephony_mode,
                     "vertoCallId": call_id,
-                    "vertoParams": {key: value for key, value in params.items() if key != "sdp"},
+                    "vertoParams": sanitize_verto_params(params),
                 },
             }
         )
@@ -778,6 +805,7 @@ class VertoAgentBridge:
                     proof_sip_call_id=proof_sip_call_id,
                     destination_number=destination_number,
                     conversation_mode=conversation_mode,
+                    telephony_mode=telephony_mode,
                     acc_call_id=acc_call_id,
                     readiness=readiness,
                 )
@@ -869,6 +897,7 @@ class VertoAgentBridge:
             "linkedSipCallId": linked_sip_call_id,
             "proofSipCallId": proof_sip_call_id,
             "accCallId": acc_call_id,
+            "telephonyMode": telephony_mode,
             "sessionId": session_id,
             "pcId": str(answer.get("pc_id") or call_id),
             "answerSdpBytes": len(answer_sdp.encode("utf-8")),
@@ -893,6 +922,7 @@ class VertoAgentBridge:
         proof_sip_call_id: str | None,
         destination_number: str | None,
         conversation_mode: str,
+        telephony_mode: str,
         acc_call_id: str,
         readiness: Any,
     ) -> None:
@@ -905,6 +935,7 @@ class VertoAgentBridge:
                 "linkedSipCallId": linked_sip_call_id,
                 "proofSipCallId": proof_sip_call_id,
                 "conversationMode": conversation_mode,
+                "telephonyMode": telephony_mode,
             }
             self.write_proof_artifact(
                 "verto.pipeline.stage",

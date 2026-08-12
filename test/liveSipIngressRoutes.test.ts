@@ -2613,7 +2613,7 @@ test("live SIP terminal operator actions stop OpenAI automation until operator r
         conversationMode: "openai_llm",
       });
       assert.equal(heldTurn.statusCode, 409);
-      assert.equal(heldTurn.payload.error, "live_sip_openai_automation_stopped");
+      assert.equal(heldTurn.payload.error, "caller_turn_terminal_operator_stop");
       assert.equal(
         heldTurn.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === `Do not automate after ${action}.`),
         false,
@@ -2665,7 +2665,7 @@ test("live SIP terminal operator actions stop OpenAI automation until operator r
         conversationMode: "openai_llm",
       });
       assert.equal(heldTurn.statusCode, 409);
-      assert.equal(heldTurn.payload.error, "live_sip_openai_automation_stopped");
+      assert.equal(heldTurn.payload.error, "caller_turn_terminal_operator_stop");
       assert.equal(
         heldTurn.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === `Do not automate after fallback disarm and ${action}.`),
         false,
@@ -2839,7 +2839,7 @@ test("live SIP scripted caller turns stay held after terminal operator stops", a
         conversationMode: "scripted",
       });
       assert.equal(heldDirectTurn.statusCode, 409);
-      assert.equal(heldDirectTurn.payload.error, "live_sip_operator_hold_active");
+      assert.equal(heldDirectTurn.payload.error, "caller_turn_terminal_operator_stop");
       assert.equal(
         heldDirectTurn.payload.call.transcript.some((turn: any) => turn.speaker === "caller" && turn.text === `Do not continue scripted automation after ${action}.`),
         false,

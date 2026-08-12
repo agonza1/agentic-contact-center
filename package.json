@@ -32,6 +32,7 @@
     "sip:local-proof": "node scripts/local-sip-live-proof.mjs",
     "sip:self-test": "node scripts/local-sip-live-proof.mjs --self-test --out-dir artifacts/local-sip-selftest",
     "freeswitch:bridge": "node scripts/freeswitch-acc-bridge.mjs",
+    "signalwire:freeswitch:readiness": "node scripts/signalwire-freeswitch-readiness.mjs",
     "docker:freeswitch": "docker compose --profile freeswitch up --build app freeswitch",
     "docker:sip": "docker compose --profile sip up --build app freeswitch rtc-asr kokoro freeswitch-bridge",
     "docker:freeswitch:only": "docker compose --profile freeswitch up -d freeswitch --no-deps",

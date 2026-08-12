@@ -1,0 +1,17 @@
+<include>
+  <gateway name="signalwire">
+    <param name="username" value="__SIGNALWIRE_SIP_USERNAME__"/>
+    <param name="password" value="__SIGNALWIRE_SIP_PASSWORD__"/>
+    <param name="realm" value="__SIGNALWIRE_SIP_REALM__"/>
+    <param name="proxy" value="__SIGNALWIRE_SIP_PROXY__"/>
+    <param name="register" value="true"/>
+    <param name="register-transport" value="udp"/>
+    <param name="extension" value="8600"/>
+    <param name="context" value="public"/>
+    <param name="from-user" value="__SIGNALWIRE_SIP_USERNAME__"/>
+    <param name="from-domain" value="__SIGNALWIRE_SIP_REALM__"/>
+    <param name="expire-seconds" value="300"/>
+    <param name="retry-seconds" value="30"/>
+    <param name="caller-id-in-from" value="true"/>
+  </gateway>
+</include>

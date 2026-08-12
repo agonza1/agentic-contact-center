@@ -2454,11 +2454,7 @@ function rejectTerminalOperatorStopCallerTurn(
   writeJson(response, 409, {
     ok: false,
     route,
-    error: snapshot.session.runtimeModeLabels.telephony === "mocked_telephony"
-      ? "caller_turn_terminal_operator_stop"
-      : snapshot.scenario.conversationMode === "openai_llm"
-        ? "live_sip_openai_automation_stopped"
-        : "live_sip_operator_hold_active",
+    error: "caller_turn_terminal_operator_stop",
     call: buildCallPayload(snapshot),
   });
   return true;
