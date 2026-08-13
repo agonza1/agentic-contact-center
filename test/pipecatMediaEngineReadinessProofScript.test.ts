@@ -119,6 +119,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         "npm run pipecat:flows:contract",
         "npm run pipecat:flows:runtime",
         "python3 test/fixtures/pipecat_flowmanager_adapter_regression.py",
+        "npm run build && node --test dist/test/parallelLlmPathPlan.test.js",
         "npm test",
         "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
       ],
