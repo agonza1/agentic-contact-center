@@ -1,4 +1,5 @@
 import { buildPipecatFlowManagerContractPayload } from "./pipecatFlowManagerContract";
+import { buildParallelLlmPathPlan } from "./parallelLlmPathPlan";
 
 const issue214 = "agonza1/agentic-contact-center#214";
 const issue214Url = "https://github.com/agonza1/agentic-contact-center/issues/214";
@@ -62,6 +63,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
     },
   };
   const flowManagerContract = buildPipecatFlowManagerContractPayload();
+  const parallelLlmPathPlan = buildParallelLlmPathPlan();
 
   return {
     ok: true,
@@ -189,6 +191,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
     ],
     nextUnblockedSlice,
     flowManagerContract,
+    parallelLlmPathPlan,
     liveSipProofAcceptance,
     reviewBlockers: [],
     acceptanceCriteria: [
@@ -252,6 +255,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
       "npm run pipecat:flows:contract",
       "npm run pipecat:flows:runtime",
       "python3 test/fixtures/pipecat_flowmanager_adapter_regression.py",
+      "npm run build && node --test dist/test/parallelLlmPathPlan.test.js",
       "npm test",
       "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
     ],

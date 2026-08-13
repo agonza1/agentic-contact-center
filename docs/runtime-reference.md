@@ -140,6 +140,12 @@ export POCKET_TTS_MODEL=pocket-tts
 
 `npm run pipecat:webrtc` starts `scripts/pipecat-browser-webrtc-bridge.py` on `http://127.0.0.1:8766`. Its offer endpoint is `POST /api/webrtc/offer`; ACC proxies browser SDP offers to it from `POST /api/browser-webrtc/session`. The bridge accepts offers through Pipecat `SmallWebRTCRequestHandler`, creates `SmallWebRTCTransport`, and calls `build_acc_voice_pipeline(transport.input(), transport.output(), session)` from `scripts/acc_pipecat_voice_pipeline.py`. The shared processors stream browser PCM to rtc-asr Local STT v1, post the final transcript to `/api/calls/:callId/caller-turn`, request the configured provider's streaming raw-PCM response, and emit `TTSStartedFrame`, playable `TTSAudioRawFrame` chunks, and `TTSStoppedFrame` through the adapter's `transport.output()` as provider audio arrives. `ACC_TTS_PROVIDER=pocket` uses `POCKET_TTS_BASE_URL`; `ACC_TTS_PROVIDER=kokoro` uses `KOKORO_BASE_URL`. `ACC_TTS_OUTPUT_CHUNK_MS` controls the read/output chunk size and defaults to 20 ms. When caller speech starts during an active agent/TTS/output response, the pipeline cancels the active response task, broadcasts Pipecat `InterruptionFrame` to clear the transport audio queue, records `output.transport_flushed`, and measures `transportFlushLatencyMs`; later output from the interrupted generation is discarded. This normal path has no `ffmpeg` dependency.
 
+## Parallel LLM exploration
+
+Issue #338 is tracked as a demo-only exploration, not a replacement for the normal Pipecat media path. The current `openai_llm` mode keeps structured proposal generation on the ACC caller-turn critical path before FlowManager preview and TTS. The proposed parallel path keeps the realtime response short and safe while a cancellable background LLM task receives only committed transcript, conversation-control state, FlowManager state, snapshot version, interruption state, and pending tool context.
+
+The contract is exposed by `buildParallelLlmPathPlan()` and the media-engine readiness payload. It is disabled by default; set `ACC_PARALLEL_LLM_PATH=demo` only for a future non-production spike. Background results must be dropped when the snapshot version or interruption epoch is stale, when caller barge-in flushes output before first-audio delivery, when operator takeover starts, or when FlowManager fails closed. If the flag is off or the task fails, the existing single-path `openai_llm` behavior remains authoritative.
+
 ## ClueCon Pocket streaming TTS smoke
 
 Use this smoke path when preparing PR notes for #333:

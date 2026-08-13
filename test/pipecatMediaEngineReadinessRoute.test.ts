@@ -73,9 +73,18 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP and
       "npm run pipecat:flows:contract",
       "npm run pipecat:flows:runtime",
       "python3 test/fixtures/pipecat_flowmanager_adapter_regression.py",
+      "npm run build && node --test dist/test/parallelLlmPathPlan.test.js",
       "npm test",
       "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
     ]);
+    assert.equal(payload.parallelLlmPathPlan.issue, "agonza1/agentic-contact-center#338");
+    assert.equal(payload.parallelLlmPathPlan.featureFlag.state, "disabled");
+    assert.match(payload.parallelLlmPathPlan.currentCriticalPath.join(" "), /OpenAI structured proposal generation/);
+    assert.match(payload.parallelLlmPathPlan.proposedParallelPath.join(" "), /background LLM task/);
+    assert.equal(
+      payload.parallelLlmPathPlan.sharedState.find((item: any) => item.id === "interruption_state").owner,
+      "pipecat",
+    );
 
     assert.equal(payload.sharedEngineContract.engine, "pipecat-ai");
     assert.equal(payload.sharedEngineContract.callTurnEngine, "rtc-asr -> Pipecat FlowManager -> ACC product-state adapter -> Pocket/Kokoro streaming TTS");
