@@ -14,6 +14,7 @@ import hashlib
 import importlib.metadata
 import json
 import os
+import re
 import time
 import urllib.request
 from dataclasses import dataclass, field
@@ -35,6 +36,7 @@ from acc_pipecat_flow_manager import AccPipecatFlowManagerAdapter
 from acc_track_recorder import SeparateTrackRecorder
 
 DEFAULT_ACC_URL = os.environ.get("ACC_URL", "http://127.0.0.1:8026")
+DEFAULT_ACC_HEALTH_PATH = os.environ.get("ACC_HEALTH_PATH", "/api/pipecat-media-engine/readiness")
 DEFAULT_RTC_ASR_BASE_URL = os.environ.get("RTC_ASR_BASE_URL", "http://127.0.0.1:8080")
 DEFAULT_RTC_ASR_WS_URL = os.environ.get("RTC_ASR_WS_URL", "ws://127.0.0.1:8080/v1/stt/stream")
 DEFAULT_RTC_ASR_HEALTH_PATH = os.environ.get("RTC_ASR_HEALTH_PATH", "/health")
@@ -50,6 +52,7 @@ DEFAULT_POCKET_TTS_HEALTH_PATH = os.environ.get("POCKET_TTS_HEALTH_PATH", "/heal
 DEFAULT_POCKET_TTS_SPEECH_PATH = os.environ.get("POCKET_TTS_SPEECH_PATH", "/v1/audio/speech")
 DEFAULT_POCKET_TTS_VOICE = os.environ.get("POCKET_TTS_VOICE", "alloy")
 DEFAULT_POCKET_TTS_MODEL = os.environ.get("POCKET_TTS_MODEL", "pocket-tts")
+DEFAULT_READINESS_TIMEOUT_SEC = float(os.environ.get("ACC_VOICE_READINESS_TIMEOUT_SEC", "3"))
 
 
 def configured_tts_provider() -> str:
@@ -234,15 +237,27 @@ def pick_model_metadata(health: dict[str, Any], models_payload: dict[str, Any] |
 
 def check_readiness(acc_url: str = DEFAULT_ACC_URL, skip_acc: bool = False) -> BridgeReadiness:
     tts_config = active_tts_config()
-    rtc_probe = probe_json(join_url(DEFAULT_RTC_ASR_BASE_URL, DEFAULT_RTC_ASR_HEALTH_PATH), "rtc-asr")
-    kokoro_probe = probe_json(join_url(tts_config["base_url"], tts_config["health_path"]), tts_config["engine"])
+    rtc_probe = probe_json(
+        join_url(DEFAULT_RTC_ASR_BASE_URL, DEFAULT_RTC_ASR_HEALTH_PATH),
+        "rtc-asr",
+        timeout=DEFAULT_READINESS_TIMEOUT_SEC,
+    )
+    kokoro_probe = probe_json(
+        join_url(tts_config["base_url"], tts_config["health_path"]),
+        tts_config["engine"],
+        timeout=DEFAULT_READINESS_TIMEOUT_SEC,
+    )
     acc_probe = ProbeResult(
         id="acc",
         ok=True,
         status="skipped",
-        url=join_url(acc_url, "/health"),
+        url=join_url(acc_url, DEFAULT_ACC_HEALTH_PATH),
         detail="ACC probe skipped by caller to avoid recursive /health checks",
-    ) if skip_acc else probe_json(join_url(acc_url, "/health"), "acc")
+    ) if skip_acc else probe_json(
+        join_url(acc_url, DEFAULT_ACC_HEALTH_PATH),
+        "acc",
+        timeout=DEFAULT_READINESS_TIMEOUT_SEC,
+    )
     models_payload = None
     if rtc_probe.ok:
         with contextlib.suppress(Exception):
@@ -358,6 +373,18 @@ def is_final_stt_event(event: dict[str, Any]) -> bool:
     )
 
 
+def interim_transcript_score(transcript: str) -> tuple[int, int]:
+    """Prefer the most informative current-utterance hypothesis.
+
+    Streaming recognizers revise the whole hypothesis and can regress to a
+    short fragment immediately before returning an empty final. Word count is
+    the useful first-order signal here; character count breaks ties without
+    pretending that the client has model confidence that rtc-asr did not send.
+    """
+    words = re.findall(r"[\w']+", transcript, flags=re.UNICODE)
+    return len(words), sum(len(word) for word in words)
+
+
 def resample_pcm16_mono(pcm: bytes, from_rate: int, to_rate: int) -> bytes:
     if from_rate == to_rate:
         return pcm
@@ -450,6 +477,8 @@ class AccVoicePipelineSession:
         self.rtc_asr_session_event_count = 0
         self.rtc_asr_interim_events: list[dict[str, Any]] = []
         self.rtc_asr_current_interim_text = ""
+        self.rtc_asr_best_interim_text = ""
+        self.rtc_asr_current_interim_candidates: list[str] = []
         self.turn_controls: PipecatTurnControls | None = None
         self.evidence_callback = evidence_callback
         self.pending_caller_turn_commit: dict[str, Any] | None = None
@@ -916,8 +945,8 @@ class AccVoicePipelineSession:
                 # The next audio turn must send a new start event on this connection.
                 self.rtc_asr_started = False
             final_transcript_source = "rtc_asr_final"
-            if final_event_observed and not final_event_text.strip() and self.rtc_asr_current_interim_text.strip():
-                final_text = self.rtc_asr_current_interim_text
+            if final_event_observed and not final_event_text.strip() and self.rtc_asr_best_interim_text.strip():
+                final_text = self.rtc_asr_best_interim_text
                 final_transcript_source = "rtc_asr_interim_fallback"
         elapsed_ms = round((time.perf_counter() - started) * 1000)
         audio_bytes = self.rtc_asr_current_audio_bytes or len(frame.audio)
@@ -933,12 +962,17 @@ class AccVoicePipelineSession:
             "sessionAudioBytes": self.rtc_asr_session_audio_bytes,
             "sessionEventCount": self.rtc_asr_session_event_count,
             "interimEventCount": len([event for event in events if not is_final_stt_event(event) and transcript_text_from_event(event)]),
+            "interimCandidateCount": len(self.rtc_asr_current_interim_candidates),
             "eventCount": len(events),
             "finalEventObserved": final_event_observed,
             "finalTranscriptSource": final_transcript_source,
+            "finalTranscriptConfidence": "provisional" if final_transcript_source == "rtc_asr_interim_fallback" else "final",
+            "interimFallbackSelection": "most_informative_current_utterance" if final_transcript_source == "rtc_asr_interim_fallback" else None,
         }
         self.rtc_asr_current_audio_bytes = 0
         self.rtc_asr_current_interim_text = ""
+        self.rtc_asr_best_interim_text = ""
+        self.rtc_asr_current_interim_candidates = []
         result_frame = TranscriptionFrame(final_text.strip(), user_id="browser", timestamp=str(time.time()), result={"events": events}, finalized=True)
         return result_frame.text.strip(), meta, result_frame
 
@@ -989,6 +1023,8 @@ class AccVoicePipelineSession:
         self.rtc_asr_utterance_id += 1
         self.rtc_asr_started = True
         self.rtc_asr_current_interim_text = ""
+        self.rtc_asr_best_interim_text = ""
+        self.rtc_asr_current_interim_candidates = []
         self.record_stage(
             "stt.utterance_started",
             connectionId=self.rtc_asr_connection_id,
@@ -1013,9 +1049,15 @@ class AccVoicePipelineSession:
         transcript = transcript_text_from_event(event)
         if transcript and not is_final_stt_event(event):
             self.rtc_asr_current_interim_text = transcript
+            if transcript not in self.rtc_asr_current_interim_candidates:
+                self.rtc_asr_current_interim_candidates.append(transcript)
+                self.rtc_asr_current_interim_candidates = self.rtc_asr_current_interim_candidates[-20:]
+            if interim_transcript_score(transcript) > interim_transcript_score(self.rtc_asr_best_interim_text):
+                self.rtc_asr_best_interim_text = transcript
             interim = self.record_stage(
                 "stt.transcript_interim",
                 transcript=transcript,
+                bestInterimTranscript=self.rtc_asr_best_interim_text,
                 connectionId=self.rtc_asr_connection_id,
                 persistentSession=True,
             )
@@ -1309,6 +1351,9 @@ class RtcAsrTurnProcessor(FrameProcessor):
         self.last_audio_report_at = 0.0
         self.silence_finalize_task: asyncio.Task[None] | None = None
         self.finalize_lock = asyncio.Lock()
+        self.input_resample_state: tuple[Any, ...] | None = None
+        self.input_resample_source_rate: int | None = None
+        self.reported_input_sample_rates: set[int] = set()
         self.turn_controls = PipecatTurnControls(session, self.interrupt_output)
         self.session.turn_controls = self.turn_controls
 
@@ -1388,11 +1433,14 @@ class RtcAsrTurnProcessor(FrameProcessor):
                 "callId": self.session.call_id,
             }
             self.session.record_stage("stt.empty_transcript", ok=False, error="empty_transcript", stt=stt_meta)
+            self.session.write_track_recording_manifest("stt.empty_transcript")
             return
         if stt_meta.get("finalTranscriptSource") == "rtc_asr_interim_fallback":
             self.session.record_stage(
                 "stt.transcript_recovered_from_interim",
                 transcript=transcript,
+                confidence="provisional",
+                selectionPolicy=stt_meta.get("interimFallbackSelection"),
                 stt=stt_meta,
             )
         self.session.record_stage("stt.transcript_final", transcript=transcript, stt=stt_meta)
@@ -1409,12 +1457,83 @@ class RtcAsrTurnProcessor(FrameProcessor):
         if direction != FrameDirection.DOWNSTREAM or not isinstance(frame, InputAudioRawFrame):
             await self.push_frame(frame, direction)
             return
-        pcm = frame.audio
+        source_pcm = frame.audio
+        if not source_pcm:
+            return
+        raw_sample_rate = getattr(frame, "sample_rate", None)
+        try:
+            source_sample_rate = int(raw_sample_rate)
+        except (TypeError, ValueError):
+            self.session.record_stage(
+                "audio.sample_rate_invalid",
+                ok=False,
+                severity="error",
+                error="invalid_input_sample_rate",
+                receivedSampleRate=str(raw_sample_rate),
+                targetSampleRate=INPUT_SAMPLE_RATE,
+                action="drop_frame",
+            )
+            return
+        if source_sample_rate <= 0 or source_sample_rate > 192000:
+            self.session.record_stage(
+                "audio.sample_rate_invalid",
+                ok=False,
+                severity="error",
+                error="input_sample_rate_out_of_range",
+                receivedSampleRate=source_sample_rate,
+                targetSampleRate=INPUT_SAMPLE_RATE,
+                action="drop_frame",
+            )
+            return
+        if source_sample_rate not in self.reported_input_sample_rates:
+            requires_conversion = source_sample_rate != INPUT_SAMPLE_RATE
+            self.reported_input_sample_rates.add(source_sample_rate)
+            self.session.record_stage(
+                "audio.sample_rate_mismatch" if requires_conversion else "audio.sample_rate_contract",
+                ok=True,
+                severity="warning" if requires_conversion else "info",
+                sourceSampleRate=source_sample_rate,
+                targetSampleRate=INPUT_SAMPLE_RATE,
+                differenceHz=INPUT_SAMPLE_RATE - source_sample_rate,
+                conversionRatio=round(INPUT_SAMPLE_RATE / source_sample_rate, 4),
+                corrected=requires_conversion,
+                action="stateful_pcm16_resample" if requires_conversion else "passthrough",
+                reason="transport_clock_differs_from_rtc_asr_contract" if requires_conversion else "transport_clock_matches_rtc_asr_contract",
+            )
+        if source_sample_rate == INPUT_SAMPLE_RATE:
+            pcm = source_pcm
+            self.input_resample_state = None
+            self.input_resample_source_rate = source_sample_rate
+        else:
+            if self.input_resample_source_rate != source_sample_rate:
+                self.input_resample_state = None
+                self.input_resample_source_rate = source_sample_rate
+            try:
+                pcm, self.input_resample_state = audioop.ratecv(
+                    source_pcm,
+                    SAMPLE_WIDTH_BYTES,
+                    1,
+                    source_sample_rate,
+                    INPUT_SAMPLE_RATE,
+                    self.input_resample_state,
+                )
+            except audioop.error as exc:
+                self.session.record_stage(
+                    "audio.sample_rate_conversion_failed",
+                    ok=False,
+                    severity="error",
+                    error="pcm16_resample_failed",
+                    sourceSampleRate=source_sample_rate,
+                    targetSampleRate=INPUT_SAMPLE_RATE,
+                    detail=str(exc),
+                    action="drop_frame",
+                )
+                return
         if not pcm:
             return
         self.session.record_caller_track(
             pcm,
-            sample_rate=getattr(frame, "sample_rate", INPUT_SAMPLE_RATE),
+            sample_rate=INPUT_SAMPLE_RATE,
             event_id=f"caller-frame-{len(self.session.stage_events) + 1}",
         )
         rms = audioop.rms(pcm, SAMPLE_WIDTH_BYTES)
@@ -1427,7 +1546,9 @@ class RtcAsrTurnProcessor(FrameProcessor):
                 rms=rms,
                 frameBytes=len(pcm),
                 frameMs=frame_ms,
-                sampleRate=getattr(frame, "sample_rate", INPUT_SAMPLE_RATE),
+                sampleRate=INPUT_SAMPLE_RATE,
+                sourceSampleRate=source_sample_rate,
+                resampled=source_sample_rate != INPUT_SAMPLE_RATE,
                 silenceThresholdRms=self.silence_rms,
                 inSpeech=self.in_speech,
                 collectedMs=self.collected_speech_ms(),

@@ -371,4 +371,8 @@ test("Pipecat FlowManager forbidden-claim detection only suppresses explicit neg
     includesUnsafeClaim("I cannot discuss a billing credit without operator approval.", "billing credit"),
     false,
   );
+  assert.equal(
+    includesUnsafeClaim("I can't complete this safely or promise a billing credit, so I'll connect you with a licensed retention specialist.", "billing credit"),
+    false,
+  );
 });

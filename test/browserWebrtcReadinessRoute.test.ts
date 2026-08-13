@@ -49,10 +49,19 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(sharedPipeline, /stream_rtc_asr_audio/);
   assert.match(sharedPipeline, /stt\.session_started/);
   assert.match(sharedPipeline, /stt\.transcript_interim/);
+  assert.match(sharedPipeline, /rtc_asr_best_interim_text/);
+  assert.match(sharedPipeline, /most_informative_current_utterance/);
+  assert.match(sharedPipeline, /finalTranscriptConfidence/);
   assert.match(sharedPipeline, /persistentSession/);
   assert.match(sharedPipeline, /connectionId/);
   assert.match(sharedPipeline, /close_rtc_asr_stream/);
   assert.match(sharedPipeline, /self\.session\.stream_rtc_asr_audio\(pcm\)/);
+  assert.match(sharedPipeline, /self\.input_resample_state = audioop\.ratecv\(/);
+  assert.match(sharedPipeline, /sourceSampleRate=source_sample_rate/);
+  assert.match(sharedPipeline, /audio\.sample_rate_mismatch/);
+  assert.match(sharedPipeline, /transport_clock_differs_from_rtc_asr_contract/);
+  assert.match(sharedPipeline, /audio\.sample_rate_conversion_failed/);
+  assert.match(sharedPipeline, /audio\.sample_rate_invalid/);
   assert.match(sharedPipeline, /self\.rtc_asr_current_audio_bytes == 0/);
   assert.match(sharedPipeline, /self\.rtc_asr_ws is not None and self\.rtc_asr_started/);
   assert.match(sharedPipeline, /begin_output_stream/);
@@ -177,7 +186,7 @@ test("persistent rtc-asr session repeats utterance lifecycle and closes promptly
   assert.equal(payload.ok, true);
   assert.equal(payload.twoTurnLifecycle, "one_connection_two_starts_two_finalizes_two_transcripts");
   assert.equal(payload.promptClose, true);
-  assert.equal(payload.emptyFinalFallback, "current_utterance_interim");
+  assert.equal(payload.emptyFinalFallback, "most_informative_current_utterance_interim");
 });
 
 test("deterministic Kokoro responses persist PCM while OpenAI responses bypass the cache", { skip: !hasOptionalPipecatRuntime }, () => {
@@ -293,6 +302,7 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
     pendingTransition: {
       from: "call_started",
       to: "diagnose",
+      path: ["diagnose"],
       reason: "caller_turn_preview",
       stagedAt: payload.activationRollbackPreviewGate.pendingTransition.stagedAt,
     },

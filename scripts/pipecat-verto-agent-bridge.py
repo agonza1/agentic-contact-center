@@ -16,14 +16,19 @@ import argparse
 import asyncio
 import binascii
 import contextlib
+import importlib
+import importlib.metadata
+import inspect
 import json
 import os
 import re
 import sys
 import time
 import wave
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import MethodType
 from typing import Any
 from uuid import uuid4
 
@@ -34,18 +39,24 @@ DEFAULT_INTRO_AUDIO_PATH = REPO_ROOT / "assets/audio/agilityfeat-intro.wav"
 DEFAULT_INTRO_TEXT = "Hello, you are calling AgilityFeat."
 if LOCAL_RUNTIME_PATH.exists():
     sys.path.insert(0, str(LOCAL_RUNTIME_PATH))
+    nltk_data_path = LOCAL_RUNTIME_PATH / "nltk_data"
+    nltk_data_path.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("NLTK_DATA", str(nltk_data_path))
 sys.path.insert(0, str(SCRIPTS_PATH))
 
 try:
+    # NLTK's dependency guard treats the repo cwd as unsafe while Pipecat imports
+    # regex from the local target runtime. Prime regex without changing cwd.
+    importlib.import_module("regex")
     import websockets
     from OpenSSL import SSL
     from aiortc import RTCCertificate, RTCSessionDescription
     from aiortc.rtcdtlstransport import RTCDtlsTransport
+    from aiohttp import web
     from cryptography import x509
     from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import rsa
-    from aiohttp import web
     from pipecat.frames.frames import TTSAudioRawFrame, TTSStartedFrame, TTSStoppedFrame
     from pipecat.pipeline.runner import PipelineRunner
     from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -208,32 +219,10 @@ def run_sdp_normalization_self_test() -> int:
     return 0 if ok else 2
 
 
-async def create_verto_passive_answer(self: Any, sdp: str, type: str) -> None:
-    """Create a FreeSWITCH-compatible answer with aiortc acting as DTLS server."""
-    if os.environ.get("FREESWITCH_VERTO_DTLS_CERTIFICATE", "ecdsa").strip().lower() == "rsa":
-        self._pc._RTCPeerConnection__certificates = [_create_rsa_certificate()]
-    offer = RTCSessionDescription(sdp=normalize_verto_offer_sdp(sdp), type=type)
-    await self._pc.setRemoteDescription(offer)
-    for transceiver in getattr(self._pc, "_RTCPeerConnection__transceivers", []):
-        transceiver.receiver.transport._set_role("server")
-    sctp = getattr(self._pc, "_RTCPeerConnection__sctp", None)
-    if sctp is not None:
-        sctp.transport._set_role("server")
-    self.force_transceivers_to_send_recv()
-    local_answer = await self._pc.createAnswer()
-    await self._pc.setLocalDescription(local_answer)
-    self._answer = self._pc.localDescription
-
-
-async def create_verto_active_rsa_answer(self: Any, sdp: str, type: str) -> None:
-    """Create an answer with aiortc as RSA-capable DTLS client."""
-    self._pc._RTCPeerConnection__certificates = [_create_rsa_certificate()]
-    offer = RTCSessionDescription(sdp=normalize_verto_offer_sdp(sdp), type=type)
-    await self._pc.setRemoteDescription(offer)
-    self.force_transceivers_to_send_recv()
-    local_answer = await self._pc.createAnswer()
-    await self._pc.setLocalDescription(local_answer)
-    self._answer = self._pc.localDescription
+def normalize_verto_rtp_packet(data: bytes) -> bytes:
+    if len(data) >= 12 and data[0] >> 6 == 2 and data[1] & 0x7F == 0:
+        return data[:1] + bytes([data[1] & 0x7F]) + data[2:]
+    return data
 
 
 class _RsaRtcCertificate(RTCCertificate):
@@ -268,53 +257,199 @@ def _create_rsa_certificate() -> _RsaRtcCertificate:
     return _RsaRtcCertificate(key=key, cert=certificate)
 
 
-async def _flush_verto_dtls_datagrams(self: Any) -> None:
+async def _flush_all_pending_ssl_datagrams(dtls: Any) -> None:
     """Drain every DTLS datagram OpenSSL queued for the FreeSWITCH peer."""
     while True:
         try:
-            data = self._ssl.bio_read(1500)
+            data = dtls._ssl.bio_read(1500)
         except SSL.Error:
             return
         if not data:
             return
-        await self.transport._send(data)
-        self._RTCDtlsTransport__tx_bytes += len(data)
-        self._RTCDtlsTransport__tx_packets += 1
+        await dtls.transport._send(data)
+        dtls._RTCDtlsTransport__tx_bytes += len(data)
+        dtls._RTCDtlsTransport__tx_packets += 1
 
 
-_original_send_rtp = RTCDtlsTransport._send_rtp
+def assert_verto_webrtc_compatibility() -> None:
+    expected_versions = {"pipecat-ai": "1.7.0", "aiortc": "1.14.0"}
+    mismatched_versions = {
+        package: importlib.metadata.version(package)
+        for package, expected in expected_versions.items()
+        if importlib.metadata.version(package) != expected
+    }
+    required_connection_methods = {
+        "_create_answer",
+        "disconnect",
+        "force_transceivers_to_send_recv",
+        "initialize",
+        "renegotiate",
+        "get_answer",
+    }
+    missing_connection_methods = [
+        name for name in sorted(required_connection_methods)
+        if not callable(getattr(SmallWebRTCConnection, name, None))
+    ]
+    required_dtls_methods = {"_write_ssl", "_send_rtp"}
+    missing_dtls_methods = [
+        name for name in sorted(required_dtls_methods)
+        if not callable(getattr(RTCDtlsTransport, name, None))
+    ]
+    request_handler_params = set(inspect.signature(SmallWebRTCRequestHandler).parameters)
+    missing_request_handler_params = [
+        name for name in ("ice_servers", "esp32_mode", "host", "connection_mode")
+        if name not in request_handler_params
+    ]
+    if mismatched_versions or missing_connection_methods or missing_dtls_methods or missing_request_handler_params:
+        raise RuntimeError(
+            "Unsupported Pipecat/Verto WebRTC runtime. "
+            f"expectedVersions={expected_versions} "
+            f"mismatchedVersions={mismatched_versions} "
+            f"missingConnectionMethods={missing_connection_methods} "
+            f"missingDtlsMethods={missing_dtls_methods} "
+            f"missingRequestHandlerParams={missing_request_handler_params}"
+        )
 
 
-def normalize_verto_rtp_packet(data: bytes) -> bytes:
-    if len(data) >= 12 and data[0] >> 6 == 2 and data[1] & 0x7F == 0:
-        return data[:1] + bytes([data[1] & 0x7F]) + data[2:]
-    return data
+class FreeSwitchWebRTCConnection(SmallWebRTCConnection):
+    """Verto-specific WebRTC connection scoped to FreeSWITCH agent-leg calls.
 
-
-async def _send_verto_rtp_without_repeated_audio_marker(self: Any, data: bytes) -> None:
-    """Avoid marking every G.711 packet as a new talkspurt.
-
-    aiortc sets the RTP marker on the last payload emitted for each encoded
-    frame. G.711 emits one payload per frame, so that marks every packet.
-    FreeSWITCH treats each marker as a jitter-buffer reset and otherwise drops
-    almost all Pipecat return audio. The Verto leg is PCMU payload type 0, so
-    clear that marker before SRTP protection.
+    Pipecat 1.7.0 does not expose public hooks for the DTLS certificate/role or
+    G.711 RTP marker behavior FreeSWITCH needs, so this subclass keeps the
+    compatibility work on the Verto connection instance instead of mutating
+    Pipecat or aiortc classes for the whole process.
     """
-    await _original_send_rtp(self, normalize_verto_rtp_packet(data))
+
+    def _set_rsa_certificate_for_free_switch(self) -> None:
+        self._pc._RTCPeerConnection__certificates = [_create_rsa_certificate()]
+
+    def _force_dtls_server_role_for_free_switch(self) -> None:
+        for transceiver in getattr(self._pc, "_RTCPeerConnection__transceivers", []):
+            transceiver.receiver.transport._set_role("server")
+        sctp = getattr(self._pc, "_RTCPeerConnection__sctp", None)
+        if sctp is not None:
+            sctp.transport._set_role("server")
+
+    def _free_switch_dtls_transports(self) -> list[Any]:
+        transports: list[Any] = []
+        for transceiver in self._pc.getTransceivers():
+            for owner in (getattr(transceiver, "receiver", None), getattr(transceiver, "sender", None)):
+                transport = getattr(owner, "transport", None)
+                if transport is not None and transport not in transports:
+                    transports.append(transport)
+        sctp = getattr(self._pc, "_RTCPeerConnection__sctp", None)
+        sctp_transport = getattr(sctp, "transport", None)
+        if sctp_transport is not None and sctp_transport not in transports:
+            transports.append(sctp_transport)
+        return transports
+
+    def _install_free_switch_dtls_hooks(self) -> None:
+        async def flush_all_ssl_datagrams(dtls: Any) -> None:
+            await _flush_all_pending_ssl_datagrams(dtls)
+
+        for transport in self._free_switch_dtls_transports():
+            if getattr(transport, "_acc_verto_hooks_installed", False):
+                continue
+            original_send_rtp = transport._send_rtp
+
+            async def send_rtp_without_repeated_audio_marker(
+                dtls: Any,
+                data: bytes,
+                *,
+                send_rtp: Any = original_send_rtp,
+            ) -> None:
+                await send_rtp(normalize_verto_rtp_packet(data))
+
+            transport._write_ssl = MethodType(flush_all_ssl_datagrams, transport)
+            transport._send_rtp = MethodType(send_rtp_without_repeated_audio_marker, transport)
+            transport._acc_verto_hooks_installed = True
+
+    async def _create_answer(self, sdp: str, type: str) -> None:
+        """Create a FreeSWITCH-compatible answer without process-global patches."""
+        if os.environ.get("FREESWITCH_VERTO_DTLS_CERTIFICATE", "rsa").strip().lower() == "rsa":
+            self._set_rsa_certificate_for_free_switch()
+        offer = RTCSessionDescription(sdp=normalize_verto_offer_sdp(sdp), type=type)
+        await self._pc.setRemoteDescription(offer)
+        if os.environ.get("FREESWITCH_VERTO_DTLS_ROLE", "active").strip().lower() == "passive":
+            self._force_dtls_server_role_for_free_switch()
+        self.force_transceivers_to_send_recv()
+        local_answer = await self._pc.createAnswer()
+        await self._pc.setLocalDescription(local_answer)
+        self._install_free_switch_dtls_hooks()
+        self._answer = self._pc.localDescription
 
 
-RTCDtlsTransport._write_ssl = _flush_verto_dtls_datagrams
-RTCDtlsTransport._send_rtp = _send_verto_rtp_without_repeated_audio_marker
+class FreeSwitchSmallWebRTCRequestHandler(SmallWebRTCRequestHandler):
+    """SmallWebRTC request handler that creates Verto-specific connections."""
+
+    async def handle_web_request(
+        self,
+        request: SmallWebRTCRequest,
+        webrtc_connection_callback: Callable[[Any], Awaitable[None]],
+    ) -> dict[str, str] | None:
+        pc_id = request.pc_id
+        self._check_single_connection_constraints(pc_id)
+        existing_connection = self._pcs_map.get(pc_id) if pc_id else None
+
+        if existing_connection:
+            pipecat_connection = existing_connection
+            await pipecat_connection.renegotiate(
+                sdp=request.sdp,
+                type=request.type,
+                restart_pc=request.restart_pc or False,
+            )
+        else:
+            pipecat_connection = FreeSwitchWebRTCConnection(ice_servers=self._ice_servers)
+            await pipecat_connection.initialize(sdp=request.sdp, type=request.type)
+
+            @pipecat_connection.event_handler("closed")
+            async def discard_closed_peer(webrtc_connection: SmallWebRTCConnection) -> None:
+                self._pcs_map.pop(webrtc_connection.pc_id, None)
+
+            try:
+                await webrtc_connection_callback(pipecat_connection)
+            except Exception as exc:
+                print(
+                    json.dumps(
+                        {
+                            "type": "verto.connection_callback.error",
+                            "at": now_iso(),
+                            "pcId": pipecat_connection.pc_id,
+                            "error": str(exc),
+                        }
+                    ),
+                    flush=True,
+                )
+                try:
+                    await pipecat_connection.disconnect()
+                except Exception as close_exc:
+                    print(
+                        json.dumps(
+                            {
+                                "type": "verto.connection_callback.close_failed",
+                                "at": now_iso(),
+                                "pcId": pipecat_connection.pc_id,
+                                "error": str(close_exc),
+                            }
+                        ),
+                        flush=True,
+                    )
+                raise
+
+        answer = pipecat_connection.get_answer()
+        if answer is None:
+            raise RuntimeError("FreeSwitchWebRTCConnection produced no SDP answer")
+        if self._esp32_mode:
+            from pipecat.runner.utils import smallwebrtc_sdp_munging
+
+            answer["sdp"] = smallwebrtc_sdp_munging(answer["sdp"], self._host)
+        self._pcs_map[answer["pc_id"]] = pipecat_connection
+        return answer
 
 
-if os.environ.get("FREESWITCH_VERTO_DTLS_ROLE", "active").strip().lower() == "passive":
-    SmallWebRTCConnection._create_answer = create_verto_passive_answer
-else:
-    SmallWebRTCConnection._create_answer = create_verto_active_rsa_answer
-
-
-class VertoAgentBridge:
+class FreeSwitchVertoSignalingAdapter:
     def __init__(self, *, verto_url: str, login: str, password: str, acc_url: str, proof_out: str | None = None) -> None:
+        assert_verto_webrtc_compatibility()
         self.verto_url = verto_url
         self.login = login
         self.password = password
@@ -329,7 +464,7 @@ class VertoAgentBridge:
         self.invite_count = 0
         self.websocket: Any = None
         self._rpc_id = 0
-        self.request_handler = SmallWebRTCRequestHandler(host="127.0.0.1")
+        self.request_handler = FreeSwitchSmallWebRTCRequestHandler(host="127.0.0.1")
         self.sessions: dict[str, dict[str, Any]] = {}
         self.pipeline_evidence: dict[str, dict[str, Any]] = {}
 
@@ -952,14 +1087,17 @@ class VertoAgentBridge:
         )
         session.hold_caller_turns("prerecorded_greeting_evidence_pending")
         # FreeSWITCH's Verto leg negotiates PCMU/8 kHz for the local SIP demo.
-        # Make Pipecat resample before audio reaches aiortc so the WebRTC sender
-        # does not have to convert a 24 kHz raw track inside the G.711 encoder.
+        # Preserve that native input clock here and let RtcAsrTurnProcessor do
+        # the one explicit normalization to the 16 kHz rtc-asr contract. Asking
+        # the WebRTC transport to relabel/resample this leg caused Linphone
+        # speech to arrive at the recognizer stretched to roughly half speed.
+        audio_in_sample_rate = int(os.environ.get("ACC_VERTO_AUDIO_IN_SAMPLE_RATE", "8000"))
         audio_out_sample_rate = int(os.environ.get("ACC_VERTO_AUDIO_OUT_SAMPLE_RATE", "8000"))
         transport = SmallWebRTCTransport(
             webrtc_connection=connection,
             params=TransportParams(
                 audio_in_enabled=True,
-                audio_in_sample_rate=INPUT_SAMPLE_RATE,
+                audio_in_sample_rate=audio_in_sample_rate,
                 audio_in_channels=1,
                 audio_in_passthrough=True,
                 audio_out_enabled=True,
@@ -976,7 +1114,7 @@ class VertoAgentBridge:
         task = PipelineTask(
             pipeline,
             params=PipelineParams(
-                audio_in_sample_rate=INPUT_SAMPLE_RATE,
+                audio_in_sample_rate=audio_in_sample_rate,
                 audio_out_sample_rate=audio_out_sample_rate,
             ),
             enable_rtvi=False,
@@ -1171,6 +1309,10 @@ class VertoAgentBridge:
             turn_session = session.get("turnSession")
             if isinstance(turn_session, AccVoicePipelineSession):
                 try:
+                    turn_session.write_track_recording_manifest(reason)
+                except Exception as exc:
+                    record_teardown_error("track_recording_manifest", exc)
+                try:
                     turn_session.cancel_output("verto_peer_closed")
                     await turn_session.close_rtc_asr_stream(reason)
                 except Exception as exc:
@@ -1244,6 +1386,9 @@ class VertoAgentBridge:
         app.router.add_get("/health", self.health)
         app.router.add_get("/api/verto/readiness", self.health)
         return app
+
+
+VertoAgentBridge = FreeSwitchVertoSignalingAdapter
 
 
 async def run_server(bridge: VertoAgentBridge, host: str, port: int) -> None:

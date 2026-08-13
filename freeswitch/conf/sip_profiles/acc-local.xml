@@ -17,9 +17,8 @@
     <param name="sip-ip" value="$${local_ip_v4}"/>
     <param name="rtp-ip" value="$${local_ip_v4}"/>
     <param name="ext-sip-ip" value="127.0.0.1"/>
-    <!-- Compose translates host 5060 to this profile's container port 5062.
-         Advertise the host port in Contact/Via so ACK and BYE return through
-         the published mapping instead of targeting unpublished host 5062. -->
+    <!-- Compose publishes this profile on the same host port. Advertise 5060
+         in Contact/Via so ACK and BYE return through the host-only mapping. -->
     <param name="ext-sip-port" value="5060"/>
     <param name="ext-rtp-ip" value="127.0.0.1"/>
     <param name="auth-calls" value="false"/>

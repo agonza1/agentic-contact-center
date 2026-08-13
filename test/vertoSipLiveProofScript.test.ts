@@ -1,12 +1,53 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const optionalPipecatRuntime = path.resolve(__dirname, "..", "..", ".pipecat-runtime");
+
+function pipecatRuntimeImportOk(repoRoot: string) {
+  if (!existsSync(path.join(repoRoot, ".pipecat-runtime"))) return false;
+  try {
+    execFileSync(
+      "python3",
+      [
+        "-P",
+        "-c",
+        [
+          "import sys",
+          "from pathlib import Path",
+          "root = Path(sys.argv[1])",
+          "sys.path.insert(0, str(root / '.pipecat-runtime'))",
+          "import regex",
+          "import regex._regex",
+          "import aiortc",
+          "import pipecat",
+          "print('ok')",
+        ].join("; "),
+        repoRoot,
+      ],
+      { cwd: tmpdir(), timeout: 20_000, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureUsablePipecatRuntime(repoRoot: string) {
+  if (pipecatRuntimeImportOk(repoRoot)) return true;
+  if (!existsSync(path.join(repoRoot, ".pipecat-runtime"))) return false;
+  await execFileAsync(
+    "npm",
+    ["run", "pipecat:webrtc:install"],
+    { cwd: repoRoot, timeout: 240_000, encoding: "utf8" },
+  );
+  return pipecatRuntimeImportOk(repoRoot);
+}
 
 test("Verto SIP live proof self-test validates digest, SDP, and RTP packet helpers", async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
@@ -45,6 +86,9 @@ test("Verto SIP proof requires transcript-backed non-silent caller playback", ()
   const script = readFileSync("scripts/verto-sip-live-proof.mjs", "utf8").replaceAll("\r\n", "\n");
 
   assert.match(script, /--caller-audio/);
+  assert.match(script, /--workboard-card/);
+  assert.match(script, /ACC_WORKBOARD_CARD/);
+  assert.match(script, /workboardCard: this\.options\.workboardCard/);
   assert.match(script, /--tail-silence-ms/);
   assert.match(script, /stt\.transcript_final/);
   assert.match(script, /snapshot\?\.lastEvidence\?\.callerTranscript/);
@@ -178,11 +222,16 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.match(bridge, /await self\.end_acc_call\(call_id, reason="verto_pipeline_start_failed", linked_sip_call_id=linked_sip_call_id\)/);
   const closeSessionIndex = bridge.indexOf("async def close_session");
   const closeRtcAsrIndex = bridge.indexOf("await turn_session.close_rtc_asr_stream(reason)", closeSessionIndex);
+  const recordingManifestIndex = bridge.indexOf("turn_session.write_track_recording_manifest(reason)", closeSessionIndex);
+  const cancelOutputIndex = bridge.indexOf('turn_session.cancel_output("verto_peer_closed")', closeSessionIndex);
   const closeEndCallIndex = bridge.indexOf("await self.end_acc_call(", closeRtcAsrIndex);
   const closeEndCallBlock = bridge.slice(closeEndCallIndex, closeEndCallIndex + 360);
   assert.ok(closeSessionIndex >= 0);
+  assert.ok(recordingManifestIndex > closeSessionIndex);
+  assert.ok(cancelOutputIndex > recordingManifestIndex);
   assert.ok(closeRtcAsrIndex > closeSessionIndex);
   assert.ok(closeEndCallIndex > closeRtcAsrIndex);
+  assert.match(bridge.slice(recordingManifestIndex, cancelOutputIndex), /record_teardown_error\("track_recording_manifest", exc\)/);
   assert.match(bridge.slice(closeSessionIndex, closeEndCallIndex), /record_teardown_error\("runner_task", exc\)/);
   assert.match(bridge.slice(closeSessionIndex, closeEndCallIndex), /finally:\n\s+if teardown_errors:/);
   assert.match(closeEndCallBlock, /linked_sip_call_id=linked_sip_call_id/);
@@ -193,8 +242,45 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.match(closePrewarmCancelBlock, /await prewarm_task/);
 });
 
-test("Verto bridge scopes call artifact rewrites and lastError", { skip: !existsSync(".pipecat-runtime") }, async () => {
+test("Verto bridge scopes FreeSWITCH compatibility hooks to its connection instances", () => {
+  const bridge = readFileSync("scripts/pipecat-verto-agent-bridge.py", "utf8");
+  const browserBridge = readFileSync("scripts/pipecat-browser-webrtc-bridge.py", "utf8");
+
+  assert.match(bridge, /class FreeSwitchVertoSignalingAdapter|class VertoAgentBridge/);
+  assert.match(bridge, /class FreeSwitchWebRTCConnection\(SmallWebRTCConnection\):/);
+  assert.match(bridge, /class FreeSwitchSmallWebRTCRequestHandler\(SmallWebRTCRequestHandler\):/);
+  assert.match(bridge, /self\.request_handler = FreeSwitchSmallWebRTCRequestHandler\(host="127\.0\.0\.1"\)/);
+  assert.match(bridge, /def assert_verto_webrtc_compatibility\(\) -> None:/);
+  assert.match(bridge, /"pipecat-ai": "1\.7\.0"/);
+  assert.match(bridge, /"aiortc": "1\.14\.0"/);
+  assert.doesNotMatch(bridge, /SmallWebRTCConnection\._create_answer\s*=/);
+  assert.doesNotMatch(bridge, /RTCDtlsTransport\._write_ssl\s*=/);
+  assert.doesNotMatch(bridge, /RTCDtlsTransport\._send_rtp\s*=/);
+  assert.match(bridge, /transport\._write_ssl = MethodType\(flush_all_ssl_datagrams, transport\)/);
+  assert.match(bridge, /transport\._send_rtp = MethodType\(send_rtp_without_repeated_audio_marker, transport\)/);
+  assert.match(bridge, /await send_rtp\(normalize_verto_rtp_packet\(data\)\)/);
+  assert.match(bridge, /FREESWITCH_VERTO_DTLS_CERTIFICATE/);
+  assert.match(bridge, /FREESWITCH_VERTO_DTLS_ROLE/);
+  assert.match(bridge, /await _flush_all_pending_ssl_datagrams\(dtls\)/);
+  assert.match(browserBridge, /self\.request_handler = SmallWebRTCRequestHandler\(host=host\)/);
+  assert.doesNotMatch(browserBridge, /FreeSwitchSmallWebRTCRequestHandler|FreeSwitchWebRTCConnection/);
+});
+
+test("Verto request handler propagates pipeline callback failures", () => {
+  const bridge = readFileSync("scripts/pipecat-verto-agent-bridge.py", "utf8");
+  const callbackStart = bridge.indexOf("await webrtc_connection_callback(pipecat_connection)");
+  const callbackFailureBlock = bridge.slice(callbackStart, callbackStart + 1_400);
+
+  assert.ok(callbackStart >= 0);
+  assert.match(callbackFailureBlock, /"type": "verto\.connection_callback\.error"/);
+  assert.match(callbackFailureBlock, /await pipecat_connection\.disconnect\(\)/);
+  assert.match(callbackFailureBlock, /"type": "verto\.connection_callback\.close_failed"/);
+  assert.match(callbackFailureBlock, /\n\s+raise\n/);
+});
+
+test("Verto bridge scopes call artifact rewrites and lastError", { skip: !existsSync(optionalPipecatRuntime), timeout: 260_000 }, async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
+  assert.equal(await ensureUsablePipecatRuntime(repoRoot), true);
   const { stdout } = await execFileAsync(
     "python3",
     ["-P", path.join(repoRoot, "test/fixtures/verto_bridge_artifact_regression.py")],
@@ -211,8 +297,9 @@ test("Verto bridge scopes call artifact rewrites and lastError", { skip: !exists
   assert.equal(summary.callBStage, "updated");
 });
 
-test("Verto bridge normalizes FreeSWITCH ICE, DTLS, and G.711 RTP", { skip: !existsSync(".pipecat-runtime") }, async () => {
+test("Verto bridge normalizes FreeSWITCH ICE, DTLS, and G.711 RTP", { skip: !existsSync(optionalPipecatRuntime), timeout: 260_000 }, async () => {
   const repoRoot = path.resolve(__dirname, "..", "..");
+  assert.equal(await ensureUsablePipecatRuntime(repoRoot), true);
   const { stdout } = await execFileAsync(
     "python3",
     ["-P", path.join(repoRoot, "scripts/pipecat-verto-agent-bridge.py"), "--sdp-normalization-self-test"],

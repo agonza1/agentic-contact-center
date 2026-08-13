@@ -7,11 +7,14 @@ import path from "node:path";
 
 test("ACC Pipecat pipeline wires caller and agent audio into separate track recorder", () => {
   const pipeline = readFileSync("scripts/acc_pipecat_voice_pipeline.py", "utf8");
+  const vertoBridge = readFileSync("scripts/pipecat-verto-agent-bridge.py", "utf8");
   assert.match(pipeline, /SeparateTrackRecorder/);
   assert.match(pipeline, /record_caller_track/);
   assert.match(pipeline, /record_agent_track/);
   assert.match(pipeline, /write_track_recording_manifest\("tts\.stream_completed"\)/);
+  assert.match(pipeline, /write_track_recording_manifest\("stt\.empty_transcript"\)/);
   assert.match(pipeline, /trackRecordings/);
+  assert.match(vertoBridge, /turn_session\.write_track_recording_manifest\(reason\)/);
 });
 
 test("track recording proof emits caller, agent, and mixed WAV artifacts", () => {
