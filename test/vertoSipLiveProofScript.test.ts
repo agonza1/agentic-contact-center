@@ -222,11 +222,16 @@ test("Verto bridge records live rtc-asr, deferred greeting, barge-in output, and
   assert.match(bridge, /await self\.end_acc_call\(call_id, reason="verto_pipeline_start_failed", linked_sip_call_id=linked_sip_call_id\)/);
   const closeSessionIndex = bridge.indexOf("async def close_session");
   const closeRtcAsrIndex = bridge.indexOf("await turn_session.close_rtc_asr_stream(reason)", closeSessionIndex);
+  const recordingManifestIndex = bridge.indexOf("turn_session.write_track_recording_manifest(reason)", closeSessionIndex);
+  const cancelOutputIndex = bridge.indexOf('turn_session.cancel_output("verto_peer_closed")', closeSessionIndex);
   const closeEndCallIndex = bridge.indexOf("await self.end_acc_call(", closeRtcAsrIndex);
   const closeEndCallBlock = bridge.slice(closeEndCallIndex, closeEndCallIndex + 360);
   assert.ok(closeSessionIndex >= 0);
+  assert.ok(recordingManifestIndex > closeSessionIndex);
+  assert.ok(cancelOutputIndex > recordingManifestIndex);
   assert.ok(closeRtcAsrIndex > closeSessionIndex);
   assert.ok(closeEndCallIndex > closeRtcAsrIndex);
+  assert.match(bridge.slice(recordingManifestIndex, cancelOutputIndex), /record_teardown_error\("track_recording_manifest", exc\)/);
   assert.match(bridge.slice(closeSessionIndex, closeEndCallIndex), /record_teardown_error\("runner_task", exc\)/);
   assert.match(bridge.slice(closeSessionIndex, closeEndCallIndex), /finally:\n\s+if teardown_errors:/);
   assert.match(closeEndCallBlock, /linked_sip_call_id=linked_sip_call_id/);
@@ -264,10 +269,12 @@ test("Verto bridge scopes FreeSWITCH compatibility hooks to its connection insta
 test("Verto request handler propagates pipeline callback failures", () => {
   const bridge = readFileSync("scripts/pipecat-verto-agent-bridge.py", "utf8");
   const callbackStart = bridge.indexOf("await webrtc_connection_callback(pipecat_connection)");
-  const callbackFailureBlock = bridge.slice(callbackStart, callbackStart + 640);
+  const callbackFailureBlock = bridge.slice(callbackStart, callbackStart + 1_400);
 
   assert.ok(callbackStart >= 0);
   assert.match(callbackFailureBlock, /"type": "verto\.connection_callback\.error"/);
+  assert.match(callbackFailureBlock, /await pipecat_connection\.disconnect\(\)/);
+  assert.match(callbackFailureBlock, /"type": "verto\.connection_callback\.close_failed"/);
   assert.match(callbackFailureBlock, /\n\s+raise\n/);
 });
 

@@ -13,7 +13,7 @@
     <param name="sip-trace" value="no"/>
     <param name="context" value="default"/>
     <param name="dialplan" value="XML"/>
-    <param name="sip-port" value="5060"/>
+    <param name="sip-port" value="5062"/>
     <param name="sip-ip" value="$${local_ip_v4}"/>
     <param name="rtp-ip" value="$${local_ip_v4}"/>
     <param name="ext-sip-ip" value="127.0.0.1"/>

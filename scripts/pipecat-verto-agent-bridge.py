@@ -280,6 +280,7 @@ def assert_verto_webrtc_compatibility() -> None:
     }
     required_connection_methods = {
         "_create_answer",
+        "disconnect",
         "force_transceivers_to_send_recv",
         "initialize",
         "renegotiate",
@@ -419,6 +420,20 @@ class FreeSwitchSmallWebRTCRequestHandler(SmallWebRTCRequestHandler):
                     ),
                     flush=True,
                 )
+                try:
+                    await pipecat_connection.disconnect()
+                except Exception as close_exc:
+                    print(
+                        json.dumps(
+                            {
+                                "type": "verto.connection_callback.close_failed",
+                                "at": now_iso(),
+                                "pcId": pipecat_connection.pc_id,
+                                "error": str(close_exc),
+                            }
+                        ),
+                        flush=True,
+                    )
                 raise
 
         answer = pipecat_connection.get_answer()
@@ -1295,6 +1310,9 @@ class FreeSwitchVertoSignalingAdapter:
             if isinstance(turn_session, AccVoicePipelineSession):
                 try:
                     turn_session.write_track_recording_manifest(reason)
+                except Exception as exc:
+                    record_teardown_error("track_recording_manifest", exc)
+                try:
                     turn_session.cancel_output("verto_peer_closed")
                     await turn_session.close_rtc_asr_stream(reason)
                 except Exception as exc:

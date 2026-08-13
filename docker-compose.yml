@@ -95,11 +95,10 @@ services:
     depends_on:
       - app
     ports:
-      # Stable host-only Linphone ingress. The acc-local profile binds the
-      # container's bridge address on 5060 while the vanilla internal profile
-      # remains isolated on container loopback at the same port.
-      - "127.0.0.1:5060:5060/udp"
-      - "127.0.0.1:5060:5060/tcp"
+      # Stable host-only Linphone ingress. The acc-local profile uses a
+      # distinct container port so the vanilla internal profile can keep 5060.
+      - "127.0.0.1:5060:5062/udp"
+      - "127.0.0.1:5060:5062/tcp"
       - "127.0.0.1:8021:8021/tcp"
       - "127.0.0.1:8081:8081/tcp"
       - "127.0.0.1:8082:8082/tcp"
