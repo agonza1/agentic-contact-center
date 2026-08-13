@@ -53,6 +53,8 @@ test("browser WebRTC bridge uses SmallWebRTCTransport with a real Pipecat Pipeli
   assert.match(sharedPipeline, /connectionId/);
   assert.match(sharedPipeline, /close_rtc_asr_stream/);
   assert.match(sharedPipeline, /self\.session\.stream_rtc_asr_audio\(pcm\)/);
+  assert.match(sharedPipeline, /self\.input_resample_state = audioop\.ratecv\(/);
+  assert.match(sharedPipeline, /sourceSampleRate=source_sample_rate/);
   assert.match(sharedPipeline, /self\.rtc_asr_current_audio_bytes == 0/);
   assert.match(sharedPipeline, /self\.rtc_asr_ws is not None and self\.rtc_asr_started/);
   assert.match(sharedPipeline, /begin_output_stream/);

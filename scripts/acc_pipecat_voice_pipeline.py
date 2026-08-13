@@ -1323,6 +1323,8 @@ class RtcAsrTurnProcessor(FrameProcessor):
         self.last_audio_report_at = 0.0
         self.silence_finalize_task: asyncio.Task[None] | None = None
         self.finalize_lock = asyncio.Lock()
+        self.input_resample_state: tuple[Any, ...] | None = None
+        self.input_resample_source_rate: int | None = None
         self.turn_controls = PipecatTurnControls(session, self.interrupt_output)
         self.session.turn_controls = self.turn_controls
 
@@ -1402,6 +1404,7 @@ class RtcAsrTurnProcessor(FrameProcessor):
                 "callId": self.session.call_id,
             }
             self.session.record_stage("stt.empty_transcript", ok=False, error="empty_transcript", stt=stt_meta)
+            self.session.write_track_recording_manifest("stt.empty_transcript")
             return
         if stt_meta.get("finalTranscriptSource") == "rtc_asr_interim_fallback":
             self.session.record_stage(
@@ -1423,12 +1426,31 @@ class RtcAsrTurnProcessor(FrameProcessor):
         if direction != FrameDirection.DOWNSTREAM or not isinstance(frame, InputAudioRawFrame):
             await self.push_frame(frame, direction)
             return
-        pcm = frame.audio
+        source_pcm = frame.audio
+        if not source_pcm:
+            return
+        source_sample_rate = int(getattr(frame, "sample_rate", INPUT_SAMPLE_RATE) or INPUT_SAMPLE_RATE)
+        if source_sample_rate == INPUT_SAMPLE_RATE:
+            pcm = source_pcm
+            self.input_resample_state = None
+            self.input_resample_source_rate = source_sample_rate
+        else:
+            if self.input_resample_source_rate != source_sample_rate:
+                self.input_resample_state = None
+                self.input_resample_source_rate = source_sample_rate
+            pcm, self.input_resample_state = audioop.ratecv(
+                source_pcm,
+                SAMPLE_WIDTH_BYTES,
+                1,
+                source_sample_rate,
+                INPUT_SAMPLE_RATE,
+                self.input_resample_state,
+            )
         if not pcm:
             return
         self.session.record_caller_track(
             pcm,
-            sample_rate=getattr(frame, "sample_rate", INPUT_SAMPLE_RATE),
+            sample_rate=INPUT_SAMPLE_RATE,
             event_id=f"caller-frame-{len(self.session.stage_events) + 1}",
         )
         rms = audioop.rms(pcm, SAMPLE_WIDTH_BYTES)
@@ -1441,7 +1463,9 @@ class RtcAsrTurnProcessor(FrameProcessor):
                 rms=rms,
                 frameBytes=len(pcm),
                 frameMs=frame_ms,
-                sampleRate=getattr(frame, "sample_rate", INPUT_SAMPLE_RATE),
+                sampleRate=INPUT_SAMPLE_RATE,
+                sourceSampleRate=source_sample_rate,
+                resampled=source_sample_rate != INPUT_SAMPLE_RATE,
                 silenceThresholdRms=self.silence_rms,
                 inSpeech=self.in_speech,
                 collectedMs=self.collected_speech_ms(),

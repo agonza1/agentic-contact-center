@@ -288,6 +288,7 @@ services:
       POCKET_TTS_SPEECH_PATH: ${POCKET_TTS_SPEECH_PATH:-/v1/audio/speech}
       KOKORO_BASE_URL: http://kokoro:8880
       ACC_TTS_CACHE_DIR: ${ACC_TTS_CACHE_DIR:-/app/artifacts/tts-cache}
+      ACC_TRACK_RECORDINGS_DIR: ${ACC_TRACK_RECORDINGS_DIR:-/app/artifacts/freeswitch-live/tracks}
       FREESWITCH_VERTO_URL: ws://freeswitch:8081
       FREESWITCH_VERTO_LOGIN: acc-pipecat@127.0.0.1
       FREESWITCH_VERTO_PASSWORD: local-verto-pass
@@ -302,6 +303,9 @@ services:
       ACC_TTS_OUTPUT_CHUNK_YIELD_MS: ${ACC_TTS_OUTPUT_CHUNK_YIELD_MS:-20}
       ACC_TTS_EVIDENCE_EVERY_N_CHUNKS: ${ACC_TTS_EVIDENCE_EVERY_N_CHUNKS:-50}
       ACC_TTS_REQUEST_TIMEOUT_SEC: ${ACC_TTS_REQUEST_TIMEOUT_SEC:-60}
+      # Keep the negotiated G.711 clock native at the transport boundary. The
+      # shared pipeline performs the single explicit 8 kHz -> 16 kHz STT conversion.
+      ACC_VERTO_AUDIO_IN_SAMPLE_RATE: ${ACC_VERTO_AUDIO_IN_SAMPLE_RATE:-8000}
       ACC_VERTO_AUDIO_OUT_SAMPLE_RATE: ${ACC_VERTO_AUDIO_OUT_SAMPLE_RATE:-8000}
       PIPECAT_VERTO_PROOF_OUT: /app/artifacts/freeswitch-live/pipecat-verto-proof.json
     healthcheck:

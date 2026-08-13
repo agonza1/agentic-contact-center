@@ -1072,14 +1072,17 @@ class FreeSwitchVertoSignalingAdapter:
         )
         session.hold_caller_turns("prerecorded_greeting_evidence_pending")
         # FreeSWITCH's Verto leg negotiates PCMU/8 kHz for the local SIP demo.
-        # Make Pipecat resample before audio reaches aiortc so the WebRTC sender
-        # does not have to convert a 24 kHz raw track inside the G.711 encoder.
+        # Preserve that native input clock here and let RtcAsrTurnProcessor do
+        # the one explicit normalization to the 16 kHz rtc-asr contract. Asking
+        # the WebRTC transport to relabel/resample this leg caused Linphone
+        # speech to arrive at the recognizer stretched to roughly half speed.
+        audio_in_sample_rate = int(os.environ.get("ACC_VERTO_AUDIO_IN_SAMPLE_RATE", "8000"))
         audio_out_sample_rate = int(os.environ.get("ACC_VERTO_AUDIO_OUT_SAMPLE_RATE", "8000"))
         transport = SmallWebRTCTransport(
             webrtc_connection=connection,
             params=TransportParams(
                 audio_in_enabled=True,
-                audio_in_sample_rate=INPUT_SAMPLE_RATE,
+                audio_in_sample_rate=audio_in_sample_rate,
                 audio_in_channels=1,
                 audio_in_passthrough=True,
                 audio_out_enabled=True,
@@ -1096,7 +1099,7 @@ class FreeSwitchVertoSignalingAdapter:
         task = PipelineTask(
             pipeline,
             params=PipelineParams(
-                audio_in_sample_rate=INPUT_SAMPLE_RATE,
+                audio_in_sample_rate=audio_in_sample_rate,
                 audio_out_sample_rate=audio_out_sample_rate,
             ),
             enable_rtvi=False,
@@ -1291,6 +1294,7 @@ class FreeSwitchVertoSignalingAdapter:
             turn_session = session.get("turnSession")
             if isinstance(turn_session, AccVoicePipelineSession):
                 try:
+                    turn_session.write_track_recording_manifest(reason)
                     turn_session.cancel_output("verto_peer_closed")
                     await turn_session.close_rtc_asr_stream(reason)
                 except Exception as exc:

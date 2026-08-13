@@ -105,9 +105,11 @@ test("Docker runtime assets keep the documented health and proof contract", () =
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*target: voice-runtime/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*scripts\/pipecat-verto-agent-bridge\.py/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*working_dir: \/tmp/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_VERTO_AUDIO_IN_SAMPLE_RATE: \$\{ACC_VERTO_AUDIO_IN_SAMPLE_RATE:-8000\}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_VERTO_AUDIO_OUT_SAMPLE_RATE: \$\{ACC_VERTO_AUDIO_OUT_SAMPLE_RATE:-8000\}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_WEBRTC_SILENCE_RMS: \$\{ACC_WEBRTC_SILENCE_RMS:-120\}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_TTS_REQUEST_TIMEOUT_SEC: \$\{ACC_TTS_REQUEST_TIMEOUT_SEC:-60\}/);
+  assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_TRACK_RECORDINGS_DIR: \$\{ACC_TRACK_RECORDINGS_DIR:-\/app\/artifacts\/freeswitch-live\/tracks\}/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_HEALTH_PATH: \/api\/pipecat-media-engine\/readiness/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*RTC_ASR_HEALTH_PATH: \/ready/);
   assert.match(compose, /pipecat-verto-bridge:\n[\s\S]*ACC_VOICE_READINESS_TIMEOUT_SEC: "3"/);
