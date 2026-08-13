@@ -186,7 +186,7 @@ test("persistent rtc-asr session repeats utterance lifecycle and closes promptly
   assert.equal(payload.ok, true);
   assert.equal(payload.twoTurnLifecycle, "one_connection_two_starts_two_finalizes_two_transcripts");
   assert.equal(payload.promptClose, true);
-  assert.equal(payload.emptyFinalFallback, "current_utterance_interim");
+  assert.equal(payload.emptyFinalFallback, "most_informative_current_utterance_interim");
 });
 
 test("deterministic Kokoro responses persist PCM while OpenAI responses bypass the cache", { skip: !hasOptionalPipecatRuntime }, () => {
@@ -302,6 +302,7 @@ test("Pipecat transport output streams chunks and flushes on barge-in", { skip: 
     pendingTransition: {
       from: "call_started",
       to: "diagnose",
+      path: ["diagnose"],
       reason: "caller_turn_preview",
       stagedAt: payload.activationRollbackPreviewGate.pendingTransition.stagedAt,
     },

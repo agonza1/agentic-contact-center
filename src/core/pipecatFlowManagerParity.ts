@@ -40,6 +40,7 @@ function hasExplicitClaimNegation(line: string, normalizedClaim: string): boolea
   const explicitNegationPatterns = [
     new RegExp(`\\bcannot\\s+discuss\\s+${optionalArticle}${claim}\\b`),
     new RegExp(`\\bcannot\\s+make\\s+an\\s+offer\\b.*\\b${claim}\\b`),
+    new RegExp(`\\b(?:cannot|can't)\\b.*\\b${claimAction}\\s+${optionalArticle}${claim}\\b`),
     new RegExp(`\\bnot\\s+${claimAction}\\s+${optionalArticle}${claim}\\b`),
     new RegExp(`\\bwithout\\s+${claimAction}\\s+${optionalArticle}${claim}\\b`),
     new RegExp(`\\binstead\\s+of\\b.*\\b${claimAction}\\s+${optionalArticle}${claim}\\b`),
