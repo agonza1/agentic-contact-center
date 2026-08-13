@@ -47,6 +47,7 @@ import {
   type OpenAiLlmTurnResult,
 } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
+import { buildToolGatewayReadiness } from "../core/toolGatewayReadiness";
 import type {
   AttentionSource,
   CallSnapshot,
@@ -5453,6 +5454,7 @@ async function routeRequest(
   if (request.method === "GET" && pathname === "/health") {
     const pipecatFlow = getPipecatPrototypeHealth();
     const browserWebRtc = buildBrowserWebrtcReadinessPayload(await probeBrowserWebrtcBridgeRuntime());
+    const toolGateway = buildToolGatewayReadiness();
     writeJson(response, 200, {
       ok: true,
       demoName: config.demoName,
@@ -5466,6 +5468,7 @@ async function routeRequest(
       runtimeSeams,
       pipecatFlow,
       browserWebRtc,
+      toolGateway,
       productionReadiness: buildProductionReadiness(config, pipecatFlow),
     });
     return;
