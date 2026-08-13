@@ -102,6 +102,17 @@ test("GET /health returns config-backed demo metadata", async () => {
       contractReady: boolean;
       liveMediaVerified: boolean;
     };
+    toolGateway: {
+      mode: string;
+      configured: boolean;
+      ready: boolean;
+      failClosed: boolean;
+      mcpUrl: string | null;
+      timeoutMs: number;
+      policyVersion: string | null;
+      blockers: string[];
+      evidence: string;
+    };
   };
 
   assert.equal(payload.ok, true);
@@ -151,4 +162,13 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.deepEqual(payload.browserWebRtc.blockers, ["live_webrtc_media_turn_evidence_missing"]);
   assert.equal(payload.browserWebRtc.contractReady, true);
   assert.equal(payload.browserWebRtc.liveMediaVerified, false);
+  assert.equal(payload.toolGateway.mode, "direct");
+  assert.equal(payload.toolGateway.configured, true);
+  assert.equal(payload.toolGateway.ready, true);
+  assert.equal(payload.toolGateway.failClosed, false);
+  assert.equal(payload.toolGateway.mcpUrl, null);
+  assert.equal(payload.toolGateway.timeoutMs, 1500);
+  assert.equal(payload.toolGateway.policyVersion, null);
+  assert.deepEqual(payload.toolGateway.blockers, []);
+  assert.match(payload.toolGateway.evidence, /no ToolHive service is required/);
 });
