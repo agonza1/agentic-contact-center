@@ -1325,6 +1325,7 @@ class RtcAsrTurnProcessor(FrameProcessor):
         self.finalize_lock = asyncio.Lock()
         self.input_resample_state: tuple[Any, ...] | None = None
         self.input_resample_source_rate: int | None = None
+        self.reported_input_sample_rates: set[int] = set()
         self.turn_controls = PipecatTurnControls(session, self.interrupt_output)
         self.session.turn_controls = self.turn_controls
 
@@ -1429,7 +1430,46 @@ class RtcAsrTurnProcessor(FrameProcessor):
         source_pcm = frame.audio
         if not source_pcm:
             return
-        source_sample_rate = int(getattr(frame, "sample_rate", INPUT_SAMPLE_RATE) or INPUT_SAMPLE_RATE)
+        raw_sample_rate = getattr(frame, "sample_rate", None)
+        try:
+            source_sample_rate = int(raw_sample_rate)
+        except (TypeError, ValueError):
+            self.session.record_stage(
+                "audio.sample_rate_invalid",
+                ok=False,
+                severity="error",
+                error="invalid_input_sample_rate",
+                receivedSampleRate=str(raw_sample_rate),
+                targetSampleRate=INPUT_SAMPLE_RATE,
+                action="drop_frame",
+            )
+            return
+        if source_sample_rate <= 0 or source_sample_rate > 192000:
+            self.session.record_stage(
+                "audio.sample_rate_invalid",
+                ok=False,
+                severity="error",
+                error="input_sample_rate_out_of_range",
+                receivedSampleRate=source_sample_rate,
+                targetSampleRate=INPUT_SAMPLE_RATE,
+                action="drop_frame",
+            )
+            return
+        if source_sample_rate not in self.reported_input_sample_rates:
+            requires_conversion = source_sample_rate != INPUT_SAMPLE_RATE
+            self.reported_input_sample_rates.add(source_sample_rate)
+            self.session.record_stage(
+                "audio.sample_rate_mismatch" if requires_conversion else "audio.sample_rate_contract",
+                ok=True,
+                severity="warning" if requires_conversion else "info",
+                sourceSampleRate=source_sample_rate,
+                targetSampleRate=INPUT_SAMPLE_RATE,
+                differenceHz=INPUT_SAMPLE_RATE - source_sample_rate,
+                conversionRatio=round(INPUT_SAMPLE_RATE / source_sample_rate, 4),
+                corrected=requires_conversion,
+                action="stateful_pcm16_resample" if requires_conversion else "passthrough",
+                reason="transport_clock_differs_from_rtc_asr_contract" if requires_conversion else "transport_clock_matches_rtc_asr_contract",
+            )
         if source_sample_rate == INPUT_SAMPLE_RATE:
             pcm = source_pcm
             self.input_resample_state = None
@@ -1438,14 +1478,27 @@ class RtcAsrTurnProcessor(FrameProcessor):
             if self.input_resample_source_rate != source_sample_rate:
                 self.input_resample_state = None
                 self.input_resample_source_rate = source_sample_rate
-            pcm, self.input_resample_state = audioop.ratecv(
-                source_pcm,
-                SAMPLE_WIDTH_BYTES,
-                1,
-                source_sample_rate,
-                INPUT_SAMPLE_RATE,
-                self.input_resample_state,
-            )
+            try:
+                pcm, self.input_resample_state = audioop.ratecv(
+                    source_pcm,
+                    SAMPLE_WIDTH_BYTES,
+                    1,
+                    source_sample_rate,
+                    INPUT_SAMPLE_RATE,
+                    self.input_resample_state,
+                )
+            except audioop.error as exc:
+                self.session.record_stage(
+                    "audio.sample_rate_conversion_failed",
+                    ok=False,
+                    severity="error",
+                    error="pcm16_resample_failed",
+                    sourceSampleRate=source_sample_rate,
+                    targetSampleRate=INPUT_SAMPLE_RATE,
+                    detail=str(exc),
+                    action="drop_frame",
+                )
+                return
         if not pcm:
             return
         self.session.record_caller_track(
