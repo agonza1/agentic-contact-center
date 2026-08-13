@@ -14,6 +14,7 @@ import hashlib
 import importlib.metadata
 import json
 import os
+import re
 import time
 import urllib.request
 from dataclasses import dataclass, field
@@ -372,6 +373,18 @@ def is_final_stt_event(event: dict[str, Any]) -> bool:
     )
 
 
+def interim_transcript_score(transcript: str) -> tuple[int, int]:
+    """Prefer the most informative current-utterance hypothesis.
+
+    Streaming recognizers revise the whole hypothesis and can regress to a
+    short fragment immediately before returning an empty final. Word count is
+    the useful first-order signal here; character count breaks ties without
+    pretending that the client has model confidence that rtc-asr did not send.
+    """
+    words = re.findall(r"[\w']+", transcript, flags=re.UNICODE)
+    return len(words), sum(len(word) for word in words)
+
+
 def resample_pcm16_mono(pcm: bytes, from_rate: int, to_rate: int) -> bytes:
     if from_rate == to_rate:
         return pcm
@@ -464,6 +477,8 @@ class AccVoicePipelineSession:
         self.rtc_asr_session_event_count = 0
         self.rtc_asr_interim_events: list[dict[str, Any]] = []
         self.rtc_asr_current_interim_text = ""
+        self.rtc_asr_best_interim_text = ""
+        self.rtc_asr_current_interim_candidates: list[str] = []
         self.turn_controls: PipecatTurnControls | None = None
         self.evidence_callback = evidence_callback
         self.pending_caller_turn_commit: dict[str, Any] | None = None
@@ -930,8 +945,8 @@ class AccVoicePipelineSession:
                 # The next audio turn must send a new start event on this connection.
                 self.rtc_asr_started = False
             final_transcript_source = "rtc_asr_final"
-            if final_event_observed and not final_event_text.strip() and self.rtc_asr_current_interim_text.strip():
-                final_text = self.rtc_asr_current_interim_text
+            if final_event_observed and not final_event_text.strip() and self.rtc_asr_best_interim_text.strip():
+                final_text = self.rtc_asr_best_interim_text
                 final_transcript_source = "rtc_asr_interim_fallback"
         elapsed_ms = round((time.perf_counter() - started) * 1000)
         audio_bytes = self.rtc_asr_current_audio_bytes or len(frame.audio)
@@ -947,12 +962,17 @@ class AccVoicePipelineSession:
             "sessionAudioBytes": self.rtc_asr_session_audio_bytes,
             "sessionEventCount": self.rtc_asr_session_event_count,
             "interimEventCount": len([event for event in events if not is_final_stt_event(event) and transcript_text_from_event(event)]),
+            "interimCandidateCount": len(self.rtc_asr_current_interim_candidates),
             "eventCount": len(events),
             "finalEventObserved": final_event_observed,
             "finalTranscriptSource": final_transcript_source,
+            "finalTranscriptConfidence": "provisional" if final_transcript_source == "rtc_asr_interim_fallback" else "final",
+            "interimFallbackSelection": "most_informative_current_utterance" if final_transcript_source == "rtc_asr_interim_fallback" else None,
         }
         self.rtc_asr_current_audio_bytes = 0
         self.rtc_asr_current_interim_text = ""
+        self.rtc_asr_best_interim_text = ""
+        self.rtc_asr_current_interim_candidates = []
         result_frame = TranscriptionFrame(final_text.strip(), user_id="browser", timestamp=str(time.time()), result={"events": events}, finalized=True)
         return result_frame.text.strip(), meta, result_frame
 
@@ -1003,6 +1023,8 @@ class AccVoicePipelineSession:
         self.rtc_asr_utterance_id += 1
         self.rtc_asr_started = True
         self.rtc_asr_current_interim_text = ""
+        self.rtc_asr_best_interim_text = ""
+        self.rtc_asr_current_interim_candidates = []
         self.record_stage(
             "stt.utterance_started",
             connectionId=self.rtc_asr_connection_id,
@@ -1027,9 +1049,15 @@ class AccVoicePipelineSession:
         transcript = transcript_text_from_event(event)
         if transcript and not is_final_stt_event(event):
             self.rtc_asr_current_interim_text = transcript
+            if transcript not in self.rtc_asr_current_interim_candidates:
+                self.rtc_asr_current_interim_candidates.append(transcript)
+                self.rtc_asr_current_interim_candidates = self.rtc_asr_current_interim_candidates[-20:]
+            if interim_transcript_score(transcript) > interim_transcript_score(self.rtc_asr_best_interim_text):
+                self.rtc_asr_best_interim_text = transcript
             interim = self.record_stage(
                 "stt.transcript_interim",
                 transcript=transcript,
+                bestInterimTranscript=self.rtc_asr_best_interim_text,
                 connectionId=self.rtc_asr_connection_id,
                 persistentSession=True,
             )
@@ -1411,6 +1439,8 @@ class RtcAsrTurnProcessor(FrameProcessor):
             self.session.record_stage(
                 "stt.transcript_recovered_from_interim",
                 transcript=transcript,
+                confidence="provisional",
+                selectionPolicy=stt_meta.get("interimFallbackSelection"),
                 stt=stt_meta,
             )
         self.session.record_stage("stt.transcript_final", transcript=transcript, stt=stt_meta)

@@ -27,7 +27,7 @@ class FakeRtcAsrWebSocket:
         self,
         *,
         emit_finals: bool = True,
-        interim_on_audio: str | None = None,
+        interim_on_audio: str | list[str] | None = None,
         empty_final: bool = False,
     ) -> None:
         self.emit_finals = emit_finals
@@ -46,13 +46,15 @@ class FakeRtcAsrWebSocket:
             self.sent.append(payload)
             if self.interim_on_audio and not self.interim_emitted:
                 self.interim_emitted = True
-                await self.events.put(
-                    {
-                        "type": "transcript.interim",
-                        "final": False,
-                        "transcript": self.interim_on_audio,
-                    }
-                )
+                transcripts = self.interim_on_audio if isinstance(self.interim_on_audio, list) else [self.interim_on_audio]
+                for transcript in transcripts:
+                    await self.events.put(
+                        {
+                            "type": "transcript.interim",
+                            "final": False,
+                            "transcript": transcript,
+                        }
+                    )
             return
         event = json.loads(payload)
         self.sent.append(event)
@@ -141,7 +143,7 @@ async def verify_close_interrupts_final_wait() -> None:
 
 
 async def verify_empty_final_uses_current_interim() -> None:
-    websocket = FakeRtcAsrWebSocket(interim_on_audio="hello", empty_final=True)
+    websocket = FakeRtcAsrWebSocket(interim_on_audio=["Yeah.", "Good mud.", "Yeah."], empty_final=True)
 
     async def connect(*_args: object, **_kwargs: object) -> FakeRtcAsrWebSocket:
         return websocket
@@ -153,9 +155,14 @@ async def verify_empty_final_uses_current_interim() -> None:
             InputAudioRawFrame(audio=b"", sample_rate=INPUT_SAMPLE_RATE, num_channels=1)
         )
 
-    assert transcript == "hello", transcript
+    assert transcript == "Good mud.", transcript
     assert meta["finalTranscriptSource"] == "rtc_asr_interim_fallback", meta
+    assert meta["finalTranscriptConfidence"] == "provisional", meta
+    assert meta["interimFallbackSelection"] == "most_informative_current_utterance", meta
+    assert meta["interimCandidateCount"] == 2, meta
     assert session.rtc_asr_current_interim_text == ""
+    assert session.rtc_asr_best_interim_text == ""
+    assert session.rtc_asr_current_interim_candidates == []
 
 
 async def verify_interim_without_final_is_not_promoted() -> None:
@@ -191,7 +198,7 @@ async def main() -> None:
                 "ok": True,
                 "twoTurnLifecycle": "one_connection_two_starts_two_finalizes_two_transcripts",
                 "promptClose": True,
-                "emptyFinalFallback": "current_utterance_interim",
+                "emptyFinalFallback": "most_informative_current_utterance_interim",
                 "stalledInterim": "not_promoted_without_final_event",
             }
         )
