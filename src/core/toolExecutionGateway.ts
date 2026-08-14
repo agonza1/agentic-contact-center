@@ -44,6 +44,63 @@ export interface ToolExecutionGateway {
   execute(request: ToolExecutionRequest): Promise<ToolExecutionResult>;
 }
 
+function isToolPolicyReasonCode(value: unknown): value is ToolPolicyReasonCode {
+  return typeof value === "string" && [
+    "cedar_allowed",
+    "cedar_denied",
+    "toolhive_unavailable",
+    "toolhive_timeout",
+    "webhook_denied",
+    "webhook_timeout",
+    "invalid_approval",
+    "backend_failure",
+    "invalid_request",
+  ].includes(value);
+}
+
+function buildGatewayResult(
+  request: ToolExecutionRequest,
+  input: {
+    mode: ToolGatewayMode;
+    requestId: string;
+    startedAt: number;
+    timestamp: string;
+    status: ToolExecutionStatus;
+    reasonCode: ToolPolicyReasonCode;
+    backendInvoked: boolean;
+    normalizedArguments: Record<string, string | number>;
+    errors?: Array<{ argumentName: string; reason: string }>;
+  },
+): ToolExecutionResult {
+  return {
+    status: input.status,
+    requestId: input.requestId,
+    callId: request.callId,
+    gatewayMode: input.mode,
+    tool: request.tool,
+    principalType: request.principalType,
+    reasonCode: input.reasonCode,
+    backendInvoked: input.backendInvoked,
+    normalizedArguments: input.normalizedArguments,
+    errors: input.errors ?? [],
+    decisionEvent: buildToolPolicyDecisionEvent({
+      requestId: input.requestId,
+      callId: request.callId,
+      gatewayMode: input.mode,
+      principalType: request.principalType,
+      tool: request.tool,
+      policyVersion: request.policyVersion ?? null,
+      policyHash: request.policyHash ?? null,
+      decision: input.status === "allowed" ? "allow" : input.status === "denied" ? "deny" : "error",
+      reasonCode: input.reasonCode,
+      backendInvoked: input.backendInvoked,
+      durationMs: Date.now() - input.startedAt,
+      timestamp: input.timestamp,
+      arguments: request.arguments,
+    }),
+  };
+}
+
 export class DirectToolExecutionGateway implements ToolExecutionGateway {
   readonly mode = "direct" as const;
 
@@ -60,32 +117,151 @@ export class DirectToolExecutionGateway implements ToolExecutionGateway {
         ? "cedar_denied"
         : "invalid_request";
 
-    return {
-      status: allowed ? "allowed" : "denied",
+    return buildGatewayResult(request, {
+      mode: this.mode,
       requestId,
-      callId: request.callId,
-      gatewayMode: this.mode,
-      tool: request.tool,
-      principalType: request.principalType,
+      startedAt,
+      timestamp,
+      status: allowed ? "allowed" : "denied",
       reasonCode,
       backendInvoked: allowed,
       normalizedArguments: validation.normalizedArguments,
       errors: validation.errors,
-      decisionEvent: buildToolPolicyDecisionEvent({
+    });
+  }
+}
+
+export interface ToolHiveToolExecutionGatewayOptions {
+  mcpUrl: string;
+  timeoutMs: number;
+}
+
+export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
+  readonly mode = "toolhive" as const;
+  private readonly mcpUrl: string;
+  private readonly timeoutMs: number;
+
+  constructor(options: ToolHiveToolExecutionGatewayOptions) {
+    this.mcpUrl = options.mcpUrl;
+    this.timeoutMs = options.timeoutMs;
+  }
+
+  async execute(request: ToolExecutionRequest): Promise<ToolExecutionResult> {
+    const startedAt = Date.now();
+    const requestId = request.requestId ?? randomUUID();
+    const timestamp = request.requestedAt ?? new Date(startedAt).toISOString();
+    const validation = validateAccToolArguments(request.tool, request.arguments);
+    const callableByPrincipal = isAccToolCallableByPrincipal(request.tool, request.principalType);
+
+    if (!validation.valid || !callableByPrincipal) {
+      return buildGatewayResult(request, {
+        mode: this.mode,
         requestId,
-        callId: request.callId,
-        gatewayMode: this.mode,
-        principalType: request.principalType,
-        tool: request.tool,
-        policyVersion: request.policyVersion ?? null,
-        policyHash: request.policyHash ?? null,
-        decision: allowed ? "allow" : "deny",
-        reasonCode,
-        backendInvoked: allowed,
-        durationMs: Date.now() - startedAt,
+        startedAt,
         timestamp,
-        arguments: request.arguments,
-      }),
-    };
+        status: "denied",
+        reasonCode: validation.valid ? "cedar_denied" : "invalid_request",
+        backendInvoked: false,
+        normalizedArguments: validation.normalizedArguments,
+        errors: validation.errors,
+      });
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), request.timeoutMs ?? this.timeoutMs);
+
+    try {
+      const response = await fetch(this.mcpUrl, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+          "x-acc-principal-type": request.principalType,
+          ...(request.idempotencyKey ? { "idempotency-key": request.idempotencyKey } : {}),
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: requestId,
+          method: "tools/call",
+          params: {
+            name: request.tool,
+            arguments: validation.normalizedArguments,
+            _meta: {
+              callId: request.callId,
+              principalType: request.principalType,
+              policyVersion: request.policyVersion ?? null,
+            },
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        return buildGatewayResult(request, {
+          mode: this.mode,
+          requestId,
+          startedAt,
+          timestamp,
+          status: "error",
+          reasonCode: response.status === 408 || response.status === 504 ? "toolhive_timeout" : "toolhive_unavailable",
+          backendInvoked: false,
+          normalizedArguments: validation.normalizedArguments,
+        });
+      }
+
+      const payload = await response.json() as {
+        error?: { data?: { reasonCode?: unknown } };
+      };
+      const errorReasonCode = payload.error?.data?.reasonCode;
+      if (isToolPolicyReasonCode(errorReasonCode)) {
+        return buildGatewayResult(request, {
+          mode: this.mode,
+          requestId,
+          startedAt,
+          timestamp,
+          status: errorReasonCode === "backend_failure" ? "error" : "denied",
+          reasonCode: errorReasonCode,
+          backendInvoked: false,
+          normalizedArguments: validation.normalizedArguments,
+        });
+      }
+
+      if (payload.error) {
+        return buildGatewayResult(request, {
+          mode: this.mode,
+          requestId,
+          startedAt,
+          timestamp,
+          status: "denied",
+          reasonCode: "cedar_denied",
+          backendInvoked: false,
+          normalizedArguments: validation.normalizedArguments,
+        });
+      }
+
+      return buildGatewayResult(request, {
+        mode: this.mode,
+        requestId,
+        startedAt,
+        timestamp,
+        status: "allowed",
+        reasonCode: "cedar_allowed",
+        backendInvoked: true,
+        normalizedArguments: validation.normalizedArguments,
+      });
+    } catch (error) {
+      return buildGatewayResult(request, {
+        mode: this.mode,
+        requestId,
+        startedAt,
+        timestamp,
+        status: "error",
+        reasonCode: error instanceof Error && error.name === "AbortError" ? "toolhive_timeout" : "toolhive_unavailable",
+        backendInvoked: false,
+        normalizedArguments: validation.normalizedArguments,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 }
