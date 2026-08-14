@@ -1,4 +1,11 @@
+import { listAccToolsForPrincipal, type ToolGatewayPrincipalType } from "./toolGatewayTools";
+
 export type ToolGatewayMode = "direct" | "toolhive";
+
+export interface ToolGatewayToolExposure {
+  principalType: ToolGatewayPrincipalType;
+  tools: string[];
+}
 
 export interface ToolGatewayReadiness {
   mode: ToolGatewayMode;
@@ -8,11 +15,16 @@ export interface ToolGatewayReadiness {
   mcpUrl: string | null;
   timeoutMs: number;
   policyVersion: string | null;
+  toolExposure: ToolGatewayToolExposure[];
   blockers: string[];
   evidence: string;
 }
 
 const defaultToolGatewayTimeoutMs = 1500;
+const defaultToolExposure: ToolGatewayToolExposure[] = [
+  { principalType: "voice_agent", tools: listAccToolsForPrincipal("voice_agent").map((tool) => tool.name) },
+  { principalType: "operator", tools: listAccToolsForPrincipal("operator").map((tool) => tool.name) },
+];
 
 function parseToolGatewayMode(rawMode: string | undefined): ToolGatewayMode | null {
   const normalized = rawMode?.trim().toLowerCase();
@@ -40,6 +52,7 @@ export function buildToolGatewayReadiness(env: NodeJS.ProcessEnv = process.env):
       mcpUrl: null,
       timeoutMs,
       policyVersion: env.TOOLHIVE_POLICY_VERSION?.trim() || null,
+      toolExposure: defaultToolExposure,
       blockers: ["invalid_ACC_TOOL_GATEWAY_MODE"],
       evidence: "ACC_TOOL_GATEWAY_MODE must be direct or toolhive; invalid values fail closed.",
     };
@@ -54,6 +67,7 @@ export function buildToolGatewayReadiness(env: NodeJS.ProcessEnv = process.env):
       mcpUrl: null,
       timeoutMs,
       policyVersion: env.TOOLHIVE_POLICY_VERSION?.trim() || null,
+      toolExposure: defaultToolExposure,
       blockers: [],
       evidence: "Default direct tool execution is active; no ToolHive service is required.",
     };
@@ -86,6 +100,7 @@ export function buildToolGatewayReadiness(env: NodeJS.ProcessEnv = process.env):
     mcpUrl: mcpUrl || null,
     timeoutMs,
     policyVersion: policyVersion || null,
+    toolExposure: defaultToolExposure,
     blockers,
     evidence: blockers.length === 0
       ? "ToolHive mode has the minimum required configuration; gateway failures must not downgrade to direct execution."

@@ -43,5 +43,9 @@ test("toolhive mode accepts the minimum required gateway configuration", () => {
   assert.equal(readiness.mcpUrl, "http://127.0.0.1:24100/mcp");
   assert.equal(readiness.policyVersion, "toolhive-demo-v1");
   assert.equal(readiness.timeoutMs, 2750);
+  assert.deepEqual(readiness.toolExposure, [
+    { principalType: "voice_agent", tools: ["retention.lookup_options", "operator.request_approval"] },
+    { principalType: "operator", tools: ["retention.lookup_options", "operator.request_approval", "retention.apply_offer"] },
+  ]);
   assert.deepEqual(readiness.blockers, []);
 });

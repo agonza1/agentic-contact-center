@@ -110,6 +110,7 @@ test("GET /health returns config-backed demo metadata", async () => {
       mcpUrl: string | null;
       timeoutMs: number;
       policyVersion: string | null;
+      toolExposure: { principalType: string; tools: string[] }[];
       blockers: string[];
       evidence: string;
     };
@@ -169,6 +170,10 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.toolGateway.mcpUrl, null);
   assert.equal(payload.toolGateway.timeoutMs, 1500);
   assert.equal(payload.toolGateway.policyVersion, null);
+  assert.deepEqual(payload.toolGateway.toolExposure, [
+    { principalType: "voice_agent", tools: ["retention.lookup_options", "operator.request_approval"] },
+    { principalType: "operator", tools: ["retention.lookup_options", "operator.request_approval", "retention.apply_offer"] },
+  ]);
   assert.deepEqual(payload.toolGateway.blockers, []);
   assert.match(payload.toolGateway.evidence, /no ToolHive service is required/);
 });
