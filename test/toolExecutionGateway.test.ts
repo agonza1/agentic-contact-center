@@ -72,3 +72,37 @@ test("direct tool execution gateway denies agent escalation attempts without bac
   assert.equal(result.decisionEvent.detail.backendInvoked, false);
   assert.doesNotMatch(JSON.stringify(result.decisionEvent), /approval-secret|idem-secret/);
 });
+
+test("direct tool execution gateway records policy denial separately from malformed arguments", async () => {
+  const gateway = new DirectToolExecutionGateway();
+
+  const result = await gateway.execute({
+    requestId: "tool-request-agent-apply-offer",
+    callId: "call-789",
+    principalType: "voice_agent",
+    tool: "retention.apply_offer",
+    requestedAt: "2026-08-14T11:47:00.000Z",
+    arguments: {
+      call_id: "call-789",
+      offer_id: "retention-10",
+      discount_percent: 10,
+      approval_id: "approval-789",
+      idempotency_key: "idem-789",
+    },
+  });
+
+  assert.equal(result.status, "denied");
+  assert.equal(result.reasonCode, "cedar_denied");
+  assert.equal(result.backendInvoked, false);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.normalizedArguments, {
+    call_id: "call-789",
+    offer_id: "retention-10",
+    discount_percent: 10,
+    approval_id: "approval-789",
+    idempotency_key: "idem-789",
+  });
+  assert.equal(result.decisionEvent.detail.decision, "deny");
+  assert.equal(result.decisionEvent.detail.reasonCode, "cedar_denied");
+  assert.doesNotMatch(JSON.stringify(result.decisionEvent), /approval-789|idem-789/);
+});

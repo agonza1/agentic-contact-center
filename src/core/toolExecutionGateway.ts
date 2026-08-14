@@ -54,7 +54,11 @@ export class DirectToolExecutionGateway implements ToolExecutionGateway {
     const validation = validateAccToolArguments(request.tool, request.arguments);
     const callableByPrincipal = isAccToolCallableByPrincipal(request.tool, request.principalType);
     const allowed = callableByPrincipal && validation.valid;
-    const reasonCode: ToolPolicyReasonCode = allowed ? "cedar_allowed" : "invalid_request";
+    const reasonCode: ToolPolicyReasonCode = allowed
+      ? "cedar_allowed"
+      : validation.valid
+        ? "cedar_denied"
+        : "invalid_request";
 
     return {
       status: allowed ? "allowed" : "denied",
