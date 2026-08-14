@@ -110,6 +110,9 @@ test("GET /health returns config-backed demo metadata", async () => {
       mcpUrl: string | null;
       timeoutMs: number;
       policyVersion: string | null;
+      policyHash: string | null;
+      toolhiveVersion: string | null;
+      validatingWebhookFailurePolicy: string | null;
       toolExposure: { principalType: string; tools: string[] }[];
       blockers: string[];
       evidence: string;
@@ -170,6 +173,9 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.toolGateway.mcpUrl, null);
   assert.equal(payload.toolGateway.timeoutMs, 1500);
   assert.equal(payload.toolGateway.policyVersion, null);
+  assert.match(payload.toolGateway.policyHash ?? "", /^[a-f0-9]{64}$/);
+  assert.equal(payload.toolGateway.toolhiveVersion, "v0.40.0");
+  assert.equal(payload.toolGateway.validatingWebhookFailurePolicy, "fail");
   assert.deepEqual(payload.toolGateway.toolExposure, [
     { principalType: "voice_agent", tools: ["retention.lookup_options", "operator.request_approval"] },
     { principalType: "operator", tools: ["retention.lookup_options", "operator.request_approval", "retention.apply_offer"] },

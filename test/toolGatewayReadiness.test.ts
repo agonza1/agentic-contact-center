@@ -12,6 +12,9 @@ test("tool gateway readiness keeps direct mode as the no-dependency default", ()
   assert.equal(readiness.failClosed, false);
   assert.equal(readiness.mcpUrl, null);
   assert.equal(readiness.timeoutMs, 1500);
+  assert.match(readiness.policyHash ?? "", /^[a-f0-9]{64}$/);
+  assert.equal(readiness.toolhiveVersion, "v0.40.0");
+  assert.equal(readiness.validatingWebhookFailurePolicy, "fail");
   assert.deepEqual(readiness.blockers, []);
 });
 
@@ -42,6 +45,9 @@ test("toolhive mode accepts the minimum required gateway configuration", () => {
   assert.equal(readiness.failClosed, true);
   assert.equal(readiness.mcpUrl, "http://127.0.0.1:24100/mcp");
   assert.equal(readiness.policyVersion, "toolhive-demo-v1");
+  assert.match(readiness.policyHash ?? "", /^[a-f0-9]{64}$/);
+  assert.equal(readiness.toolhiveVersion, "v0.40.0");
+  assert.equal(readiness.validatingWebhookFailurePolicy, "fail");
   assert.equal(readiness.timeoutMs, 2750);
   assert.deepEqual(readiness.toolExposure, [
     { principalType: "voice_agent", tools: ["retention.lookup_options", "operator.request_approval"] },

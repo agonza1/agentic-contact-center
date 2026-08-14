@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 
 import { accToolDefinitions, listAccToolsForPrincipal } from "./toolGatewayTools";
 
@@ -21,9 +22,11 @@ interface ToolHivePolicyBundleManifest {
 
 export interface ToolHivePolicyBundleSummary {
   policyVersion: string;
+  policyHash: string;
   toolhiveVersion: string;
   policyPath: string;
   failClosedWebhook: boolean;
+  validatingWebhookFailurePolicy: string;
   agentApplyOfferForbidden: boolean;
   operatorDiscountPercentMax: number;
   manifestMatchesToolExposure: boolean;
@@ -45,9 +48,11 @@ export function summarizeToolHivePolicyBundle(policyBundleDir = defaultPolicyBun
 
   return {
     policyVersion: manifest.policyVersion,
+    policyHash: createHash("sha256").update(cedarPolicy).digest("hex"),
     toolhiveVersion: manifest.toolhiveVersion,
     policyPath: path.join(policyBundleDir, manifest.policyFile),
     failClosedWebhook: manifest.webhook.failurePolicy === "fail",
+    validatingWebhookFailurePolicy: manifest.webhook.failurePolicy,
     agentApplyOfferForbidden:
       manifest.principals.voice_agent?.forbiddenTools?.includes("retention.apply_offer") === true
       && cedarPolicy.includes('forbid (')
