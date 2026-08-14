@@ -210,7 +210,9 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
       }
 
       const payload = await response.json() as {
+        id?: unknown;
         error?: { data?: { reasonCode?: unknown } };
+        result?: { isError?: unknown };
       };
       const errorReasonCode = payload.error?.data?.reasonCode;
       if (isToolPolicyReasonCode(errorReasonCode)) {
@@ -234,6 +236,19 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
           timestamp,
           status: "denied",
           reasonCode: "cedar_denied",
+          backendInvoked: false,
+          normalizedArguments: validation.normalizedArguments,
+        });
+      }
+
+      if (payload.id !== requestId || !payload.result || payload.result.isError === true) {
+        return buildGatewayResult(request, {
+          mode: this.mode,
+          requestId,
+          startedAt,
+          timestamp,
+          status: "error",
+          reasonCode: "toolhive_unavailable",
           backendInvoked: false,
           normalizedArguments: validation.normalizedArguments,
         });
