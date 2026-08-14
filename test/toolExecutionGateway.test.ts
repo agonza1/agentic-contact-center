@@ -224,6 +224,9 @@ test("ToolHive gateway fails closed on malformed successful JSON-RPC responses",
     { jsonrpc: "2.0", id: "wrong-id", result: { content: [] } },
     { jsonrpc: "2.0", id: "tool-request-malformed", result: { isError: true, content: [] } },
     { jsonrpc: "2.0", id: "tool-request-malformed" },
+    { jsonrpc: "2.0", id: "tool-request-malformed", result: 42 },
+    { jsonrpc: "2.0", id: "tool-request-malformed", result: {} },
+    { jsonrpc: "2.0", id: "tool-request-malformed", result: { isError: "true", content: [] } },
   ];
   let responseIndex = 0;
   const server = createServer((_request, response) => {
@@ -262,6 +265,51 @@ test("ToolHive gateway fails closed on malformed successful JSON-RPC responses",
       assert.equal(result.backendInvoked, false);
       assert.equal(result.decisionEvent.detail.decision, "error");
     }
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("ToolHive gateway fails closed on stale JSON-RPC error responses", async () => {
+  const server = createServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({
+      jsonrpc: "2.0",
+      id: "stale-tool-request",
+      error: {
+        code: -32000,
+        message: "Denied",
+        data: { reasonCode: "cedar_denied" },
+      },
+    }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const gateway = new ToolHiveToolExecutionGateway({
+      mcpUrl: `http://127.0.0.1:${address.port}/mcp`,
+      timeoutMs: 500,
+    });
+    const result = await gateway.execute({
+      requestId: "current-tool-request",
+      callId: "call-stale-error",
+      principalType: "operator",
+      tool: "retention.apply_offer",
+      arguments: {
+        call_id: "call-stale-error",
+        offer_id: "retention-10",
+        discount_percent: 10,
+        approval_id: "approval-stale-error",
+        idempotency_key: "idem-stale-error",
+      },
+    });
+
+    assert.equal(result.status, "error");
+    assert.equal(result.reasonCode, "toolhive_unavailable");
+    assert.equal(result.backendInvoked, false);
+    assert.equal(result.decisionEvent.detail.decision, "error");
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
