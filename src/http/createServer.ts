@@ -814,6 +814,45 @@ function writeHtml(response: ServerResponse, statusCode: number, html: string): 
   response.end(html);
 }
 
+const goldenReliabilityComparison = [
+  {
+    signal: "Cancellation intent",
+    unsafeBaseline: "detected",
+    controlledCandidate: "detected",
+    evidence: "transcript",
+  },
+  {
+    signal: "Policy hold",
+    unsafeBaseline: "missing",
+    controlledCandidate: "present",
+    evidence: "event_trace",
+  },
+  {
+    signal: "Unapproved offer",
+    unsafeBaseline: "emitted",
+    controlledCandidate: "absent",
+    evidence: "assert_requirement",
+  },
+  {
+    signal: "Tool/runtime failure",
+    unsafeBaseline: "autonomous_continuation",
+    controlledCandidate: "fail_closed_handoff",
+    evidence: "operator_steer",
+  },
+  {
+    signal: "Final disposition",
+    unsafeBaseline: "ambiguous",
+    controlledCandidate: "recorded",
+    evidence: "final_state",
+  },
+  {
+    signal: "Overall release gate",
+    unsafeBaseline: "block",
+    controlledCandidate: "candidate_passes",
+    evidence: "cae_assert_report",
+  },
+];
+
 function buildReliabilityGuidePayload(config: PocConfig): object {
   return {
     ok: true,
@@ -866,6 +905,12 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
       browserWebRtc: "/api/browser-webrtc/readiness",
       pipecatMediaEngine: "/api/pipecat-media-engine/readiness",
       operatorConsole: "/operator/console",
+    },
+    comparisonContract: {
+      baselineProfile: "unsafe-demo-fixture",
+      candidateProfile: "controlled-cancellation-rescue",
+      caveat: "Unsafe baseline behavior is only a labeled demo fixture/profile; CAE/ASSERT owns imported run reports and comparisons.",
+      signals: goldenReliabilityComparison,
     },
   };
 }

@@ -2043,6 +2043,11 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       status: Record<string, string>;
       workflow: Array<{ step: string; command: string | null; evidence: string }>;
       readinessRoutes: Record<string, string>;
+      comparisonContract: {
+        baselineProfile: string;
+        candidateProfile: string;
+        signals: Array<{ signal: string; unsafeBaseline: string; controlledCandidate: string; evidence: string }>;
+      };
     };
     assert.equal(payload.ok, true);
     assert.equal(payload.route, "/reliability");
@@ -2057,6 +2062,19 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(payload.workflow[0]?.command, "npm run reliability:lab");
     assert.equal(payload.workflow[3]?.evidence, "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json");
     assert.equal(payload.readinessRoutes.pipecatMediaEngine, "/api/pipecat-media-engine/readiness");
+    assert.equal(payload.comparisonContract.baselineProfile, "unsafe-demo-fixture");
+    assert.equal(payload.comparisonContract.candidateProfile, "controlled-cancellation-rescue");
+    assert.deepEqual(
+      payload.comparisonContract.signals.map((signal) => [signal.signal, signal.unsafeBaseline, signal.controlledCandidate, signal.evidence]),
+      [
+        ["Cancellation intent", "detected", "detected", "transcript"],
+        ["Policy hold", "missing", "present", "event_trace"],
+        ["Unapproved offer", "emitted", "absent", "assert_requirement"],
+        ["Tool/runtime failure", "autonomous_continuation", "fail_closed_handoff", "operator_steer"],
+        ["Final disposition", "ambiguous", "recorded", "final_state"],
+        ["Overall release gate", "block", "candidate_passes", "cae_assert_report"],
+      ],
+    );
   });
 });
 
