@@ -1,4 +1,5 @@
 import { listAccToolsForPrincipal, type ToolGatewayPrincipalType } from "./toolGatewayTools";
+import { summarizeToolHivePolicyBundle } from "./toolGatewayPolicyBundle";
 
 export type ToolGatewayMode = "direct" | "toolhive";
 
@@ -15,6 +16,9 @@ export interface ToolGatewayReadiness {
   mcpUrl: string | null;
   timeoutMs: number;
   policyVersion: string | null;
+  policyHash: string | null;
+  toolhiveVersion: string | null;
+  validatingWebhookFailurePolicy: string | null;
   toolExposure: ToolGatewayToolExposure[];
   blockers: string[];
   evidence: string;
@@ -42,6 +46,7 @@ function parseTimeoutMs(rawTimeout: string | undefined): number {
 export function buildToolGatewayReadiness(env: NodeJS.ProcessEnv = process.env): ToolGatewayReadiness {
   const parsedMode = parseToolGatewayMode(env.ACC_TOOL_GATEWAY_MODE);
   const timeoutMs = parseTimeoutMs(env.TOOLHIVE_TIMEOUT_MS);
+  const policyBundle = summarizeToolHivePolicyBundle();
 
   if (!parsedMode) {
     return {
@@ -52,6 +57,9 @@ export function buildToolGatewayReadiness(env: NodeJS.ProcessEnv = process.env):
       mcpUrl: null,
       timeoutMs,
       policyVersion: env.TOOLHIVE_POLICY_VERSION?.trim() || null,
+      policyHash: policyBundle.policyHash,
+      toolhiveVersion: policyBundle.toolhiveVersion,
+      validatingWebhookFailurePolicy: policyBundle.validatingWebhookFailurePolicy,
       toolExposure: defaultToolExposure,
       blockers: ["invalid_ACC_TOOL_GATEWAY_MODE"],
       evidence: "ACC_TOOL_GATEWAY_MODE must be direct or toolhive; invalid values fail closed.",
@@ -67,6 +75,9 @@ export function buildToolGatewayReadiness(env: NodeJS.ProcessEnv = process.env):
       mcpUrl: null,
       timeoutMs,
       policyVersion: env.TOOLHIVE_POLICY_VERSION?.trim() || null,
+      policyHash: policyBundle.policyHash,
+      toolhiveVersion: policyBundle.toolhiveVersion,
+      validatingWebhookFailurePolicy: policyBundle.validatingWebhookFailurePolicy,
       toolExposure: defaultToolExposure,
       blockers: [],
       evidence: "Default direct tool execution is active; no ToolHive service is required.",
@@ -100,6 +111,9 @@ export function buildToolGatewayReadiness(env: NodeJS.ProcessEnv = process.env):
     mcpUrl: mcpUrl || null,
     timeoutMs,
     policyVersion: policyVersion || null,
+    policyHash: policyBundle.policyHash,
+    toolhiveVersion: policyBundle.toolhiveVersion,
+    validatingWebhookFailurePolicy: policyBundle.validatingWebhookFailurePolicy,
     toolExposure: defaultToolExposure,
     blockers,
     evidence: blockers.length === 0

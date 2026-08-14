@@ -7,8 +7,10 @@ test("ToolHive policy bundle pins Cedar enforcement for the ACC tool manifest", 
   const summary = summarizeToolHivePolicyBundle();
 
   assert.equal(summary.policyVersion, "toolhive-demo-v1");
+  assert.match(summary.policyHash, /^[a-f0-9]{64}$/);
   assert.equal(summary.toolhiveVersion, "v0.40.0");
   assert.equal(summary.failClosedWebhook, true);
+  assert.equal(summary.validatingWebhookFailurePolicy, "fail");
   assert.equal(summary.agentApplyOfferForbidden, true);
   assert.equal(summary.operatorDiscountPercentMax, 10);
   assert.equal(summary.manifestMatchesToolExposure, true);
