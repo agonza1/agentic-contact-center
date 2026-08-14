@@ -6,6 +6,7 @@ import {
   getAccToolDefinition,
   isAccToolCallableByPrincipal,
   listAccToolsForPrincipal,
+  validateAccToolArguments,
 } from "../src/core/toolGatewayTools";
 
 test("ACC tool manifest exposes only non-mutating tools to the voice agent", () => {
@@ -50,4 +51,63 @@ test("ACC tool manifest declares MCP annotations for each gateway tool", () => {
     idempotentHint: true,
     openWorldHint: false,
   });
+});
+
+test("ACC tool argument validation normalizes only the declared primitive gateway shape", () => {
+  const validation = validateAccToolArguments("retention.apply_offer", {
+    call_id: "call-123",
+    offer_id: "retention-10",
+    discount_percent: 10,
+    approval_id: "approval-123",
+    idempotency_key: "idem-123",
+  });
+
+  assert.equal(validation.valid, true);
+  assert.deepEqual(validation.errors, []);
+  assert.deepEqual(validation.normalizedArguments, {
+    call_id: "call-123",
+    offer_id: "retention-10",
+    discount_percent: 10,
+    approval_id: "approval-123",
+    idempotency_key: "idem-123",
+  });
+});
+
+test("ACC tool argument validation rejects escalation flags and out-of-bound offers", () => {
+  const validation = validateAccToolArguments("retention.apply_offer", {
+    call_id: "call-123",
+    offer_id: "retention-25",
+    discount_percent: 25,
+    approval_id: "approval-123",
+    idempotency_key: "idem-123",
+    operatorApproved: true,
+    role: "operator",
+  });
+
+  assert.equal(validation.valid, false);
+  assert.deepEqual(validation.errors, [
+    { argumentName: "discount_percent", reason: "argument_out_of_bounds" },
+    { argumentName: "operatorApproved", reason: "unknown_argument" },
+    { argumentName: "role", reason: "unknown_argument" },
+  ]);
+  assert.deepEqual(Object.keys(validation.normalizedArguments), [
+    "call_id",
+    "offer_id",
+    "approval_id",
+    "idempotency_key",
+  ]);
+});
+
+test("ACC tool argument validation rejects missing and non-primitive required arguments", () => {
+  const validation = validateAccToolArguments("operator.request_approval", {
+    call_id: "call-123",
+    offer_id: "retention-10",
+    discount_percent: "10",
+  });
+
+  assert.equal(validation.valid, false);
+  assert.deepEqual(validation.errors, [
+    { argumentName: "discount_percent", reason: "invalid_argument_type" },
+    { argumentName: "idempotency_key", reason: "missing_required_argument" },
+  ]);
 });
