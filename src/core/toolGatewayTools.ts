@@ -28,6 +28,23 @@ export interface AccToolDefinition {
   arguments: AccToolArgument[];
 }
 
+export type AccToolArgumentValidationReason =
+  | "unknown_argument"
+  | "missing_required_argument"
+  | "invalid_argument_type"
+  | "argument_out_of_bounds";
+
+export interface AccToolArgumentValidationError {
+  argumentName: string;
+  reason: AccToolArgumentValidationReason;
+}
+
+export interface AccToolArgumentValidationResult {
+  valid: boolean;
+  normalizedArguments: Record<string, string | number>;
+  errors: AccToolArgumentValidationError[];
+}
+
 export const accToolDefinitions: readonly AccToolDefinition[] = [
   {
     name: "retention.lookup_options",
@@ -92,4 +109,60 @@ export function getAccToolDefinition(name: AccToolName): AccToolDefinition {
 
 export function isAccToolCallableByPrincipal(name: AccToolName, principalType: ToolGatewayPrincipalType): boolean {
   return getAccToolDefinition(name).principalTypes.includes(principalType);
+}
+
+export function validateAccToolArguments(
+  name: AccToolName,
+  inputArguments: Record<string, unknown>,
+): AccToolArgumentValidationResult {
+  const definition = getAccToolDefinition(name);
+  const expectedArguments = new Map(definition.arguments.map((argument) => [argument.name, argument]));
+  const normalizedArguments: Record<string, string | number> = {};
+  const errors: AccToolArgumentValidationError[] = [];
+
+  for (const argument of definition.arguments) {
+    const value = inputArguments[argument.name];
+    if (value === undefined || value === null) {
+      if (argument.required) {
+        errors.push({ argumentName: argument.name, reason: "missing_required_argument" });
+      }
+      continue;
+    }
+
+    if (argument.type === "string") {
+      if (typeof value !== "string" || value.trim() === "") {
+        errors.push({ argumentName: argument.name, reason: "invalid_argument_type" });
+        continue;
+      }
+      normalizedArguments[argument.name] = value;
+      continue;
+    }
+
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      errors.push({ argumentName: argument.name, reason: "invalid_argument_type" });
+      continue;
+    }
+
+    if (
+      (argument.minimum !== undefined && value < argument.minimum)
+      || (argument.maximum !== undefined && value > argument.maximum)
+    ) {
+      errors.push({ argumentName: argument.name, reason: "argument_out_of_bounds" });
+      continue;
+    }
+
+    normalizedArguments[argument.name] = value;
+  }
+
+  for (const argumentName of Object.keys(inputArguments)) {
+    if (!expectedArguments.has(argumentName)) {
+      errors.push({ argumentName, reason: "unknown_argument" });
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    normalizedArguments,
+    errors,
+  };
 }
