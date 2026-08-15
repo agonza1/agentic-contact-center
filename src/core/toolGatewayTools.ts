@@ -144,6 +144,10 @@ export function getAccToolDefinition(name: AccToolName): AccToolDefinition {
   return definition;
 }
 
+export function isAccToolName(name: unknown): name is AccToolName {
+  return typeof name === "string" && accToolDefinitions.some((definition) => definition.name === name);
+}
+
 export function isAccToolCallableByPrincipal(name: AccToolName, principalType: ToolGatewayPrincipalType): boolean {
   return getAccToolDefinition(name).principalTypes.includes(principalType);
 }

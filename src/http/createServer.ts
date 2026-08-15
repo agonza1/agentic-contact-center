@@ -48,7 +48,13 @@ import {
 } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
 import { buildToolGatewayReadiness } from "../core/toolGatewayReadiness";
-import { listAccMcpToolsForPrincipal, type ToolGatewayPrincipalType } from "../core/toolGatewayTools";
+import {
+  isAccToolCallableByPrincipal,
+  isAccToolName,
+  listAccMcpToolsForPrincipal,
+  validateAccToolArguments,
+  type ToolGatewayPrincipalType,
+} from "../core/toolGatewayTools";
 import type {
   AttentionSource,
   CallSnapshot,
@@ -104,6 +110,53 @@ function writeJsonRpcError(
     jsonrpc: "2.0",
     id,
     error: { code, message },
+  });
+}
+
+function writeJsonRpcPolicyError(
+  response: ServerResponse,
+  id: string | number | null,
+  message: string,
+  reasonCode: "cedar_denied" | "invalid_request",
+): void {
+  writeJson(response, 200, {
+    jsonrpc: "2.0",
+    id,
+    error: {
+      code: reasonCode === "cedar_denied" ? -32003 : -32602,
+      message,
+      data: { reasonCode },
+    },
+  });
+}
+
+function buildAccMcpToolCallContent(toolName: string, normalizedArguments: Record<string, string | number>): string {
+  if (toolName === "retention.lookup_options") {
+    return JSON.stringify({
+      options: [
+        {
+          offer_id: "retention-10",
+          label: "retention specialist review",
+          discount_percent_max: 10,
+          requires_operator_approval: true,
+        },
+      ],
+    });
+  }
+
+  if (toolName === "operator.request_approval") {
+    return JSON.stringify({
+      approval_id: `approval:${normalizedArguments.call_id}:${normalizedArguments.offer_id}`,
+      status: "pending_operator_steer",
+      offer_id: normalizedArguments.offer_id,
+      discount_percent: normalizedArguments.discount_percent,
+    });
+  }
+
+  return JSON.stringify({
+    status: "accepted",
+    offer_id: normalizedArguments.offer_id,
+    discount_percent: normalizedArguments.discount_percent,
   });
 }
 
@@ -5563,6 +5616,42 @@ async function routeRequest(
         id,
         result: {
           tools: listAccMcpToolsForPrincipal(principalType),
+        },
+      });
+      return;
+    }
+
+    if (record.method === "tools/call") {
+      const params = isRecord(record.params) ? record.params : {};
+      const toolName = params.name;
+      const toolArguments = isRecord(params.arguments) ? params.arguments : {};
+
+      if (!isAccToolName(toolName)) {
+        writeJsonRpcPolicyError(response, id, "Unknown ACC MCP tool", "invalid_request");
+        return;
+      }
+
+      const validation = validateAccToolArguments(toolName, toolArguments);
+      if (!validation.valid) {
+        writeJsonRpcPolicyError(response, id, "Invalid ACC MCP tool arguments", "invalid_request");
+        return;
+      }
+
+      if (!isAccToolCallableByPrincipal(toolName, principalType)) {
+        writeJsonRpcPolicyError(response, id, "ACC MCP tool is not authorized for this principal", "cedar_denied");
+        return;
+      }
+
+      writeJson(response, 200, {
+        jsonrpc: "2.0",
+        id,
+        result: {
+          content: [
+            {
+              type: "text",
+              text: buildAccMcpToolCallContent(toolName, validation.normalizedArguments),
+            },
+          ],
         },
       });
       return;

@@ -109,3 +109,91 @@ test("POST /mcp fails closed without an ACC principal header", async () => {
     },
   });
 });
+
+test("POST /mcp tools/call executes declared voice-agent read tools", async () => {
+  const response = await postMcp("voice_agent", {
+    jsonrpc: "2.0",
+    id: "lookup-options",
+    method: "tools/call",
+    params: {
+      name: "retention.lookup_options",
+      arguments: {
+        call_id: "call-123",
+      },
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.payload.jsonrpc, "2.0");
+  assert.equal(response.payload.id, "lookup-options");
+  assert.equal(response.payload.result.content[0].type, "text");
+
+  const content = JSON.parse(response.payload.result.content[0].text);
+  assert.deepEqual(content.options, [
+    {
+      offer_id: "retention-10",
+      label: "retention specialist review",
+      discount_percent_max: 10,
+      requires_operator_approval: true,
+    },
+  ]);
+});
+
+test("POST /mcp tools/call denies voice-agent apply_offer without invoking backend semantics", async () => {
+  const response = await postMcp("voice_agent", {
+    jsonrpc: "2.0",
+    id: "agent-apply-offer",
+    method: "tools/call",
+    params: {
+      name: "retention.apply_offer",
+      arguments: {
+        call_id: "call-123",
+        offer_id: "retention-10",
+        discount_percent: 10,
+        approval_id: "approval-123",
+        idempotency_key: "idem-123",
+      },
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.payload, {
+    jsonrpc: "2.0",
+    id: "agent-apply-offer",
+    error: {
+      code: -32003,
+      message: "ACC MCP tool is not authorized for this principal",
+      data: { reasonCode: "cedar_denied" },
+    },
+  });
+});
+
+test("POST /mcp tools/call rejects escalation flags before authorization", async () => {
+  const response = await postMcp("voice_agent", {
+    jsonrpc: "2.0",
+    id: "agent-escalation-flag",
+    method: "tools/call",
+    params: {
+      name: "retention.apply_offer",
+      arguments: {
+        call_id: "call-123",
+        offer_id: "retention-10",
+        discount_percent: 10,
+        approval_id: "approval-123",
+        idempotency_key: "idem-123",
+        operatorApproved: true,
+      },
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.payload, {
+    jsonrpc: "2.0",
+    id: "agent-escalation-flag",
+    error: {
+      code: -32602,
+      message: "Invalid ACC MCP tool arguments",
+      data: { reasonCode: "invalid_request" },
+    },
+  });
+});
