@@ -48,6 +48,7 @@ import {
 } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
 import { buildToolGatewayReadiness } from "../core/toolGatewayReadiness";
+import { listAccMcpToolsForPrincipal, type ToolGatewayPrincipalType } from "../core/toolGatewayTools";
 import type {
   AttentionSource,
   CallSnapshot,
@@ -84,6 +85,27 @@ const maxVoiceSessionPlayAudioBytes = 2 * 1024 * 1024;
 const supportedVoiceSessionPlayMimeTypes = new Set(["audio/l16", "audio/pcm", "audio/wav", "audio/wave", "audio/x-wav"]);
 const clueConSystemUnavailableAudio = readFileSync(resolve(process.cwd(), "assets/cluecon/system-unavailable.mp3"));
 const clueConVoiceOriginPhoto = readFileSync(resolve(process.cwd(), "assets/cluecon/alberto-echo-show-prototype.jpg"));
+
+function getMcpPrincipalType(request: IncomingMessage): ToolGatewayPrincipalType | null {
+  const rawPrincipal = request.headers["x-acc-principal-type"];
+  const principalType = Array.isArray(rawPrincipal) ? rawPrincipal[0] : rawPrincipal;
+  if (principalType === "voice_agent" || principalType === "operator") return principalType;
+  return null;
+}
+
+function writeJsonRpcError(
+  response: ServerResponse,
+  id: string | number | null,
+  code: number,
+  message: string,
+  statusCode = 200,
+): void {
+  writeJson(response, statusCode, {
+    jsonrpc: "2.0",
+    id,
+    error: { code, message },
+  });
+}
 
 interface BrowserWebrtcBridgeRuntimeProbe {
   ok: boolean;
@@ -5516,6 +5538,37 @@ async function routeRequest(
       toolGateway,
       productionReadiness: buildProductionReadiness(config, pipecatFlow),
     });
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/mcp") {
+    const principalType = getMcpPrincipalType(request);
+    const body = await readJsonBody<unknown>(request);
+    const record = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
+    const id = typeof record.id === "string" || typeof record.id === "number" || record.id === null ? record.id : null;
+
+    if (record.jsonrpc !== "2.0") {
+      writeJsonRpcError(response, id, -32600, "Invalid JSON-RPC request");
+      return;
+    }
+
+    if (!principalType) {
+      writeJsonRpcError(response, id, -32001, "Missing or invalid ACC principal type", 401);
+      return;
+    }
+
+    if (record.method === "tools/list") {
+      writeJson(response, 200, {
+        jsonrpc: "2.0",
+        id,
+        result: {
+          tools: listAccMcpToolsForPrincipal(principalType),
+        },
+      });
+      return;
+    }
+
+    writeJsonRpcError(response, id, -32601, "Method not found");
     return;
   }
 
