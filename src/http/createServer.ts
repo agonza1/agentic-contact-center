@@ -5615,7 +5615,16 @@ async function routeRequest(
 
   if (request.method === "POST" && pathname === "/mcp") {
     const principalType = getMcpPrincipalType(request);
-    const body = await readJsonBody<unknown>(request);
+    let body: unknown;
+    try {
+      body = await readJsonBody<unknown>(request);
+    } catch (error) {
+      if (error instanceof InvalidJsonBodyError) {
+        writeJsonRpcError(response, null, -32700, "Parse error");
+        return;
+      }
+      throw error;
+    }
     const record = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
     const id = typeof record.id === "string" || typeof record.id === "number" || record.id === null ? record.id : null;
 

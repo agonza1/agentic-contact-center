@@ -12,6 +12,57 @@ async function postMcp(
   return (await postMcpSequence(principalType, [body]))[0];
 }
 
+async function postRawMcp(
+  principalType: string | undefined,
+  body: string,
+): Promise<{ statusCode: number; payload: any; headers: Record<string, string | string[] | undefined> }> {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    return await new Promise<{ statusCode: number; payload: any; headers: Record<string, string | string[] | undefined> }>((resolve, reject) => {
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(body).toString(),
+      };
+      if (principalType) headers["x-acc-principal-type"] = principalType;
+
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port: address.port,
+          path: "/mcp",
+          method: "POST",
+          headers,
+        },
+        (response) => {
+          let responseBody = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => {
+            responseBody += chunk;
+          });
+          response.on("end", () => {
+            resolve({
+              statusCode: response.statusCode ?? 0,
+              payload: responseBody ? JSON.parse(responseBody) : null,
+              headers: response.headers,
+            });
+          });
+        },
+      );
+      req.on("error", reject);
+      req.write(body);
+      req.end();
+    });
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+}
+
 async function postInitializedMcp(
   principalType: string,
   body: unknown,
@@ -154,6 +205,20 @@ test("POST /mcp negotiates unsupported protocol versions down to a supported ver
   assert.equal(response.statusCode, 200);
   assert.equal(response.payload.result.protocolVersion, "2025-06-18");
   assert.match(response.headers["mcp-session-id"] as string, /^[0-9a-f-]{36}$/i);
+});
+
+test("POST /mcp returns JSON-RPC parse errors for malformed JSON", async () => {
+  const response = await postRawMcp("voice_agent", "{\"jsonrpc\":\"2.0\",");
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.payload, {
+    jsonrpc: "2.0",
+    id: null,
+    error: {
+      code: -32700,
+      message: "Parse error",
+    },
+  });
 });
 
 test("POST /mcp scopes initialization to each MCP session", async () => {
