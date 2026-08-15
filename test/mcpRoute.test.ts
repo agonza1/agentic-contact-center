@@ -8,14 +8,14 @@ import { buildHttpServer } from "../src/http/createServer";
 async function postMcp(
   principalType: string | undefined,
   body: unknown,
-): Promise<{ statusCode: number; payload: any }> {
+): Promise<{ statusCode: number; payload: any; headers: Record<string, string | string[] | undefined> }> {
   return (await postMcpSequence(principalType, [body]))[0];
 }
 
 async function postInitializedMcp(
   principalType: string,
   body: unknown,
-): Promise<{ statusCode: number; payload: any }> {
+): Promise<{ statusCode: number; payload: any; headers: Record<string, string | string[] | undefined> }> {
   return (await postMcpSequence(principalType, [
     {
       jsonrpc: "2.0",
@@ -37,29 +37,32 @@ async function postInitializedMcp(
 async function postMcpSequence(
   principalType: string | undefined,
   bodies: unknown[],
-): Promise<Array<{ statusCode: number; payload: any }>> {
+): Promise<Array<{ statusCode: number; payload: any; headers: Record<string, string | string[] | undefined> }>> {
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const address = server.address();
   if (!address || typeof address === "string") {
     throw new Error("Expected an ephemeral TCP port");
   }
+  const port = address.port;
 
   try {
-    const responses: Array<{ statusCode: number; payload: any }> = [];
+    const responses: Array<{ statusCode: number; payload: any; headers: Record<string, string | string[] | undefined> }> = [];
+    let sessionId: string | undefined;
     for (const body of bodies) {
-      responses.push(await new Promise<{ statusCode: number; payload: any }>((resolve, reject) => {
+      const response = await new Promise<{ statusCode: number; payload: any; headers: Record<string, string | string[] | undefined> }>((resolve, reject) => {
         const requestBody = JSON.stringify(body);
         const headers: Record<string, string> = {
           "content-type": "application/json",
           "content-length": Buffer.byteLength(requestBody).toString(),
         };
         if (principalType) headers["x-acc-principal-type"] = principalType;
+        if (sessionId) headers["mcp-session-id"] = sessionId;
 
         const req = request(
           {
             host: "127.0.0.1",
-            port: address.port,
+            port,
             path: "/mcp",
             method: "POST",
             headers,
@@ -74,6 +77,7 @@ async function postMcpSequence(
               resolve({
                 statusCode: response.statusCode ?? 0,
                 payload: responseBody ? JSON.parse(responseBody) : null,
+                headers: response.headers,
               });
             });
           },
@@ -81,7 +85,10 @@ async function postMcpSequence(
         req.on("error", reject);
         req.write(requestBody);
         req.end();
-      }));
+      });
+      const responseSessionId = response.headers["mcp-session-id"];
+      if (typeof responseSessionId === "string") sessionId = responseSessionId;
+      responses.push(response);
     }
     return responses;
   } finally {
@@ -112,6 +119,7 @@ test("POST /mcp supports the initialize and initialized notification lifecycle",
   ]);
 
   assert.equal(initialize.statusCode, 200);
+  assert.match(initialize.headers["mcp-session-id"] as string, /^[0-9a-f-]{36}$/i);
   assert.deepEqual(initialize.payload.result, {
     protocolVersion: "2025-06-18",
     capabilities: {
@@ -130,6 +138,105 @@ test("POST /mcp supports the initialize and initialized notification lifecycle",
     "retention.lookup_options",
     "operator.request_approval",
   ]);
+});
+
+test("POST /mcp negotiates unsupported protocol versions down to a supported version", async () => {
+  const response = await postMcp("voice_agent", {
+    jsonrpc: "2.0",
+    id: "initialize",
+    method: "initialize",
+    params: {
+      protocolVersion: "2999-01-01",
+      clientInfo: { name: "future-client", version: "1.0.0" },
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.payload.result.protocolVersion, "2025-06-18");
+  assert.match(response.headers["mcp-session-id"] as string, /^[0-9a-f-]{36}$/i);
+});
+
+test("POST /mcp scopes initialization to each MCP session", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+  const sessionScopePort = address.port;
+
+  async function requestMcp(body: unknown, sessionId?: string) {
+    return await new Promise<{ statusCode: number; payload: any; headers: Record<string, string | string[] | undefined> }>((resolve, reject) => {
+      const requestBody = JSON.stringify(body);
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(requestBody).toString(),
+        "x-acc-principal-type": "voice_agent",
+      };
+      if (sessionId) headers["mcp-session-id"] = sessionId;
+
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port: sessionScopePort,
+          path: "/mcp",
+          method: "POST",
+          headers,
+        },
+        (response) => {
+          let responseBody = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => {
+            responseBody += chunk;
+          });
+          response.on("end", () => {
+            resolve({
+              statusCode: response.statusCode ?? 0,
+              payload: responseBody ? JSON.parse(responseBody) : null,
+              headers: response.headers,
+            });
+          });
+        },
+      );
+      req.on("error", reject);
+      req.write(requestBody);
+      req.end();
+    });
+  }
+
+  try {
+    const initializeA = await requestMcp({
+      jsonrpc: "2.0",
+      id: "initialize-a",
+      method: "initialize",
+      params: { protocolVersion: "2025-06-18" },
+    });
+    const sessionA = initializeA.headers["mcp-session-id"] as string;
+    await requestMcp({ jsonrpc: "2.0", method: "notifications/initialized" }, sessionA);
+
+    const initializeB = await requestMcp({
+      jsonrpc: "2.0",
+      id: "initialize-b",
+      method: "initialize",
+      params: { protocolVersion: "2025-06-18" },
+    });
+    const sessionB = initializeB.headers["mcp-session-id"] as string;
+
+    const sessionAList = await requestMcp({ jsonrpc: "2.0", id: "list-a", method: "tools/list" }, sessionA);
+    const sessionBListBeforeInitialized = await requestMcp({ jsonrpc: "2.0", id: "list-b", method: "tools/list" }, sessionB);
+
+    assert.notEqual(sessionA, sessionB);
+    assert.equal(sessionAList.statusCode, 200);
+    assert.equal(sessionAList.payload.result.tools.length, 2);
+    assert.equal(sessionBListBeforeInitialized.statusCode, 428);
+
+    await requestMcp({ jsonrpc: "2.0", method: "notifications/initialized" }, sessionB);
+    const sessionBList = await requestMcp({ jsonrpc: "2.0", id: "list-b-ready", method: "tools/list" }, sessionB);
+    assert.equal(sessionBList.statusCode, 200);
+    assert.equal(sessionBList.payload.result.tools.length, 2);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
 });
 
 test("POST /mcp fails closed when tools are requested before initialization completes", async () => {

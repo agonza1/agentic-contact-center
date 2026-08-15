@@ -89,6 +89,8 @@ const defaultTtsIdleTimeoutMs = 30_000;
 const defaultKokoroTtsIdleTimeoutMs = 45_000;
 const maxVoiceSessionPlayAudioBytes = 2 * 1024 * 1024;
 const supportedVoiceSessionPlayMimeTypes = new Set(["audio/l16", "audio/pcm", "audio/wav", "audio/wave", "audio/x-wav"]);
+const supportedMcpProtocolVersions = new Set(["2025-06-18"]);
+const defaultMcpProtocolVersion = "2025-06-18";
 const clueConSystemUnavailableAudio = readFileSync(resolve(process.cwd(), "assets/cluecon/system-unavailable.mp3"));
 const clueConVoiceOriginPhoto = readFileSync(resolve(process.cwd(), "assets/cluecon/alberto-echo-show-prototype.jpg"));
 
@@ -97,6 +99,16 @@ function getMcpPrincipalType(request: IncomingMessage): ToolGatewayPrincipalType
   const principalType = Array.isArray(rawPrincipal) ? rawPrincipal[0] : rawPrincipal;
   if (principalType === "voice_agent" || principalType === "operator") return principalType;
   return null;
+}
+
+function getMcpSessionId(request: IncomingMessage): string | null {
+  const rawSessionId = request.headers["mcp-session-id"];
+  const sessionId = Array.isArray(rawSessionId) ? rawSessionId[0] : rawSessionId;
+  return typeof sessionId === "string" && /^[0-9a-f-]{36}$/i.test(sessionId) ? sessionId : null;
+}
+
+interface McpSessionState {
+  principalType: ToolGatewayPrincipalType;
 }
 
 function writeJsonRpcError(
@@ -5569,8 +5581,8 @@ async function routeRequest(
   callerTurnDeliveryAckPreviews: Map<string, CallerTurnDeliveryAckPreview>,
   callerTurnDeliveryAckPreviewReservations: Set<string>,
   voiceSessions: RealtimeVoiceSessionStore,
-  pendingMcpInitializedPrincipals: Set<ToolGatewayPrincipalType>,
-  initializedMcpPrincipals: Set<ToolGatewayPrincipalType>,
+  pendingMcpSessions: Map<string, McpSessionState>,
+  initializedMcpSessions: Map<string, McpSessionState>,
 ): Promise<void> {
   const url = request.url ?? "/";
   const requestUrl = new URL(url, "http://localhost");
@@ -5621,14 +5633,18 @@ async function routeRequest(
       const params = isRecord(record.params) ? record.params : {};
       const requestedProtocolVersion = typeof params.protocolVersion === "string"
         ? params.protocolVersion
-        : "2025-06-18";
-      pendingMcpInitializedPrincipals.add(principalType);
-      initializedMcpPrincipals.delete(principalType);
+        : defaultMcpProtocolVersion;
+      const protocolVersion = supportedMcpProtocolVersions.has(requestedProtocolVersion)
+        ? requestedProtocolVersion
+        : defaultMcpProtocolVersion;
+      const sessionId = randomUUID();
+      pendingMcpSessions.set(sessionId, { principalType });
+      response.setHeader("Mcp-Session-Id", sessionId);
       writeJson(response, 200, {
         jsonrpc: "2.0",
         id,
         result: {
-          protocolVersion: requestedProtocolVersion,
+          protocolVersion,
           capabilities: {
             tools: {
               listChanged: false,
@@ -5644,15 +5660,19 @@ async function routeRequest(
     }
 
     if (record.method === "notifications/initialized") {
-      if (pendingMcpInitializedPrincipals.has(principalType)) {
-        pendingMcpInitializedPrincipals.delete(principalType);
-        initializedMcpPrincipals.add(principalType);
+      const sessionId = getMcpSessionId(request);
+      const session = sessionId ? pendingMcpSessions.get(sessionId) : null;
+      if (sessionId && session && session.principalType === principalType) {
+        pendingMcpSessions.delete(sessionId);
+        initializedMcpSessions.set(sessionId, session);
       }
       writeMcpAccepted(response);
       return;
     }
 
-    if (!initializedMcpPrincipals.has(principalType)) {
+    const sessionId = getMcpSessionId(request);
+    const session = sessionId ? initializedMcpSessions.get(sessionId) : null;
+    if (!session || session.principalType !== principalType) {
       writeJsonRpcError(response, id, -32002, "ACC MCP session is not initialized", 428);
       return;
     }
@@ -9184,11 +9204,11 @@ export function buildHttpServer(config: PocConfig) {
   const callerTurnDeliveryAckPreviews = new Map<string, CallerTurnDeliveryAckPreview>();
   const callerTurnDeliveryAckPreviewReservations = new Set<string>();
   const voiceSessions = new RealtimeVoiceSessionStore();
-  const pendingMcpInitializedPrincipals = new Set<ToolGatewayPrincipalType>();
-  const initializedMcpPrincipals = new Set<ToolGatewayPrincipalType>();
+  const pendingMcpSessions = new Map<string, McpSessionState>();
+  const initializedMcpSessions = new Map<string, McpSessionState>();
 
   const server = createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, pipecatSessionRegistrationLocks, browserWebrtcSessionOfferLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions, pendingMcpInitializedPrincipals, initializedMcpPrincipals).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, pipecatSessionRegistrationLocks, browserWebrtcSessionOfferLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions, pendingMcpSessions, initializedMcpSessions).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;
