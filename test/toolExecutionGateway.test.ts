@@ -108,8 +108,8 @@ test("direct tool execution gateway records policy denial separately from malfor
   assert.doesNotMatch(JSON.stringify(result.decisionEvent), /approval-789|idem-789/);
 });
 
-test("ToolHive tool execution gateway sends a bounded Streamable HTTP tools/call request", async () => {
-  const requests: Array<{ principalType: string | undefined; body: any }> = [];
+test("ToolHive tool execution gateway initializes an MCP session before tools/call", async () => {
+  const requests: Array<{ principalType: string | undefined; sessionId: string | undefined; body: any }> = [];
   const server = createServer((request, response) => {
     let body = "";
     request.setEncoding("utf8");
@@ -119,10 +119,30 @@ test("ToolHive tool execution gateway sends a bounded Streamable HTTP tools/call
     request.on("end", () => {
       requests.push({
         principalType: request.headers["x-acc-principal-type"]?.toString(),
+        sessionId: request.headers["mcp-session-id"]?.toString(),
         body: JSON.parse(body),
       });
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({ jsonrpc: "2.0", id: requests[0].body.id, result: { content: [] } }));
+      const lastRequest = requests[requests.length - 1];
+      if (lastRequest.body.method === "initialize") {
+        response.setHeader("mcp-session-id", "mcp-session-1");
+        response.end(JSON.stringify({
+          jsonrpc: "2.0",
+          id: lastRequest.body.id,
+          result: {
+            protocolVersion: "2025-06-18",
+            capabilities: { tools: { listChanged: false } },
+            serverInfo: { name: "test-mcp", version: "0.0.0" },
+          },
+        }));
+        return;
+      }
+      if (lastRequest.body.method === "notifications/initialized") {
+        response.statusCode = 202;
+        response.end();
+        return;
+      }
+      response.end(JSON.stringify({ jsonrpc: "2.0", id: lastRequest.body.id, result: { content: [] } }));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -155,10 +175,17 @@ test("ToolHive tool execution gateway sends a bounded Streamable HTTP tools/call
     assert.equal(result.gatewayMode, "toolhive");
     assert.equal(result.reasonCode, "cedar_allowed");
     assert.equal(result.backendInvoked, true);
-    assert.equal(requests.length, 1);
+    assert.equal(requests.length, 3);
     assert.equal(requests[0].principalType, "operator");
-    assert.equal(requests[0].body.method, "tools/call");
-    assert.deepEqual(requests[0].body.params, {
+    assert.equal(requests[0].sessionId, undefined);
+    assert.equal(requests[0].body.method, "initialize");
+    assert.equal(requests[1].principalType, "operator");
+    assert.equal(requests[1].sessionId, "mcp-session-1");
+    assert.equal(requests[1].body.method, "notifications/initialized");
+    assert.equal(requests[2].principalType, "operator");
+    assert.equal(requests[2].sessionId, "mcp-session-1");
+    assert.equal(requests[2].body.method, "tools/call");
+    assert.deepEqual(requests[2].body.params, {
       name: "retention.apply_offer",
       arguments: {
         call_id: "call-1",

@@ -149,6 +149,7 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
   readonly mode = "toolhive" as const;
   private readonly mcpUrl: string;
   private readonly timeoutMs: number;
+  private readonly sessionIdsByPrincipal = new Map<ToolGatewayPrincipalType, string>();
 
   constructor(options: ToolHiveToolExecutionGatewayOptions) {
     this.mcpUrl = options.mcpUrl;
@@ -180,12 +181,27 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
     const timeout = setTimeout(() => controller.abort(), request.timeoutMs ?? this.timeoutMs);
 
     try {
+      const sessionId = await this.ensureMcpSession(request.principalType, controller.signal);
+      if (!sessionId) {
+        return buildGatewayResult(request, {
+          mode: this.mode,
+          requestId,
+          startedAt,
+          timestamp,
+          status: "error",
+          reasonCode: "toolhive_unavailable",
+          backendInvoked: false,
+          normalizedArguments: validation.normalizedArguments,
+        });
+      }
+
       const response = await fetch(this.mcpUrl, {
         method: "POST",
         headers: {
           "content-type": "application/json",
           accept: "application/json",
           "x-acc-principal-type": request.principalType,
+          "mcp-session-id": sessionId,
           ...(request.idempotencyKey ? { "idempotency-key": request.idempotencyKey } : {}),
         },
         body: JSON.stringify({
@@ -206,6 +222,9 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
       });
 
       if (!response.ok) {
+        if (response.status === 428) {
+          this.sessionIdsByPrincipal.delete(request.principalType);
+        }
         return buildGatewayResult(request, {
           mode: this.mode,
           requestId,
@@ -302,5 +321,67 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private async ensureMcpSession(principalType: ToolGatewayPrincipalType, signal: AbortSignal): Promise<string | null> {
+    const cachedSessionId = this.sessionIdsByPrincipal.get(principalType);
+    if (cachedSessionId) {
+      return cachedSessionId;
+    }
+
+    const initializeId = `initialize-${randomUUID()}`;
+    const initializeResponse = await fetch(this.mcpUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        "x-acc-principal-type": principalType,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: initializeId,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          clientInfo: {
+            name: "agentic-contact-center-toolhive-gateway",
+            version: "0.1.0",
+          },
+        },
+      }),
+      signal,
+    });
+
+    if (!initializeResponse.ok) {
+      return null;
+    }
+
+    const sessionId = initializeResponse.headers.get("mcp-session-id");
+    const initializePayload = await initializeResponse.json() as { jsonrpc?: unknown; id?: unknown; result?: unknown };
+    if (!sessionId || initializePayload.jsonrpc !== "2.0" || initializePayload.id !== initializeId || !initializePayload.result) {
+      return null;
+    }
+
+    const initializedResponse = await fetch(this.mcpUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        "x-acc-principal-type": principalType,
+        "mcp-session-id": sessionId,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notifications/initialized",
+      }),
+      signal,
+    });
+
+    if (!initializedResponse.ok) {
+      return null;
+    }
+
+    this.sessionIdsByPrincipal.set(principalType, sessionId);
+    return sessionId;
   }
 }
