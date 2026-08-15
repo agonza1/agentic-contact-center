@@ -58,6 +58,15 @@ function isToolPolicyReasonCode(value: unknown): value is ToolPolicyReasonCode {
   ].includes(value);
 }
 
+function isMcpCallToolResult(value: unknown): value is { content: unknown[]; isError?: boolean } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const result = value as { content?: unknown; isError?: unknown };
+  return Array.isArray(result.content) && (result.isError === undefined || typeof result.isError === "boolean");
+}
+
 function buildGatewayResult(
   request: ToolExecutionRequest,
   input: {
@@ -210,8 +219,24 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
       }
 
       const payload = await response.json() as {
+        id?: unknown;
         error?: { data?: { reasonCode?: unknown } };
+        result?: unknown;
       };
+
+      if (payload.id !== requestId) {
+        return buildGatewayResult(request, {
+          mode: this.mode,
+          requestId,
+          startedAt,
+          timestamp,
+          status: "error",
+          reasonCode: "toolhive_unavailable",
+          backendInvoked: false,
+          normalizedArguments: validation.normalizedArguments,
+        });
+      }
+
       const errorReasonCode = payload.error?.data?.reasonCode;
       if (isToolPolicyReasonCode(errorReasonCode)) {
         return buildGatewayResult(request, {
@@ -234,6 +259,19 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
           timestamp,
           status: "denied",
           reasonCode: "cedar_denied",
+          backendInvoked: false,
+          normalizedArguments: validation.normalizedArguments,
+        });
+      }
+
+      if (!isMcpCallToolResult(payload.result) || payload.result.isError === true) {
+        return buildGatewayResult(request, {
+          mode: this.mode,
+          requestId,
+          startedAt,
+          timestamp,
+          status: "error",
+          reasonCode: "toolhive_unavailable",
           backendInvoked: false,
           normalizedArguments: validation.normalizedArguments,
         });
