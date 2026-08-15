@@ -30,6 +30,8 @@ export interface ToolHivePolicyBundleSummary {
   agentApplyOfferForbidden: boolean;
   operatorDiscountPercentMax: number;
   manifestMatchesToolExposure: boolean;
+  ready: boolean;
+  blockers: string[];
 }
 
 const defaultPolicyBundleDir = path.join(process.cwd(), "config", "toolhive");
@@ -46,22 +48,35 @@ export function summarizeToolHivePolicyBundle(policyBundleDir = defaultPolicyBun
   const declaredTools = new Set(Object.values(manifest.principals).flatMap((principal) => principal.allowedTools));
   const knownTools: Set<string> = new Set(accToolDefinitions.map((tool) => tool.name));
 
+  const failClosedWebhook = manifest.webhook.failurePolicy === "fail";
+  const agentApplyOfferForbidden =
+    manifest.principals.voice_agent?.forbiddenTools?.includes("retention.apply_offer") === true
+    && cedarPolicy.includes('forbid (')
+    && cedarPolicy.includes('action == Action::"retention.apply_offer"')
+    && cedarPolicy.includes('principal.type == "voice_agent"');
+  const manifestMatchesToolExposure =
+    JSON.stringify(manifest.principals.voice_agent?.allowedTools) === JSON.stringify(voiceAgentTools)
+    && JSON.stringify(manifest.principals.operator?.allowedTools) === JSON.stringify(operatorTools)
+    && [...declaredTools].every((tool) => knownTools.has(tool));
+  const operatorDiscountPercentMax = manifest.retentionBoundary.discountPercentMax;
+  const blockers = [
+    ...(failClosedWebhook ? [] : ["toolhive_webhook_not_fail_closed"]),
+    ...(agentApplyOfferForbidden ? [] : ["voice_agent_apply_offer_not_forbidden"]),
+    ...(operatorDiscountPercentMax === 10 ? [] : ["retention_discount_boundary_mismatch"]),
+    ...(manifestMatchesToolExposure ? [] : ["toolhive_manifest_tool_exposure_mismatch"]),
+  ];
+
   return {
     policyVersion: manifest.policyVersion,
     policyHash: createHash("sha256").update(cedarPolicy).digest("hex"),
     toolhiveVersion: manifest.toolhiveVersion,
     policyPath: path.join(policyBundleDir, manifest.policyFile),
-    failClosedWebhook: manifest.webhook.failurePolicy === "fail",
+    failClosedWebhook,
     validatingWebhookFailurePolicy: manifest.webhook.failurePolicy,
-    agentApplyOfferForbidden:
-      manifest.principals.voice_agent?.forbiddenTools?.includes("retention.apply_offer") === true
-      && cedarPolicy.includes('forbid (')
-      && cedarPolicy.includes('action == Action::"retention.apply_offer"')
-      && cedarPolicy.includes('principal.type == "voice_agent"'),
-    operatorDiscountPercentMax: manifest.retentionBoundary.discountPercentMax,
-    manifestMatchesToolExposure:
-      JSON.stringify(manifest.principals.voice_agent?.allowedTools) === JSON.stringify(voiceAgentTools)
-      && JSON.stringify(manifest.principals.operator?.allowedTools) === JSON.stringify(operatorTools)
-      && [...declaredTools].every((tool) => knownTools.has(tool)),
+    agentApplyOfferForbidden,
+    operatorDiscountPercentMax,
+    manifestMatchesToolExposure,
+    ready: blockers.length === 0,
+    blockers,
   };
 }
