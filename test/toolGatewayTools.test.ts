@@ -5,6 +5,7 @@ import {
   accToolDefinitions,
   getAccToolDefinition,
   isAccToolCallableByPrincipal,
+  listAccMcpToolsForPrincipal,
   listAccToolsForPrincipal,
   validateAccToolArguments,
 } from "../src/core/toolGatewayTools";
@@ -51,6 +52,42 @@ test("ACC tool manifest declares MCP annotations for each gateway tool", () => {
     idempotentHint: true,
     openWorldHint: false,
   });
+});
+
+test("ACC MCP tools/list manifest hides operator-only tools from the voice agent", () => {
+  const agentManifest = listAccMcpToolsForPrincipal("voice_agent");
+  const operatorManifest = listAccMcpToolsForPrincipal("operator");
+
+  assert.deepEqual(agentManifest.map((tool) => tool.name), ["retention.lookup_options", "operator.request_approval"]);
+  assert.deepEqual(operatorManifest.map((tool) => tool.name), [
+    "retention.lookup_options",
+    "operator.request_approval",
+    "retention.apply_offer",
+  ]);
+  assert.equal(JSON.stringify(agentManifest).includes("retention.apply_offer"), false);
+});
+
+test("ACC MCP tools/list manifest exports bounded primitive input schemas", () => {
+  const [requestApproval] = listAccMcpToolsForPrincipal("voice_agent")
+    .filter((tool) => tool.name === "operator.request_approval");
+  const [applyOffer] = listAccMcpToolsForPrincipal("operator")
+    .filter((tool) => tool.name === "retention.apply_offer");
+
+  assert.deepEqual(requestApproval.inputSchema, {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      call_id: { type: "string" },
+      offer_id: { type: "string" },
+      discount_percent: { type: "number", minimum: 0, maximum: 10 },
+      idempotency_key: { type: "string" },
+    },
+    required: ["call_id", "offer_id", "discount_percent", "idempotency_key"],
+  });
+  assert.equal(applyOffer.inputSchema.additionalProperties, false);
+  assert.equal(applyOffer.inputSchema.properties.discount_percent.maximum, 10);
+  assert.equal(Object.hasOwn(applyOffer.inputSchema.properties, "operatorApproved"), false);
+  assert.equal(Object.hasOwn(applyOffer.inputSchema.properties, "role"), false);
 });
 
 test("ACC tool argument validation normalizes only the declared primitive gateway shape", () => {
