@@ -130,6 +130,11 @@ function writeJsonRpcPolicyError(
   });
 }
 
+function writeMcpAccepted(response: ServerResponse): void {
+  response.statusCode = 202;
+  response.end();
+}
+
 function buildAccMcpToolCallContent(toolName: string, normalizedArguments: Record<string, string | number>): string {
   if (toolName === "retention.lookup_options") {
     return JSON.stringify({
@@ -5564,6 +5569,8 @@ async function routeRequest(
   callerTurnDeliveryAckPreviews: Map<string, CallerTurnDeliveryAckPreview>,
   callerTurnDeliveryAckPreviewReservations: Set<string>,
   voiceSessions: RealtimeVoiceSessionStore,
+  pendingMcpInitializedPrincipals: Set<ToolGatewayPrincipalType>,
+  initializedMcpPrincipals: Set<ToolGatewayPrincipalType>,
 ): Promise<void> {
   const url = request.url ?? "/";
   const requestUrl = new URL(url, "http://localhost");
@@ -5607,6 +5614,46 @@ async function routeRequest(
 
     if (!principalType) {
       writeJsonRpcError(response, id, -32001, "Missing or invalid ACC principal type", 401);
+      return;
+    }
+
+    if (record.method === "initialize") {
+      const params = isRecord(record.params) ? record.params : {};
+      const requestedProtocolVersion = typeof params.protocolVersion === "string"
+        ? params.protocolVersion
+        : "2025-06-18";
+      pendingMcpInitializedPrincipals.add(principalType);
+      initializedMcpPrincipals.delete(principalType);
+      writeJson(response, 200, {
+        jsonrpc: "2.0",
+        id,
+        result: {
+          protocolVersion: requestedProtocolVersion,
+          capabilities: {
+            tools: {
+              listChanged: false,
+            },
+          },
+          serverInfo: {
+            name: "agentic-contact-center",
+            version: "0.1.0",
+          },
+        },
+      });
+      return;
+    }
+
+    if (record.method === "notifications/initialized") {
+      if (pendingMcpInitializedPrincipals.has(principalType)) {
+        pendingMcpInitializedPrincipals.delete(principalType);
+        initializedMcpPrincipals.add(principalType);
+      }
+      writeMcpAccepted(response);
+      return;
+    }
+
+    if (!initializedMcpPrincipals.has(principalType)) {
+      writeJsonRpcError(response, id, -32002, "ACC MCP session is not initialized", 428);
       return;
     }
 
@@ -9137,9 +9184,11 @@ export function buildHttpServer(config: PocConfig) {
   const callerTurnDeliveryAckPreviews = new Map<string, CallerTurnDeliveryAckPreview>();
   const callerTurnDeliveryAckPreviewReservations = new Set<string>();
   const voiceSessions = new RealtimeVoiceSessionStore();
+  const pendingMcpInitializedPrincipals = new Set<ToolGatewayPrincipalType>();
+  const initializedMcpPrincipals = new Set<ToolGatewayPrincipalType>();
 
   const server = createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, pipecatSessionRegistrationLocks, browserWebrtcSessionOfferLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, pipecatSessionRegistrationLocks, browserWebrtcSessionOfferLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions, pendingMcpInitializedPrincipals, initializedMcpPrincipals).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;

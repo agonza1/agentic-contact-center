@@ -9,6 +9,35 @@ async function postMcp(
   principalType: string | undefined,
   body: unknown,
 ): Promise<{ statusCode: number; payload: any }> {
+  return (await postMcpSequence(principalType, [body]))[0];
+}
+
+async function postInitializedMcp(
+  principalType: string,
+  body: unknown,
+): Promise<{ statusCode: number; payload: any }> {
+  return (await postMcpSequence(principalType, [
+    {
+      jsonrpc: "2.0",
+      id: "initialize",
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        clientInfo: { name: "acc-route-test", version: "0.0.0" },
+      },
+    },
+    {
+      jsonrpc: "2.0",
+      method: "notifications/initialized",
+    },
+    body,
+  ]))[2];
+}
+
+async function postMcpSequence(
+  principalType: string | undefined,
+  bodies: unknown[],
+): Promise<Array<{ statusCode: number; payload: any }>> {
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const address = server.address();
@@ -17,47 +46,112 @@ async function postMcp(
   }
 
   try {
-    return await new Promise((resolve, reject) => {
-      const requestBody = JSON.stringify(body);
-      const headers: Record<string, string> = {
-        "content-type": "application/json",
-        "content-length": Buffer.byteLength(requestBody).toString(),
-      };
-      if (principalType) headers["x-acc-principal-type"] = principalType;
+    const responses: Array<{ statusCode: number; payload: any }> = [];
+    for (const body of bodies) {
+      responses.push(await new Promise<{ statusCode: number; payload: any }>((resolve, reject) => {
+        const requestBody = JSON.stringify(body);
+        const headers: Record<string, string> = {
+          "content-type": "application/json",
+          "content-length": Buffer.byteLength(requestBody).toString(),
+        };
+        if (principalType) headers["x-acc-principal-type"] = principalType;
 
-      const req = request(
-        {
-          host: "127.0.0.1",
-          port: address.port,
-          path: "/mcp",
-          method: "POST",
-          headers,
-        },
-        (response) => {
-          let responseBody = "";
-          response.setEncoding("utf8");
-          response.on("data", (chunk) => {
-            responseBody += chunk;
-          });
-          response.on("end", () => {
-            resolve({
-              statusCode: response.statusCode ?? 0,
-              payload: JSON.parse(responseBody),
+        const req = request(
+          {
+            host: "127.0.0.1",
+            port: address.port,
+            path: "/mcp",
+            method: "POST",
+            headers,
+          },
+          (response) => {
+            let responseBody = "";
+            response.setEncoding("utf8");
+            response.on("data", (chunk) => {
+              responseBody += chunk;
             });
-          });
-        },
-      );
-      req.on("error", reject);
-      req.write(requestBody);
-      req.end();
-    });
+            response.on("end", () => {
+              resolve({
+                statusCode: response.statusCode ?? 0,
+                payload: responseBody ? JSON.parse(responseBody) : null,
+              });
+            });
+          },
+        );
+        req.on("error", reject);
+        req.write(requestBody);
+        req.end();
+      }));
+    }
+    return responses;
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 }
 
-test("POST /mcp tools/list exposes only voice-agent callable ACC tools", async () => {
+test("POST /mcp supports the initialize and initialized notification lifecycle", async () => {
+  const [initialize, initialized, toolsList] = await postMcpSequence("voice_agent", [
+    {
+      jsonrpc: "2.0",
+      id: "initialize",
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        clientInfo: { name: "acc-route-test", version: "0.0.0" },
+      },
+    },
+    {
+      jsonrpc: "2.0",
+      method: "notifications/initialized",
+    },
+    {
+      jsonrpc: "2.0",
+      id: "list-agent-tools",
+      method: "tools/list",
+    },
+  ]);
+
+  assert.equal(initialize.statusCode, 200);
+  assert.deepEqual(initialize.payload.result, {
+    protocolVersion: "2025-06-18",
+    capabilities: {
+      tools: {
+        listChanged: false,
+      },
+    },
+    serverInfo: {
+      name: "agentic-contact-center",
+      version: "0.1.0",
+    },
+  });
+  assert.equal(initialized.statusCode, 202);
+  assert.equal(initialized.payload, null);
+  assert.deepEqual(toolsList.payload.result.tools.map((tool: { name: string }) => tool.name), [
+    "retention.lookup_options",
+    "operator.request_approval",
+  ]);
+});
+
+test("POST /mcp fails closed when tools are requested before initialization completes", async () => {
   const response = await postMcp("voice_agent", {
+    jsonrpc: "2.0",
+    id: "premature-list",
+    method: "tools/list",
+  });
+
+  assert.equal(response.statusCode, 428);
+  assert.deepEqual(response.payload, {
+    jsonrpc: "2.0",
+    id: "premature-list",
+    error: {
+      code: -32002,
+      message: "ACC MCP session is not initialized",
+    },
+  });
+});
+
+test("POST /mcp tools/list exposes only voice-agent callable ACC tools", async () => {
+  const response = await postInitializedMcp("voice_agent", {
     jsonrpc: "2.0",
     id: "list-agent-tools",
     method: "tools/list",
@@ -75,7 +169,7 @@ test("POST /mcp tools/list exposes only voice-agent callable ACC tools", async (
 });
 
 test("POST /mcp tools/list exposes operator-only apply_offer to operator principals", async () => {
-  const response = await postMcp("operator", {
+  const response = await postInitializedMcp("operator", {
     jsonrpc: "2.0",
     id: 2,
     method: "tools/list",
@@ -111,7 +205,7 @@ test("POST /mcp fails closed without an ACC principal header", async () => {
 });
 
 test("POST /mcp tools/call executes declared voice-agent read tools", async () => {
-  const response = await postMcp("voice_agent", {
+  const response = await postInitializedMcp("voice_agent", {
     jsonrpc: "2.0",
     id: "lookup-options",
     method: "tools/call",
@@ -140,7 +234,7 @@ test("POST /mcp tools/call executes declared voice-agent read tools", async () =
 });
 
 test("POST /mcp tools/call denies voice-agent apply_offer without invoking backend semantics", async () => {
-  const response = await postMcp("voice_agent", {
+  const response = await postInitializedMcp("voice_agent", {
     jsonrpc: "2.0",
     id: "agent-apply-offer",
     method: "tools/call",
@@ -169,7 +263,7 @@ test("POST /mcp tools/call denies voice-agent apply_offer without invoking backe
 });
 
 test("POST /mcp tools/call rejects escalation flags before authorization", async () => {
-  const response = await postMcp("voice_agent", {
+  const response = await postInitializedMcp("voice_agent", {
     jsonrpc: "2.0",
     id: "agent-escalation-flag",
     method: "tools/call",
