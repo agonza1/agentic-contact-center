@@ -28,6 +28,22 @@ export interface AccToolDefinition {
   arguments: AccToolArgument[];
 }
 
+export interface AccMcpToolManifestEntry {
+  name: AccToolName;
+  description: string;
+  annotations: AccToolAnnotations;
+  inputSchema: {
+    type: "object";
+    additionalProperties: false;
+    properties: Record<string, {
+      type: "string" | "number";
+      minimum?: number;
+      maximum?: number;
+    }>;
+    required: string[];
+  };
+}
+
 export type AccToolArgumentValidationReason =
   | "unknown_argument"
   | "missing_required_argument"
@@ -99,6 +115,27 @@ export const accToolDefinitions: readonly AccToolDefinition[] = [
 
 export function listAccToolsForPrincipal(principalType: ToolGatewayPrincipalType): AccToolDefinition[] {
   return accToolDefinitions.filter((definition) => definition.principalTypes.includes(principalType));
+}
+
+export function listAccMcpToolsForPrincipal(principalType: ToolGatewayPrincipalType): AccMcpToolManifestEntry[] {
+  return listAccToolsForPrincipal(principalType).map((definition) => ({
+    name: definition.name,
+    description: definition.purpose,
+    annotations: { ...definition.annotations },
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: Object.fromEntries(definition.arguments.map((argument) => [
+        argument.name,
+        {
+          type: argument.type,
+          ...(argument.minimum === undefined ? {} : { minimum: argument.minimum }),
+          ...(argument.maximum === undefined ? {} : { maximum: argument.maximum }),
+        },
+      ])),
+      required: definition.arguments.filter((argument) => argument.required).map((argument) => argument.name),
+    },
+  }));
 }
 
 export function getAccToolDefinition(name: AccToolName): AccToolDefinition {
