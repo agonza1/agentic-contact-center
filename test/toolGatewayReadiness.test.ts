@@ -18,6 +18,17 @@ test("tool gateway readiness keeps direct mode as the no-dependency default", ()
   assert.deepEqual(readiness.blockers, []);
 });
 
+test("toolhive mode includes policy bundle blockers in readiness", () => {
+  const readiness = buildToolGatewayReadiness({
+    ACC_TOOL_GATEWAY_MODE: "toolhive",
+    TOOLHIVE_MCP_URL: "http://127.0.0.1:24100/mcp",
+  });
+
+  assert.equal(readiness.ready, false);
+  assert.equal(readiness.configured, false);
+  assert.deepEqual(readiness.blockers, ["missing_TOOLHIVE_POLICY_VERSION"]);
+});
+
 test("toolhive mode reports exact blockers and remains fail-closed when incomplete", () => {
   const readiness = buildToolGatewayReadiness({
     ACC_TOOL_GATEWAY_MODE: "toolhive",

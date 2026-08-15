@@ -102,6 +102,7 @@ export function buildToolGatewayReadiness(env: NodeJS.ProcessEnv = process.env):
   }
 
   if (!policyVersion) blockers.push("missing_TOOLHIVE_POLICY_VERSION");
+  blockers.push(...policyBundle.blockers);
 
   return {
     mode: "toolhive",
