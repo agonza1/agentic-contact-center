@@ -90,6 +90,19 @@ test("ACC MCP tools/list manifest exports bounded primitive input schemas", () =
   assert.equal(Object.hasOwn(applyOffer.inputSchema.properties, "role"), false);
 });
 
+test("ACC MCP tools/list manifest exports self-contained schema and annotation objects", () => {
+  const [lookupOptions] = listAccMcpToolsForPrincipal("voice_agent")
+    .filter((tool) => tool.name === "retention.lookup_options");
+  const definition = getAccToolDefinition("retention.lookup_options");
+
+  assert.notEqual(lookupOptions.annotations, definition.annotations);
+  assert.deepEqual(Object.keys(lookupOptions.inputSchema.properties), lookupOptions.inputSchema.required);
+
+  lookupOptions.annotations.readOnlyHint = false;
+
+  assert.equal(getAccToolDefinition("retention.lookup_options").annotations.readOnlyHint, true);
+});
+
 test("ACC tool argument validation normalizes only the declared primitive gateway shape", () => {
   const validation = validateAccToolArguments("retention.apply_offer", {
     call_id: "call-123",

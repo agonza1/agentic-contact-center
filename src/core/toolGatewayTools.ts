@@ -121,7 +121,7 @@ export function listAccMcpToolsForPrincipal(principalType: ToolGatewayPrincipalT
   return listAccToolsForPrincipal(principalType).map((definition) => ({
     name: definition.name,
     description: definition.purpose,
-    annotations: definition.annotations,
+    annotations: { ...definition.annotations },
     inputSchema: {
       type: "object",
       additionalProperties: false,
