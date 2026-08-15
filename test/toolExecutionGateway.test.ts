@@ -221,6 +221,8 @@ test("ToolHive gateway denies forbidden agent tool calls before invoking ToolHiv
 
 test("ToolHive gateway fails closed on malformed successful JSON-RPC responses", async () => {
   const responses = [
+    { id: "tool-request-malformed", result: { content: [] } },
+    { jsonrpc: "1.0", id: "tool-request-malformed", result: { content: [] } },
     { jsonrpc: "2.0", id: "wrong-id", result: { content: [] } },
     { jsonrpc: "2.0", id: "tool-request-malformed", result: { isError: true, content: [] } },
     { jsonrpc: "2.0", id: "tool-request-malformed" },

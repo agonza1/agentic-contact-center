@@ -219,12 +219,13 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
       }
 
       const payload = await response.json() as {
+        jsonrpc?: unknown;
         id?: unknown;
         error?: { data?: { reasonCode?: unknown } };
         result?: unknown;
       };
 
-      if (payload.id !== requestId) {
+      if (payload.jsonrpc !== "2.0" || payload.id !== requestId) {
         return buildGatewayResult(request, {
           mode: this.mode,
           requestId,
