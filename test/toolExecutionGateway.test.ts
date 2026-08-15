@@ -246,6 +246,92 @@ test("ToolHive gateway denies forbidden agent tool calls before invoking ToolHiv
   }
 });
 
+test("ToolHive gateway refreshes stale MCP sessions reported by 404 responses", async () => {
+  const requests: Array<{ sessionId: string | undefined; method: string }> = [];
+  let sessionCounter = 0;
+  const server = createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
+    request.on("end", () => {
+      const payload = JSON.parse(body);
+      const sessionId = request.headers["mcp-session-id"]?.toString();
+      requests.push({ sessionId, method: payload.method });
+      response.setHeader("content-type", "application/json");
+
+      if (payload.method === "initialize") {
+        sessionCounter += 1;
+        response.setHeader("mcp-session-id", `mcp-session-${sessionCounter}`);
+        response.end(JSON.stringify({
+          jsonrpc: "2.0",
+          id: payload.id,
+          result: {
+            protocolVersion: "2025-06-18",
+            capabilities: { tools: { listChanged: false } },
+            serverInfo: { name: "test-mcp", version: "0.0.0" },
+          },
+        }));
+        return;
+      }
+
+      if (payload.method === "notifications/initialized") {
+        response.statusCode = 202;
+        response.end();
+        return;
+      }
+
+      if (payload.method === "tools/call" && sessionId === "mcp-session-1") {
+        response.statusCode = 404;
+        response.end(JSON.stringify({
+          jsonrpc: "2.0",
+          id: payload.id,
+          error: { code: -32002, message: "Invalid MCP session" },
+        }));
+        return;
+      }
+
+      response.end(JSON.stringify({ jsonrpc: "2.0", id: payload.id, result: { content: [] } }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const gateway = new ToolHiveToolExecutionGateway({
+      mcpUrl: `http://127.0.0.1:${address.port}/mcp`,
+      timeoutMs: 500,
+    });
+    const result = await gateway.execute({
+      requestId: "tool-request-refresh",
+      callId: "call-refresh",
+      principalType: "operator",
+      tool: "retention.apply_offer",
+      arguments: {
+        call_id: "call-refresh",
+        offer_id: "retention-10",
+        discount_percent: 10,
+        approval_id: "approval-refresh",
+        idempotency_key: "idem-refresh",
+      },
+    });
+
+    assert.equal(result.status, "allowed");
+    assert.deepEqual(requests, [
+      { sessionId: undefined, method: "initialize" },
+      { sessionId: "mcp-session-1", method: "notifications/initialized" },
+      { sessionId: "mcp-session-1", method: "tools/call" },
+      { sessionId: undefined, method: "initialize" },
+      { sessionId: "mcp-session-2", method: "notifications/initialized" },
+      { sessionId: "mcp-session-2", method: "tools/call" },
+    ]);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("ToolHive gateway fails closed on malformed successful JSON-RPC responses", async () => {
   const responses = [
     { id: "tool-request-malformed", result: { content: [] } },

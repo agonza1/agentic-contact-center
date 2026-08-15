@@ -195,46 +195,35 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
         });
       }
 
-      const response = await fetch(this.mcpUrl, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          accept: "application/json",
-          "x-acc-principal-type": request.principalType,
-          "mcp-session-id": sessionId,
-          ...(request.idempotencyKey ? { "idempotency-key": request.idempotencyKey } : {}),
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: requestId,
-          method: "tools/call",
-          params: {
-            name: request.tool,
-            arguments: validation.normalizedArguments,
-            _meta: {
-              callId: request.callId,
-              principalType: request.principalType,
-              policyVersion: request.policyVersion ?? null,
-            },
-          },
-        }),
-        signal: controller.signal,
-      });
+      let response = await this.postMcpToolCall(request, requestId, validation.normalizedArguments, sessionId, controller.signal);
 
       if (!response.ok) {
-        if (response.status === 428) {
+        if (response.status === 404 || response.status === 428) {
           this.sessionIdsByPrincipal.delete(request.principalType);
+          const refreshedSessionId = await this.ensureMcpSession(request.principalType, controller.signal);
+          if (refreshedSessionId) {
+            response = await this.postMcpToolCall(
+              request,
+              requestId,
+              validation.normalizedArguments,
+              refreshedSessionId,
+              controller.signal,
+            );
+          }
         }
-        return buildGatewayResult(request, {
-          mode: this.mode,
-          requestId,
-          startedAt,
-          timestamp,
-          status: "error",
-          reasonCode: response.status === 408 || response.status === 504 ? "toolhive_timeout" : "toolhive_unavailable",
-          backendInvoked: false,
-          normalizedArguments: validation.normalizedArguments,
-        });
+
+        if (!response.ok) {
+          return buildGatewayResult(request, {
+            mode: this.mode,
+            requestId,
+            startedAt,
+            timestamp,
+            status: "error",
+            reasonCode: response.status === 408 || response.status === 504 ? "toolhive_timeout" : "toolhive_unavailable",
+            backendInvoked: false,
+            normalizedArguments: validation.normalizedArguments,
+          });
+        }
       }
 
       const payload = await response.json() as {
@@ -383,5 +372,39 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
 
     this.sessionIdsByPrincipal.set(principalType, sessionId);
     return sessionId;
+  }
+
+  private async postMcpToolCall(
+    request: ToolExecutionRequest,
+    requestId: string,
+    normalizedArguments: Record<string, string | number>,
+    sessionId: string,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    return await fetch(this.mcpUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        "x-acc-principal-type": request.principalType,
+        "mcp-session-id": sessionId,
+        ...(request.idempotencyKey ? { "idempotency-key": request.idempotencyKey } : {}),
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: requestId,
+        method: "tools/call",
+        params: {
+          name: request.tool,
+          arguments: normalizedArguments,
+          _meta: {
+            callId: request.callId,
+            principalType: request.principalType,
+            policyVersion: request.policyVersion ?? null,
+          },
+        },
+      }),
+      signal,
+    });
   }
 }
