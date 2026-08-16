@@ -950,3 +950,60 @@ test("POST /mcp tools/call rejects escalation flags before authorization", async
     },
   });
 });
+
+test("POST /mcp tools/call denies operator apply_offer with mismatched approval evidence", async () => {
+  const response = await postInitializedMcp("operator", {
+    jsonrpc: "2.0",
+    id: "operator-bad-approval",
+    method: "tools/call",
+    params: {
+      name: "retention.apply_offer",
+      arguments: {
+        call_id: "call-123",
+        offer_id: "retention-10",
+        discount_percent: 10,
+        approval_id: "approval:other-call:retention-10",
+        idempotency_key: "idem-123",
+      },
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.payload, {
+    jsonrpc: "2.0",
+    id: "operator-bad-approval",
+    error: {
+      code: -32003,
+      message: "ACC MCP approval evidence is invalid for this offer",
+      data: { reasonCode: "invalid_approval" },
+    },
+  });
+});
+
+test("POST /mcp tools/call allows operator apply_offer with matching approval evidence", async () => {
+  const response = await postInitializedMcp("operator", {
+    jsonrpc: "2.0",
+    id: "operator-good-approval",
+    method: "tools/call",
+    params: {
+      name: "retention.apply_offer",
+      arguments: {
+        call_id: "call-123",
+        offer_id: "retention-10",
+        discount_percent: 10,
+        approval_id: "approval:call-123:retention-10",
+        idempotency_key: "idem-123",
+      },
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.payload.jsonrpc, "2.0");
+  assert.equal(response.payload.id, "operator-good-approval");
+  assert.equal(response.payload.result.isError, false);
+  assert.deepEqual(response.payload.result.structuredContent, {
+    status: "accepted",
+    offer_id: "retention-10",
+    discount_percent: 10,
+  });
+});

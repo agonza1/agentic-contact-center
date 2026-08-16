@@ -207,13 +207,13 @@ function writeJsonRpcPolicyError(
   response: ServerResponse,
   id: string | number | null,
   message: string,
-  reasonCode: "cedar_denied" | "invalid_request",
+  reasonCode: "cedar_denied" | "invalid_approval" | "invalid_request",
 ): void {
   writeJson(response, 200, {
     jsonrpc: "2.0",
     id,
     error: {
-      code: reasonCode === "cedar_denied" ? -32003 : -32602,
+      code: reasonCode === "invalid_request" ? -32602 : -32003,
       message,
       data: { reasonCode },
     },
@@ -253,6 +253,10 @@ function buildAccMcpToolCallPayload(toolName: string, normalizedArguments: Recor
     offer_id: normalizedArguments.offer_id,
     discount_percent: normalizedArguments.discount_percent,
   };
+}
+
+function hasMatchingAccMcpApproval(normalizedArguments: Record<string, string | number>): boolean {
+  return normalizedArguments.approval_id === `approval:${normalizedArguments.call_id}:${normalizedArguments.offer_id}`;
 }
 
 interface BrowserWebrtcBridgeRuntimeProbe {
@@ -5849,6 +5853,11 @@ async function routeRequest(
 
       if (!isAccToolCallableByPrincipal(toolName, principalType)) {
         writeJsonRpcPolicyError(response, id, "ACC MCP tool is not authorized for this principal", "cedar_denied");
+        return;
+      }
+
+      if (toolName === "retention.apply_offer" && !hasMatchingAccMcpApproval(validation.normalizedArguments)) {
+        writeJsonRpcPolicyError(response, id, "ACC MCP approval evidence is invalid for this offer", "invalid_approval");
         return;
       }
 
