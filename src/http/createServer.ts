@@ -5769,6 +5769,15 @@ async function routeRequest(
       return;
     }
 
+    if (record.method === "ping" && Object.hasOwn(record, "id")) {
+      writeJson(response, 200, {
+        jsonrpc: "2.0",
+        id,
+        result: {},
+      });
+      return;
+    }
+
     if (record.method === "tools/call") {
       const params = isRecord(record.params) ? record.params : {};
       const toolName = params.name;

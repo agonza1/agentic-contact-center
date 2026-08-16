@@ -671,6 +671,21 @@ test("POST /mcp acknowledges unsupported initialized notifications without a JSO
   assert.equal(response.payload, null);
 });
 
+test("POST /mcp responds to initialized ping requests", async () => {
+  const response = await postInitializedMcp("voice_agent", {
+    jsonrpc: "2.0",
+    id: "ping-1",
+    method: "ping",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.payload, {
+    jsonrpc: "2.0",
+    id: "ping-1",
+    result: {},
+  });
+});
+
 test("POST /mcp fails closed without an ACC principal header", async () => {
   const response = await postMcp(undefined, {
     jsonrpc: "2.0",
