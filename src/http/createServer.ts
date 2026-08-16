@@ -129,6 +129,29 @@ function isTrustedMcpOrigin(request: IncomingMessage): boolean {
   }
 }
 
+function writeTrustedMcpCorsHeaders(request: IncomingMessage, response: ServerResponse): void {
+  const rawOrigin = request.headers.origin;
+  const origin = Array.isArray(rawOrigin) ? rawOrigin[0] : rawOrigin;
+  if (!origin) return;
+
+  response.setHeader("access-control-allow-origin", origin);
+  response.setHeader("vary", "Origin");
+}
+
+function writeMcpCorsPreflight(response: ServerResponse): void {
+  response.statusCode = 204;
+  response.setHeader("access-control-allow-methods", "POST, OPTIONS");
+  response.setHeader("access-control-allow-headers", [
+    "content-type",
+    "x-acc-principal-type",
+    "mcp-session-id",
+    "mcp-protocol-version",
+    "idempotency-key",
+  ].join(", "));
+  response.setHeader("access-control-max-age", "600");
+  response.end();
+}
+
 interface McpSessionState {
   principalType: ToolGatewayPrincipalType;
   protocolVersion: string;
@@ -5676,11 +5699,22 @@ async function routeRequest(
     return;
   }
 
+  if (request.method === "OPTIONS" && pathname === "/mcp") {
+    if (!isTrustedMcpOrigin(request)) {
+      writeJsonRpcError(response, null, -32004, "Untrusted MCP origin", 403);
+      return;
+    }
+    writeTrustedMcpCorsHeaders(request, response);
+    writeMcpCorsPreflight(response);
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/mcp") {
     if (!isTrustedMcpOrigin(request)) {
       writeJsonRpcError(response, null, -32004, "Untrusted MCP origin", 403);
       return;
     }
+    writeTrustedMcpCorsHeaders(request, response);
 
     const principalType = getMcpPrincipalType(request);
     let body: unknown;

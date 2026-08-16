@@ -67,6 +67,54 @@ async function postMcpWithOrigin(
   }
 }
 
+async function optionsMcpWithOrigin(
+  origin: string,
+): Promise<{ statusCode: number; body: string; headers: Record<string, string | string[] | undefined> }> {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+  const port = address.port;
+
+  try {
+    return await new Promise<{ statusCode: number; body: string; headers: Record<string, string | string[] | undefined> }>((resolve, reject) => {
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port,
+          path: "/mcp",
+          method: "OPTIONS",
+          headers: {
+            origin,
+            "access-control-request-method": "POST",
+            "access-control-request-headers": "content-type, x-acc-principal-type, mcp-session-id, mcp-protocol-version",
+          },
+        },
+        (response) => {
+          let responseBody = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => {
+            responseBody += chunk;
+          });
+          response.on("end", () => {
+            resolve({
+              statusCode: response.statusCode ?? 0,
+              body: responseBody,
+              headers: response.headers,
+            });
+          });
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+}
+
 async function postRawMcp(
   principalType: string | undefined,
   body: string,
@@ -377,6 +425,19 @@ test("POST /mcp accepts browser requests from loopback origins", async () => {
   assert.equal(response.statusCode, 200);
   assert.equal(response.payload.result.protocolVersion, "2025-06-18");
   assert.match(response.headers["mcp-session-id"] as string, /^[0-9a-f-]{36}$/i);
+  assert.equal(response.headers["access-control-allow-origin"], "http://127.0.0.1:5173");
+  assert.equal(response.headers.vary, "Origin");
+});
+
+test("OPTIONS /mcp accepts CORS preflight requests from loopback origins", async () => {
+  const response = await optionsMcpWithOrigin("http://127.0.0.1:5173");
+
+  assert.equal(response.statusCode, 204);
+  assert.equal(response.body, "");
+  assert.equal(response.headers["access-control-allow-origin"], "http://127.0.0.1:5173");
+  assert.equal(response.headers["access-control-allow-methods"], "POST, OPTIONS");
+  assert.match(response.headers["access-control-allow-headers"] as string, /x-acc-principal-type/);
+  assert.match(response.headers["access-control-allow-headers"] as string, /mcp-session-id/);
 });
 
 test("POST /mcp rejects browser requests from untrusted origins", async () => {
