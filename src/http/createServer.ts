@@ -115,6 +115,20 @@ function getMcpProtocolVersion(request: IncomingMessage): string | null {
   return typeof protocolVersion === "string" && protocolVersion.trim() !== "" ? protocolVersion : null;
 }
 
+function isTrustedMcpOrigin(request: IncomingMessage): boolean {
+  const rawOrigin = request.headers.origin;
+  const origin = Array.isArray(rawOrigin) ? rawOrigin[0] : rawOrigin;
+  if (!origin) return true;
+
+  try {
+    const originUrl = new URL(origin);
+    if (originUrl.protocol !== "http:" && originUrl.protocol !== "https:") return false;
+    return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(originUrl.hostname);
+  } catch {
+    return false;
+  }
+}
+
 interface McpSessionState {
   principalType: ToolGatewayPrincipalType;
   protocolVersion: string;
@@ -5663,6 +5677,11 @@ async function routeRequest(
   }
 
   if (request.method === "POST" && pathname === "/mcp") {
+    if (!isTrustedMcpOrigin(request)) {
+      writeJsonRpcError(response, null, -32004, "Untrusted MCP origin", 403);
+      return;
+    }
+
     const principalType = getMcpPrincipalType(request);
     let body: unknown;
     try {
