@@ -91,6 +91,8 @@ const maxVoiceSessionPlayAudioBytes = 2 * 1024 * 1024;
 const supportedVoiceSessionPlayMimeTypes = new Set(["audio/l16", "audio/pcm", "audio/wav", "audio/wave", "audio/x-wav"]);
 const supportedMcpProtocolVersions = new Set(["2025-06-18"]);
 const defaultMcpProtocolVersion = "2025-06-18";
+const mcpSessionTtlMs = 15 * 60 * 1000;
+const maxMcpSessions = 64;
 const clueConSystemUnavailableAudio = readFileSync(resolve(process.cwd(), "assets/cluecon/system-unavailable.mp3"));
 const clueConVoiceOriginPhoto = readFileSync(resolve(process.cwd(), "assets/cluecon/alberto-echo-show-prototype.jpg"));
 
@@ -109,6 +111,38 @@ function getMcpSessionId(request: IncomingMessage): string | null {
 
 interface McpSessionState {
   principalType: ToolGatewayPrincipalType;
+  createdAtMs: number;
+  lastSeenAtMs: number;
+}
+
+function purgeMcpSessions(
+  pendingMcpSessions: Map<string, McpSessionState>,
+  initializedMcpSessions: Map<string, McpSessionState>,
+  nowMs = Date.now(),
+): void {
+  for (const [sessionId, session] of pendingMcpSessions) {
+    if (nowMs - session.lastSeenAtMs > mcpSessionTtlMs) pendingMcpSessions.delete(sessionId);
+  }
+  for (const [sessionId, session] of initializedMcpSessions) {
+    if (nowMs - session.lastSeenAtMs > mcpSessionTtlMs) initializedMcpSessions.delete(sessionId);
+  }
+
+  while (pendingMcpSessions.size + initializedMcpSessions.size > maxMcpSessions) {
+    let oldestSession: { id: string; initialized: boolean; lastSeenAtMs: number } | null = null;
+    for (const [id, session] of pendingMcpSessions) {
+      if (!oldestSession || session.lastSeenAtMs < oldestSession.lastSeenAtMs) {
+        oldestSession = { id, initialized: false, lastSeenAtMs: session.lastSeenAtMs };
+      }
+    }
+    for (const [id, session] of initializedMcpSessions) {
+      if (!oldestSession || session.lastSeenAtMs < oldestSession.lastSeenAtMs) {
+        oldestSession = { id, initialized: true, lastSeenAtMs: session.lastSeenAtMs };
+      }
+    }
+    if (!oldestSession) return;
+    if (oldestSession.initialized) initializedMcpSessions.delete(oldestSession.id);
+    else pendingMcpSessions.delete(oldestSession.id);
+  }
 }
 
 function writeJsonRpcError(
@@ -5589,6 +5623,7 @@ async function routeRequest(
   const pathname = requestUrl.pathname;
   purgeExpiredCallerTurnDeliveryAckPreviews(callerTurnDeliveryAckPreviews);
   purgeLiveSipEndedCallAliases(liveSipEndedCallMap);
+  purgeMcpSessions(pendingMcpSessions, initializedMcpSessions);
 
   if (request.method === "GET" && pathname === "/health") {
     const pipecatFlow = getPipecatPrototypeHealth();
@@ -5646,8 +5681,10 @@ async function routeRequest(
       const protocolVersion = supportedMcpProtocolVersions.has(requestedProtocolVersion)
         ? requestedProtocolVersion
         : defaultMcpProtocolVersion;
+      const nowMs = Date.now();
       const sessionId = randomUUID();
-      pendingMcpSessions.set(sessionId, { principalType });
+      pendingMcpSessions.set(sessionId, { principalType, createdAtMs: nowMs, lastSeenAtMs: nowMs });
+      purgeMcpSessions(pendingMcpSessions, initializedMcpSessions, nowMs);
       response.setHeader("Mcp-Session-Id", sessionId);
       writeJson(response, 200, {
         jsonrpc: "2.0",
@@ -5672,6 +5709,7 @@ async function routeRequest(
       const sessionId = getMcpSessionId(request);
       const session = sessionId ? pendingMcpSessions.get(sessionId) : null;
       if (sessionId && session && session.principalType === principalType) {
+        session.lastSeenAtMs = Date.now();
         pendingMcpSessions.delete(sessionId);
         initializedMcpSessions.set(sessionId, session);
       }
@@ -5685,6 +5723,7 @@ async function routeRequest(
       writeJsonRpcError(response, id, -32002, "ACC MCP session is not initialized", 428);
       return;
     }
+    session.lastSeenAtMs = Date.now();
 
     if (record.method === "tools/list") {
       writeJson(response, 200, {

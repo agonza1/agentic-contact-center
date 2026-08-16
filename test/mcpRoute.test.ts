@@ -22,6 +22,7 @@ async function postRawMcp(
   if (!address || typeof address === "string") {
     throw new Error("Expected an ephemeral TCP port");
   }
+  const port = address.port;
 
   try {
     return await new Promise<{ statusCode: number; payload: any; headers: Record<string, string | string[] | undefined> }>((resolve, reject) => {
@@ -34,7 +35,7 @@ async function postRawMcp(
       const req = request(
         {
           host: "127.0.0.1",
-          port: address.port,
+          port,
           path: "/mcp",
           method: "POST",
           headers,
@@ -299,6 +300,82 @@ test("POST /mcp scopes initialization to each MCP session", async () => {
     const sessionBList = await requestMcp({ jsonrpc: "2.0", id: "list-b-ready", method: "tools/list" }, sessionB);
     assert.equal(sessionBList.statusCode, 200);
     assert.equal(sessionBList.payload.result.tools.length, 2);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("POST /mcp caps retained session state and evicts the oldest session", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+  const mcpSessionCapPort = address.port;
+
+  async function requestMcp(body: unknown, sessionId?: string) {
+    return await new Promise<{ statusCode: number; payload: any; headers: Record<string, string | string[] | undefined> }>((resolve, reject) => {
+      const requestBody = JSON.stringify(body);
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(requestBody).toString(),
+        "x-acc-principal-type": "voice_agent",
+      };
+      if (sessionId) headers["mcp-session-id"] = sessionId;
+
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port: mcpSessionCapPort,
+          path: "/mcp",
+          method: "POST",
+          headers,
+        },
+        (response) => {
+          let responseBody = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => {
+            responseBody += chunk;
+          });
+          response.on("end", () => {
+            resolve({
+              statusCode: response.statusCode ?? 0,
+              payload: responseBody ? JSON.parse(responseBody) : null,
+              headers: response.headers,
+            });
+          });
+        },
+      );
+      req.on("error", reject);
+      req.write(requestBody);
+      req.end();
+    });
+  }
+
+  try {
+    const firstInitialize = await requestMcp({
+      jsonrpc: "2.0",
+      id: "initialize-oldest",
+      method: "initialize",
+      params: { protocolVersion: "2025-06-18" },
+    });
+    const oldestSession = firstInitialize.headers["mcp-session-id"] as string;
+    await requestMcp({ jsonrpc: "2.0", method: "notifications/initialized" }, oldestSession);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    for (let index = 0; index < 64; index += 1) {
+      await requestMcp({
+        jsonrpc: "2.0",
+        id: `initialize-${index}`,
+        method: "initialize",
+        params: { protocolVersion: "2025-06-18" },
+      });
+    }
+
+    const evictedList = await requestMcp({ jsonrpc: "2.0", id: "list-evicted", method: "tools/list" }, oldestSession);
+    assert.equal(evictedList.statusCode, 428);
+    assert.equal(evictedList.payload.error.message, "ACC MCP session is not initialized");
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
