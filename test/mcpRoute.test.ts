@@ -64,6 +64,47 @@ async function postRawMcp(
   }
 }
 
+async function getMcp(): Promise<{ statusCode: number; body: string; headers: Record<string, string | string[] | undefined> }> {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+  const port = address.port;
+
+  try {
+    return await new Promise<{ statusCode: number; body: string; headers: Record<string, string | string[] | undefined> }>((resolve, reject) => {
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port,
+          path: "/mcp",
+          method: "GET",
+        },
+        (response) => {
+          let responseBody = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => {
+            responseBody += chunk;
+          });
+          response.on("end", () => {
+            resolve({
+              statusCode: response.statusCode ?? 0,
+              body: responseBody,
+              headers: response.headers,
+            });
+          });
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+}
+
 async function postInitializedMcp(
   principalType: string,
   body: unknown,
@@ -277,6 +318,14 @@ test("POST /mcp returns JSON-RPC parse errors for malformed JSON", async () => {
   });
 });
 
+test("GET /mcp reports the optional SSE stream as unsupported", async () => {
+  const response = await getMcp();
+
+  assert.equal(response.statusCode, 405);
+  assert.equal(response.headers.allow, "POST");
+  assert.equal(response.body, "");
+});
+
 test("POST /mcp scopes initialization to each MCP session", async () => {
   const server = buildHttpServer(loadPocConfig());
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -447,6 +496,23 @@ test("POST /mcp returns 404 for unknown MCP session IDs", async () => {
   assert.deepEqual(unknownSessionResponse.payload, {
     jsonrpc: "2.0",
     id: "list-unknown-session",
+    error: {
+      code: -32002,
+      message: "ACC MCP session was not found",
+    },
+  });
+});
+
+test("POST /mcp returns 404 when initialized notification uses an unknown session", async () => {
+  const response = await postMcpSequenceWithSession("voice_agent", "00000000-0000-4000-8000-000000000000", {
+    jsonrpc: "2.0",
+    method: "notifications/initialized",
+  });
+
+  assert.equal(response.statusCode, 404);
+  assert.deepEqual(response.payload, {
+    jsonrpc: "2.0",
+    id: null,
     error: {
       code: -32002,
       message: "ACC MCP session was not found",

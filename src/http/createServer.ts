@@ -5648,6 +5648,13 @@ async function routeRequest(
     return;
   }
 
+  if (request.method === "GET" && pathname === "/mcp") {
+    response.statusCode = 405;
+    response.setHeader("allow", "POST");
+    response.end();
+    return;
+  }
+
   if (request.method === "POST" && pathname === "/mcp") {
     const principalType = getMcpPrincipalType(request);
     let body: unknown;
@@ -5708,11 +5715,18 @@ async function routeRequest(
     if (record.method === "notifications/initialized") {
       const sessionId = getMcpSessionId(request);
       const session = sessionId ? pendingMcpSessions.get(sessionId) : null;
-      if (sessionId && session && session.principalType === principalType) {
-        session.lastSeenAtMs = Date.now();
-        pendingMcpSessions.delete(sessionId);
-        initializedMcpSessions.set(sessionId, session);
+      const hasSessionHeader = request.headers["mcp-session-id"] !== undefined;
+      if (!session || session.principalType !== principalType) {
+        if (hasSessionHeader) {
+          writeJsonRpcError(response, id, -32002, "ACC MCP session was not found", 404);
+          return;
+        }
+        writeJsonRpcError(response, id, -32002, "ACC MCP session is not initialized", 428);
+        return;
       }
+      session.lastSeenAtMs = Date.now();
+      pendingMcpSessions.delete(sessionId as string);
+      initializedMcpSessions.set(sessionId as string, session);
       writeMcpAccepted(response);
       return;
     }
