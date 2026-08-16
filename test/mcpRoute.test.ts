@@ -435,6 +435,20 @@ test("POST /mcp tools/list exposes operator-only apply_offer to operator princip
   assert.equal(applyOffer.inputSchema.properties.discount_percent.maximum, 10);
 });
 
+test("POST /mcp acknowledges unsupported initialized notifications without a JSON-RPC response", async () => {
+  const response = await postInitializedMcp("voice_agent", {
+    jsonrpc: "2.0",
+    method: "notifications/cancelled",
+    params: {
+      requestId: "lookup-options",
+      reason: "client_cancelled",
+    },
+  });
+
+  assert.equal(response.statusCode, 202);
+  assert.equal(response.payload, null);
+});
+
 test("POST /mcp fails closed without an ACC principal header", async () => {
   const response = await postMcp(undefined, {
     jsonrpc: "2.0",

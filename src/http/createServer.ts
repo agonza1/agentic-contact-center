@@ -5774,6 +5774,11 @@ async function routeRequest(
       return;
     }
 
+    if (!Object.hasOwn(record, "id")) {
+      writeMcpAccepted(response);
+      return;
+    }
+
     writeJsonRpcError(response, id, -32601, "Method not found");
     return;
   }
