@@ -181,9 +181,9 @@ function writeMcpAccepted(response: ServerResponse): void {
   response.end();
 }
 
-function buildAccMcpToolCallContent(toolName: string, normalizedArguments: Record<string, string | number>): string {
+function buildAccMcpToolCallPayload(toolName: string, normalizedArguments: Record<string, string | number>): Record<string, unknown> {
   if (toolName === "retention.lookup_options") {
-    return JSON.stringify({
+    return {
       options: [
         {
           offer_id: "retention-10",
@@ -192,23 +192,23 @@ function buildAccMcpToolCallContent(toolName: string, normalizedArguments: Recor
           requires_operator_approval: true,
         },
       ],
-    });
+    };
   }
 
   if (toolName === "operator.request_approval") {
-    return JSON.stringify({
+    return {
       approval_id: `approval:${normalizedArguments.call_id}:${normalizedArguments.offer_id}`,
       status: "pending_operator_steer",
       offer_id: normalizedArguments.offer_id,
       discount_percent: normalizedArguments.discount_percent,
-    });
+    };
   }
 
-  return JSON.stringify({
+  return {
     status: "accepted",
     offer_id: normalizedArguments.offer_id,
     discount_percent: normalizedArguments.discount_percent,
-  });
+  };
 }
 
 interface BrowserWebrtcBridgeRuntimeProbe {
@@ -5757,14 +5757,16 @@ async function routeRequest(
         return;
       }
 
+      const toolCallPayload = buildAccMcpToolCallPayload(toolName, validation.normalizedArguments);
       writeJson(response, 200, {
         jsonrpc: "2.0",
         id,
         result: {
+          structuredContent: toolCallPayload,
           content: [
             {
               type: "text",
-              text: buildAccMcpToolCallContent(toolName, validation.normalizedArguments),
+              text: JSON.stringify(toolCallPayload),
             },
           ],
         },

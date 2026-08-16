@@ -470,16 +470,19 @@ test("POST /mcp tools/call executes declared voice-agent read tools", async () =
   assert.equal(response.payload.jsonrpc, "2.0");
   assert.equal(response.payload.id, "lookup-options");
   assert.equal(response.payload.result.content[0].type, "text");
+  assert.deepEqual(response.payload.result.structuredContent, {
+    options: [
+      {
+        offer_id: "retention-10",
+        label: "retention specialist review",
+        discount_percent_max: 10,
+        requires_operator_approval: true,
+      },
+    ],
+  });
 
   const content = JSON.parse(response.payload.result.content[0].text);
-  assert.deepEqual(content.options, [
-    {
-      offer_id: "retention-10",
-      label: "retention specialist review",
-      discount_percent_max: 10,
-      requires_operator_approval: true,
-    },
-  ]);
+  assert.deepEqual(content, response.payload.result.structuredContent);
 });
 
 test("POST /mcp tools/call denies voice-agent apply_offer without invoking backend semantics", async () => {
