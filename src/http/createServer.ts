@@ -5768,6 +5768,7 @@ async function routeRequest(
         jsonrpc: "2.0",
         id,
         result: {
+          isError: false,
           structuredContent: toolCallPayload,
           content: [
             {

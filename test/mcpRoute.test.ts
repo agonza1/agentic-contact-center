@@ -556,6 +556,7 @@ test("POST /mcp tools/call executes declared voice-agent read tools", async () =
   assert.equal(response.statusCode, 200);
   assert.equal(response.payload.jsonrpc, "2.0");
   assert.equal(response.payload.id, "lookup-options");
+  assert.equal(response.payload.result.isError, false);
   assert.equal(response.payload.result.content[0].type, "text");
   assert.deepEqual(response.payload.result.structuredContent, {
     options: [
