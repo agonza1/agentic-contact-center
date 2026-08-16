@@ -5718,8 +5718,14 @@ async function routeRequest(
     }
 
     const sessionId = getMcpSessionId(request);
+    const hasSessionHeader = request.headers["mcp-session-id"] !== undefined;
+    const pendingSession = sessionId ? pendingMcpSessions.get(sessionId) : null;
     const session = sessionId ? initializedMcpSessions.get(sessionId) : null;
     if (!session || session.principalType !== principalType) {
+      if (hasSessionHeader && (!pendingSession || pendingSession.principalType !== principalType)) {
+        writeJsonRpcError(response, id, -32002, "ACC MCP session was not found", 404);
+        return;
+      }
       writeJsonRpcError(response, id, -32002, "ACC MCP session is not initialized", 428);
       return;
     }
