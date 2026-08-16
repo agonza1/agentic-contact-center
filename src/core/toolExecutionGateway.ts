@@ -149,7 +149,7 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
   readonly mode = "toolhive" as const;
   private readonly mcpUrl: string;
   private readonly timeoutMs: number;
-  private readonly sessionIdsByPrincipal = new Map<ToolGatewayPrincipalType, string>();
+  private readonly sessionsByPrincipal = new Map<ToolGatewayPrincipalType, { sessionId?: string; protocolVersion: string }>();
 
   constructor(options: ToolHiveToolExecutionGatewayOptions) {
     this.mcpUrl = options.mcpUrl;
@@ -181,8 +181,8 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
     const timeout = setTimeout(() => controller.abort(), request.timeoutMs ?? this.timeoutMs);
 
     try {
-      const sessionId = await this.ensureMcpSession(request.principalType, controller.signal);
-      if (!sessionId) {
+      const session = await this.ensureMcpSession(request.principalType, controller.signal);
+      if (!session) {
         return buildGatewayResult(request, {
           mode: this.mode,
           requestId,
@@ -195,18 +195,18 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
         });
       }
 
-      let response = await this.postMcpToolCall(request, requestId, validation.normalizedArguments, sessionId, controller.signal);
+      let response = await this.postMcpToolCall(request, requestId, validation.normalizedArguments, session, controller.signal);
 
       if (!response.ok) {
         if (response.status === 404 || response.status === 428) {
-          this.sessionIdsByPrincipal.delete(request.principalType);
-          const refreshedSessionId = await this.ensureMcpSession(request.principalType, controller.signal);
-          if (refreshedSessionId) {
+          this.sessionsByPrincipal.delete(request.principalType);
+          const refreshedSession = await this.ensureMcpSession(request.principalType, controller.signal);
+          if (refreshedSession) {
             response = await this.postMcpToolCall(
               request,
               requestId,
               validation.normalizedArguments,
-              refreshedSessionId,
+              refreshedSession,
               controller.signal,
             );
           }
@@ -312,10 +312,13 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
     }
   }
 
-  private async ensureMcpSession(principalType: ToolGatewayPrincipalType, signal: AbortSignal): Promise<string | null> {
-    const cachedSessionId = this.sessionIdsByPrincipal.get(principalType);
-    if (cachedSessionId) {
-      return cachedSessionId;
+  private async ensureMcpSession(
+    principalType: ToolGatewayPrincipalType,
+    signal: AbortSignal,
+  ): Promise<{ sessionId?: string; protocolVersion: string } | null> {
+    const cachedSession = this.sessionsByPrincipal.get(principalType);
+    if (cachedSession) {
+      return cachedSession;
     }
 
     const initializeId = `initialize-${randomUUID()}`;
@@ -332,6 +335,7 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
         method: "initialize",
         params: {
           protocolVersion: "2025-06-18",
+          capabilities: {},
           clientInfo: {
             name: "agentic-contact-center-toolhive-gateway",
             version: "0.1.0",
@@ -346,10 +350,20 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
     }
 
     const sessionId = initializeResponse.headers.get("mcp-session-id");
-    const initializePayload = await initializeResponse.json() as { jsonrpc?: unknown; id?: unknown; result?: unknown };
-    if (!sessionId || initializePayload.jsonrpc !== "2.0" || initializePayload.id !== initializeId || !initializePayload.result) {
+    const initializePayload = await initializeResponse.json() as {
+      jsonrpc?: unknown;
+      id?: unknown;
+      result?: { protocolVersion?: unknown } | unknown;
+    };
+    if (initializePayload.jsonrpc !== "2.0" || initializePayload.id !== initializeId || !initializePayload.result) {
       return null;
     }
+    const protocolVersion = typeof initializePayload.result === "object"
+      && initializePayload.result !== null
+      && !Array.isArray(initializePayload.result)
+      && typeof (initializePayload.result as { protocolVersion?: unknown }).protocolVersion === "string"
+      ? (initializePayload.result as { protocolVersion: string }).protocolVersion
+      : "2025-06-18";
 
     const initializedResponse = await fetch(this.mcpUrl, {
       method: "POST",
@@ -357,7 +371,8 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
         "content-type": "application/json",
         accept: "application/json",
         "x-acc-principal-type": principalType,
-        "mcp-session-id": sessionId,
+        "mcp-protocol-version": protocolVersion,
+        ...(sessionId ? { "mcp-session-id": sessionId } : {}),
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
@@ -370,15 +385,19 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
       return null;
     }
 
-    this.sessionIdsByPrincipal.set(principalType, sessionId);
-    return sessionId;
+    const session = {
+      ...(sessionId ? { sessionId } : {}),
+      protocolVersion,
+    };
+    this.sessionsByPrincipal.set(principalType, session);
+    return session;
   }
 
   private async postMcpToolCall(
     request: ToolExecutionRequest,
     requestId: string,
     normalizedArguments: Record<string, string | number>,
-    sessionId: string,
+    session: { sessionId?: string; protocolVersion: string },
     signal: AbortSignal,
   ): Promise<Response> {
     return await fetch(this.mcpUrl, {
@@ -387,7 +406,8 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
         "content-type": "application/json",
         accept: "application/json",
         "x-acc-principal-type": request.principalType,
-        "mcp-session-id": sessionId,
+        "mcp-protocol-version": session.protocolVersion,
+        ...(session.sessionId ? { "mcp-session-id": session.sessionId } : {}),
         ...(request.idempotencyKey ? { "idempotency-key": request.idempotencyKey } : {}),
       },
       body: JSON.stringify({
