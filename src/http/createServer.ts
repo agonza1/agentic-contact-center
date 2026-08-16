@@ -109,8 +109,15 @@ function getMcpSessionId(request: IncomingMessage): string | null {
   return typeof sessionId === "string" && /^[0-9a-f-]{36}$/i.test(sessionId) ? sessionId : null;
 }
 
+function getMcpProtocolVersion(request: IncomingMessage): string | null {
+  const rawProtocolVersion = request.headers["mcp-protocol-version"];
+  const protocolVersion = Array.isArray(rawProtocolVersion) ? rawProtocolVersion[0] : rawProtocolVersion;
+  return typeof protocolVersion === "string" && protocolVersion.trim() !== "" ? protocolVersion : null;
+}
+
 interface McpSessionState {
   principalType: ToolGatewayPrincipalType;
+  protocolVersion: string;
   createdAtMs: number;
   lastSeenAtMs: number;
 }
@@ -5690,7 +5697,7 @@ async function routeRequest(
         : defaultMcpProtocolVersion;
       const nowMs = Date.now();
       const sessionId = randomUUID();
-      pendingMcpSessions.set(sessionId, { principalType, createdAtMs: nowMs, lastSeenAtMs: nowMs });
+      pendingMcpSessions.set(sessionId, { principalType, protocolVersion, createdAtMs: nowMs, lastSeenAtMs: nowMs });
       purgeMcpSessions(pendingMcpSessions, initializedMcpSessions, nowMs);
       response.setHeader("Mcp-Session-Id", sessionId);
       writeJson(response, 200, {
@@ -5744,6 +5751,12 @@ async function routeRequest(
       return;
     }
     session.lastSeenAtMs = Date.now();
+
+    const protocolVersion = getMcpProtocolVersion(request);
+    if (protocolVersion && protocolVersion !== session.protocolVersion) {
+      writeJsonRpcError(response, id, -32002, "ACC MCP protocol version does not match initialized session", 400);
+      return;
+    }
 
     if (record.method === "tools/list") {
       writeJson(response, 200, {

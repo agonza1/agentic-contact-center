@@ -142,6 +142,7 @@ async function postMcpSequence(
   try {
     const responses: Array<{ statusCode: number; payload: any; headers: Record<string, string | string[] | undefined> }> = [];
     let sessionId: string | undefined;
+    let protocolVersion: string | undefined;
     for (const body of bodies) {
       const response = await new Promise<{ statusCode: number; payload: any; headers: Record<string, string | string[] | undefined> }>((resolve, reject) => {
         const requestBody = JSON.stringify(body);
@@ -151,6 +152,7 @@ async function postMcpSequence(
         };
         if (principalType) headers["x-acc-principal-type"] = principalType;
         if (sessionId) headers["mcp-session-id"] = sessionId;
+        if (protocolVersion) headers["mcp-protocol-version"] = protocolVersion;
 
         const req = request(
           {
@@ -181,6 +183,8 @@ async function postMcpSequence(
       });
       const responseSessionId = response.headers["mcp-session-id"];
       if (typeof responseSessionId === "string") sessionId = responseSessionId;
+      const resultProtocolVersion = response.payload?.result?.protocolVersion;
+      if (typeof resultProtocolVersion === "string") protocolVersion = resultProtocolVersion;
       responses.push(response);
     }
     return responses;
@@ -404,6 +408,85 @@ test("POST /mcp scopes initialization to each MCP session", async () => {
     const sessionBList = await requestMcp({ jsonrpc: "2.0", id: "list-b-ready", method: "tools/list" }, sessionB);
     assert.equal(sessionBList.statusCode, 200);
     assert.equal(sessionBList.payload.result.tools.length, 2);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("POST /mcp rejects initialized requests with a mismatched MCP protocol version", async () => {
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+  const port = address.port;
+
+  async function requestMcp(body: unknown, sessionId?: string, protocolVersion?: string) {
+    return await new Promise<{ statusCode: number; payload: any; headers: Record<string, string | string[] | undefined> }>((resolve, reject) => {
+      const requestBody = JSON.stringify(body);
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(requestBody).toString(),
+        "x-acc-principal-type": "voice_agent",
+      };
+      if (sessionId) headers["mcp-session-id"] = sessionId;
+      if (protocolVersion) headers["mcp-protocol-version"] = protocolVersion;
+
+      const req = request(
+        {
+          host: "127.0.0.1",
+          port,
+          path: "/mcp",
+          method: "POST",
+          headers,
+        },
+        (response) => {
+          let responseBody = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => {
+            responseBody += chunk;
+          });
+          response.on("end", () => {
+            resolve({
+              statusCode: response.statusCode ?? 0,
+              payload: responseBody ? JSON.parse(responseBody) : null,
+              headers: response.headers,
+            });
+          });
+        },
+      );
+      req.on("error", reject);
+      req.write(requestBody);
+      req.end();
+    });
+  }
+
+  try {
+    const initialize = await requestMcp({
+      jsonrpc: "2.0",
+      id: "initialize-protocol",
+      method: "initialize",
+      params: { protocolVersion: "2025-06-18" },
+    });
+    const sessionId = initialize.headers["mcp-session-id"] as string;
+    await requestMcp({ jsonrpc: "2.0", method: "notifications/initialized" }, sessionId, "2025-06-18");
+
+    const response = await requestMcp(
+      { jsonrpc: "2.0", id: "list-wrong-protocol", method: "tools/list" },
+      sessionId,
+      "2024-11-05",
+    );
+
+    assert.equal(response.statusCode, 400);
+    assert.deepEqual(response.payload, {
+      jsonrpc: "2.0",
+      id: "list-wrong-protocol",
+      error: {
+        code: -32002,
+        message: "ACC MCP protocol version does not match initialized session",
+      },
+    });
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
