@@ -1066,6 +1066,16 @@ const reliabilityTargetModes = [
   },
 ];
 
+const reliabilityOptionalEndpointEnvVars = [
+  "CAE_API_URL",
+  "CAE_WEB_URL",
+  "ASSERT_VIEWER_URL",
+  "RTC_ASR_BASE_URL",
+  "KOKORO_BASE_URL",
+  "BROWSER_WEBRTC_BRIDGE_URL",
+  "FREESWITCH_VERTO_URL",
+];
+
 function buildReliabilityGuidePayload(config: PocConfig): object {
   return {
     ok: true,
@@ -1126,6 +1136,11 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
       candidateProfile: "controlled-cancellation-rescue",
       caveat: "Unsafe baseline behavior is only a labeled demo fixture/profile; CAE/ASSERT owns imported run reports and comparisons.",
       signals: goldenReliabilityComparison,
+    },
+    repositoryContracts: {
+      optionalEndpointEnvVars: reliabilityOptionalEndpointEnvVars,
+      statusCommand: "npm run reliability:lab",
+      stackManifest: "stack/versions.env",
     },
   };
 }

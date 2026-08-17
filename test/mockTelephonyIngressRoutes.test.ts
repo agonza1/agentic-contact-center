@@ -2059,6 +2059,11 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         candidateProfile: string;
         signals: Array<{ signal: string; unsafeBaseline: string; controlledCandidate: string; evidence: string }>;
       };
+      repositoryContracts: {
+        optionalEndpointEnvVars: string[];
+        statusCommand: string;
+        stackManifest: string;
+      };
     };
     assert.equal(payload.ok, true);
     assert.equal(payload.route, "/reliability");
@@ -2093,6 +2098,17 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(payload.targetModes[3]?.caeHandoffCommand, "npm run cae:assert:handoff");
     assert.equal(payload.readinessRoutes.reliabilityLab, "/api/reliability");
     assert.equal(payload.readinessRoutes.pipecatMediaEngine, "/api/pipecat-media-engine/readiness");
+    assert.deepEqual(payload.repositoryContracts.optionalEndpointEnvVars, [
+      "CAE_API_URL",
+      "CAE_WEB_URL",
+      "ASSERT_VIEWER_URL",
+      "RTC_ASR_BASE_URL",
+      "KOKORO_BASE_URL",
+      "BROWSER_WEBRTC_BRIDGE_URL",
+      "FREESWITCH_VERTO_URL",
+    ]);
+    assert.equal(payload.repositoryContracts.statusCommand, "npm run reliability:lab");
+    assert.equal(payload.repositoryContracts.stackManifest, "stack/versions.env");
     assert.equal(payload.comparisonContract.baselineProfile, "unsafe-demo-fixture");
     assert.equal(payload.comparisonContract.candidateProfile, "controlled-cancellation-rescue");
     assert.deepEqual(
