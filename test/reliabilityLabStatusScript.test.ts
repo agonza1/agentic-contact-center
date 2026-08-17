@@ -64,6 +64,22 @@ test("reliability lab status reports explicit blockers without starting sidecars
     ],
   );
   assert.match(payload.goldenScenario.caveat, /labeled demo fixture/);
+  assert.deepEqual(
+    payload.targetModes.map((mode: { mode: string; status: string; startCommand: string; evidenceCommand: string; readinessRoute: string }) => [
+      mode.mode,
+      mode.status,
+      mode.startCommand,
+      mode.evidenceCommand,
+      mode.readinessRoute,
+    ]),
+    [
+      ["fixture", "ready", "npm run proof", "npm run proof:bundle", "/health"],
+      ["browser_webrtc", "blocked", "npm run docker:browser-webrtc", "npm run browser-webrtc:live-proof", "/api/browser-webrtc/readiness"],
+      ["sip_verto", "blocked", "npm run docker:sip-verto", "npm run pipecat:verto:live-proof", "/api/pipecat-media-engine/readiness"],
+    ],
+  );
+  assert.deepEqual(payload.targetModes[1].requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
+  assert.equal(payload.targetModes[2].caeHandoffCommand, "npm run cae:assert:handoff");
   assert.ok(payload.blockers.some((blocker: string) => blocker.includes("ConversationAgentEvals API/web endpoints")));
   assert.deepEqual(
     payload.componentReadiness.map((component: { component: string; status: string }) => [component.component, component.status]),
@@ -110,6 +126,7 @@ test("reliability lab status becomes configured when CAE endpoints are supplied"
     payload.componentReadiness.find((component: { component: string }) => component.component === "ConversationAgentEvals").status,
     "configured",
   );
+  assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "fixture").status, "ready");
 });
 
 test("reliability lab status reports explicitly configured live media endpoints", async () => {
@@ -145,4 +162,6 @@ test("reliability lab status reports explicitly configured live media endpoints"
   assert.equal(payload.optionalEndpoints.browserWebRtcBridge, "http://127.0.0.1:18766");
   assert.equal(payload.optionalEndpoints.freeswitchVerto, "ws://127.0.0.1:18081");
   assert.equal(payload.optionalEndpoints.assertViewer, "http://127.0.0.1:15174");
+  assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").status, "configured");
+  assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "sip_verto").status, "configured");
 });
