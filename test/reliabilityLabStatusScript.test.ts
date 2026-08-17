@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createServer, type Server } from "node:http";
+import net from "node:net";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -29,6 +31,31 @@ function withClearedLiveEndpointEnv() {
     delete env[name];
   }
   return env;
+}
+
+async function listen(server: Server | net.Server): Promise<number> {
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  return address.port;
+}
+
+async function withHttpServers<T>(
+  count: number,
+  run: (urls: string[]) => Promise<T>,
+): Promise<T> {
+  const servers = Array.from({ length: count }, () =>
+    createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true, ready: true }));
+    }),
+  );
+  try {
+    const ports = await Promise.all(servers.map((server) => listen(server)));
+    return await run(ports.map((port) => `http://127.0.0.1:${port}`));
+  } finally {
+    await Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
+  }
 }
 
 test("reliability lab status reports explicit blockers without starting sidecars", async () => {
@@ -108,60 +135,86 @@ test("reliability lab status reports explicit blockers without starting sidecars
 });
 
 test("reliability lab status becomes configured when CAE endpoints are supplied", async () => {
-  const result = await execFileAsync(process.execPath, ["scripts/reliability-lab-status.mjs"], {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      CAE_API_URL: "http://127.0.0.1:8010",
-      CAE_WEB_URL: "http://127.0.0.1:3010",
-    },
-  });
+  const result = await withHttpServers(2, async ([caeApiUrl, caeWebUrl]) =>
+    execFileAsync(process.execPath, ["scripts/reliability-lab-status.mjs"], {
+      cwd: repoRoot,
+      env: {
+        ...withClearedLiveEndpointEnv(),
+        CAE_API_URL: caeApiUrl,
+        CAE_WEB_URL: caeWebUrl,
+      },
+    }),
+  );
   const payload = JSON.parse(result.stdout);
 
   assert.equal(payload.status, "configured");
   assert.deepEqual(payload.blockers, []);
-  assert.equal(payload.optionalEndpoints.caeApi, "http://127.0.0.1:8010");
-  assert.equal(payload.optionalEndpoints.caeWeb, "http://127.0.0.1:3010");
+  assert.match(payload.optionalEndpoints.caeApi, /^http:\/\/127\.0\.0\.1:\d+$/);
+  assert.match(payload.optionalEndpoints.caeWeb, /^http:\/\/127\.0\.0\.1:\d+$/);
   assert.equal(
     payload.componentReadiness.find((component: { component: string }) => component.component === "ConversationAgentEvals").status,
-    "configured",
+    "ready",
   );
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "fixture").status, "ready");
 });
 
 test("reliability lab status reports explicitly configured live media endpoints", async () => {
-  const result = await execFileAsync(process.execPath, ["scripts/reliability-lab-status.mjs"], {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      CAE_API_URL: "http://127.0.0.1:8010",
-      CAE_WEB_URL: "http://127.0.0.1:3010",
-      RTC_ASR_BASE_URL: "http://127.0.0.1:18080",
-      KOKORO_BASE_URL: "http://127.0.0.1:18880",
-      BROWSER_WEBRTC_BRIDGE_URL: "http://127.0.0.1:18766",
-      FREESWITCH_VERTO_URL: "ws://127.0.0.1:18081",
-      ASSERT_VIEWER_URL: "http://127.0.0.1:15174",
-    },
-  });
+  const tcpServer = net.createServer((socket) => socket.end());
+  const result = await withHttpServers(6, async ([caeApiUrl, caeWebUrl, rtcAsrUrl, kokoroUrl, browserBridgeUrl, assertViewerUrl]) => {
+    const tcpPort = await listen(tcpServer);
+    return execFileAsync(process.execPath, ["scripts/reliability-lab-status.mjs"], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        CAE_API_URL: caeApiUrl,
+        CAE_WEB_URL: caeWebUrl,
+        RTC_ASR_BASE_URL: rtcAsrUrl,
+        KOKORO_BASE_URL: kokoroUrl,
+        BROWSER_WEBRTC_BRIDGE_URL: browserBridgeUrl,
+        FREESWITCH_VERTO_URL: `ws://127.0.0.1:${tcpPort}`,
+        ASSERT_VIEWER_URL: assertViewerUrl,
+      },
+    });
+  }).finally(() => new Promise<void>((resolve) => tcpServer.close(() => resolve())));
   const payload = JSON.parse(result.stdout);
   const statuses = Object.fromEntries(
     payload.componentReadiness.map((component: { component: string; status: string }) => [component.component, component.status]),
   );
 
-  assert.equal(statuses["rtc-asr"], "configured");
-  assert.equal(statuses.Kokoro, "configured");
-  assert.equal(statuses["Pipecat browser bridge"], "configured");
-  assert.equal(statuses["FreeSWITCH/Verto"], "configured");
-  assert.equal(statuses["ASSERT viewer"], "configured");
+  assert.equal(statuses["rtc-asr"], "ready");
+  assert.equal(statuses.Kokoro, "ready");
+  assert.equal(statuses["Pipecat browser bridge"], "ready");
+  assert.equal(statuses["FreeSWITCH/Verto"], "ready");
+  assert.equal(statuses["ASSERT viewer"], "ready");
   assert.equal(
     payload.componentReadiness.find((component: { component: string }) => component.component === "Pipecat browser bridge").envVar,
     "BROWSER_WEBRTC_BRIDGE_URL",
   );
-  assert.equal(payload.optionalEndpoints.rtcAsr, "http://127.0.0.1:18080");
-  assert.equal(payload.optionalEndpoints.kokoro, "http://127.0.0.1:18880");
-  assert.equal(payload.optionalEndpoints.browserWebRtcBridge, "http://127.0.0.1:18766");
-  assert.equal(payload.optionalEndpoints.freeswitchVerto, "ws://127.0.0.1:18081");
-  assert.equal(payload.optionalEndpoints.assertViewer, "http://127.0.0.1:15174");
-  assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").status, "configured");
-  assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "sip_verto").status, "configured");
+  assert.match(payload.optionalEndpoints.rtcAsr, /^http:\/\/127\.0\.0\.1:\d+$/);
+  assert.match(payload.optionalEndpoints.kokoro, /^http:\/\/127\.0\.0\.1:\d+$/);
+  assert.match(payload.optionalEndpoints.browserWebRtcBridge, /^http:\/\/127\.0\.0\.1:\d+$/);
+  assert.match(payload.optionalEndpoints.freeswitchVerto, /^ws:\/\/127\.0\.0\.1:\d+$/);
+  assert.match(payload.optionalEndpoints.assertViewer, /^http:\/\/127\.0\.0\.1:\d+$/);
+  assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").status, "ready");
+  assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "sip_verto").status, "ready");
+});
+
+test("reliability lab status distinguishes configured but unreachable endpoints", async () => {
+  const result = await execFileAsync(process.execPath, ["scripts/reliability-lab-status.mjs"], {
+    cwd: repoRoot,
+    env: {
+      ...withClearedLiveEndpointEnv(),
+      CAE_API_URL: "http://127.0.0.1:9",
+      CAE_WEB_URL: "http://127.0.0.1:9",
+      ACC_RELIABILITY_LAB_PROBE_TIMEOUT_MS: "50",
+    },
+  });
+  const payload = JSON.parse(result.stdout);
+  const cae = payload.componentReadiness.find((component: { component: string }) => component.component === "ConversationAgentEvals");
+
+  assert.equal(payload.status, "blocked");
+  assert.equal(cae.status, "unreachable");
+  assert.equal(cae.configured, true);
+  assert.equal(cae.reachable, false);
+  assert.ok(payload.blockers.some((blocker: string) => blocker.includes("configured but unreachable")));
 });

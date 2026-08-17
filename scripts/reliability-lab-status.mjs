@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from "node:fs";
+import net from "node:net";
 import path from "node:path";
 
 const repoRoot = process.cwd();
@@ -104,6 +105,100 @@ const liveEndpointConfigured = {
   freeswitchVerto: envConfigured("FREESWITCH_VERTO_URL"),
 };
 
+const probeTimeoutMs = Number.parseInt(process.env.ACC_RELIABILITY_LAB_PROBE_TIMEOUT_MS ?? "750", 10);
+const boundedProbeTimeoutMs = Number.isFinite(probeTimeoutMs) && probeTimeoutMs > 0 ? Math.min(probeTimeoutMs, 5000) : 750;
+
+async function probeHttp(url, route = "/") {
+  const target = new URL(url);
+  if (target.pathname === "/" && route !== "/") target.pathname = route;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), boundedProbeTimeoutMs);
+  try {
+    const response = await fetch(target, { method: "GET", signal: controller.signal });
+    return {
+      reachable: true,
+      ready: response.ok,
+      status: response.ok ? "ready" : "unreachable",
+      statusCode: response.status,
+      detail: response.ok ? `Reachable at ${target.toString()}.` : `Probe returned HTTP ${response.status} from ${target.toString()}.`,
+    };
+  } catch (error) {
+    return {
+      reachable: false,
+      ready: false,
+      status: "unreachable",
+      error: error instanceof Error ? error.name : "probe_error",
+      detail: `Probe could not reach ${target.toString()}.`,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function probeTcp(url) {
+  const target = new URL(url);
+  const port = target.port ? Number.parseInt(target.port, 10) : target.protocol === "wss:" ? 443 : 80;
+  return await new Promise((resolve) => {
+    const socket = net.connect({ host: target.hostname, port });
+    const finish = (result) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(result);
+    };
+    socket.setTimeout(boundedProbeTimeoutMs);
+    socket.once("connect", () =>
+      finish({
+        reachable: true,
+        ready: true,
+        status: "ready",
+        detail: `TCP endpoint is reachable at ${target.host}.`,
+      }),
+    );
+    socket.once("timeout", () =>
+      finish({
+        reachable: false,
+        ready: false,
+        status: "unreachable",
+        error: "TimeoutError",
+        detail: `TCP probe timed out for ${target.host}.`,
+      }),
+    );
+    socket.once("error", (error) =>
+      finish({
+        reachable: false,
+        ready: false,
+        status: "unreachable",
+        error: error.code ?? "probe_error",
+        detail: `TCP probe could not reach ${target.host}.`,
+      }),
+    );
+  });
+}
+
+async function probeConfiguredEndpoints() {
+  const probes = {};
+  if (optionalEndpoints.caeApi) probes.caeApi = await probeHttp(optionalEndpoints.caeApi);
+  if (optionalEndpoints.caeWeb) probes.caeWeb = await probeHttp(optionalEndpoints.caeWeb);
+  if (liveEndpointConfigured.assertViewer) probes.assertViewer = await probeHttp(optionalEndpoints.assertViewer);
+  if (liveEndpointConfigured.rtcAsr) probes.rtcAsr = await probeHttp(optionalEndpoints.rtcAsr, "/ready");
+  if (liveEndpointConfigured.kokoro) probes.kokoro = await probeHttp(optionalEndpoints.kokoro, "/health");
+  if (liveEndpointConfigured.browserWebRtcBridge) probes.browserWebRtcBridge = await probeHttp(optionalEndpoints.browserWebRtcBridge, "/health");
+  if (liveEndpointConfigured.freeswitchVerto) probes.freeswitchVerto = await probeTcp(optionalEndpoints.freeswitchVerto);
+  return probes;
+}
+
+const endpointProbes = await probeConfiguredEndpoints();
+const endpointReady = {
+  caeApi: endpointProbes.caeApi?.ready === true,
+  caeWeb: endpointProbes.caeWeb?.ready === true,
+  assertViewer: !liveEndpointConfigured.assertViewer || endpointProbes.assertViewer?.ready === true,
+  rtcAsr: !liveEndpointConfigured.rtcAsr || endpointProbes.rtcAsr?.ready === true,
+  kokoro: !liveEndpointConfigured.kokoro || endpointProbes.kokoro?.ready === true,
+  browserWebRtcBridge:
+    !liveEndpointConfigured.browserWebRtcBridge || endpointProbes.browserWebRtcBridge?.ready === true,
+  freeswitchVerto: !liveEndpointConfigured.freeswitchVerto || endpointProbes.freeswitchVerto?.ready === true,
+};
+
 const goldenComparison = [
   {
     signal: "Cancellation intent",
@@ -156,9 +251,12 @@ const targetModes = [
   },
   {
     mode: "browser_webrtc",
-    status: liveEndpointConfigured.rtcAsr && liveEndpointConfigured.kokoro && liveEndpointConfigured.browserWebRtcBridge
-      ? "configured"
-      : "blocked",
+    status:
+      liveEndpointConfigured.rtcAsr && liveEndpointConfigured.kokoro && liveEndpointConfigured.browserWebRtcBridge
+        ? endpointReady.rtcAsr && endpointReady.kokoro && endpointReady.browserWebRtcBridge
+          ? "ready"
+          : "unreachable"
+        : "blocked",
     requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"],
     startCommand: "npm run docker:browser-webrtc",
     evidenceCommand: "npm run browser-webrtc:live-proof",
@@ -168,9 +266,12 @@ const targetModes = [
   },
   {
     mode: "sip_verto",
-    status: liveEndpointConfigured.rtcAsr && liveEndpointConfigured.kokoro && liveEndpointConfigured.freeswitchVerto
-      ? "configured"
-      : "blocked",
+    status:
+      liveEndpointConfigured.rtcAsr && liveEndpointConfigured.kokoro && liveEndpointConfigured.freeswitchVerto
+        ? endpointReady.rtcAsr && endpointReady.kokoro && endpointReady.freeswitchVerto
+          ? "ready"
+          : "unreachable"
+        : "blocked",
     requiredComponents: ["ACC app", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
     startCommand: "npm run docker:sip-verto",
     evidenceCommand: "npm run pipecat:verto:live-proof",
@@ -180,14 +281,18 @@ const targetModes = [
   },
 ];
 
-function optionalComponent({ component, configured, endpoint, envVar, configuredDetail, defaultDetail }) {
+function optionalComponent({ component, configured, endpoint, envVar, probe, configuredDetail, defaultDetail }) {
+  const status = configured ? (probe?.ready ? "ready" : "unreachable") : "not_required";
   return {
     component,
-    status: configured ? "configured" : "not_required",
+    status,
+    configured,
+    reachable: configured ? probe?.reachable === true : null,
     requiredForDefaultDemo: false,
     endpoint,
     envVar,
-    detail: configured ? configuredDetail : defaultDetail,
+    probe,
+    detail: configured ? (probe?.detail ?? configuredDetail) : defaultDetail,
   };
 }
 
@@ -200,14 +305,22 @@ const componentReadiness = [
   },
   {
     component: "ConversationAgentEvals",
-    status: caeConfigured ? "configured" : "not_configured",
+    status: caeConfigured ? (endpointReady.caeApi && endpointReady.caeWeb ? "ready" : "unreachable") : "not_configured",
+    configured: caeConfigured,
+    reachable: caeConfigured ? endpointReady.caeApi && endpointReady.caeWeb : null,
     requiredForDefaultDemo: false,
     endpoints: {
       api: optionalEndpoints.caeApi,
       web: optionalEndpoints.caeWeb,
     },
+    probes: {
+      api: endpointProbes.caeApi ?? null,
+      web: endpointProbes.caeWeb ?? null,
+    },
     detail: caeConfigured
-      ? "CAE endpoints are configured for Phase 2 lab handoff."
+      ? endpointReady.caeApi && endpointReady.caeWeb
+        ? "CAE endpoints are reachable for Phase 2 lab handoff."
+        : "CAE endpoints are configured but unreachable."
       : "Set CAE_API_URL and CAE_WEB_URL to enable Phase 2 lab handoff.",
   },
   optionalComponent({
@@ -215,6 +328,7 @@ const componentReadiness = [
     configured: liveEndpointConfigured.rtcAsr,
     endpoint: optionalEndpoints.rtcAsr,
     envVar: "RTC_ASR_BASE_URL",
+    probe: endpointProbes.rtcAsr ?? null,
     configuredDetail: "Configured for selected live media modes.",
     defaultDetail: "Required only for selected live media modes.",
   }),
@@ -223,6 +337,7 @@ const componentReadiness = [
     configured: liveEndpointConfigured.kokoro,
     endpoint: optionalEndpoints.kokoro,
     envVar: "KOKORO_BASE_URL",
+    probe: endpointProbes.kokoro ?? null,
     configuredDetail: "Configured for selected live media modes.",
     defaultDetail: "Required only for selected live media modes.",
   }),
@@ -231,6 +346,7 @@ const componentReadiness = [
     configured: liveEndpointConfigured.browserWebRtcBridge,
     endpoint: optionalEndpoints.browserWebRtcBridge,
     envVar: "BROWSER_WEBRTC_BRIDGE_URL",
+    probe: endpointProbes.browserWebRtcBridge ?? null,
     configuredDetail: "Configured for Browser voice proof modes.",
     defaultDetail: "Required only for Browser voice proof modes.",
   }),
@@ -239,6 +355,7 @@ const componentReadiness = [
     configured: liveEndpointConfigured.freeswitchVerto,
     endpoint: optionalEndpoints.freeswitchVerto,
     envVar: "FREESWITCH_VERTO_URL",
+    probe: endpointProbes.freeswitchVerto ?? null,
     configuredDetail: "Configured for SIP/Verto proof modes.",
     defaultDetail: "Required only for SIP/Verto proof modes.",
   }),
@@ -247,6 +364,7 @@ const componentReadiness = [
     configured: liveEndpointConfigured.assertViewer,
     endpoint: optionalEndpoints.assertViewer,
     envVar: "ASSERT_VIEWER_URL",
+    probe: endpointProbes.assertViewer ?? null,
     configuredDetail: "Configured for CAE/ASSERT handoff or local viewer workflows.",
     defaultDetail: "Used through CAE/ASSERT handoff or local viewer workflows.",
   }),
@@ -259,6 +377,8 @@ if (!stackManifest.exists) blockers.push("missing stack/versions.env reference-s
 if (missingStackManifestKeys.length > 0) blockers.push(`stack/versions.env is missing keys: ${missingStackManifestKeys.join(", ")}`);
 if (!caeConfigured) {
   blockers.push("ConversationAgentEvals API/web endpoints are not configured; set CAE_API_URL and CAE_WEB_URL for Phase 2 lab runs.");
+} else if (!endpointReady.caeApi || !endpointReady.caeWeb) {
+  blockers.push("ConversationAgentEvals API/web endpoints are configured but unreachable.");
 }
 
 const report = {
@@ -277,6 +397,7 @@ const report = {
   },
   targetModes,
   optionalEndpoints,
+  endpointProbes,
   componentReadiness,
   repositoryContracts: {
     packageScripts: Object.keys(scripts).sort(),

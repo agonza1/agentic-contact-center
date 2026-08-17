@@ -40,7 +40,7 @@ The command prints a JSON status report and does not start long-running services
 - the `stack/versions.env` reference-stack image and endpoint manifest;
 - default ACC app route/port assumptions;
 - component readiness states for default-demo, CAE, rtc-asr, Kokoro, FreeSWITCH/Verto, and ASSERT viewer wiring;
-- whether optional CAE/ASSERT endpoint environment variables are configured;
+- whether optional CAE/ASSERT endpoint environment variables are configured and reachable;
 - the current Phase 2 blockers.
 - the endpoint environment contract in `repositoryContracts.optionalEndpointEnvVars`.
 
@@ -55,6 +55,7 @@ Environment variables recognized by the status command:
 - `FREESWITCH_VERTO_URL`
 
 Missing optional endpoints are reported as `not_configured` or `blocked`, not silently treated as ready.
+Configured endpoints are probed with a short timeout and reported as `ready` or `unreachable`; set `ACC_RELIABILITY_LAB_PROBE_TIMEOUT_MS` to tune the bounded probe during local diagnostics.
 
 `stack/versions.env` is the pinned local reference manifest. It names the ACC, rtc-asr, Kokoro, FreeSWITCH, browser bridge, CAE, and ASSERT image/URL coordinates that Phase 2 should either start through Compose or connect to explicitly.
 
