@@ -643,3 +643,50 @@ test("ToolHive gateway timeout fails closed without backend execution evidence",
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+test("ToolHive gateway fails closed on malformed JSON-RPC responses", async () => {
+  const responses = [
+    { jsonrpc: "2.0", id: "different-request", result: { content: [] } },
+    { jsonrpc: "2.0", id: "tool-request-4" },
+    { jsonrpc: "2.0", id: "tool-request-4", result: { content: "not-array" } },
+    { jsonrpc: "2.0", id: "tool-request-4", result: { content: [], isError: "yes" } },
+    { jsonrpc: "2.0", id: "tool-request-4", result: { content: [], isError: true } },
+    { jsonrpc: "2.0", id: "tool-request-4", error: "invalid-error" },
+  ];
+  const server = createServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify(responses.shift()));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const gateway = new ToolHiveToolExecutionGateway({
+      mcpUrl: `http://127.0.0.1:${address.port}/mcp`,
+      timeoutMs: 500,
+    });
+    for (let index = 0; index < 6; index += 1) {
+      const result = await gateway.execute({
+        requestId: "tool-request-4",
+        callId: "call-4",
+        principalType: "operator",
+        tool: "retention.apply_offer",
+        arguments: {
+          call_id: "call-4",
+          offer_id: "retention-10",
+          discount_percent: 10,
+          approval_id: "approval-4",
+          idempotency_key: "idem-4",
+        },
+      });
+
+      assert.equal(result.status, "error");
+      assert.equal(result.reasonCode, "toolhive_unavailable");
+      assert.equal(result.backendInvoked, false);
+      assert.equal(result.decisionEvent.detail.decision, "error");
+    }
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});

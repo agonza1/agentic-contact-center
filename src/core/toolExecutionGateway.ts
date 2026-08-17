@@ -58,13 +58,16 @@ function isToolPolicyReasonCode(value: unknown): value is ToolPolicyReasonCode {
   ].includes(value);
 }
 
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function isMcpCallToolResult(value: unknown): value is { content: unknown[]; isError?: boolean } {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (!isJsonRecord(value) || !Array.isArray(value.content)) {
     return false;
   }
 
-  const result = value as { content?: unknown; isError?: unknown };
-  return Array.isArray(result.content) && (result.isError === undefined || typeof result.isError === "boolean");
+  return value.isError === undefined || typeof value.isError === "boolean";
 }
 
 function buildGatewayResult(
@@ -230,14 +233,8 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
         }
       }
 
-      const payload = await response.json() as {
-        jsonrpc?: unknown;
-        id?: unknown;
-        error?: { data?: { reasonCode?: unknown } };
-        result?: unknown;
-      };
-
-      if (payload.jsonrpc !== "2.0" || payload.id !== requestId) {
+      const payload = await response.json() as unknown;
+      if (!isJsonRecord(payload) || payload.jsonrpc !== "2.0" || payload.id !== requestId) {
         return buildGatewayResult(request, {
           mode: this.mode,
           requestId,
@@ -250,7 +247,24 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
         });
       }
 
-      const errorReasonCode = payload.error?.data?.reasonCode;
+      const hasErrorMember = Object.hasOwn(payload, "error");
+      const hasResultMember = Object.hasOwn(payload, "result");
+      if (hasErrorMember && !isJsonRecord(payload.error)) {
+        return buildGatewayResult(request, {
+          mode: this.mode,
+          requestId,
+          startedAt,
+          timestamp,
+          status: "error",
+          reasonCode: "toolhive_unavailable",
+          backendInvoked: false,
+          normalizedArguments: validation.normalizedArguments,
+        });
+      }
+
+      const payloadError = hasErrorMember && isJsonRecord(payload.error) ? payload.error : null;
+      const payloadErrorData = isJsonRecord(payloadError?.data) ? payloadError.data : null;
+      const errorReasonCode = payloadErrorData?.reasonCode;
       if (isToolPolicyReasonCode(errorReasonCode)) {
         return buildGatewayResult(request, {
           mode: this.mode,
@@ -264,7 +278,7 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
         });
       }
 
-      if (payload.error) {
+      if (payloadError) {
         return buildGatewayResult(request, {
           mode: this.mode,
           requestId,
@@ -277,7 +291,7 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
         });
       }
 
-      if (!isMcpCallToolResult(payload.result) || payload.result.isError === true) {
+      if (!hasResultMember || !isMcpCallToolResult(payload.result) || payload.result.isError === true) {
         return buildGatewayResult(request, {
           mode: this.mode,
           requestId,
