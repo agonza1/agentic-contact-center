@@ -1047,6 +1047,15 @@ const reliabilityTargetModes = [
     caeHandoffCommand: "npm run cae:assert:handoff",
   },
   {
+    mode: "reliability_lab",
+    status: "external_cae_endpoints_required",
+    requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge", "ConversationAgentEvals", "ASSERT viewer"],
+    startCommand: "npm run docker:reliability-lab",
+    evidenceCommand: "npm run proof:bundle",
+    readinessRoute: "/api/reliability",
+    caeHandoffCommand: "npm run cae:assert:handoff",
+  },
+  {
     mode: "sip_verto",
     status: "accepted_strict_local_proof",
     requiredComponents: ["ACC app", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
@@ -1107,6 +1116,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
     targetModes: reliabilityTargetModes,
     readinessRoutes: {
       health: "/health",
+      reliabilityLab: "/api/reliability",
       browserWebRtc: "/api/browser-webrtc/readiness",
       pipecatMediaEngine: "/api/pipecat-media-engine/readiness",
       operatorConsole: "/operator/console",
