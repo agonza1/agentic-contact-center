@@ -2077,11 +2077,20 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       [
         ["fixture", "ready", "npm run proof", "npm run proof:bundle", "/health"],
         ["browser_webrtc", "optional_live_sidecars_required", "npm run docker:browser-webrtc", "npm run browser-webrtc:live-proof", "/api/browser-webrtc/readiness"],
+        ["reliability_lab", "external_cae_endpoints_required", "npm run docker:reliability-lab", "npm run proof:bundle", "/api/reliability"],
         ["sip_verto", "accepted_strict_local_proof", "npm run docker:sip-verto", "npm run pipecat:verto:live-proof", "/api/pipecat-media-engine/readiness"],
       ],
     );
     assert.deepEqual(payload.targetModes[1]?.requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
-    assert.equal(payload.targetModes[2]?.caeHandoffCommand, "npm run cae:assert:handoff");
+    assert.deepEqual(payload.targetModes[2]?.requiredComponents, [
+      "ACC app",
+      "rtc-asr",
+      "Kokoro",
+      "Pipecat browser bridge",
+      "ConversationAgentEvals",
+      "ASSERT viewer",
+    ]);
+    assert.equal(payload.targetModes[3]?.caeHandoffCommand, "npm run cae:assert:handoff");
     assert.equal(payload.readinessRoutes.pipecatMediaEngine, "/api/pipecat-media-engine/readiness");
     assert.equal(payload.comparisonContract.baselineProfile, "unsafe-demo-fixture");
     assert.equal(payload.comparisonContract.candidateProfile, "controlled-cancellation-rescue");
