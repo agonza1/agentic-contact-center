@@ -75,12 +75,17 @@ for (const match of compose.matchAll(/profiles:\s*\[([^\]]+)\]/g)) {
   }
 }
 
-const documentedProfiles = unique([...readme.matchAll(/`([A-Za-z0-9_-]+)`(?=[:\s-])/g)].map((match) => match[1])).filter((value) =>
-  ["voice", "browser-webrtc", "sip-verto", "sip", "eval", "full", "freeswitch"].includes(value),
+const documentedComposeProfileReferences = unique(
+  markdownSources().flatMap((sourcePath) =>
+    [...readText(sourcePath).matchAll(/docker compose\b[^\n`]*?--profile\s+([A-Za-z0-9_-]+)/g)].map(
+      (match) => `${sourcePath}\0${match[1]}`,
+    ),
+  ),
 );
-for (const profile of documentedProfiles) {
+for (const reference of documentedComposeProfileReferences) {
+  const [sourcePath, profile] = reference.split("\0");
   if (!composeProfiles.has(profile)) {
-    fail(`README documents missing Compose profile: ${profile}`);
+    fail(`${sourcePath} documents missing Compose profile: ${profile}`);
   }
 }
 
@@ -190,5 +195,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${composeProfiles.size} Compose profiles, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports.`,
 );
