@@ -48,6 +48,13 @@ import {
 } from "../core/pipecatFlowPrototype";
 import { runtimeSeams } from "../core/seams";
 import { buildToolGatewayReadiness } from "../core/toolGatewayReadiness";
+import {
+  isAccToolCallableByPrincipal,
+  isAccToolName,
+  listAccMcpToolsForPrincipal,
+  validateAccToolArguments,
+  type ToolGatewayPrincipalType,
+} from "../core/toolGatewayTools";
 import type {
   AttentionSource,
   CallSnapshot,
@@ -82,8 +89,175 @@ const defaultTtsIdleTimeoutMs = 30_000;
 const defaultKokoroTtsIdleTimeoutMs = 45_000;
 const maxVoiceSessionPlayAudioBytes = 2 * 1024 * 1024;
 const supportedVoiceSessionPlayMimeTypes = new Set(["audio/l16", "audio/pcm", "audio/wav", "audio/wave", "audio/x-wav"]);
+const supportedMcpProtocolVersions = new Set(["2025-06-18"]);
+const defaultMcpProtocolVersion = "2025-06-18";
+const mcpSessionTtlMs = 15 * 60 * 1000;
+const maxMcpSessions = 64;
 const clueConSystemUnavailableAudio = readFileSync(resolve(process.cwd(), "assets/cluecon/system-unavailable.mp3"));
 const clueConVoiceOriginPhoto = readFileSync(resolve(process.cwd(), "assets/cluecon/alberto-echo-show-prototype.jpg"));
+
+function getMcpPrincipalType(request: IncomingMessage): ToolGatewayPrincipalType | null {
+  const rawPrincipal = request.headers["x-acc-principal-type"];
+  const principalType = Array.isArray(rawPrincipal) ? rawPrincipal[0] : rawPrincipal;
+  if (principalType === "voice_agent" || principalType === "operator") return principalType;
+  return null;
+}
+
+function getMcpSessionId(request: IncomingMessage): string | null {
+  const rawSessionId = request.headers["mcp-session-id"];
+  const sessionId = Array.isArray(rawSessionId) ? rawSessionId[0] : rawSessionId;
+  return typeof sessionId === "string" && /^[0-9a-f-]{36}$/i.test(sessionId) ? sessionId : null;
+}
+
+function getMcpProtocolVersion(request: IncomingMessage): string | null {
+  const rawProtocolVersion = request.headers["mcp-protocol-version"];
+  const protocolVersion = Array.isArray(rawProtocolVersion) ? rawProtocolVersion[0] : rawProtocolVersion;
+  return typeof protocolVersion === "string" && protocolVersion.trim() !== "" ? protocolVersion : null;
+}
+
+function isTrustedMcpOrigin(request: IncomingMessage): boolean {
+  const rawOrigin = request.headers.origin;
+  const origin = Array.isArray(rawOrigin) ? rawOrigin[0] : rawOrigin;
+  if (!origin) return true;
+
+  try {
+    const originUrl = new URL(origin);
+    if (originUrl.protocol !== "http:" && originUrl.protocol !== "https:") return false;
+    return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(originUrl.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function writeTrustedMcpCorsHeaders(request: IncomingMessage, response: ServerResponse): void {
+  const rawOrigin = request.headers.origin;
+  const origin = Array.isArray(rawOrigin) ? rawOrigin[0] : rawOrigin;
+  if (!origin) return;
+
+  response.setHeader("access-control-allow-origin", origin);
+  response.setHeader("vary", "Origin");
+}
+
+function writeMcpCorsPreflight(response: ServerResponse): void {
+  response.statusCode = 204;
+  response.setHeader("access-control-allow-methods", "POST, OPTIONS");
+  response.setHeader("access-control-allow-headers", [
+    "content-type",
+    "x-acc-principal-type",
+    "mcp-session-id",
+    "mcp-protocol-version",
+    "idempotency-key",
+  ].join(", "));
+  response.setHeader("access-control-max-age", "600");
+  response.end();
+}
+
+interface McpSessionState {
+  principalType: ToolGatewayPrincipalType;
+  protocolVersion: string;
+  createdAtMs: number;
+  lastSeenAtMs: number;
+}
+
+function purgeMcpSessions(
+  pendingMcpSessions: Map<string, McpSessionState>,
+  initializedMcpSessions: Map<string, McpSessionState>,
+  nowMs = Date.now(),
+): void {
+  for (const [sessionId, session] of pendingMcpSessions) {
+    if (nowMs - session.lastSeenAtMs > mcpSessionTtlMs) pendingMcpSessions.delete(sessionId);
+  }
+  for (const [sessionId, session] of initializedMcpSessions) {
+    if (nowMs - session.lastSeenAtMs > mcpSessionTtlMs) initializedMcpSessions.delete(sessionId);
+  }
+
+  while (pendingMcpSessions.size + initializedMcpSessions.size > maxMcpSessions) {
+    let oldestSession: { id: string; initialized: boolean; lastSeenAtMs: number } | null = null;
+    for (const [id, session] of pendingMcpSessions) {
+      if (!oldestSession || session.lastSeenAtMs < oldestSession.lastSeenAtMs) {
+        oldestSession = { id, initialized: false, lastSeenAtMs: session.lastSeenAtMs };
+      }
+    }
+    for (const [id, session] of initializedMcpSessions) {
+      if (!oldestSession || session.lastSeenAtMs < oldestSession.lastSeenAtMs) {
+        oldestSession = { id, initialized: true, lastSeenAtMs: session.lastSeenAtMs };
+      }
+    }
+    if (!oldestSession) return;
+    if (oldestSession.initialized) initializedMcpSessions.delete(oldestSession.id);
+    else pendingMcpSessions.delete(oldestSession.id);
+  }
+}
+
+function writeJsonRpcError(
+  response: ServerResponse,
+  id: string | number | null,
+  code: number,
+  message: string,
+  statusCode = 200,
+): void {
+  writeJson(response, statusCode, {
+    jsonrpc: "2.0",
+    id,
+    error: { code, message },
+  });
+}
+
+function writeJsonRpcPolicyError(
+  response: ServerResponse,
+  id: string | number | null,
+  message: string,
+  reasonCode: "cedar_denied" | "invalid_approval" | "invalid_request",
+): void {
+  writeJson(response, 200, {
+    jsonrpc: "2.0",
+    id,
+    error: {
+      code: reasonCode === "invalid_request" ? -32602 : -32003,
+      message,
+      data: { reasonCode },
+    },
+  });
+}
+
+function writeMcpAccepted(response: ServerResponse): void {
+  response.statusCode = 202;
+  response.end();
+}
+
+function buildAccMcpToolCallPayload(toolName: string, normalizedArguments: Record<string, string | number>): Record<string, unknown> {
+  if (toolName === "retention.lookup_options") {
+    return {
+      options: [
+        {
+          offer_id: "retention-10",
+          label: "retention specialist review",
+          discount_percent_max: 10,
+          requires_operator_approval: true,
+        },
+      ],
+    };
+  }
+
+  if (toolName === "operator.request_approval") {
+    return {
+      approval_id: `approval:${normalizedArguments.call_id}:${normalizedArguments.offer_id}`,
+      status: "pending_operator_steer",
+      offer_id: normalizedArguments.offer_id,
+      discount_percent: normalizedArguments.discount_percent,
+    };
+  }
+
+  return {
+    status: "accepted",
+    offer_id: normalizedArguments.offer_id,
+    discount_percent: normalizedArguments.discount_percent,
+  };
+}
+
+function hasMatchingAccMcpApproval(normalizedArguments: Record<string, string | number>): boolean {
+  return normalizedArguments.approval_id === `approval:${normalizedArguments.call_id}:${normalizedArguments.offer_id}`;
+}
 
 interface BrowserWebrtcBridgeRuntimeProbe {
   ok: boolean;
@@ -5489,12 +5663,15 @@ async function routeRequest(
   callerTurnDeliveryAckPreviews: Map<string, CallerTurnDeliveryAckPreview>,
   callerTurnDeliveryAckPreviewReservations: Set<string>,
   voiceSessions: RealtimeVoiceSessionStore,
+  pendingMcpSessions: Map<string, McpSessionState>,
+  initializedMcpSessions: Map<string, McpSessionState>,
 ): Promise<void> {
   const url = request.url ?? "/";
   const requestUrl = new URL(url, "http://localhost");
   const pathname = requestUrl.pathname;
   purgeExpiredCallerTurnDeliveryAckPreviews(callerTurnDeliveryAckPreviews);
   purgeLiveSipEndedCallAliases(liveSipEndedCallMap);
+  purgeMcpSessions(pendingMcpSessions, initializedMcpSessions);
 
   if (request.method === "GET" && pathname === "/health") {
     const pipecatFlow = getPipecatPrototypeHealth();
@@ -5516,6 +5693,198 @@ async function routeRequest(
       toolGateway,
       productionReadiness: buildProductionReadiness(config, pipecatFlow),
     });
+    return;
+  }
+
+  if (request.method === "GET" && pathname === "/mcp") {
+    response.statusCode = 405;
+    response.setHeader("allow", "POST");
+    response.end();
+    return;
+  }
+
+  if (request.method === "OPTIONS" && pathname === "/mcp") {
+    if (!isTrustedMcpOrigin(request)) {
+      writeJsonRpcError(response, null, -32004, "Untrusted MCP origin", 403);
+      return;
+    }
+    writeTrustedMcpCorsHeaders(request, response);
+    writeMcpCorsPreflight(response);
+    return;
+  }
+
+  if (request.method === "POST" && pathname === "/mcp") {
+    if (!isTrustedMcpOrigin(request)) {
+      writeJsonRpcError(response, null, -32004, "Untrusted MCP origin", 403);
+      return;
+    }
+    writeTrustedMcpCorsHeaders(request, response);
+
+    const principalType = getMcpPrincipalType(request);
+    let body: unknown;
+    try {
+      body = await readJsonBody<unknown>(request);
+    } catch (error) {
+      if (error instanceof InvalidJsonBodyError) {
+        writeJsonRpcError(response, null, -32700, "Parse error");
+        return;
+      }
+      throw error;
+    }
+    const record = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
+    const id = typeof record.id === "string" || typeof record.id === "number" || record.id === null ? record.id : null;
+
+    if (record.jsonrpc !== "2.0") {
+      writeJsonRpcError(response, id, -32600, "Invalid JSON-RPC request");
+      return;
+    }
+
+    if (!principalType) {
+      writeJsonRpcError(response, id, -32001, "Missing or invalid ACC principal type", 401);
+      return;
+    }
+
+    if (record.method === "initialize") {
+      const params = isRecord(record.params) ? record.params : {};
+      const requestedProtocolVersion = typeof params.protocolVersion === "string"
+        ? params.protocolVersion
+        : defaultMcpProtocolVersion;
+      const protocolVersion = supportedMcpProtocolVersions.has(requestedProtocolVersion)
+        ? requestedProtocolVersion
+        : defaultMcpProtocolVersion;
+      const nowMs = Date.now();
+      const sessionId = randomUUID();
+      pendingMcpSessions.set(sessionId, { principalType, protocolVersion, createdAtMs: nowMs, lastSeenAtMs: nowMs });
+      purgeMcpSessions(pendingMcpSessions, initializedMcpSessions, nowMs);
+      response.setHeader("Mcp-Session-Id", sessionId);
+      writeJson(response, 200, {
+        jsonrpc: "2.0",
+        id,
+        result: {
+          protocolVersion,
+          capabilities: {
+            tools: {
+              listChanged: false,
+            },
+          },
+          serverInfo: {
+            name: "agentic-contact-center",
+            version: "0.1.0",
+          },
+        },
+      });
+      return;
+    }
+
+    if (record.method === "notifications/initialized") {
+      const sessionId = getMcpSessionId(request);
+      const session = sessionId ? pendingMcpSessions.get(sessionId) : null;
+      const hasSessionHeader = request.headers["mcp-session-id"] !== undefined;
+      if (!session || session.principalType !== principalType) {
+        if (hasSessionHeader) {
+          writeJsonRpcError(response, id, -32002, "ACC MCP session was not found", 404);
+          return;
+        }
+        writeJsonRpcError(response, id, -32002, "ACC MCP session is not initialized", 428);
+        return;
+      }
+      session.lastSeenAtMs = Date.now();
+      pendingMcpSessions.delete(sessionId as string);
+      initializedMcpSessions.set(sessionId as string, session);
+      writeMcpAccepted(response);
+      return;
+    }
+
+    const sessionId = getMcpSessionId(request);
+    const hasSessionHeader = request.headers["mcp-session-id"] !== undefined;
+    const pendingSession = sessionId ? pendingMcpSessions.get(sessionId) : null;
+    const session = sessionId ? initializedMcpSessions.get(sessionId) : null;
+    if (!session || session.principalType !== principalType) {
+      if (hasSessionHeader && (!pendingSession || pendingSession.principalType !== principalType)) {
+        writeJsonRpcError(response, id, -32002, "ACC MCP session was not found", 404);
+        return;
+      }
+      writeJsonRpcError(response, id, -32002, "ACC MCP session is not initialized", 428);
+      return;
+    }
+    session.lastSeenAtMs = Date.now();
+
+    const protocolVersion = getMcpProtocolVersion(request);
+    if (protocolVersion && protocolVersion !== session.protocolVersion) {
+      writeJsonRpcError(response, id, -32002, "ACC MCP protocol version does not match initialized session", 400);
+      return;
+    }
+
+    if (record.method === "tools/list") {
+      writeJson(response, 200, {
+        jsonrpc: "2.0",
+        id,
+        result: {
+          tools: listAccMcpToolsForPrincipal(principalType),
+        },
+      });
+      return;
+    }
+
+    if (record.method === "ping" && Object.hasOwn(record, "id")) {
+      writeJson(response, 200, {
+        jsonrpc: "2.0",
+        id,
+        result: {},
+      });
+      return;
+    }
+
+    if (record.method === "tools/call") {
+      const params = isRecord(record.params) ? record.params : {};
+      const toolName = params.name;
+      const toolArguments = isRecord(params.arguments) ? params.arguments : {};
+
+      if (!isAccToolName(toolName)) {
+        writeJsonRpcPolicyError(response, id, "Unknown ACC MCP tool", "invalid_request");
+        return;
+      }
+
+      const validation = validateAccToolArguments(toolName, toolArguments);
+      if (!validation.valid) {
+        writeJsonRpcPolicyError(response, id, "Invalid ACC MCP tool arguments", "invalid_request");
+        return;
+      }
+
+      if (!isAccToolCallableByPrincipal(toolName, principalType)) {
+        writeJsonRpcPolicyError(response, id, "ACC MCP tool is not authorized for this principal", "cedar_denied");
+        return;
+      }
+
+      if (toolName === "retention.apply_offer" && !hasMatchingAccMcpApproval(validation.normalizedArguments)) {
+        writeJsonRpcPolicyError(response, id, "ACC MCP approval evidence is invalid for this offer", "invalid_approval");
+        return;
+      }
+
+      const toolCallPayload = buildAccMcpToolCallPayload(toolName, validation.normalizedArguments);
+      writeJson(response, 200, {
+        jsonrpc: "2.0",
+        id,
+        result: {
+          isError: false,
+          structuredContent: toolCallPayload,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(toolCallPayload),
+            },
+          ],
+        },
+      });
+      return;
+    }
+
+    if (!Object.hasOwn(record, "id")) {
+      writeMcpAccepted(response);
+      return;
+    }
+
+    writeJsonRpcError(response, id, -32601, "Method not found");
     return;
   }
 
@@ -8995,9 +9364,11 @@ export function buildHttpServer(config: PocConfig) {
   const callerTurnDeliveryAckPreviews = new Map<string, CallerTurnDeliveryAckPreview>();
   const callerTurnDeliveryAckPreviewReservations = new Set<string>();
   const voiceSessions = new RealtimeVoiceSessionStore();
+  const pendingMcpSessions = new Map<string, McpSessionState>();
+  const initializedMcpSessions = new Map<string, McpSessionState>();
 
   const server = createServer((request, response) => {
-    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, pipecatSessionRegistrationLocks, browserWebrtcSessionOfferLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions).catch((error: unknown) => {
+    void routeRequest(request, response, config, ingress, signalWireCallMap, liveSipCallMap, liveSipEndedCallMap, liveSipCallLocks, pipecatSessionRegistrationLocks, browserWebrtcSessionOfferLocks, liveSipOpenAiGenerationLocks, callerTurnDeliveryAckPreviews, callerTurnDeliveryAckPreviewReservations, voiceSessions, pendingMcpSessions, initializedMcpSessions).catch((error: unknown) => {
       if (error instanceof InvalidJsonBodyError) {
         writeBadRequest(response, "invalid_json");
         return;
