@@ -54,7 +54,7 @@ const requiredScripts = [
   "docs:validate",
 ];
 
-const requiredProfiles = ["voice", "browser-webrtc", "sip-verto", "eval", "full"];
+const requiredProfiles = ["voice", "browser-webrtc", "reliability-lab", "sip-verto", "eval", "full"];
 const missingScripts = requiredScripts.filter((script) => !scripts[script]);
 const missingProfiles = requiredProfiles.filter((profile) => !profiles.includes(profile));
 const requiredStackManifestKeys = [
@@ -263,6 +263,28 @@ const targetModes = [
     readinessRoute: "/api/browser-webrtc/readiness",
     caeHandoffCommand: "npm run cae:assert:handoff",
     detail: "Live browser media path for CAE/ASSERT evidence requests.",
+  },
+  {
+    mode: "reliability_lab",
+    status:
+      caeConfigured && endpointReady.caeApi && endpointReady.caeWeb
+        ? liveEndpointConfigured.assertViewer &&
+          liveEndpointConfigured.rtcAsr &&
+          liveEndpointConfigured.kokoro &&
+          liveEndpointConfigured.browserWebRtcBridge &&
+          endpointReady.assertViewer &&
+          endpointReady.rtcAsr &&
+          endpointReady.kokoro &&
+          endpointReady.browserWebRtcBridge
+          ? "ready"
+          : "configured"
+        : "blocked",
+    requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge", "ConversationAgentEvals", "ASSERT viewer"],
+    startCommand: "npm run docker:reliability-lab",
+    evidenceCommand: "npm run proof:bundle",
+    readinessRoute: "/api/reliability",
+    caeHandoffCommand: "npm run cae:assert:handoff",
+    detail: "Local ACC media/evidence stack with external CAE endpoints and local ASSERT viewer wiring.",
   },
   {
     mode: "sip_verto",

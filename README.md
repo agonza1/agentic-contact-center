@@ -25,6 +25,7 @@ Primary actions:
 | Browser voice | `npm run docker:browser-webrtc` | Browser WebRTC | rtc-asr + Pocket/Kokoro TTS + Pipecat bridge | Live local media proof when `browser-webrtc:live-proof` passes |
 | SIP/Verto | `npm run docker:sip-verto` | SIP/RTP caller + Verto/WebRTC agent leg | FreeSWITCH + rtc-asr + Pocket/Kokoro TTS + Pipecat Verto bridge | Caller-audible live proof when `pipecat:verto:live-proof` passes |
 | SignalWire PSTN ingress | `npm run signalwire:freeswitch:readiness -- --render` | PSTN -> SignalWire SIP -> FreeSWITCH | SignalWire SIP trunk + reachable FreeSWITCH SIP endpoint | Redacted FreeSWITCH gateway/reachability proof before manual PSTN call |
+| Reliability lab local stack | `npm run docker:reliability-lab` | Browser WebRTC target path | rtc-asr + Kokoro + Pipecat bridge + ASSERT viewer; CAE through explicit URLs | Local media/evidence stack ready for CAE handoff |
 | Reliability lab status | `npm run reliability:lab` | Selected target mode | Optional CAE/ASSERT endpoints | Honest ready/unreachable/blocked/not-required report for Phase 2 lab wiring |
 
 The default scripted fixture demo does not require ConversationAgentEvals, rtc-asr, Kokoro, FreeSWITCH, ASSERT, production credentials, or live telephony.
@@ -209,6 +210,7 @@ npm run health:smoke
 npm run docker:proof
 npm run docker:voice
 npm run docker:browser-webrtc
+npm run docker:reliability-lab
 npm run docker:sip-verto
 npm run docker:sip
 npm run docker:assert
@@ -218,6 +220,7 @@ npm run docker:freeswitch:only
 
 - `voice`: rtc-asr on `8080` and Kokoro on `8880`.
 - `browser-webrtc`: voice sidecars plus the Pipecat browser WebRTC bridge on `8766`.
+- `reliability-lab`: browser voice sidecars plus the local ASSERT viewer on `5174`; ConversationAgentEvals connects through `CAE_API_URL` and `CAE_WEB_URL`.
 - `sip-verto`: FreeSWITCH, rtc-asr, Kokoro, the preferred Pipecat Verto/WebRTC agent-leg bridge, and a backend-owned Codex OAuth bridge. Dial `8611` for the normal credential-free `free_caller` flow, `8612` for the deterministic scripted failure-control flow, or `8600` for the live model flow. For `8600`, open the operator console, select **Connect Codex**, complete the device login, and call with the pinned `gpt-5.4-mini` model. OAuth credentials stay in the backend bridge and never enter browser JavaScript.
 - `sip`: legacy FreeSWITCH-to-ACC ESL proof/debug bridge with rtc-asr and Kokoro.
 - `eval`: ASSERT artifact export/viewer on `5174`.

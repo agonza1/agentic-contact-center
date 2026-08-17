@@ -18,6 +18,7 @@
     "docker:kokoro:gpu": "docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile voice up kokoro",
     "docker:voice:gpu": "docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile voice up --build app rtc-asr kokoro",
     "docker:browser-webrtc": "docker compose --profile browser-webrtc up --build app rtc-asr kokoro browser-webrtc-bridge",
+    "docker:reliability-lab": "docker compose --profile reliability-lab up --build app rtc-asr kokoro browser-webrtc-bridge assert-viewer",
     "docker:sip-verto": "docker compose --profile sip-verto up --build app freeswitch rtc-asr kokoro codex-voice-bridge pipecat-verto-bridge",
     "docker:full": "ACC_VERTO_OWNS_GREETING=true ACC_VERTO_OWNS_MEDIA=true docker compose --profile full up --build",
     "pipecat:check": "python3 scripts/pipecat-local-runtime.py --self-test",
