@@ -14,6 +14,7 @@ test("documentation validation catches Markdown drift against documented package
   assert.match(result.stdout, /package scripts/);
   assert.match(result.stdout, /runtime command references/);
   assert.match(result.stdout, /Compose profiles/);
+  assert.match(result.stdout, /documented Compose profile references/);
   assert.match(result.stdout, /local Markdown links/);
   assert.match(result.stdout, /useful routes/);
   assert.match(result.stdout, /README diagrams/);
