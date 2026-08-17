@@ -71,6 +71,14 @@ The next implementation slice should add one explicit lab entry point that start
 
 The status API and command now expose `targetModes` so an external runner can select the fixture, browser WebRTC, or SIP/Verto path without scraping prose. Each mode declares its required components, start/connect command, evidence command, readiness route, and CAE handoff command.
 
+The first local entry point is:
+
+```bash
+npm run docker:reliability-lab
+```
+
+It starts the ACC app, rtc-asr, Kokoro, Pipecat browser bridge, and local ASSERT viewer through the `reliability-lab` Compose profile. ConversationAgentEvals remains external; set `CAE_API_URL` and `CAE_WEB_URL` before using the handoff path.
+
 Rules for Phase 2:
 
 - Do not use git submodules.

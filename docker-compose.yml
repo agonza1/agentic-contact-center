@@ -120,7 +120,7 @@ services:
 
   rtc-asr:
     image: ${RTC_ASR_IMAGE:-rtc-asr:local}
-    profiles: ["voice", "browser-webrtc", "sip", "sip-verto", "full"]
+    profiles: ["voice", "browser-webrtc", "reliability-lab", "sip", "sip-verto", "full"]
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
@@ -145,7 +145,7 @@ services:
 
   kokoro:
     image: ${KOKORO_IMAGE:-ghcr.io/remsky/kokoro-fastapi-cpu:latest}
-    profiles: ["voice", "browser-webrtc", "sip", "sip-verto", "full"]
+    profiles: ["voice", "browser-webrtc", "reliability-lab", "sip", "sip-verto", "full"]
     ports:
       - "127.0.0.1:8880:8880"
     environment:
@@ -165,7 +165,7 @@ services:
       context: .
       target: voice-runtime
     image: agentic-contact-center:voice-local
-    profiles: ["browser-webrtc", "full"]
+    profiles: ["browser-webrtc", "reliability-lab", "full"]
     depends_on:
       - app
       - rtc-asr
@@ -352,7 +352,7 @@ services:
       context: .
       target: assert-runtime
     image: agentic-contact-center:assert-local
-    profiles: ["eval", "full"]
+    profiles: ["eval", "reliability-lab", "full"]
     command:
       - sh
       - -lc
