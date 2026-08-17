@@ -2030,6 +2030,8 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.match(html.body, /Cancellation-rescue guide/);
     assert.match(html.body, /npm run reliability:lab/);
     assert.match(html.body, /npm run cae:assert:handoff/);
+    assert.match(html.body, /npm run docker:browser-webrtc/);
+    assert.match(html.body, /npm run pipecat:verto:live-proof/);
     assert.match(html.body, /href="\/api\/reliability"/);
     assert.match(html.body, /href="\/api\/browser-webrtc\/readiness"/);
 
@@ -2042,6 +2044,15 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       goldenScenario: string;
       status: Record<string, string>;
       workflow: Array<{ step: string; command: string | null; evidence: string }>;
+      targetModes: Array<{
+        mode: string;
+        status: string;
+        requiredComponents: string[];
+        startCommand: string;
+        evidenceCommand: string;
+        readinessRoute: string;
+        caeHandoffCommand: string;
+      }>;
       readinessRoutes: Record<string, string>;
       comparisonContract: {
         baselineProfile: string;
@@ -2061,6 +2072,16 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     );
     assert.equal(payload.workflow[0]?.command, "npm run reliability:lab");
     assert.equal(payload.workflow[3]?.evidence, "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json");
+    assert.deepEqual(
+      payload.targetModes.map((mode) => [mode.mode, mode.status, mode.startCommand, mode.evidenceCommand, mode.readinessRoute]),
+      [
+        ["fixture", "ready", "npm run proof", "npm run proof:bundle", "/health"],
+        ["browser_webrtc", "optional_live_sidecars_required", "npm run docker:browser-webrtc", "npm run browser-webrtc:live-proof", "/api/browser-webrtc/readiness"],
+        ["sip_verto", "accepted_strict_local_proof", "npm run docker:sip-verto", "npm run pipecat:verto:live-proof", "/api/pipecat-media-engine/readiness"],
+      ],
+    );
+    assert.deepEqual(payload.targetModes[1]?.requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
+    assert.equal(payload.targetModes[2]?.caeHandoffCommand, "npm run cae:assert:handoff");
     assert.equal(payload.readinessRoutes.pipecatMediaEngine, "/api/pipecat-media-engine/readiness");
     assert.equal(payload.comparisonContract.baselineProfile, "unsafe-demo-fixture");
     assert.equal(payload.comparisonContract.candidateProfile, "controlled-cancellation-rescue");

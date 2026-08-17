@@ -1027,6 +1027,36 @@ const goldenReliabilityComparison = [
   },
 ];
 
+const reliabilityTargetModes = [
+  {
+    mode: "fixture",
+    status: "ready",
+    requiredComponents: ["ACC app"],
+    startCommand: "npm run proof",
+    evidenceCommand: "npm run proof:bundle",
+    readinessRoute: "/health",
+    caeHandoffCommand: "npm run cae:assert:handoff",
+  },
+  {
+    mode: "browser_webrtc",
+    status: "optional_live_sidecars_required",
+    requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"],
+    startCommand: "npm run docker:browser-webrtc",
+    evidenceCommand: "npm run browser-webrtc:live-proof",
+    readinessRoute: "/api/browser-webrtc/readiness",
+    caeHandoffCommand: "npm run cae:assert:handoff",
+  },
+  {
+    mode: "sip_verto",
+    status: "accepted_strict_local_proof",
+    requiredComponents: ["ACC app", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
+    startCommand: "npm run docker:sip-verto",
+    evidenceCommand: "npm run pipecat:verto:live-proof",
+    readinessRoute: "/api/pipecat-media-engine/readiness",
+    caeHandoffCommand: "npm run cae:assert:handoff",
+  },
+];
+
 function buildReliabilityGuidePayload(config: PocConfig): object {
   return {
     ok: true,
@@ -1074,6 +1104,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
         evidence: "ConversationAgentEvals owns run, report, and comparison UX",
       },
     ],
+    targetModes: reliabilityTargetModes,
     readinessRoutes: {
       health: "/health",
       browserWebRtc: "/api/browser-webrtc/readiness",
@@ -1116,6 +1147,10 @@ function buildReliabilityGuideHtml(): string {
     .metric strong { overflow-wrap: anywhere; }
     .workflow { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
     .workflow li { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+    .mode-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .mode-table th, .mode-table td { padding: 9px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    .mode-table th { color: var(--muted); font-size: 12px; }
+    .mode-table td { overflow-wrap: anywhere; }
     .step { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #e8f5f2; color: var(--accent); font-weight: 800; }
     .meta { color: var(--muted); font-size: 13px; }
     @media (max-width: 720px) { header { align-items: flex-start; flex-direction: column; } main { padding: 12px; } }
@@ -1152,6 +1187,17 @@ function buildReliabilityGuideHtml(): string {
         <li><span class="step">4</span><div><strong>Generate CAE handoff</strong><div class="meta"><code>npm run cae:assert:handoff</code> creates the CAE-compatible request while CAE owns run/report UX.</div></div></li>
         <li><span class="step">5</span><div><strong>Compare verdicts</strong><div class="meta">Unsafe baseline and controlled candidate remain labeled; deterministic checks and ASSERT judgment stay separate.</div></div></li>
       </ol>
+    </section>
+    <section class="band" aria-labelledby="modes-title">
+      <h2 id="modes-title">Target Modes</h2>
+      <table class="mode-table">
+        <thead><tr><th>Mode</th><th>Start/connect</th><th>Proof</th><th>Readiness</th></tr></thead>
+        <tbody>
+          <tr><td>Fixture</td><td><code>npm run proof</code></td><td><code>npm run proof:bundle</code></td><td><a href="/health">health</a></td></tr>
+          <tr><td>Browser WebRTC</td><td><code>npm run docker:browser-webrtc</code></td><td><code>npm run browser-webrtc:live-proof</code></td><td><a href="/api/browser-webrtc/readiness">readiness</a></td></tr>
+          <tr><td>SIP/Verto</td><td><code>npm run docker:sip-verto</code></td><td><code>npm run pipecat:verto:live-proof</code></td><td><a href="/api/pipecat-media-engine/readiness">media engine</a></td></tr>
+        </tbody>
+      </table>
     </section>
   </main>
 </body>

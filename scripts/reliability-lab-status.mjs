@@ -143,6 +143,43 @@ const goldenComparison = [
   },
 ];
 
+const targetModes = [
+  {
+    mode: "fixture",
+    status: "ready",
+    requiredComponents: ["ACC app"],
+    startCommand: "npm run proof",
+    evidenceCommand: "npm run proof:bundle",
+    readinessRoute: "/health",
+    caeHandoffCommand: "npm run cae:assert:handoff",
+    detail: "Sidecar-free cancellation-rescue proof for the controlled candidate.",
+  },
+  {
+    mode: "browser_webrtc",
+    status: liveEndpointConfigured.rtcAsr && liveEndpointConfigured.kokoro && liveEndpointConfigured.browserWebRtcBridge
+      ? "configured"
+      : "blocked",
+    requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"],
+    startCommand: "npm run docker:browser-webrtc",
+    evidenceCommand: "npm run browser-webrtc:live-proof",
+    readinessRoute: "/api/browser-webrtc/readiness",
+    caeHandoffCommand: "npm run cae:assert:handoff",
+    detail: "Live browser media path for CAE/ASSERT evidence requests.",
+  },
+  {
+    mode: "sip_verto",
+    status: liveEndpointConfigured.rtcAsr && liveEndpointConfigured.kokoro && liveEndpointConfigured.freeswitchVerto
+      ? "configured"
+      : "blocked",
+    requiredComponents: ["ACC app", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
+    startCommand: "npm run docker:sip-verto",
+    evidenceCommand: "npm run pipecat:verto:live-proof",
+    readinessRoute: "/api/pipecat-media-engine/readiness",
+    caeHandoffCommand: "npm run cae:assert:handoff",
+    detail: "Strict local SIP/Verto proof path for the reference stack.",
+  },
+];
+
 function optionalComponent({ component, configured, endpoint, envVar, configuredDetail, defaultDetail }) {
   return {
     component,
@@ -238,6 +275,7 @@ const report = {
     comparison: goldenComparison,
     caveat: "Unsafe baseline behavior is only a labeled demo fixture/profile; CAE/ASSERT owns imported run reports and comparisons.",
   },
+  targetModes,
   optionalEndpoints,
   componentReadiness,
   repositoryContracts: {
