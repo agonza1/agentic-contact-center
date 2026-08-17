@@ -287,6 +287,103 @@ test("ToolHive tool execution gateway supports stateless MCP initialization", as
   }
 });
 
+test("ToolHive tool execution gateway coalesces concurrent MCP initialization per principal", async () => {
+  const requests: Array<{ sessionId: string | undefined; method: string; id: string | undefined }> = [];
+  const server = createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      body += chunk;
+    });
+    request.on("end", () => {
+      const payload = JSON.parse(body);
+      const sessionId = request.headers["mcp-session-id"]?.toString();
+      requests.push({ sessionId, method: payload.method, id: payload.id });
+      response.setHeader("content-type", "application/json");
+
+      if (payload.method === "initialize") {
+        setTimeout(() => {
+          response.setHeader("mcp-session-id", "mcp-session-coalesced");
+          response.end(JSON.stringify({
+            jsonrpc: "2.0",
+            id: payload.id,
+            result: {
+              protocolVersion: "2025-06-18",
+              capabilities: { tools: { listChanged: false } },
+              serverInfo: { name: "test-mcp", version: "0.0.0" },
+            },
+          }));
+        }, 25);
+        return;
+      }
+
+      if (payload.method === "notifications/initialized") {
+        response.statusCode = 202;
+        response.end();
+        return;
+      }
+
+      response.end(JSON.stringify({ jsonrpc: "2.0", id: payload.id, result: { content: [] } }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  try {
+    const gateway = new ToolHiveToolExecutionGateway({
+      mcpUrl: `http://127.0.0.1:${address.port}/mcp`,
+      timeoutMs: 500,
+    });
+    const [first, second] = await Promise.all([
+      gateway.execute({
+        requestId: "tool-request-coalesced-1",
+        callId: "call-coalesced-1",
+        principalType: "operator",
+        tool: "retention.apply_offer",
+        arguments: {
+          call_id: "call-coalesced-1",
+          offer_id: "retention-10",
+          discount_percent: 10,
+          approval_id: "approval-coalesced-1",
+          idempotency_key: "idem-coalesced-1",
+        },
+      }),
+      gateway.execute({
+        requestId: "tool-request-coalesced-2",
+        callId: "call-coalesced-2",
+        principalType: "operator",
+        tool: "retention.apply_offer",
+        arguments: {
+          call_id: "call-coalesced-2",
+          offer_id: "retention-10",
+          discount_percent: 10,
+          approval_id: "approval-coalesced-2",
+          idempotency_key: "idem-coalesced-2",
+        },
+      }),
+    ]);
+
+    assert.equal(first.status, "allowed");
+    assert.equal(second.status, "allowed");
+    assert.deepEqual(requests.map((entry) => entry.method), [
+      "initialize",
+      "notifications/initialized",
+      "tools/call",
+      "tools/call",
+    ]);
+    assert.equal(requests.filter((entry) => entry.method === "initialize").length, 1);
+    assert.equal(requests[2].sessionId, "mcp-session-coalesced");
+    assert.equal(requests[3].sessionId, "mcp-session-coalesced");
+    assert.deepEqual(new Set([requests[2].id, requests[3].id]), new Set([
+      "tool-request-coalesced-1",
+      "tool-request-coalesced-2",
+    ]));
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 test("ToolHive gateway denies forbidden agent tool calls before invoking ToolHive", async () => {
   let requestCount = 0;
   const server = createServer((_request, response) => {

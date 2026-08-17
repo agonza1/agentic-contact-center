@@ -150,6 +150,10 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
   private readonly mcpUrl: string;
   private readonly timeoutMs: number;
   private readonly sessionsByPrincipal = new Map<ToolGatewayPrincipalType, { sessionId?: string; protocolVersion: string }>();
+  private readonly sessionInitializationsByPrincipal = new Map<
+    ToolGatewayPrincipalType,
+    Promise<{ sessionId?: string; protocolVersion: string } | null>
+  >();
 
   constructor(options: ToolHiveToolExecutionGatewayOptions) {
     this.mcpUrl = options.mcpUrl;
@@ -321,6 +325,26 @@ export class ToolHiveToolExecutionGateway implements ToolExecutionGateway {
       return cachedSession;
     }
 
+    const inFlightInitialization = this.sessionInitializationsByPrincipal.get(principalType);
+    if (inFlightInitialization) {
+      return await inFlightInitialization;
+    }
+
+    const initialization = this.initializeMcpSession(principalType, signal);
+    this.sessionInitializationsByPrincipal.set(principalType, initialization);
+    try {
+      return await initialization;
+    } finally {
+      if (this.sessionInitializationsByPrincipal.get(principalType) === initialization) {
+        this.sessionInitializationsByPrincipal.delete(principalType);
+      }
+    }
+  }
+
+  private async initializeMcpSession(
+    principalType: ToolGatewayPrincipalType,
+    signal: AbortSignal,
+  ): Promise<{ sessionId?: string; protocolVersion: string } | null> {
     const initializeId = `initialize-${randomUUID()}`;
     const initializeResponse = await fetch(this.mcpUrl, {
       method: "POST",
