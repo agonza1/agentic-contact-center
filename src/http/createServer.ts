@@ -1116,6 +1116,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
     targetModes: reliabilityTargetModes,
     readinessRoutes: {
       health: "/health",
+      reliabilityLab: "/api/reliability",
       browserWebRtc: "/api/browser-webrtc/readiness",
       pipecatMediaEngine: "/api/pipecat-media-engine/readiness",
       operatorConsole: "/operator/console",

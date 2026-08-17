@@ -2091,6 +2091,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       "ASSERT viewer",
     ]);
     assert.equal(payload.targetModes[3]?.caeHandoffCommand, "npm run cae:assert:handoff");
+    assert.equal(payload.readinessRoutes.reliabilityLab, "/api/reliability");
     assert.equal(payload.readinessRoutes.pipecatMediaEngine, "/api/pipecat-media-engine/readiness");
     assert.equal(payload.comparisonContract.baselineProfile, "unsafe-demo-fixture");
     assert.equal(payload.comparisonContract.candidateProfile, "controlled-cancellation-rescue");
