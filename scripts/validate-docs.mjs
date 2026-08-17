@@ -39,6 +39,7 @@ const packageJson = JSON.parse(readText("package.json"));
 const compose = readText("docker-compose.yml");
 const server = readText("src/http/createServer.ts");
 const cluecon = readText("src/http/cluecon.ts");
+const reliabilityLabStatusScript = readText("scripts/reliability-lab-status.mjs");
 const stackManifest = readText("stack/versions.env");
 const scripts = packageJson.scripts ?? {};
 
@@ -54,6 +55,7 @@ for (const sourcePath of markdownSources()) {
 const runtimeCommandSources = [
   ["src/http/createServer.ts", server],
   ["src/http/cluecon.ts", cluecon],
+  ["scripts/reliability-lab-status.mjs", reliabilityLabStatusScript],
 ];
 const runtimeScriptCommands = unique(
   runtimeCommandSources.flatMap(([sourcePath, source]) =>
@@ -113,6 +115,16 @@ for (const route of documentedRoutes) {
   const pathname = route.split("/:")[0];
   if (!server.includes(`"${pathname}"`) && !server.includes(`\`${pathname}`) && !server.includes(`'${pathname}'`)) {
     fail(`README documents route not registered in createServer.ts: ${route}`);
+  }
+}
+
+const reliabilityReadinessRoutes = unique(
+  [...reliabilityLabStatusScript.matchAll(/readinessRoute:\s*"([^"]+)"/g)].map((match) => match[1]),
+);
+for (const route of reliabilityReadinessRoutes) {
+  const pathname = route.split("/:")[0];
+  if (!server.includes(`"${pathname}"`) && !server.includes(`\`${pathname}`) && !server.includes(`'${pathname}'`)) {
+    fail(`scripts/reliability-lab-status.mjs references readiness route not registered in createServer.ts: ${route}`);
   }
 }
 
@@ -195,5 +207,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports.`,
 );
