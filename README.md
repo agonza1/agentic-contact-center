@@ -25,7 +25,7 @@ Primary actions:
 | Browser voice | `npm run docker:browser-webrtc` | Browser WebRTC | rtc-asr + Pocket/Kokoro TTS + Pipecat bridge | Live local media proof when `browser-webrtc:live-proof` passes |
 | SIP/Verto | `npm run docker:sip-verto` | SIP/RTP caller + Verto/WebRTC agent leg | FreeSWITCH + rtc-asr + Pocket/Kokoro TTS + Pipecat Verto bridge | Caller-audible live proof when `pipecat:verto:live-proof` passes |
 | SignalWire PSTN ingress | `npm run signalwire:freeswitch:readiness -- --render` | PSTN -> SignalWire SIP -> FreeSWITCH | SignalWire SIP trunk + reachable FreeSWITCH SIP endpoint | Redacted FreeSWITCH gateway/reachability proof before manual PSTN call |
-| Reliability lab status | `npm run reliability:lab` | Selected target mode | Optional CAE/ASSERT endpoints | Honest ready/blocked/not-required report for Phase 2 lab wiring |
+| Reliability lab status | `npm run reliability:lab` | Selected target mode | Optional CAE/ASSERT endpoints | Honest ready/unreachable/blocked/not-required report for Phase 2 lab wiring |
 
 The default scripted fixture demo does not require ConversationAgentEvals, rtc-asr, Kokoro, FreeSWITCH, ASSERT, production credentials, or live telephony.
 
@@ -148,7 +148,7 @@ This path renders credential-bearing FreeSWITCH gateway config into gitignored `
 npm run reliability:lab
 ```
 
-Phase 1 exposes the honest status surface for the future reliability lab. It reports configured, ready, blocked, and not-required states without starting CAE, rtc-asr, FreeSWITCH, or ASSERT implicitly. See [docs/reliability-lab.md](docs/reliability-lab.md).
+Phase 1 exposes the honest status surface for the future reliability lab. It reports configured, reachable, ready, unreachable, blocked, and not-required states without starting CAE, rtc-asr, FreeSWITCH, or ASSERT implicitly. See [docs/reliability-lab.md](docs/reliability-lab.md).
 
 ## Evidence and evaluation
 
