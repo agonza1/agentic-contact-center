@@ -558,6 +558,32 @@ export class RealtimeVoiceSessionStore {
     const transcriptTurns = call?.transcript.length ?? 0;
     const outputCancelledByBargeIn = snapshot.output.bargeInCancellationObserved
       || snapshot.events.some((event) => event.type === "output.stream.cancelled" && event.detail.reason === "barge_in");
+    const reviewGates = [
+      {
+        id: "voice_session_media_input",
+        ready: hasAudioInput,
+        blocker: hasAudioInput ? null : "voice_session_media_input_missing",
+        evidence: `${snapshot.media.inputChunks} input chunk(s), ${snapshot.media.inputBytes} byte(s)`,
+        nextAction: "Attach caller audio through the voice-session media input route.",
+      },
+      {
+        id: "voice_session_output_audio",
+        ready: hasOutputAudio,
+        blocker: hasOutputAudio ? null : "voice_session_output_audio_missing",
+        evidence: `${snapshot.output.chunks} active output chunk(s), ${snapshot.output.bytes} byte(s)`,
+        nextAction: "Attach caller-audible TTS output chunks with x-output-stream-id.",
+      },
+      {
+        id: "rtc_asr_final_transcript",
+        ready: hasRtcAsrFinalTranscript,
+        blocker: hasRtcAsrFinalTranscript ? null : "rtc_asr_final_transcript_missing",
+        evidence: `${sessionRtcAsrTranscriptEvents.length} correlated final transcript event(s)`,
+        nextAction: "Capture a same-session rtc-asr final transcript event before evaluator handoff.",
+      },
+    ];
+    const blockers = reviewGates
+      .map((gate) => gate.blocker)
+      .filter((blocker): blocker is string => blocker !== null);
     return {
       ok: true,
       schemaVersion: 1,
@@ -598,7 +624,9 @@ export class RealtimeVoiceSessionStore {
       review: {
         status: hasAudioInput && hasOutputAudio && hasRtcAsrFinalTranscript ? "ready_for_evaluator" : "collecting_realtime_evidence",
         ready: hasAudioInput && hasOutputAudio && hasRtcAsrFinalTranscript,
-        blockers: [hasAudioInput ? null : "voice_session_media_input_missing", hasOutputAudio ? null : "voice_session_output_audio_missing", hasRtcAsrFinalTranscript ? null : "rtc_asr_final_transcript_missing"].filter((blocker): blocker is string => blocker !== null),
+        blockers,
+        gates: reviewGates,
+        nextAction: reviewGates.find((gate) => !gate.ready)?.nextAction ?? "Hand the proof route to the evaluator.",
       },
       call: call ?? null,
     };
