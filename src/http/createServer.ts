@@ -1042,88 +1042,102 @@ const goldenReliabilityComparison = [
   },
 ];
 
-const reliabilityTargetModes = [
-  {
-    mode: "fixture",
-    status: "ready",
-    requiredComponents: ["ACC app"],
-    startCommand: "npm run proof",
-    validationCommand: "npm run proof",
-    evidenceCommand: "npm run proof:bundle",
-    readinessRoute: "/health",
-    caeHandoffCommand: "npm run cae:assert:handoff",
-    validationGate: {
-      fastestCheck: "npm run proof",
-      evidenceArtifact: "artifacts/demo-proof-latest.json",
-      successCriteria: ["controlled_candidate_scorecard_passes", "proof_bundle_written"],
-      liveMediaRequired: false,
+function buildReliabilityTargetModes() {
+  const caeConfigured = Boolean(configuredEnvValue("CAE_API_URL") && configuredEnvValue("CAE_WEB_URL"));
+  const browserLiveConfigured = Boolean(
+    configuredEnvValue("RTC_ASR_BASE_URL") &&
+    configuredEnvValue("KOKORO_BASE_URL") &&
+    configuredEnvValue("BROWSER_WEBRTC_BRIDGE_URL"),
+  );
+  const sipVertoConfigured = Boolean(
+    configuredEnvValue("RTC_ASR_BASE_URL") &&
+    configuredEnvValue("KOKORO_BASE_URL") &&
+    configuredEnvValue("FREESWITCH_VERTO_URL"),
+  );
+
+  return [
+    {
+      mode: "fixture",
+      status: "ready",
+      requiredComponents: ["ACC app"],
+      startCommand: "npm run proof",
+      validationCommand: "npm run proof",
+      evidenceCommand: "npm run proof:bundle",
+      readinessRoute: "/health",
+      caeHandoffCommand: "npm run cae:assert:handoff",
+      validationGate: {
+        fastestCheck: "npm run proof",
+        evidenceArtifact: "artifacts/demo-proof-latest.json",
+        successCriteria: ["controlled_candidate_scorecard_passes", "proof_bundle_written"],
+        liveMediaRequired: false,
+      },
     },
-  },
-  {
-    mode: "browser_webrtc",
-    status: "optional_live_sidecars_required",
-    requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"],
-    startCommand: "npm run docker:browser-webrtc",
-    validationCommand: "npm run browser-webrtc:check",
-    evidenceCommand: "npm run browser-webrtc:live-proof",
-    readinessRoute: "/api/browser-webrtc/readiness",
-    caeHandoffCommand: "npm run cae:assert:handoff",
-    validationGate: {
-      fastestCheck: "npm run browser-webrtc:check",
-      evidenceArtifact: "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
-      successCriteria: ["pipecat_browser_bridge_ready", "rtc_asr_ready", "tts_ready"],
-      liveMediaRequired: true,
+    {
+      mode: "browser_webrtc",
+      status: browserLiveConfigured ? "configured" : "blocked",
+      requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"],
+      startCommand: "npm run docker:browser-webrtc",
+      validationCommand: "npm run browser-webrtc:check",
+      evidenceCommand: "npm run browser-webrtc:live-proof",
+      readinessRoute: "/api/browser-webrtc/readiness",
+      caeHandoffCommand: "npm run cae:assert:handoff",
+      validationGate: {
+        fastestCheck: "npm run browser-webrtc:check",
+        evidenceArtifact: "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+        successCriteria: ["pipecat_browser_bridge_ready", "rtc_asr_ready", "tts_ready"],
+        liveMediaRequired: true,
+      },
     },
-  },
-  {
-    mode: "reliability_lab",
-    status: "external_cae_endpoints_required",
-    requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge", "ConversationAgentEvals", "ASSERT viewer"],
-    startCommand: "npm run docker:reliability-lab",
-    validationCommand: "npm run reliability:lab",
-    evidenceCommand: "npm run proof:bundle",
-    readinessRoute: "/api/reliability",
-    caeHandoffCommand: "npm run cae:assert:handoff",
-    validationGate: {
-      fastestCheck: "npm run reliability:lab",
-      evidenceArtifact: "artifacts/agentic-call-center-demo/conversation-agent-evals-assert-request.json",
-      successCriteria: ["cae_api_reachable", "cae_web_reachable", "selected_media_mode_ready_or_configured"],
-      liveMediaRequired: false,
+    {
+      mode: "reliability_lab",
+      status: caeConfigured ? "configured" : "blocked",
+      requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge", "ConversationAgentEvals", "ASSERT viewer"],
+      startCommand: "npm run docker:reliability-lab",
+      validationCommand: "npm run reliability:lab",
+      evidenceCommand: "npm run proof:bundle",
+      readinessRoute: "/api/reliability",
+      caeHandoffCommand: "npm run cae:assert:handoff",
+      validationGate: {
+        fastestCheck: "npm run reliability:lab",
+        evidenceArtifact: "artifacts/agentic-call-center-demo/conversation-agent-evals-assert-request.json",
+        successCriteria: ["cae_api_reachable", "cae_web_reachable", "selected_media_mode_ready_or_configured"],
+        liveMediaRequired: false,
+      },
     },
-  },
-  {
-    mode: "sip_verto",
-    status: "accepted_strict_local_proof",
-    requiredComponents: ["ACC app", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
-    startCommand: "npm run docker:sip-verto",
-    validationCommand: "npm run pipecat:verto:check",
-    evidenceCommand: "npm run pipecat:verto:live-proof",
-    readinessRoute: "/api/pipecat-media-engine/readiness",
-    caeHandoffCommand: "npm run cae:assert:handoff",
-    validationGate: {
-      fastestCheck: "npm run pipecat:verto:check",
-      evidenceArtifact: "artifacts/verto-sip-live-proof/manifest.json",
-      successCriteria: ["freeswitch_verto_ready", "pipecat_verto_bridge_ready", "shared_pipeline_ready"],
-      liveMediaRequired: true,
+    {
+      mode: "sip_verto",
+      status: sipVertoConfigured ? "configured" : "blocked",
+      requiredComponents: ["ACC app", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
+      startCommand: "npm run docker:sip-verto",
+      validationCommand: "npm run pipecat:verto:check",
+      evidenceCommand: "npm run pipecat:verto:live-proof",
+      readinessRoute: "/api/pipecat-media-engine/readiness",
+      caeHandoffCommand: "npm run cae:assert:handoff",
+      validationGate: {
+        fastestCheck: "npm run pipecat:verto:check",
+        evidenceArtifact: "artifacts/verto-sip-live-proof/manifest.json",
+        successCriteria: ["freeswitch_verto_ready", "pipecat_verto_bridge_ready", "shared_pipeline_ready"],
+        liveMediaRequired: true,
+      },
     },
-  },
-  {
-    mode: "signalwire_pstn",
-    status: "signalwire_env_and_public_sip_gate_required",
-    requiredComponents: ["ACC app", "SignalWire SIP trunk", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
-    startCommand: "npm run docker:sip-verto",
-    validationCommand: "npm run signalwire:freeswitch:readiness",
-    evidenceCommand: "npm run signalwire:freeswitch:readiness -- --render",
-    readinessRoute: "/api/pipecat-media-engine/readiness",
-    caeHandoffCommand: "npm run cae:assert:handoff",
-    validationGate: {
-      fastestCheck: "npm run signalwire:freeswitch:readiness",
-      evidenceArtifact: "artifacts/signalwire-freeswitch-readiness/readiness.json",
-      successCriteria: ["signalwire_env_configured", "freeswitch_gateway_rendered", "public_sip_reachability_checked"],
-      liveMediaRequired: true,
+    {
+      mode: "signalwire_pstn",
+      status: "blocked",
+      requiredComponents: ["ACC app", "SignalWire SIP trunk", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
+      startCommand: "npm run docker:sip-verto",
+      validationCommand: "npm run signalwire:freeswitch:readiness",
+      evidenceCommand: "npm run signalwire:freeswitch:readiness -- --render",
+      readinessRoute: "/api/pipecat-media-engine/readiness",
+      caeHandoffCommand: "npm run cae:assert:handoff",
+      validationGate: {
+        fastestCheck: "npm run signalwire:freeswitch:readiness",
+        evidenceArtifact: "artifacts/signalwire-freeswitch-readiness/readiness.json",
+        successCriteria: ["signalwire_env_configured", "freeswitch_gateway_rendered", "public_sip_reachability_checked"],
+        liveMediaRequired: true,
+      },
     },
-  },
-];
+  ];
+}
 
 const reliabilityOptionalEndpointEnvVars = [
   "CAE_API_URL",
@@ -1338,7 +1352,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
         evidence: "ConversationAgentEvals owns run, report, and comparison UX",
       },
     ],
-    targetModes: reliabilityTargetModes,
+    targetModes: buildReliabilityTargetModes(),
     readinessRoutes: {
       health: "/health",
       reliabilityLab: "/api/reliability",

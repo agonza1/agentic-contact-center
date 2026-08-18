@@ -2114,10 +2114,10 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       payload.targetModes.map((mode) => [mode.mode, mode.status, mode.startCommand, mode.validationCommand, mode.evidenceCommand, mode.readinessRoute]),
       [
         ["fixture", "ready", "npm run proof", "npm run proof", "npm run proof:bundle", "/health"],
-        ["browser_webrtc", "optional_live_sidecars_required", "npm run docker:browser-webrtc", "npm run browser-webrtc:check", "npm run browser-webrtc:live-proof", "/api/browser-webrtc/readiness"],
-        ["reliability_lab", "external_cae_endpoints_required", "npm run docker:reliability-lab", "npm run reliability:lab", "npm run proof:bundle", "/api/reliability"],
-        ["sip_verto", "accepted_strict_local_proof", "npm run docker:sip-verto", "npm run pipecat:verto:check", "npm run pipecat:verto:live-proof", "/api/pipecat-media-engine/readiness"],
-        ["signalwire_pstn", "signalwire_env_and_public_sip_gate_required", "npm run docker:sip-verto", "npm run signalwire:freeswitch:readiness", "npm run signalwire:freeswitch:readiness -- --render", "/api/pipecat-media-engine/readiness"],
+        ["browser_webrtc", "blocked", "npm run docker:browser-webrtc", "npm run browser-webrtc:check", "npm run browser-webrtc:live-proof", "/api/browser-webrtc/readiness"],
+        ["reliability_lab", "blocked", "npm run docker:reliability-lab", "npm run reliability:lab", "npm run proof:bundle", "/api/reliability"],
+        ["sip_verto", "blocked", "npm run docker:sip-verto", "npm run pipecat:verto:check", "npm run pipecat:verto:live-proof", "/api/pipecat-media-engine/readiness"],
+        ["signalwire_pstn", "blocked", "npm run docker:sip-verto", "npm run signalwire:freeswitch:readiness", "npm run signalwire:freeswitch:readiness -- --render", "/api/pipecat-media-engine/readiness"],
       ],
     );
     assert.deepEqual(payload.targetModes[1]?.requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
@@ -2222,6 +2222,48 @@ test("GET /reliability redacts configured optional endpoint secrets", async () =
       const bridge = payload.componentReadiness.find((component) => component.component === "Pipecat browser bridge");
       assert.equal(bridge?.endpoint, "https://example.com:8443");
       assert.doesNotMatch(JSON.stringify(api.payload), /bridge-secret|leaky-token|\/proof/);
+    });
+  } finally {
+    for (const [name, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+});
+
+test("GET /api/reliability reflects configured target mode endpoints", async () => {
+  const endpointEnvVars = [
+    "CAE_API_URL",
+    "CAE_WEB_URL",
+    "ASSERT_VIEWER_URL",
+    "RTC_ASR_BASE_URL",
+    "KOKORO_BASE_URL",
+    "BROWSER_WEBRTC_BRIDGE_URL",
+    "FREESWITCH_VERTO_URL",
+  ];
+  const originalEnv = Object.fromEntries(endpointEnvVars.map((name) => [name, process.env[name]]));
+  for (const name of endpointEnvVars) delete process.env[name];
+  process.env.CAE_API_URL = "https://cae-api.example.com";
+  process.env.CAE_WEB_URL = "https://cae-web.example.com";
+  process.env.RTC_ASR_BASE_URL = "http://127.0.0.1:8080";
+  process.env.KOKORO_BASE_URL = "http://127.0.0.1:8880";
+  process.env.BROWSER_WEBRTC_BRIDGE_URL = "http://127.0.0.1:8766";
+  process.env.FREESWITCH_VERTO_URL = "ws://127.0.0.1:8081";
+
+  try {
+    await withServer(async (port) => {
+      const api = await requestJson(port, "GET", "/api/reliability");
+      assert.equal(api.statusCode, 200);
+      const payload = api.payload as {
+        targetModes: Array<{ mode: string; status: string }>;
+      };
+      const statuses = Object.fromEntries(payload.targetModes.map((mode) => [mode.mode, mode.status]));
+
+      assert.equal(statuses.fixture, "ready");
+      assert.equal(statuses.browser_webrtc, "configured");
+      assert.equal(statuses.reliability_lab, "configured");
+      assert.equal(statuses.sip_verto, "configured");
+      assert.equal(statuses.signalwire_pstn, "blocked");
     });
   } finally {
     for (const [name, value] of Object.entries(originalEnv)) {
