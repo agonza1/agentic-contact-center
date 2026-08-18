@@ -782,6 +782,74 @@ test("GET /api/browser-webrtc/readiness reports bridge offline before live media
 });
 
 
+test("GET /api/browser-webrtc/readiness reports invalid bridge health JSON as degraded", async () => {
+  const bridge = createServer((_request, response) => {
+    response.statusCode = 200;
+    response.setHeader("content-type", "application/json; charset=utf-8");
+    response.end("{");
+  });
+  await new Promise<void>((resolve) => bridge.listen(0, "127.0.0.1", resolve));
+  const bridgeAddress = bridge.address();
+  if (!bridgeAddress || typeof bridgeAddress === "string") {
+    throw new Error("Expected an ephemeral bridge TCP port");
+  }
+  const previousBridgeUrl = process.env.BROWSER_WEBRTC_BRIDGE_URL;
+  const previousTimeout = process.env.BROWSER_WEBRTC_BRIDGE_TIMEOUT_MS;
+  process.env.BROWSER_WEBRTC_BRIDGE_URL = `http://127.0.0.1:${bridgeAddress.port}`;
+  process.env.BROWSER_WEBRTC_BRIDGE_TIMEOUT_MS = "500";
+
+  const server = buildHttpServer(loadPocConfig());
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected an ephemeral TCP port");
+  }
+
+  try {
+    const responseBody = await new Promise<string>((resolve, reject) => {
+      const req = request(
+        { host: "127.0.0.1", port: address.port, path: "/api/browser-webrtc/readiness", method: "GET" },
+        (response) => {
+          let body = "";
+          response.setEncoding("utf8");
+          response.on("data", (chunk) => { body += chunk; });
+          response.on("end", () => resolve(body));
+        },
+      );
+      req.on("error", reject);
+      req.end();
+    });
+    const payload = JSON.parse(responseBody) as {
+      ok: boolean;
+      status: string;
+      readiness: { pipecatWebrtcBridge: { status: string; blockers: string[]; evidence: string } };
+      blockers: string[];
+    };
+
+    assert.equal(payload.ok, false);
+    assert.equal(payload.status, "realtime_contract_blocked_bridge_offline");
+    assert.equal(payload.readiness.pipecatWebrtcBridge.status, "degraded");
+    assert.deepEqual(payload.readiness.pipecatWebrtcBridge.blockers, ["pipecat_webrtc_bridge_invalid_health_json"]);
+    assert.ok(payload.readiness.pipecatWebrtcBridge.evidence.includes("invalid JSON"));
+    assert.ok(payload.blockers.includes("pipecat_webrtc_bridge_invalid_health_json"));
+    assert.ok(payload.blockers.includes("live_webrtc_media_turn_evidence_missing"));
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => bridge.close((error) => error ? reject(error) : resolve()));
+    if (previousBridgeUrl === undefined) {
+      delete process.env.BROWSER_WEBRTC_BRIDGE_URL;
+    } else {
+      process.env.BROWSER_WEBRTC_BRIDGE_URL = previousBridgeUrl;
+    }
+    if (previousTimeout === undefined) {
+      delete process.env.BROWSER_WEBRTC_BRIDGE_TIMEOUT_MS;
+    } else {
+      process.env.BROWSER_WEBRTC_BRIDGE_TIMEOUT_MS = previousTimeout;
+    }
+  }
+});
+
+
 test("POST /api/browser-webrtc/session proxies browser SDP offers to Pipecat bridge", async () => {
   const bridgeRequests: Array<{ callId?: string; sdp?: string; type?: string; accUrl?: string; sessionId?: string; conversationMode?: string }> = [];
   const bridgeCleanupRequests: string[] = [];

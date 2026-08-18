@@ -569,16 +569,31 @@ async function probeBrowserWebrtcBridgeRuntime(): Promise<BrowserWebrtcBridgeRun
       signal: AbortSignal.timeout(getBrowserWebrtcBridgeTimeoutMs()),
     });
     const contentType = response.headers.get("content-type") ?? "";
-    const payload = contentType.includes("json") ? await response.json() : { detail: await response.text() };
+    let payload: unknown;
+    let parseError: string | null = null;
+    if (contentType.includes("json")) {
+      const body = await response.text();
+      try {
+        payload = body ? JSON.parse(body) : {};
+      } catch (error) {
+        payload = { detail: body };
+        parseError = error instanceof Error ? error.message : String(error);
+      }
+    } else {
+      payload = { detail: await response.text() };
+    }
     const payloadRecord = isRecord(payload) ? payload : {};
     const explicitOk = payloadRecord.ok !== false && payloadRecord.ready !== false;
     const status = typeof payloadRecord.status === "string" ? payloadRecord.status : response.ok && explicitOk ? "ready" : "degraded";
-    const bridgeOk = response.ok && explicitOk && !["offline", "error", "failed", "degraded"].includes(status.toLowerCase());
+    const bridgeOk = !parseError && response.ok && explicitOk && !["offline", "error", "failed", "degraded"].includes(status.toLowerCase());
     const blockers = Array.isArray(payloadRecord.blockers) ? payloadRecord.blockers.filter((item): item is string => typeof item === "string" && Boolean(item.trim())) : [];
+    if (parseError) {
+      blockers.push("pipecat_webrtc_bridge_invalid_health_json");
+    }
     return {
       ok: bridgeOk,
       status: bridgeOk ? "ready" : "degraded",
-      detail: bridgeOk ? "Pipecat WebRTC bridge health probe passed." : typeof payloadRecord.detail === "string" ? payloadRecord.detail : `Pipecat WebRTC bridge returned HTTP ${response.status}.`,
+      detail: bridgeOk ? "Pipecat WebRTC bridge health probe passed." : parseError ? `Pipecat WebRTC bridge returned invalid JSON: ${parseError}` : typeof payloadRecord.detail === "string" ? payloadRecord.detail : `Pipecat WebRTC bridge returned HTTP ${response.status}.`,
       blockers: bridgeOk ? [] : blockers.length ? blockers : ["pipecat_webrtc_bridge_not_ready"],
       checkedUrl: bridgeUrl,
       payload,
