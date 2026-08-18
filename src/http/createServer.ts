@@ -1099,6 +1099,18 @@ function configuredEnvValue(name: string): string | null {
   return value ? value : null;
 }
 
+function redactedConfiguredEndpoint(value: string): string {
+  try {
+    const endpointUrl = new URL(value);
+    if (["http:", "https:", "ws:", "wss:"].includes(endpointUrl.protocol)) {
+      return endpointUrl.origin;
+    }
+  } catch {
+    return "[configured]";
+  }
+  return "[configured]";
+}
+
 function buildReliabilityComponentReadiness(): ReliabilityComponentReadiness[] {
   const caeApi = configuredEnvValue("CAE_API_URL");
   const caeWeb = configuredEnvValue("CAE_WEB_URL");
@@ -1154,7 +1166,7 @@ function buildReliabilityComponentReadiness(): ReliabilityComponentReadiness[] {
         status: endpoint ? "configured" as const : "not_required" as const,
         requiredForDefaultDemo: false,
         envVars: [component.envVar],
-        endpoint: endpoint ?? undefined,
+        endpoint: endpoint ? redactedConfiguredEndpoint(endpoint) : undefined,
         detail: endpoint
           ? "Endpoint is configured; run npm run reliability:lab for bounded reachability probes."
           : component.detail,

@@ -2170,6 +2170,44 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
   }
 });
 
+test("GET /reliability redacts configured optional endpoint secrets", async () => {
+  const endpointEnvVars = [
+    "CAE_API_URL",
+    "CAE_WEB_URL",
+    "ASSERT_VIEWER_URL",
+    "RTC_ASR_BASE_URL",
+    "KOKORO_BASE_URL",
+    "BROWSER_WEBRTC_BRIDGE_URL",
+    "FREESWITCH_VERTO_URL",
+  ];
+  const originalEnv = Object.fromEntries(endpointEnvVars.map((name) => [name, process.env[name]]));
+  for (const name of endpointEnvVars) delete process.env[name];
+  process.env.BROWSER_WEBRTC_BRIDGE_URL = "https://bridge-user:bridge-secret@example.com:8443/proof?token=leaky-token";
+
+  try {
+    await withServer(async (port) => {
+      const html = await requestText(port, "GET", "/reliability");
+      assert.equal(html.statusCode, 200);
+      assert.match(html.body, /https:\/\/example\.com:8443/);
+      assert.doesNotMatch(html.body, /bridge-secret|leaky-token|\/proof/);
+
+      const api = await requestJson(port, "GET", "/api/reliability");
+      assert.equal(api.statusCode, 200);
+      const payload = api.payload as {
+        componentReadiness: Array<{ component: string; endpoint?: string }>;
+      };
+      const bridge = payload.componentReadiness.find((component) => component.component === "Pipecat browser bridge");
+      assert.equal(bridge?.endpoint, "https://example.com:8443");
+      assert.doesNotMatch(JSON.stringify(api.payload), /bridge-secret|leaky-token|\/proof/);
+    });
+  } finally {
+    for (const [name, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+});
+
 test("GET /assert serves an ACC local artifact viewer", async () => {
   await withServer(async (port) => {
     const response = await requestText(port, "GET", "/assert");
