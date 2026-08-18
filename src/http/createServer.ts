@@ -1064,6 +1064,15 @@ const reliabilityTargetModes = [
     readinessRoute: "/api/pipecat-media-engine/readiness",
     caeHandoffCommand: "npm run cae:assert:handoff",
   },
+  {
+    mode: "signalwire_pstn",
+    status: "signalwire_env_and_public_sip_gate_required",
+    requiredComponents: ["ACC app", "SignalWire SIP trunk", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
+    startCommand: "npm run docker:sip-verto",
+    evidenceCommand: "npm run signalwire:freeswitch:readiness -- --render",
+    readinessRoute: "/api/pipecat-media-engine/readiness",
+    caeHandoffCommand: "npm run cae:assert:handoff",
+  },
 ];
 
 const reliabilityOptionalEndpointEnvVars = [
@@ -1200,6 +1209,7 @@ function buildReliabilityGuideHtml(): string {
         <div class="metric"><span>Scripted fixture</span><strong>ready</strong></div>
         <div class="metric"><span>Browser WebRTC</span><strong>optional sidecars required</strong><a href="/api/browser-webrtc/readiness">readiness</a></div>
         <div class="metric"><span>SIP/Verto</span><strong>accepted strict local proof</strong><a href="/api/pipecat-media-engine/readiness">media engine</a></div>
+        <div class="metric"><span>SignalWire PSTN</span><strong>env and public SIP gate required</strong><a href="/api/pipecat-media-engine/readiness">media engine</a></div>
         <div class="metric"><span>CAE/ASSERT</span><strong>handoff artifact ready</strong></div>
       </div>
     </section>
@@ -1221,6 +1231,7 @@ function buildReliabilityGuideHtml(): string {
           <tr><td>Fixture</td><td><code>npm run proof</code></td><td><code>npm run proof:bundle</code></td><td><a href="/health">health</a></td></tr>
           <tr><td>Browser WebRTC</td><td><code>npm run docker:browser-webrtc</code></td><td><code>npm run browser-webrtc:live-proof</code></td><td><a href="/api/browser-webrtc/readiness">readiness</a></td></tr>
           <tr><td>SIP/Verto</td><td><code>npm run docker:sip-verto</code></td><td><code>npm run pipecat:verto:live-proof</code></td><td><a href="/api/pipecat-media-engine/readiness">media engine</a></td></tr>
+          <tr><td>SignalWire PSTN</td><td><code>npm run docker:sip-verto</code></td><td><code>npm run signalwire:freeswitch:readiness -- --render</code></td><td><a href="/api/pipecat-media-engine/readiness">media engine</a></td></tr>
         </tbody>
       </table>
     </section>

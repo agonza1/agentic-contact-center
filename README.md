@@ -178,7 +178,7 @@ ACC can also export local ASSERT viewer artifacts with `npm run assert:export` a
 | Scripted cancellation-rescue proof | Ready | Runs without external services. |
 | Browser WebRTC route/contract | Ready, live proof optional | Requires local rtc-asr/Kokoro/Pipecat sidecars for real media. |
 | SIP/Verto live proof | Accepted strict local proof | Keep this lane closed unless a new issue explicitly changes it. |
-| SignalWire PSTN ingress | Configured, gated on local env and public SIP reachability | Uses credential-safe templates and redacted FreeSWITCH readiness proof before manual call validation. |
+| SignalWire PSTN ingress | First-class target mode, gated on local env and public SIP reachability | Uses credential-safe templates and redacted FreeSWITCH readiness proof before manual call validation. |
 | ConversationAgentEvals handoff | Ready as generated request artifact | CAE remains external and owns generic eval UX. |
 | Reliability lab | Phase 1 status/docs plus `stack/versions.env` manifest | Phase 2 should wire explicit CAE/ASSERT endpoints/profiles. |
 | Production telephony/security/persistence | Blocked/not implemented | Mocked credentials, in-memory state, no production hardening. |

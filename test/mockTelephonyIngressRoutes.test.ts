@@ -2084,6 +2084,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         ["browser_webrtc", "optional_live_sidecars_required", "npm run docker:browser-webrtc", "npm run browser-webrtc:live-proof", "/api/browser-webrtc/readiness"],
         ["reliability_lab", "external_cae_endpoints_required", "npm run docker:reliability-lab", "npm run proof:bundle", "/api/reliability"],
         ["sip_verto", "accepted_strict_local_proof", "npm run docker:sip-verto", "npm run pipecat:verto:live-proof", "/api/pipecat-media-engine/readiness"],
+        ["signalwire_pstn", "signalwire_env_and_public_sip_gate_required", "npm run docker:sip-verto", "npm run signalwire:freeswitch:readiness -- --render", "/api/pipecat-media-engine/readiness"],
       ],
     );
     assert.deepEqual(payload.targetModes[1]?.requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
