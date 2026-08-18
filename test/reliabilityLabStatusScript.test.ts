@@ -109,6 +109,18 @@ test("reliability lab status reports explicit blockers without starting sidecars
     ],
   );
   assert.deepEqual(payload.targetModes[1].requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
+  assert.deepEqual(payload.targetModes[0].validationGate, {
+    fastestCheck: "npm run proof",
+    evidenceArtifact: "artifacts/demo-proof-latest.json",
+    successCriteria: ["controlled_candidate_scorecard_passes", "proof_bundle_written"],
+    liveMediaRequired: false,
+  });
+  assert.deepEqual(payload.targetModes[1].validationGate, {
+    fastestCheck: "npm run browser-webrtc:check",
+    evidenceArtifact: "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+    successCriteria: ["pipecat_browser_bridge_ready", "rtc_asr_ready", "tts_ready"],
+    liveMediaRequired: true,
+  });
   assert.deepEqual(payload.targetModes[2].requiredComponents, [
     "ACC app",
     "rtc-asr",
@@ -142,6 +154,15 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(
     payload.componentReadiness.find((component: { component: string }) => component.component === "Pipecat browser bridge").envVar,
     "BROWSER_WEBRTC_BRIDGE_URL",
+  );
+  assert.deepEqual(
+    payload.targetModes.find((mode: { mode: string }) => mode.mode === "reliability_lab").validationGate,
+    {
+      fastestCheck: "npm run reliability:lab",
+      evidenceArtifact: "artifacts/agentic-call-center-demo/conversation-agent-evals-assert-request.json",
+      successCriteria: ["cae_api_reachable", "cae_web_reachable", "selected_media_mode_ready_or_configured"],
+      liveMediaRequired: false,
+    },
   );
 });
 

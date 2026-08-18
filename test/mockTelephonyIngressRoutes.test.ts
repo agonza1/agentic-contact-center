@@ -2066,6 +2066,12 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         evidenceCommand: string;
         readinessRoute: string;
         caeHandoffCommand: string;
+        validationGate: {
+          fastestCheck: string;
+          evidenceArtifact: string;
+          successCriteria: string[];
+          liveMediaRequired: boolean;
+        };
       }>;
       readinessRoutes: Record<string, string>;
       comparisonContract: {
@@ -2115,6 +2121,12 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       ],
     );
     assert.deepEqual(payload.targetModes[1]?.requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
+    assert.deepEqual(payload.targetModes[1]?.validationGate, {
+      fastestCheck: "npm run browser-webrtc:check",
+      evidenceArtifact: "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+      successCriteria: ["pipecat_browser_bridge_ready", "rtc_asr_ready", "tts_ready"],
+      liveMediaRequired: true,
+    });
     assert.deepEqual(payload.targetModes[2]?.requiredComponents, [
       "ACC app",
       "rtc-asr",
