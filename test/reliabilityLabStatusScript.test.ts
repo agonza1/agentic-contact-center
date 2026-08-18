@@ -75,6 +75,18 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.ok(payload.defaultDemo.notRequired.includes("ConversationAgentEvals"));
   assert.ok(payload.defaultDemo.notRequired.includes("rtc-asr"));
   assert.equal(payload.goldenScenario.id, "cancellation-rescue");
+  assert.deepEqual(payload.provenanceContract.requiredRunFields, [
+    "runtimeMode",
+    "targetMode",
+    "candidateProfile",
+    "promptVersion",
+    "model",
+    "seed",
+    "componentVersions",
+    "evidenceArtifacts",
+  ]);
+  assert.equal(payload.provenanceContract.manifestPath, "stack/versions.env");
+  assert.ok(payload.provenanceContract.evidenceArtifacts.includes("artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json"));
   assert.deepEqual(
     payload.goldenScenario.comparison.map((signal: { signal: string; unsafeBaseline: string; controlledCandidate: string }) => [
       signal.signal,

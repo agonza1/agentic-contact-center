@@ -2079,6 +2079,12 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         candidateProfile: string;
         signals: Array<{ signal: string; unsafeBaseline: string; controlledCandidate: string; evidence: string }>;
       };
+      provenanceContract: {
+        manifestPath: string;
+        versionSource: string;
+        requiredRunFields: string[];
+        evidenceArtifacts: string[];
+      };
       componentReadiness: Array<{
         component: string;
         status: string;
@@ -2184,6 +2190,19 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         ["Overall release gate", "block", "candidate_passes", "cae_assert_report"],
       ],
     );
+    assert.deepEqual(payload.provenanceContract.requiredRunFields, [
+      "runtimeMode",
+      "targetMode",
+      "candidateProfile",
+      "promptVersion",
+      "model",
+      "seed",
+      "componentVersions",
+      "evidenceArtifacts",
+    ]);
+    assert.equal(payload.provenanceContract.manifestPath, "stack/versions.env");
+    assert.equal(payload.provenanceContract.versionSource, "repositoryContracts.stackManifest.values");
+    assert.ok(payload.provenanceContract.evidenceArtifacts.includes("artifacts/demo-proof-latest.json"));
     });
   } finally {
     for (const [name, value] of Object.entries(originalEnv)) {

@@ -238,6 +238,27 @@ const goldenComparison = [
   },
 ];
 
+const provenanceContract = {
+  manifestPath: "stack/versions.env",
+  versionSource: "repositoryContracts.stackManifest.values",
+  requiredRunFields: [
+    "runtimeMode",
+    "targetMode",
+    "candidateProfile",
+    "promptVersion",
+    "model",
+    "seed",
+    "componentVersions",
+    "evidenceArtifacts",
+  ],
+  evidenceArtifacts: [
+    "artifacts/demo-proof-latest.json",
+    "artifacts/agentic-call-center-demo/conversation-agent-evals-assert-request.json",
+    "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
+  ],
+  detail: "Every CAE/ASSERT handoff should carry enough runtime, model, seed, profile, and component-version context to reproduce the selected reliability-lab run.",
+};
+
 const targetModes = [
   {
     mode: "fixture",
@@ -462,6 +483,7 @@ const report = {
     comparison: goldenComparison,
     caveat: "Unsafe baseline behavior is only a labeled demo fixture/profile; CAE/ASSERT owns imported run reports and comparisons.",
   },
+  provenanceContract,
   targetModes,
   optionalEndpoints,
   endpointProbes,
