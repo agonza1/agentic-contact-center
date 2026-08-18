@@ -64,12 +64,12 @@ Configured endpoints are probed with a short timeout and reported as `ready` or 
 The next implementation slice should add one explicit lab entry point that starts or connects:
 
 1. ACC application.
-2. Selected target media mode: fixture, browser WebRTC, or SIP/Verto.
+2. Selected target media mode: fixture, browser WebRTC, SIP/Verto, or SignalWire PSTN.
 3. rtc-asr and Kokoro when live media requires them.
 4. ConversationAgentEvals API/web through configured external URLs or pinned images.
 5. ASSERT through the ConversationAgentEvals boundary or local viewer.
 
-The status API and command now expose `targetModes` so an external runner can select the fixture, browser WebRTC, or SIP/Verto path without scraping prose. Each mode declares its required components, start/connect command, evidence command, readiness route, and CAE handoff command.
+The status API and command now expose `targetModes` so an external runner can select the fixture, browser WebRTC, SIP/Verto, or SignalWire PSTN path without scraping prose. Each mode declares its required components, start/connect command, evidence command, readiness route, and CAE handoff command.
 
 The first local entry point is:
 

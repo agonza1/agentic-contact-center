@@ -301,6 +301,16 @@ const targetModes = [
     caeHandoffCommand: "npm run cae:assert:handoff",
     detail: "Strict local SIP/Verto proof path for the reference stack.",
   },
+  {
+    mode: "signalwire_pstn",
+    status: "blocked",
+    requiredComponents: ["ACC app", "SignalWire SIP trunk", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
+    startCommand: "npm run docker:sip-verto",
+    evidenceCommand: "npm run signalwire:freeswitch:readiness -- --render",
+    readinessRoute: "/api/pipecat-media-engine/readiness",
+    caeHandoffCommand: "npm run cae:assert:handoff",
+    detail: "Production-like PSTN ingress remains gated on SignalWire env, provider-owned source ACL proof, and public SIP reachability before manual call validation.",
+  },
 ];
 
 function optionalComponent({ component, configured, endpoint, envVar, probe, configuredDetail, defaultDetail }) {

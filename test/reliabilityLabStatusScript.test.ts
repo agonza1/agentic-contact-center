@@ -104,6 +104,7 @@ test("reliability lab status reports explicit blockers without starting sidecars
       ["browser_webrtc", "blocked", "npm run docker:browser-webrtc", "npm run browser-webrtc:live-proof", "/api/browser-webrtc/readiness"],
       ["reliability_lab", "blocked", "npm run docker:reliability-lab", "npm run proof:bundle", "/api/reliability"],
       ["sip_verto", "blocked", "npm run docker:sip-verto", "npm run pipecat:verto:live-proof", "/api/pipecat-media-engine/readiness"],
+      ["signalwire_pstn", "blocked", "npm run docker:sip-verto", "npm run signalwire:freeswitch:readiness -- --render", "/api/pipecat-media-engine/readiness"],
     ],
   );
   assert.deepEqual(payload.targetModes[1].requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
@@ -207,6 +208,7 @@ test("reliability lab status reports explicitly configured live media endpoints"
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").status, "ready");
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "reliability_lab").status, "ready");
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "sip_verto").status, "ready");
+  assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "signalwire_pstn").status, "blocked");
 });
 
 test("reliability lab status distinguishes configured but unreachable endpoints", async () => {
