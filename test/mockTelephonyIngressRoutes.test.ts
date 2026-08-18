@@ -2062,6 +2062,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         status: string;
         requiredComponents: string[];
         startCommand: string;
+        validationCommand: string;
         evidenceCommand: string;
         readinessRoute: string;
         caeHandoffCommand: string;
@@ -2104,13 +2105,13 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(payload.workflow[0]?.command, "npm run reliability:lab");
     assert.equal(payload.workflow[3]?.evidence, "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json");
     assert.deepEqual(
-      payload.targetModes.map((mode) => [mode.mode, mode.status, mode.startCommand, mode.evidenceCommand, mode.readinessRoute]),
+      payload.targetModes.map((mode) => [mode.mode, mode.status, mode.startCommand, mode.validationCommand, mode.evidenceCommand, mode.readinessRoute]),
       [
-        ["fixture", "ready", "npm run proof", "npm run proof:bundle", "/health"],
-        ["browser_webrtc", "optional_live_sidecars_required", "npm run docker:browser-webrtc", "npm run browser-webrtc:live-proof", "/api/browser-webrtc/readiness"],
-        ["reliability_lab", "external_cae_endpoints_required", "npm run docker:reliability-lab", "npm run proof:bundle", "/api/reliability"],
-        ["sip_verto", "accepted_strict_local_proof", "npm run docker:sip-verto", "npm run pipecat:verto:live-proof", "/api/pipecat-media-engine/readiness"],
-        ["signalwire_pstn", "signalwire_env_and_public_sip_gate_required", "npm run docker:sip-verto", "npm run signalwire:freeswitch:readiness -- --render", "/api/pipecat-media-engine/readiness"],
+        ["fixture", "ready", "npm run proof", "npm run proof", "npm run proof:bundle", "/health"],
+        ["browser_webrtc", "optional_live_sidecars_required", "npm run docker:browser-webrtc", "npm run browser-webrtc:check", "npm run browser-webrtc:live-proof", "/api/browser-webrtc/readiness"],
+        ["reliability_lab", "external_cae_endpoints_required", "npm run docker:reliability-lab", "npm run reliability:lab", "npm run proof:bundle", "/api/reliability"],
+        ["sip_verto", "accepted_strict_local_proof", "npm run docker:sip-verto", "npm run pipecat:verto:check", "npm run pipecat:verto:live-proof", "/api/pipecat-media-engine/readiness"],
+        ["signalwire_pstn", "signalwire_env_and_public_sip_gate_required", "npm run docker:sip-verto", "npm run signalwire:freeswitch:readiness", "npm run signalwire:freeswitch:readiness -- --render", "/api/pipecat-media-engine/readiness"],
       ],
     );
     assert.deepEqual(payload.targetModes[1]?.requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
