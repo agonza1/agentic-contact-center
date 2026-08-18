@@ -17,6 +17,17 @@ function unique(values) {
   return [...new Set(values)].sort();
 }
 
+function constStringArray(source, constName) {
+  const escapedName = constName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = source.match(new RegExp(`const\\s+${escapedName}\\s*=\\s*\\[([\\s\\S]*?)\\];`));
+  if (!match) return null;
+  return unique([...match[1].matchAll(/"([^"]+)"/g)].map((item) => item[1]));
+}
+
+function sameValues(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 function markdownSources() {
   const docsDir = path.join(repoRoot, "docs");
   const docs = existsSync(docsDir)
@@ -41,6 +52,7 @@ const server = readText("src/http/createServer.ts");
 const cluecon = readText("src/http/cluecon.ts");
 const reliabilityLabStatusScript = readText("scripts/reliability-lab-status.mjs");
 const stackManifest = readText("stack/versions.env");
+const reliabilityLabDoc = readText("docs/reliability-lab.md");
 const scripts = packageJson.scripts ?? {};
 
 for (const sourcePath of markdownSources()) {
@@ -141,6 +153,25 @@ for (const route of reliabilityReadinessRoutes) {
   if (!server.includes(`"${pathname}"`) && !server.includes(`\`${pathname}`) && !server.includes(`'${pathname}'`)) {
     fail(`scripts/reliability-lab-status.mjs references readiness route not registered in createServer.ts: ${route}`);
   }
+}
+
+const statusEndpointEnvVars = constStringArray(reliabilityLabStatusScript, "optionalEndpointEnvVars");
+const apiEndpointEnvVars = constStringArray(server, "reliabilityOptionalEndpointEnvVars");
+if (!statusEndpointEnvVars) {
+  fail("scripts/reliability-lab-status.mjs is missing optionalEndpointEnvVars");
+}
+if (!apiEndpointEnvVars) {
+  fail("src/http/createServer.ts is missing reliabilityOptionalEndpointEnvVars");
+}
+if (statusEndpointEnvVars && apiEndpointEnvVars && !sameValues(statusEndpointEnvVars, apiEndpointEnvVars)) {
+  fail("reliability optional endpoint env vars differ between status CLI and API");
+}
+
+const endpointEnvSection =
+  reliabilityLabDoc.match(/Environment variables recognized by the status command:\n\n([\s\S]*?)(?:\n\n|$)/)?.[1] ?? "";
+const documentedEndpointEnvVars = unique([...endpointEnvSection.matchAll(/`([A-Z0-9_]+)`/g)].map((match) => match[1]));
+if (statusEndpointEnvVars && !sameValues(statusEndpointEnvVars, documentedEndpointEnvVars)) {
+  fail("docs/reliability-lab.md endpoint env var list differs from status CLI contract");
 }
 
 const mermaidDiagramCount = [...readme.matchAll(/```mermaid/g)].length;
