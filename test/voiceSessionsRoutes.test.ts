@@ -254,6 +254,12 @@ test("voice sessions expose persistent CAE realtime-audio lifecycle and proof", 
     assert.equal(proof.payload.evidence.outputCancelledByBargeIn, true);
     assert.equal(proof.payload.evidence.hasRtcAsrFinalTranscript, false);
     assert.deepEqual(proof.payload.review.blockers, ["rtc_asr_final_transcript_missing"]);
+    assert.deepEqual(proof.payload.review.gates.map((gate: any) => [gate.id, gate.ready, gate.blocker]), [
+      ["voice_session_media_input", true, null],
+      ["voice_session_output_audio", true, null],
+      ["rtc_asr_final_transcript", false, "rtc_asr_final_transcript_missing"],
+    ]);
+    assert.equal(proof.payload.review.nextAction, "Capture a same-session rtc-asr final transcript event before evaluator handoff.");
 
     const closed = await requestJson(address.port, "POST", "/api/voice/sessions/cae-session-1/close");
     assert.equal(closed.statusCode, 200);
@@ -410,6 +416,8 @@ test("voice session proof exposes session-wide correlation timeline and metrics"
     assert.equal(proof.payload.correlation.timeline.some((event: any) => event.type === "agent_response_ready" && event.phase === "acc.agent_response_ready"), true);
     assert.equal(proof.payload.correlation.timeline.some((event: any) => event.phase === "media.ingress" && event.bytes === 4), true);
     assert.equal(proof.payload.correlation.timeline.some((event: any) => event.phase === "tts.playback_completed" && event.streamId === "tts-correlation-2"), true);
+    assert.equal(proof.payload.review.ready, true);
+    assert.equal(proof.payload.review.nextAction, "Hand the proof route to the evaluator.");
 
     const otherProof = await requestJson(address.port, "GET", "/api/voice/sessions/cae-session-correlation-other/proof");
     assert.equal(otherProof.statusCode, 200);
