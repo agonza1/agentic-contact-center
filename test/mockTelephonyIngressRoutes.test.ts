@@ -2082,7 +2082,13 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       repositoryContracts: {
         optionalEndpointEnvVars: string[];
         statusCommand: string;
-        stackManifest: string;
+        stackManifest: {
+          exists: boolean;
+          path: string;
+          values: Record<string, string>;
+          missingKeys: string[];
+        };
+        requiredStackManifestKeys: string[];
       };
     };
     assert.equal(payload.ok, true);
@@ -2147,7 +2153,11 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       "FREESWITCH_VERTO_URL",
     ]);
     assert.equal(payload.repositoryContracts.statusCommand, "npm run reliability:lab");
-    assert.equal(payload.repositoryContracts.stackManifest, "stack/versions.env");
+    assert.equal(payload.repositoryContracts.stackManifest.path, "stack/versions.env");
+    assert.equal(payload.repositoryContracts.stackManifest.exists, true);
+    assert.equal(payload.repositoryContracts.stackManifest.values.ACC_APP_URL, "http://127.0.0.1:8026");
+    assert.deepEqual(payload.repositoryContracts.stackManifest.missingKeys, []);
+    assert.ok(payload.repositoryContracts.requiredStackManifestKeys.includes("CAE_API_URL"));
     assert.equal(payload.comparisonContract.baselineProfile, "unsafe-demo-fixture");
     assert.equal(payload.comparisonContract.candidateProfile, "controlled-cancellation-rescue");
     assert.deepEqual(

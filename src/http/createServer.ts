@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect as connectTcp } from "node:net";
 import { resolve } from "node:path";
@@ -1100,6 +1100,21 @@ const reliabilityOptionalEndpointEnvVars = [
   "FREESWITCH_VERTO_URL",
 ];
 
+const reliabilityRequiredStackManifestKeys = [
+  "ACC_APP_IMAGE",
+  "ACC_APP_URL",
+  "RTC_ASR_IMAGE",
+  "RTC_ASR_BASE_URL",
+  "KOKORO_IMAGE",
+  "KOKORO_BASE_URL",
+  "PIPECAT_BROWSER_BRIDGE_URL",
+  "FREESWITCH_IMAGE",
+  "FREESWITCH_VERTO_URL",
+  "CAE_API_URL",
+  "CAE_WEB_URL",
+  "ASSERT_VIEWER_URL",
+];
+
 interface ReliabilityComponentReadiness {
   component: string;
   status: "ready" | "configured" | "not_configured" | "not_required";
@@ -1109,9 +1124,48 @@ interface ReliabilityComponentReadiness {
   detail: string;
 }
 
+interface ReliabilityStackManifest {
+  exists: boolean;
+  path: string;
+  values: Record<string, string>;
+  missingKeys: string[];
+}
+
 function configuredEnvValue(name: string): string | null {
   const value = process.env[name]?.trim();
   return value ? value : null;
+}
+
+function readReliabilityStackManifest(): ReliabilityStackManifest {
+  const manifestPath = "stack/versions.env";
+  const absolutePath = resolve(process.cwd(), manifestPath);
+  const values: Record<string, string> = {};
+
+  if (!existsSync(absolutePath)) {
+    return {
+      exists: false,
+      path: manifestPath,
+      values,
+      missingKeys: reliabilityRequiredStackManifestKeys,
+    };
+  }
+
+  for (const line of readFileSync(absolutePath, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const separator = trimmed.indexOf("=");
+    if (separator === -1) continue;
+
+    values[trimmed.slice(0, separator)] = trimmed.slice(separator + 1);
+  }
+
+  return {
+    exists: true,
+    path: manifestPath,
+    values,
+    missingKeys: reliabilityRequiredStackManifestKeys.filter((key) => !(key in values)),
+  };
 }
 
 function redactedConfiguredEndpoint(value: string): string {
@@ -1201,6 +1255,7 @@ function escapeReliabilityHtml(value: unknown): string {
 
 function buildReliabilityGuidePayload(config: PocConfig): object {
   const componentReadiness = buildReliabilityComponentReadiness();
+  const stackManifest = readReliabilityStackManifest();
 
   return {
     ok: true,
@@ -1266,7 +1321,8 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
     repositoryContracts: {
       optionalEndpointEnvVars: reliabilityOptionalEndpointEnvVars,
       statusCommand: "npm run reliability:lab",
-      stackManifest: "stack/versions.env",
+      stackManifest,
+      requiredStackManifestKeys: reliabilityRequiredStackManifestKeys,
     },
   };
 }
