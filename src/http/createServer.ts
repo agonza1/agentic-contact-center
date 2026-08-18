@@ -1085,7 +1085,108 @@ const reliabilityOptionalEndpointEnvVars = [
   "FREESWITCH_VERTO_URL",
 ];
 
+interface ReliabilityComponentReadiness {
+  component: string;
+  status: "ready" | "configured" | "not_configured" | "not_required";
+  requiredForDefaultDemo: boolean;
+  envVars?: string[];
+  endpoint?: string;
+  detail: string;
+}
+
+function configuredEnvValue(name: string): string | null {
+  const value = process.env[name]?.trim();
+  return value ? value : null;
+}
+
+function redactedConfiguredEndpoint(value: string): string {
+  try {
+    const endpointUrl = new URL(value);
+    if (["http:", "https:", "ws:", "wss:"].includes(endpointUrl.protocol)) {
+      return endpointUrl.origin;
+    }
+  } catch {
+    return "[configured]";
+  }
+  return "[configured]";
+}
+
+function buildReliabilityComponentReadiness(): ReliabilityComponentReadiness[] {
+  const caeApi = configuredEnvValue("CAE_API_URL");
+  const caeWeb = configuredEnvValue("CAE_WEB_URL");
+
+  const optionalLiveComponents: Array<{ component: string; envVar: string; detail: string }> = [
+    {
+      component: "ASSERT viewer",
+      envVar: "ASSERT_VIEWER_URL",
+      detail: "Used through CAE/ASSERT handoff or local viewer workflows.",
+    },
+    {
+      component: "rtc-asr",
+      envVar: "RTC_ASR_BASE_URL",
+      detail: "Required only for selected live media modes.",
+    },
+    {
+      component: "Kokoro",
+      envVar: "KOKORO_BASE_URL",
+      detail: "Required only for selected live media modes.",
+    },
+    {
+      component: "Pipecat browser bridge",
+      envVar: "BROWSER_WEBRTC_BRIDGE_URL",
+      detail: "Required only for Browser voice proof modes.",
+    },
+    {
+      component: "FreeSWITCH/Verto",
+      envVar: "FREESWITCH_VERTO_URL",
+      detail: "Required only for SIP/Verto proof modes.",
+    },
+  ];
+
+  return [
+    {
+      component: "default-scripted-demo",
+      status: "ready",
+      requiredForDefaultDemo: true,
+      detail: "Sidecar-free cancellation-rescue proof is available.",
+    },
+    {
+      component: "ConversationAgentEvals",
+      status: caeApi && caeWeb ? "configured" : "not_configured",
+      requiredForDefaultDemo: false,
+      envVars: ["CAE_API_URL", "CAE_WEB_URL"],
+      detail: caeApi && caeWeb
+        ? "CAE endpoints are configured; run npm run reliability:lab for bounded reachability probes."
+        : "Set CAE_API_URL and CAE_WEB_URL to enable Phase 2 lab handoff.",
+    },
+    ...optionalLiveComponents.map((component) => {
+      const endpoint = configuredEnvValue(component.envVar);
+      return {
+        component: component.component,
+        status: endpoint ? "configured" as const : "not_required" as const,
+        requiredForDefaultDemo: false,
+        envVars: [component.envVar],
+        endpoint: endpoint ? redactedConfiguredEndpoint(endpoint) : undefined,
+        detail: endpoint
+          ? "Endpoint is configured; run npm run reliability:lab for bounded reachability probes."
+          : component.detail,
+      };
+    }),
+  ];
+}
+
+function escapeReliabilityHtml(value: unknown): string {
+  return String(value).replace(/[&<>"]/g, (char) => {
+    if (char === "&") return "&amp;";
+    if (char === "<") return "&lt;";
+    if (char === ">") return "&gt;";
+    return "&quot;";
+  });
+}
+
 function buildReliabilityGuidePayload(config: PocConfig): object {
+  const componentReadiness = buildReliabilityComponentReadiness();
+
   return {
     ok: true,
     route: "/reliability",
@@ -1146,6 +1247,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
       caveat: "Unsafe baseline behavior is only a labeled demo fixture/profile; CAE/ASSERT owns imported run reports and comparisons.",
       signals: goldenReliabilityComparison,
     },
+    componentReadiness,
     repositoryContracts: {
       optionalEndpointEnvVars: reliabilityOptionalEndpointEnvVars,
       statusCommand: "npm run reliability:lab",
@@ -1155,6 +1257,18 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
 }
 
 function buildReliabilityGuideHtml(): string {
+  const readinessCards = buildReliabilityComponentReadiness()
+    .map((component) => {
+      const envHtml = component.envVars?.length
+        ? `<span class="meta">${escapeReliabilityHtml(component.envVars.join(" + "))}</span>`
+        : "";
+      const endpointHtml = component.endpoint
+        ? `<span class="meta">${escapeReliabilityHtml(component.endpoint)}</span>`
+        : "";
+      return `<div class="metric"><span>${escapeReliabilityHtml(component.component)}</span><strong>${escapeReliabilityHtml(component.status.replace(/_/g, " "))}</strong>${envHtml}${endpointHtml}<span class="meta">${escapeReliabilityHtml(component.detail)}</span></div>`;
+    })
+    .join("");
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -1206,11 +1320,7 @@ function buildReliabilityGuideHtml(): string {
     <section class="band" aria-labelledby="readiness-title">
       <h2 id="readiness-title">Readiness</h2>
       <div class="grid">
-        <div class="metric"><span>Scripted fixture</span><strong>ready</strong></div>
-        <div class="metric"><span>Browser WebRTC</span><strong>optional sidecars required</strong><a href="/api/browser-webrtc/readiness">readiness</a></div>
-        <div class="metric"><span>SIP/Verto</span><strong>accepted strict local proof</strong><a href="/api/pipecat-media-engine/readiness">media engine</a></div>
-        <div class="metric"><span>SignalWire PSTN</span><strong>env and public SIP gate required</strong><a href="/api/pipecat-media-engine/readiness">media engine</a></div>
-        <div class="metric"><span>CAE/ASSERT</span><strong>handoff artifact ready</strong></div>
+        ${readinessCards}
       </div>
     </section>
     <section class="band" aria-labelledby="workflow-title">

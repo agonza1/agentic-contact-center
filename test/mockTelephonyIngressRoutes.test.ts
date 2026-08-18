@@ -2022,7 +2022,20 @@ test("GET /assert/full embeds the upstream ASSERT local viewer with local naviga
 });
 
 test("GET /reliability serves the guided reliability-lab workflow", async () => {
-  await withServer(async (port) => {
+  const endpointEnvVars = [
+    "CAE_API_URL",
+    "CAE_WEB_URL",
+    "ASSERT_VIEWER_URL",
+    "RTC_ASR_BASE_URL",
+    "KOKORO_BASE_URL",
+    "BROWSER_WEBRTC_BRIDGE_URL",
+    "FREESWITCH_VERTO_URL",
+  ];
+  const originalEnv = Object.fromEntries(endpointEnvVars.map((name) => [name, process.env[name]]));
+  for (const name of endpointEnvVars) delete process.env[name];
+
+  try {
+    await withServer(async (port) => {
     const html = await requestText(port, "GET", "/reliability");
     assert.equal(html.statusCode, 200);
     assert.equal(html.contentType, "text/html; charset=utf-8");
@@ -2059,6 +2072,13 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         candidateProfile: string;
         signals: Array<{ signal: string; unsafeBaseline: string; controlledCandidate: string; evidence: string }>;
       };
+      componentReadiness: Array<{
+        component: string;
+        status: string;
+        requiredForDefaultDemo: boolean;
+        envVars?: string[];
+        detail: string;
+      }>;
       repositoryContracts: {
         optionalEndpointEnvVars: string[];
         statusCommand: string;
@@ -2099,6 +2119,24 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(payload.targetModes[3]?.caeHandoffCommand, "npm run cae:assert:handoff");
     assert.equal(payload.readinessRoutes.reliabilityLab, "/api/reliability");
     assert.equal(payload.readinessRoutes.pipecatMediaEngine, "/api/pipecat-media-engine/readiness");
+    assert.deepEqual(
+      payload.componentReadiness.map((component) => [
+        component.component,
+        component.status,
+        component.requiredForDefaultDemo,
+        component.envVars ?? [],
+      ]),
+      [
+        ["default-scripted-demo", "ready", true, []],
+        ["ConversationAgentEvals", "not_configured", false, ["CAE_API_URL", "CAE_WEB_URL"]],
+        ["ASSERT viewer", "not_required", false, ["ASSERT_VIEWER_URL"]],
+        ["rtc-asr", "not_required", false, ["RTC_ASR_BASE_URL"]],
+        ["Kokoro", "not_required", false, ["KOKORO_BASE_URL"]],
+        ["Pipecat browser bridge", "not_required", false, ["BROWSER_WEBRTC_BRIDGE_URL"]],
+        ["FreeSWITCH/Verto", "not_required", false, ["FREESWITCH_VERTO_URL"]],
+      ],
+    );
+    assert.match(payload.componentReadiness[1]?.detail ?? "", /Phase 2 lab handoff/);
     assert.deepEqual(payload.repositoryContracts.optionalEndpointEnvVars, [
       "CAE_API_URL",
       "CAE_WEB_URL",
@@ -2123,7 +2161,51 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         ["Overall release gate", "block", "candidate_passes", "cae_assert_report"],
       ],
     );
-  });
+    });
+  } finally {
+    for (const [name, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+});
+
+test("GET /reliability redacts configured optional endpoint secrets", async () => {
+  const endpointEnvVars = [
+    "CAE_API_URL",
+    "CAE_WEB_URL",
+    "ASSERT_VIEWER_URL",
+    "RTC_ASR_BASE_URL",
+    "KOKORO_BASE_URL",
+    "BROWSER_WEBRTC_BRIDGE_URL",
+    "FREESWITCH_VERTO_URL",
+  ];
+  const originalEnv = Object.fromEntries(endpointEnvVars.map((name) => [name, process.env[name]]));
+  for (const name of endpointEnvVars) delete process.env[name];
+  process.env.BROWSER_WEBRTC_BRIDGE_URL = "https://bridge-user:bridge-secret@example.com:8443/proof?token=leaky-token";
+
+  try {
+    await withServer(async (port) => {
+      const html = await requestText(port, "GET", "/reliability");
+      assert.equal(html.statusCode, 200);
+      assert.match(html.body, /https:\/\/example\.com:8443/);
+      assert.doesNotMatch(html.body, /bridge-secret|leaky-token|\/proof/);
+
+      const api = await requestJson(port, "GET", "/api/reliability");
+      assert.equal(api.statusCode, 200);
+      const payload = api.payload as {
+        componentReadiness: Array<{ component: string; endpoint?: string }>;
+      };
+      const bridge = payload.componentReadiness.find((component) => component.component === "Pipecat browser bridge");
+      assert.equal(bridge?.endpoint, "https://example.com:8443");
+      assert.doesNotMatch(JSON.stringify(api.payload), /bridge-secret|leaky-token|\/proof/);
+    });
+  } finally {
+    for (const [name, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
 });
 
 test("GET /assert serves an ACC local artifact viewer", async () => {
