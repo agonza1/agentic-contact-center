@@ -1048,6 +1048,7 @@ const reliabilityTargetModes = [
     status: "ready",
     requiredComponents: ["ACC app"],
     startCommand: "npm run proof",
+    validationCommand: "npm run proof",
     evidenceCommand: "npm run proof:bundle",
     readinessRoute: "/health",
     caeHandoffCommand: "npm run cae:assert:handoff",
@@ -1057,6 +1058,7 @@ const reliabilityTargetModes = [
     status: "optional_live_sidecars_required",
     requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"],
     startCommand: "npm run docker:browser-webrtc",
+    validationCommand: "npm run browser-webrtc:check",
     evidenceCommand: "npm run browser-webrtc:live-proof",
     readinessRoute: "/api/browser-webrtc/readiness",
     caeHandoffCommand: "npm run cae:assert:handoff",
@@ -1066,6 +1068,7 @@ const reliabilityTargetModes = [
     status: "external_cae_endpoints_required",
     requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge", "ConversationAgentEvals", "ASSERT viewer"],
     startCommand: "npm run docker:reliability-lab",
+    validationCommand: "npm run reliability:lab",
     evidenceCommand: "npm run proof:bundle",
     readinessRoute: "/api/reliability",
     caeHandoffCommand: "npm run cae:assert:handoff",
@@ -1075,6 +1078,7 @@ const reliabilityTargetModes = [
     status: "accepted_strict_local_proof",
     requiredComponents: ["ACC app", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
     startCommand: "npm run docker:sip-verto",
+    validationCommand: "npm run pipecat:verto:check",
     evidenceCommand: "npm run pipecat:verto:live-proof",
     readinessRoute: "/api/pipecat-media-engine/readiness",
     caeHandoffCommand: "npm run cae:assert:handoff",
@@ -1084,6 +1088,7 @@ const reliabilityTargetModes = [
     status: "signalwire_env_and_public_sip_gate_required",
     requiredComponents: ["ACC app", "SignalWire SIP trunk", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
     startCommand: "npm run docker:sip-verto",
+    validationCommand: "npm run signalwire:freeswitch:readiness",
     evidenceCommand: "npm run signalwire:freeswitch:readiness -- --render",
     readinessRoute: "/api/pipecat-media-engine/readiness",
     caeHandoffCommand: "npm run cae:assert:handoff",
@@ -1407,12 +1412,12 @@ function buildReliabilityGuideHtml(): string {
     <section class="band" aria-labelledby="modes-title">
       <h2 id="modes-title">Target Modes</h2>
       <table class="mode-table">
-        <thead><tr><th>Mode</th><th>Start/connect</th><th>Proof</th><th>Readiness</th></tr></thead>
+        <thead><tr><th>Mode</th><th>Start/connect</th><th>Validate</th><th>Proof</th><th>Readiness</th></tr></thead>
         <tbody>
-          <tr><td>Fixture</td><td><code>npm run proof</code></td><td><code>npm run proof:bundle</code></td><td><a href="/health">health</a></td></tr>
-          <tr><td>Browser WebRTC</td><td><code>npm run docker:browser-webrtc</code></td><td><code>npm run browser-webrtc:live-proof</code></td><td><a href="/api/browser-webrtc/readiness">readiness</a></td></tr>
-          <tr><td>SIP/Verto</td><td><code>npm run docker:sip-verto</code></td><td><code>npm run pipecat:verto:live-proof</code></td><td><a href="/api/pipecat-media-engine/readiness">media engine</a></td></tr>
-          <tr><td>SignalWire PSTN</td><td><code>npm run docker:sip-verto</code></td><td><code>npm run signalwire:freeswitch:readiness -- --render</code></td><td><a href="/api/pipecat-media-engine/readiness">media engine</a></td></tr>
+          <tr><td>Fixture</td><td><code>npm run proof</code></td><td><code>npm run proof</code></td><td><code>npm run proof:bundle</code></td><td><a href="/health">health</a></td></tr>
+          <tr><td>Browser WebRTC</td><td><code>npm run docker:browser-webrtc</code></td><td><code>npm run browser-webrtc:check</code></td><td><code>npm run browser-webrtc:live-proof</code></td><td><a href="/api/browser-webrtc/readiness">readiness</a></td></tr>
+          <tr><td>SIP/Verto</td><td><code>npm run docker:sip-verto</code></td><td><code>npm run pipecat:verto:check</code></td><td><code>npm run pipecat:verto:live-proof</code></td><td><a href="/api/pipecat-media-engine/readiness">media engine</a></td></tr>
+          <tr><td>SignalWire PSTN</td><td><code>npm run docker:sip-verto</code></td><td><code>npm run signalwire:freeswitch:readiness</code></td><td><code>npm run signalwire:freeswitch:readiness -- --render</code></td><td><a href="/api/pipecat-media-engine/readiness">media engine</a></td></tr>
         </tbody>
       </table>
     </section>

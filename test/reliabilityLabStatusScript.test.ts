@@ -92,19 +92,20 @@ test("reliability lab status reports explicit blockers without starting sidecars
   );
   assert.match(payload.goldenScenario.caveat, /labeled demo fixture/);
   assert.deepEqual(
-    payload.targetModes.map((mode: { mode: string; status: string; startCommand: string; evidenceCommand: string; readinessRoute: string }) => [
+    payload.targetModes.map((mode: { mode: string; status: string; startCommand: string; validationCommand: string; evidenceCommand: string; readinessRoute: string }) => [
       mode.mode,
       mode.status,
       mode.startCommand,
+      mode.validationCommand,
       mode.evidenceCommand,
       mode.readinessRoute,
     ]),
     [
-      ["fixture", "ready", "npm run proof", "npm run proof:bundle", "/health"],
-      ["browser_webrtc", "blocked", "npm run docker:browser-webrtc", "npm run browser-webrtc:live-proof", "/api/browser-webrtc/readiness"],
-      ["reliability_lab", "blocked", "npm run docker:reliability-lab", "npm run proof:bundle", "/api/reliability"],
-      ["sip_verto", "blocked", "npm run docker:sip-verto", "npm run pipecat:verto:live-proof", "/api/pipecat-media-engine/readiness"],
-      ["signalwire_pstn", "blocked", "npm run docker:sip-verto", "npm run signalwire:freeswitch:readiness -- --render", "/api/pipecat-media-engine/readiness"],
+      ["fixture", "ready", "npm run proof", "npm run proof", "npm run proof:bundle", "/health"],
+      ["browser_webrtc", "blocked", "npm run docker:browser-webrtc", "npm run browser-webrtc:check", "npm run browser-webrtc:live-proof", "/api/browser-webrtc/readiness"],
+      ["reliability_lab", "blocked", "npm run docker:reliability-lab", "npm run reliability:lab", "npm run proof:bundle", "/api/reliability"],
+      ["sip_verto", "blocked", "npm run docker:sip-verto", "npm run pipecat:verto:check", "npm run pipecat:verto:live-proof", "/api/pipecat-media-engine/readiness"],
+      ["signalwire_pstn", "blocked", "npm run docker:sip-verto", "npm run signalwire:freeswitch:readiness", "npm run signalwire:freeswitch:readiness -- --render", "/api/pipecat-media-engine/readiness"],
     ],
   );
   assert.deepEqual(payload.targetModes[1].requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);

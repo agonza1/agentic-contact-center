@@ -69,7 +69,7 @@ The next implementation slice should add one explicit lab entry point that start
 4. ConversationAgentEvals API/web through configured external URLs or pinned images.
 5. ASSERT through the ConversationAgentEvals boundary or local viewer.
 
-The status API and command now expose `targetModes` so an external runner can select the fixture, browser WebRTC, SIP/Verto, or SignalWire PSTN path without scraping prose. Each mode declares its required components, start/connect command, evidence command, readiness route, and CAE handoff command.
+The status API and command now expose `targetModes` so an external runner can select the fixture, browser WebRTC, SIP/Verto, or SignalWire PSTN path without scraping prose. Each mode declares its required components, start/connect command, fastest validation command, evidence command, readiness route, and CAE handoff command.
 
 The first local entry point is:
 
