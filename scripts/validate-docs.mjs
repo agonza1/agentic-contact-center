@@ -118,6 +118,21 @@ for (const route of documentedRoutes) {
   }
 }
 
+const documentedAccUrls = unique(
+  markdownSources().flatMap((sourcePath) =>
+    [...readText(sourcePath).matchAll(/\bhttps?:\/\/(?:127\.0\.0\.1|localhost):8026(\/[A-Za-z0-9/_:.-]*)/g)].map(
+      (match) => `${sourcePath}\0${match[1]}`,
+    ),
+  ),
+);
+for (const reference of documentedAccUrls) {
+  const [sourcePath, route] = reference.split("\0");
+  const pathname = route.split("/:")[0];
+  if (!server.includes(`"${pathname}"`) && !server.includes(`\`${pathname}`) && !server.includes(`'${pathname}'`)) {
+    fail(`${sourcePath} documents ACC URL route not registered in createServer.ts: ${route}`);
+  }
+}
+
 const reliabilityReadinessRoutes = unique(
   [...reliabilityLabStatusScript.matchAll(/readinessRoute:\s*"([^"]+)"/g)].map((match) => match[1]),
 );
@@ -207,5 +222,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports.`,
 );
