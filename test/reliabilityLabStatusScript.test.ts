@@ -147,6 +147,19 @@ test("reliability lab status reports explicit blockers without starting sidecars
   ]);
   assert.deepEqual(payload.targetModes[1].optionalEndpointEnvVars, []);
   assert.deepEqual(payload.targetModes[1].requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
+  assert.deepEqual(
+    payload.targetModes[1].endpointStatus.map((endpoint: { key: string; status: string; configured: boolean; ready: boolean }) => [
+      endpoint.key,
+      endpoint.status,
+      endpoint.configured,
+      endpoint.ready,
+    ]),
+    [
+      ["rtcAsr", "missing", false, false],
+      ["kokoro", "missing", false, false],
+      ["browserWebRtcBridge", "missing", false, false],
+    ],
+  );
   assert.deepEqual(payload.targetModes[1].blockers, [
     "rtc-asr endpoint is not configured (RTC_ASR_BASE_URL).",
     "Kokoro endpoint is not configured (KOKORO_BASE_URL).",
@@ -339,6 +352,16 @@ test("reliability lab status reports explicitly configured live media endpoints"
   assert.match(payload.optionalEndpoints.assertViewer, /^http:\/\/127\.0\.0\.1:\d+$/);
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").status, "ready");
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").nextAction.step, "validate_browser_media_path");
+  assert.deepEqual(
+    payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").endpointStatus.map(
+      (endpoint: { key: string; status: string }) => [endpoint.key, endpoint.status],
+    ),
+    [
+      ["rtcAsr", "ready"],
+      ["kokoro", "ready"],
+      ["browserWebRtcBridge", "ready"],
+    ],
+  );
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "reliability_lab").status, "ready");
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "sip_verto").status, "ready");
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "signalwire_pstn").status, "blocked");

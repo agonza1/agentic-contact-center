@@ -1148,6 +1148,17 @@ function buildReliabilityTargetModes() {
       const requirement = endpointRequirements[key];
       return requirement.configured ? [] : [`${requirement.label} endpoint is not configured (${requirement.envVar}).`];
     });
+  const endpointStatus = (endpointKeys: Array<keyof typeof endpointRequirements>) =>
+    endpointKeys.map((key) => {
+      const requirement = endpointRequirements[key];
+      return {
+        key,
+        label: requirement.label,
+        envVar: requirement.envVar,
+        configured: requirement.configured,
+        status: requirement.configured ? "configured" : "missing",
+      };
+    });
 
   return [
     {
@@ -1162,6 +1173,7 @@ function buildReliabilityTargetModes() {
       },
       requiredEndpointEnvVars: [],
       optionalEndpointEnvVars: [],
+      endpointStatus: [],
       requiredComponents: ["ACC app"],
       startCommand: "npm run proof",
       validationCommand: "npm run proof",
@@ -1188,6 +1200,7 @@ function buildReliabilityTargetModes() {
       },
       requiredEndpointEnvVars: ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"],
       optionalEndpointEnvVars: [],
+      endpointStatus: endpointStatus(["rtcAsr", "kokoro", "browserWebRtcBridge"]),
       requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"],
       startCommand: "npm run docker:browser-webrtc",
       validationCommand: "npm run browser-webrtc:check",
@@ -1214,6 +1227,7 @@ function buildReliabilityTargetModes() {
       },
       requiredEndpointEnvVars: ["CAE_API_URL", "CAE_WEB_URL"],
       optionalEndpointEnvVars: ["ASSERT_VIEWER_URL", "RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"],
+      endpointStatus: endpointStatus(["caeApi", "caeWeb"]),
       requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge", "ConversationAgentEvals", "ASSERT viewer"],
       startCommand: "npm run docker:reliability-lab",
       validationCommand: "npm run reliability:lab",
@@ -1240,6 +1254,7 @@ function buildReliabilityTargetModes() {
       },
       requiredEndpointEnvVars: ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "FREESWITCH_VERTO_URL"],
       optionalEndpointEnvVars: [],
+      endpointStatus: endpointStatus(["rtcAsr", "kokoro", "freeswitchVerto"]),
       requiredComponents: ["ACC app", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
       startCommand: "npm run docker:sip-verto",
       validationCommand: "npm run pipecat:verto:check",
@@ -1269,6 +1284,7 @@ function buildReliabilityTargetModes() {
       },
       requiredEndpointEnvVars: ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "FREESWITCH_VERTO_URL"],
       optionalEndpointEnvVars: [],
+      endpointStatus: endpointStatus(["rtcAsr", "kokoro", "freeswitchVerto"]),
       requiredComponents: ["ACC app", "SignalWire SIP trunk", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
       startCommand: "npm run docker:sip-verto",
       validationCommand: "npm run signalwire:freeswitch:readiness",

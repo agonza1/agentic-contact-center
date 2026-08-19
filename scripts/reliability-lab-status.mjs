@@ -301,6 +301,20 @@ function configuredEndpointBlockers(endpointKeys) {
   });
 }
 
+function endpointStatus(endpointKeys) {
+  return endpointKeys.map((key) => {
+    const requirement = endpointRequirements[key];
+    return {
+      key,
+      label: requirement.label,
+      envVar: requirement.envVar,
+      configured: requirement.configured,
+      ready: requirement.configured && requirement.ready,
+      status: requirement.configured ? (requirement.ready ? "ready" : "unreachable") : "missing",
+    };
+  });
+}
+
 const targetModes = [
   {
     mode: "fixture",
@@ -314,6 +328,7 @@ const targetModes = [
     },
     requiredEndpointEnvVars: [],
     optionalEndpointEnvVars: [],
+    endpointStatus: [],
     requiredComponents: ["ACC app"],
     startCommand: "npm run proof",
     validationCommand: "npm run proof",
@@ -349,6 +364,7 @@ const targetModes = [
     },
     requiredEndpointEnvVars: ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"],
     optionalEndpointEnvVars: [],
+    endpointStatus: endpointStatus(["rtcAsr", "kokoro", "browserWebRtcBridge"]),
     requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"],
     startCommand: "npm run docker:browser-webrtc",
     validationCommand: "npm run browser-webrtc:check",
@@ -390,6 +406,7 @@ const targetModes = [
     },
     requiredEndpointEnvVars: ["CAE_API_URL", "CAE_WEB_URL"],
     optionalEndpointEnvVars: ["ASSERT_VIEWER_URL", "RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"],
+    endpointStatus: endpointStatus(["caeApi", "caeWeb"]),
     requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge", "ConversationAgentEvals", "ASSERT viewer"],
     startCommand: "npm run docker:reliability-lab",
     validationCommand: "npm run reliability:lab",
@@ -425,6 +442,7 @@ const targetModes = [
     },
     requiredEndpointEnvVars: ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "FREESWITCH_VERTO_URL"],
     optionalEndpointEnvVars: [],
+    endpointStatus: endpointStatus(["rtcAsr", "kokoro", "freeswitchVerto"]),
     requiredComponents: ["ACC app", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
     startCommand: "npm run docker:sip-verto",
     validationCommand: "npm run pipecat:verto:check",
@@ -454,6 +472,7 @@ const targetModes = [
     },
     requiredEndpointEnvVars: ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "FREESWITCH_VERTO_URL"],
     optionalEndpointEnvVars: [],
+    endpointStatus: endpointStatus(["rtcAsr", "kokoro", "freeswitchVerto"]),
     requiredComponents: ["ACC app", "SignalWire SIP trunk", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
     startCommand: "npm run docker:sip-verto",
     validationCommand: "npm run signalwire:freeswitch:readiness",
