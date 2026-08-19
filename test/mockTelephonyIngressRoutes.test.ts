@@ -2043,6 +2043,8 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.match(html.body, /Cancellation-rescue guide/);
     assert.match(html.body, /npm run reliability:lab/);
     assert.match(html.body, /npm run cae:assert:handoff/);
+    assert.match(html.body, /CAE Handoff Checklist/);
+    assert.match(html.body, /capture selected media proof/);
     assert.match(html.body, /npm run docker:browser-webrtc/);
     assert.match(html.body, /npm run pipecat:verto:live-proof/);
     assert.match(html.body, /href="\/api\/reliability"/);
@@ -2085,6 +2087,13 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         requiredRunFields: string[];
         evidenceArtifacts: string[];
       };
+      handoffChecklist: Array<{
+        id: string;
+        requiredFor: string[];
+        command: string;
+        requiredEvidence: string[];
+        passSignal: string;
+      }>;
       componentReadiness: Array<{
         component: string;
         status: string;
@@ -2203,6 +2212,20 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(payload.provenanceContract.manifestPath, "stack/versions.env");
     assert.equal(payload.provenanceContract.versionSource, "repositoryContracts.stackManifest.values");
     assert.ok(payload.provenanceContract.evidenceArtifacts.includes("artifacts/demo-proof-latest.json"));
+    assert.deepEqual(
+      payload.handoffChecklist.map((item) => [item.id, item.command]),
+      [
+        ["select_target_mode", "npm run reliability:lab"],
+        [
+          "capture_controlled_candidate",
+          "npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json",
+        ],
+        ["capture_selected_media_proof", "Run the selected target mode evidence command from targetModes[].evidenceCommand."],
+        ["generate_cae_assert_request", "npm run cae:assert:handoff"],
+      ],
+    );
+    assert.deepEqual(payload.handoffChecklist[2]?.requiredFor, ["browser_webrtc", "sip_verto", "signalwire_pstn"]);
+    assert.ok(payload.handoffChecklist[3]?.requiredEvidence.includes("artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json"));
     });
   } finally {
     for (const [name, value] of Object.entries(originalEnv)) {

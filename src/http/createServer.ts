@@ -1063,6 +1063,41 @@ const reliabilityProvenanceContract = {
   detail: "Every CAE/ASSERT handoff should carry enough runtime, model, seed, profile, and component-version context to reproduce the selected reliability-lab run.",
 };
 
+const reliabilityHandoffChecklist = [
+  {
+    id: "select_target_mode",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    command: "npm run reliability:lab",
+    requiredEvidence: ["/api/reliability", "/api/pipecat-media-engine/readiness"],
+    passSignal: "Target mode status is ready or configured, with live-media blockers explicit.",
+  },
+  {
+    id: "capture_controlled_candidate",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    command: "npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json",
+    requiredEvidence: ["artifacts/demo-proof-latest.json"],
+    passSignal: "Controlled cancellation-rescue scorecard passes and final disposition is recorded.",
+  },
+  {
+    id: "capture_selected_media_proof",
+    requiredFor: ["browser_webrtc", "sip_verto", "signalwire_pstn"],
+    command: "Run the selected target mode evidence command from targetModes[].evidenceCommand.",
+    requiredEvidence: [
+      "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+      "artifacts/verto-sip-live-proof/manifest.json",
+      "artifacts/signalwire-freeswitch-readiness/readiness.json",
+    ],
+    passSignal: "Live transcript, media playback, and sidecar readiness evidence are same-run artifacts.",
+  },
+  {
+    id: "generate_cae_assert_request",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    command: "npm run cae:assert:handoff",
+    requiredEvidence: ["artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json"],
+    passSignal: "AssertRunCreateRequest includes provenance, evidence artifact paths, and selected target mode.",
+  },
+];
+
 function buildReliabilityTargetModes() {
   const caeConfigured = Boolean(configuredEnvValue("CAE_API_URL") && configuredEnvValue("CAE_WEB_URL"));
   const browserLiveConfigured = Boolean(
@@ -1388,6 +1423,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
       signals: goldenReliabilityComparison,
     },
     provenanceContract: reliabilityProvenanceContract,
+    handoffChecklist: reliabilityHandoffChecklist,
     componentReadiness,
     repositoryContracts: {
       optionalEndpointEnvVars: reliabilityOptionalEndpointEnvVars,
@@ -1399,6 +1435,13 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
 }
 
 function buildReliabilityGuideHtml(): string {
+  const handoffChecklist = reliabilityHandoffChecklist
+    .map((item, index) => {
+      const evidence = item.requiredEvidence.map((entry) => `<code>${escapeReliabilityHtml(entry)}</code>`).join(" ");
+      return `<li><span class="step">${index + 1}</span><div><strong>${escapeReliabilityHtml(item.id.replace(/_/g, " "))}</strong><div class="meta"><code>${escapeReliabilityHtml(item.command)}</code></div><div class="meta">${evidence}</div><div class="meta">${escapeReliabilityHtml(item.passSignal)}</div></div></li>`;
+    })
+    .join("");
+
   const readinessCards = buildReliabilityComponentReadiness()
     .map((component) => {
       const envHtml = component.envVars?.length
@@ -1473,6 +1516,12 @@ function buildReliabilityGuideHtml(): string {
         <li><span class="step">3</span><div><strong>Collect proof bundle</strong><div class="meta"><code>npm run proof:bundle</code> writes transcript, event, latency, final-state, media, and provenance links.</div></div></li>
         <li><span class="step">4</span><div><strong>Generate CAE handoff</strong><div class="meta"><code>npm run cae:assert:handoff</code> creates the CAE-compatible request while CAE owns run/report UX.</div></div></li>
         <li><span class="step">5</span><div><strong>Compare verdicts</strong><div class="meta">Unsafe baseline and controlled candidate remain labeled; deterministic checks and ASSERT judgment stay separate.</div></div></li>
+      </ol>
+    </section>
+    <section class="band" aria-labelledby="handoff-title">
+      <h2 id="handoff-title">CAE Handoff Checklist</h2>
+      <ol class="workflow">
+        ${handoffChecklist}
       </ol>
     </section>
     <section class="band" aria-labelledby="modes-title">
