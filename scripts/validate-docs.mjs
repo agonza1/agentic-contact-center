@@ -28,6 +28,34 @@ function sameValues(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+function extractReliabilityTargetModes(source, sourceLabel) {
+  const modes = new Map();
+  const matches = [...source.matchAll(/\n\s*\{\n\s*mode:\s*"([^"]+)",/g)];
+  for (let index = 0; index < matches.length; index += 1) {
+    const mode = matches[index][1];
+    const start = matches[index].index ?? 0;
+    const end = matches[index + 1]?.index ?? source.length;
+    const block = source.slice(start, end);
+    const field = (fieldName) => block.match(new RegExp(`${fieldName}:\\s*"([^"]+)"`))?.[1] ?? null;
+    const contract = {
+      mode,
+      startCommand: field("startCommand"),
+      validationCommand: field("validationCommand"),
+      evidenceCommand: field("evidenceCommand"),
+      readinessRoute: field("readinessRoute"),
+      caeHandoffCommand: field("caeHandoffCommand"),
+    };
+    if (Object.values(contract).some((value) => value === null)) {
+      continue;
+    }
+    if (modes.has(mode)) {
+      fail(`${sourceLabel} declares duplicate reliability target mode: ${mode}`);
+    }
+    modes.set(mode, contract);
+  }
+  return modes;
+}
+
 function markdownSources() {
   const docsDir = path.join(repoRoot, "docs");
   const docs = existsSync(docsDir)
@@ -174,6 +202,27 @@ if (statusEndpointEnvVars && !sameValues(statusEndpointEnvVars, documentedEndpoi
   fail("docs/reliability-lab.md endpoint env var list differs from status CLI contract");
 }
 
+const apiTargetModes = extractReliabilityTargetModes(server, "src/http/createServer.ts");
+const cliTargetModes = extractReliabilityTargetModes(reliabilityLabStatusScript, "scripts/reliability-lab-status.mjs");
+if (apiTargetModes.size === 0) {
+  fail("src/http/createServer.ts exposes no reliability target mode contracts");
+}
+if (cliTargetModes.size === 0) {
+  fail("scripts/reliability-lab-status.mjs exposes no reliability target mode contracts");
+}
+if (!sameValues([...apiTargetModes.keys()].sort(), [...cliTargetModes.keys()].sort())) {
+  fail("reliability target mode names differ between API and status CLI");
+}
+for (const [mode, apiContract] of apiTargetModes) {
+  const cliContract = cliTargetModes.get(mode);
+  if (!cliContract) continue;
+  for (const fieldName of Object.keys(apiContract).filter((field) => field !== "mode")) {
+    if (apiContract[fieldName] !== cliContract[fieldName]) {
+      fail(`reliability target mode ${mode} ${fieldName} differs between API and status CLI`);
+    }
+  }
+}
+
 const mermaidDiagramCount = [...readme.matchAll(/```mermaid/g)].length;
 if (mermaidDiagramCount > 3) {
   fail(`README contains ${mermaidDiagramCount} primary Mermaid diagrams; #307 allows at most 3`);
@@ -253,5 +302,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports.`,
 );
