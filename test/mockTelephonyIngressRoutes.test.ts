@@ -2110,6 +2110,12 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         envVars?: string[];
         detail: string;
       }>;
+      readinessSummary: {
+        selectedTargetMode: string;
+        targetModesByStatus: Record<string, number>;
+        componentsByStatus: Record<string, number>;
+        configuredOptionalEndpoints: number;
+      };
       repositoryContracts: {
         optionalEndpointEnvVars: string[];
         statusCommand: string;
@@ -2147,6 +2153,12 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(payload.selectedTargetMode.mode, "fixture");
     assert.equal(payload.selectedTargetMode.requestedVia, "default");
     assert.equal(payload.selectedTargetMode.validationCommand, "npm run proof");
+    assert.deepEqual(payload.readinessSummary, {
+      selectedTargetMode: "fixture",
+      targetModesByStatus: { ready: 1, blocked: 4 },
+      componentsByStatus: { ready: 1, not_configured: 1, not_required: 5 },
+      configuredOptionalEndpoints: 0,
+    });
     assert.deepEqual(payload.targetModes[1]?.requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
     assert.deepEqual(payload.targetModes[1]?.validationGate, {
       fastestCheck: "npm run browser-webrtc:check",

@@ -1350,6 +1350,13 @@ function buildReliabilityComponentReadiness(): ReliabilityComponentReadiness[] {
   ];
 }
 
+function countReliabilityStatuses(items: Array<{ status: string }>): Record<string, number> {
+  return items.reduce<Record<string, number>>((counts, item) => {
+    counts[item.status] = (counts[item.status] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
 function escapeReliabilityHtml(value: unknown): string {
   return String(value).replace(/[&<>"]/g, (char) => {
     if (char === "&") return "&amp;";
@@ -1440,6 +1447,12 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
     provenanceContract: reliabilityProvenanceContract,
     handoffChecklist: reliabilityHandoffChecklist,
     componentReadiness,
+    readinessSummary: {
+      selectedTargetMode: requestedTargetMode,
+      targetModesByStatus: countReliabilityStatuses(targetModes),
+      componentsByStatus: countReliabilityStatuses(componentReadiness),
+      configuredOptionalEndpoints: componentReadiness.filter((component) => component.status === "configured").length,
+    },
     repositoryContracts: {
       optionalEndpointEnvVars: reliabilityOptionalEndpointEnvVars,
       statusCommand: "npm run reliability:lab",

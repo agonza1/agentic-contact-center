@@ -513,6 +513,13 @@ const componentReadiness = [
   }),
 ];
 
+function countStatuses(items) {
+  return items.reduce((counts, item) => {
+    counts[item.status] = (counts[item.status] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
 const blockers = [];
 if (missingScripts.length > 0) blockers.push(`missing package scripts: ${missingScripts.join(", ")}`);
 if (missingProfiles.length > 0) blockers.push(`missing Compose profiles: ${missingProfiles.join(", ")}`);
@@ -557,6 +564,13 @@ const report = {
   optionalEndpoints,
   endpointProbes,
   componentReadiness,
+  readinessSummary: {
+    selectedTargetMode: requestedTargetMode,
+    targetModesByStatus: countStatuses(targetModes),
+    componentsByStatus: countStatuses(componentReadiness),
+    configuredOptionalEndpoints: componentReadiness.filter((component) => component.configured === true).length,
+    blockers: blockers.length,
+  },
   repositoryContracts: {
     packageScripts: Object.keys(scripts).sort(),
     composeProfiles: profiles,
