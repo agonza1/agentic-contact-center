@@ -652,7 +652,15 @@ test("live SIP proof bundle accepts copied live proof playback evidence", async 
 
     const { stdout } = await execFileAsync(
       process.execPath,
-      ["scripts/live-sip-proof-bundle.mjs", "--live-manifest", manifestPath, "--out-dir", outDir, "--require-review-ready"],
+      [
+        "scripts/live-sip-proof-bundle.mjs",
+        "--live-manifest",
+        manifestPath,
+        "--out-dir",
+        outDir,
+        "--require-review-ready",
+        "--allow-unversioned-source",
+      ],
       { cwd: repoRoot },
     );
 
@@ -715,7 +723,15 @@ test("live SIP proof bundle accepts caller-audible playback confirmation evidenc
 
     const { stdout } = await execFileAsync(
       process.execPath,
-      ["scripts/live-sip-proof-bundle.mjs", "--live-manifest", manifestPath, "--out-dir", outDir, "--require-review-ready"],
+      [
+        "scripts/live-sip-proof-bundle.mjs",
+        "--live-manifest",
+        manifestPath,
+        "--out-dir",
+        outDir,
+        "--require-review-ready",
+        "--allow-unversioned-source",
+      ],
       { cwd: repoRoot },
     );
 

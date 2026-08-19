@@ -1111,10 +1111,49 @@ function buildReliabilityTargetModes() {
     configuredEnvValue("FREESWITCH_VERTO_URL"),
   );
 
+  const endpointRequirements = {
+    caeApi: {
+      label: "ConversationAgentEvals API",
+      envVar: "CAE_API_URL",
+      configured: Boolean(configuredEnvValue("CAE_API_URL")),
+    },
+    caeWeb: {
+      label: "ConversationAgentEvals web",
+      envVar: "CAE_WEB_URL",
+      configured: Boolean(configuredEnvValue("CAE_WEB_URL")),
+    },
+    rtcAsr: {
+      label: "rtc-asr",
+      envVar: "RTC_ASR_BASE_URL",
+      configured: Boolean(configuredEnvValue("RTC_ASR_BASE_URL")),
+    },
+    kokoro: {
+      label: "Kokoro",
+      envVar: "KOKORO_BASE_URL",
+      configured: Boolean(configuredEnvValue("KOKORO_BASE_URL")),
+    },
+    browserWebRtcBridge: {
+      label: "Pipecat browser bridge",
+      envVar: "BROWSER_WEBRTC_BRIDGE_URL",
+      configured: Boolean(configuredEnvValue("BROWSER_WEBRTC_BRIDGE_URL")),
+    },
+    freeswitchVerto: {
+      label: "FreeSWITCH/Verto",
+      envVar: "FREESWITCH_VERTO_URL",
+      configured: Boolean(configuredEnvValue("FREESWITCH_VERTO_URL")),
+    },
+  };
+  const requiredEndpointBlockers = (endpointKeys: Array<keyof typeof endpointRequirements>) =>
+    endpointKeys.flatMap((key) => {
+      const requirement = endpointRequirements[key];
+      return requirement.configured ? [] : [`${requirement.label} endpoint is not configured (${requirement.envVar}).`];
+    });
+
   return [
     {
       mode: "fixture",
       status: "ready",
+      blockers: [],
       requiredComponents: ["ACC app"],
       startCommand: "npm run proof",
       validationCommand: "npm run proof",
@@ -1131,6 +1170,7 @@ function buildReliabilityTargetModes() {
     {
       mode: "browser_webrtc",
       status: browserLiveConfigured ? "configured" : "blocked",
+      blockers: requiredEndpointBlockers(["rtcAsr", "kokoro", "browserWebRtcBridge"]),
       requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"],
       startCommand: "npm run docker:browser-webrtc",
       validationCommand: "npm run browser-webrtc:check",
@@ -1147,6 +1187,7 @@ function buildReliabilityTargetModes() {
     {
       mode: "reliability_lab",
       status: caeConfigured ? "configured" : "blocked",
+      blockers: requiredEndpointBlockers(["caeApi", "caeWeb"]),
       requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge", "ConversationAgentEvals", "ASSERT viewer"],
       startCommand: "npm run docker:reliability-lab",
       validationCommand: "npm run reliability:lab",
@@ -1163,6 +1204,7 @@ function buildReliabilityTargetModes() {
     {
       mode: "sip_verto",
       status: sipVertoConfigured ? "configured" : "blocked",
+      blockers: requiredEndpointBlockers(["rtcAsr", "kokoro", "freeswitchVerto"]),
       requiredComponents: ["ACC app", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
       startCommand: "npm run docker:sip-verto",
       validationCommand: "npm run pipecat:verto:check",
@@ -1179,6 +1221,10 @@ function buildReliabilityTargetModes() {
     {
       mode: "signalwire_pstn",
       status: "blocked",
+      blockers: [
+        "SignalWire SIP trunk env, provider source ACL proof, and public SIP reachability must be validated before manual PSTN call proof.",
+        ...requiredEndpointBlockers(["rtcAsr", "kokoro", "freeswitchVerto"]),
+      ],
       requiredComponents: ["ACC app", "SignalWire SIP trunk", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
       startCommand: "npm run docker:sip-verto",
       validationCommand: "npm run signalwire:freeswitch:readiness",
