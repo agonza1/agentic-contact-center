@@ -2066,6 +2066,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         blockers: string[];
         requiredEndpointEnvVars: string[];
         optionalEndpointEnvVars: string[];
+        endpointStatus: Array<{ key: string; envVar: string; configured: boolean; status: string }>;
         requiredComponents: string[];
         startCommand: string;
         validationCommand: string;
@@ -2175,6 +2176,19 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       "BROWSER_WEBRTC_BRIDGE_URL",
     ]);
     assert.deepEqual(payload.targetModes[1]?.optionalEndpointEnvVars, []);
+    assert.deepEqual(
+      payload.targetModes[1]?.endpointStatus.map((endpoint) => [
+        endpoint.key,
+        endpoint.envVar,
+        endpoint.configured,
+        endpoint.status,
+      ]),
+      [
+        ["rtcAsr", "RTC_ASR_BASE_URL", false, "missing"],
+        ["kokoro", "KOKORO_BASE_URL", false, "missing"],
+        ["browserWebRtcBridge", "BROWSER_WEBRTC_BRIDGE_URL", false, "missing"],
+      ],
+    );
     assert.equal(payload.targetModes[1]?.detail, "Live browser media path for CAE/ASSERT evidence requests.");
     assert.equal(payload.selectedTargetMode.mode, "fixture");
     assert.equal(payload.selectedTargetMode.requestedVia, "default");
@@ -2389,7 +2403,13 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
       const api = await requestJson(port, "GET", "/api/reliability");
       assert.equal(api.statusCode, 200);
       const payload = api.payload as {
-        targetModes: Array<{ mode: string; status: string; blockers: string[]; nextAction: { step: string } }>;
+        targetModes: Array<{
+          mode: string;
+          status: string;
+          blockers: string[];
+          nextAction: { step: string };
+          endpointStatus: Array<{ key: string; configured: boolean; status: string }>;
+        }>;
         selectedTargetMode: { mode: string; status: string; requestedVia: string; validationCommand?: string };
       };
       const statuses = Object.fromEntries(payload.targetModes.map((mode) => [mode.mode, mode.status]));
@@ -2405,6 +2425,18 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
       assert.deepEqual(blockers.sip_verto, []);
       assert.match(blockers.signalwire_pstn?.[0] ?? "", /SignalWire SIP trunk env/);
       assert.equal(payload.targetModes.find((mode) => mode.mode === "browser_webrtc")?.nextAction.step, "validate_browser_media_path");
+      assert.deepEqual(
+        payload.targetModes.find((mode) => mode.mode === "browser_webrtc")?.endpointStatus.map((endpoint) => [
+          endpoint.key,
+          endpoint.configured,
+          endpoint.status,
+        ]),
+        [
+          ["rtcAsr", true, "configured"],
+          ["kokoro", true, "configured"],
+          ["browserWebRtcBridge", true, "configured"],
+        ],
+      );
       assert.equal(payload.selectedTargetMode.mode, "fixture");
       assert.equal(payload.selectedTargetMode.requestedVia, "default");
     });
