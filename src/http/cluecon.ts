@@ -333,6 +333,21 @@ function buildBasePayload(
       "FreeSWITCH keeps SIP dialogs and RTP media bounded while Pipecat coordinates rtc-asr, explicit agent policy, and Kokoro through one observable realtime pipeline.",
     architectureCenter: {
       issue: "agonza1/agentic-contact-center#307",
+      ecosystemModel: {
+        nodes: [
+          "ACC Reliability Lab",
+          "rtc-asr",
+          "ConversationAgentEvals",
+          "ASSERT",
+        ],
+        edges: [
+          "ACC --> audio --> rtc-asr",
+          "rtc-asr --> transcripts --> ACC",
+          "ConversationAgentEvals --> test scenarios --> ACC",
+          "ACC --> proof bundle --> ConversationAgentEvals",
+          "ConversationAgentEvals --> evaluation --> ASSERT",
+        ],
+      },
       target: "transport.input -> rtc-asr STT -> ACC caller-turn adapter -> Kokoro TTS -> transport.output",
       adapterRule: "FreeSWITCH owns the SIP/RTP boundary; decoded audio enters the same Pipecat processors used by other transports.",
       currentGaps: [

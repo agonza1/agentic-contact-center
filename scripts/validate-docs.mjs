@@ -268,6 +268,26 @@ for (const phrase of requiredClueConPhrases) {
   }
 }
 
+const canonicalEcosystemTerms = [
+  "ACC Reliability Lab",
+  "rtc-asr",
+  "ConversationAgentEvals",
+  "ASSERT",
+  "audio",
+  "transcripts",
+  "test scenarios",
+  "proof bundle",
+  "evaluation",
+];
+for (const phrase of canonicalEcosystemTerms) {
+  if (!readme.includes(phrase)) {
+    fail(`README canonical ecosystem model is missing: ${phrase}`);
+  }
+  if (!cluecon.includes(phrase)) {
+    fail(`ClueCon canonical ecosystem model is missing: ${phrase}`);
+  }
+}
+
 const requiredStackManifestKeys = [
   "ACC_APP_IMAGE",
   "ACC_APP_URL",
@@ -302,5 +322,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms.`,
 );
