@@ -262,10 +262,50 @@ const provenanceContract = {
   detail: "Every CAE/ASSERT handoff should carry enough runtime, model, seed, profile, and component-version context to reproduce the selected reliability-lab run.",
 };
 
+const endpointRequirements = {
+  caeApi: { label: "ConversationAgentEvals API", envVar: "CAE_API_URL", configured: Boolean(optionalEndpoints.caeApi), ready: endpointReady.caeApi },
+  caeWeb: { label: "ConversationAgentEvals web", envVar: "CAE_WEB_URL", configured: Boolean(optionalEndpoints.caeWeb), ready: endpointReady.caeWeb },
+  assertViewer: { label: "ASSERT viewer", envVar: "ASSERT_VIEWER_URL", configured: liveEndpointConfigured.assertViewer, ready: endpointReady.assertViewer },
+  rtcAsr: { label: "rtc-asr", envVar: "RTC_ASR_BASE_URL", configured: liveEndpointConfigured.rtcAsr, ready: endpointReady.rtcAsr },
+  kokoro: { label: "Kokoro", envVar: "KOKORO_BASE_URL", configured: liveEndpointConfigured.kokoro, ready: endpointReady.kokoro },
+  browserWebRtcBridge: {
+    label: "Pipecat browser bridge",
+    envVar: "BROWSER_WEBRTC_BRIDGE_URL",
+    configured: liveEndpointConfigured.browserWebRtcBridge,
+    ready: endpointReady.browserWebRtcBridge,
+  },
+  freeswitchVerto: {
+    label: "FreeSWITCH/Verto",
+    envVar: "FREESWITCH_VERTO_URL",
+    configured: liveEndpointConfigured.freeswitchVerto,
+    ready: endpointReady.freeswitchVerto,
+  },
+};
+
+function requiredEndpointBlockers(endpointKeys) {
+  return endpointKeys.flatMap((key) => {
+    const requirement = endpointRequirements[key];
+    if (!requirement.configured) return [`${requirement.label} endpoint is not configured (${requirement.envVar}).`];
+    if (!requirement.ready) return [`${requirement.label} endpoint is configured but unreachable (${requirement.envVar}).`];
+    return [];
+  });
+}
+
+function configuredEndpointBlockers(endpointKeys) {
+  return endpointKeys.flatMap((key) => {
+    const requirement = endpointRequirements[key];
+    if (requirement.configured && !requirement.ready) {
+      return [`${requirement.label} endpoint is configured but unreachable (${requirement.envVar}).`];
+    }
+    return [];
+  });
+}
+
 const targetModes = [
   {
     mode: "fixture",
     status: "ready",
+    blockers: [],
     requiredComponents: ["ACC app"],
     startCommand: "npm run proof",
     validationCommand: "npm run proof",
@@ -288,6 +328,7 @@ const targetModes = [
           ? "ready"
           : "unreachable"
         : "blocked",
+    blockers: requiredEndpointBlockers(["rtcAsr", "kokoro", "browserWebRtcBridge"]),
     requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"],
     startCommand: "npm run docker:browser-webrtc",
     validationCommand: "npm run browser-webrtc:check",
@@ -317,6 +358,10 @@ const targetModes = [
           ? "ready"
           : "configured"
         : "blocked",
+    blockers: [
+      ...requiredEndpointBlockers(["caeApi", "caeWeb"]),
+      ...configuredEndpointBlockers(["assertViewer", "rtcAsr", "kokoro", "browserWebRtcBridge"]),
+    ],
     requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge", "ConversationAgentEvals", "ASSERT viewer"],
     startCommand: "npm run docker:reliability-lab",
     validationCommand: "npm run reliability:lab",
@@ -339,6 +384,7 @@ const targetModes = [
           ? "ready"
           : "unreachable"
         : "blocked",
+    blockers: requiredEndpointBlockers(["rtcAsr", "kokoro", "freeswitchVerto"]),
     requiredComponents: ["ACC app", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
     startCommand: "npm run docker:sip-verto",
     validationCommand: "npm run pipecat:verto:check",
@@ -356,6 +402,10 @@ const targetModes = [
   {
     mode: "signalwire_pstn",
     status: "blocked",
+    blockers: [
+      "SignalWire SIP trunk env, provider source ACL proof, and public SIP reachability must be validated before manual PSTN call proof.",
+      ...requiredEndpointBlockers(["rtcAsr", "kokoro", "freeswitchVerto"]),
+    ],
     requiredComponents: ["ACC app", "SignalWire SIP trunk", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
     startCommand: "npm run docker:sip-verto",
     validationCommand: "npm run signalwire:freeswitch:readiness",
