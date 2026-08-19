@@ -2063,6 +2063,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       targetModes: Array<{
         mode: string;
         status: string;
+        blockers: string[];
         requiredComponents: string[];
         startCommand: string;
         validationCommand: string;
@@ -2160,6 +2161,11 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       configuredOptionalEndpoints: 0,
     });
     assert.deepEqual(payload.targetModes[1]?.requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
+    assert.deepEqual(payload.targetModes[1]?.blockers, [
+      "rtc-asr endpoint is not configured (RTC_ASR_BASE_URL).",
+      "Kokoro endpoint is not configured (KOKORO_BASE_URL).",
+      "Pipecat browser bridge endpoint is not configured (BROWSER_WEBRTC_BRIDGE_URL).",
+    ]);
     assert.deepEqual(payload.targetModes[1]?.validationGate, {
       fastestCheck: "npm run browser-webrtc:check",
       evidenceArtifact: "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
@@ -2173,6 +2179,10 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       "Pipecat browser bridge",
       "ConversationAgentEvals",
       "ASSERT viewer",
+    ]);
+    assert.deepEqual(payload.targetModes[2]?.blockers, [
+      "ConversationAgentEvals API endpoint is not configured (CAE_API_URL).",
+      "ConversationAgentEvals web endpoint is not configured (CAE_WEB_URL).",
     ]);
     assert.equal(payload.targetModes[3]?.caeHandoffCommand, "npm run cae:assert:handoff");
     assert.equal(payload.readinessRoutes.reliabilityLab, "/api/reliability");
@@ -2324,16 +2334,21 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
       const api = await requestJson(port, "GET", "/api/reliability");
       assert.equal(api.statusCode, 200);
       const payload = api.payload as {
-        targetModes: Array<{ mode: string; status: string }>;
+        targetModes: Array<{ mode: string; status: string; blockers: string[] }>;
         selectedTargetMode: { mode: string; status: string; requestedVia: string; validationCommand?: string };
       };
       const statuses = Object.fromEntries(payload.targetModes.map((mode) => [mode.mode, mode.status]));
+      const blockers = Object.fromEntries(payload.targetModes.map((mode) => [mode.mode, mode.blockers]));
 
       assert.equal(statuses.fixture, "ready");
       assert.equal(statuses.browser_webrtc, "configured");
       assert.equal(statuses.reliability_lab, "configured");
       assert.equal(statuses.sip_verto, "configured");
       assert.equal(statuses.signalwire_pstn, "blocked");
+      assert.deepEqual(blockers.browser_webrtc, []);
+      assert.deepEqual(blockers.reliability_lab, []);
+      assert.deepEqual(blockers.sip_verto, []);
+      assert.match(blockers.signalwire_pstn?.[0] ?? "", /SignalWire SIP trunk env/);
       assert.equal(payload.selectedTargetMode.mode, "fixture");
       assert.equal(payload.selectedTargetMode.requestedVia, "default");
     });
