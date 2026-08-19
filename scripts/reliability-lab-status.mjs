@@ -262,6 +262,41 @@ const provenanceContract = {
   detail: "Every CAE/ASSERT handoff should carry enough runtime, model, seed, profile, and component-version context to reproduce the selected reliability-lab run.",
 };
 
+const handoffChecklist = [
+  {
+    id: "select_target_mode",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    command: "npm run reliability:lab",
+    requiredEvidence: ["/api/reliability", "/api/pipecat-media-engine/readiness"],
+    passSignal: "Target mode status is ready or configured, with live-media blockers explicit.",
+  },
+  {
+    id: "capture_controlled_candidate",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    command: "npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json",
+    requiredEvidence: ["artifacts/demo-proof-latest.json"],
+    passSignal: "Controlled cancellation-rescue scorecard passes and final disposition is recorded.",
+  },
+  {
+    id: "capture_selected_media_proof",
+    requiredFor: ["browser_webrtc", "sip_verto", "signalwire_pstn"],
+    command: "Run the selected target mode evidence command from targetModes[].evidenceCommand.",
+    requiredEvidence: [
+      "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+      "artifacts/verto-sip-live-proof/manifest.json",
+      "artifacts/signalwire-freeswitch-readiness/readiness.json",
+    ],
+    passSignal: "Live transcript, media playback, and sidecar readiness evidence are same-run artifacts.",
+  },
+  {
+    id: "generate_cae_assert_request",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    command: "npm run cae:assert:handoff",
+    requiredEvidence: ["artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json"],
+    passSignal: "AssertRunCreateRequest includes provenance, evidence artifact paths, and selected target mode.",
+  },
+];
+
 const endpointRequirements = {
   caeApi: { label: "ConversationAgentEvals API", envVar: "CAE_API_URL", configured: Boolean(optionalEndpoints.caeApi), ready: endpointReady.caeApi },
   caeWeb: { label: "ConversationAgentEvals web", envVar: "CAE_WEB_URL", configured: Boolean(optionalEndpoints.caeWeb), ready: endpointReady.caeWeb },
@@ -627,6 +662,7 @@ const report = {
         validModes: targetModes.map((mode) => mode.mode),
       },
   provenanceContract,
+  handoffChecklist,
   targetModes,
   optionalEndpoints,
   endpointProbes,

@@ -43,6 +43,7 @@ The command prints a JSON status report and does not start long-running services
 - whether optional CAE/ASSERT endpoint environment variables are configured and reachable;
 - the current Phase 2 blockers.
 - the endpoint environment contract in `repositoryContracts.optionalEndpointEnvVars`.
+- the CAE/ASSERT handoff checklist in `handoffChecklist`, including selected-mode, controlled-candidate, live-media, and request-generation evidence gates.
 
 Environment variables recognized by the status command:
 

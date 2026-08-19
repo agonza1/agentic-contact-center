@@ -90,6 +90,24 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.provenanceContract.manifestPath, "stack/versions.env");
   assert.ok(payload.provenanceContract.evidenceArtifacts.includes("artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json"));
   assert.deepEqual(
+    payload.handoffChecklist.map((step: { id: string; command: string }) => [step.id, step.command]),
+    [
+      ["select_target_mode", "npm run reliability:lab"],
+      [
+        "capture_controlled_candidate",
+        "npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json",
+      ],
+      ["capture_selected_media_proof", "Run the selected target mode evidence command from targetModes[].evidenceCommand."],
+      ["generate_cae_assert_request", "npm run cae:assert:handoff"],
+    ],
+  );
+  assert.deepEqual(payload.handoffChecklist[2].requiredFor, ["browser_webrtc", "sip_verto", "signalwire_pstn"]);
+  assert.ok(
+    payload.handoffChecklist[3].requiredEvidence.includes(
+      "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
+    ),
+  );
+  assert.deepEqual(
     payload.goldenScenario.comparison.map((signal: { signal: string; unsafeBaseline: string; controlledCandidate: string }) => [
       signal.signal,
       signal.unsafeBaseline,
