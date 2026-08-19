@@ -2023,6 +2023,7 @@ test("GET /assert/full embeds the upstream ASSERT local viewer with local naviga
 
 test("GET /reliability serves the guided reliability-lab workflow", async () => {
   const endpointEnvVars = [
+    "ACC_RELIABILITY_TARGET_MODE",
     "CAE_API_URL",
     "CAE_WEB_URL",
     "ASSERT_VIEWER_URL",
@@ -2075,6 +2076,14 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           liveMediaRequired: boolean;
         };
       }>;
+      selectedTargetMode: {
+        mode: string;
+        status: string;
+        requestedVia: string;
+        validationCommand?: string;
+        evidenceCommand?: string;
+        validModes?: string[];
+      };
       readinessRoutes: Record<string, string>;
       comparisonContract: {
         baselineProfile: string;
@@ -2135,6 +2144,9 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         ["signalwire_pstn", "blocked", "npm run docker:sip-verto", "npm run signalwire:freeswitch:readiness", "npm run signalwire:freeswitch:readiness -- --render", "/api/pipecat-media-engine/readiness"],
       ],
     );
+    assert.equal(payload.selectedTargetMode.mode, "fixture");
+    assert.equal(payload.selectedTargetMode.requestedVia, "default");
+    assert.equal(payload.selectedTargetMode.validationCommand, "npm run proof");
     assert.deepEqual(payload.targetModes[1]?.requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
     assert.deepEqual(payload.targetModes[1]?.validationGate, {
       fastestCheck: "npm run browser-webrtc:check",
@@ -2172,6 +2184,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     );
     assert.match(payload.componentReadiness[1]?.detail ?? "", /Phase 2 lab handoff/);
     assert.deepEqual(payload.repositoryContracts.optionalEndpointEnvVars, [
+      "ACC_RELIABILITY_TARGET_MODE",
       "CAE_API_URL",
       "CAE_WEB_URL",
       "ASSERT_VIEWER_URL",
@@ -2237,6 +2250,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
 
 test("GET /reliability redacts configured optional endpoint secrets", async () => {
   const endpointEnvVars = [
+    "ACC_RELIABILITY_TARGET_MODE",
     "CAE_API_URL",
     "CAE_WEB_URL",
     "ASSERT_VIEWER_URL",
@@ -2275,6 +2289,7 @@ test("GET /reliability redacts configured optional endpoint secrets", async () =
 
 test("GET /api/reliability reflects configured target mode endpoints", async () => {
   const endpointEnvVars = [
+    "ACC_RELIABILITY_TARGET_MODE",
     "CAE_API_URL",
     "CAE_WEB_URL",
     "ASSERT_VIEWER_URL",
@@ -2298,6 +2313,7 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
       assert.equal(api.statusCode, 200);
       const payload = api.payload as {
         targetModes: Array<{ mode: string; status: string }>;
+        selectedTargetMode: { mode: string; status: string; requestedVia: string; validationCommand?: string };
       };
       const statuses = Object.fromEntries(payload.targetModes.map((mode) => [mode.mode, mode.status]));
 
@@ -2306,12 +2322,71 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
       assert.equal(statuses.reliability_lab, "configured");
       assert.equal(statuses.sip_verto, "configured");
       assert.equal(statuses.signalwire_pstn, "blocked");
+      assert.equal(payload.selectedTargetMode.mode, "fixture");
+      assert.equal(payload.selectedTargetMode.requestedVia, "default");
     });
   } finally {
     for (const [name, value] of Object.entries(originalEnv)) {
       if (value === undefined) delete process.env[name];
       else process.env[name] = value;
     }
+  }
+});
+
+test("GET /api/reliability exposes requested target mode selection", async () => {
+  const originalTargetMode = process.env.ACC_RELIABILITY_TARGET_MODE;
+  process.env.ACC_RELIABILITY_TARGET_MODE = "sip_verto";
+
+  try {
+    await withServer(async (port) => {
+      const api = await requestJson(port, "GET", "/api/reliability");
+      assert.equal(api.statusCode, 200);
+      const payload = api.payload as {
+        selectedTargetMode: {
+          mode: string;
+          status: string;
+          requestedVia: string;
+          validationCommand?: string;
+          evidenceCommand?: string;
+        };
+      };
+
+      assert.equal(payload.selectedTargetMode.mode, "sip_verto");
+      assert.equal(payload.selectedTargetMode.requestedVia, "ACC_RELIABILITY_TARGET_MODE");
+      assert.equal(payload.selectedTargetMode.validationCommand, "npm run pipecat:verto:check");
+      assert.equal(payload.selectedTargetMode.evidenceCommand, "npm run pipecat:verto:live-proof");
+    });
+  } finally {
+    if (originalTargetMode === undefined) delete process.env.ACC_RELIABILITY_TARGET_MODE;
+    else process.env.ACC_RELIABILITY_TARGET_MODE = originalTargetMode;
+  }
+});
+
+test("GET /api/reliability marks invalid target mode selection as blocked", async () => {
+  const originalTargetMode = process.env.ACC_RELIABILITY_TARGET_MODE;
+  process.env.ACC_RELIABILITY_TARGET_MODE = "unknown_mode";
+
+  try {
+    await withServer(async (port) => {
+      const api = await requestJson(port, "GET", "/api/reliability");
+      assert.equal(api.statusCode, 200);
+      const payload = api.payload as {
+        selectedTargetMode: {
+          mode: string;
+          status: string;
+          requestedVia: string;
+          validModes?: string[];
+        };
+      };
+
+      assert.equal(payload.selectedTargetMode.mode, "unknown_mode");
+      assert.equal(payload.selectedTargetMode.status, "blocked");
+      assert.equal(payload.selectedTargetMode.requestedVia, "ACC_RELIABILITY_TARGET_MODE");
+      assert.ok(payload.selectedTargetMode.validModes?.includes("fixture"));
+    });
+  } finally {
+    if (originalTargetMode === undefined) delete process.env.ACC_RELIABILITY_TARGET_MODE;
+    else process.env.ACC_RELIABILITY_TARGET_MODE = originalTargetMode;
   }
 });
 
