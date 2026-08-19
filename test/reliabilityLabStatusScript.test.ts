@@ -108,6 +108,13 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.selectedTargetMode.mode, "fixture");
   assert.equal(payload.selectedTargetMode.requestedVia, "default");
   assert.equal(payload.selectedTargetMode.validationCommand, "npm run proof");
+  assert.deepEqual(payload.readinessSummary, {
+    selectedTargetMode: "fixture",
+    targetModesByStatus: { ready: 1, blocked: 4 },
+    componentsByStatus: { ready: 1, not_configured: 1, not_required: 5 },
+    configuredOptionalEndpoints: 0,
+    blockers: 1,
+  });
   assert.deepEqual(
     payload.targetModes.map((mode: { mode: string; status: string; startCommand: string; validationCommand: string; evidenceCommand: string; readinessRoute: string }) => [
       mode.mode,
@@ -251,6 +258,8 @@ test("reliability lab status becomes configured when CAE endpoints are supplied"
     payload.componentReadiness.find((component: { component: string }) => component.component === "ConversationAgentEvals").status,
     "ready",
   );
+  assert.equal(payload.readinessSummary.configuredOptionalEndpoints, 1);
+  assert.deepEqual(payload.readinessSummary.targetModesByStatus, { ready: 1, blocked: 3, configured: 1 });
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "fixture").status, "ready");
   assert.deepEqual(payload.targetModes.find((mode: { mode: string }) => mode.mode === "reliability_lab").blockers, []);
 });
@@ -283,6 +292,8 @@ test("reliability lab status reports explicitly configured live media endpoints"
   assert.equal(statuses["Pipecat browser bridge"], "ready");
   assert.equal(statuses["FreeSWITCH/Verto"], "ready");
   assert.equal(statuses["ASSERT viewer"], "ready");
+  assert.equal(payload.readinessSummary.configuredOptionalEndpoints, 6);
+  assert.deepEqual(payload.readinessSummary.componentsByStatus, { ready: 7 });
   assert.equal(
     payload.componentReadiness.find((component: { component: string }) => component.component === "Pipecat browser bridge").envVar,
     "BROWSER_WEBRTC_BRIDGE_URL",
