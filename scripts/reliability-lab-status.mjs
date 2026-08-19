@@ -73,6 +73,7 @@ const requiredStackManifestKeys = [
 ];
 const missingStackManifestKeys = requiredStackManifestKeys.filter((key) => !(key in stackManifest.values));
 const optionalEndpointEnvVars = [
+  "ACC_RELIABILITY_TARGET_MODE",
   "CAE_API_URL",
   "CAE_WEB_URL",
   "ASSERT_VIEWER_URL",
@@ -91,6 +92,8 @@ const optionalEndpoints = {
   browserWebRtcBridge: process.env.BROWSER_WEBRTC_BRIDGE_URL ?? "http://127.0.0.1:8766",
   freeswitchVerto: process.env.FREESWITCH_VERTO_URL ?? "ws://127.0.0.1:8081",
 };
+
+const requestedTargetMode = process.env.ACC_RELIABILITY_TARGET_MODE?.trim() || "fixture";
 
 function envConfigured(name) {
   return Boolean(process.env[name]?.trim());
@@ -369,6 +372,8 @@ const targetModes = [
   },
 ];
 
+const selectedTargetMode = targetModes.find((mode) => mode.mode === requestedTargetMode) ?? null;
+
 function optionalComponent({ component, configured, endpoint, envVar, probe, configuredDetail, defaultDetail }) {
   const status = configured ? (probe?.ready ? "ready" : "unreachable") : "not_required";
   return {
@@ -468,6 +473,9 @@ if (!caeConfigured) {
 } else if (!endpointReady.caeApi || !endpointReady.caeWeb) {
   blockers.push("ConversationAgentEvals API/web endpoints are configured but unreachable.");
 }
+if (!selectedTargetMode) {
+  blockers.push(`ACC_RELIABILITY_TARGET_MODE must be one of: ${targetModes.map((mode) => mode.mode).join(", ")}.`);
+}
 
 const report = {
   ok: blockers.length === 0,
@@ -483,6 +491,17 @@ const report = {
     comparison: goldenComparison,
     caveat: "Unsafe baseline behavior is only a labeled demo fixture/profile; CAE/ASSERT owns imported run reports and comparisons.",
   },
+  selectedTargetMode: selectedTargetMode
+    ? {
+        ...selectedTargetMode,
+        requestedVia: requestedTargetMode === "fixture" ? "default" : "ACC_RELIABILITY_TARGET_MODE",
+      }
+    : {
+        mode: requestedTargetMode,
+        status: "blocked",
+        requestedVia: "ACC_RELIABILITY_TARGET_MODE",
+        validModes: targetModes.map((mode) => mode.mode),
+      },
   provenanceContract,
   targetModes,
   optionalEndpoints,

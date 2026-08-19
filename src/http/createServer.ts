@@ -1196,6 +1196,7 @@ function buildReliabilityTargetModes() {
 }
 
 const reliabilityOptionalEndpointEnvVars = [
+  "ACC_RELIABILITY_TARGET_MODE",
   "CAE_API_URL",
   "CAE_WEB_URL",
   "ASSERT_VIEWER_URL",
@@ -1361,6 +1362,9 @@ function escapeReliabilityHtml(value: unknown): string {
 function buildReliabilityGuidePayload(config: PocConfig): object {
   const componentReadiness = buildReliabilityComponentReadiness();
   const stackManifest = readReliabilityStackManifest();
+  const targetModes = buildReliabilityTargetModes();
+  const requestedTargetMode = configuredEnvValue("ACC_RELIABILITY_TARGET_MODE") ?? "fixture";
+  const selectedTargetMode = targetModes.find((mode) => mode.mode === requestedTargetMode) ?? null;
 
   return {
     ok: true,
@@ -1408,7 +1412,18 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
         evidence: "ConversationAgentEvals owns run, report, and comparison UX",
       },
     ],
-    targetModes: buildReliabilityTargetModes(),
+    selectedTargetMode: selectedTargetMode
+      ? {
+          ...selectedTargetMode,
+          requestedVia: requestedTargetMode === "fixture" ? "default" : "ACC_RELIABILITY_TARGET_MODE",
+        }
+      : {
+          mode: requestedTargetMode,
+          status: "blocked",
+          requestedVia: "ACC_RELIABILITY_TARGET_MODE",
+          validModes: targetModes.map((mode) => mode.mode),
+        },
+    targetModes,
     readinessRoutes: {
       health: "/health",
       reliabilityLab: "/api/reliability",

@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const repoRoot = join(__dirname, "..", "..");
 const liveEndpointEnvVars = [
+  "ACC_RELIABILITY_TARGET_MODE",
   "RTC_ASR_BASE_URL",
   "KOKORO_BASE_URL",
   "BROWSER_WEBRTC_BRIDGE_URL",
@@ -16,6 +17,7 @@ const liveEndpointEnvVars = [
   "ASSERT_VIEWER_URL",
 ];
 const expectedEndpointEnvVars = [
+  "ACC_RELIABILITY_TARGET_MODE",
   "CAE_API_URL",
   "CAE_WEB_URL",
   "ASSERT_VIEWER_URL",
@@ -103,6 +105,9 @@ test("reliability lab status reports explicit blockers without starting sidecars
     ],
   );
   assert.match(payload.goldenScenario.caveat, /labeled demo fixture/);
+  assert.equal(payload.selectedTargetMode.mode, "fixture");
+  assert.equal(payload.selectedTargetMode.requestedVia, "default");
+  assert.equal(payload.selectedTargetMode.validationCommand, "npm run proof");
   assert.deepEqual(
     payload.targetModes.map((mode: { mode: string; status: string; startCommand: string; validationCommand: string; evidenceCommand: string; readinessRoute: string }) => [
       mode.mode,
@@ -176,6 +181,43 @@ test("reliability lab status reports explicit blockers without starting sidecars
       liveMediaRequired: false,
     },
   );
+});
+
+test("reliability lab status exposes requested target mode selection", async () => {
+  const result = await execFileAsync(process.execPath, ["scripts/reliability-lab-status.mjs"], {
+    cwd: repoRoot,
+    env: {
+      ...withClearedLiveEndpointEnv(),
+      ACC_RELIABILITY_TARGET_MODE: "browser_webrtc",
+      CAE_API_URL: "",
+      CAE_WEB_URL: "",
+    },
+  });
+  const payload = JSON.parse(result.stdout);
+
+  assert.equal(payload.status, "blocked");
+  assert.equal(payload.selectedTargetMode.mode, "browser_webrtc");
+  assert.equal(payload.selectedTargetMode.requestedVia, "ACC_RELIABILITY_TARGET_MODE");
+  assert.equal(payload.selectedTargetMode.validationCommand, "npm run browser-webrtc:check");
+  assert.equal(payload.selectedTargetMode.evidenceCommand, "npm run browser-webrtc:live-proof");
+});
+
+test("reliability lab status blocks invalid target mode selection", async () => {
+  const result = await execFileAsync(process.execPath, ["scripts/reliability-lab-status.mjs"], {
+    cwd: repoRoot,
+    env: {
+      ...withClearedLiveEndpointEnv(),
+      ACC_RELIABILITY_TARGET_MODE: "unknown_mode",
+      CAE_API_URL: "",
+      CAE_WEB_URL: "",
+    },
+  });
+  const payload = JSON.parse(result.stdout);
+
+  assert.equal(payload.selectedTargetMode.mode, "unknown_mode");
+  assert.equal(payload.selectedTargetMode.status, "blocked");
+  assert.ok(payload.selectedTargetMode.validModes.includes("fixture"));
+  assert.ok(payload.blockers.some((blocker: string) => blocker.includes("ACC_RELIABILITY_TARGET_MODE must be one of")));
 });
 
 test("reliability lab status becomes configured when CAE endpoints are supplied", async () => {
