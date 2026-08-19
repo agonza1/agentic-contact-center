@@ -132,6 +132,14 @@ test("reliability lab status reports explicit blockers without starting sidecars
       ["signalwire_pstn", "blocked", "npm run docker:sip-verto", "npm run signalwire:freeswitch:readiness", "npm run signalwire:freeswitch:readiness -- --render", "/api/pipecat-media-engine/readiness"],
     ],
   );
+  assert.deepEqual(payload.targetModes[0].requiredEndpointEnvVars, []);
+  assert.deepEqual(payload.targetModes[0].optionalEndpointEnvVars, []);
+  assert.deepEqual(payload.targetModes[1].requiredEndpointEnvVars, [
+    "RTC_ASR_BASE_URL",
+    "KOKORO_BASE_URL",
+    "BROWSER_WEBRTC_BRIDGE_URL",
+  ]);
+  assert.deepEqual(payload.targetModes[1].optionalEndpointEnvVars, []);
   assert.deepEqual(payload.targetModes[1].requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
   assert.deepEqual(payload.targetModes[1].blockers, [
     "rtc-asr endpoint is not configured (RTC_ASR_BASE_URL).",
@@ -161,6 +169,18 @@ test("reliability lab status reports explicit blockers without starting sidecars
     "Pipecat browser bridge",
     "ConversationAgentEvals",
     "ASSERT viewer",
+  ]);
+  assert.deepEqual(payload.targetModes[2].requiredEndpointEnvVars, ["CAE_API_URL", "CAE_WEB_URL"]);
+  assert.deepEqual(payload.targetModes[2].optionalEndpointEnvVars, [
+    "ASSERT_VIEWER_URL",
+    "RTC_ASR_BASE_URL",
+    "KOKORO_BASE_URL",
+    "BROWSER_WEBRTC_BRIDGE_URL",
+  ]);
+  assert.deepEqual(payload.targetModes[3].requiredEndpointEnvVars, [
+    "RTC_ASR_BASE_URL",
+    "KOKORO_BASE_URL",
+    "FREESWITCH_VERTO_URL",
   ]);
   assert.equal(payload.targetModes[3].caeHandoffCommand, "npm run cae:assert:handoff");
   assert.ok(payload.blockers.some((blocker: string) => blocker.includes("ConversationAgentEvals API/web endpoints")));
