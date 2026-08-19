@@ -1168,6 +1168,7 @@ function buildReliabilityTargetModes() {
         successCriteria: ["controlled_candidate_scorecard_passes", "proof_bundle_written"],
         liveMediaRequired: false,
       },
+      detail: "Sidecar-free cancellation-rescue proof for the controlled candidate.",
     },
     {
       mode: "browser_webrtc",
@@ -1187,6 +1188,7 @@ function buildReliabilityTargetModes() {
         successCriteria: ["pipecat_browser_bridge_ready", "rtc_asr_ready", "tts_ready"],
         liveMediaRequired: true,
       },
+      detail: "Live browser media path for CAE/ASSERT evidence requests.",
     },
     {
       mode: "reliability_lab",
@@ -1206,6 +1208,7 @@ function buildReliabilityTargetModes() {
         successCriteria: ["cae_api_reachable", "cae_web_reachable", "selected_media_mode_ready_or_configured"],
         liveMediaRequired: false,
       },
+      detail: "Local ACC media/evidence stack with external CAE endpoints and local ASSERT viewer wiring.",
     },
     {
       mode: "sip_verto",
@@ -1225,6 +1228,7 @@ function buildReliabilityTargetModes() {
         successCriteria: ["freeswitch_verto_ready", "pipecat_verto_bridge_ready", "shared_pipeline_ready"],
         liveMediaRequired: true,
       },
+      detail: "Strict local SIP/Verto proof path for the reference stack.",
     },
     {
       mode: "signalwire_pstn",
@@ -1247,6 +1251,7 @@ function buildReliabilityTargetModes() {
         successCriteria: ["signalwire_env_configured", "freeswitch_gateway_rendered", "public_sip_reachability_checked"],
         liveMediaRequired: true,
       },
+      detail: "Production-like PSTN ingress remains gated on SignalWire env, provider-owned source ACL proof, and public SIP reachability before manual call validation.",
     },
   ];
 }
