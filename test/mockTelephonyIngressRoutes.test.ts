@@ -2072,6 +2072,12 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         evidenceCommand: string;
         readinessRoute: string;
         caeHandoffCommand: string;
+        nextAction: {
+          step: string;
+          command: string;
+          evidence: string;
+          detail: string;
+        };
         detail: string;
         validationGate: {
           fastestCheck: string;
@@ -2086,6 +2092,12 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         requestedVia: string;
         validationCommand?: string;
         evidenceCommand?: string;
+        nextAction?: {
+          step: string;
+          command: string;
+          evidence: string;
+          detail: string;
+        };
         validModes?: string[];
       };
       readinessRoutes: Record<string, string>;
@@ -2167,6 +2179,12 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(payload.selectedTargetMode.mode, "fixture");
     assert.equal(payload.selectedTargetMode.requestedVia, "default");
     assert.equal(payload.selectedTargetMode.validationCommand, "npm run proof");
+    assert.deepEqual(payload.selectedTargetMode.nextAction, {
+      step: "run_controlled_candidate",
+      command: "npm run proof",
+      evidence: "artifacts/demo-proof-latest.json",
+      detail: "Run the sidecar-free cancellation-rescue proof and inspect the deterministic scorecard.",
+    });
     assert.deepEqual(payload.readinessSummary, {
       selectedTargetMode: "fixture",
       targetModesByStatus: { ready: 1, blocked: 4 },
@@ -2179,6 +2197,12 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       "Kokoro endpoint is not configured (KOKORO_BASE_URL).",
       "Pipecat browser bridge endpoint is not configured (BROWSER_WEBRTC_BRIDGE_URL).",
     ]);
+    assert.deepEqual(payload.targetModes[1]?.nextAction, {
+      step: "configure_browser_media_endpoints",
+      command: "npm run docker:browser-webrtc",
+      evidence: "/api/browser-webrtc/readiness",
+      detail: "Bring up rtc-asr, Kokoro, and the Pipecat browser bridge before capturing live browser evidence.",
+    });
     assert.deepEqual(payload.targetModes[1]?.validationGate, {
       fastestCheck: "npm run browser-webrtc:check",
       evidenceArtifact: "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
@@ -2365,7 +2389,7 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
       const api = await requestJson(port, "GET", "/api/reliability");
       assert.equal(api.statusCode, 200);
       const payload = api.payload as {
-        targetModes: Array<{ mode: string; status: string; blockers: string[] }>;
+        targetModes: Array<{ mode: string; status: string; blockers: string[]; nextAction: { step: string } }>;
         selectedTargetMode: { mode: string; status: string; requestedVia: string; validationCommand?: string };
       };
       const statuses = Object.fromEntries(payload.targetModes.map((mode) => [mode.mode, mode.status]));
@@ -2380,6 +2404,7 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
       assert.deepEqual(blockers.reliability_lab, []);
       assert.deepEqual(blockers.sip_verto, []);
       assert.match(blockers.signalwire_pstn?.[0] ?? "", /SignalWire SIP trunk env/);
+      assert.equal(payload.targetModes.find((mode) => mode.mode === "browser_webrtc")?.nextAction.step, "validate_browser_media_path");
       assert.equal(payload.selectedTargetMode.mode, "fixture");
       assert.equal(payload.selectedTargetMode.requestedVia, "default");
     });
@@ -2406,6 +2431,12 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
           requestedVia: string;
           validationCommand?: string;
           evidenceCommand?: string;
+          nextAction?: {
+            step: string;
+            command: string;
+            evidence: string;
+            detail: string;
+          };
         };
       };
 
@@ -2413,6 +2444,12 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
       assert.equal(payload.selectedTargetMode.requestedVia, "ACC_RELIABILITY_TARGET_MODE");
       assert.equal(payload.selectedTargetMode.validationCommand, "npm run pipecat:verto:check");
       assert.equal(payload.selectedTargetMode.evidenceCommand, "npm run pipecat:verto:live-proof");
+      assert.deepEqual(payload.selectedTargetMode.nextAction, {
+        step: "configure_sip_verto_endpoints",
+        command: "npm run docker:sip-verto",
+        evidence: "/api/pipecat-media-engine/readiness",
+        detail: "Bring up rtc-asr, Kokoro, and FreeSWITCH/Verto before capturing SIP/Verto evidence.",
+      });
     });
   } finally {
     if (originalTargetMode === undefined) delete process.env.ACC_RELIABILITY_TARGET_MODE;
@@ -2434,6 +2471,7 @@ test("GET /api/reliability marks invalid target mode selection as blocked", asyn
           status: string;
           requestedVia: string;
           validModes?: string[];
+          nextAction?: { step: string; command: string; evidence: string; detail: string };
         };
       };
 
@@ -2441,6 +2479,12 @@ test("GET /api/reliability marks invalid target mode selection as blocked", asyn
       assert.equal(payload.selectedTargetMode.status, "blocked");
       assert.equal(payload.selectedTargetMode.requestedVia, "ACC_RELIABILITY_TARGET_MODE");
       assert.ok(payload.selectedTargetMode.validModes?.includes("fixture"));
+      assert.deepEqual(payload.selectedTargetMode.nextAction, {
+        step: "select_valid_target_mode",
+        command: "Set ACC_RELIABILITY_TARGET_MODE to one of targetModes[].mode",
+        evidence: "/api/reliability",
+        detail: "The requested target mode is unknown, so no validation or evidence command can run.",
+      });
     });
   } finally {
     if (originalTargetMode === undefined) delete process.env.ACC_RELIABILITY_TARGET_MODE;

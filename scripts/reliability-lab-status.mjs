@@ -306,6 +306,12 @@ const targetModes = [
     mode: "fixture",
     status: "ready",
     blockers: [],
+    nextAction: {
+      step: "run_controlled_candidate",
+      command: "npm run proof",
+      evidence: "artifacts/demo-proof-latest.json",
+      detail: "Run the sidecar-free cancellation-rescue proof and inspect the deterministic scorecard.",
+    },
     requiredEndpointEnvVars: [],
     optionalEndpointEnvVars: [],
     requiredComponents: ["ACC app"],
@@ -331,6 +337,16 @@ const targetModes = [
           : "unreachable"
         : "blocked",
     blockers: requiredEndpointBlockers(["rtcAsr", "kokoro", "browserWebRtcBridge"]),
+    nextAction: {
+      step: liveEndpointConfigured.rtcAsr && liveEndpointConfigured.kokoro && liveEndpointConfigured.browserWebRtcBridge
+        ? "validate_browser_media_path"
+        : "configure_browser_media_endpoints",
+      command: liveEndpointConfigured.rtcAsr && liveEndpointConfigured.kokoro && liveEndpointConfigured.browserWebRtcBridge
+        ? "npm run browser-webrtc:check"
+        : "npm run docker:browser-webrtc",
+      evidence: "/api/browser-webrtc/readiness",
+      detail: "Bring up rtc-asr, Kokoro, and the Pipecat browser bridge before capturing live browser evidence.",
+    },
     requiredEndpointEnvVars: ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"],
     optionalEndpointEnvVars: [],
     requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"],
@@ -366,6 +382,12 @@ const targetModes = [
       ...requiredEndpointBlockers(["caeApi", "caeWeb"]),
       ...configuredEndpointBlockers(["assertViewer", "rtcAsr", "kokoro", "browserWebRtcBridge"]),
     ],
+    nextAction: {
+      step: caeConfigured ? "validate_reliability_lab_handoff" : "configure_cae_endpoints",
+      command: caeConfigured ? "npm run reliability:lab" : "Set CAE_API_URL and CAE_WEB_URL",
+      evidence: "/api/reliability",
+      detail: "Connect external ConversationAgentEvals endpoints, then rerun the bounded reliability-lab status probe.",
+    },
     requiredEndpointEnvVars: ["CAE_API_URL", "CAE_WEB_URL"],
     optionalEndpointEnvVars: ["ASSERT_VIEWER_URL", "RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"],
     requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge", "ConversationAgentEvals", "ASSERT viewer"],
@@ -391,6 +413,16 @@ const targetModes = [
           : "unreachable"
         : "blocked",
     blockers: requiredEndpointBlockers(["rtcAsr", "kokoro", "freeswitchVerto"]),
+    nextAction: {
+      step: liveEndpointConfigured.rtcAsr && liveEndpointConfigured.kokoro && liveEndpointConfigured.freeswitchVerto
+        ? "validate_sip_verto_path"
+        : "configure_sip_verto_endpoints",
+      command: liveEndpointConfigured.rtcAsr && liveEndpointConfigured.kokoro && liveEndpointConfigured.freeswitchVerto
+        ? "npm run pipecat:verto:check"
+        : "npm run docker:sip-verto",
+      evidence: "/api/pipecat-media-engine/readiness",
+      detail: "Bring up rtc-asr, Kokoro, and FreeSWITCH/Verto before capturing SIP/Verto evidence.",
+    },
     requiredEndpointEnvVars: ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "FREESWITCH_VERTO_URL"],
     optionalEndpointEnvVars: [],
     requiredComponents: ["ACC app", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
@@ -414,6 +446,12 @@ const targetModes = [
       "SignalWire SIP trunk env, provider source ACL proof, and public SIP reachability must be validated before manual PSTN call proof.",
       ...requiredEndpointBlockers(["rtcAsr", "kokoro", "freeswitchVerto"]),
     ],
+    nextAction: {
+      step: "run_signalwire_readiness_gate",
+      command: "npm run signalwire:freeswitch:readiness",
+      evidence: "artifacts/signalwire-freeswitch-readiness/readiness.json",
+      detail: "Render and validate credential-safe SignalWire/FreeSWITCH readiness before any manual PSTN call.",
+    },
     requiredEndpointEnvVars: ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "FREESWITCH_VERTO_URL"],
     optionalEndpointEnvVars: [],
     requiredComponents: ["ACC app", "SignalWire SIP trunk", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
