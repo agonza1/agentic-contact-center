@@ -126,6 +126,15 @@ test("reliability lab status reports explicit blockers without starting sidecars
     ],
   );
   assert.deepEqual(payload.targetModes[1].requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
+  assert.deepEqual(payload.targetModes[1].blockers, [
+    "rtc-asr endpoint is not configured (RTC_ASR_BASE_URL).",
+    "Kokoro endpoint is not configured (KOKORO_BASE_URL).",
+    "Pipecat browser bridge endpoint is not configured (BROWSER_WEBRTC_BRIDGE_URL).",
+  ]);
+  assert.deepEqual(payload.targetModes[2].blockers, [
+    "ConversationAgentEvals API endpoint is not configured (CAE_API_URL).",
+    "ConversationAgentEvals web endpoint is not configured (CAE_WEB_URL).",
+  ]);
   assert.deepEqual(payload.targetModes[0].validationGate, {
     fastestCheck: "npm run proof",
     evidenceArtifact: "artifacts/demo-proof-latest.json",
@@ -200,6 +209,7 @@ test("reliability lab status exposes requested target mode selection", async () 
   assert.equal(payload.selectedTargetMode.requestedVia, "ACC_RELIABILITY_TARGET_MODE");
   assert.equal(payload.selectedTargetMode.validationCommand, "npm run browser-webrtc:check");
   assert.equal(payload.selectedTargetMode.evidenceCommand, "npm run browser-webrtc:live-proof");
+  assert.ok(payload.selectedTargetMode.blockers.includes("rtc-asr endpoint is not configured (RTC_ASR_BASE_URL)."));
 });
 
 test("reliability lab status blocks invalid target mode selection", async () => {
@@ -242,6 +252,7 @@ test("reliability lab status becomes configured when CAE endpoints are supplied"
     "ready",
   );
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "fixture").status, "ready");
+  assert.deepEqual(payload.targetModes.find((mode: { mode: string }) => mode.mode === "reliability_lab").blockers, []);
 });
 
 test("reliability lab status reports explicitly configured live media endpoints", async () => {
@@ -285,6 +296,7 @@ test("reliability lab status reports explicitly configured live media endpoints"
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "reliability_lab").status, "ready");
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "sip_verto").status, "ready");
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "signalwire_pstn").status, "blocked");
+  assert.deepEqual(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").blockers, []);
 });
 
 test("reliability lab status distinguishes configured but unreachable endpoints", async () => {
