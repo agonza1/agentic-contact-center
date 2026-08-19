@@ -108,6 +108,12 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.selectedTargetMode.mode, "fixture");
   assert.equal(payload.selectedTargetMode.requestedVia, "default");
   assert.equal(payload.selectedTargetMode.validationCommand, "npm run proof");
+  assert.deepEqual(payload.selectedTargetMode.nextAction, {
+    step: "run_controlled_candidate",
+    command: "npm run proof",
+    evidence: "artifacts/demo-proof-latest.json",
+    detail: "Run the sidecar-free cancellation-rescue proof and inspect the deterministic scorecard.",
+  });
   assert.deepEqual(payload.readinessSummary, {
     selectedTargetMode: "fixture",
     targetModesByStatus: { ready: 1, blocked: 4 },
@@ -146,6 +152,12 @@ test("reliability lab status reports explicit blockers without starting sidecars
     "Kokoro endpoint is not configured (KOKORO_BASE_URL).",
     "Pipecat browser bridge endpoint is not configured (BROWSER_WEBRTC_BRIDGE_URL).",
   ]);
+  assert.deepEqual(payload.targetModes[1].nextAction, {
+    step: "configure_browser_media_endpoints",
+    command: "npm run docker:browser-webrtc",
+    evidence: "/api/browser-webrtc/readiness",
+    detail: "Bring up rtc-asr, Kokoro, and the Pipecat browser bridge before capturing live browser evidence.",
+  });
   assert.deepEqual(payload.targetModes[2].blockers, [
     "ConversationAgentEvals API endpoint is not configured (CAE_API_URL).",
     "ConversationAgentEvals web endpoint is not configured (CAE_WEB_URL).",
@@ -236,6 +248,7 @@ test("reliability lab status exposes requested target mode selection", async () 
   assert.equal(payload.selectedTargetMode.requestedVia, "ACC_RELIABILITY_TARGET_MODE");
   assert.equal(payload.selectedTargetMode.validationCommand, "npm run browser-webrtc:check");
   assert.equal(payload.selectedTargetMode.evidenceCommand, "npm run browser-webrtc:live-proof");
+  assert.equal(payload.selectedTargetMode.nextAction.step, "configure_browser_media_endpoints");
   assert.ok(payload.selectedTargetMode.blockers.includes("rtc-asr endpoint is not configured (RTC_ASR_BASE_URL)."));
 });
 
@@ -254,6 +267,7 @@ test("reliability lab status blocks invalid target mode selection", async () => 
   assert.equal(payload.selectedTargetMode.mode, "unknown_mode");
   assert.equal(payload.selectedTargetMode.status, "blocked");
   assert.ok(payload.selectedTargetMode.validModes.includes("fixture"));
+  assert.equal(payload.selectedTargetMode.nextAction, undefined);
   assert.ok(payload.blockers.some((blocker: string) => blocker.includes("ACC_RELIABILITY_TARGET_MODE must be one of")));
 });
 
@@ -324,6 +338,7 @@ test("reliability lab status reports explicitly configured live media endpoints"
   assert.match(payload.optionalEndpoints.freeswitchVerto, /^ws:\/\/127\.0\.0\.1:\d+$/);
   assert.match(payload.optionalEndpoints.assertViewer, /^http:\/\/127\.0\.0\.1:\d+$/);
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").status, "ready");
+  assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").nextAction.step, "validate_browser_media_path");
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "reliability_lab").status, "ready");
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "sip_verto").status, "ready");
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "signalwire_pstn").status, "blocked");
