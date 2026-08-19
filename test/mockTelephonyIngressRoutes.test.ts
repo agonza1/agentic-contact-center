@@ -2072,6 +2072,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         evidenceCommand: string;
         readinessRoute: string;
         caeHandoffCommand: string;
+        detail: string;
         validationGate: {
           fastestCheck: string;
           evidenceArtifact: string;
@@ -2155,12 +2156,14 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     );
     assert.deepEqual(payload.targetModes[0]?.requiredEndpointEnvVars, []);
     assert.deepEqual(payload.targetModes[0]?.optionalEndpointEnvVars, []);
+    assert.equal(payload.targetModes[0]?.detail, "Sidecar-free cancellation-rescue proof for the controlled candidate.");
     assert.deepEqual(payload.targetModes[1]?.requiredEndpointEnvVars, [
       "RTC_ASR_BASE_URL",
       "KOKORO_BASE_URL",
       "BROWSER_WEBRTC_BRIDGE_URL",
     ]);
     assert.deepEqual(payload.targetModes[1]?.optionalEndpointEnvVars, []);
+    assert.equal(payload.targetModes[1]?.detail, "Live browser media path for CAE/ASSERT evidence requests.");
     assert.equal(payload.selectedTargetMode.mode, "fixture");
     assert.equal(payload.selectedTargetMode.requestedVia, "default");
     assert.equal(payload.selectedTargetMode.validationCommand, "npm run proof");
@@ -2197,6 +2200,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       "KOKORO_BASE_URL",
       "BROWSER_WEBRTC_BRIDGE_URL",
     ]);
+    assert.equal(payload.targetModes[2]?.detail, "Local ACC media/evidence stack with external CAE endpoints and local ASSERT viewer wiring.");
     assert.deepEqual(payload.targetModes[2]?.blockers, [
       "ConversationAgentEvals API endpoint is not configured (CAE_API_URL).",
       "ConversationAgentEvals web endpoint is not configured (CAE_WEB_URL).",
@@ -2207,6 +2211,11 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       "FREESWITCH_VERTO_URL",
     ]);
     assert.equal(payload.targetModes[3]?.caeHandoffCommand, "npm run cae:assert:handoff");
+    assert.equal(payload.targetModes[3]?.detail, "Strict local SIP/Verto proof path for the reference stack.");
+    assert.equal(
+      payload.targetModes[4]?.detail,
+      "Production-like PSTN ingress remains gated on SignalWire env, provider-owned source ACL proof, and public SIP reachability before manual call validation.",
+    );
     assert.equal(payload.readinessRoutes.reliabilityLab, "/api/reliability");
     assert.equal(payload.readinessRoutes.pipecatMediaEngine, "/api/pipecat-media-engine/readiness");
     assert.deepEqual(
