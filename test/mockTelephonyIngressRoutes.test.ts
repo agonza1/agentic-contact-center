@@ -2064,6 +2064,8 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         mode: string;
         status: string;
         blockers: string[];
+        requiredEndpointEnvVars: string[];
+        optionalEndpointEnvVars: string[];
         requiredComponents: string[];
         startCommand: string;
         validationCommand: string;
@@ -2151,6 +2153,14 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         ["signalwire_pstn", "blocked", "npm run docker:sip-verto", "npm run signalwire:freeswitch:readiness", "npm run signalwire:freeswitch:readiness -- --render", "/api/pipecat-media-engine/readiness"],
       ],
     );
+    assert.deepEqual(payload.targetModes[0]?.requiredEndpointEnvVars, []);
+    assert.deepEqual(payload.targetModes[0]?.optionalEndpointEnvVars, []);
+    assert.deepEqual(payload.targetModes[1]?.requiredEndpointEnvVars, [
+      "RTC_ASR_BASE_URL",
+      "KOKORO_BASE_URL",
+      "BROWSER_WEBRTC_BRIDGE_URL",
+    ]);
+    assert.deepEqual(payload.targetModes[1]?.optionalEndpointEnvVars, []);
     assert.equal(payload.selectedTargetMode.mode, "fixture");
     assert.equal(payload.selectedTargetMode.requestedVia, "default");
     assert.equal(payload.selectedTargetMode.validationCommand, "npm run proof");
@@ -2180,9 +2190,21 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       "ConversationAgentEvals",
       "ASSERT viewer",
     ]);
+    assert.deepEqual(payload.targetModes[2]?.requiredEndpointEnvVars, ["CAE_API_URL", "CAE_WEB_URL"]);
+    assert.deepEqual(payload.targetModes[2]?.optionalEndpointEnvVars, [
+      "ASSERT_VIEWER_URL",
+      "RTC_ASR_BASE_URL",
+      "KOKORO_BASE_URL",
+      "BROWSER_WEBRTC_BRIDGE_URL",
+    ]);
     assert.deepEqual(payload.targetModes[2]?.blockers, [
       "ConversationAgentEvals API endpoint is not configured (CAE_API_URL).",
       "ConversationAgentEvals web endpoint is not configured (CAE_WEB_URL).",
+    ]);
+    assert.deepEqual(payload.targetModes[3]?.requiredEndpointEnvVars, [
+      "RTC_ASR_BASE_URL",
+      "KOKORO_BASE_URL",
+      "FREESWITCH_VERTO_URL",
     ]);
     assert.equal(payload.targetModes[3]?.caeHandoffCommand, "npm run cae:assert:handoff");
     assert.equal(payload.readinessRoutes.reliabilityLab, "/api/reliability");
