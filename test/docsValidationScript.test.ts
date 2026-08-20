@@ -21,6 +21,7 @@ test("documentation validation catches Markdown drift against documented package
   assert.match(result.stdout, /ACC URL routes/);
   assert.match(result.stdout, /reliability readiness routes/);
   assert.match(result.stdout, /reliability target mode contracts/);
+  assert.match(result.stdout, /reliability run profile contracts/);
   assert.match(result.stdout, /README diagrams/);
   assert.match(result.stdout, /documented ports/);
   assert.match(result.stdout, /canonical ecosystem terms/);
