@@ -268,6 +268,44 @@ const validationProvenance = {
   requiredRunFields: provenanceContract.requiredRunFields,
 };
 
+const evidenceInventory = [
+  {
+    id: "controlled_candidate_proof",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    artifact: "artifacts/demo-proof-latest.json",
+    producerCommand: "npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json",
+    validates: ["controlled_candidate_scorecard_passes", "final_disposition_recorded"],
+  },
+  {
+    id: "cae_assert_request",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    artifact: "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
+    producerCommand: "npm run cae:assert:handoff",
+    validates: ["assert_run_create_request", "selected_target_mode_provenance"],
+  },
+  {
+    id: "browser_live_media_manifest",
+    requiredFor: ["browser_webrtc"],
+    artifact: "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+    producerCommand: "npm run browser-webrtc:live-proof",
+    validates: ["browser_webrtc_bridge_ready", "rtc_asr_final_transcript", "caller_audible_tts"],
+  },
+  {
+    id: "sip_verto_live_manifest",
+    requiredFor: ["sip_verto"],
+    artifact: "artifacts/verto-sip-live-proof/manifest.json",
+    producerCommand: "npm run pipecat:verto:live-proof",
+    validates: ["freeswitch_verto_ready", "shared_pipeline_ready", "caller_playback_confirmed"],
+  },
+  {
+    id: "signalwire_readiness",
+    requiredFor: ["signalwire_pstn"],
+    artifact: "artifacts/signalwire-freeswitch-readiness/readiness.json",
+    producerCommand: "npm run signalwire:freeswitch:readiness -- --render",
+    validates: ["signalwire_env_configured", "freeswitch_gateway_rendered", "public_sip_reachability_checked"],
+  },
+];
+
 const handoffChecklist = [
   {
     id: "select_target_mode",
@@ -739,6 +777,7 @@ const report = {
         },
       },
   provenanceContract,
+  evidenceInventory,
   handoffChecklist,
   targetModes,
   runProfiles,

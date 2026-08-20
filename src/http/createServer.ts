@@ -1068,6 +1068,44 @@ const reliabilityValidationProvenance = {
   requiredRunFields: reliabilityProvenanceContract.requiredRunFields,
 };
 
+const reliabilityEvidenceInventory = [
+  {
+    id: "controlled_candidate_proof",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    artifact: "artifacts/demo-proof-latest.json",
+    producerCommand: "npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json",
+    validates: ["controlled_candidate_scorecard_passes", "final_disposition_recorded"],
+  },
+  {
+    id: "cae_assert_request",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    artifact: "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
+    producerCommand: "npm run cae:assert:handoff",
+    validates: ["assert_run_create_request", "selected_target_mode_provenance"],
+  },
+  {
+    id: "browser_live_media_manifest",
+    requiredFor: ["browser_webrtc"],
+    artifact: "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+    producerCommand: "npm run browser-webrtc:live-proof",
+    validates: ["browser_webrtc_bridge_ready", "rtc_asr_final_transcript", "caller_audible_tts"],
+  },
+  {
+    id: "sip_verto_live_manifest",
+    requiredFor: ["sip_verto"],
+    artifact: "artifacts/verto-sip-live-proof/manifest.json",
+    producerCommand: "npm run pipecat:verto:live-proof",
+    validates: ["freeswitch_verto_ready", "shared_pipeline_ready", "caller_playback_confirmed"],
+  },
+  {
+    id: "signalwire_readiness",
+    requiredFor: ["signalwire_pstn"],
+    artifact: "artifacts/signalwire-freeswitch-readiness/readiness.json",
+    producerCommand: "npm run signalwire:freeswitch:readiness -- --render",
+    validates: ["signalwire_env_configured", "freeswitch_gateway_rendered", "public_sip_reachability_checked"],
+  },
+];
+
 const reliabilityHandoffChecklist = [
   {
     id: "select_target_mode",
@@ -1624,6 +1662,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
       signals: goldenReliabilityComparison,
     },
     provenanceContract: reliabilityProvenanceContract,
+    evidenceInventory: reliabilityEvidenceInventory,
     handoffChecklist: reliabilityHandoffChecklist,
     componentReadiness,
     readinessSummary: {
@@ -1648,6 +1687,9 @@ function buildReliabilityGuideHtml(): string {
       const evidence = item.requiredEvidence.map((entry) => `<code>${escapeReliabilityHtml(entry)}</code>`).join(" ");
       return `<li><span class="step">${index + 1}</span><div><strong>${escapeReliabilityHtml(item.id.replace(/_/g, " "))}</strong><div class="meta"><code>${escapeReliabilityHtml(item.command)}</code></div><div class="meta">${evidence}</div><div class="meta">${escapeReliabilityHtml(item.passSignal)}</div></div></li>`;
     })
+    .join("");
+  const evidenceInventory = reliabilityEvidenceInventory
+    .map((item) => `<tr><td>${escapeReliabilityHtml(item.id.replace(/_/g, " "))}</td><td><code>${escapeReliabilityHtml(item.artifact)}</code></td><td><code>${escapeReliabilityHtml(item.producerCommand)}</code></td><td>${escapeReliabilityHtml(item.requiredFor.join(", "))}</td></tr>`)
     .join("");
 
   const readinessCards = buildReliabilityComponentReadiness()
@@ -1731,6 +1773,13 @@ function buildReliabilityGuideHtml(): string {
       <ol class="workflow">
         ${handoffChecklist}
       </ol>
+    </section>
+    <section class="band" aria-labelledby="evidence-title">
+      <h2 id="evidence-title">Evidence Inventory</h2>
+      <table class="mode-table">
+        <thead><tr><th>Evidence</th><th>Artifact</th><th>Producer</th><th>Modes</th></tr></thead>
+        <tbody>${evidenceInventory}</tbody>
+      </table>
     </section>
     <section class="band" aria-labelledby="modes-title">
       <h2 id="modes-title">Target Modes</h2>

@@ -2059,7 +2059,9 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.match(html.body, /npm run reliability:lab/);
     assert.match(html.body, /npm run cae:assert:handoff/);
     assert.match(html.body, /CAE Handoff Checklist/);
+    assert.match(html.body, /Evidence Inventory/);
     assert.match(html.body, /capture selected media proof/);
+    assert.match(html.body, /browser live media manifest/);
     assert.match(html.body, /npm run docker:browser-webrtc/);
     assert.match(html.body, /npm run docker:reliability-lab/);
     assert.match(html.body, /npm run pipecat:verto:live-proof/);
@@ -2140,6 +2142,13 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         requiredRunFields: string[];
         evidenceArtifacts: string[];
       };
+      evidenceInventory: Array<{
+        id: string;
+        requiredFor: string[];
+        artifact: string;
+        producerCommand: string;
+        validates: string[];
+      }>;
       handoffChecklist: Array<{
         id: string;
         requiredFor: string[];
@@ -2370,6 +2379,34 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(payload.provenanceContract.manifestPath, "stack/versions.env");
     assert.equal(payload.provenanceContract.versionSource, "repositoryContracts.stackManifest.values");
     assert.ok(payload.provenanceContract.evidenceArtifacts.includes("artifacts/demo-proof-latest.json"));
+    assert.deepEqual(
+      payload.evidenceInventory.map((item) => [item.id, item.artifact, item.producerCommand]),
+      [
+        [
+          "controlled_candidate_proof",
+          "artifacts/demo-proof-latest.json",
+          "npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json",
+        ],
+        [
+          "cae_assert_request",
+          "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
+          "npm run cae:assert:handoff",
+        ],
+        [
+          "browser_live_media_manifest",
+          "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+          "npm run browser-webrtc:live-proof",
+        ],
+        ["sip_verto_live_manifest", "artifacts/verto-sip-live-proof/manifest.json", "npm run pipecat:verto:live-proof"],
+        [
+          "signalwire_readiness",
+          "artifacts/signalwire-freeswitch-readiness/readiness.json",
+          "npm run signalwire:freeswitch:readiness -- --render",
+        ],
+      ],
+    );
+    assert.deepEqual(payload.evidenceInventory[2]?.requiredFor, ["browser_webrtc"]);
+    assert.ok(payload.evidenceInventory[3]?.validates.includes("caller_playback_confirmed"));
     assert.deepEqual(
       payload.handoffChecklist.map((item) => [item.id, item.command]),
       [
