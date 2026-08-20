@@ -299,7 +299,12 @@ test("reliability lab status blocks invalid target mode selection", async () => 
   assert.equal(payload.selectedTargetMode.mode, "unknown_mode");
   assert.equal(payload.selectedTargetMode.status, "blocked");
   assert.ok(payload.selectedTargetMode.validModes.includes("fixture"));
-  assert.equal(payload.selectedTargetMode.nextAction, undefined);
+  assert.deepEqual(payload.selectedTargetMode.nextAction, {
+    step: "select_valid_target_mode",
+    command: "Set ACC_RELIABILITY_TARGET_MODE to one of targetModes[].mode",
+    evidence: "/api/reliability",
+    detail: "The requested target mode is unknown, so no validation or evidence command can run.",
+  });
   assert.ok(payload.blockers.some((blocker: string) => blocker.includes("ACC_RELIABILITY_TARGET_MODE must be one of")));
 });
 
