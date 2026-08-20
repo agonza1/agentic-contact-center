@@ -272,6 +272,22 @@ test("reliability lab status reports explicit blockers without starting sidecars
     "KOKORO_BASE_URL",
     "BROWSER_WEBRTC_BRIDGE_URL",
   ]);
+  assert.deepEqual(
+    payload.targetModes[2].endpointStatus.map((endpoint: { key: string; status: string; configured: boolean; ready: boolean }) => [
+      endpoint.key,
+      endpoint.status,
+      endpoint.configured,
+      endpoint.ready,
+    ]),
+    [
+      ["caeApi", "missing", false, false],
+      ["caeWeb", "missing", false, false],
+      ["assertViewer", "missing", false, false],
+      ["rtcAsr", "missing", false, false],
+      ["kokoro", "missing", false, false],
+      ["browserWebRtcBridge", "missing", false, false],
+    ],
+  );
   assert.deepEqual(payload.targetModes[3].requiredEndpointEnvVars, [
     "RTC_ASR_BASE_URL",
     "KOKORO_BASE_URL",
