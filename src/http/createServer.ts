@@ -1672,6 +1672,7 @@ function buildReliabilityGuideHtml(): string {
         <tbody>
           <tr><td>Fixture</td><td><code>npm run proof</code></td><td><code>npm run proof</code></td><td><code>npm run proof:bundle</code></td><td><a href="/health">health</a></td></tr>
           <tr><td>Browser WebRTC</td><td><code>npm run docker:browser-webrtc</code></td><td><code>npm run browser-webrtc:check</code></td><td><code>npm run browser-webrtc:live-proof</code></td><td><a href="/api/browser-webrtc/readiness">readiness</a></td></tr>
+          <tr><td>Reliability lab</td><td><code>npm run docker:reliability-lab</code></td><td><code>npm run reliability:lab</code></td><td><code>npm run proof:bundle</code></td><td><a href="/api/reliability">reliability</a></td></tr>
           <tr><td>SIP/Verto</td><td><code>npm run docker:sip-verto</code></td><td><code>npm run pipecat:verto:check</code></td><td><code>npm run pipecat:verto:live-proof</code></td><td><a href="/api/pipecat-media-engine/readiness">media engine</a></td></tr>
           <tr><td>SignalWire PSTN</td><td><code>npm run docker:sip-verto</code></td><td><code>npm run signalwire:freeswitch:readiness</code></td><td><code>npm run signalwire:freeswitch:readiness -- --render</code></td><td><a href="/api/pipecat-media-engine/readiness">media engine</a></td></tr>
         </tbody>

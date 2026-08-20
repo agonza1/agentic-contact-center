@@ -2047,6 +2047,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.match(html.body, /CAE Handoff Checklist/);
     assert.match(html.body, /capture selected media proof/);
     assert.match(html.body, /npm run docker:browser-webrtc/);
+    assert.match(html.body, /npm run docker:reliability-lab/);
     assert.match(html.body, /npm run pipecat:verto:live-proof/);
     assert.match(html.body, /href="\/api\/reliability"/);
     assert.match(html.body, /href="\/api\/browser-webrtc\/readiness"/);
