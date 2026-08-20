@@ -2104,6 +2104,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         requestedVia: string;
         validationCommand?: string;
         evidenceCommand?: string;
+        handoffChecklist?: Array<{ id: string }>;
         nextAction?: {
           step: string;
           command: string;
@@ -2223,6 +2224,10 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(payload.selectedTargetMode.mode, "fixture");
     assert.equal(payload.selectedTargetMode.requestedVia, "default");
     assert.equal(payload.selectedTargetMode.validationCommand, "npm run proof");
+    assert.deepEqual(
+      payload.selectedTargetMode.handoffChecklist?.map((step) => step.id),
+      ["select_target_mode", "capture_controlled_candidate", "generate_cae_assert_request"],
+    );
     assert.deepEqual(payload.selectedTargetMode.nextAction, {
       step: "run_controlled_candidate",
       command: "npm run proof",
@@ -2499,6 +2504,7 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
           requestedVia: string;
           validationCommand?: string;
           evidenceCommand?: string;
+          handoffChecklist?: Array<{ id: string }>;
           nextAction?: {
             step: string;
             command: string;
@@ -2512,6 +2518,10 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
       assert.equal(payload.selectedTargetMode.requestedVia, "ACC_RELIABILITY_TARGET_MODE");
       assert.equal(payload.selectedTargetMode.validationCommand, "npm run pipecat:verto:check");
       assert.equal(payload.selectedTargetMode.evidenceCommand, "npm run pipecat:verto:live-proof");
+      assert.deepEqual(
+        payload.selectedTargetMode.handoffChecklist?.map((step) => step.id),
+        ["select_target_mode", "capture_controlled_candidate", "capture_selected_media_proof", "generate_cae_assert_request"],
+      );
       assert.deepEqual(payload.selectedTargetMode.nextAction, {
         step: "configure_sip_verto_endpoints",
         command: "npm run docker:sip-verto",
