@@ -135,6 +135,7 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.deepEqual(payload.readinessSummary, {
     selectedTargetMode: "fixture",
     targetModesByStatus: { ready: 1, blocked: 4 },
+    runProfilesByStatus: { ready: 1, blocked: 2 },
     componentsByStatus: { ready: 1, not_configured: 1, not_required: 5 },
     configuredOptionalEndpoints: 0,
     blockers: 1,

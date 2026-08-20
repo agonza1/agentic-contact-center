@@ -73,6 +73,28 @@ function localMarkdownLinks(sourcePath, text) {
   }));
 }
 
+function markdownTableRows(section) {
+  return section
+    .split("\n")
+    .filter((line) => line.startsWith("|") && line.endsWith("|"))
+    .map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()))
+    .filter((cells) => cells.length > 0 && !cells.every((cell) => /^:?-{3,}:?$/.test(cell)));
+}
+
+function npmCommands(markdown) {
+  return [...markdown.matchAll(/`([^`]*\bnpm\s+(?:run\s+)?[A-Za-z0-9:_-]+[^`]*)`/g)].flatMap((match) =>
+    match[1]
+      .split("&&")
+      .map((command) => command.trim())
+      .filter((command) => command.startsWith("npm ")),
+  );
+}
+
+function npmScriptName(command) {
+  const match = command.match(/^npm\s+(?:run\s+)?([A-Za-z0-9:_-]+)/);
+  return match?.[1] ?? null;
+}
+
 const readme = readText("README.md");
 const packageJson = JSON.parse(readText("package.json"));
 const compose = readText("docker-compose.yml");
@@ -82,12 +104,41 @@ const reliabilityLabStatusScript = readText("scripts/reliability-lab-status.mjs"
 const stackManifest = readText("stack/versions.env");
 const reliabilityLabDoc = readText("docs/reliability-lab.md");
 const scripts = packageJson.scripts ?? {};
+const builtinNpmCommands = new Set(["install"]);
 
 for (const sourcePath of markdownSources()) {
   const source = readText(sourcePath);
   for (const scriptName of unique([...source.matchAll(/\bnpm run ([A-Za-z0-9:_-]+)/g)].map((match) => match[1]))) {
     if (!scripts[scriptName]) {
       fail(`${sourcePath} documents missing npm script: ${scriptName}`);
+    }
+  }
+}
+
+const runnableModesSection = readme.match(/## What can I run\?\n\n([\s\S]*?)(?:\n## |\n# |$)/)?.[1] ?? "";
+const runnableModeRows = markdownTableRows(runnableModesSection);
+const runnableModeHeader = runnableModeRows[0] ?? [];
+const runnableModeCommandIndex = runnableModeHeader.indexOf("Command");
+const documentedRunnableModeRows = runnableModeRows.slice(1);
+if (runnableModeCommandIndex === -1) {
+  fail("README What can I run? table is missing a Command column");
+}
+for (const row of documentedRunnableModeRows) {
+  const mode = row[0] ?? "[unknown mode]";
+  const commandCell = runnableModeCommandIndex === -1 ? "" : row[runnableModeCommandIndex] ?? "";
+  const commands = npmCommands(commandCell);
+  if (commands.length === 0) {
+    fail(`README What can I run? mode "${mode}" has no npm command`);
+    continue;
+  }
+  for (const command of commands) {
+    const scriptName = npmScriptName(command);
+    if (!scriptName) {
+      fail(`README What can I run? mode "${mode}" has an unparsable npm command: ${command}`);
+      continue;
+    }
+    if (!builtinNpmCommands.has(scriptName) && !scripts[scriptName]) {
+      fail(`README What can I run? mode "${mode}" documents missing npm entry point: ${command}`);
     }
   }
 }
@@ -322,5 +373,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms.`,
 );
