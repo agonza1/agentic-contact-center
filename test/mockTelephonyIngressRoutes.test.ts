@@ -7,6 +7,20 @@ import { loadPocConfig } from "../src/config/loadPocConfig";
 import { InMemoryTelephonyIngress } from "../src/core/inMemoryTelephonyIngress";
 import { buildHttpServer } from "../src/http/createServer";
 
+const expectedValidationProvenance = {
+  manifestPath: "stack/versions.env",
+  requiredRunFields: [
+    "runtimeMode",
+    "targetMode",
+    "candidateProfile",
+    "promptVersion",
+    "model",
+    "seed",
+    "componentVersions",
+    "evidenceArtifacts",
+  ],
+};
+
 interface SnapshotPayload {
   session: {
     callId: string;
@@ -2086,6 +2100,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           evidenceArtifact: string;
           successCriteria: string[];
           liveMediaRequired: boolean;
+          provenance: typeof expectedValidationProvenance;
         };
       }>;
       runProfiles: Array<{
@@ -2258,6 +2273,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       evidenceArtifact: "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
       successCriteria: ["pipecat_browser_bridge_ready", "rtc_asr_ready", "tts_ready"],
       liveMediaRequired: true,
+      provenance: expectedValidationProvenance,
     });
     assert.deepEqual(payload.targetModes[2]?.requiredComponents, [
       "ACC app",

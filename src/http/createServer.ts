@@ -1063,6 +1063,11 @@ const reliabilityProvenanceContract = {
   detail: "Every CAE/ASSERT handoff should carry enough runtime, model, seed, profile, and component-version context to reproduce the selected reliability-lab run.",
 };
 
+const reliabilityValidationProvenance = {
+  manifestPath: reliabilityProvenanceContract.manifestPath,
+  requiredRunFields: reliabilityProvenanceContract.requiredRunFields,
+};
+
 const reliabilityHandoffChecklist = [
   {
     id: "select_target_mode",
@@ -1237,6 +1242,7 @@ function buildReliabilityTargetModes() {
         evidenceArtifact: "artifacts/demo-proof-latest.json",
         successCriteria: ["controlled_candidate_scorecard_passes", "proof_bundle_written"],
         liveMediaRequired: false,
+        provenance: reliabilityValidationProvenance,
       },
       detail: "Sidecar-free cancellation-rescue proof for the controlled candidate.",
     },
@@ -1264,6 +1270,7 @@ function buildReliabilityTargetModes() {
         evidenceArtifact: "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
         successCriteria: ["pipecat_browser_bridge_ready", "rtc_asr_ready", "tts_ready"],
         liveMediaRequired: true,
+        provenance: reliabilityValidationProvenance,
       },
       detail: "Live browser media path for CAE/ASSERT evidence requests.",
     },
@@ -1291,6 +1298,7 @@ function buildReliabilityTargetModes() {
         evidenceArtifact: "artifacts/agentic-call-center-demo/conversation-agent-evals-assert-request.json",
         successCriteria: ["cae_api_reachable", "cae_web_reachable", "selected_media_mode_ready_or_configured"],
         liveMediaRequired: false,
+        provenance: reliabilityValidationProvenance,
       },
       detail: "Local ACC media/evidence stack with external CAE endpoints and local ASSERT viewer wiring.",
     },
@@ -1318,6 +1326,7 @@ function buildReliabilityTargetModes() {
         evidenceArtifact: "artifacts/verto-sip-live-proof/manifest.json",
         successCriteria: ["freeswitch_verto_ready", "pipecat_verto_bridge_ready", "shared_pipeline_ready"],
         liveMediaRequired: true,
+        provenance: reliabilityValidationProvenance,
       },
       detail: "Strict local SIP/Verto proof path for the reference stack.",
     },
@@ -1348,6 +1357,7 @@ function buildReliabilityTargetModes() {
         evidenceArtifact: "artifacts/signalwire-freeswitch-readiness/readiness.json",
         successCriteria: ["signalwire_env_configured", "freeswitch_gateway_rendered", "public_sip_reachability_checked"],
         liveMediaRequired: true,
+        provenance: reliabilityValidationProvenance,
       },
       detail: "Production-like PSTN ingress remains gated on SignalWire env, provider-owned source ACL proof, and public SIP reachability before manual call validation.",
     },

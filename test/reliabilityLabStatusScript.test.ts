@@ -26,6 +26,19 @@ const expectedEndpointEnvVars = [
   "BROWSER_WEBRTC_BRIDGE_URL",
   "FREESWITCH_VERTO_URL",
 ];
+const expectedValidationProvenance = {
+  manifestPath: "stack/versions.env",
+  requiredRunFields: [
+    "runtimeMode",
+    "targetMode",
+    "candidateProfile",
+    "promptVersion",
+    "model",
+    "seed",
+    "componentVersions",
+    "evidenceArtifacts",
+  ],
+};
 
 function withClearedLiveEndpointEnv() {
   const env = { ...process.env };
@@ -203,12 +216,14 @@ test("reliability lab status reports explicit blockers without starting sidecars
     evidenceArtifact: "artifacts/demo-proof-latest.json",
     successCriteria: ["controlled_candidate_scorecard_passes", "proof_bundle_written"],
     liveMediaRequired: false,
+    provenance: expectedValidationProvenance,
   });
   assert.deepEqual(payload.targetModes[1].validationGate, {
     fastestCheck: "npm run browser-webrtc:check",
     evidenceArtifact: "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
     successCriteria: ["pipecat_browser_bridge_ready", "rtc_asr_ready", "tts_ready"],
     liveMediaRequired: true,
+    provenance: expectedValidationProvenance,
   });
   assert.deepEqual(payload.targetModes[2].requiredComponents, [
     "ACC app",
@@ -263,6 +278,7 @@ test("reliability lab status reports explicit blockers without starting sidecars
       evidenceArtifact: "artifacts/agentic-call-center-demo/conversation-agent-evals-assert-request.json",
       successCriteria: ["cae_api_reachable", "cae_web_reachable", "selected_media_mode_ready_or_configured"],
       liveMediaRequired: false,
+      provenance: expectedValidationProvenance,
     },
   );
 });
