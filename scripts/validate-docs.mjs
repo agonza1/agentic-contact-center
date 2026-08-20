@@ -56,6 +56,50 @@ function extractReliabilityTargetModes(source, sourceLabel) {
   return modes;
 }
 
+function stringArrayField(block, fieldName) {
+  const match = block.match(new RegExp(`${fieldName}:\\s*\\[([\\s\\S]*?)\\]`));
+  if (!match) return null;
+  return unique([...match[1].matchAll(/"([^"]+)"/g)].map((item) => item[1]));
+}
+
+function extractReliabilityRunProfiles(source, sourceLabel) {
+  const profiles = new Map();
+  const functionStart = source.indexOf("function buildReliabilityRunProfiles()");
+  const constStart = source.indexOf("const runProfiles = [");
+  const startIndex = functionStart === -1 ? constStart : functionStart;
+  if (startIndex === -1) return profiles;
+
+  const functionEnd = source.indexOf("\nfunction ", startIndex + 1);
+  const constEnd = source.indexOf("\n];", startIndex + 1);
+  const endIndex = functionStart === -1 ? (constEnd === -1 ? source.length : constEnd) : (functionEnd === -1 ? source.length : functionEnd);
+  const profileSource = source.slice(startIndex, endIndex);
+  const matches = [...profileSource.matchAll(/\n\s*\{\n\s*id:\s*"([^"]+)",/g)];
+  for (let index = 0; index < matches.length; index += 1) {
+    const id = matches[index][1];
+    const start = matches[index].index ?? 0;
+    const end = matches[index + 1]?.index ?? profileSource.length;
+    const block = profileSource.slice(start, end);
+    const field = (fieldName) => block.match(new RegExp(`${fieldName}:\\s*"([^"]+)"`))?.[1] ?? null;
+    const contract = {
+      id,
+      targetModes: stringArrayField(block, "targetModes"),
+      envVars: stringArrayField(block, "envVars"),
+      startCommand: field("startCommand"),
+      validationCommand: field("validationCommand"),
+      handoffCommand: field("handoffCommand"),
+      evidence: stringArrayField(block, "evidence"),
+    };
+    if (Object.values(contract).some((value) => value === null)) {
+      continue;
+    }
+    if (profiles.has(id)) {
+      fail(`${sourceLabel} declares duplicate reliability run profile: ${id}`);
+    }
+    profiles.set(id, contract);
+  }
+  return profiles;
+}
+
 function markdownSources() {
   const docsDir = path.join(repoRoot, "docs");
   const docs = existsSync(docsDir)
@@ -274,6 +318,32 @@ for (const [mode, apiContract] of apiTargetModes) {
   }
 }
 
+const apiRunProfiles = extractReliabilityRunProfiles(server, "src/http/createServer.ts");
+const cliRunProfiles = extractReliabilityRunProfiles(reliabilityLabStatusScript, "scripts/reliability-lab-status.mjs");
+if (apiRunProfiles.size === 0) {
+  fail("src/http/createServer.ts exposes no reliability run profile contracts");
+}
+if (cliRunProfiles.size === 0) {
+  fail("scripts/reliability-lab-status.mjs exposes no reliability run profile contracts");
+}
+if (!sameValues([...apiRunProfiles.keys()].sort(), [...cliRunProfiles.keys()].sort())) {
+  fail("reliability run profile names differ between API and status CLI");
+}
+for (const [profile, apiContract] of apiRunProfiles) {
+  const cliContract = cliRunProfiles.get(profile);
+  if (!cliContract) continue;
+  for (const fieldName of Object.keys(apiContract).filter((field) => field !== "id")) {
+    const apiValue = apiContract[fieldName];
+    const cliValue = cliContract[fieldName];
+    const matches = Array.isArray(apiValue) && Array.isArray(cliValue)
+      ? sameValues(apiValue, cliValue)
+      : apiValue === cliValue;
+    if (!matches) {
+      fail(`reliability run profile ${profile} ${fieldName} differs between API and status CLI`);
+    }
+  }
+}
+
 const mermaidDiagramCount = [...readme.matchAll(/```mermaid/g)].length;
 if (mermaidDiagramCount > 3) {
   fail(`README contains ${mermaidDiagramCount} primary Mermaid diagrams; #307 allows at most 3`);
@@ -373,5 +443,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${apiRunProfiles.size} reliability run profile contracts, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms.`,
 );
