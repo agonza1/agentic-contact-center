@@ -265,7 +265,9 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.repositoryContracts.stackManifest.path, "stack/versions.env");
   assert.equal(payload.repositoryContracts.stackManifest.exists, true);
   assert.equal(payload.repositoryContracts.stackManifest.values.ACC_APP_URL, "http://127.0.0.1:8026");
+  assert.equal(payload.repositoryContracts.stackManifest.values.TOOLHIVE_VERSION, "v0.40.0");
   assert.ok(payload.repositoryContracts.requiredStackManifestKeys.includes("CAE_API_URL"));
+  assert.ok(payload.repositoryContracts.requiredStackManifestKeys.includes("TOOLHIVE_VERSION"));
   assert.ok(payload.repositoryContracts.reliabilityDocExists);
   assert.equal(
     payload.componentReadiness.find((component: { component: string }) => component.component === "Pipecat browser bridge").envVar,

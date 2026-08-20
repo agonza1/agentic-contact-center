@@ -2340,8 +2340,10 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(payload.repositoryContracts.stackManifest.path, "stack/versions.env");
     assert.equal(payload.repositoryContracts.stackManifest.exists, true);
     assert.equal(payload.repositoryContracts.stackManifest.values.ACC_APP_URL, "http://127.0.0.1:8026");
+    assert.equal(payload.repositoryContracts.stackManifest.values.TOOLHIVE_VERSION, "v0.40.0");
     assert.deepEqual(payload.repositoryContracts.stackManifest.missingKeys, []);
     assert.ok(payload.repositoryContracts.requiredStackManifestKeys.includes("CAE_API_URL"));
+    assert.ok(payload.repositoryContracts.requiredStackManifestKeys.includes("TOOLHIVE_VERSION"));
     assert.equal(payload.comparisonContract.baselineProfile, "unsafe-demo-fixture");
     assert.equal(payload.comparisonContract.candidateProfile, "controlled-cancellation-rescue");
     assert.deepEqual(
