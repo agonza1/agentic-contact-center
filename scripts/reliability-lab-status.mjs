@@ -715,6 +715,12 @@ const report = {
         status: "blocked",
         requestedVia: "ACC_RELIABILITY_TARGET_MODE",
         validModes: targetModes.map((mode) => mode.mode),
+        nextAction: {
+          step: "select_valid_target_mode",
+          command: "Set ACC_RELIABILITY_TARGET_MODE to one of targetModes[].mode",
+          evidence: "/api/reliability",
+          detail: "The requested target mode is unknown, so no validation or evidence command can run.",
+        },
       },
   provenanceContract,
   handoffChecklist,
