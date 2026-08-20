@@ -44,6 +44,7 @@ The command prints a JSON status report and does not start long-running services
 - the current Phase 2 blockers.
 - the endpoint environment contract in `repositoryContracts.optionalEndpointEnvVars`.
 - the CAE/ASSERT handoff checklist in `handoffChecklist`, including selected-mode, controlled-candidate, live-media, and request-generation evidence gates.
+- the concrete artifact inventory in `evidenceInventory`, mapping each fixture, CAE handoff, browser, SIP/Verto, and SignalWire proof artifact to its producer command and validation signals.
 - the lab run-profile contract in `runProfiles`, covering local fixture, connected CAE, and live-media lab runs.
 
 Environment variables recognized by the status command:

@@ -103,6 +103,38 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.provenanceContract.manifestPath, "stack/versions.env");
   assert.ok(payload.provenanceContract.evidenceArtifacts.includes("artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json"));
   assert.deepEqual(
+    payload.evidenceInventory.map((item: { id: string; artifact: string; producerCommand: string }) => [
+      item.id,
+      item.artifact,
+      item.producerCommand,
+    ]),
+    [
+      [
+        "controlled_candidate_proof",
+        "artifacts/demo-proof-latest.json",
+        "npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json",
+      ],
+      [
+        "cae_assert_request",
+        "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
+        "npm run cae:assert:handoff",
+      ],
+      [
+        "browser_live_media_manifest",
+        "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+        "npm run browser-webrtc:live-proof",
+      ],
+      ["sip_verto_live_manifest", "artifacts/verto-sip-live-proof/manifest.json", "npm run pipecat:verto:live-proof"],
+      [
+        "signalwire_readiness",
+        "artifacts/signalwire-freeswitch-readiness/readiness.json",
+        "npm run signalwire:freeswitch:readiness -- --render",
+      ],
+    ],
+  );
+  assert.deepEqual(payload.evidenceInventory[2].requiredFor, ["browser_webrtc"]);
+  assert.ok(payload.evidenceInventory[3].validates.includes("caller_playback_confirmed"));
+  assert.deepEqual(
     payload.handoffChecklist.map((step: { id: string; command: string }) => [step.id, step.command]),
     [
       ["select_target_mode", "npm run reliability:lab"],
