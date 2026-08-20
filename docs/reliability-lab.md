@@ -61,7 +61,7 @@ Missing optional endpoints are reported as `not_configured` or `blocked`, not si
 Configured endpoints are probed with a short timeout and reported as `ready` or `unreachable`; set `ACC_RELIABILITY_LAB_PROBE_TIMEOUT_MS` to tune the bounded probe during local diagnostics.
 `ACC_RELIABILITY_TARGET_MODE` selects the machine-readable `selectedTargetMode` in both `npm run reliability:lab` and `/api/reliability`; when unset, the safe sidecar-free `fixture` mode is selected.
 
-`stack/versions.env` is the pinned local reference manifest. It names the ACC, rtc-asr, Kokoro, FreeSWITCH, browser bridge, CAE, and ASSERT image/URL coordinates that Phase 2 should either start through Compose or connect to explicitly.
+`stack/versions.env` is the pinned local reference manifest. It names the ACC, rtc-asr, Kokoro, FreeSWITCH, browser bridge, ToolHive gateway, CAE, and ASSERT image/URL or version coordinates that Phase 2 should either start through Compose or connect to explicitly.
 
 ## Phase 2 reliability-lab plan
 
