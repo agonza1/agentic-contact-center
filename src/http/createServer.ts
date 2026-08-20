@@ -1098,6 +1098,54 @@ const reliabilityHandoffChecklist = [
   },
 ];
 
+function buildReliabilityRunProfiles() {
+  const caeConfigured = Boolean(configuredEnvValue("CAE_API_URL") && configuredEnvValue("CAE_WEB_URL"));
+  const browserLiveConfigured = Boolean(
+    configuredEnvValue("RTC_ASR_BASE_URL") &&
+    configuredEnvValue("KOKORO_BASE_URL") &&
+    configuredEnvValue("BROWSER_WEBRTC_BRIDGE_URL"),
+  );
+
+  return [
+    {
+      id: "local_fixture",
+      status: "ready",
+      targetModes: ["fixture"],
+      envVars: ["ACC_RELIABILITY_TARGET_MODE"],
+      startCommand: "npm run proof",
+      validationCommand: "npm run proof",
+      handoffCommand: "npm run cae:assert:handoff",
+      evidence: ["artifacts/demo-proof-latest.json"],
+      detail: "Run the deterministic cancellation-rescue proof without external services.",
+    },
+    {
+      id: "connected_cae",
+      status: caeConfigured ? "configured" : "blocked",
+      targetModes: ["fixture", "reliability_lab"],
+      envVars: ["CAE_API_URL", "CAE_WEB_URL"],
+      startCommand: "Set CAE_API_URL and CAE_WEB_URL",
+      validationCommand: "npm run reliability:lab",
+      handoffCommand: "npm run cae:assert:handoff",
+      evidence: ["artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json"],
+      detail: "Connect ACC proof artifacts to external ConversationAgentEvals while keeping the local fixture runnable.",
+    },
+    {
+      id: "live_media_lab",
+      status: caeConfigured && browserLiveConfigured ? "configured" : "blocked",
+      targetModes: ["browser_webrtc", "sip_verto", "signalwire_pstn"],
+      envVars: ["CAE_API_URL", "CAE_WEB_URL", "RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL", "FREESWITCH_VERTO_URL"],
+      startCommand: "npm run docker:reliability-lab",
+      validationCommand: "npm run reliability:lab",
+      handoffCommand: "npm run cae:assert:handoff",
+      evidence: [
+        "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+        "artifacts/verto-sip-live-proof/manifest.json",
+      ],
+      detail: "Run CAE-connected live media evidence paths after the selected rtc-asr, TTS, and transport endpoints are configured.",
+    },
+  ];
+}
+
 function buildReliabilityTargetModes() {
   const caeConfigured = Boolean(configuredEnvValue("CAE_API_URL") && configuredEnvValue("CAE_WEB_URL"));
   const browserLiveConfigured = Boolean(
@@ -1477,6 +1525,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
   const componentReadiness = buildReliabilityComponentReadiness();
   const stackManifest = readReliabilityStackManifest();
   const targetModes = buildReliabilityTargetModes();
+  const runProfiles = buildReliabilityRunProfiles();
   const requestedTargetMode = configuredEnvValue("ACC_RELIABILITY_TARGET_MODE") ?? "fixture";
   const selectedTargetMode = targetModes.find((mode) => mode.mode === requestedTargetMode) ?? null;
 
@@ -1544,6 +1593,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
           },
         },
     targetModes,
+    runProfiles,
     readinessRoutes: {
       health: "/health",
       reliabilityLab: "/api/reliability",
@@ -1563,6 +1613,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
     readinessSummary: {
       selectedTargetMode: requestedTargetMode,
       targetModesByStatus: countReliabilityStatuses(targetModes),
+      runProfilesByStatus: countReliabilityStatuses(runProfiles),
       componentsByStatus: countReliabilityStatuses(componentReadiness),
       configuredOptionalEndpoints: componentReadiness.filter((component) => component.status === "configured").length,
     },
