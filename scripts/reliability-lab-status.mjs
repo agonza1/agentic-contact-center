@@ -317,6 +317,61 @@ const endpointRequirements = {
   },
 };
 
+const runProfiles = [
+  {
+    id: "local_fixture",
+    status: "ready",
+    targetModes: ["fixture"],
+    envVars: ["ACC_RELIABILITY_TARGET_MODE"],
+    startCommand: "npm run proof",
+    validationCommand: "npm run proof",
+    handoffCommand: "npm run cae:assert:handoff",
+    evidence: ["artifacts/demo-proof-latest.json"],
+    detail: "Run the deterministic cancellation-rescue proof without external services.",
+  },
+  {
+    id: "connected_cae",
+    status: caeConfigured
+      ? endpointReady.caeApi && endpointReady.caeWeb
+        ? "ready"
+        : "unreachable"
+      : "blocked",
+    targetModes: ["fixture", "reliability_lab"],
+    envVars: ["CAE_API_URL", "CAE_WEB_URL"],
+    startCommand: "Set CAE_API_URL and CAE_WEB_URL",
+    validationCommand: "npm run reliability:lab",
+    handoffCommand: "npm run cae:assert:handoff",
+    evidence: ["artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json"],
+    detail: "Connect ACC proof artifacts to external ConversationAgentEvals while keeping the local fixture runnable.",
+  },
+  {
+    id: "live_media_lab",
+    status:
+      caeConfigured &&
+      liveEndpointConfigured.rtcAsr &&
+      liveEndpointConfigured.kokoro &&
+      liveEndpointConfigured.browserWebRtcBridge
+        ? endpointReady.caeApi &&
+          endpointReady.caeWeb &&
+          endpointReady.rtcAsr &&
+          endpointReady.kokoro &&
+          endpointReady.browserWebRtcBridge
+          ? "ready"
+          : "unreachable"
+        : "blocked",
+    targetModes: ["browser_webrtc", "sip_verto", "signalwire_pstn"],
+    envVars: ["CAE_API_URL", "CAE_WEB_URL", "RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL", "FREESWITCH_VERTO_URL"],
+    startCommand: "npm run docker:reliability-lab",
+    validationCommand: "npm run reliability:lab",
+    handoffCommand: "npm run cae:assert:handoff",
+    evidence: [
+      "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+      "artifacts/verto-sip-live-proof/manifest.json",
+    ],
+    detail: "Run CAE-connected live media evidence paths after the selected rtc-asr, TTS, and transport endpoints are configured.",
+  },
+];
+
 function requiredEndpointBlockers(endpointKeys) {
   return endpointKeys.flatMap((key) => {
     const requirement = endpointRequirements[key];
@@ -664,12 +719,14 @@ const report = {
   provenanceContract,
   handoffChecklist,
   targetModes,
+  runProfiles,
   optionalEndpoints,
   endpointProbes,
   componentReadiness,
   readinessSummary: {
     selectedTargetMode: requestedTargetMode,
     targetModesByStatus: countStatuses(targetModes),
+    runProfilesByStatus: countStatuses(runProfiles),
     componentsByStatus: countStatuses(componentReadiness),
     configuredOptionalEndpoints: componentReadiness.filter((component) => component.configured === true).length,
     blockers: blockers.length,

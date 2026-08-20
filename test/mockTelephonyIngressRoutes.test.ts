@@ -2088,6 +2088,16 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           liveMediaRequired: boolean;
         };
       }>;
+      runProfiles: Array<{
+        id: string;
+        status: string;
+        targetModes: string[];
+        envVars: string[];
+        startCommand: string;
+        validationCommand: string;
+        handoffCommand: string;
+        evidence: string[];
+      }>;
       selectedTargetMode: {
         mode: string;
         status: string;
@@ -2131,6 +2141,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       readinessSummary: {
         selectedTargetMode: string;
         targetModesByStatus: Record<string, number>;
+        runProfilesByStatus: Record<string, number>;
         componentsByStatus: Record<string, number>;
         configuredOptionalEndpoints: number;
       };
@@ -2171,6 +2182,24 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.deepEqual(payload.targetModes[0]?.requiredEndpointEnvVars, []);
     assert.deepEqual(payload.targetModes[0]?.optionalEndpointEnvVars, []);
     assert.equal(payload.targetModes[0]?.detail, "Sidecar-free cancellation-rescue proof for the controlled candidate.");
+    assert.deepEqual(
+      payload.runProfiles.map((profile) => [profile.id, profile.status, profile.startCommand, profile.validationCommand, profile.handoffCommand]),
+      [
+        ["local_fixture", "ready", "npm run proof", "npm run proof", "npm run cae:assert:handoff"],
+        ["connected_cae", "blocked", "Set CAE_API_URL and CAE_WEB_URL", "npm run reliability:lab", "npm run cae:assert:handoff"],
+        ["live_media_lab", "blocked", "npm run docker:reliability-lab", "npm run reliability:lab", "npm run cae:assert:handoff"],
+      ],
+    );
+    assert.deepEqual(payload.runProfiles[0]?.targetModes, ["fixture"]);
+    assert.deepEqual(payload.runProfiles[2]?.envVars, [
+      "CAE_API_URL",
+      "CAE_WEB_URL",
+      "RTC_ASR_BASE_URL",
+      "KOKORO_BASE_URL",
+      "BROWSER_WEBRTC_BRIDGE_URL",
+      "FREESWITCH_VERTO_URL",
+    ]);
+    assert.ok(payload.runProfiles[2]?.evidence.includes("artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json"));
     assert.deepEqual(payload.targetModes[1]?.requiredEndpointEnvVars, [
       "RTC_ASR_BASE_URL",
       "KOKORO_BASE_URL",
@@ -2203,6 +2232,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.deepEqual(payload.readinessSummary, {
       selectedTargetMode: "fixture",
       targetModesByStatus: { ready: 1, blocked: 4 },
+      runProfilesByStatus: { ready: 1, blocked: 2 },
       componentsByStatus: { ready: 1, not_configured: 1, not_required: 5 },
       configuredOptionalEndpoints: 0,
     });
@@ -2411,6 +2441,7 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
           nextAction: { step: string };
           endpointStatus: Array<{ key: string; configured: boolean; status: string }>;
         }>;
+        runProfiles: Array<{ id: string; status: string }>;
         selectedTargetMode: { mode: string; status: string; requestedVia: string; validationCommand?: string };
       };
       const statuses = Object.fromEntries(payload.targetModes.map((mode) => [mode.mode, mode.status]));
@@ -2421,6 +2452,10 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
       assert.equal(statuses.reliability_lab, "configured");
       assert.equal(statuses.sip_verto, "configured");
       assert.equal(statuses.signalwire_pstn, "blocked");
+      assert.deepEqual(
+        Object.fromEntries(payload.runProfiles.map((profile) => [profile.id, profile.status])),
+        { local_fixture: "ready", connected_cae: "configured", live_media_lab: "configured" },
+      );
       assert.deepEqual(blockers.browser_webrtc, []);
       assert.deepEqual(blockers.reliability_lab, []);
       assert.deepEqual(blockers.sip_verto, []);

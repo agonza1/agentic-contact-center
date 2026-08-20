@@ -44,6 +44,7 @@ The command prints a JSON status report and does not start long-running services
 - the current Phase 2 blockers.
 - the endpoint environment contract in `repositoryContracts.optionalEndpointEnvVars`.
 - the CAE/ASSERT handoff checklist in `handoffChecklist`, including selected-mode, controlled-candidate, live-media, and request-generation evidence gates.
+- the lab run-profile contract in `runProfiles`, covering local fixture, connected CAE, and live-media lab runs.
 
 Environment variables recognized by the status command:
 
@@ -73,6 +74,12 @@ The next implementation slice should add one explicit lab entry point that start
 5. ASSERT through the ConversationAgentEvals boundary or local viewer.
 
 The status API and command now expose `targetModes` so an external runner can select the fixture, browser WebRTC, SIP/Verto, or SignalWire PSTN path without scraping prose. Each mode declares its required components, required and optional endpoint environment variables, start/connect command, fastest validation command, evidence command, readiness route, CAE handoff command, and `nextAction` for the immediate unblock-or-validate step.
+
+They also expose `runProfiles` so an orchestrator can choose the smallest suitable lab shape:
+
+- `local_fixture`: ACC-only deterministic proof and CAE-compatible request generation.
+- `connected_cae`: external ConversationAgentEvals URLs plus the fixture/reliability-lab target modes.
+- `live_media_lab`: CAE-connected browser/SIP/PSTN media evidence after rtc-asr, TTS, and transport endpoints are configured.
 
 The first local entry point is:
 
