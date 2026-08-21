@@ -280,6 +280,8 @@ for (const route of reliabilityReadinessRoutes) {
 
 const statusEndpointEnvVars = constStringArray(reliabilityLabStatusScript, "optionalEndpointEnvVars");
 const apiEndpointEnvVars = constStringArray(server, "reliabilityOptionalEndpointEnvVars");
+const statusReadinessVocabulary = constStringArray(reliabilityLabStatusScript, "readinessVocabulary");
+const apiReadinessVocabulary = constStringArray(server, "reliabilityReadinessVocabulary");
 if (!statusEndpointEnvVars) {
   fail("scripts/reliability-lab-status.mjs is missing optionalEndpointEnvVars");
 }
@@ -289,12 +291,27 @@ if (!apiEndpointEnvVars) {
 if (statusEndpointEnvVars && apiEndpointEnvVars && !sameValues(statusEndpointEnvVars, apiEndpointEnvVars)) {
   fail("reliability optional endpoint env vars differ between status CLI and API");
 }
+if (!statusReadinessVocabulary) {
+  fail("scripts/reliability-lab-status.mjs is missing readinessVocabulary");
+}
+if (!apiReadinessVocabulary) {
+  fail("src/http/createServer.ts is missing reliabilityReadinessVocabulary");
+}
+if (statusReadinessVocabulary && apiReadinessVocabulary && !sameValues(statusReadinessVocabulary, apiReadinessVocabulary)) {
+  fail("reliability readiness vocabulary differs between status CLI and API");
+}
 
 const endpointEnvSection =
   reliabilityLabDoc.match(/Environment variables recognized by the status command:\n\n([\s\S]*?)(?:\n\n|$)/)?.[1] ?? "";
 const documentedEndpointEnvVars = unique([...endpointEnvSection.matchAll(/`([A-Z0-9_]+)`/g)].map((match) => match[1]));
 if (statusEndpointEnvVars && !sameValues(statusEndpointEnvVars, documentedEndpointEnvVars)) {
   fail("docs/reliability-lab.md endpoint env var list differs from status CLI contract");
+}
+const readinessVocabularySection =
+  reliabilityLabDoc.match(/Readiness vocabulary:\n\n([\s\S]*?)(?:\n\n|$)/)?.[1] ?? "";
+const documentedReadinessVocabulary = unique([...readinessVocabularySection.matchAll(/`([a-z_]+)`/g)].map((match) => match[1]));
+if (statusReadinessVocabulary && !sameValues(statusReadinessVocabulary, documentedReadinessVocabulary)) {
+  fail("docs/reliability-lab.md readiness vocabulary differs from status CLI contract");
 }
 
 const apiTargetModes = extractReliabilityTargetModes(server, "src/http/createServer.ts");
@@ -444,5 +461,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${apiRunProfiles.size} reliability run profile contracts, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${apiRunProfiles.size} reliability run profile contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms.`,
 );

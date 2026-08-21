@@ -1436,6 +1436,15 @@ const reliabilityOptionalEndpointEnvVars = [
   "FREESWITCH_VERTO_URL",
 ];
 
+const reliabilityReadinessVocabulary = [
+  "ready",
+  "configured",
+  "not_configured",
+  "not_required",
+  "unreachable",
+  "blocked",
+];
+
 const reliabilityRequiredStackManifestKeys = [
   "ACC_APP_IMAGE",
   "ACC_APP_URL",
@@ -1719,6 +1728,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
       componentsByStatus: countReliabilityStatuses(componentReadiness),
       configuredOptionalEndpoints: componentReadiness.filter((component) => component.status === "configured").length,
     },
+    readinessVocabulary: reliabilityReadinessVocabulary,
     repositoryContracts: {
       optionalEndpointEnvVars: reliabilityOptionalEndpointEnvVars,
       statusCommand: "npm run reliability:lab",
