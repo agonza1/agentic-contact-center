@@ -441,6 +441,13 @@ function requiredEndpointBlockers(endpointKeys) {
   });
 }
 
+function missingEndpointEnvVars(endpointKeys) {
+  return endpointKeys.flatMap((key) => {
+    const requirement = endpointRequirements[key];
+    return requirement.configured ? [] : [requirement.envVar];
+  });
+}
+
 function configuredEndpointBlockers(endpointKeys) {
   return endpointKeys.flatMap((key) => {
     const requirement = endpointRequirements[key];
@@ -477,6 +484,7 @@ const targetModes = [
       detail: "Run the sidecar-free cancellation-rescue proof and inspect the deterministic scorecard.",
     },
     requiredEndpointEnvVars: [],
+    missingEndpointEnvVars: [],
     optionalEndpointEnvVars: [],
     endpointStatus: [],
     requiredComponents: ["ACC app"],
@@ -514,6 +522,7 @@ const targetModes = [
       detail: "Bring up rtc-asr, Kokoro, and the Pipecat browser bridge before capturing live browser evidence.",
     },
     requiredEndpointEnvVars: ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"],
+    missingEndpointEnvVars: missingEndpointEnvVars(["rtcAsr", "kokoro", "browserWebRtcBridge"]),
     optionalEndpointEnvVars: [],
     endpointStatus: endpointStatus(["rtcAsr", "kokoro", "browserWebRtcBridge"]),
     requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"],
@@ -557,6 +566,7 @@ const targetModes = [
       detail: "Connect external ConversationAgentEvals endpoints, then rerun the bounded reliability-lab status probe.",
     },
     requiredEndpointEnvVars: ["CAE_API_URL", "CAE_WEB_URL"],
+    missingEndpointEnvVars: missingEndpointEnvVars(["caeApi", "caeWeb"]),
     optionalEndpointEnvVars: ["ASSERT_VIEWER_URL", "RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"],
     endpointStatus: endpointStatus(["caeApi", "caeWeb", "assertViewer", "rtcAsr", "kokoro", "browserWebRtcBridge"]),
     requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge", "ConversationAgentEvals", "ASSERT viewer"],
@@ -594,6 +604,7 @@ const targetModes = [
       detail: "Bring up rtc-asr, Kokoro, and FreeSWITCH/Verto before capturing SIP/Verto evidence.",
     },
     requiredEndpointEnvVars: ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "FREESWITCH_VERTO_URL"],
+    missingEndpointEnvVars: missingEndpointEnvVars(["rtcAsr", "kokoro", "freeswitchVerto"]),
     optionalEndpointEnvVars: [],
     endpointStatus: endpointStatus(["rtcAsr", "kokoro", "freeswitchVerto"]),
     requiredComponents: ["ACC app", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
@@ -625,6 +636,7 @@ const targetModes = [
       detail: "Render and validate credential-safe SignalWire/FreeSWITCH readiness before any manual PSTN call.",
     },
     requiredEndpointEnvVars: ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "FREESWITCH_VERTO_URL"],
+    missingEndpointEnvVars: missingEndpointEnvVars(["rtcAsr", "kokoro", "freeswitchVerto"]),
     optionalEndpointEnvVars: [],
     endpointStatus: endpointStatus(["rtcAsr", "kokoro", "freeswitchVerto"]),
     requiredComponents: ["ACC app", "SignalWire SIP trunk", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],

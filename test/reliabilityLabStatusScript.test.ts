@@ -223,8 +223,14 @@ test("reliability lab status reports explicit blockers without starting sidecars
     ],
   );
   assert.deepEqual(payload.targetModes[0].requiredEndpointEnvVars, []);
+  assert.deepEqual(payload.targetModes[0].missingEndpointEnvVars, []);
   assert.deepEqual(payload.targetModes[0].optionalEndpointEnvVars, []);
   assert.deepEqual(payload.targetModes[1].requiredEndpointEnvVars, [
+    "RTC_ASR_BASE_URL",
+    "KOKORO_BASE_URL",
+    "BROWSER_WEBRTC_BRIDGE_URL",
+  ]);
+  assert.deepEqual(payload.targetModes[1].missingEndpointEnvVars, [
     "RTC_ASR_BASE_URL",
     "KOKORO_BASE_URL",
     "BROWSER_WEBRTC_BRIDGE_URL",
@@ -282,6 +288,7 @@ test("reliability lab status reports explicit blockers without starting sidecars
     "ASSERT viewer",
   ]);
   assert.deepEqual(payload.targetModes[2].requiredEndpointEnvVars, ["CAE_API_URL", "CAE_WEB_URL"]);
+  assert.deepEqual(payload.targetModes[2].missingEndpointEnvVars, ["CAE_API_URL", "CAE_WEB_URL"]);
   assert.deepEqual(payload.targetModes[2].optionalEndpointEnvVars, [
     "ASSERT_VIEWER_URL",
     "RTC_ASR_BASE_URL",
@@ -305,6 +312,11 @@ test("reliability lab status reports explicit blockers without starting sidecars
     ],
   );
   assert.deepEqual(payload.targetModes[3].requiredEndpointEnvVars, [
+    "RTC_ASR_BASE_URL",
+    "KOKORO_BASE_URL",
+    "FREESWITCH_VERTO_URL",
+  ]);
+  assert.deepEqual(payload.targetModes[3].missingEndpointEnvVars, [
     "RTC_ASR_BASE_URL",
     "KOKORO_BASE_URL",
     "FREESWITCH_VERTO_URL",
@@ -432,6 +444,7 @@ test("reliability lab status becomes configured when CAE endpoints are supplied"
   assert.deepEqual(payload.readinessSummary.targetModesByStatus, { ready: 1, blocked: 3, configured: 1 });
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "fixture").status, "ready");
   assert.deepEqual(payload.targetModes.find((mode: { mode: string }) => mode.mode === "reliability_lab").blockers, []);
+  assert.deepEqual(payload.targetModes.find((mode: { mode: string }) => mode.mode === "reliability_lab").missingEndpointEnvVars, []);
 });
 
 test("reliability lab status reports explicitly configured live media endpoints", async () => {
@@ -489,6 +502,7 @@ test("reliability lab status reports explicitly configured live media endpoints"
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "sip_verto").status, "ready");
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "signalwire_pstn").status, "blocked");
   assert.deepEqual(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").blockers, []);
+  assert.deepEqual(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").missingEndpointEnvVars, []);
 });
 
 test("reliability lab status distinguishes configured but unreachable endpoints", async () => {
