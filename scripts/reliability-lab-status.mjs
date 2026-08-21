@@ -83,6 +83,18 @@ const optionalEndpointEnvVars = [
   "BROWSER_WEBRTC_BRIDGE_URL",
   "FREESWITCH_VERTO_URL",
 ];
+const signalwirePstnCommonEnvVars = [
+  "SIGNALWIRE_FROM_NUMBER",
+  "FREESWITCH_PUBLIC_SIP_HOST",
+  "SIGNALWIRE_SOURCE_IP_PROBE",
+  "SIGNALWIRE_PROVIDER_INGRESS_CIDRS",
+  "SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH",
+];
+const signalwirePstnRegistrationEnvVars = [
+  "SIGNALWIRE_SPACE_URL",
+  "SIGNALWIRE_SIP_USERNAME",
+  "SIGNALWIRE_SIP_PASSWORD",
+];
 const readinessVocabulary = [
   "ready",
   "configured",
@@ -103,6 +115,11 @@ const optionalEndpoints = {
 };
 
 const requestedTargetMode = process.env.ACC_RELIABILITY_TARGET_MODE?.trim() || "fixture";
+const signalwireTrunkMode = (process.env.SIGNALWIRE_TRUNK_MODE?.trim() || "registration").toLowerCase().replace(/-/g, "_");
+const requiredSignalwirePstnEnvVars = signalwireTrunkMode === "ip_auth"
+  ? signalwirePstnCommonEnvVars
+  : [...signalwirePstnCommonEnvVars, ...signalwirePstnRegistrationEnvVars];
+const missingSignalwirePstnEnvVars = requiredSignalwirePstnEnvVars.filter((name) => !envConfigured(name));
 
 function redactedConfiguredEndpoint(value) {
   try {
@@ -655,6 +672,7 @@ const targetModes = [
     status: "blocked",
     blockers: [
       "SignalWire SIP trunk env, provider source ACL proof, and public SIP reachability must be validated before manual PSTN call proof.",
+      ...missingSignalwirePstnEnvVars.map((name) => `SignalWire PSTN readiness env is not configured (${name}).`),
       ...requiredEndpointBlockers(["rtcAsr", "kokoro", "freeswitchVerto"]),
     ],
     nextAction: {
@@ -666,6 +684,9 @@ const targetModes = [
     requiredEndpointEnvVars: ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "FREESWITCH_VERTO_URL"],
     missingEndpointEnvVars: missingEndpointEnvVars(["rtcAsr", "kokoro", "freeswitchVerto"]),
     optionalEndpointEnvVars: [],
+    signalwireTrunkMode,
+    requiredSignalwireEnvVars: requiredSignalwirePstnEnvVars,
+    missingSignalwireEnvVars: missingSignalwirePstnEnvVars,
     endpointStatus: endpointStatus(["rtcAsr", "kokoro", "freeswitchVerto"]),
     requiredComponents: ["ACC app", "SignalWire SIP trunk", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
     startCommand: "npm run docker:sip-verto",

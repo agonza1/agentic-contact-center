@@ -1149,6 +1149,33 @@ function selectedReliabilityModeEvidenceInventory(mode: string): typeof reliabil
   return reliabilityEvidenceInventory.filter((item) => item.requiredFor.includes(mode));
 }
 
+const signalwirePstnCommonEnvVars = [
+  "SIGNALWIRE_FROM_NUMBER",
+  "FREESWITCH_PUBLIC_SIP_HOST",
+  "SIGNALWIRE_SOURCE_IP_PROBE",
+  "SIGNALWIRE_PROVIDER_INGRESS_CIDRS",
+  "SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH",
+];
+const signalwirePstnRegistrationEnvVars = [
+  "SIGNALWIRE_SPACE_URL",
+  "SIGNALWIRE_SIP_USERNAME",
+  "SIGNALWIRE_SIP_PASSWORD",
+];
+
+function signalwireTrunkMode(): string {
+  return (configuredEnvValue("SIGNALWIRE_TRUNK_MODE") ?? "registration").toLowerCase().replace(/-/g, "_");
+}
+
+function requiredSignalwirePstnEnvVars(): string[] {
+  return signalwireTrunkMode() === "ip_auth"
+    ? signalwirePstnCommonEnvVars
+    : [...signalwirePstnCommonEnvVars, ...signalwirePstnRegistrationEnvVars];
+}
+
+function missingSignalwirePstnEnvVars(): string[] {
+  return requiredSignalwirePstnEnvVars().filter((name) => !configuredEnvValue(name));
+}
+
 function buildReliabilityRunProfiles() {
   const caeConfigured = Boolean(configuredEnvValue("CAE_API_URL") && configuredEnvValue("CAE_WEB_URL"));
   const browserLiveConfigured = Boolean(
@@ -1223,6 +1250,8 @@ function buildReliabilityTargetModes() {
     configuredEnvValue("KOKORO_BASE_URL") &&
     configuredEnvValue("FREESWITCH_VERTO_URL"),
   );
+  const requiredSignalwireEnvVars = requiredSignalwirePstnEnvVars();
+  const missingSignalwireEnvVars = missingSignalwirePstnEnvVars();
 
   const endpointRequirements = {
     caeApi: {
@@ -1405,6 +1434,7 @@ function buildReliabilityTargetModes() {
       status: "blocked",
       blockers: [
         "SignalWire SIP trunk env, provider source ACL proof, and public SIP reachability must be validated before manual PSTN call proof.",
+        ...missingSignalwireEnvVars.map((name) => `SignalWire PSTN readiness env is not configured (${name}).`),
         ...requiredEndpointBlockers(["rtcAsr", "kokoro", "freeswitchVerto"]),
       ],
       nextAction: {
@@ -1416,6 +1446,9 @@ function buildReliabilityTargetModes() {
       requiredEndpointEnvVars: ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "FREESWITCH_VERTO_URL"],
       missingEndpointEnvVars: missingEndpointEnvVars(["rtcAsr", "kokoro", "freeswitchVerto"]),
       optionalEndpointEnvVars: [],
+      signalwireTrunkMode: signalwireTrunkMode(),
+      requiredSignalwireEnvVars,
+      missingSignalwireEnvVars,
       endpointStatus: endpointStatus(["rtcAsr", "kokoro", "freeswitchVerto"]),
       requiredComponents: ["ACC app", "SignalWire SIP trunk", "FreeSWITCH/Verto", "rtc-asr", "Kokoro", "Pipecat Verto bridge"],
       startCommand: "npm run docker:sip-verto",

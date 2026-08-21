@@ -2084,6 +2084,9 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         requiredEndpointEnvVars: string[];
         missingEndpointEnvVars: string[];
         optionalEndpointEnvVars: string[];
+        signalwireTrunkMode?: string;
+        requiredSignalwireEnvVars?: string[];
+        missingSignalwireEnvVars?: string[];
         endpointStatus: Array<{ key: string; envVar: string; configured: boolean; status: string }>;
         requiredComponents: string[];
         startCommand: string;
@@ -2349,6 +2352,18 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     ]);
     assert.equal(payload.targetModes[3]?.caeHandoffCommand, "npm run cae:assert:handoff");
     assert.equal(payload.targetModes[3]?.detail, "Strict local SIP/Verto proof path for the reference stack.");
+    assert.equal(payload.targetModes[4]?.signalwireTrunkMode, "registration");
+    assert.deepEqual(payload.targetModes[4]?.requiredSignalwireEnvVars, [
+      "SIGNALWIRE_FROM_NUMBER",
+      "FREESWITCH_PUBLIC_SIP_HOST",
+      "SIGNALWIRE_SOURCE_IP_PROBE",
+      "SIGNALWIRE_PROVIDER_INGRESS_CIDRS",
+      "SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH",
+      "SIGNALWIRE_SPACE_URL",
+      "SIGNALWIRE_SIP_USERNAME",
+      "SIGNALWIRE_SIP_PASSWORD",
+    ]);
+    assert.deepEqual(payload.targetModes[4]?.missingSignalwireEnvVars, payload.targetModes[4]?.requiredSignalwireEnvVars);
     assert.equal(
       payload.targetModes[4]?.detail,
       "Production-like PSTN ingress remains gated on SignalWire env, provider-owned source ACL proof, and public SIP reachability before manual call validation.",
@@ -2537,6 +2552,7 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
           status: string;
           blockers: string[];
           missingEndpointEnvVars: string[];
+          missingSignalwireEnvVars?: string[];
           nextAction: { step: string };
           endpointStatus: Array<{ key: string; configured: boolean; status: string }>;
         }>;
@@ -2570,6 +2586,17 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
         },
       );
       assert.match(blockers.signalwire_pstn?.[0] ?? "", /SignalWire SIP trunk env/);
+      assert.ok(blockers.signalwire_pstn?.includes("SignalWire PSTN readiness env is not configured (SIGNALWIRE_FROM_NUMBER)."));
+      assert.deepEqual(payload.targetModes.find((mode) => mode.mode === "signalwire_pstn")?.missingSignalwireEnvVars, [
+        "SIGNALWIRE_FROM_NUMBER",
+        "FREESWITCH_PUBLIC_SIP_HOST",
+        "SIGNALWIRE_SOURCE_IP_PROBE",
+        "SIGNALWIRE_PROVIDER_INGRESS_CIDRS",
+        "SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH",
+        "SIGNALWIRE_SPACE_URL",
+        "SIGNALWIRE_SIP_USERNAME",
+        "SIGNALWIRE_SIP_PASSWORD",
+      ]);
       assert.equal(payload.targetModes.find((mode) => mode.mode === "browser_webrtc")?.nextAction.step, "validate_browser_media_path");
       assert.deepEqual(
         payload.targetModes.find((mode) => mode.mode === "browser_webrtc")?.endpointStatus.map((endpoint) => [
