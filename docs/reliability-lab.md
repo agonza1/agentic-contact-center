@@ -86,6 +86,7 @@ The next implementation slice should add one explicit lab entry point that start
 
 The status API and command now expose `targetModes` so an external runner can select the fixture, browser WebRTC, SIP/Verto, or SignalWire PSTN path without scraping prose. Each mode declares its required components, required and optional endpoint environment variables, start/connect command, fastest validation command, evidence command, readiness route, CAE handoff command, provenance requirements, and `nextAction` for the immediate unblock-or-validate step.
 Each mode also reports `missingEndpointEnvVars` as a machine-readable list, so runners can present the exact environment setup gap without parsing human-facing blocker text.
+For `signalwire_pstn`, the mode also reports `signalwireTrunkMode`, `requiredSignalwireEnvVars`, and `missingSignalwireEnvVars`. Registration trunks require SignalWire Space URL and SIP credentials in addition to DID, public FreeSWITCH SIP host, provider source ACL, and external SIP reachability proof inputs; `SIGNALWIRE_TRUNK_MODE=ip_auth` narrows the required SignalWire env list to the IP-auth gate inputs.
 
 They also expose `runProfiles` so an orchestrator can choose the smallest suitable lab shape:
 

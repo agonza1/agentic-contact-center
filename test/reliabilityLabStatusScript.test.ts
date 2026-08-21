@@ -322,6 +322,19 @@ test("reliability lab status reports explicit blockers without starting sidecars
     "FREESWITCH_VERTO_URL",
   ]);
   assert.equal(payload.targetModes[3].caeHandoffCommand, "npm run cae:assert:handoff");
+  assert.equal(payload.targetModes[4].signalwireTrunkMode, "registration");
+  assert.deepEqual(payload.targetModes[4].requiredSignalwireEnvVars, [
+    "SIGNALWIRE_FROM_NUMBER",
+    "FREESWITCH_PUBLIC_SIP_HOST",
+    "SIGNALWIRE_SOURCE_IP_PROBE",
+    "SIGNALWIRE_PROVIDER_INGRESS_CIDRS",
+    "SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH",
+    "SIGNALWIRE_SPACE_URL",
+    "SIGNALWIRE_SIP_USERNAME",
+    "SIGNALWIRE_SIP_PASSWORD",
+  ]);
+  assert.deepEqual(payload.targetModes[4].missingSignalwireEnvVars, payload.targetModes[4].requiredSignalwireEnvVars);
+  assert.ok(payload.targetModes[4].blockers.includes("SignalWire PSTN readiness env is not configured (SIGNALWIRE_FROM_NUMBER)."));
   assert.ok(payload.blockers.some((blocker: string) => blocker.includes("ConversationAgentEvals API/web endpoints")));
   assert.deepEqual(
     payload.componentReadiness.map((component: { component: string; status: string }) => [component.component, component.status]),
@@ -521,8 +534,48 @@ test("reliability lab status reports explicitly configured live media endpoints"
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "reliability_lab").status, "ready");
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "sip_verto").status, "ready");
   assert.equal(payload.targetModes.find((mode: { mode: string }) => mode.mode === "signalwire_pstn").status, "blocked");
+  assert.deepEqual(payload.targetModes.find((mode: { mode: string }) => mode.mode === "signalwire_pstn").missingSignalwireEnvVars, [
+    "SIGNALWIRE_FROM_NUMBER",
+    "FREESWITCH_PUBLIC_SIP_HOST",
+    "SIGNALWIRE_SOURCE_IP_PROBE",
+    "SIGNALWIRE_PROVIDER_INGRESS_CIDRS",
+    "SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH",
+    "SIGNALWIRE_SPACE_URL",
+    "SIGNALWIRE_SIP_USERNAME",
+    "SIGNALWIRE_SIP_PASSWORD",
+  ]);
   assert.deepEqual(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").blockers, []);
   assert.deepEqual(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").missingEndpointEnvVars, []);
+});
+
+test("reliability lab status narrows SignalWire PSTN env for IP-auth trunks", async () => {
+  const result = await execFileAsync(process.execPath, ["scripts/reliability-lab-status.mjs"], {
+    cwd: repoRoot,
+    env: {
+      ...withClearedLiveEndpointEnv(),
+      SIGNALWIRE_TRUNK_MODE: "ip_auth",
+      SIGNALWIRE_FROM_NUMBER: "+12025550123",
+      FREESWITCH_PUBLIC_SIP_HOST: "sip.example.test",
+      SIGNALWIRE_SOURCE_IP_PROBE: "54.172.60.0",
+      SIGNALWIRE_PROVIDER_INGRESS_CIDRS: "54.172.60.0/30",
+      SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH: "artifacts/freeswitch-signalwire/external-sip-reachability.json",
+      CAE_API_URL: "",
+      CAE_WEB_URL: "",
+    },
+  });
+  const payload = JSON.parse(result.stdout);
+  const signalwireMode = payload.targetModes.find((mode: { mode: string }) => mode.mode === "signalwire_pstn");
+
+  assert.equal(signalwireMode.signalwireTrunkMode, "ip_auth");
+  assert.deepEqual(signalwireMode.requiredSignalwireEnvVars, [
+    "SIGNALWIRE_FROM_NUMBER",
+    "FREESWITCH_PUBLIC_SIP_HOST",
+    "SIGNALWIRE_SOURCE_IP_PROBE",
+    "SIGNALWIRE_PROVIDER_INGRESS_CIDRS",
+    "SIGNALWIRE_EXTERNAL_SIP_REACHABILITY_PROOF_PATH",
+  ]);
+  assert.deepEqual(signalwireMode.missingSignalwireEnvVars, []);
+  assert.ok(!signalwireMode.blockers.some((blocker: string) => blocker.includes("SIGNALWIRE_SIP_PASSWORD")));
 });
 
 test("reliability lab status distinguishes configured but unreachable endpoints", async () => {
