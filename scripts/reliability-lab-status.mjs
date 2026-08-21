@@ -632,7 +632,19 @@ const targetModes = [
   },
 ];
 
+function selectedRunProfileForTargetMode(targetMode) {
+  if (!targetMode) return null;
+  if (targetMode === "reliability_lab") {
+    return runProfiles.find((profile) => profile.id === "connected_cae") ?? null;
+  }
+  if (targetMode === "browser_webrtc" || targetMode === "sip_verto" || targetMode === "signalwire_pstn") {
+    return runProfiles.find((profile) => profile.id === "live_media_lab") ?? null;
+  }
+  return runProfiles.find((profile) => profile.targetModes.includes(targetMode)) ?? null;
+}
+
 const selectedTargetMode = targetModes.find((mode) => mode.mode === requestedTargetMode) ?? null;
+const selectedRunProfile = selectedRunProfileForTargetMode(selectedTargetMode?.mode ?? null);
 
 function optionalComponent({ component, configured, endpoint, envVar, probe, configuredDetail, defaultDetail }) {
   const status = configured ? (probe?.ready ? "ready" : "unreachable") : "not_required";
@@ -781,6 +793,28 @@ const report = {
   handoffChecklist,
   targetModes,
   runProfiles,
+  selectedRunProfile: selectedRunProfile
+    ? {
+        ...selectedRunProfile,
+        requestedForTargetMode: selectedTargetMode?.mode,
+        nextAction: {
+          step: selectedRunProfile.status === "ready" || selectedRunProfile.status === "configured" ? "run_profile_validation" : "unblock_run_profile",
+          command: selectedRunProfile.validationCommand,
+          evidence: selectedRunProfile.evidence[0] ?? "/api/reliability",
+          detail: selectedRunProfile.detail,
+        },
+      }
+    : {
+        id: null,
+        status: "blocked",
+        requestedForTargetMode: requestedTargetMode,
+        nextAction: {
+          step: "select_valid_target_mode",
+          command: "Set ACC_RELIABILITY_TARGET_MODE to one of targetModes[].mode",
+          evidence: "/api/reliability",
+          detail: "No run profile can be selected until the target mode is valid.",
+        },
+      },
   optionalEndpoints,
   endpointProbes,
   componentReadiness,
