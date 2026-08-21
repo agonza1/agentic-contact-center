@@ -171,6 +171,10 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.selectedTargetMode.mode, "fixture");
   assert.equal(payload.selectedTargetMode.requestedVia, "default");
   assert.equal(payload.selectedTargetMode.validationCommand, "npm run proof");
+  assert.equal(payload.selectedRunProfile.id, "local_fixture");
+  assert.equal(payload.selectedRunProfile.requestedForTargetMode, "fixture");
+  assert.equal(payload.selectedRunProfile.nextAction.step, "run_profile_validation");
+  assert.equal(payload.selectedRunProfile.nextAction.command, "npm run proof");
   assert.deepEqual(
     payload.selectedTargetMode.handoffChecklist.map((step: { id: string }) => step.id),
     ["select_target_mode", "capture_controlled_candidate", "generate_cae_assert_request"],
@@ -351,6 +355,9 @@ test("reliability lab status exposes requested target mode selection", async () 
   assert.equal(payload.selectedTargetMode.validationCommand, "npm run browser-webrtc:check");
   assert.equal(payload.selectedTargetMode.evidenceCommand, "npm run browser-webrtc:live-proof");
   assert.equal(payload.selectedTargetMode.nextAction.step, "configure_browser_media_endpoints");
+  assert.equal(payload.selectedRunProfile.id, "live_media_lab");
+  assert.equal(payload.selectedRunProfile.requestedForTargetMode, "browser_webrtc");
+  assert.equal(payload.selectedRunProfile.nextAction.step, "unblock_run_profile");
   assert.deepEqual(
     payload.selectedTargetMode.handoffChecklist.map((step: { id: string }) => step.id),
     ["select_target_mode", "capture_controlled_candidate", "capture_selected_media_proof", "generate_cae_assert_request"],
@@ -373,6 +380,8 @@ test("reliability lab status blocks invalid target mode selection", async () => 
   assert.equal(payload.selectedTargetMode.mode, "unknown_mode");
   assert.equal(payload.selectedTargetMode.status, "blocked");
   assert.ok(payload.selectedTargetMode.validModes.includes("fixture"));
+  assert.equal(payload.selectedRunProfile.id, null);
+  assert.equal(payload.selectedRunProfile.nextAction.step, "select_valid_target_mode");
   assert.deepEqual(payload.selectedTargetMode.nextAction, {
     step: "select_valid_target_mode",
     command: "Set ACC_RELIABILITY_TARGET_MODE to one of targetModes[].mode",

@@ -2115,6 +2115,18 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         handoffCommand: string;
         evidence: string[];
       }>;
+      selectedRunProfile: {
+        id: string | null;
+        status: string;
+        requestedForTargetMode: string;
+        validationCommand?: string;
+        nextAction: {
+          step: string;
+          command: string;
+          evidence: string;
+          detail: string;
+        };
+      };
       selectedTargetMode: {
         mode: string;
         status: string;
@@ -2225,6 +2237,11 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       "FREESWITCH_VERTO_URL",
     ]);
     assert.ok(payload.runProfiles[2]?.evidence.includes("artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json"));
+    assert.equal(payload.selectedRunProfile.id, "local_fixture");
+    assert.equal(payload.selectedRunProfile.requestedForTargetMode, "fixture");
+    assert.equal(payload.selectedRunProfile.nextAction.step, "run_profile_validation");
+    assert.equal(payload.selectedRunProfile.nextAction.command, "npm run proof");
+    assert.equal(payload.selectedRunProfile.nextAction.evidence, "artifacts/demo-proof-latest.json");
     assert.deepEqual(payload.targetModes[1]?.requiredEndpointEnvVars, [
       "RTC_ASR_BASE_URL",
       "KOKORO_BASE_URL",
@@ -2503,6 +2520,7 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
         }>;
         runProfiles: Array<{ id: string; status: string }>;
         selectedTargetMode: { mode: string; status: string; requestedVia: string; validationCommand?: string };
+        selectedRunProfile: { id: string | null; status: string; requestedForTargetMode: string; nextAction: { step: string } };
       };
       const statuses = Object.fromEntries(payload.targetModes.map((mode) => [mode.mode, mode.status]));
       const blockers = Object.fromEntries(payload.targetModes.map((mode) => [mode.mode, mode.blockers]));
@@ -2535,6 +2553,8 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
       );
       assert.equal(payload.selectedTargetMode.mode, "fixture");
       assert.equal(payload.selectedTargetMode.requestedVia, "default");
+      assert.equal(payload.selectedRunProfile.id, "local_fixture");
+      assert.equal(payload.selectedRunProfile.nextAction.step, "run_profile_validation");
     });
   } finally {
     for (const [name, value] of Object.entries(originalEnv)) {
@@ -2567,12 +2587,16 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
             detail: string;
           };
         };
+        selectedRunProfile: { id: string | null; requestedForTargetMode: string; nextAction: { step: string } };
       };
 
       assert.equal(payload.selectedTargetMode.mode, "sip_verto");
       assert.equal(payload.selectedTargetMode.requestedVia, "ACC_RELIABILITY_TARGET_MODE");
       assert.equal(payload.selectedTargetMode.validationCommand, "npm run pipecat:verto:check");
       assert.equal(payload.selectedTargetMode.evidenceCommand, "npm run pipecat:verto:live-proof");
+      assert.equal(payload.selectedRunProfile.id, "live_media_lab");
+      assert.equal(payload.selectedRunProfile.requestedForTargetMode, "sip_verto");
+      assert.equal(payload.selectedRunProfile.nextAction.step, "unblock_run_profile");
       assert.deepEqual(
         payload.selectedTargetMode.handoffChecklist?.map((step) => step.id),
         ["select_target_mode", "capture_controlled_candidate", "capture_selected_media_proof", "generate_cae_assert_request"],
@@ -2606,12 +2630,15 @@ test("GET /api/reliability marks invalid target mode selection as blocked", asyn
           validModes?: string[];
           nextAction?: { step: string; command: string; evidence: string; detail: string };
         };
+        selectedRunProfile: { id: string | null; nextAction: { step: string } };
       };
 
       assert.equal(payload.selectedTargetMode.mode, "unknown_mode");
       assert.equal(payload.selectedTargetMode.status, "blocked");
       assert.equal(payload.selectedTargetMode.requestedVia, "ACC_RELIABILITY_TARGET_MODE");
       assert.ok(payload.selectedTargetMode.validModes?.includes("fixture"));
+      assert.equal(payload.selectedRunProfile.id, null);
+      assert.equal(payload.selectedRunProfile.nextAction.step, "select_valid_target_mode");
       assert.deepEqual(payload.selectedTargetMode.nextAction, {
         step: "select_valid_target_mode",
         command: "Set ACC_RELIABILITY_TARGET_MODE to one of targetModes[].mode",
