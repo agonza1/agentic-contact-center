@@ -447,6 +447,26 @@ test("reliability lab status becomes configured when CAE endpoints are supplied"
   assert.deepEqual(payload.targetModes.find((mode: { mode: string }) => mode.mode === "reliability_lab").missingEndpointEnvVars, []);
 });
 
+test("reliability lab status redacts configured endpoint secrets", async () => {
+  const result = await execFileAsync(process.execPath, ["scripts/reliability-lab-status.mjs"], {
+    cwd: repoRoot,
+    env: {
+      ...withClearedLiveEndpointEnv(),
+      CAE_API_URL: "https://cae-user:cae-secret@example.com:8443/api?token=leaky-token",
+      CAE_WEB_URL: "https://web-user:web-secret@example.com/app?token=web-token",
+      BROWSER_WEBRTC_BRIDGE_URL: "https://bridge-user:bridge-secret@example.com:9443/proof?token=bridge-token",
+      ACC_RELIABILITY_LAB_PROBE_TIMEOUT_MS: "50",
+    },
+  });
+  const payload = JSON.parse(result.stdout);
+  const serialized = JSON.stringify(payload);
+
+  assert.equal(payload.optionalEndpoints.caeApi, "https://example.com:8443");
+  assert.equal(payload.optionalEndpoints.caeWeb, "https://example.com");
+  assert.equal(payload.optionalEndpoints.browserWebRtcBridge, "https://example.com:9443");
+  assert.doesNotMatch(serialized, /cae-secret|web-secret|bridge-secret|leaky-token|web-token|bridge-token/);
+});
+
 test("reliability lab status reports explicitly configured live media endpoints", async () => {
   const tcpServer = net.createServer((socket) => socket.end());
   const result = await withHttpServers(6, async ([caeApiUrl, caeWebUrl, rtcAsrUrl, kokoroUrl, browserBridgeUrl, assertViewerUrl]) => {

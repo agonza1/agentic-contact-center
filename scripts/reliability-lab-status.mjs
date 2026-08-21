@@ -104,6 +104,27 @@ const optionalEndpoints = {
 
 const requestedTargetMode = process.env.ACC_RELIABILITY_TARGET_MODE?.trim() || "fixture";
 
+function redactedConfiguredEndpoint(value) {
+  try {
+    const url = new URL(value);
+    const port = url.port ? `:${url.port}` : "";
+    return `${url.protocol}//${url.hostname}${port}`;
+  } catch {
+    return "[configured]";
+  }
+}
+
+function redactedProbe(probe) {
+  if (!probe) return probe;
+  const redacted = { ...probe };
+  if (typeof redacted.detail === "string") {
+    redacted.detail = redacted.detail.replace(/(?:https?|wss?):\/\/[^\s.]+(?:\.[^\s.]+)*(?::\d+)?(?:\/[^\s]*)?/gi, (url) =>
+      redactedConfiguredEndpoint(url),
+    );
+  }
+  return redacted;
+}
+
 function envConfigured(name) {
   return Boolean(process.env[name]?.trim());
 }
@@ -123,6 +144,7 @@ const boundedProbeTimeoutMs = Number.isFinite(probeTimeoutMs) && probeTimeoutMs 
 async function probeHttp(url, route = "/") {
   const target = new URL(url);
   if (target.pathname === "/" && route !== "/") target.pathname = route;
+  const safeTarget = redactedConfiguredEndpoint(target.toString());
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), boundedProbeTimeoutMs);
   try {
@@ -132,7 +154,7 @@ async function probeHttp(url, route = "/") {
       ready: response.ok,
       status: response.ok ? "ready" : "unreachable",
       statusCode: response.status,
-      detail: response.ok ? `Reachable at ${target.toString()}.` : `Probe returned HTTP ${response.status} from ${target.toString()}.`,
+      detail: response.ok ? `Reachable at ${safeTarget}.` : `Probe returned HTTP ${response.status} from ${safeTarget}.`,
     };
   } catch (error) {
     return {
@@ -140,7 +162,7 @@ async function probeHttp(url, route = "/") {
       ready: false,
       status: "unreachable",
       error: error instanceof Error ? error.name : "probe_error",
-      detail: `Probe could not reach ${target.toString()}.`,
+      detail: `Probe could not reach ${safeTarget}.`,
     };
   } finally {
     clearTimeout(timeout);
@@ -200,6 +222,12 @@ async function probeConfiguredEndpoints() {
 }
 
 const endpointProbes = await probeConfiguredEndpoints();
+const redactedOptionalEndpoints = Object.fromEntries(
+  Object.entries(optionalEndpoints).map(([key, value]) => [key, value ? redactedConfiguredEndpoint(value) : null]),
+);
+const redactedEndpointProbes = Object.fromEntries(
+  Object.entries(endpointProbes).map(([key, value]) => [key, redactedProbe(value)]),
+);
 const endpointReady = {
   caeApi: endpointProbes.caeApi?.ready === true,
   caeWeb: endpointProbes.caeWeb?.ready === true,
@@ -699,12 +727,12 @@ const componentReadiness = [
     reachable: caeConfigured ? endpointReady.caeApi && endpointReady.caeWeb : null,
     requiredForDefaultDemo: false,
     endpoints: {
-      api: optionalEndpoints.caeApi,
-      web: optionalEndpoints.caeWeb,
+      api: redactedOptionalEndpoints.caeApi,
+      web: redactedOptionalEndpoints.caeWeb,
     },
     probes: {
-      api: endpointProbes.caeApi ?? null,
-      web: endpointProbes.caeWeb ?? null,
+      api: redactedEndpointProbes.caeApi ?? null,
+      web: redactedEndpointProbes.caeWeb ?? null,
     },
     detail: caeConfigured
       ? endpointReady.caeApi && endpointReady.caeWeb
@@ -715,45 +743,45 @@ const componentReadiness = [
   optionalComponent({
     component: "rtc-asr",
     configured: liveEndpointConfigured.rtcAsr,
-    endpoint: optionalEndpoints.rtcAsr,
+    endpoint: redactedOptionalEndpoints.rtcAsr,
     envVar: "RTC_ASR_BASE_URL",
-    probe: endpointProbes.rtcAsr ?? null,
+    probe: redactedEndpointProbes.rtcAsr ?? null,
     configuredDetail: "Configured for selected live media modes.",
     defaultDetail: "Required only for selected live media modes.",
   }),
   optionalComponent({
     component: "Kokoro",
     configured: liveEndpointConfigured.kokoro,
-    endpoint: optionalEndpoints.kokoro,
+    endpoint: redactedOptionalEndpoints.kokoro,
     envVar: "KOKORO_BASE_URL",
-    probe: endpointProbes.kokoro ?? null,
+    probe: redactedEndpointProbes.kokoro ?? null,
     configuredDetail: "Configured for selected live media modes.",
     defaultDetail: "Required only for selected live media modes.",
   }),
   optionalComponent({
     component: "Pipecat browser bridge",
     configured: liveEndpointConfigured.browserWebRtcBridge,
-    endpoint: optionalEndpoints.browserWebRtcBridge,
+    endpoint: redactedOptionalEndpoints.browserWebRtcBridge,
     envVar: "BROWSER_WEBRTC_BRIDGE_URL",
-    probe: endpointProbes.browserWebRtcBridge ?? null,
+    probe: redactedEndpointProbes.browserWebRtcBridge ?? null,
     configuredDetail: "Configured for Browser voice proof modes.",
     defaultDetail: "Required only for Browser voice proof modes.",
   }),
   optionalComponent({
     component: "FreeSWITCH/Verto",
     configured: liveEndpointConfigured.freeswitchVerto,
-    endpoint: optionalEndpoints.freeswitchVerto,
+    endpoint: redactedOptionalEndpoints.freeswitchVerto,
     envVar: "FREESWITCH_VERTO_URL",
-    probe: endpointProbes.freeswitchVerto ?? null,
+    probe: redactedEndpointProbes.freeswitchVerto ?? null,
     configuredDetail: "Configured for SIP/Verto proof modes.",
     defaultDetail: "Required only for SIP/Verto proof modes.",
   }),
   optionalComponent({
     component: "ASSERT viewer",
     configured: liveEndpointConfigured.assertViewer,
-    endpoint: optionalEndpoints.assertViewer,
+    endpoint: redactedOptionalEndpoints.assertViewer,
     envVar: "ASSERT_VIEWER_URL",
-    probe: endpointProbes.assertViewer ?? null,
+    probe: redactedEndpointProbes.assertViewer ?? null,
     configuredDetail: "Configured for CAE/ASSERT handoff or local viewer workflows.",
     defaultDetail: "Used through CAE/ASSERT handoff or local viewer workflows.",
   }),
@@ -840,8 +868,8 @@ const report = {
           detail: "No run profile can be selected until the target mode is valid.",
         },
       },
-  optionalEndpoints,
-  endpointProbes,
+  optionalEndpoints: redactedOptionalEndpoints,
+  endpointProbes: redactedEndpointProbes,
   componentReadiness,
   readinessSummary: {
     selectedTargetMode: requestedTargetMode,
