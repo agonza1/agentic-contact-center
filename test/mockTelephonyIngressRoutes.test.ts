@@ -2183,6 +2183,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         componentsByStatus: Record<string, number>;
         configuredOptionalEndpoints: number;
       };
+      readinessVocabulary: string[];
       repositoryContracts: {
         optionalEndpointEnvVars: string[];
         statusCommand: string;
@@ -2287,6 +2288,14 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       componentsByStatus: { ready: 1, not_configured: 1, not_required: 5 },
       configuredOptionalEndpoints: 0,
     });
+    assert.deepEqual(payload.readinessVocabulary, [
+      "ready",
+      "configured",
+      "not_configured",
+      "not_required",
+      "unreachable",
+      "blocked",
+    ]);
     assert.deepEqual(payload.targetModes[1]?.requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
     assert.deepEqual(payload.targetModes[1]?.blockers, [
       "rtc-asr endpoint is not configured (RTC_ASR_BASE_URL).",

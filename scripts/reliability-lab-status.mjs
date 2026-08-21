@@ -83,6 +83,14 @@ const optionalEndpointEnvVars = [
   "BROWSER_WEBRTC_BRIDGE_URL",
   "FREESWITCH_VERTO_URL",
 ];
+const readinessVocabulary = [
+  "ready",
+  "configured",
+  "not_configured",
+  "not_required",
+  "unreachable",
+  "blocked",
+];
 
 const optionalEndpoints = {
   caeApi: process.env.CAE_API_URL ?? null,
@@ -831,6 +839,7 @@ const report = {
     configuredOptionalEndpoints: componentReadiness.filter((component) => component.configured === true).length,
     blockers: blockers.length,
   },
+  readinessVocabulary,
   repositoryContracts: {
     packageScripts: Object.keys(scripts).sort(),
     composeProfiles: profiles,

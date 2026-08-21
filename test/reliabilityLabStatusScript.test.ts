@@ -197,6 +197,14 @@ test("reliability lab status reports explicit blockers without starting sidecars
     configuredOptionalEndpoints: 0,
     blockers: 1,
   });
+  assert.deepEqual(payload.readinessVocabulary, [
+    "ready",
+    "configured",
+    "not_configured",
+    "not_required",
+    "unreachable",
+    "blocked",
+  ]);
   assert.deepEqual(
     payload.targetModes.map((mode: { mode: string; status: string; startCommand: string; validationCommand: string; evidenceCommand: string; readinessRoute: string }) => [
       mode.mode,
