@@ -179,6 +179,10 @@ test("reliability lab status reports explicit blockers without starting sidecars
     payload.selectedTargetMode.handoffChecklist.map((step: { id: string }) => step.id),
     ["select_target_mode", "capture_controlled_candidate", "generate_cae_assert_request"],
   );
+  assert.deepEqual(
+    payload.selectedTargetMode.evidenceInventory.map((item: { id: string }) => item.id),
+    ["controlled_candidate_proof", "cae_assert_request"],
+  );
   assert.deepEqual(payload.selectedTargetMode.nextAction, {
     step: "run_controlled_candidate",
     command: "npm run proof",
@@ -361,6 +365,10 @@ test("reliability lab status exposes requested target mode selection", async () 
   assert.deepEqual(
     payload.selectedTargetMode.handoffChecklist.map((step: { id: string }) => step.id),
     ["select_target_mode", "capture_controlled_candidate", "capture_selected_media_proof", "generate_cae_assert_request"],
+  );
+  assert.deepEqual(
+    payload.selectedTargetMode.evidenceInventory.map((item: { id: string }) => item.id),
+    ["controlled_candidate_proof", "cae_assert_request", "browser_live_media_manifest"],
   );
   assert.ok(payload.selectedTargetMode.blockers.includes("rtc-asr endpoint is not configured (RTC_ASR_BASE_URL)."));
 });

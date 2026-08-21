@@ -2134,6 +2134,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         validationCommand?: string;
         evidenceCommand?: string;
         handoffChecklist?: Array<{ id: string }>;
+        evidenceInventory?: Array<{ id: string }>;
         nextAction?: {
           step: string;
           command: string;
@@ -2268,6 +2269,10 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.deepEqual(
       payload.selectedTargetMode.handoffChecklist?.map((step) => step.id),
       ["select_target_mode", "capture_controlled_candidate", "generate_cae_assert_request"],
+    );
+    assert.deepEqual(
+      payload.selectedTargetMode.evidenceInventory?.map((item) => item.id),
+      ["controlled_candidate_proof", "cae_assert_request"],
     );
     assert.deepEqual(payload.selectedTargetMode.nextAction, {
       step: "run_controlled_candidate",
@@ -2580,6 +2585,7 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
           validationCommand?: string;
           evidenceCommand?: string;
           handoffChecklist?: Array<{ id: string }>;
+          evidenceInventory?: Array<{ id: string }>;
           nextAction?: {
             step: string;
             command: string;
@@ -2600,6 +2606,10 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
       assert.deepEqual(
         payload.selectedTargetMode.handoffChecklist?.map((step) => step.id),
         ["select_target_mode", "capture_controlled_candidate", "capture_selected_media_proof", "generate_cae_assert_request"],
+      );
+      assert.deepEqual(
+        payload.selectedTargetMode.evidenceInventory?.map((item) => item.id),
+        ["controlled_candidate_proof", "cae_assert_request", "sip_verto_live_manifest"],
       );
       assert.deepEqual(payload.selectedTargetMode.nextAction, {
         step: "configure_sip_verto_endpoints",
