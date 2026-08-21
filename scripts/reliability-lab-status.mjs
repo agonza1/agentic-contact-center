@@ -546,7 +546,7 @@ const targetModes = [
     },
     requiredEndpointEnvVars: ["CAE_API_URL", "CAE_WEB_URL"],
     optionalEndpointEnvVars: ["ASSERT_VIEWER_URL", "RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"],
-    endpointStatus: endpointStatus(["caeApi", "caeWeb"]),
+    endpointStatus: endpointStatus(["caeApi", "caeWeb", "assertViewer", "rtcAsr", "kokoro", "browserWebRtcBridge"]),
     requiredComponents: ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge", "ConversationAgentEvals", "ASSERT viewer"],
     startCommand: "npm run docker:reliability-lab",
     validationCommand: "npm run reliability:lab",
