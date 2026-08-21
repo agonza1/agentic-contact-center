@@ -100,6 +100,94 @@ function extractReliabilityRunProfiles(source, sourceLabel) {
   return profiles;
 }
 
+function constArraySource(source, constNames) {
+  for (const constName of constNames) {
+    const startIndex = source.indexOf(`const ${constName} = [`);
+    if (startIndex === -1) continue;
+    const endIndex = source.indexOf("\n];", startIndex + 1);
+    return source.slice(startIndex, endIndex === -1 ? source.length : endIndex);
+  }
+  return "";
+}
+
+function extractReliabilityEvidenceInventory(source, sourceLabel) {
+  const inventory = new Map();
+  const inventorySource = constArraySource(source, ["reliabilityEvidenceInventory", "evidenceInventory"]);
+  const matches = [...inventorySource.matchAll(/\n\s*\{\n\s*id:\s*"([^"]+)",/g)];
+  for (let index = 0; index < matches.length; index += 1) {
+    const id = matches[index][1];
+    const start = matches[index].index ?? 0;
+    const end = matches[index + 1]?.index ?? inventorySource.length;
+    const block = inventorySource.slice(start, end);
+    const field = (fieldName) => block.match(new RegExp(`${fieldName}:\\s*"([^"]+)"`))?.[1] ?? null;
+    const contract = {
+      id,
+      requiredFor: stringArrayField(block, "requiredFor"),
+      artifact: field("artifact"),
+      producerCommand: field("producerCommand"),
+      validates: stringArrayField(block, "validates"),
+    };
+    if (Object.values(contract).some((value) => value === null)) continue;
+    if (inventory.has(id)) {
+      fail(`${sourceLabel} declares duplicate reliability evidence inventory item: ${id}`);
+    }
+    inventory.set(id, contract);
+  }
+  return inventory;
+}
+
+function extractReliabilityHandoffChecklist(source, sourceLabel) {
+  const checklist = new Map();
+  const checklistSource = constArraySource(source, ["reliabilityHandoffChecklist", "handoffChecklist"]);
+  const matches = [...checklistSource.matchAll(/\n\s*\{\n\s*id:\s*"([^"]+)",/g)];
+  for (let index = 0; index < matches.length; index += 1) {
+    const id = matches[index][1];
+    const start = matches[index].index ?? 0;
+    const end = matches[index + 1]?.index ?? checklistSource.length;
+    const block = checklistSource.slice(start, end);
+    const field = (fieldName) => block.match(new RegExp(`${fieldName}:\\s*"([^"]+)"`))?.[1] ?? null;
+    const contract = {
+      id,
+      requiredFor: stringArrayField(block, "requiredFor"),
+      command: field("command"),
+      requiredEvidence: stringArrayField(block, "requiredEvidence"),
+      passSignal: field("passSignal"),
+    };
+    if (Object.values(contract).some((value) => value === null)) continue;
+    if (checklist.has(id)) {
+      fail(`${sourceLabel} declares duplicate reliability handoff checklist item: ${id}`);
+    }
+    checklist.set(id, contract);
+  }
+  return checklist;
+}
+
+function compareReliabilityContracts(apiContracts, cliContracts, contractName, idField) {
+  if (apiContracts.size === 0) {
+    fail(`src/http/createServer.ts exposes no ${contractName}`);
+  }
+  if (cliContracts.size === 0) {
+    fail(`scripts/reliability-lab-status.mjs exposes no ${contractName}`);
+  }
+  if (!sameValues([...apiContracts.keys()].sort(), [...cliContracts.keys()].sort())) {
+    fail(`${contractName} names differ between API and status CLI`);
+  }
+  for (const [id, apiContract] of apiContracts) {
+    const cliContract = cliContracts.get(id);
+    if (!cliContract) continue;
+    for (const fieldName of Object.keys(apiContract).filter((field) => field !== idField)) {
+      const apiValue = apiContract[fieldName];
+      const cliValue = cliContract[fieldName];
+      const matches = Array.isArray(apiValue) && Array.isArray(cliValue)
+        ? sameValues(apiValue, cliValue)
+        : apiValue === cliValue;
+      if (!matches) {
+        fail(`${contractName} ${id} ${fieldName} differs between API and status CLI`);
+      }
+    }
+  }
+}
+
 function markdownSources() {
   const docsDir = path.join(repoRoot, "docs");
   const docs = existsSync(docsDir)
@@ -453,6 +541,25 @@ for (const [profile, apiContract] of apiRunProfiles) {
   }
 }
 
+const apiEvidenceInventory = extractReliabilityEvidenceInventory(server, "src/http/createServer.ts");
+const cliEvidenceInventory = extractReliabilityEvidenceInventory(
+  reliabilityLabStatusScript,
+  "scripts/reliability-lab-status.mjs",
+);
+compareReliabilityContracts(
+  apiEvidenceInventory,
+  cliEvidenceInventory,
+  "reliability evidence inventory contracts",
+  "id",
+);
+
+const apiHandoffChecklist = extractReliabilityHandoffChecklist(server, "src/http/createServer.ts");
+const cliHandoffChecklist = extractReliabilityHandoffChecklist(
+  reliabilityLabStatusScript,
+  "scripts/reliability-lab-status.mjs",
+);
+compareReliabilityContracts(apiHandoffChecklist, cliHandoffChecklist, "reliability handoff checklist contracts", "id");
+
 const mermaidDiagramCount = [...readme.matchAll(/```mermaid/g)].length;
 if (mermaidDiagramCount > 3) {
   fail(`README contains ${mermaidDiagramCount} primary Mermaid diagrams; #307 allows at most 3`);
@@ -538,5 +645,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${apiRunProfiles.size} reliability run profile contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms.`,
 );
