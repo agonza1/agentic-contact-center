@@ -363,6 +363,8 @@ const statusEndpointEnvVars = constStringArray(reliabilityLabStatusScript, "opti
 const apiEndpointEnvVars = constStringArray(server, "reliabilityOptionalEndpointEnvVars");
 const statusReadinessVocabulary = constStringArray(reliabilityLabStatusScript, "readinessVocabulary");
 const apiReadinessVocabulary = constStringArray(server, "reliabilityReadinessVocabulary");
+const statusStackManifestKeys = constStringArray(reliabilityLabStatusScript, "requiredStackManifestKeys");
+const apiStackManifestKeys = constStringArray(server, "reliabilityRequiredStackManifestKeys");
 if (!statusEndpointEnvVars) {
   fail("scripts/reliability-lab-status.mjs is missing optionalEndpointEnvVars");
 }
@@ -380,6 +382,15 @@ if (!apiReadinessVocabulary) {
 }
 if (statusReadinessVocabulary && apiReadinessVocabulary && !sameValues(statusReadinessVocabulary, apiReadinessVocabulary)) {
   fail("reliability readiness vocabulary differs between status CLI and API");
+}
+if (!statusStackManifestKeys) {
+  fail("scripts/reliability-lab-status.mjs is missing requiredStackManifestKeys");
+}
+if (!apiStackManifestKeys) {
+  fail("src/http/createServer.ts is missing reliabilityRequiredStackManifestKeys");
+}
+if (statusStackManifestKeys && apiStackManifestKeys && !sameValues(statusStackManifestKeys, apiStackManifestKeys)) {
+  fail("reliability stack manifest required keys differ between status CLI and API");
 }
 
 const endpointEnvSection =
@@ -507,22 +518,7 @@ for (const phrase of canonicalEcosystemTerms) {
   }
 }
 
-const requiredStackManifestKeys = [
-  "ACC_APP_IMAGE",
-  "ACC_APP_URL",
-  "RTC_ASR_IMAGE",
-  "RTC_ASR_BASE_URL",
-  "KOKORO_IMAGE",
-  "KOKORO_BASE_URL",
-  "PIPECAT_BROWSER_BRIDGE_URL",
-  "FREESWITCH_IMAGE",
-  "FREESWITCH_VERTO_URL",
-  "TOOLHIVE_VERSION",
-  "CAE_API_URL",
-  "CAE_WEB_URL",
-  "ASSERT_VIEWER_URL",
-];
-for (const key of requiredStackManifestKeys) {
+for (const key of statusStackManifestKeys ?? []) {
   if (!stackManifest.match(new RegExp(`^${key}=`, "m"))) {
     fail(`stack/versions.env is missing required key: ${key}`);
   }
@@ -542,5 +538,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${apiRunProfiles.size} reliability run profile contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${apiRunProfiles.size} reliability run profile contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms.`,
 );
