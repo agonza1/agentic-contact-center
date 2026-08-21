@@ -345,6 +345,10 @@ function selectedModeHandoffChecklist(mode) {
   return handoffChecklist.filter((step) => step.requiredFor.includes(mode));
 }
 
+function selectedModeEvidenceInventory(mode) {
+  return evidenceInventory.filter((item) => item.requiredFor.includes(mode));
+}
+
 const endpointRequirements = {
   caeApi: { label: "ConversationAgentEvals API", envVar: "CAE_API_URL", configured: Boolean(optionalEndpoints.caeApi), ready: endpointReady.caeApi },
   caeWeb: { label: "ConversationAgentEvals web", envVar: "CAE_WEB_URL", configured: Boolean(optionalEndpoints.caeWeb), ready: endpointReady.caeWeb },
@@ -775,6 +779,7 @@ const report = {
         ...selectedTargetMode,
         requestedVia: requestedTargetMode === "fixture" ? "default" : "ACC_RELIABILITY_TARGET_MODE",
         handoffChecklist: selectedModeHandoffChecklist(selectedTargetMode.mode),
+        evidenceInventory: selectedModeEvidenceInventory(selectedTargetMode.mode),
       }
     : {
         mode: requestedTargetMode,

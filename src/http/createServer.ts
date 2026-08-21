@@ -1145,6 +1145,10 @@ function selectedReliabilityModeHandoffChecklist(mode: string): typeof reliabili
   return reliabilityHandoffChecklist.filter((step) => step.requiredFor.includes(mode));
 }
 
+function selectedReliabilityModeEvidenceInventory(mode: string): typeof reliabilityEvidenceInventory {
+  return reliabilityEvidenceInventory.filter((item) => item.requiredFor.includes(mode));
+}
+
 function buildReliabilityRunProfiles() {
   const caeConfigured = Boolean(configuredEnvValue("CAE_API_URL") && configuredEnvValue("CAE_WEB_URL"));
   const browserLiveConfigured = Boolean(
@@ -1653,6 +1657,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
           ...selectedTargetMode,
           requestedVia: requestedTargetMode === "fixture" ? "default" : "ACC_RELIABILITY_TARGET_MODE",
           handoffChecklist: selectedReliabilityModeHandoffChecklist(selectedTargetMode.mode),
+          evidenceInventory: selectedReliabilityModeEvidenceInventory(selectedTargetMode.mode),
         }
       : {
           mode: requestedTargetMode,
