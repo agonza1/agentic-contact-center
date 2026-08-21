@@ -125,6 +125,74 @@ function markdownTableRows(section) {
     .filter((cells) => cells.length > 0 && !cells.every((cell) => /^:?-{3,}:?$/.test(cell)));
 }
 
+function tokenizeShellFragment(command) {
+  return [...command.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((match) =>
+    (match[1] ?? match[2] ?? match[3]).replace(/^["']|["']$/g, ""),
+  );
+}
+
+function composeServiceNames(composeSource) {
+  const services = [];
+  let inServices = false;
+  for (const line of composeSource.split("\n")) {
+    if (line === "services:") {
+      inServices = true;
+      continue;
+    }
+    if (!inServices) continue;
+    if (/^[A-Za-z0-9_-]+:/.test(line)) break;
+    const match = line.match(/^  ([A-Za-z0-9_-]+):\s*$/);
+    if (match) services.push(match[1]);
+  }
+  return unique(services);
+}
+
+function packageDockerServiceReferences(scriptName, command) {
+  const references = [];
+  const dockerComposeCommands = [...command.matchAll(/docker compose\b([^;&]*)/g)].map((match) => match[0]);
+  const optionsWithValue = new Set(["--profile", "-f", "--file", "--project-name", "-p", "--env-file", "--scale", "--timeout", "--pull"]);
+  const optionsWithoutValue = new Set([
+    "--build",
+    "--detach",
+    "-d",
+    "--remove-orphans",
+    "--no-deps",
+    "--rm",
+    "--force-recreate",
+    "--no-recreate",
+    "--renew-anon-volumes",
+    "--wait",
+  ]);
+
+  for (const dockerComposeCommand of dockerComposeCommands) {
+    const tokens = tokenizeShellFragment(dockerComposeCommand);
+    const actionIndex = tokens.findIndex((token) => ["up", "run"].includes(token));
+    if (actionIndex === -1) continue;
+    const action = tokens[actionIndex];
+    const serviceTokens = [];
+    for (let index = actionIndex + 1; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      if (optionsWithValue.has(token)) {
+        index += 1;
+        continue;
+      }
+      if (optionsWithoutValue.has(token) || token.startsWith("-")) {
+        continue;
+      }
+      serviceTokens.push(token);
+    }
+
+    if (action === "run" && serviceTokens.length > 1) {
+      serviceTokens.length = 1;
+    }
+    for (const service of serviceTokens) {
+      references.push({ scriptName, service });
+    }
+  }
+
+  return references;
+}
+
 function npmCommands(markdown) {
   return [...markdown.matchAll(/`([^`]*\bnpm\s+(?:run\s+)?[A-Za-z0-9:_-]+[^`]*)`/g)].flatMap((match) =>
     match[1]
@@ -149,6 +217,7 @@ const stackManifest = readText("stack/versions.env");
 const reliabilityLabDoc = readText("docs/reliability-lab.md");
 const scripts = packageJson.scripts ?? {};
 const builtinNpmCommands = new Set(["install"]);
+const composeServices = composeServiceNames(compose);
 
 for (const sourcePath of markdownSources()) {
   const source = readText(sourcePath);
@@ -231,6 +300,18 @@ for (const [scriptName, command] of Object.entries(scripts)) {
     if (!composeProfiles.has(profile[1])) {
       fail(`package script ${scriptName} uses missing Compose profile: ${profile[1]}`);
     }
+  }
+}
+
+const packageDockerServiceRefs = unique(
+  Object.entries(scripts)
+    .flatMap(([scriptName, command]) => packageDockerServiceReferences(scriptName, command))
+    .map(({ scriptName, service }) => `${scriptName}\0${service}`),
+);
+for (const reference of packageDockerServiceRefs) {
+  const [scriptName, service] = reference.split("\0");
+  if (!composeServices.includes(service)) {
+    fail(`package script ${scriptName} references missing Compose service: ${service}`);
   }
 }
 
@@ -461,5 +542,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${apiRunProfiles.size} reliability run profile contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${apiRunProfiles.size} reliability run profile contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms.`,
 );
