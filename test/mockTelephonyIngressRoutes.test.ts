@@ -2082,6 +2082,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         status: string;
         blockers: string[];
         requiredEndpointEnvVars: string[];
+        missingEndpointEnvVars: string[];
         optionalEndpointEnvVars: string[];
         endpointStatus: Array<{ key: string; envVar: string; configured: boolean; status: string }>;
         requiredComponents: string[];
@@ -2219,6 +2220,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       ],
     );
     assert.deepEqual(payload.targetModes[0]?.requiredEndpointEnvVars, []);
+    assert.deepEqual(payload.targetModes[0]?.missingEndpointEnvVars, []);
     assert.deepEqual(payload.targetModes[0]?.optionalEndpointEnvVars, []);
     assert.equal(payload.targetModes[0]?.detail, "Sidecar-free cancellation-rescue proof for the controlled candidate.");
     assert.deepEqual(
@@ -2245,6 +2247,11 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(payload.selectedRunProfile.nextAction.command, "npm run proof");
     assert.equal(payload.selectedRunProfile.nextAction.evidence, "artifacts/demo-proof-latest.json");
     assert.deepEqual(payload.targetModes[1]?.requiredEndpointEnvVars, [
+      "RTC_ASR_BASE_URL",
+      "KOKORO_BASE_URL",
+      "BROWSER_WEBRTC_BRIDGE_URL",
+    ]);
+    assert.deepEqual(payload.targetModes[1]?.missingEndpointEnvVars, [
       "RTC_ASR_BASE_URL",
       "KOKORO_BASE_URL",
       "BROWSER_WEBRTC_BRIDGE_URL",
@@ -2529,6 +2536,7 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
           mode: string;
           status: string;
           blockers: string[];
+          missingEndpointEnvVars: string[];
           nextAction: { step: string };
           endpointStatus: Array<{ key: string; configured: boolean; status: string }>;
         }>;
@@ -2551,6 +2559,16 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
       assert.deepEqual(blockers.browser_webrtc, []);
       assert.deepEqual(blockers.reliability_lab, []);
       assert.deepEqual(blockers.sip_verto, []);
+      assert.deepEqual(
+        Object.fromEntries(payload.targetModes.map((mode) => [mode.mode, mode.missingEndpointEnvVars])),
+        {
+          fixture: [],
+          browser_webrtc: [],
+          reliability_lab: [],
+          sip_verto: [],
+          signalwire_pstn: [],
+        },
+      );
       assert.match(blockers.signalwire_pstn?.[0] ?? "", /SignalWire SIP trunk env/);
       assert.equal(payload.targetModes.find((mode) => mode.mode === "browser_webrtc")?.nextAction.step, "validate_browser_media_path");
       assert.deepEqual(
