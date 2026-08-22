@@ -494,6 +494,22 @@ if (statusReadinessVocabulary && !sameValues(statusReadinessVocabulary, document
   fail("docs/reliability-lab.md readiness vocabulary differs from status CLI contract");
 }
 
+const reliabilityModesSection = reliabilityLabDoc.match(/## Modes\n\n([\s\S]*?)(?:\n## |\n# |$)/)?.[1] ?? "";
+const reliabilityModeRows = markdownTableRows(reliabilityModesSection);
+const reliabilityModeHeader = reliabilityModeRows[0] ?? [];
+const targetModeIdIndex = reliabilityModeHeader.indexOf("Target mode id");
+const documentedReliabilityTargetModes = targetModeIdIndex === -1
+  ? []
+  : unique(
+      reliabilityModeRows
+        .slice(1)
+        .map((row) => row[targetModeIdIndex] ?? "")
+        .flatMap((cell) => [...cell.matchAll(/`([a-z_]+)`/g)].map((match) => match[1])),
+    );
+if (targetModeIdIndex === -1) {
+  fail("docs/reliability-lab.md Modes table is missing a Target mode id column");
+}
+
 const apiTargetModes = extractReliabilityTargetModes(server, "src/http/createServer.ts");
 const cliTargetModes = extractReliabilityTargetModes(reliabilityLabStatusScript, "scripts/reliability-lab-status.mjs");
 if (apiTargetModes.size === 0) {
@@ -504,6 +520,9 @@ if (cliTargetModes.size === 0) {
 }
 if (!sameValues([...apiTargetModes.keys()].sort(), [...cliTargetModes.keys()].sort())) {
   fail("reliability target mode names differ between API and status CLI");
+}
+if (!sameValues([...cliTargetModes.keys()].sort(), documentedReliabilityTargetModes)) {
+  fail("docs/reliability-lab.md target mode ids differ from status CLI contract");
 }
 for (const [mode, apiContract] of apiTargetModes) {
   const cliContract = cliTargetModes.get(mode);
@@ -681,5 +700,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms, ${canonicalEcosystemEdges.length} canonical ecosystem edges.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${documentedReliabilityTargetModes.length} documented reliability target modes, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms, ${canonicalEcosystemEdges.length} canonical ecosystem edges.`,
 );
