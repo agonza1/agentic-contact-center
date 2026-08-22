@@ -200,6 +200,12 @@ test("reliability lab status reports explicit blockers without starting sidecars
       ["cae_assert_request", "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json", "boolean", "npm run cae:assert:handoff"],
     ],
   );
+  for (const item of payload.selectedTargetMode.evidenceStatus as Array<{ exists: boolean; sizeBytes: number | null; updatedAt: string | null }>) {
+    assert.equal(typeof item.sizeBytes === "number" || item.sizeBytes === null, true);
+    assert.equal(typeof item.updatedAt === "string" || item.updatedAt === null, true);
+    assert.equal(item.exists, item.sizeBytes !== null);
+    assert.equal(item.exists, item.updatedAt !== null);
+  }
   assert.equal(payload.selectedTargetMode.evidenceSummary.total, 2);
   assert.equal(payload.selectedTargetMode.evidenceSummary.present + payload.selectedTargetMode.evidenceSummary.missing, 2);
   assert.equal(payload.selectedTargetMode.evidenceSummary.complete, payload.selectedTargetMode.evidenceSummary.missing === 0);

@@ -2139,7 +2139,14 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         evidenceCommand?: string;
         handoffChecklist?: Array<{ id: string }>;
         evidenceInventory?: Array<{ id: string }>;
-        evidenceStatus?: Array<{ id: string; artifact: string; exists: boolean; producerCommand: string }>;
+        evidenceStatus?: Array<{
+          id: string;
+          artifact: string;
+          exists: boolean;
+          sizeBytes: number | null;
+          updatedAt: string | null;
+          producerCommand: string;
+        }>;
         nextMissingEvidence?: { id: string; artifact: string; command: string } | null;
         evidenceSummary?: {
           total: number;
@@ -2305,6 +2312,8 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         item.id,
         item.artifact,
         typeof item.exists,
+        typeof item.sizeBytes === "number" || item.sizeBytes === null,
+        typeof item.updatedAt === "string" || item.updatedAt === null,
         item.producerCommand,
       ]),
       [
@@ -2312,11 +2321,17 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           "controlled_candidate_proof",
           "artifacts/demo-proof-latest.json",
           "boolean",
+          true,
+          true,
           "npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json",
         ],
-        ["cae_assert_request", "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json", "boolean", "npm run cae:assert:handoff"],
+        ["cae_assert_request", "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json", "boolean", true, true, "npm run cae:assert:handoff"],
       ],
     );
+    for (const item of payload.selectedTargetMode.evidenceStatus ?? []) {
+      assert.equal(item.exists, item.sizeBytes !== null);
+      assert.equal(item.exists, item.updatedAt !== null);
+    }
     if (payload.selectedTargetMode.nextMissingEvidence) {
       assert.ok(["controlled_candidate_proof", "cae_assert_request"].includes(payload.selectedTargetMode.nextMissingEvidence.id));
     }
