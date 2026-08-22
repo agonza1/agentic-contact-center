@@ -48,6 +48,7 @@ The command prints a JSON status report and does not start long-running services
 - the selected mode artifact presence, size, and last update time in `selectedTargetMode.evidenceStatus`, plus `selectedTargetMode.nextMissingEvidence` for the next proof command to run.
 - the lab run-profile contract in `runProfiles`, covering local fixture, connected CAE, and live-media lab runs.
 - the selected run profile in `selectedRunProfile`, mapping `ACC_RELIABILITY_TARGET_MODE` to the smallest profile and next validation command.
+- the selected run profile artifact status in `selectedRunProfile.evidenceStatus` and `selectedRunProfile.evidenceSummary`, so an orchestrator can see whether the profile's required artifacts already exist.
 
 Environment variables recognized by the status command:
 

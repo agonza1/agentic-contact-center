@@ -476,13 +476,27 @@ function evidenceStatusForInventory(inventory) {
   });
 }
 
+function evidenceStatusForArtifacts(artifacts) {
+  return artifacts.map((artifact) => {
+    const artifactPath = path.join(repoRoot, artifact);
+    const exists = existsSync(artifactPath);
+    const stats = exists ? statSync(artifactPath) : null;
+    return {
+      artifact,
+      exists,
+      sizeBytes: stats?.size ?? null,
+      updatedAt: stats?.mtime.toISOString() ?? null,
+    };
+  });
+}
+
 function nextMissingEvidence(evidenceStatus) {
   const missing = evidenceStatus.find((item) => !item.exists);
   return missing
     ? {
-        id: missing.id,
+        id: missing.id ?? missing.artifact,
         artifact: missing.artifact,
-        command: missing.producerCommand,
+        command: missing.producerCommand ?? null,
       }
     : null;
 }
@@ -818,6 +832,7 @@ const selectedTargetMode = targetModes.find((mode) => mode.mode === requestedTar
 const selectedRunProfile = selectedRunProfileForTargetMode(selectedTargetMode?.mode ?? null);
 const selectedEvidenceInventory = selectedTargetMode ? selectedModeEvidenceInventory(selectedTargetMode.mode) : [];
 const selectedEvidenceStatus = evidenceStatusForInventory(selectedEvidenceInventory);
+const selectedRunProfileEvidenceStatus = selectedRunProfile ? evidenceStatusForArtifacts(selectedRunProfile.evidence) : [];
 
 function optionalComponent({ component, configured, endpoint, envVar, probe, configuredDetail, defaultDetail }) {
   const status = configured ? (probe?.ready ? "ready" : "unreachable") : "not_required";
@@ -975,6 +990,8 @@ const report = {
     ? {
         ...selectedRunProfile,
         requestedForTargetMode: selectedTargetMode?.mode,
+        evidenceStatus: selectedRunProfileEvidenceStatus,
+        evidenceSummary: evidenceSummary(selectedRunProfileEvidenceStatus),
         nextAction: {
           step: selectedRunProfile.status === "ready" || selectedRunProfile.status === "configured" ? "run_profile_validation" : "unblock_run_profile",
           command: selectedRunProfile.validationCommand,
