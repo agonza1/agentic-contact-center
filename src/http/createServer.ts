@@ -1835,6 +1835,24 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
 }
 
 function buildReliabilityGuideHtml(): string {
+  const targetModes = buildReliabilityTargetModes();
+  const requestedTargetMode = configuredEnvValue("ACC_RELIABILITY_TARGET_MODE") ?? "fixture";
+  const selectedTargetMode = targetModes.find((mode) => mode.mode === requestedTargetMode) ?? null;
+  const selectedEvidenceStatus = selectedTargetMode
+    ? reliabilityEvidenceStatus(selectedReliabilityModeEvidenceInventory(selectedTargetMode.mode))
+    : [];
+  const selectedEvidenceSummary = reliabilityEvidenceSummary(selectedEvidenceStatus);
+  const selectedModeHtml = selectedTargetMode
+    ? `<div class="grid">
+        <div class="metric"><span>Selected mode</span><strong>${escapeReliabilityHtml(selectedTargetMode.mode.replace(/_/g, " "))}</strong><span class="meta">${escapeReliabilityHtml(requestedTargetMode === "fixture" ? "default" : "ACC_RELIABILITY_TARGET_MODE")}</span></div>
+        <div class="metric"><span>Status</span><strong>${escapeReliabilityHtml(selectedTargetMode.status.replace(/_/g, " "))}</strong><span class="meta">${escapeReliabilityHtml(selectedTargetMode.nextAction.detail)}</span></div>
+        <div class="metric"><span>Next action</span><strong>${escapeReliabilityHtml(selectedTargetMode.nextAction.step.replace(/_/g, " "))}</strong><span class="meta"><code>${escapeReliabilityHtml(selectedTargetMode.nextAction.command)}</code></span></div>
+        <div class="metric"><span>Evidence</span><strong>${selectedEvidenceSummary.present}/${selectedEvidenceSummary.total} present</strong><span class="meta">${escapeReliabilityHtml(selectedEvidenceSummary.nextMissingEvidence?.artifact ?? "selected evidence complete")}</span></div>
+      </div>`
+    : `<div class="grid">
+        <div class="metric"><span>Selected mode</span><strong>${escapeReliabilityHtml(requestedTargetMode.replace(/_/g, " "))}</strong><span class="meta">ACC_RELIABILITY_TARGET_MODE</span></div>
+        <div class="metric"><span>Status</span><strong>blocked</strong><span class="meta">Select one of ${escapeReliabilityHtml(targetModes.map((mode) => mode.mode).join(", "))}</span></div>
+      </div>`;
   const handoffChecklist = reliabilityHandoffChecklist
     .map((item, index) => {
       const evidence = item.requiredEvidence.map((entry) => `<code>${escapeReliabilityHtml(entry)}</code>`).join(" ");
@@ -1855,6 +1873,9 @@ function buildReliabilityGuideHtml(): string {
         : "";
       return `<div class="metric"><span>${escapeReliabilityHtml(component.component)}</span><strong>${escapeReliabilityHtml(component.status.replace(/_/g, " "))}</strong>${envHtml}${endpointHtml}<span class="meta">${escapeReliabilityHtml(component.detail)}</span></div>`;
     })
+    .join("");
+  const targetModeRows = targetModes
+    .map((mode) => `<tr><td>${escapeReliabilityHtml(mode.mode.replace(/_/g, " "))}<div class="meta">${escapeReliabilityHtml(mode.status.replace(/_/g, " "))}</div></td><td><code>${escapeReliabilityHtml(mode.startCommand)}</code></td><td><code>${escapeReliabilityHtml(mode.validationCommand)}</code></td><td><code>${escapeReliabilityHtml(mode.evidenceCommand)}</code></td><td><a href="${escapeReliabilityHtml(mode.readinessRoute)}">${escapeReliabilityHtml(mode.readinessRoute)}</a></td></tr>`)
     .join("");
 
   return `<!doctype html>
@@ -1911,6 +1932,10 @@ function buildReliabilityGuideHtml(): string {
         ${readinessCards}
       </div>
     </section>
+    <section class="band" aria-labelledby="selected-mode-title">
+      <h2 id="selected-mode-title">Active Target Mode</h2>
+      ${selectedModeHtml}
+    </section>
     <section class="band" aria-labelledby="workflow-title">
       <h2 id="workflow-title">Golden Workflow</h2>
       <ol class="workflow">
@@ -1938,13 +1963,7 @@ function buildReliabilityGuideHtml(): string {
       <h2 id="modes-title">Target Modes</h2>
       <table class="mode-table">
         <thead><tr><th>Mode</th><th>Start/connect</th><th>Validate</th><th>Proof</th><th>Readiness</th></tr></thead>
-        <tbody>
-          <tr><td>Fixture</td><td><code>npm run proof</code></td><td><code>npm run proof</code></td><td><code>npm run proof:bundle</code></td><td><a href="/health">health</a></td></tr>
-          <tr><td>Browser WebRTC</td><td><code>npm run docker:browser-webrtc</code></td><td><code>npm run browser-webrtc:check</code></td><td><code>npm run browser-webrtc:live-proof</code></td><td><a href="/api/browser-webrtc/readiness">readiness</a></td></tr>
-          <tr><td>Reliability lab</td><td><code>npm run docker:reliability-lab</code></td><td><code>npm run reliability:lab</code></td><td><code>npm run proof:bundle</code></td><td><a href="/api/reliability">reliability</a></td></tr>
-          <tr><td>SIP/Verto</td><td><code>npm run docker:sip-verto</code></td><td><code>npm run pipecat:verto:check</code></td><td><code>npm run pipecat:verto:live-proof</code></td><td><a href="/api/pipecat-media-engine/readiness">media engine</a></td></tr>
-          <tr><td>SignalWire PSTN</td><td><code>npm run docker:sip-verto</code></td><td><code>npm run signalwire:freeswitch:readiness</code></td><td><code>npm run signalwire:freeswitch:readiness -- --render</code></td><td><a href="/api/pipecat-media-engine/readiness">media engine</a></td></tr>
-        </tbody>
+        <tbody>${targetModeRows}</tbody>
       </table>
     </section>
   </main>

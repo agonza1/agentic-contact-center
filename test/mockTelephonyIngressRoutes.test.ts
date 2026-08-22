@@ -2724,6 +2724,13 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
         evidence: "/api/pipecat-media-engine/readiness",
         detail: "Bring up rtc-asr, Kokoro, and FreeSWITCH/Verto before capturing SIP/Verto evidence.",
       });
+
+      const html = await requestText(port, "GET", "/reliability");
+      assert.equal(html.statusCode, 200);
+      assert.match(html.body, /Active Target Mode/);
+      assert.match(html.body, /sip verto/);
+      assert.match(html.body, /configure sip verto endpoints/);
+      assert.match(html.body, /npm run docker:sip-verto/);
     });
   } finally {
     if (originalTargetMode === undefined) delete process.env.ACC_RELIABILITY_TARGET_MODE;
