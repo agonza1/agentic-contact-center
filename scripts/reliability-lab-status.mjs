@@ -307,6 +307,51 @@ const goldenComparison = [
   },
 ];
 
+const verdictEvidenceChecklist = [
+  {
+    id: "transcript",
+    label: "Transcript",
+    route: "/api/calls/{callId}/transcript",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    validates: ["cancellation_intent_detected", "caller_agent_turn_sequence"],
+  },
+  {
+    id: "event_trace",
+    label: "Event trace",
+    route: "/api/calls/{callId}/events",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    validates: ["policy_hold_present", "operator_steer_preserved", "fallback_handoff_recorded"],
+  },
+  {
+    id: "latency",
+    label: "Latency marks",
+    route: "/api/calls/{callId}/latency",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    validates: ["turn_timing_reviewable", "over_budget_marks_reviewable"],
+  },
+  {
+    id: "final_state",
+    label: "Final state",
+    route: "/api/calls/{callId}",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    validates: ["final_disposition_recorded", "release_gate_verdict_grounded"],
+  },
+  {
+    id: "media",
+    label: "Media proof",
+    route: "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+    requiredFor: ["browser_webrtc", "sip_verto", "signalwire_pstn"],
+    validates: ["live_media_not_claimed_by_fixture", "caller_audible_playback_reviewable"],
+  },
+  {
+    id: "provenance",
+    label: "Run provenance",
+    route: "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
+    requiredFor: ["fixture", "browser_webrtc", "reliability_lab", "sip_verto", "signalwire_pstn"],
+    validates: ["target_mode_recorded", "candidate_profile_recorded", "component_versions_recorded"],
+  },
+];
+
 const provenanceContract = {
   manifestPath: "stack/versions.env",
   versionSource: "repositoryContracts.stackManifest.values",
@@ -896,6 +941,7 @@ const report = {
   goldenScenario: {
     id: "cancellation-rescue",
     comparison: goldenComparison,
+    verdictEvidenceChecklist,
     caveat: "Unsafe baseline behavior is only a labeled demo fixture/profile; CAE/ASSERT owns imported run reports and comparisons.",
   },
   selectedTargetMode: selectedTargetMode

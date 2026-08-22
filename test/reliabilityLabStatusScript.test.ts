@@ -179,6 +179,22 @@ test("reliability lab status reports explicit blockers without starting sidecars
     ],
   );
   assert.match(payload.goldenScenario.caveat, /labeled demo fixture/);
+  assert.deepEqual(
+    payload.goldenScenario.verdictEvidenceChecklist.map((item: { id: string; route: string }) => [item.id, item.route]),
+    [
+      ["transcript", "/api/calls/{callId}/transcript"],
+      ["event_trace", "/api/calls/{callId}/events"],
+      ["latency", "/api/calls/{callId}/latency"],
+      ["final_state", "/api/calls/{callId}"],
+      ["media", "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json"],
+      ["provenance", "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json"],
+    ],
+  );
+  assert.deepEqual(payload.goldenScenario.verdictEvidenceChecklist.find((item: { id: string }) => item.id === "media")?.requiredFor, [
+    "browser_webrtc",
+    "sip_verto",
+    "signalwire_pstn",
+  ]);
   assert.equal(payload.selectedTargetMode.mode, "fixture");
   assert.equal(payload.selectedTargetMode.requestedVia, "default");
   assert.equal(payload.selectedTargetMode.validationCommand, "npm run proof");

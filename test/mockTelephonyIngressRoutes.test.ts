@@ -2174,6 +2174,11 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           evidence: string;
           evidenceRefs: string[];
         }>;
+        verdictEvidenceChecklist: Array<{
+          id: string;
+          route: string;
+          requiredFor: string[];
+        }>;
       };
       provenanceContract: {
         manifestPath: string;
@@ -2487,6 +2492,22 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         .flatMap((signal) => signal.evidenceRefs)
         .includes("artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json"),
     );
+    assert.deepEqual(
+      payload.comparisonContract.verdictEvidenceChecklist.map((item) => [item.id, item.route]),
+      [
+        ["transcript", "/api/calls/{callId}/transcript"],
+        ["event_trace", "/api/calls/{callId}/events"],
+        ["latency", "/api/calls/{callId}/latency"],
+        ["final_state", "/api/calls/{callId}"],
+        ["media", "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json"],
+        ["provenance", "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json"],
+      ],
+    );
+    assert.deepEqual(payload.comparisonContract.verdictEvidenceChecklist.find((item) => item.id === "media")?.requiredFor, [
+      "browser_webrtc",
+      "sip_verto",
+      "signalwire_pstn",
+    ]);
     assert.deepEqual(payload.provenanceContract.requiredRunFields, [
       "runtimeMode",
       "targetMode",
