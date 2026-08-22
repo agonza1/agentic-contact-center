@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect as connectTcp } from "node:net";
 import { resolve } from "node:path";
@@ -1162,13 +1162,20 @@ function selectedReliabilityModeEvidenceInventory(mode: string): typeof reliabil
 }
 
 function reliabilityEvidenceStatus(inventory: typeof reliabilityEvidenceInventory) {
-  return inventory.map((item) => ({
-    id: item.id,
-    artifact: item.artifact,
-    exists: existsSync(resolve(process.cwd(), item.artifact)),
-    producerCommand: item.producerCommand,
-    validates: item.validates,
-  }));
+  return inventory.map((item) => {
+    const artifactPath = resolve(process.cwd(), item.artifact);
+    const exists = existsSync(artifactPath);
+    const stats = exists ? statSync(artifactPath) : null;
+    return {
+      id: item.id,
+      artifact: item.artifact,
+      exists,
+      sizeBytes: stats?.size ?? null,
+      updatedAt: stats?.mtime.toISOString() ?? null,
+      producerCommand: item.producerCommand,
+      validates: item.validates,
+    };
+  });
 }
 
 function nextMissingReliabilityEvidence(evidenceStatus: ReturnType<typeof reliabilityEvidenceStatus>) {

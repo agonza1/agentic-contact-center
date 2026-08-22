@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 
@@ -415,13 +415,20 @@ function selectedModeEvidenceInventory(mode) {
 }
 
 function evidenceStatusForInventory(inventory) {
-  return inventory.map((item) => ({
-    id: item.id,
-    artifact: item.artifact,
-    exists: existsSync(path.join(repoRoot, item.artifact)),
-    producerCommand: item.producerCommand,
-    validates: item.validates,
-  }));
+  return inventory.map((item) => {
+    const artifactPath = path.join(repoRoot, item.artifact);
+    const exists = existsSync(artifactPath);
+    const stats = exists ? statSync(artifactPath) : null;
+    return {
+      id: item.id,
+      artifact: item.artifact,
+      exists,
+      sizeBytes: stats?.size ?? null,
+      updatedAt: stats?.mtime.toISOString() ?? null,
+      producerCommand: item.producerCommand,
+      validates: item.validates,
+    };
+  });
 }
 
 function nextMissingEvidence(evidenceStatus) {

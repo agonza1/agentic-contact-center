@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:http";
+import { readFileSync } from "node:fs";
 import net from "node:net";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -39,6 +40,16 @@ const expectedValidationProvenance = {
     "evidenceArtifacts",
   ],
 };
+
+test("docker reliability lab mounts shared artifacts into the app container", () => {
+  const compose = readFileSync(join(repoRoot, "docker-compose.yml"), "utf8");
+  const lines = compose.split(/\r?\n/);
+  const start = lines.findIndex((line) => line === "  app:");
+  const end = lines.findIndex((line, index) => index > start && /^  [a-zA-Z0-9_-]+:/.test(line));
+  const appService = lines.slice(start + 1, end === -1 ? undefined : end).join("\n");
+
+  assert.match(appService, /volumes:\n(?:      .*\n)*      - \.\/artifacts:\/app\/artifacts\b/);
+});
 
 function withClearedLiveEndpointEnv() {
   const env = { ...process.env };
@@ -200,6 +211,12 @@ test("reliability lab status reports explicit blockers without starting sidecars
       ["cae_assert_request", "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json", "boolean", "npm run cae:assert:handoff"],
     ],
   );
+  for (const item of payload.selectedTargetMode.evidenceStatus as Array<{ exists: boolean; sizeBytes: number | null; updatedAt: string | null }>) {
+    assert.equal(typeof item.sizeBytes === "number" || item.sizeBytes === null, true);
+    assert.equal(typeof item.updatedAt === "string" || item.updatedAt === null, true);
+    assert.equal(item.exists, item.sizeBytes !== null);
+    assert.equal(item.exists, item.updatedAt !== null);
+  }
   assert.equal(payload.selectedTargetMode.evidenceSummary.total, 2);
   assert.equal(payload.selectedTargetMode.evidenceSummary.present + payload.selectedTargetMode.evidenceSummary.missing, 2);
   assert.equal(payload.selectedTargetMode.evidenceSummary.complete, payload.selectedTargetMode.evidenceSummary.missing === 0);

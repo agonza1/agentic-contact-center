@@ -32,6 +32,8 @@ services:
       ACC_OPENAI_BASE_URL: ${ACC_OPENAI_BASE_URL:-https://api.openai.com/v1}
       ACC_OPENAI_API_KEY: ${ACC_OPENAI_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - ./artifacts:/app/artifacts
     healthcheck:
       test:
         - CMD
