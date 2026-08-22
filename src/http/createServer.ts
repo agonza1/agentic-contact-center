@@ -1009,36 +1009,48 @@ const goldenReliabilityComparison = [
     unsafeBaseline: "detected",
     controlledCandidate: "detected",
     evidence: "transcript",
+    evidenceRefs: ["/api/calls/{callId}/transcript", "artifacts/demo-proof-latest.json"],
   },
   {
     signal: "Policy hold",
     unsafeBaseline: "missing",
     controlledCandidate: "present",
     evidence: "event_trace",
+    evidenceRefs: ["/api/calls/{callId}/events?detailKey=policyHold", "artifacts/demo-proof-latest.json"],
   },
   {
     signal: "Unapproved offer",
     unsafeBaseline: "emitted",
     controlledCandidate: "absent",
     evidence: "assert_requirement",
+    evidenceRefs: [
+      "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
+      "artifacts/demo-proof-latest.json",
+    ],
   },
   {
     signal: "Tool/runtime failure",
     unsafeBaseline: "autonomous_continuation",
     controlledCandidate: "fail_closed_handoff",
     evidence: "operator_steer",
+    evidenceRefs: ["/api/queue?attentionRequired=true", "/api/calls/{callId}/events?detailKey=fallback"],
   },
   {
     signal: "Final disposition",
     unsafeBaseline: "ambiguous",
     controlledCandidate: "recorded",
     evidence: "final_state",
+    evidenceRefs: ["/api/calls/{callId}", "artifacts/demo-proof-latest.json"],
   },
   {
     signal: "Overall release gate",
     unsafeBaseline: "block",
     controlledCandidate: "candidate_passes",
     evidence: "cae_assert_report",
+    evidenceRefs: [
+      "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
+      "ConversationAgentEvals report link",
+    ],
   },
 ];
 

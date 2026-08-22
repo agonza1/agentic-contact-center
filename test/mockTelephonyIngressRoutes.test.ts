@@ -2160,7 +2160,13 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       comparisonContract: {
         baselineProfile: string;
         candidateProfile: string;
-        signals: Array<{ signal: string; unsafeBaseline: string; controlledCandidate: string; evidence: string }>;
+        signals: Array<{
+          signal: string;
+          unsafeBaseline: string;
+          controlledCandidate: string;
+          evidence: string;
+          evidenceRefs: string[];
+        }>;
       };
       provenanceContract: {
         manifestPath: string;
@@ -2456,6 +2462,15 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         ["Final disposition", "ambiguous", "recorded", "final_state"],
         ["Overall release gate", "block", "candidate_passes", "cae_assert_report"],
       ],
+    );
+    assert.deepEqual(payload.comparisonContract.signals[1]?.evidenceRefs, [
+      "/api/calls/{callId}/events?detailKey=policyHold",
+      "artifacts/demo-proof-latest.json",
+    ]);
+    assert.ok(
+      payload.comparisonContract.signals
+        .flatMap((signal) => signal.evidenceRefs)
+        .includes("artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json"),
     );
     assert.deepEqual(payload.provenanceContract.requiredRunFields, [
       "runtimeMode",
