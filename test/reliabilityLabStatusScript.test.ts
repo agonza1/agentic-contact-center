@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:http";
+import { readFileSync } from "node:fs";
 import net from "node:net";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -39,6 +40,16 @@ const expectedValidationProvenance = {
     "evidenceArtifacts",
   ],
 };
+
+test("docker reliability lab mounts shared artifacts into the app container", () => {
+  const compose = readFileSync(join(repoRoot, "docker-compose.yml"), "utf8");
+  const lines = compose.split(/\r?\n/);
+  const start = lines.findIndex((line) => line === "  app:");
+  const end = lines.findIndex((line, index) => index > start && /^  [a-zA-Z0-9_-]+:/.test(line));
+  const appService = lines.slice(start + 1, end === -1 ? undefined : end).join("\n");
+
+  assert.match(appService, /volumes:\n(?:      .*\n)*      - \.\/artifacts:\/app\/artifacts\b/);
+});
 
 function withClearedLiveEndpointEnv() {
   const env = { ...process.env };
