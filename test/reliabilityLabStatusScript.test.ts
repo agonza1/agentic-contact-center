@@ -200,6 +200,15 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.selectedTargetMode.validationCommand, "npm run proof");
   assert.equal(payload.selectedRunProfile.id, "local_fixture");
   assert.equal(payload.selectedRunProfile.requestedForTargetMode, "fixture");
+  assert.deepEqual(
+    payload.selectedRunProfile.evidenceStatus.map((item: { artifact: string; exists: boolean }) => [
+      item.artifact,
+      typeof item.exists,
+    ]),
+    [["artifacts/demo-proof-latest.json", "boolean"]],
+  );
+  assert.equal(payload.selectedRunProfile.evidenceSummary.total, 1);
+  assert.equal(typeof payload.selectedRunProfile.evidenceSummary.complete, "boolean");
   assert.equal(payload.selectedRunProfile.nextAction.step, "run_profile_validation");
   assert.equal(payload.selectedRunProfile.nextAction.command, "npm run proof");
   assert.deepEqual(
