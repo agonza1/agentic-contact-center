@@ -2139,6 +2139,8 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         evidenceCommand?: string;
         handoffChecklist?: Array<{ id: string }>;
         evidenceInventory?: Array<{ id: string }>;
+        evidenceStatus?: Array<{ id: string; artifact: string; exists: boolean; producerCommand: string }>;
+        nextMissingEvidence?: { id: string; artifact: string; command: string } | null;
         nextAction?: {
           step: string;
           command: string;
@@ -2285,6 +2287,26 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       payload.selectedTargetMode.evidenceInventory?.map((item) => item.id),
       ["controlled_candidate_proof", "cae_assert_request"],
     );
+    assert.deepEqual(
+      payload.selectedTargetMode.evidenceStatus?.map((item) => [
+        item.id,
+        item.artifact,
+        typeof item.exists,
+        item.producerCommand,
+      ]),
+      [
+        [
+          "controlled_candidate_proof",
+          "artifacts/demo-proof-latest.json",
+          "boolean",
+          "npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json",
+        ],
+        ["cae_assert_request", "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json", "boolean", "npm run cae:assert:handoff"],
+      ],
+    );
+    if (payload.selectedTargetMode.nextMissingEvidence) {
+      assert.ok(["controlled_candidate_proof", "cae_assert_request"].includes(payload.selectedTargetMode.nextMissingEvidence.id));
+    }
     assert.deepEqual(payload.selectedTargetMode.nextAction, {
       step: "run_controlled_candidate",
       command: "npm run proof",

@@ -45,6 +45,7 @@ The command prints a JSON status report and does not start long-running services
 - the endpoint environment contract in `repositoryContracts.optionalEndpointEnvVars`.
 - the CAE/ASSERT handoff checklist in `handoffChecklist`, including selected-mode, controlled-candidate, live-media, and request-generation evidence gates.
 - the concrete artifact inventory in `evidenceInventory`, mapping each fixture, CAE handoff, browser, SIP/Verto, and SignalWire proof artifact to its producer command and validation signals.
+- the selected mode artifact presence in `selectedTargetMode.evidenceStatus`, plus `selectedTargetMode.nextMissingEvidence` for the next proof command to run.
 - the lab run-profile contract in `runProfiles`, covering local fixture, connected CAE, and live-media lab runs.
 - the selected run profile in `selectedRunProfile`, mapping `ACC_RELIABILITY_TARGET_MODE` to the smallest profile and next validation command.
 
