@@ -309,10 +309,12 @@ test("GET /api/cluecon exposes first-slice readiness, scenario, and proof metada
   assert.match(payload.architectureCenter.target, /transport\.input -> rtc-asr STT/);
   assert.match(payload.architectureCenter.adapterRule, /FreeSWITCH owns the SIP\/RTP boundary/);
   assert.ok(payload.architectureCenter.currentGaps.some((gap) => /reliability-lab profile/.test(gap)));
+  assert.ok(payload.architectureCenter.currentGaps.some((gap) => /guided \/reliability workflow now exists/.test(gap)));
   assert.ok(payload.architectureCenter.currentGaps.some((gap) => /strict local SIP\/Verto proof is accepted/.test(gap)));
   assert.equal(payload.demoGoal.issue, "agonza1/agentic-contact-center#307");
   assert.deepEqual(payload.demoGoal.chain, ["caller", "freeswitch", "pipecat_pipeline", "rtc_asr", "acc_policy_tools", "kokoro_tts", "evidence"]);
-  assert.match(payload.demoGoal.successSignal, /Phase 2 reliability-lab blockers/);
+  assert.match(payload.demoGoal.successSignal, /guided reliability workflow/);
+  assert.match(payload.demoGoal.successSignal, /Phase 2 CAE endpoint blockers/);
   assert.equal(payload.turnTiming.speechStartHoldMs, 80);
   assert.equal(payload.turnTiming.acousticStopHoldMs, 350);
   assert.equal(payload.turnTiming.endOfTurnSilenceMs, 2000);

@@ -352,7 +352,7 @@ function buildBasePayload(
       adapterRule: "FreeSWITCH owns the SIP/RTP boundary; decoded audio enters the same Pipecat processors used by other transports.",
       currentGaps: [
         "reliability-lab profile still needs explicit ConversationAgentEvals/ASSERT endpoint wiring",
-        "guided /reliability workflow is a future #307 slice",
+        "guided /reliability workflow now exists as the ACC integration surface; CAE/ASSERT still own run reports and comparisons",
         "default demo remains fixture-backed and must not be described as live media proof",
         "strict local SIP/Verto proof is accepted; do not reopen it for documentation work",
       ],
@@ -361,7 +361,7 @@ function buildBasePayload(
       issue: "agonza1/agentic-contact-center#307",
       statement: "Show deterministic telephony governing a measurable, interruptible, and fail-closed AI media path.",
       chain: ["caller", "freeswitch", "pipecat_pipeline", "rtc_asr", "acc_policy_tools", `${ttsProvider}_tts`, "evidence"],
-      successSignal: "The scorecard passes and the runtime copy separates fixture, optional live media, accepted SIP/Verto proof, and Phase 2 reliability-lab blockers.",
+      successSignal: "The scorecard passes and the runtime copy separates fixture, optional live media, accepted SIP/Verto proof, guided reliability workflow, and Phase 2 CAE endpoint blockers.",
     },
     turnTiming: {
       ...clueConVadTiming,
