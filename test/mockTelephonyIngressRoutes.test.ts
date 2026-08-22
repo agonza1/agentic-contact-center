@@ -2141,6 +2141,13 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         evidenceInventory?: Array<{ id: string }>;
         evidenceStatus?: Array<{ id: string; artifact: string; exists: boolean; producerCommand: string }>;
         nextMissingEvidence?: { id: string; artifact: string; command: string } | null;
+        evidenceSummary?: {
+          total: number;
+          present: number;
+          missing: number;
+          complete: boolean;
+          nextMissingEvidence: { id: string; artifact: string; command: string } | null;
+        };
         nextAction?: {
           step: string;
           command: string;
@@ -2307,6 +2314,15 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     if (payload.selectedTargetMode.nextMissingEvidence) {
       assert.ok(["controlled_candidate_proof", "cae_assert_request"].includes(payload.selectedTargetMode.nextMissingEvidence.id));
     }
+    assert.equal(payload.selectedTargetMode.evidenceSummary?.total, 2);
+    assert.equal(
+      (payload.selectedTargetMode.evidenceSummary?.present ?? 0) + (payload.selectedTargetMode.evidenceSummary?.missing ?? 0),
+      2,
+    );
+    assert.equal(
+      payload.selectedTargetMode.evidenceSummary?.complete,
+      payload.selectedTargetMode.evidenceSummary?.missing === 0,
+    );
     assert.deepEqual(payload.selectedTargetMode.nextAction, {
       step: "run_controlled_candidate",
       command: "npm run proof",

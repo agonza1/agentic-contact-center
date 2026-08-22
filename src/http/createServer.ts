@@ -1170,6 +1170,18 @@ function nextMissingReliabilityEvidence(evidenceStatus: ReturnType<typeof reliab
     : null;
 }
 
+function reliabilityEvidenceSummary(evidenceStatus: ReturnType<typeof reliabilityEvidenceStatus>) {
+  const present = evidenceStatus.filter((item) => item.exists).length;
+  const missing = evidenceStatus.length - present;
+  return {
+    total: evidenceStatus.length,
+    present,
+    missing,
+    complete: missing === 0,
+    nextMissingEvidence: nextMissingReliabilityEvidence(evidenceStatus),
+  };
+}
+
 const signalwirePstnCommonEnvVars = [
   "SIGNALWIRE_FROM_NUMBER",
   "FREESWITCH_PUBLIC_SIP_HOST",
@@ -1738,6 +1750,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
           evidenceInventory: selectedEvidenceInventory,
           evidenceStatus: selectedEvidenceStatus,
           nextMissingEvidence: nextMissingReliabilityEvidence(selectedEvidenceStatus),
+          evidenceSummary: reliabilityEvidenceSummary(selectedEvidenceStatus),
         }
       : {
           mode: requestedTargetMode,

@@ -200,6 +200,9 @@ test("reliability lab status reports explicit blockers without starting sidecars
       ["cae_assert_request", "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json", "boolean", "npm run cae:assert:handoff"],
     ],
   );
+  assert.equal(payload.selectedTargetMode.evidenceSummary.total, 2);
+  assert.equal(payload.selectedTargetMode.evidenceSummary.present + payload.selectedTargetMode.evidenceSummary.missing, 2);
+  assert.equal(payload.selectedTargetMode.evidenceSummary.complete, payload.selectedTargetMode.evidenceSummary.missing === 0);
   if (payload.selectedTargetMode.nextMissingEvidence) {
     assert.ok(["controlled_candidate_proof", "cae_assert_request"].includes(payload.selectedTargetMode.nextMissingEvidence.id));
   }
@@ -428,6 +431,9 @@ test("reliability lab status exposes requested target mode selection", async () 
     payload.selectedTargetMode.evidenceInventory.map((item: { id: string }) => item.id),
     ["controlled_candidate_proof", "cae_assert_request", "browser_live_media_manifest"],
   );
+  assert.equal(payload.selectedTargetMode.evidenceSummary.total, 3);
+  assert.equal(payload.selectedTargetMode.evidenceSummary.present + payload.selectedTargetMode.evidenceSummary.missing, 3);
+  assert.equal(payload.selectedTargetMode.evidenceSummary.complete, payload.selectedTargetMode.evidenceSummary.missing === 0);
   assert.ok(payload.selectedTargetMode.blockers.includes("rtc-asr endpoint is not configured (RTC_ASR_BASE_URL)."));
 });
 

@@ -423,6 +423,18 @@ function nextMissingEvidence(evidenceStatus) {
     : null;
 }
 
+function evidenceSummary(evidenceStatus) {
+  const present = evidenceStatus.filter((item) => item.exists).length;
+  const missing = evidenceStatus.length - present;
+  return {
+    total: evidenceStatus.length,
+    present,
+    missing,
+    complete: missing === 0,
+    nextMissingEvidence: nextMissingEvidence(evidenceStatus),
+  };
+}
+
 const endpointRequirements = {
   caeApi: { label: "ConversationAgentEvals API", envVar: "CAE_API_URL", configured: Boolean(optionalEndpoints.caeApi), ready: endpointReady.caeApi },
   caeWeb: { label: "ConversationAgentEvals web", envVar: "CAE_WEB_URL", configured: Boolean(optionalEndpoints.caeWeb), ready: endpointReady.caeWeb },
@@ -875,6 +887,7 @@ const report = {
         evidenceInventory: selectedEvidenceInventory,
         evidenceStatus: selectedEvidenceStatus,
         nextMissingEvidence: nextMissingEvidence(selectedEvidenceStatus),
+        evidenceSummary: evidenceSummary(selectedEvidenceStatus),
       }
     : {
         mode: requestedTargetMode,
