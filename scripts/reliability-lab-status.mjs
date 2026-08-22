@@ -402,6 +402,27 @@ function selectedModeEvidenceInventory(mode) {
   return evidenceInventory.filter((item) => item.requiredFor.includes(mode));
 }
 
+function evidenceStatusForInventory(inventory) {
+  return inventory.map((item) => ({
+    id: item.id,
+    artifact: item.artifact,
+    exists: existsSync(path.join(repoRoot, item.artifact)),
+    producerCommand: item.producerCommand,
+    validates: item.validates,
+  }));
+}
+
+function nextMissingEvidence(evidenceStatus) {
+  const missing = evidenceStatus.find((item) => !item.exists);
+  return missing
+    ? {
+        id: missing.id,
+        artifact: missing.artifact,
+        command: missing.producerCommand,
+      }
+    : null;
+}
+
 const endpointRequirements = {
   caeApi: { label: "ConversationAgentEvals API", envVar: "CAE_API_URL", configured: Boolean(optionalEndpoints.caeApi), ready: endpointReady.caeApi },
   caeWeb: { label: "ConversationAgentEvals web", envVar: "CAE_WEB_URL", configured: Boolean(optionalEndpoints.caeWeb), ready: endpointReady.caeWeb },
@@ -718,6 +739,8 @@ function selectedRunProfileForTargetMode(targetMode) {
 
 const selectedTargetMode = targetModes.find((mode) => mode.mode === requestedTargetMode) ?? null;
 const selectedRunProfile = selectedRunProfileForTargetMode(selectedTargetMode?.mode ?? null);
+const selectedEvidenceInventory = selectedTargetMode ? selectedModeEvidenceInventory(selectedTargetMode.mode) : [];
+const selectedEvidenceStatus = evidenceStatusForInventory(selectedEvidenceInventory);
 
 function optionalComponent({ component, configured, endpoint, envVar, probe, configuredDetail, defaultDetail }) {
   const status = configured ? (probe?.ready ? "ready" : "unreachable") : "not_required";
@@ -848,7 +871,9 @@ const report = {
         ...selectedTargetMode,
         requestedVia: requestedTargetMode === "fixture" ? "default" : "ACC_RELIABILITY_TARGET_MODE",
         handoffChecklist: selectedModeHandoffChecklist(selectedTargetMode.mode),
-        evidenceInventory: selectedModeEvidenceInventory(selectedTargetMode.mode),
+        evidenceInventory: selectedEvidenceInventory,
+        evidenceStatus: selectedEvidenceStatus,
+        nextMissingEvidence: nextMissingEvidence(selectedEvidenceStatus),
       }
     : {
         mode: requestedTargetMode,

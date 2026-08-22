@@ -1149,6 +1149,27 @@ function selectedReliabilityModeEvidenceInventory(mode: string): typeof reliabil
   return reliabilityEvidenceInventory.filter((item) => item.requiredFor.includes(mode));
 }
 
+function reliabilityEvidenceStatus(inventory: typeof reliabilityEvidenceInventory) {
+  return inventory.map((item) => ({
+    id: item.id,
+    artifact: item.artifact,
+    exists: existsSync(resolve(process.cwd(), item.artifact)),
+    producerCommand: item.producerCommand,
+    validates: item.validates,
+  }));
+}
+
+function nextMissingReliabilityEvidence(evidenceStatus: ReturnType<typeof reliabilityEvidenceStatus>) {
+  const missing = evidenceStatus.find((item) => !item.exists);
+  return missing
+    ? {
+        id: missing.id,
+        artifact: missing.artifact,
+        command: missing.producerCommand,
+      }
+    : null;
+}
+
 const signalwirePstnCommonEnvVars = [
   "SIGNALWIRE_FROM_NUMBER",
   "FREESWITCH_PUBLIC_SIP_HOST",
@@ -1657,6 +1678,10 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
   const requestedTargetMode = configuredEnvValue("ACC_RELIABILITY_TARGET_MODE") ?? "fixture";
   const selectedTargetMode = targetModes.find((mode) => mode.mode === requestedTargetMode) ?? null;
   const selectedRunProfile = selectedReliabilityRunProfile(selectedTargetMode?.mode ?? null, runProfiles);
+  const selectedEvidenceInventory = selectedTargetMode
+    ? selectedReliabilityModeEvidenceInventory(selectedTargetMode.mode)
+    : [];
+  const selectedEvidenceStatus = reliabilityEvidenceStatus(selectedEvidenceInventory);
 
   return {
     ok: true,
@@ -1709,7 +1734,9 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
           ...selectedTargetMode,
           requestedVia: requestedTargetMode === "fixture" ? "default" : "ACC_RELIABILITY_TARGET_MODE",
           handoffChecklist: selectedReliabilityModeHandoffChecklist(selectedTargetMode.mode),
-          evidenceInventory: selectedReliabilityModeEvidenceInventory(selectedTargetMode.mode),
+          evidenceInventory: selectedEvidenceInventory,
+          evidenceStatus: selectedEvidenceStatus,
+          nextMissingEvidence: nextMissingReliabilityEvidence(selectedEvidenceStatus),
         }
       : {
           mode: requestedTargetMode,
