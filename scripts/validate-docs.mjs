@@ -625,6 +625,42 @@ for (const phrase of canonicalEcosystemTerms) {
   }
 }
 
+const canonicalEcosystemEdges = [
+  {
+    label: "ACC audio to rtc-asr",
+    readme: 'ACC -->|"audio"| ASR',
+    cluecon: "ACC --> audio --> rtc-asr",
+  },
+  {
+    label: "rtc-asr transcripts to ACC",
+    readme: 'ASR -->|"transcripts"| ACC',
+    cluecon: "rtc-asr --> transcripts --> ACC",
+  },
+  {
+    label: "ConversationAgentEvals scenarios to ACC",
+    readme: 'CAE -->|"test scenarios"| ACC',
+    cluecon: "ConversationAgentEvals --> test scenarios --> ACC",
+  },
+  {
+    label: "ACC proof bundle to ConversationAgentEvals",
+    readme: 'ACC -->|"proof bundle"| CAE',
+    cluecon: "ACC --> proof bundle --> ConversationAgentEvals",
+  },
+  {
+    label: "ConversationAgentEvals evaluation to ASSERT",
+    readme: 'CAE -->|"evaluation"| ASSERT',
+    cluecon: "ConversationAgentEvals --> evaluation --> ASSERT",
+  },
+];
+for (const edge of canonicalEcosystemEdges) {
+  if (!readme.includes(edge.readme)) {
+    fail(`README canonical ecosystem edge is missing or drifted: ${edge.label}`);
+  }
+  if (!cluecon.includes(edge.cluecon)) {
+    fail(`ClueCon canonical ecosystem edge is missing or drifted: ${edge.label}`);
+  }
+}
+
 for (const key of statusStackManifestKeys ?? []) {
   if (!stackManifest.match(new RegExp(`^${key}=`, "m"))) {
     fail(`stack/versions.env is missing required key: ${key}`);
@@ -645,5 +681,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms, ${canonicalEcosystemEdges.length} canonical ecosystem edges.`,
 );
