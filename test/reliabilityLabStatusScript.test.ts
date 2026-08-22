@@ -415,6 +415,11 @@ test("reliability lab status exposes requested target mode selection", async () 
   assert.equal(payload.selectedRunProfile.id, "live_media_lab");
   assert.equal(payload.selectedRunProfile.requestedForTargetMode, "browser_webrtc");
   assert.equal(payload.selectedRunProfile.nextAction.step, "unblock_run_profile");
+  assert.deepEqual(payload.selectedRunProfile.evidence, [
+    "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+    "artifacts/verto-sip-live-proof/manifest.json",
+    "artifacts/signalwire-freeswitch-readiness/readiness.json",
+  ]);
   assert.deepEqual(
     payload.selectedTargetMode.handoffChecklist.map((step: { id: string }) => step.id),
     ["select_target_mode", "capture_controlled_candidate", "capture_selected_media_proof", "generate_cae_assert_request"],

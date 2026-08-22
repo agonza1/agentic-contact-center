@@ -493,6 +493,7 @@ const runProfiles = [
     evidence: [
       "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
       "artifacts/verto-sip-live-proof/manifest.json",
+      "artifacts/signalwire-freeswitch-readiness/readiness.json",
     ],
     detail: "Run CAE-connected live media evidence paths after the selected rtc-asr, TTS, and transport endpoints are configured.",
   },
