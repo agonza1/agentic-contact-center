@@ -30,4 +30,5 @@ test("documentation validation catches Markdown drift against documented package
   assert.match(result.stdout, /README diagrams/);
   assert.match(result.stdout, /documented ports/);
   assert.match(result.stdout, /canonical ecosystem terms/);
+  assert.match(result.stdout, /canonical ecosystem edges/);
 });
