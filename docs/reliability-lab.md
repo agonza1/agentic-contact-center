@@ -16,13 +16,13 @@ Those projects stay independently usable and connect through URLs, artifacts, ad
 
 ## Modes
 
-| Mode | Target mode id | Required components | Readiness vocabulary | Review proof |
-| --- | --- | --- | --- | --- |
-| Scripted fixture demo | `fixture` | ACC only | `ready` when the local server/proof script passes | `artifacts/demo-proof-latest.json` |
-| Browser voice | `browser_webrtc` | ACC, rtc-asr, Kokoro, Pipecat browser bridge | `configured`, `unreachable`, `degraded`, or `ready` per sidecar | `browser-webrtc:live-proof` evidence |
-| SIP/Verto | `sip_verto` | ACC, FreeSWITCH, rtc-asr, Kokoro, Pipecat Verto bridge | `configured`, `unreachable`, `blocked`, or `ready` per service | `pipecat:verto:live-proof` manifest |
-| Reliability lab | `reliability_lab` | ACC plus configured CAE/ASSERT endpoints | Phase 1 reports `blocked` until external endpoints are supplied | Future CAE run/report links |
-| SignalWire PSTN | `signalwire_pstn` | ACC, SignalWire SIP trunk, public FreeSWITCH/Verto, rtc-asr, Kokoro, Pipecat Verto bridge | `blocked` until trunk, source ACL, public SIP reachability, and live media endpoints are validated | `signalwire:freeswitch:readiness` render/proof |
+| Mode | Target mode id | Start command | Required components | Readiness vocabulary | Review proof |
+| --- | --- | --- | --- | --- | --- |
+| Scripted fixture demo | `fixture` | `npm run proof` | ACC only | `ready` when the local server/proof script passes | `artifacts/demo-proof-latest.json` |
+| Browser voice | `browser_webrtc` | `npm run docker:browser-webrtc` | ACC, rtc-asr, Kokoro, Pipecat browser bridge | `configured`, `unreachable`, `degraded`, or `ready` per sidecar | `browser-webrtc:live-proof` evidence |
+| SIP/Verto | `sip_verto` | `npm run docker:sip-verto` | ACC, FreeSWITCH, rtc-asr, Kokoro, Pipecat Verto bridge | `configured`, `unreachable`, `blocked`, or `ready` per service | `pipecat:verto:live-proof` manifest |
+| Reliability lab | `reliability_lab` | `npm run docker:reliability-lab` | ACC plus configured CAE/ASSERT endpoints | Phase 1 reports `blocked` until external endpoints are supplied | Future CAE run/report links |
+| SignalWire PSTN | `signalwire_pstn` | `npm run docker:sip-verto` | ACC, SignalWire SIP trunk, public FreeSWITCH/Verto, rtc-asr, Kokoro, Pipecat Verto bridge | `blocked` until trunk, source ACL, public SIP reachability, and live media endpoints are validated | `signalwire:freeswitch:readiness` render/proof |
 
 The default ACC scripted demo must remain independent of CAE, rtc-asr, FreeSWITCH, ASSERT, production credentials, and paid provider calls.
 
