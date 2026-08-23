@@ -1207,6 +1207,7 @@ function selectedReliabilityModeEvidenceInventory(mode: string): typeof reliabil
 }
 
 function reliabilityEvidenceStatus(inventory: typeof reliabilityEvidenceInventory) {
+  const checkedAtMs = Date.now();
   return inventory.map((item) => {
     const artifactPath = resolve(process.cwd(), item.artifact);
     const exists = existsSync(artifactPath);
@@ -1217,6 +1218,7 @@ function reliabilityEvidenceStatus(inventory: typeof reliabilityEvidenceInventor
       exists,
       sizeBytes: stats?.size ?? null,
       updatedAt: stats?.mtime.toISOString() ?? null,
+      ageMs: stats ? Math.max(checkedAtMs - stats.mtime.getTime(), 0) : null,
       producerCommand: item.producerCommand,
       validates: item.validates,
     };

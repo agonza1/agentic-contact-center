@@ -460,6 +460,7 @@ function selectedModeEvidenceInventory(mode) {
 }
 
 function evidenceStatusForInventory(inventory) {
+  const checkedAtMs = Date.now();
   return inventory.map((item) => {
     const artifactPath = path.join(repoRoot, item.artifact);
     const exists = existsSync(artifactPath);
@@ -470,6 +471,7 @@ function evidenceStatusForInventory(inventory) {
       exists,
       sizeBytes: stats?.size ?? null,
       updatedAt: stats?.mtime.toISOString() ?? null,
+      ageMs: stats ? Math.max(checkedAtMs - stats.mtime.getTime(), 0) : null,
       producerCommand: item.producerCommand,
       validates: item.validates,
     };
@@ -477,6 +479,7 @@ function evidenceStatusForInventory(inventory) {
 }
 
 function evidenceStatusForArtifacts(artifacts) {
+  const checkedAtMs = Date.now();
   return artifacts.map((artifact) => {
     const artifactPath = path.join(repoRoot, artifact);
     const exists = existsSync(artifactPath);
@@ -486,6 +489,7 @@ function evidenceStatusForArtifacts(artifacts) {
       exists,
       sizeBytes: stats?.size ?? null,
       updatedAt: stats?.mtime.toISOString() ?? null,
+      ageMs: stats ? Math.max(checkedAtMs - stats.mtime.getTime(), 0) : null,
     };
   });
 }

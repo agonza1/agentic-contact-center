@@ -46,11 +46,11 @@ The command prints a JSON status report and does not start long-running services
 - the endpoint environment contract in `repositoryContracts.optionalEndpointEnvVars`.
 - the CAE/ASSERT handoff checklist in `handoffChecklist`, including selected-mode, controlled-candidate, live-media, and request-generation evidence gates.
 - the concrete artifact inventory in `evidenceInventory`, mapping each fixture, CAE handoff, browser, SIP/Verto, and SignalWire proof artifact to its producer command and validation signals.
-- the selected mode artifact presence, size, and last update time in `selectedTargetMode.evidenceStatus`, plus `selectedTargetMode.nextMissingEvidence` for the next proof command to run.
+- the selected mode artifact presence, size, last update time, and age in milliseconds in `selectedTargetMode.evidenceStatus`, plus `selectedTargetMode.nextMissingEvidence` for the next proof command to run.
 - the evidence-specific next step in `selectedTargetMode.nextEvidenceAction` and `selectedRunProfile.nextEvidenceAction`, so an orchestrator can capture the next missing artifact before rerunning the broader validation gate.
 - the lab run-profile contract in `runProfiles`, covering local fixture, connected CAE, and live-media lab runs.
 - the selected run profile in `selectedRunProfile`, mapping `ACC_RELIABILITY_TARGET_MODE` to the smallest profile and next validation command.
-- the selected run profile artifact status in `selectedRunProfile.evidenceStatus` and `selectedRunProfile.evidenceSummary`, so an orchestrator can see whether the profile's required artifacts already exist.
+- the selected run profile artifact status, including artifact age in milliseconds, in `selectedRunProfile.evidenceStatus` and `selectedRunProfile.evidenceSummary`, so an orchestrator can see whether the profile's required artifacts already exist.
 
 Environment variables recognized by the status command:
 
