@@ -311,6 +311,14 @@ function markdownCodeCellValue(cell) {
   return cell.trim().replace(/^`|`$/g, "");
 }
 
+function usesVocabularyTermWithOptionalQualifier(value, vocabulary) {
+  const trimmedValue = value.trim();
+  const allowedQualifierStarts = [" before ", " for ", " ready for ", " when "];
+  return vocabulary.some((term) =>
+    trimmedValue === term || allowedQualifierStarts.some((qualifier) => trimmedValue.startsWith(`${term}${qualifier}`)),
+  );
+}
+
 const readme = readText("README.md");
 const packageJson = JSON.parse(readText("package.json"));
 const compose = readText("docker-compose.yml");
@@ -532,7 +540,7 @@ if (statusEvidenceLevelVocabulary && runnableModeEvidenceIndex !== -1) {
   for (const row of documentedRunnableModeRows) {
     const mode = row[0] ?? "[unknown mode]";
     const evidenceLevel = row[runnableModeEvidenceIndex] ?? "";
-    if (!statusEvidenceLevelVocabulary.some((term) => evidenceLevel.includes(term))) {
+    if (!usesVocabularyTermWithOptionalQualifier(evidenceLevel, statusEvidenceLevelVocabulary)) {
       fail(`README What can I run? mode "${mode}" evidence level does not use the reliability evidence vocabulary`);
     }
   }

@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -35,4 +37,38 @@ test("documentation validation catches Markdown drift against documented package
   assert.match(result.stdout, /documented ports/);
   assert.match(result.stdout, /canonical ecosystem terms/);
   assert.match(result.stdout, /canonical ecosystem edges/);
+});
+
+test("documentation validation rejects evidence levels that only contain vocabulary terms incidentally", async () => {
+  const tempDir = await mkdtemp(join(os.tmpdir(), "agentic-contact-center-docs-validation-"));
+  try {
+    for (const entry of ["docs", "freeswitch", "scripts", "src", "stack"]) {
+      await cp(join(repoRoot, entry), join(tempDir, entry), { recursive: true });
+    }
+    for (const file of ["docker-compose.yml", "package.json", "README.md"]) {
+      await cp(join(repoRoot, file), join(tempDir, file));
+    }
+
+    const readmePath = join(tempDir, "README.md");
+    const readme = await readFile(readmePath, "utf8");
+    await writeFile(
+      readmePath,
+      readme.replace(
+        "Caller-audible live proof when `pipecat:verto:live-proof` passes",
+        "No Caller-audible live proof",
+      ),
+      "utf8",
+    );
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [join(repoRoot, "scripts/validate-docs.mjs")], { cwd: tempDir }),
+      (error: unknown) => {
+        const output = `${String((error as { stdout?: string }).stdout)}\n${String((error as { stderr?: string }).stderr)}`;
+        assert.match(output, /mode "SIP\/Verto" evidence level/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 });
