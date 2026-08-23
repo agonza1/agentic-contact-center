@@ -96,13 +96,16 @@ const signalwirePstnRegistrationEnvVars = [
   "SIGNALWIRE_SIP_PASSWORD",
 ];
 const readinessVocabulary = [
-  "ready",
+  "blocked",
   "configured",
+  "degraded",
+  "fixture",
   "missing",
   "not_configured",
   "not_required",
+  "reachable",
+  "ready",
   "unreachable",
-  "blocked",
 ];
 const evidenceFreshnessBudgetMs = 24 * 60 * 60 * 1000;
 

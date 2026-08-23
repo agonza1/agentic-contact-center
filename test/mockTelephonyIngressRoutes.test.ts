@@ -2380,13 +2380,16 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       configuredOptionalEndpoints: 0,
     });
     assert.deepEqual(payload.readinessVocabulary, [
-      "ready",
+      "blocked",
       "configured",
+      "degraded",
+      "fixture",
       "missing",
       "not_configured",
       "not_required",
+      "reachable",
+      "ready",
       "unreachable",
-      "blocked",
     ]);
     assert.deepEqual(payload.targetModes[1]?.requiredComponents, ["ACC app", "rtc-asr", "Kokoro", "Pipecat browser bridge"]);
     assert.deepEqual(payload.targetModes[1]?.blockers, [
