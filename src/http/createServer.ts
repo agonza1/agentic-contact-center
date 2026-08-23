@@ -1632,13 +1632,16 @@ const reliabilityOptionalEndpointEnvVars = [
 ];
 
 const reliabilityReadinessVocabulary = [
-  "ready",
+  "blocked",
   "configured",
+  "degraded",
+  "fixture",
   "missing",
   "not_configured",
   "not_required",
+  "reachable",
+  "ready",
   "unreachable",
-  "blocked",
 ];
 const reliabilityEvidenceFreshnessBudgetMs = 24 * 60 * 60 * 1000;
 

@@ -68,15 +68,19 @@ Readiness vocabulary:
 
 - `blocked`
 - `configured`
+- `degraded`
+- `fixture`
 - `missing`
 - `not_configured`
 - `not_required`
+- `reachable`
 - `ready`
 - `unreachable`
 
 Missing optional endpoints are reported as `not_configured` or `blocked`, not silently treated as ready.
 Per-mode `endpointStatus[]` entries use `missing` for an individual endpoint environment variable that has not been supplied yet.
 Configured endpoints are probed with a short timeout and reported as `ready` or `unreachable`; set `ACC_RELIABILITY_LAB_PROBE_TIMEOUT_MS` to tune the bounded probe during local diagnostics.
+`fixture`, `reachable`, and `degraded` are reserved vocabulary terms for mode summaries and future endpoint probes, so generated status consumers do not have to infer them from prose.
 `ACC_RELIABILITY_TARGET_MODE` selects the machine-readable `selectedTargetMode` in both `npm run reliability:lab` and `/api/reliability`; when unset, the safe sidecar-free `fixture` mode is selected.
 
 `stack/versions.env` is the pinned local reference manifest. It names the ACC, rtc-asr, Kokoro, FreeSWITCH, browser bridge, ToolHive gateway, CAE, and ASSERT image/URL or version coordinates that Phase 2 should either start through Compose or connect to explicitly.
