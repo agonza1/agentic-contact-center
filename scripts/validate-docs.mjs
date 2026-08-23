@@ -467,6 +467,8 @@ const statusEndpointEnvVars = constStringArray(reliabilityLabStatusScript, "opti
 const apiEndpointEnvVars = constStringArray(server, "reliabilityOptionalEndpointEnvVars");
 const statusReadinessVocabulary = constStringArray(reliabilityLabStatusScript, "readinessVocabulary");
 const apiReadinessVocabulary = constStringArray(server, "reliabilityReadinessVocabulary");
+const statusEvidenceLevelVocabulary = constStringArray(reliabilityLabStatusScript, "evidenceLevelVocabulary");
+const apiEvidenceLevelVocabulary = constStringArray(server, "reliabilityEvidenceLevelVocabulary");
 const statusStackManifestKeys = constStringArray(reliabilityLabStatusScript, "requiredStackManifestKeys");
 const apiStackManifestKeys = constStringArray(server, "reliabilityRequiredStackManifestKeys");
 if (!statusEndpointEnvVars) {
@@ -486,6 +488,19 @@ if (!apiReadinessVocabulary) {
 }
 if (statusReadinessVocabulary && apiReadinessVocabulary && !sameValues(statusReadinessVocabulary, apiReadinessVocabulary)) {
   fail("reliability readiness vocabulary differs between status CLI and API");
+}
+if (!statusEvidenceLevelVocabulary) {
+  fail("scripts/reliability-lab-status.mjs is missing evidenceLevelVocabulary");
+}
+if (!apiEvidenceLevelVocabulary) {
+  fail("src/http/createServer.ts is missing reliabilityEvidenceLevelVocabulary");
+}
+if (
+  statusEvidenceLevelVocabulary
+  && apiEvidenceLevelVocabulary
+  && !sameValues(statusEvidenceLevelVocabulary, apiEvidenceLevelVocabulary)
+) {
+  fail("reliability evidence-level vocabulary differs between status CLI and API");
 }
 if (!statusStackManifestKeys) {
   fail("scripts/reliability-lab-status.mjs is missing requiredStackManifestKeys");
@@ -508,6 +523,19 @@ const readinessVocabularySection =
 const documentedReadinessVocabulary = unique([...readinessVocabularySection.matchAll(/`([a-z_]+)`/g)].map((match) => match[1]));
 if (statusReadinessVocabulary && !sameValues(statusReadinessVocabulary, documentedReadinessVocabulary)) {
   fail("docs/reliability-lab.md readiness vocabulary differs from status CLI contract");
+}
+const runnableModeEvidenceIndex = runnableModeHeader.indexOf("Evidence level");
+if (runnableModeEvidenceIndex === -1) {
+  fail("README What can I run? table is missing an Evidence level column");
+}
+if (statusEvidenceLevelVocabulary && runnableModeEvidenceIndex !== -1) {
+  for (const row of documentedRunnableModeRows) {
+    const mode = row[0] ?? "[unknown mode]";
+    const evidenceLevel = row[runnableModeEvidenceIndex] ?? "";
+    if (!statusEvidenceLevelVocabulary.some((term) => evidenceLevel.includes(term))) {
+      fail(`README What can I run? mode "${mode}" evidence level does not use the reliability evidence vocabulary`);
+    }
+  }
 }
 
 const reliabilityModesSection = reliabilityLabDoc.match(/## Modes\n\n([\s\S]*?)(?:\n## |\n# |$)/)?.[1] ?? "";
@@ -777,5 +805,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${documentedReliabilityTargetModes.length} documented reliability target modes, ${knownReliabilityTargetModes.size} reliability target mode reference set, ${documentedReliabilityStartCommands.size} documented reliability start commands, ${documentedReliabilityValidationCommands.size} documented reliability validation commands, ${documentedReliabilityEvidenceCommands.size} documented reliability evidence commands, ${documentedReliabilityCaeHandoffCommands.size} documented reliability CAE handoff commands, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms, ${canonicalEcosystemEdges.length} canonical ecosystem edges.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${documentedReliabilityTargetModes.length} documented reliability target modes, ${knownReliabilityTargetModes.size} reliability target mode reference set, ${documentedReliabilityStartCommands.size} documented reliability start commands, ${documentedReliabilityValidationCommands.size} documented reliability validation commands, ${documentedReliabilityEvidenceCommands.size} documented reliability evidence commands, ${documentedReliabilityCaeHandoffCommands.size} documented reliability CAE handoff commands, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusEvidenceLevelVocabulary?.length ?? 0} evidence-level vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms, ${canonicalEcosystemEdges.length} canonical ecosystem edges.`,
 );

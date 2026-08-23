@@ -1643,6 +1643,14 @@ const reliabilityReadinessVocabulary = [
   "ready",
   "unreachable",
 ];
+const reliabilityEvidenceLevelVocabulary = [
+  "Caller-audible live proof",
+  "Deterministic proof bundle",
+  "Honest ready/unreachable/blocked/not-required report",
+  "Live local media proof",
+  "Local media/evidence stack",
+  "Redacted FreeSWITCH gateway/reachability proof",
+];
 const reliabilityEvidenceFreshnessBudgetMs = 24 * 60 * 60 * 1000;
 
 const reliabilityRequiredStackManifestKeys = [
@@ -1958,6 +1966,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
       configuredOptionalEndpoints: componentReadiness.filter((component) => component.status === "configured").length,
     },
     readinessVocabulary: reliabilityReadinessVocabulary,
+    evidenceLevelVocabulary: reliabilityEvidenceLevelVocabulary,
     repositoryContracts: {
       optionalEndpointEnvVars: reliabilityOptionalEndpointEnvVars,
       statusCommand: "npm run reliability:lab",
