@@ -188,6 +188,18 @@ function compareReliabilityContracts(apiContracts, cliContracts, contractName, i
   }
 }
 
+function validateTargetModeReferences(contracts, contractName, idField, fieldName, knownTargetModes) {
+  for (const [id, contract] of contracts) {
+    const references = contract[fieldName];
+    if (!Array.isArray(references)) continue;
+    for (const reference of references) {
+      if (!knownTargetModes.has(reference)) {
+        fail(`${contractName} ${idField}=${id} references unknown target mode: ${reference}`);
+      }
+    }
+  }
+}
+
 function markdownSources() {
   const docsDir = path.join(repoRoot, "docs");
   const docs = existsSync(docsDir)
@@ -591,6 +603,7 @@ for (const [mode, apiContract] of apiTargetModes) {
     }
   }
 }
+const knownReliabilityTargetModes = new Set([...apiTargetModes.keys(), ...cliTargetModes.keys()]);
 
 const apiRunProfiles = extractReliabilityRunProfiles(server, "src/http/createServer.ts");
 const cliRunProfiles = extractReliabilityRunProfiles(reliabilityLabStatusScript, "scripts/reliability-lab-status.mjs");
@@ -617,6 +630,8 @@ for (const [profile, apiContract] of apiRunProfiles) {
     }
   }
 }
+validateTargetModeReferences(apiRunProfiles, "API reliability run profile", "id", "targetModes", knownReliabilityTargetModes);
+validateTargetModeReferences(cliRunProfiles, "CLI reliability run profile", "id", "targetModes", knownReliabilityTargetModes);
 
 const apiEvidenceInventory = extractReliabilityEvidenceInventory(server, "src/http/createServer.ts");
 const cliEvidenceInventory = extractReliabilityEvidenceInventory(
@@ -629,6 +644,8 @@ compareReliabilityContracts(
   "reliability evidence inventory contracts",
   "id",
 );
+validateTargetModeReferences(apiEvidenceInventory, "API reliability evidence inventory", "id", "requiredFor", knownReliabilityTargetModes);
+validateTargetModeReferences(cliEvidenceInventory, "CLI reliability evidence inventory", "id", "requiredFor", knownReliabilityTargetModes);
 
 const apiHandoffChecklist = extractReliabilityHandoffChecklist(server, "src/http/createServer.ts");
 const cliHandoffChecklist = extractReliabilityHandoffChecklist(
@@ -636,6 +653,8 @@ const cliHandoffChecklist = extractReliabilityHandoffChecklist(
   "scripts/reliability-lab-status.mjs",
 );
 compareReliabilityContracts(apiHandoffChecklist, cliHandoffChecklist, "reliability handoff checklist contracts", "id");
+validateTargetModeReferences(apiHandoffChecklist, "API reliability handoff checklist", "id", "requiredFor", knownReliabilityTargetModes);
+validateTargetModeReferences(cliHandoffChecklist, "CLI reliability handoff checklist", "id", "requiredFor", knownReliabilityTargetModes);
 
 const mermaidDiagramCount = [...readme.matchAll(/```mermaid/g)].length;
 if (mermaidDiagramCount > 3) {
@@ -758,5 +777,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${documentedReliabilityTargetModes.length} documented reliability target modes, ${documentedReliabilityStartCommands.size} documented reliability start commands, ${documentedReliabilityValidationCommands.size} documented reliability validation commands, ${documentedReliabilityEvidenceCommands.size} documented reliability evidence commands, ${documentedReliabilityCaeHandoffCommands.size} documented reliability CAE handoff commands, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms, ${canonicalEcosystemEdges.length} canonical ecosystem edges.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${documentedReliabilityTargetModes.length} documented reliability target modes, ${knownReliabilityTargetModes.size} reliability target mode reference set, ${documentedReliabilityStartCommands.size} documented reliability start commands, ${documentedReliabilityValidationCommands.size} documented reliability validation commands, ${documentedReliabilityEvidenceCommands.size} documented reliability evidence commands, ${documentedReliabilityCaeHandoffCommands.size} documented reliability CAE handoff commands, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms, ${canonicalEcosystemEdges.length} canonical ecosystem edges.`,
 );
