@@ -2124,6 +2124,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         status: string;
         requestedForTargetMode: string;
         validationCommand?: string;
+        nextEvidenceAction?: { step: string; command: string; evidence: string; detail: string };
         nextAction: {
           step: string;
           command: string;
@@ -2148,6 +2149,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           producerCommand: string;
         }>;
         nextMissingEvidence?: { id: string; artifact: string; command: string } | null;
+        nextEvidenceAction?: { step: string; command: string; evidence: string; detail: string };
         evidenceSummary?: {
           total: number;
           present: number;
@@ -2339,7 +2341,13 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     }
     if (payload.selectedTargetMode.nextMissingEvidence) {
       assert.ok(["controlled_candidate_proof", "cae_assert_request"].includes(payload.selectedTargetMode.nextMissingEvidence.id));
+      assert.equal(payload.selectedTargetMode.nextEvidenceAction?.step, "capture_missing_evidence");
+      assert.equal(payload.selectedTargetMode.nextEvidenceAction?.evidence, payload.selectedTargetMode.nextMissingEvidence.artifact);
+    } else {
+      assert.equal(payload.selectedTargetMode.nextEvidenceAction?.step, "validate_existing_evidence");
+      assert.equal(payload.selectedTargetMode.nextEvidenceAction?.command, "npm run proof");
     }
+    assert.match(payload.selectedTargetMode.nextEvidenceAction?.detail ?? "", /evidence/);
     assert.equal(payload.selectedTargetMode.evidenceSummary?.total, 2);
     assert.equal(
       (payload.selectedTargetMode.evidenceSummary?.present ?? 0) + (payload.selectedTargetMode.evidenceSummary?.missing ?? 0),
@@ -2729,6 +2737,7 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
           evidenceCommand?: string;
           handoffChecklist?: Array<{ id: string }>;
           evidenceInventory?: Array<{ id: string }>;
+          nextEvidenceAction?: { step: string; command: string; evidence: string; detail: string };
           nextAction?: {
             step: string;
             command: string;
@@ -2736,7 +2745,7 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
             detail: string;
           };
         };
-        selectedRunProfile: { id: string | null; requestedForTargetMode: string; nextAction: { step: string } };
+        selectedRunProfile: { id: string | null; requestedForTargetMode: string; nextAction: { step: string }; nextEvidenceAction?: { step: string } };
       };
 
       assert.equal(payload.selectedTargetMode.mode, "sip_verto");
@@ -2746,6 +2755,7 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
       assert.equal(payload.selectedRunProfile.id, "live_media_lab");
       assert.equal(payload.selectedRunProfile.requestedForTargetMode, "sip_verto");
       assert.equal(payload.selectedRunProfile.nextAction.step, "unblock_run_profile");
+      assert.ok(["capture_missing_evidence", "validate_existing_evidence"].includes(payload.selectedRunProfile.nextEvidenceAction?.step ?? ""));
       assert.deepEqual(
         payload.selectedTargetMode.handoffChecklist?.map((step) => step.id),
         ["select_target_mode", "capture_controlled_candidate", "capture_selected_media_proof", "generate_cae_assert_request"],

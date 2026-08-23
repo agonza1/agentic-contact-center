@@ -1246,6 +1246,28 @@ function reliabilityEvidenceSummary(evidenceStatus: ReturnType<typeof reliabilit
   };
 }
 
+function nextReliabilityEvidenceAction(
+  evidenceStatus: ReturnType<typeof reliabilityEvidenceStatus>,
+  validationCommand: string,
+) {
+  const missing = nextMissingReliabilityEvidence(evidenceStatus);
+  if (missing) {
+    return {
+      step: "capture_missing_evidence",
+      command: missing.command,
+      evidence: missing.artifact,
+      detail: "Generate the next missing selected evidence artifact before CAE/ASSERT handoff.",
+    };
+  }
+
+  return {
+    step: "validate_existing_evidence",
+    command: validationCommand,
+    evidence: evidenceStatus[0]?.artifact ?? "/api/reliability",
+    detail: "All selected evidence artifacts are present; rerun the validation gate to refresh or verify them.",
+  };
+}
+
 const signalwirePstnCommonEnvVars = [
   "SIGNALWIRE_FROM_NUMBER",
   "FREESWITCH_PUBLIC_SIP_HOST",
@@ -1759,6 +1781,16 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
     ? selectedReliabilityModeEvidenceInventory(selectedTargetMode.mode)
     : [];
   const selectedEvidenceStatus = reliabilityEvidenceStatus(selectedEvidenceInventory);
+  const selectedRunProfileEvidenceInventory = selectedRunProfile
+    ? selectedRunProfile.evidence.map((artifact) => ({
+        id: artifact,
+        requiredFor: selectedRunProfile.targetModes,
+        artifact,
+        producerCommand: selectedRunProfile.validationCommand,
+        validates: [],
+      }))
+    : [];
+  const selectedRunProfileEvidenceStatus = reliabilityEvidenceStatus(selectedRunProfileEvidenceInventory);
 
   return {
     ok: true,
@@ -1815,6 +1847,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
           evidenceStatus: selectedEvidenceStatus,
           nextMissingEvidence: nextMissingReliabilityEvidence(selectedEvidenceStatus),
           evidenceSummary: reliabilityEvidenceSummary(selectedEvidenceStatus),
+          nextEvidenceAction: nextReliabilityEvidenceAction(selectedEvidenceStatus, selectedTargetMode.validationCommand),
         }
       : {
           mode: requestedTargetMode,
@@ -1834,6 +1867,12 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
       ? {
           ...selectedRunProfile,
           requestedForTargetMode: selectedTargetMode?.mode,
+          evidenceStatus: selectedRunProfileEvidenceStatus,
+          evidenceSummary: reliabilityEvidenceSummary(selectedRunProfileEvidenceStatus),
+          nextEvidenceAction: nextReliabilityEvidenceAction(
+            selectedRunProfileEvidenceStatus,
+            selectedRunProfile.validationCommand,
+          ),
           nextAction: {
             step: selectedRunProfile.status === "ready" || selectedRunProfile.status === "configured" ? "run_profile_validation" : "unblock_run_profile",
             command: selectedRunProfile.validationCommand,

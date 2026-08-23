@@ -513,6 +513,25 @@ function evidenceSummary(evidenceStatus) {
   };
 }
 
+function nextEvidenceAction(evidenceStatus, validationCommand) {
+  const missing = nextMissingEvidence(evidenceStatus);
+  if (missing) {
+    return {
+      step: "capture_missing_evidence",
+      command: missing.command ?? validationCommand,
+      evidence: missing.artifact,
+      detail: "Generate the next missing selected evidence artifact before CAE/ASSERT handoff.",
+    };
+  }
+
+  return {
+    step: "validate_existing_evidence",
+    command: validationCommand,
+    evidence: evidenceStatus[0]?.artifact ?? "/api/reliability",
+    detail: "All selected evidence artifacts are present; rerun the validation gate to refresh or verify them.",
+  };
+}
+
 const endpointRequirements = {
   caeApi: { label: "ConversationAgentEvals API", envVar: "CAE_API_URL", configured: Boolean(optionalEndpoints.caeApi), ready: endpointReady.caeApi },
   caeWeb: { label: "ConversationAgentEvals web", envVar: "CAE_WEB_URL", configured: Boolean(optionalEndpoints.caeWeb), ready: endpointReady.caeWeb },
@@ -968,6 +987,7 @@ const report = {
         evidenceStatus: selectedEvidenceStatus,
         nextMissingEvidence: nextMissingEvidence(selectedEvidenceStatus),
         evidenceSummary: evidenceSummary(selectedEvidenceStatus),
+        nextEvidenceAction: nextEvidenceAction(selectedEvidenceStatus, selectedTargetMode.validationCommand),
       }
     : {
         mode: requestedTargetMode,
@@ -992,6 +1012,7 @@ const report = {
         requestedForTargetMode: selectedTargetMode?.mode,
         evidenceStatus: selectedRunProfileEvidenceStatus,
         evidenceSummary: evidenceSummary(selectedRunProfileEvidenceStatus),
+        nextEvidenceAction: nextEvidenceAction(selectedRunProfileEvidenceStatus, selectedRunProfile.validationCommand),
         nextAction: {
           step: selectedRunProfile.status === "ready" || selectedRunProfile.status === "configured" ? "run_profile_validation" : "unblock_run_profile",
           command: selectedRunProfile.validationCommand,
