@@ -247,7 +247,13 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.selectedTargetMode.evidenceSummary.complete, payload.selectedTargetMode.evidenceSummary.missing === 0);
   if (payload.selectedTargetMode.nextMissingEvidence) {
     assert.ok(["controlled_candidate_proof", "cae_assert_request"].includes(payload.selectedTargetMode.nextMissingEvidence.id));
+    assert.equal(payload.selectedTargetMode.nextEvidenceAction.step, "capture_missing_evidence");
+    assert.equal(payload.selectedTargetMode.nextEvidenceAction.evidence, payload.selectedTargetMode.nextMissingEvidence.artifact);
+  } else {
+    assert.equal(payload.selectedTargetMode.nextEvidenceAction.step, "validate_existing_evidence");
+    assert.equal(payload.selectedTargetMode.nextEvidenceAction.command, "npm run proof");
   }
+  assert.match(payload.selectedTargetMode.nextEvidenceAction.detail, /evidence/);
   assert.deepEqual(payload.selectedTargetMode.nextAction, {
     step: "run_controlled_candidate",
     command: "npm run proof",
@@ -460,6 +466,7 @@ test("reliability lab status exposes requested target mode selection", async () 
   assert.equal(payload.selectedRunProfile.id, "live_media_lab");
   assert.equal(payload.selectedRunProfile.requestedForTargetMode, "browser_webrtc");
   assert.equal(payload.selectedRunProfile.nextAction.step, "unblock_run_profile");
+  assert.ok(["capture_missing_evidence", "validate_existing_evidence"].includes(payload.selectedRunProfile.nextEvidenceAction.step));
   assert.deepEqual(payload.selectedRunProfile.evidence, [
     "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
     "artifacts/verto-sip-live-proof/manifest.json",
