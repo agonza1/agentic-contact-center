@@ -1634,6 +1634,7 @@ const reliabilityOptionalEndpointEnvVars = [
 const reliabilityReadinessVocabulary = [
   "ready",
   "configured",
+  "missing",
   "not_configured",
   "not_required",
   "unreachable",

@@ -2382,6 +2382,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.deepEqual(payload.readinessVocabulary, [
       "ready",
       "configured",
+      "missing",
       "not_configured",
       "not_required",
       "unreachable",
@@ -2487,6 +2488,12 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.deepEqual(payload.repositoryContracts.stackManifest.missingKeys, []);
     assert.ok(payload.repositoryContracts.requiredStackManifestKeys.includes("CAE_API_URL"));
     assert.ok(payload.repositoryContracts.requiredStackManifestKeys.includes("TOOLHIVE_VERSION"));
+    assert.ok(payload.readinessVocabulary.includes("missing"));
+    for (const mode of payload.targetModes) {
+      for (const endpoint of mode.endpointStatus) {
+        assert.ok(payload.readinessVocabulary.includes(endpoint.status));
+      }
+    }
     assert.equal(payload.comparisonContract.baselineProfile, "unsafe-demo-fixture");
     assert.equal(payload.comparisonContract.candidateProfile, "controlled-cancellation-rescue");
     assert.deepEqual(

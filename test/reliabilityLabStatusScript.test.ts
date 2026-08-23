@@ -294,6 +294,7 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.deepEqual(payload.readinessVocabulary, [
     "ready",
     "configured",
+    "missing",
     "not_configured",
     "not_required",
     "unreachable",
@@ -452,6 +453,12 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.ok(payload.repositoryContracts.requiredStackManifestKeys.includes("CAE_API_URL"));
   assert.ok(payload.repositoryContracts.requiredStackManifestKeys.includes("TOOLHIVE_VERSION"));
   assert.ok(payload.repositoryContracts.reliabilityDocExists);
+  assert.ok(payload.readinessVocabulary.includes("missing"));
+  for (const mode of payload.targetModes as Array<{ endpointStatus: Array<{ status: string }> }>) {
+    for (const endpoint of mode.endpointStatus) {
+      assert.ok(payload.readinessVocabulary.includes(endpoint.status));
+    }
+  }
   assert.equal(
     payload.componentReadiness.find((component: { component: string }) => component.component === "Pipecat browser bridge").envVar,
     "BROWSER_WEBRTC_BRIDGE_URL",
