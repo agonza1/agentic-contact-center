@@ -2146,6 +2146,8 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           exists: boolean;
           sizeBytes: number | null;
           updatedAt: string | null;
+          staleAfterMs: number;
+          freshForHandoff: boolean;
           producerCommand: string;
         }>;
         nextMissingEvidence?: { id: string; artifact: string; command: string } | null;
@@ -2154,7 +2156,9 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           total: number;
           present: number;
           missing: number;
+          stale: number;
           complete: boolean;
+          freshForHandoff: boolean;
           nextMissingEvidence: { id: string; artifact: string; command: string } | null;
         };
         nextAction?: {
@@ -2338,14 +2342,15 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     for (const item of payload.selectedTargetMode.evidenceStatus ?? []) {
       assert.equal(item.exists, item.sizeBytes !== null);
       assert.equal(item.exists, item.updatedAt !== null);
+      assert.equal(item.staleAfterMs, 24 * 60 * 60 * 1000);
+      assert.equal(typeof item.freshForHandoff, "boolean");
     }
     if (payload.selectedTargetMode.nextMissingEvidence) {
       assert.ok(["controlled_candidate_proof", "cae_assert_request"].includes(payload.selectedTargetMode.nextMissingEvidence.id));
       assert.equal(payload.selectedTargetMode.nextEvidenceAction?.step, "capture_missing_evidence");
       assert.equal(payload.selectedTargetMode.nextEvidenceAction?.evidence, payload.selectedTargetMode.nextMissingEvidence.artifact);
     } else {
-      assert.equal(payload.selectedTargetMode.nextEvidenceAction?.step, "validate_existing_evidence");
-      assert.equal(payload.selectedTargetMode.nextEvidenceAction?.command, "npm run proof");
+      assert.ok(["refresh_stale_evidence", "validate_existing_evidence"].includes(payload.selectedTargetMode.nextEvidenceAction?.step ?? ""));
     }
     assert.match(payload.selectedTargetMode.nextEvidenceAction?.detail ?? "", /evidence/);
     assert.equal(payload.selectedTargetMode.evidenceSummary?.total, 2);
@@ -2356,6 +2361,10 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(
       payload.selectedTargetMode.evidenceSummary?.complete,
       payload.selectedTargetMode.evidenceSummary?.missing === 0,
+    );
+    assert.equal(
+      payload.selectedTargetMode.evidenceSummary?.freshForHandoff,
+      payload.selectedTargetMode.evidenceSummary?.missing === 0 && payload.selectedTargetMode.evidenceSummary?.stale === 0,
     );
     assert.deepEqual(payload.selectedTargetMode.nextAction, {
       step: "run_controlled_candidate",
@@ -2755,7 +2764,7 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
       assert.equal(payload.selectedRunProfile.id, "live_media_lab");
       assert.equal(payload.selectedRunProfile.requestedForTargetMode, "sip_verto");
       assert.equal(payload.selectedRunProfile.nextAction.step, "unblock_run_profile");
-      assert.ok(["capture_missing_evidence", "validate_existing_evidence"].includes(payload.selectedRunProfile.nextEvidenceAction?.step ?? ""));
+      assert.ok(["capture_missing_evidence", "refresh_stale_evidence", "validate_existing_evidence"].includes(payload.selectedRunProfile.nextEvidenceAction?.step ?? ""));
       assert.deepEqual(
         payload.selectedTargetMode.handoffChecklist?.map((step) => step.id),
         ["select_target_mode", "capture_controlled_candidate", "capture_selected_media_proof", "generate_cae_assert_request"],
