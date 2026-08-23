@@ -516,6 +516,7 @@ function evidenceSummary(evidenceStatus) {
   const present = evidenceStatus.filter((item) => item.exists).length;
   const missing = evidenceStatus.length - present;
   const stale = evidenceStatus.filter((item) => item.exists && item.freshForHandoff === false).length;
+  const blockers = handoffEvidenceBlockers(evidenceStatus);
   return {
     total: evidenceStatus.length,
     present,
@@ -523,8 +524,22 @@ function evidenceSummary(evidenceStatus) {
     stale,
     complete: missing === 0,
     freshForHandoff: missing === 0 && stale === 0,
+    handoffReady: blockers.length === 0,
+    handoffBlockers: blockers,
     nextMissingEvidence: nextMissingEvidence(evidenceStatus),
   };
+}
+
+function handoffEvidenceBlockers(evidenceStatus) {
+  return evidenceStatus.flatMap((item) => {
+    if (!item.exists) {
+      return [`missing evidence artifact: ${item.artifact}`];
+    }
+    if (item.freshForHandoff === false) {
+      return [`stale evidence artifact: ${item.artifact}`];
+    }
+    return [];
+  });
 }
 
 function nextEvidenceAction(evidenceStatus, validationCommand) {
@@ -1010,6 +1025,8 @@ const report = {
         evidenceStatus: selectedEvidenceStatus,
         nextMissingEvidence: nextMissingEvidence(selectedEvidenceStatus),
         evidenceSummary: evidenceSummary(selectedEvidenceStatus),
+        handoffReady: handoffEvidenceBlockers(selectedEvidenceStatus).length === 0,
+        handoffBlockers: handoffEvidenceBlockers(selectedEvidenceStatus),
         nextEvidenceAction: nextEvidenceAction(selectedEvidenceStatus, selectedTargetMode.validationCommand),
       }
     : {
@@ -1035,6 +1052,8 @@ const report = {
         requestedForTargetMode: selectedTargetMode?.mode,
         evidenceStatus: selectedRunProfileEvidenceStatus,
         evidenceSummary: evidenceSummary(selectedRunProfileEvidenceStatus),
+        handoffReady: handoffEvidenceBlockers(selectedRunProfileEvidenceStatus).length === 0,
+        handoffBlockers: handoffEvidenceBlockers(selectedRunProfileEvidenceStatus),
         nextEvidenceAction: nextEvidenceAction(selectedRunProfileEvidenceStatus, selectedRunProfile.validationCommand),
         nextAction: {
           step: selectedRunProfile.status === "ready" || selectedRunProfile.status === "configured" ? "run_profile_validation" : "unblock_run_profile",

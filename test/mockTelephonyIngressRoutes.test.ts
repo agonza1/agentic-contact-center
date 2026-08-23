@@ -2746,6 +2746,9 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
           evidenceCommand?: string;
           handoffChecklist?: Array<{ id: string }>;
           evidenceInventory?: Array<{ id: string }>;
+          evidenceSummary?: { handoffReady: boolean; handoffBlockers: string[] };
+          handoffReady?: boolean;
+          handoffBlockers?: string[];
           nextEvidenceAction?: { step: string; command: string; evidence: string; detail: string };
           nextAction?: {
             step: string;
@@ -2754,7 +2757,15 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
             detail: string;
           };
         };
-        selectedRunProfile: { id: string | null; requestedForTargetMode: string; nextAction: { step: string }; nextEvidenceAction?: { step: string } };
+        selectedRunProfile: {
+          id: string | null;
+          requestedForTargetMode: string;
+          evidenceSummary?: { handoffReady: boolean; handoffBlockers: string[] };
+          handoffReady?: boolean;
+          handoffBlockers?: string[];
+          nextAction: { step: string };
+          nextEvidenceAction?: { step: string };
+        };
       };
 
       assert.equal(payload.selectedTargetMode.mode, "sip_verto");
@@ -2765,6 +2776,8 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
       assert.equal(payload.selectedRunProfile.requestedForTargetMode, "sip_verto");
       assert.equal(payload.selectedRunProfile.nextAction.step, "unblock_run_profile");
       assert.ok(["capture_missing_evidence", "refresh_stale_evidence", "validate_existing_evidence"].includes(payload.selectedRunProfile.nextEvidenceAction?.step ?? ""));
+      assert.deepEqual(payload.selectedRunProfile.handoffBlockers, payload.selectedRunProfile.evidenceSummary?.handoffBlockers);
+      assert.equal(payload.selectedRunProfile.handoffReady, payload.selectedRunProfile.evidenceSummary?.handoffReady);
       assert.deepEqual(
         payload.selectedTargetMode.handoffChecklist?.map((step) => step.id),
         ["select_target_mode", "capture_controlled_candidate", "capture_selected_media_proof", "generate_cae_assert_request"],
@@ -2773,6 +2786,8 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
         payload.selectedTargetMode.evidenceInventory?.map((item) => item.id),
         ["controlled_candidate_proof", "cae_assert_request", "sip_verto_live_manifest"],
       );
+      assert.deepEqual(payload.selectedTargetMode.handoffBlockers, payload.selectedTargetMode.evidenceSummary?.handoffBlockers);
+      assert.equal(payload.selectedTargetMode.handoffReady, payload.selectedTargetMode.evidenceSummary?.handoffReady);
       assert.deepEqual(payload.selectedTargetMode.nextAction, {
         step: "configure_sip_verto_endpoints",
         command: "npm run docker:sip-verto",

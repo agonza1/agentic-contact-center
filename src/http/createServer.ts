@@ -1243,6 +1243,7 @@ function reliabilityEvidenceSummary(evidenceStatus: ReturnType<typeof reliabilit
   const present = evidenceStatus.filter((item) => item.exists).length;
   const missing = evidenceStatus.length - present;
   const stale = evidenceStatus.filter((item) => item.exists && item.freshForHandoff === false).length;
+  const blockers = reliabilityHandoffEvidenceBlockers(evidenceStatus);
   return {
     total: evidenceStatus.length,
     present,
@@ -1250,8 +1251,22 @@ function reliabilityEvidenceSummary(evidenceStatus: ReturnType<typeof reliabilit
     stale,
     complete: missing === 0,
     freshForHandoff: missing === 0 && stale === 0,
+    handoffReady: blockers.length === 0,
+    handoffBlockers: blockers,
     nextMissingEvidence: nextMissingReliabilityEvidence(evidenceStatus),
   };
+}
+
+function reliabilityHandoffEvidenceBlockers(evidenceStatus: ReturnType<typeof reliabilityEvidenceStatus>): string[] {
+  return evidenceStatus.flatMap((item) => {
+    if (!item.exists) {
+      return [`missing evidence artifact: ${item.artifact}`];
+    }
+    if (item.freshForHandoff === false) {
+      return [`stale evidence artifact: ${item.artifact}`];
+    }
+    return [];
+  });
 }
 
 function nextReliabilityEvidenceAction(
@@ -1865,6 +1880,8 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
           evidenceStatus: selectedEvidenceStatus,
           nextMissingEvidence: nextMissingReliabilityEvidence(selectedEvidenceStatus),
           evidenceSummary: reliabilityEvidenceSummary(selectedEvidenceStatus),
+          handoffReady: reliabilityHandoffEvidenceBlockers(selectedEvidenceStatus).length === 0,
+          handoffBlockers: reliabilityHandoffEvidenceBlockers(selectedEvidenceStatus),
           nextEvidenceAction: nextReliabilityEvidenceAction(selectedEvidenceStatus, selectedTargetMode.validationCommand),
         }
       : {
@@ -1887,6 +1904,8 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
           requestedForTargetMode: selectedTargetMode?.mode,
           evidenceStatus: selectedRunProfileEvidenceStatus,
           evidenceSummary: reliabilityEvidenceSummary(selectedRunProfileEvidenceStatus),
+          handoffReady: reliabilityHandoffEvidenceBlockers(selectedRunProfileEvidenceStatus).length === 0,
+          handoffBlockers: reliabilityHandoffEvidenceBlockers(selectedRunProfileEvidenceStatus),
           nextEvidenceAction: nextReliabilityEvidenceAction(
             selectedRunProfileEvidenceStatus,
             selectedRunProfile.validationCommand,
