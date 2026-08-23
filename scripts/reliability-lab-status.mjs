@@ -98,6 +98,7 @@ const signalwirePstnRegistrationEnvVars = [
 const readinessVocabulary = [
   "ready",
   "configured",
+  "missing",
   "not_configured",
   "not_required",
   "unreachable",

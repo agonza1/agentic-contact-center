@@ -68,12 +68,14 @@ Readiness vocabulary:
 
 - `blocked`
 - `configured`
+- `missing`
 - `not_configured`
 - `not_required`
 - `ready`
 - `unreachable`
 
 Missing optional endpoints are reported as `not_configured` or `blocked`, not silently treated as ready.
+Per-mode `endpointStatus[]` entries use `missing` for an individual endpoint environment variable that has not been supplied yet.
 Configured endpoints are probed with a short timeout and reported as `ready` or `unreachable`; set `ACC_RELIABILITY_LAB_PROBE_TIMEOUT_MS` to tune the bounded probe during local diagnostics.
 `ACC_RELIABILITY_TARGET_MODE` selects the machine-readable `selectedTargetMode` in both `npm run reliability:lab` and `/api/reliability`; when unset, the safe sidecar-free `fixture` mode is selected.
 
