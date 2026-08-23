@@ -295,6 +295,10 @@ function npmScriptName(command) {
   return match?.[1] ?? null;
 }
 
+function markdownCodeCellValue(cell) {
+  return cell.trim().replace(/^`|`$/g, "");
+}
+
 const readme = readText("README.md");
 const packageJson = JSON.parse(readText("package.json"));
 const compose = readText("docker-compose.yml");
@@ -498,6 +502,7 @@ const reliabilityModesSection = reliabilityLabDoc.match(/## Modes\n\n([\s\S]*?)(
 const reliabilityModeRows = markdownTableRows(reliabilityModesSection);
 const reliabilityModeHeader = reliabilityModeRows[0] ?? [];
 const targetModeIdIndex = reliabilityModeHeader.indexOf("Target mode id");
+const targetModeStartCommandIndex = reliabilityModeHeader.indexOf("Start command");
 const documentedReliabilityTargetModes = targetModeIdIndex === -1
   ? []
   : unique(
@@ -506,8 +511,19 @@ const documentedReliabilityTargetModes = targetModeIdIndex === -1
         .map((row) => row[targetModeIdIndex] ?? "")
         .flatMap((cell) => [...cell.matchAll(/`([a-z_]+)`/g)].map((match) => match[1])),
     );
+const documentedReliabilityStartCommands = new Map();
+if (targetModeIdIndex !== -1 && targetModeStartCommandIndex !== -1) {
+  for (const row of reliabilityModeRows.slice(1)) {
+    const mode = [...(row[targetModeIdIndex] ?? "").matchAll(/`([a-z_]+)`/g)][0]?.[1] ?? null;
+    const startCommand = markdownCodeCellValue(row[targetModeStartCommandIndex] ?? "");
+    if (mode && startCommand) documentedReliabilityStartCommands.set(mode, startCommand);
+  }
+}
 if (targetModeIdIndex === -1) {
   fail("docs/reliability-lab.md Modes table is missing a Target mode id column");
+}
+if (targetModeStartCommandIndex === -1) {
+  fail("docs/reliability-lab.md Modes table is missing a Start command column");
 }
 
 const apiTargetModes = extractReliabilityTargetModes(server, "src/http/createServer.ts");
@@ -523,6 +539,12 @@ if (!sameValues([...apiTargetModes.keys()].sort(), [...cliTargetModes.keys()].so
 }
 if (!sameValues([...cliTargetModes.keys()].sort(), documentedReliabilityTargetModes)) {
   fail("docs/reliability-lab.md target mode ids differ from status CLI contract");
+}
+for (const [mode, contract] of cliTargetModes) {
+  const documentedStartCommand = documentedReliabilityStartCommands.get(mode);
+  if (documentedStartCommand !== contract.startCommand) {
+    fail(`docs/reliability-lab.md start command for ${mode} differs from status CLI contract`);
+  }
 }
 for (const [mode, apiContract] of apiTargetModes) {
   const cliContract = cliTargetModes.get(mode);
@@ -700,5 +722,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${documentedReliabilityTargetModes.length} documented reliability target modes, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms, ${canonicalEcosystemEdges.length} canonical ecosystem edges.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${documentedReliabilityTargetModes.length} documented reliability target modes, ${documentedReliabilityStartCommands.size} documented reliability start commands, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms, ${canonicalEcosystemEdges.length} canonical ecosystem edges.`,
 );
