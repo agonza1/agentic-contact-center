@@ -107,6 +107,14 @@ const readinessVocabulary = [
   "ready",
   "unreachable",
 ];
+const evidenceLevelVocabulary = [
+  "Caller-audible live proof",
+  "Deterministic proof bundle",
+  "Honest ready/unreachable/blocked/not-required report",
+  "Live local media proof",
+  "Local media/evidence stack",
+  "Redacted FreeSWITCH gateway/reachability proof",
+];
 const evidenceFreshnessBudgetMs = 24 * 60 * 60 * 1000;
 
 const optionalEndpoints = {
@@ -1089,6 +1097,7 @@ const report = {
     blockers: blockers.length,
   },
   readinessVocabulary,
+  evidenceLevelVocabulary,
   repositoryContracts: {
     packageScripts: Object.keys(scripts).sort(),
     composeProfiles: profiles,
