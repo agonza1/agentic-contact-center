@@ -793,6 +793,23 @@ for (const edge of canonicalEcosystemEdges) {
   }
 }
 
+const requiredGoldenComparisonRows = [
+  ["Cancellation intent", "detected", "detected"],
+  ["Policy hold", "missing", "present"],
+  ["Unapproved offer", "emitted", "absent"],
+  ["Tool/runtime failure", "autonomous continuation", "fail-closed handoff"],
+  ["Final disposition", "ambiguous", "recorded"],
+  ["Overall release gate", "block", "candidate passes"],
+];
+const goldenLoopSection = readme.match(/## The golden reliability loop\n\n([\s\S]*?)(?:\n## |\n# |$)/)?.[1] ?? "";
+const goldenLoopRows = markdownTableRows(goldenLoopSection).slice(1);
+for (const requiredRow of requiredGoldenComparisonRows) {
+  const hasRow = goldenLoopRows.some((row) => sameValues(row.slice(0, 3), requiredRow));
+  if (!hasRow) {
+    fail(`README golden reliability loop is missing comparison row: ${requiredRow.join(" | ")}`);
+  }
+}
+
 for (const key of statusStackManifestKeys ?? []) {
   if (!stackManifest.match(new RegExp(`^${key}=`, "m"))) {
     fail(`stack/versions.env is missing required key: ${key}`);
@@ -813,5 +830,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${documentedReliabilityTargetModes.length} documented reliability target modes, ${knownReliabilityTargetModes.size} reliability target mode reference set, ${documentedReliabilityStartCommands.size} documented reliability start commands, ${documentedReliabilityValidationCommands.size} documented reliability validation commands, ${documentedReliabilityEvidenceCommands.size} documented reliability evidence commands, ${documentedReliabilityCaeHandoffCommands.size} documented reliability CAE handoff commands, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusEvidenceLevelVocabulary?.length ?? 0} evidence-level vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms, ${canonicalEcosystemEdges.length} canonical ecosystem edges.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${documentedReliabilityTargetModes.length} documented reliability target modes, ${knownReliabilityTargetModes.size} reliability target mode reference set, ${documentedReliabilityStartCommands.size} documented reliability start commands, ${documentedReliabilityValidationCommands.size} documented reliability validation commands, ${documentedReliabilityEvidenceCommands.size} documented reliability evidence commands, ${documentedReliabilityCaeHandoffCommands.size} documented reliability CAE handoff commands, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusEvidenceLevelVocabulary?.length ?? 0} evidence-level vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms, ${canonicalEcosystemEdges.length} canonical ecosystem edges, ${requiredGoldenComparisonRows.length} golden comparison rows.`,
 );

@@ -37,6 +37,7 @@ test("documentation validation catches Markdown drift against documented package
   assert.match(result.stdout, /documented ports/);
   assert.match(result.stdout, /canonical ecosystem terms/);
   assert.match(result.stdout, /canonical ecosystem edges/);
+  assert.match(result.stdout, /golden comparison rows/);
 });
 
 test("documentation validation rejects evidence levels that only contain vocabulary terms incidentally", async () => {
