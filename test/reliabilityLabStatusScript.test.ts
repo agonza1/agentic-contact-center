@@ -210,6 +210,9 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.selectedRunProfile.evidenceSummary.total, 1);
   assert.equal(typeof payload.selectedRunProfile.evidenceSummary.complete, "boolean");
   assert.equal(typeof payload.selectedRunProfile.evidenceSummary.freshForHandoff, "boolean");
+  assert.equal(typeof payload.selectedRunProfile.evidenceSummary.handoffReady, "boolean");
+  assert.deepEqual(payload.selectedRunProfile.evidenceSummary.handoffBlockers, payload.selectedRunProfile.handoffBlockers);
+  assert.equal(payload.selectedRunProfile.handoffReady, payload.selectedRunProfile.evidenceSummary.handoffReady);
   assert.equal(payload.selectedRunProfile.nextAction.step, "run_profile_validation");
   assert.equal(payload.selectedRunProfile.nextAction.command, "npm run proof");
   assert.deepEqual(
@@ -258,6 +261,14 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.selectedTargetMode.evidenceSummary.present + payload.selectedTargetMode.evidenceSummary.missing, 2);
   assert.equal(payload.selectedTargetMode.evidenceSummary.complete, payload.selectedTargetMode.evidenceSummary.missing === 0);
   assert.equal(payload.selectedTargetMode.evidenceSummary.freshForHandoff, payload.selectedTargetMode.evidenceSummary.missing === 0 && payload.selectedTargetMode.evidenceSummary.stale === 0);
+  assert.equal(payload.selectedTargetMode.evidenceSummary.handoffReady, payload.selectedTargetMode.evidenceSummary.handoffBlockers.length === 0);
+  assert.deepEqual(payload.selectedTargetMode.handoffBlockers, payload.selectedTargetMode.evidenceSummary.handoffBlockers);
+  assert.equal(payload.selectedTargetMode.handoffReady, payload.selectedTargetMode.evidenceSummary.handoffReady);
+  assert.ok(
+    payload.selectedTargetMode.handoffBlockers.every((blocker: string) =>
+      /^missing evidence artifact: |^stale evidence artifact: /.test(blocker),
+    ),
+  );
   if (payload.selectedTargetMode.nextMissingEvidence) {
     assert.ok(["controlled_candidate_proof", "cae_assert_request"].includes(payload.selectedTargetMode.nextMissingEvidence.id));
     assert.equal(payload.selectedTargetMode.nextEvidenceAction.step, "capture_missing_evidence");
