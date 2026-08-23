@@ -209,6 +209,7 @@ test("reliability lab status reports explicit blockers without starting sidecars
   );
   assert.equal(payload.selectedRunProfile.evidenceSummary.total, 1);
   assert.equal(typeof payload.selectedRunProfile.evidenceSummary.complete, "boolean");
+  assert.equal(typeof payload.selectedRunProfile.evidenceSummary.freshForHandoff, "boolean");
   assert.equal(payload.selectedRunProfile.nextAction.step, "run_profile_validation");
   assert.equal(payload.selectedRunProfile.nextAction.command, "npm run proof");
   assert.deepEqual(
@@ -236,10 +237,19 @@ test("reliability lab status reports explicit blockers without starting sidecars
       ["cae_assert_request", "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json", "boolean", "npm run cae:assert:handoff"],
     ],
   );
-  for (const item of payload.selectedTargetMode.evidenceStatus as Array<{ exists: boolean; sizeBytes: number | null; updatedAt: string | null; ageMs: number | null }>) {
+  for (const item of payload.selectedTargetMode.evidenceStatus as Array<{
+    exists: boolean;
+    sizeBytes: number | null;
+    updatedAt: string | null;
+    ageMs: number | null;
+    staleAfterMs: number;
+    freshForHandoff: boolean;
+  }>) {
     assert.equal(typeof item.sizeBytes === "number" || item.sizeBytes === null, true);
     assert.equal(typeof item.updatedAt === "string" || item.updatedAt === null, true);
     assert.equal(typeof item.ageMs === "number" || item.ageMs === null, true);
+    assert.equal(item.staleAfterMs, 24 * 60 * 60 * 1000);
+    assert.equal(typeof item.freshForHandoff, "boolean");
     assert.equal(item.exists, item.sizeBytes !== null);
     assert.equal(item.exists, item.updatedAt !== null);
     assert.equal(item.exists, item.ageMs !== null);
@@ -247,13 +257,13 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.selectedTargetMode.evidenceSummary.total, 2);
   assert.equal(payload.selectedTargetMode.evidenceSummary.present + payload.selectedTargetMode.evidenceSummary.missing, 2);
   assert.equal(payload.selectedTargetMode.evidenceSummary.complete, payload.selectedTargetMode.evidenceSummary.missing === 0);
+  assert.equal(payload.selectedTargetMode.evidenceSummary.freshForHandoff, payload.selectedTargetMode.evidenceSummary.missing === 0 && payload.selectedTargetMode.evidenceSummary.stale === 0);
   if (payload.selectedTargetMode.nextMissingEvidence) {
     assert.ok(["controlled_candidate_proof", "cae_assert_request"].includes(payload.selectedTargetMode.nextMissingEvidence.id));
     assert.equal(payload.selectedTargetMode.nextEvidenceAction.step, "capture_missing_evidence");
     assert.equal(payload.selectedTargetMode.nextEvidenceAction.evidence, payload.selectedTargetMode.nextMissingEvidence.artifact);
   } else {
-    assert.equal(payload.selectedTargetMode.nextEvidenceAction.step, "validate_existing_evidence");
-    assert.equal(payload.selectedTargetMode.nextEvidenceAction.command, "npm run proof");
+    assert.ok(["refresh_stale_evidence", "validate_existing_evidence"].includes(payload.selectedTargetMode.nextEvidenceAction.step));
   }
   assert.match(payload.selectedTargetMode.nextEvidenceAction.detail, /evidence/);
   assert.deepEqual(payload.selectedTargetMode.nextAction, {
@@ -468,7 +478,7 @@ test("reliability lab status exposes requested target mode selection", async () 
   assert.equal(payload.selectedRunProfile.id, "live_media_lab");
   assert.equal(payload.selectedRunProfile.requestedForTargetMode, "browser_webrtc");
   assert.equal(payload.selectedRunProfile.nextAction.step, "unblock_run_profile");
-  assert.ok(["capture_missing_evidence", "validate_existing_evidence"].includes(payload.selectedRunProfile.nextEvidenceAction.step));
+  assert.ok(["capture_missing_evidence", "refresh_stale_evidence", "validate_existing_evidence"].includes(payload.selectedRunProfile.nextEvidenceAction.step));
   assert.deepEqual(payload.selectedRunProfile.evidence, [
     "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
     "artifacts/verto-sip-live-proof/manifest.json",

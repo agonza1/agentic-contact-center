@@ -1212,13 +1212,16 @@ function reliabilityEvidenceStatus(inventory: typeof reliabilityEvidenceInventor
     const artifactPath = resolve(process.cwd(), item.artifact);
     const exists = existsSync(artifactPath);
     const stats = exists ? statSync(artifactPath) : null;
+    const ageMs = stats ? Math.max(checkedAtMs - stats.mtime.getTime(), 0) : null;
     return {
       id: item.id,
       artifact: item.artifact,
       exists,
       sizeBytes: stats?.size ?? null,
       updatedAt: stats?.mtime.toISOString() ?? null,
-      ageMs: stats ? Math.max(checkedAtMs - stats.mtime.getTime(), 0) : null,
+      ageMs,
+      staleAfterMs: reliabilityEvidenceFreshnessBudgetMs,
+      freshForHandoff: ageMs !== null && ageMs <= reliabilityEvidenceFreshnessBudgetMs,
       producerCommand: item.producerCommand,
       validates: item.validates,
     };
@@ -1239,11 +1242,14 @@ function nextMissingReliabilityEvidence(evidenceStatus: ReturnType<typeof reliab
 function reliabilityEvidenceSummary(evidenceStatus: ReturnType<typeof reliabilityEvidenceStatus>) {
   const present = evidenceStatus.filter((item) => item.exists).length;
   const missing = evidenceStatus.length - present;
+  const stale = evidenceStatus.filter((item) => item.exists && item.freshForHandoff === false).length;
   return {
     total: evidenceStatus.length,
     present,
     missing,
+    stale,
     complete: missing === 0,
+    freshForHandoff: missing === 0 && stale === 0,
     nextMissingEvidence: nextMissingReliabilityEvidence(evidenceStatus),
   };
 }
@@ -1259,6 +1265,15 @@ function nextReliabilityEvidenceAction(
       command: missing.command,
       evidence: missing.artifact,
       detail: "Generate the next missing selected evidence artifact before CAE/ASSERT handoff.",
+    };
+  }
+  const stale = evidenceStatus.find((item) => item.exists && item.freshForHandoff === false);
+  if (stale) {
+    return {
+      step: "refresh_stale_evidence",
+      command: stale.producerCommand,
+      evidence: stale.artifact,
+      detail: "Refresh stale selected evidence before CAE/ASSERT handoff.",
     };
   }
 
@@ -1609,6 +1624,7 @@ const reliabilityReadinessVocabulary = [
   "unreachable",
   "blocked",
 ];
+const reliabilityEvidenceFreshnessBudgetMs = 24 * 60 * 60 * 1000;
 
 const reliabilityRequiredStackManifestKeys = [
   "ACC_APP_IMAGE",

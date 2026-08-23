@@ -103,6 +103,7 @@ const readinessVocabulary = [
   "unreachable",
   "blocked",
 ];
+const evidenceFreshnessBudgetMs = 24 * 60 * 60 * 1000;
 
 const optionalEndpoints = {
   caeApi: process.env.CAE_API_URL ?? null,
@@ -465,13 +466,16 @@ function evidenceStatusForInventory(inventory) {
     const artifactPath = path.join(repoRoot, item.artifact);
     const exists = existsSync(artifactPath);
     const stats = exists ? statSync(artifactPath) : null;
+    const ageMs = stats ? Math.max(checkedAtMs - stats.mtime.getTime(), 0) : null;
     return {
       id: item.id,
       artifact: item.artifact,
       exists,
       sizeBytes: stats?.size ?? null,
       updatedAt: stats?.mtime.toISOString() ?? null,
-      ageMs: stats ? Math.max(checkedAtMs - stats.mtime.getTime(), 0) : null,
+      ageMs,
+      staleAfterMs: evidenceFreshnessBudgetMs,
+      freshForHandoff: ageMs !== null && ageMs <= evidenceFreshnessBudgetMs,
       producerCommand: item.producerCommand,
       validates: item.validates,
     };
@@ -484,12 +488,15 @@ function evidenceStatusForArtifacts(artifacts) {
     const artifactPath = path.join(repoRoot, artifact);
     const exists = existsSync(artifactPath);
     const stats = exists ? statSync(artifactPath) : null;
+    const ageMs = stats ? Math.max(checkedAtMs - stats.mtime.getTime(), 0) : null;
     return {
       artifact,
       exists,
       sizeBytes: stats?.size ?? null,
       updatedAt: stats?.mtime.toISOString() ?? null,
-      ageMs: stats ? Math.max(checkedAtMs - stats.mtime.getTime(), 0) : null,
+      ageMs,
+      staleAfterMs: evidenceFreshnessBudgetMs,
+      freshForHandoff: ageMs !== null && ageMs <= evidenceFreshnessBudgetMs,
     };
   });
 }
@@ -508,11 +515,14 @@ function nextMissingEvidence(evidenceStatus) {
 function evidenceSummary(evidenceStatus) {
   const present = evidenceStatus.filter((item) => item.exists).length;
   const missing = evidenceStatus.length - present;
+  const stale = evidenceStatus.filter((item) => item.exists && item.freshForHandoff === false).length;
   return {
     total: evidenceStatus.length,
     present,
     missing,
+    stale,
     complete: missing === 0,
+    freshForHandoff: missing === 0 && stale === 0,
     nextMissingEvidence: nextMissingEvidence(evidenceStatus),
   };
 }
@@ -525,6 +535,15 @@ function nextEvidenceAction(evidenceStatus, validationCommand) {
       command: missing.command ?? validationCommand,
       evidence: missing.artifact,
       detail: "Generate the next missing selected evidence artifact before CAE/ASSERT handoff.",
+    };
+  }
+  const stale = evidenceStatus.find((item) => item.exists && item.freshForHandoff === false);
+  if (stale) {
+    return {
+      step: "refresh_stale_evidence",
+      command: stale.producerCommand ?? validationCommand,
+      evidence: stale.artifact,
+      detail: "Refresh stale selected evidence before CAE/ASSERT handoff.",
     };
   }
 
