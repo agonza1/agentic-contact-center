@@ -555,15 +555,6 @@ function handoffEvidenceBlockers(evidenceStatus) {
 }
 
 function nextEvidenceAction(evidenceStatus, validationCommand) {
-  const missing = nextMissingEvidence(evidenceStatus);
-  if (missing) {
-    return {
-      step: "capture_missing_evidence",
-      command: missing.command ?? validationCommand,
-      evidence: missing.artifact,
-      detail: "Generate the next missing selected evidence artifact before CAE/ASSERT handoff.",
-    };
-  }
   const stale = evidenceStatus.find((item) => item.exists && item.freshForHandoff === false);
   if (stale) {
     return {
@@ -571,6 +562,15 @@ function nextEvidenceAction(evidenceStatus, validationCommand) {
       command: stale.producerCommand ?? validationCommand,
       evidence: stale.artifact,
       detail: "Refresh stale selected evidence before CAE/ASSERT handoff.",
+    };
+  }
+  const missing = nextMissingEvidence(evidenceStatus);
+  if (missing) {
+    return {
+      step: "capture_missing_evidence",
+      command: missing.command ?? validationCommand,
+      evidence: missing.artifact,
+      detail: "Generate the next missing selected evidence artifact before CAE/ASSERT handoff.",
     };
   }
 
