@@ -1341,6 +1341,23 @@ function nextReliabilityEvidenceAction(
   };
 }
 
+function reliabilityBlockingSummary(
+  targetMode: ReturnType<typeof buildReliabilityTargetModes>[number],
+  evidenceSummary: ReturnType<typeof reliabilityEvidenceSummary>,
+) {
+  const endpointBlockers = targetMode.blockers;
+  const evidenceBlockers = evidenceSummary.handoffBlockers;
+  return {
+    endpointBlockers,
+    evidenceBlockers,
+    firstBlocker: endpointBlockers[0] ?? evidenceBlockers[0] ?? null,
+    blockerCount: endpointBlockers.length + evidenceBlockers.length,
+    endpointReady: endpointBlockers.length === 0,
+    evidenceReady: evidenceBlockers.length === 0,
+    handoffReady: endpointBlockers.length === 0 && evidenceBlockers.length === 0,
+  };
+}
+
 const signalwirePstnCommonEnvVars = [
   "SIGNALWIRE_FROM_NUMBER",
   "FREESWITCH_PUBLIC_SIP_HOST",
@@ -1438,6 +1455,7 @@ function reliabilityLabEntryPoint(
 ) {
   if (!targetMode) return null;
   const summary = reliabilityEvidenceSummary(evidenceStatus);
+  const blockers = reliabilityBlockingSummary(targetMode, summary);
   return {
     id: `${targetMode.mode}_lab_entrypoint`,
     mode: targetMode.mode,
@@ -1448,6 +1466,7 @@ function reliabilityLabEntryPoint(
     requiredEndpointEnvVars: targetMode.requiredEndpointEnvVars,
     missingEndpointEnvVars: targetMode.missingEndpointEnvVars,
     blockers: targetMode.blockers,
+    blockingSummary: blockers,
     nextAction: targetMode.nextAction,
     evidenceSummary: summary,
     nextMissingEvidence: summary.nextMissingEvidence,
