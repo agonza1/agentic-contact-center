@@ -85,6 +85,18 @@ Configured endpoints are probed with a short timeout and reported as `ready` or 
 
 `stack/versions.env` is the pinned local reference manifest. It names the ACC, rtc-asr, Kokoro, FreeSWITCH, browser bridge, ToolHive gateway, CAE, and ASSERT image/URL or version coordinates that Phase 2 should either start through Compose or connect to explicitly.
 
+## Evidence inventory
+
+The status API and command expose the same `evidenceInventory` records. Keep this table aligned with that contract so operators can capture the next missing artifact without scraping prose.
+
+| Evidence id | Required for | Artifact | Producer command |
+| --- | --- | --- | --- |
+| `controlled_candidate_proof` | `fixture`, `browser_webrtc`, `reliability_lab`, `sip_verto`, `signalwire_pstn` | `artifacts/demo-proof-latest.json` | `npm run proof -- --out artifacts/demo-proof.json --latest-out artifacts/demo-proof-latest.json` |
+| `cae_assert_request` | `fixture`, `browser_webrtc`, `reliability_lab`, `sip_verto`, `signalwire_pstn` | `artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json` | `npm run cae:assert:handoff` |
+| `browser_live_media_manifest` | `browser_webrtc` | `artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json` | `npm run browser-webrtc:live-proof` |
+| `sip_verto_live_manifest` | `sip_verto` | `artifacts/verto-sip-live-proof/manifest.json` | `npm run pipecat:verto:live-proof` |
+| `signalwire_readiness` | `signalwire_pstn` | `artifacts/signalwire-freeswitch-readiness/readiness.json` | `npm run signalwire:freeswitch:readiness -- --render` |
+
 ## Phase 2 reliability-lab plan
 
 The next implementation slice should add one explicit lab entry point that starts or connects:

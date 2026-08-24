@@ -311,6 +311,10 @@ function markdownCodeCellValue(cell) {
   return cell.trim().replace(/^`|`$/g, "");
 }
 
+function markdownCodeCellValues(cell) {
+  return [...cell.matchAll(/`([^`]+)`/g)].map((match) => match[1]);
+}
+
 function usesVocabularyTermWithOptionalQualifier(value, vocabulary) {
   const trimmedValue = value.trim();
   const allowedQualifierStarts = [" before ", " for ", " ready for ", " when "];
@@ -691,6 +695,60 @@ compareReliabilityContracts(
 validateTargetModeReferences(apiEvidenceInventory, "API reliability evidence inventory", "id", "requiredFor", knownReliabilityTargetModes);
 validateTargetModeReferences(cliEvidenceInventory, "CLI reliability evidence inventory", "id", "requiredFor", knownReliabilityTargetModes);
 
+const evidenceInventorySection = reliabilityLabDoc.match(/## Evidence inventory\n\n([\s\S]*?)(?:\n## |\n# |$)/)?.[1] ?? "";
+const evidenceInventoryRows = markdownTableRows(evidenceInventorySection);
+const evidenceInventoryHeader = evidenceInventoryRows[0] ?? [];
+const evidenceIdIndex = evidenceInventoryHeader.indexOf("Evidence id");
+const evidenceRequiredForIndex = evidenceInventoryHeader.indexOf("Required for");
+const evidenceArtifactIndex = evidenceInventoryHeader.indexOf("Artifact");
+const evidenceProducerCommandIndex = evidenceInventoryHeader.indexOf("Producer command");
+if (evidenceIdIndex === -1) {
+  fail("docs/reliability-lab.md Evidence inventory table is missing an Evidence id column");
+}
+if (evidenceRequiredForIndex === -1) {
+  fail("docs/reliability-lab.md Evidence inventory table is missing a Required for column");
+}
+if (evidenceArtifactIndex === -1) {
+  fail("docs/reliability-lab.md Evidence inventory table is missing an Artifact column");
+}
+if (evidenceProducerCommandIndex === -1) {
+  fail("docs/reliability-lab.md Evidence inventory table is missing a Producer command column");
+}
+const documentedEvidenceInventory = new Map();
+if (
+  evidenceIdIndex !== -1
+  && evidenceRequiredForIndex !== -1
+  && evidenceArtifactIndex !== -1
+  && evidenceProducerCommandIndex !== -1
+) {
+  for (const row of evidenceInventoryRows.slice(1)) {
+    const id = markdownCodeCellValues(row[evidenceIdIndex] ?? "")[0] ?? null;
+    if (!id) continue;
+    documentedEvidenceInventory.set(id, {
+      id,
+      requiredFor: unique(markdownCodeCellValues(row[evidenceRequiredForIndex] ?? "")),
+      artifact: markdownCodeCellValue(row[evidenceArtifactIndex] ?? ""),
+      producerCommand: markdownCodeCellValue(row[evidenceProducerCommandIndex] ?? ""),
+    });
+  }
+}
+if (!sameValues([...cliEvidenceInventory.keys()].sort(), [...documentedEvidenceInventory.keys()].sort())) {
+  fail("docs/reliability-lab.md evidence inventory ids differ from status CLI contract");
+}
+for (const [id, contract] of cliEvidenceInventory) {
+  const documented = documentedEvidenceInventory.get(id);
+  if (!documented) continue;
+  if (!sameValues(contract.requiredFor, documented.requiredFor)) {
+    fail(`docs/reliability-lab.md evidence inventory required modes for ${id} differ from status CLI contract`);
+  }
+  if (contract.artifact !== documented.artifact) {
+    fail(`docs/reliability-lab.md evidence inventory artifact for ${id} differs from status CLI contract`);
+  }
+  if (contract.producerCommand !== documented.producerCommand) {
+    fail(`docs/reliability-lab.md evidence inventory producer command for ${id} differs from status CLI contract`);
+  }
+}
+
 const apiHandoffChecklist = extractReliabilityHandoffChecklist(server, "src/http/createServer.ts");
 const cliHandoffChecklist = extractReliabilityHandoffChecklist(
   reliabilityLabStatusScript,
@@ -838,5 +896,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedDockerProfiles.length} documented Docker profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${documentedReliabilityTargetModes.length} documented reliability target modes, ${knownReliabilityTargetModes.size} reliability target mode reference set, ${documentedReliabilityStartCommands.size} documented reliability start commands, ${documentedReliabilityValidationCommands.size} documented reliability validation commands, ${documentedReliabilityEvidenceCommands.size} documented reliability evidence commands, ${documentedReliabilityCaeHandoffCommands.size} documented reliability CAE handoff commands, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusEvidenceLevelVocabulary?.length ?? 0} evidence-level vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms, ${canonicalEcosystemEdges.length} canonical ecosystem edges, ${requiredGoldenComparisonRows.length} golden comparison rows.`,
+  `Documentation validation passed: ${Object.keys(scripts).length} package scripts, ${runtimeScriptCommands.length} runtime command references, ${documentedRunnableModeRows.length} runnable mode rows, ${composeProfiles.size} Compose profiles, ${documentedDockerProfiles.length} documented Docker profiles, ${documentedComposeProfileReferences.length} documented Compose profile references, ${composeServices.length} Compose services, ${packageDockerServiceRefs.length} package Docker service references, ${checkedLocalLinks.length} local Markdown links, ${documentedRoutes.length} useful routes, ${documentedAccUrls.length} ACC URL routes, ${reliabilityReadinessRoutes.length} reliability readiness routes, ${apiTargetModes.size} reliability target mode contracts, ${documentedReliabilityTargetModes.length} documented reliability target modes, ${knownReliabilityTargetModes.size} reliability target mode reference set, ${documentedReliabilityStartCommands.size} documented reliability start commands, ${documentedReliabilityValidationCommands.size} documented reliability validation commands, ${documentedReliabilityEvidenceCommands.size} documented reliability evidence commands, ${documentedReliabilityCaeHandoffCommands.size} documented reliability CAE handoff commands, ${apiRunProfiles.size} reliability run profile contracts, ${apiEvidenceInventory.size} reliability evidence inventory contracts, ${documentedEvidenceInventory.size} documented evidence inventory rows, ${apiHandoffChecklist.size} reliability handoff checklist contracts, ${documentedReadinessVocabulary.length} readiness vocabulary terms, ${statusEvidenceLevelVocabulary?.length ?? 0} evidence-level vocabulary terms, ${statusStackManifestKeys?.length ?? 0} stack manifest keys, ${mermaidDiagramCount} README diagrams, ${readmePorts.length} documented ports, ${canonicalEcosystemTerms.length} canonical ecosystem terms, ${canonicalEcosystemEdges.length} canonical ecosystem edges, ${requiredGoldenComparisonRows.length} golden comparison rows.`,
 );
