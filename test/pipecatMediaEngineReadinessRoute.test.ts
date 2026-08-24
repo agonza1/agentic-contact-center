@@ -85,6 +85,17 @@ test("GET /api/pipecat-media-engine/readiness exposes the shared browser/SIP and
       payload.parallelLlmPathPlan.sharedState.find((item: any) => item.id === "interruption_state").owner,
       "pipecat",
     );
+    assert.equal(payload.speechEnhancementPlan.issue, "agonza1/agentic-contact-center#97");
+    assert.equal(payload.speechEnhancementPlan.status, "spike_ready_feature_flag_disabled");
+    assert.equal(payload.speechEnhancementPlan.recommendedLatencyTargetMs, 25);
+    assert.deepEqual(payload.speechEnhancementPlan.latencySweepMs, [12.5, 25, 50, 75]);
+    assert.equal(payload.speechEnhancementPlan.recommendedPlacement, "rtc_asr_frontend");
+    assert.equal(payload.speechEnhancementPlan.fallbackPlacement, "sidecar_preprocessor");
+    assert.equal(payload.speechEnhancementPlan.configShape.featureFlag, "ACC_SPEECH_ENHANCEMENT_ENABLED");
+    assert.deepEqual(
+      payload.speechEnhancementPlan.measurementPlan.map((item: any) => item.id),
+      ["latency_budget", "asr_quality", "endpointing", "runtime_cost"],
+    );
 
     assert.equal(payload.sharedEngineContract.engine, "pipecat-ai");
     assert.equal(payload.sharedEngineContract.callTurnEngine, "rtc-asr -> Pipecat FlowManager -> ACC product-state adapter -> Pocket/Kokoro streaming TTS");

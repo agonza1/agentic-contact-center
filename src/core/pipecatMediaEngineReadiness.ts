@@ -1,5 +1,6 @@
 import { buildPipecatFlowManagerContractPayload } from "./pipecatFlowManagerContract";
 import { buildParallelLlmPathPlan } from "./parallelLlmPathPlan";
+import { buildSpeechEnhancementPlan } from "./speechEnhancementPlan";
 
 const issue214 = "agonza1/agentic-contact-center#214";
 const issue214Url = "https://github.com/agonza1/agentic-contact-center/issues/214";
@@ -64,6 +65,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
   };
   const flowManagerContract = buildPipecatFlowManagerContractPayload();
   const parallelLlmPathPlan = buildParallelLlmPathPlan();
+  const speechEnhancementPlan = buildSpeechEnhancementPlan();
 
   return {
     ok: true,
@@ -192,6 +194,7 @@ export function buildPipecatMediaEngineReadinessPayload() {
     nextUnblockedSlice,
     flowManagerContract,
     parallelLlmPathPlan,
+    speechEnhancementPlan,
     liveSipProofAcceptance,
     reviewBlockers: [],
     acceptanceCriteria: [
