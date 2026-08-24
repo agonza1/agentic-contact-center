@@ -2124,6 +2124,9 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         mode: string;
         runProfile: string | null;
         workState: string;
+        evidenceSummary: { handoffReady: boolean };
+        nextEvidenceAction: { step: string; command: string; evidence: string; detail: string };
+        recommendedNextStep: { category: string; step: string; command: string; evidence: string; detail: string };
         commands: Array<{ step: string; command: string }>;
       } | null;
       selectedRunProfile: {
@@ -2276,6 +2279,11 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(payload.labEntryPoint?.id, "fixture_lab_entrypoint");
     assert.equal(payload.labEntryPoint?.runProfile, "local_fixture");
     assert.equal(payload.labEntryPoint?.workState, "active");
+    assert.equal(payload.labEntryPoint?.recommendedNextStep.category, payload.labEntryPoint?.evidenceSummary.handoffReady ? "handoff" : "evidence");
+    assert.equal(
+      payload.labEntryPoint?.recommendedNextStep.step,
+      payload.labEntryPoint?.evidenceSummary.handoffReady ? "generate_handoff_request" : payload.labEntryPoint?.nextEvidenceAction.step,
+    );
     assert.deepEqual(payload.selectedTargetMode.labEntryPoint, payload.labEntryPoint);
     assert.deepEqual(
       payload.labEntryPoint?.commands.map((command) => [command.step, command.command]),

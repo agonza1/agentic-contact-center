@@ -1358,6 +1358,40 @@ function reliabilityBlockingSummary(
   };
 }
 
+function reliabilityEntrypointRecommendedNextStep(
+  targetMode: ReturnType<typeof buildReliabilityTargetModes>[number],
+  blockingSummary: ReturnType<typeof reliabilityBlockingSummary>,
+  evidenceAction: ReturnType<typeof nextReliabilityEvidenceAction>,
+) {
+  if (!blockingSummary.endpointReady) {
+    return {
+      category: "endpoint",
+      step: targetMode.nextAction.step,
+      command: targetMode.nextAction.command,
+      evidence: targetMode.nextAction.evidence,
+      detail: targetMode.nextAction.detail,
+    };
+  }
+
+  if (!blockingSummary.evidenceReady) {
+    return {
+      category: "evidence",
+      step: evidenceAction.step,
+      command: evidenceAction.command,
+      evidence: evidenceAction.evidence,
+      detail: evidenceAction.detail,
+    };
+  }
+
+  return {
+    category: "handoff",
+    step: "generate_handoff_request",
+    command: targetMode.caeHandoffCommand,
+    evidence: "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
+    detail: "Endpoint and evidence blockers are clear; generate or refresh the CAE/ASSERT handoff request.",
+  };
+}
+
 const signalwirePstnCommonEnvVars = [
   "SIGNALWIRE_FROM_NUMBER",
   "FREESWITCH_PUBLIC_SIP_HOST",
@@ -1456,6 +1490,7 @@ function reliabilityLabEntryPoint(
   if (!targetMode) return null;
   const summary = reliabilityEvidenceSummary(evidenceStatus);
   const blockers = reliabilityBlockingSummary(targetMode, summary);
+  const evidenceAction = nextReliabilityEvidenceAction(evidenceStatus, targetMode.validationCommand);
   return {
     id: `${targetMode.mode}_lab_entrypoint`,
     mode: targetMode.mode,
@@ -1470,7 +1505,8 @@ function reliabilityLabEntryPoint(
     nextAction: targetMode.nextAction,
     evidenceSummary: summary,
     nextMissingEvidence: summary.nextMissingEvidence,
-    nextEvidenceAction: nextReliabilityEvidenceAction(evidenceStatus, targetMode.validationCommand),
+    nextEvidenceAction: evidenceAction,
+    recommendedNextStep: reliabilityEntrypointRecommendedNextStep(targetMode, blockers, evidenceAction),
     commands: [
       {
         step: "start_or_connect_stack",

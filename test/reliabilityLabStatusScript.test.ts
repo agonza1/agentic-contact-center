@@ -207,6 +207,11 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.labEntryPoint.blockingSummary.endpointReady, true);
   assert.equal(payload.labEntryPoint.blockingSummary.evidenceReady, payload.labEntryPoint.evidenceSummary.handoffReady);
   assert.equal(payload.labEntryPoint.blockingSummary.handoffReady, payload.labEntryPoint.evidenceSummary.handoffReady);
+  assert.equal(payload.labEntryPoint.recommendedNextStep.category, payload.labEntryPoint.evidenceSummary.handoffReady ? "handoff" : "evidence");
+  assert.equal(
+    payload.labEntryPoint.recommendedNextStep.step,
+    payload.labEntryPoint.evidenceSummary.handoffReady ? "generate_handoff_request" : payload.labEntryPoint.nextEvidenceAction.step,
+  );
   assert.deepEqual(
     payload.labEntryPoint.commands.map((command: { step: string; command: string }) => [command.step, command.command]),
     [
@@ -710,6 +715,13 @@ test("reliability entrypoint command returns only selected lab entry point", asy
   assert.equal(payload.blockingSummary.evidenceReady, payload.evidenceSummary.handoffReady);
   assert.equal(payload.blockingSummary.firstBlocker, "rtc-asr endpoint is not configured (RTC_ASR_BASE_URL).");
   assert.equal(payload.blockingSummary.blockerCount, payload.blockingSummary.endpointBlockers.length + payload.blockingSummary.evidenceBlockers.length);
+  assert.deepEqual(payload.recommendedNextStep, {
+    category: "endpoint",
+    step: "configure_browser_media_endpoints",
+    command: "npm run docker:browser-webrtc",
+    evidence: "/api/browser-webrtc/readiness",
+    detail: "Bring up rtc-asr, Kokoro, and the Pipecat browser bridge before capturing live browser evidence.",
+  });
   assert.equal(payload.evidenceSummary.total, 3);
   assert.equal(payload.evidenceSummary.present + payload.evidenceSummary.missing, 3);
   assert.equal(typeof payload.evidenceSummary.handoffReady, "boolean");
