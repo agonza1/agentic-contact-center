@@ -19,5 +19,12 @@
     "policyGate": 1500,
     "operatorNotification": 2000,
     "ttsFirstAudio": 1200
+  },
+  "speechEnhancement": {
+    "enabled": false,
+    "provider": "none",
+    "placement": "disabled",
+    "targetAlgorithmicLatencyMs": null,
+    "featureFlag": "ACC_SPEECH_ENHANCEMENT_ENABLED"
   }
 }

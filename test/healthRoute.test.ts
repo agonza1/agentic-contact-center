@@ -67,6 +67,13 @@ test("GET /health returns config-backed demo metadata", async () => {
     policyToolScope: string;
     fallbackMode: string;
     latencyBudgetsMs: { asrPartial: number; policyGate: number; operatorNotification: number; ttsFirstAudio: number };
+    speechEnhancement: {
+      enabled: boolean;
+      provider: string;
+      placement: string;
+      targetAlgorithmicLatencyMs: number | null;
+      featureFlag: string;
+    };
     runtimeSeams: string[];
     productionReadiness: {
       demoReady: boolean;
@@ -126,6 +133,7 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.operatorChannel, config.operator.channel);
   assert.equal(payload.fallbackMode, config.policy.fallbackMode);
   assert.deepEqual(payload.latencyBudgetsMs, config.latencyBudgetsMs);
+  assert.deepEqual(payload.speechEnhancement, config.speechEnhancement);
   assert.equal(payload.runtimeSeams.includes("flow engine"), true);
   assert.equal(payload.productionReadiness.demoReady, true);
   assert.equal(payload.productionReadiness.productionReady, false);

@@ -10,6 +10,7 @@ const DEFAULT_CONFIG_PATH = path.resolve(
 );
 
 const CONFIG_PATH_ENV = "POC_CONFIG_PATH";
+const ACCEPTED_SPEECH_ENHANCEMENT_LATENCIES = new Set([12.5, 25, 50, 75]);
 
 export function resolvePocConfigPath(env = process.env): string {
   const configuredPath = env[CONFIG_PATH_ENV]?.trim();
@@ -35,6 +36,21 @@ export function loadPocConfig(configPath = resolvePocConfigPath()): PocConfig {
 
   if (!config.operator?.channel || !config.latencyBudgetsMs) {
     throw new Error(`Incomplete operator or latency config at ${configPath}`);
+  }
+
+  const speechEnhancement = config.speechEnhancement;
+  if (speechEnhancement) {
+    const latency = speechEnhancement.targetAlgorithmicLatencyMs;
+    if (
+      speechEnhancement.enabled
+      && (
+        speechEnhancement.provider === "none"
+        || speechEnhancement.placement === "disabled"
+        || !ACCEPTED_SPEECH_ENHANCEMENT_LATENCIES.has(Number(latency))
+      )
+    ) {
+      throw new Error(`Invalid speech enhancement config at ${configPath}`);
+    }
   }
 
   return config as PocConfig;
