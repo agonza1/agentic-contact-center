@@ -767,6 +767,47 @@ function buildBrowserWebrtcReadinessPayload(bridgeRuntime: BrowserWebrtcBridgeRu
   };
 }
 
+function buildSpeechEnhancementHealth(config: PocConfig): object {
+  const speechEnhancement = config.speechEnhancement ?? {
+    enabled: false,
+    provider: "none",
+    placement: "disabled",
+    targetAlgorithmicLatencyMs: null,
+    featureFlag: "ACC_SPEECH_ENHANCEMENT_ENABLED",
+  };
+  const targetLatencyMs = speechEnhancement.targetAlgorithmicLatencyMs;
+  const asrPartialBudgetMs = config.latencyBudgetsMs.asrPartial;
+  const remainingAsrPartialBudgetMs = targetLatencyMs === null
+    ? asrPartialBudgetMs
+    : Math.max(0, asrPartialBudgetMs - targetLatencyMs);
+  const consumesAsrPartialBudgetPct = targetLatencyMs === null || asrPartialBudgetMs <= 0
+    ? 0
+    : Math.round((targetLatencyMs / asrPartialBudgetMs) * 1000) / 10;
+
+  return {
+    issue: "agonza1/agentic-contact-center#97",
+    issueUrl: "https://github.com/agonza1/agentic-contact-center/issues/97",
+    status: speechEnhancement.enabled
+      ? remainingAsrPartialBudgetMs > 0
+        ? "enabled_within_asr_partial_budget"
+        : "enabled_exhausts_asr_partial_budget"
+      : "disabled_pending_noisy_replay_spike",
+    enabled: speechEnhancement.enabled,
+    provider: speechEnhancement.provider,
+    placement: speechEnhancement.placement,
+    featureFlag: speechEnhancement.featureFlag,
+    latencyBudget: {
+      targetAlgorithmicLatencyMs: targetLatencyMs,
+      asrPartialBudgetMs,
+      remainingAsrPartialBudgetMs,
+      consumesAsrPartialBudgetPct,
+    },
+    nextAction: speechEnhancement.enabled
+      ? "Replay the same noisy call capture through baseline and enhanced rtc-asr paths before enabling by default."
+      : "Keep the stage disabled until a noisy call replay proves ASR, endpointing, interruption, and CPU benefits.",
+  };
+}
+
 function buildBrowserWebrtcBridgeOfferUrl(): string {
   const browserWebrtcBridgeBaseUrl = getBrowserWebrtcBridgeBaseUrl();
   return `${browserWebrtcBridgeBaseUrl.replace(/\/$/, "")}/api/webrtc/offer`;
@@ -6649,6 +6690,7 @@ async function routeRequest(
         targetAlgorithmicLatencyMs: null,
         featureFlag: "ACC_SPEECH_ENHANCEMENT_ENABLED",
       },
+      speechEnhancementStatus: buildSpeechEnhancementHealth(config),
       runtimeSeams,
       pipecatFlow,
       browserWebRtc,

@@ -74,6 +74,21 @@ test("GET /health returns config-backed demo metadata", async () => {
       targetAlgorithmicLatencyMs: number | null;
       featureFlag: string;
     };
+    speechEnhancementStatus: {
+      issue: string;
+      status: string;
+      enabled: boolean;
+      provider: string;
+      placement: string;
+      featureFlag: string;
+      latencyBudget: {
+        targetAlgorithmicLatencyMs: number | null;
+        asrPartialBudgetMs: number;
+        remainingAsrPartialBudgetMs: number;
+        consumesAsrPartialBudgetPct: number;
+      };
+      nextAction: string;
+    };
     runtimeSeams: string[];
     productionReadiness: {
       demoReady: boolean;
@@ -134,6 +149,19 @@ test("GET /health returns config-backed demo metadata", async () => {
   assert.equal(payload.fallbackMode, config.policy.fallbackMode);
   assert.deepEqual(payload.latencyBudgetsMs, config.latencyBudgetsMs);
   assert.deepEqual(payload.speechEnhancement, config.speechEnhancement);
+  assert.equal(payload.speechEnhancementStatus.issue, "agonza1/agentic-contact-center#97");
+  assert.equal(payload.speechEnhancementStatus.status, "disabled_pending_noisy_replay_spike");
+  assert.equal(payload.speechEnhancementStatus.enabled, false);
+  assert.equal(payload.speechEnhancementStatus.provider, "none");
+  assert.equal(payload.speechEnhancementStatus.placement, "disabled");
+  assert.equal(payload.speechEnhancementStatus.featureFlag, "ACC_SPEECH_ENHANCEMENT_ENABLED");
+  assert.deepEqual(payload.speechEnhancementStatus.latencyBudget, {
+    targetAlgorithmicLatencyMs: null,
+    asrPartialBudgetMs: config.latencyBudgetsMs.asrPartial,
+    remainingAsrPartialBudgetMs: config.latencyBudgetsMs.asrPartial,
+    consumesAsrPartialBudgetPct: 0,
+  });
+  assert.match(payload.speechEnhancementStatus.nextAction, /noisy call replay/);
   assert.equal(payload.runtimeSeams.includes("flow engine"), true);
   assert.equal(payload.productionReadiness.demoReady, true);
   assert.equal(payload.productionReadiness.productionReady, false);
