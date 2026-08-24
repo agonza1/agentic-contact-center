@@ -107,6 +107,16 @@ export interface LatencyBudgetsMs {
 
 export type LatencyBudgetStage = keyof LatencyBudgetsMs;
 
+export type SpeechEnhancementPlacement = "rtc_asr_frontend" | "sidecar_preprocessor" | "disabled";
+
+export interface SpeechEnhancementConfig {
+  enabled: boolean;
+  provider: "laco_senet" | "none";
+  placement: SpeechEnhancementPlacement;
+  targetAlgorithmicLatencyMs: 12.5 | 25 | 50 | 75 | null;
+  featureFlag: string;
+}
+
 export interface LatencyMark {
   stage: string;
   recordedAt: string;
@@ -156,6 +166,7 @@ export interface PocConfig {
     channel: string;
   };
   latencyBudgetsMs: LatencyBudgetsMs;
+  speechEnhancement?: SpeechEnhancementConfig;
 }
 
 export interface StartCallOptions {

@@ -6642,6 +6642,13 @@ async function routeRequest(
       operatorChannel: config.operator.channel,
       fallbackMode: config.policy.fallbackMode,
       latencyBudgetsMs: config.latencyBudgetsMs,
+      speechEnhancement: config.speechEnhancement ?? {
+        enabled: false,
+        provider: "none",
+        placement: "disabled",
+        targetAlgorithmicLatencyMs: null,
+        featureFlag: "ACC_SPEECH_ENHANCEMENT_ENABLED",
+      },
       runtimeSeams,
       pipecatFlow,
       browserWebRtc,

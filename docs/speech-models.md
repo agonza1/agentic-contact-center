@@ -11,6 +11,24 @@ microphone -> rtc-asr -> ACC / Pipecat -> Pocket or Kokoro -> browser
 - Pocket TTS or Kokoro owns synthesis and exposes an OpenAI-compatible streaming speech endpoint.
 - ACC probes those sidecars and proxies their streams to the presentation. It does not fabricate live latency measurements.
 
+## Optional speech enhancement exploration
+
+Issue [#97](https://github.com/agonza1/agentic-contact-center/issues/97) tracks a post-live-proof spike for latency-configurable streaming speech enhancement, using LaCo-SENet as the reference design. Keep it disabled by default until a noisy call replay proves a benefit over the baseline rtc-asr path.
+
+The proposed config shape is recorded in `config/poc.config.example.json`:
+
+```json
+"speechEnhancement": {
+  "enabled": false,
+  "provider": "none",
+  "placement": "disabled",
+  "targetAlgorithmicLatencyMs": null,
+  "featureFlag": "ACC_SPEECH_ENHANCEMENT_ENABLED"
+}
+```
+
+If the spike is worth prototyping, enable it with `provider: "laco_senet"`, choose `placement: "rtc_asr_frontend"` or `placement: "sidecar_preprocessor"`, and use one of the measured latency targets: `12.5`, `25`, `50`, or `75` ms. Report baseline versus enhanced latency, transcript quality, endpointing or interruption behavior, and CPU cost before changing the live-call default.
+
 The examples below use Windows PowerShell and the ports used by the local presentation:
 
 | Service | URL | Purpose |
