@@ -132,7 +132,7 @@ For automation that needs only the selected entry point, run:
 npm run reliability:entrypoint
 ```
 
-The entry point payload includes `blockingSummary` with separate endpoint and evidence blockers, a `firstBlocker`, and a combined `handoffReady` flag so orchestrators can decide whether to configure endpoints, refresh artifacts, or hand off to CAE without parsing prose.
+The entry point payload includes `blockingSummary` with separate endpoint and evidence blockers, a `firstBlocker`, and a combined `handoffReady` flag so orchestrators can decide whether to configure endpoints, refresh artifacts, or hand off to CAE without parsing prose. It also exposes `recommendedNextStep`, which prioritizes endpoint setup first, selected evidence capture or refresh second, and CAE/ASSERT handoff once blockers are clear.
 
 Rules for Phase 2:
 

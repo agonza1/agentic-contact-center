@@ -596,6 +596,36 @@ function blockingSummary(targetMode, evidenceSummary) {
   };
 }
 
+function entrypointRecommendedNextStep(targetMode, blockers, evidenceAction) {
+  if (!blockers.endpointReady) {
+    return {
+      category: "endpoint",
+      step: targetMode.nextAction.step,
+      command: targetMode.nextAction.command,
+      evidence: targetMode.nextAction.evidence,
+      detail: targetMode.nextAction.detail,
+    };
+  }
+
+  if (!blockers.evidenceReady) {
+    return {
+      category: "evidence",
+      step: evidenceAction.step,
+      command: evidenceAction.command,
+      evidence: evidenceAction.evidence,
+      detail: evidenceAction.detail,
+    };
+  }
+
+  return {
+    category: "handoff",
+    step: "generate_handoff_request",
+    command: targetMode.caeHandoffCommand,
+    evidence: "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
+    detail: "Endpoint and evidence blockers are clear; generate or refresh the CAE/ASSERT handoff request.",
+  };
+}
+
 const endpointRequirements = {
   caeApi: { label: "ConversationAgentEvals API", envVar: "CAE_API_URL", configured: Boolean(optionalEndpoints.caeApi), ready: endpointReady.caeApi },
   caeWeb: { label: "ConversationAgentEvals web", envVar: "CAE_WEB_URL", configured: Boolean(optionalEndpoints.caeWeb), ready: endpointReady.caeWeb },
@@ -915,6 +945,7 @@ function labEntryPointForTargetMode(targetMode, runProfile, evidenceStatus) {
   if (!targetMode) return null;
   const summary = evidenceSummary(evidenceStatus);
   const blockers = blockingSummary(targetMode, summary);
+  const evidenceAction = nextEvidenceAction(evidenceStatus, targetMode.validationCommand);
   return {
     id: `${targetMode.mode}_lab_entrypoint`,
     mode: targetMode.mode,
@@ -929,7 +960,8 @@ function labEntryPointForTargetMode(targetMode, runProfile, evidenceStatus) {
     nextAction: targetMode.nextAction,
     evidenceSummary: summary,
     nextMissingEvidence: summary.nextMissingEvidence,
-    nextEvidenceAction: nextEvidenceAction(evidenceStatus, targetMode.validationCommand),
+    nextEvidenceAction: evidenceAction,
+    recommendedNextStep: entrypointRecommendedNextStep(targetMode, blockers, evidenceAction),
     commands: [
       {
         step: "start_or_connect_stack",
