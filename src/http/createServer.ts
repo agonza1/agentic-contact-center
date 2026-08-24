@@ -1434,8 +1434,10 @@ function selectedReliabilityRunProfile(
 function reliabilityLabEntryPoint(
   targetMode: ReturnType<typeof buildReliabilityTargetModes>[number] | null,
   runProfile: ReturnType<typeof buildReliabilityRunProfiles>[number] | null,
+  evidenceStatus: ReturnType<typeof reliabilityEvidenceStatus>,
 ) {
   if (!targetMode) return null;
+  const summary = reliabilityEvidenceSummary(evidenceStatus);
   return {
     id: `${targetMode.mode}_lab_entrypoint`,
     mode: targetMode.mode,
@@ -1447,6 +1449,9 @@ function reliabilityLabEntryPoint(
     missingEndpointEnvVars: targetMode.missingEndpointEnvVars,
     blockers: targetMode.blockers,
     nextAction: targetMode.nextAction,
+    evidenceSummary: summary,
+    nextMissingEvidence: summary.nextMissingEvidence,
+    nextEvidenceAction: nextReliabilityEvidenceAction(evidenceStatus, targetMode.validationCommand),
     commands: [
       {
         step: "start_or_connect_stack",
@@ -1904,11 +1909,11 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
   const requestedTargetMode = configuredEnvValue("ACC_RELIABILITY_TARGET_MODE") ?? "fixture";
   const selectedTargetMode = targetModes.find((mode) => mode.mode === requestedTargetMode) ?? null;
   const selectedRunProfile = selectedReliabilityRunProfile(selectedTargetMode?.mode ?? null, runProfiles);
-  const selectedLabEntryPoint = reliabilityLabEntryPoint(selectedTargetMode, selectedRunProfile);
   const selectedEvidenceInventory = selectedTargetMode
     ? selectedReliabilityModeEvidenceInventory(selectedTargetMode.mode)
     : [];
   const selectedEvidenceStatus = reliabilityEvidenceStatus(selectedEvidenceInventory);
+  const selectedLabEntryPoint = reliabilityLabEntryPoint(selectedTargetMode, selectedRunProfile, selectedEvidenceStatus);
   const selectedRunProfileEvidenceInventory = selectedRunProfile
     ? selectedRunProfile.evidence.map((artifact) => ({
         id: artifact,

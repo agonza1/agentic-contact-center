@@ -701,6 +701,15 @@ test("reliability entrypoint command returns only selected lab entry point", asy
   assert.equal(payload.workState, "blocked");
   assert.deepEqual(payload.requiredEndpointEnvVars, ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"]);
   assert.deepEqual(payload.missingEndpointEnvVars, ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"]);
+  assert.equal(payload.evidenceSummary.total, 3);
+  assert.equal(payload.evidenceSummary.present + payload.evidenceSummary.missing, 3);
+  assert.equal(typeof payload.evidenceSummary.handoffReady, "boolean");
+  assert.equal(typeof payload.evidenceSummary.freshForHandoff, "boolean");
+  assert.ok(["capture_missing_evidence", "refresh_stale_evidence", "validate_existing_evidence"].includes(payload.nextEvidenceAction.step));
+  assert.match(payload.nextEvidenceAction.detail, /evidence/);
+  if (payload.nextMissingEvidence) {
+    assert.ok(["controlled_candidate_proof", "cae_assert_request", "browser_live_media_manifest"].includes(payload.nextMissingEvidence.id));
+  }
   assert.deepEqual(
     payload.commands.map((command: { step: string; command: string }) => [command.step, command.command]),
     [
