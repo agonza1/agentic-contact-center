@@ -229,6 +229,8 @@ npm run docker:freeswitch:only
 
 - `voice`: rtc-asr on `8080` and Kokoro on `8880`.
 - `browser-webrtc`: voice sidecars plus the Pipecat browser WebRTC bridge on `8766`.
+- `proof`: deterministic proof runner container only.
+- `freeswitch`: FreeSWITCH plus the ACC app for isolated telephony setup checks.
 - `reliability-lab`: browser voice sidecars plus the local ASSERT viewer on `5174`; ConversationAgentEvals connects through `CAE_API_URL` and `CAE_WEB_URL`.
 - `sip-verto`: FreeSWITCH, rtc-asr, Kokoro, the preferred Pipecat Verto/WebRTC agent-leg bridge, and a backend-owned Codex OAuth bridge. Dial `8611` for the normal credential-free `free_caller` flow, `8612` for the deterministic scripted failure-control flow, or `8600` for the live model flow. For `8600`, open the operator console, select **Connect Codex**, complete the device login, and call with the pinned `gpt-5.4-mini` model. OAuth credentials stay in the backend bridge and never enter browser JavaScript.
 - `sip`: legacy FreeSWITCH-to-ACC ESL proof/debug bridge with rtc-asr and Kokoro.
