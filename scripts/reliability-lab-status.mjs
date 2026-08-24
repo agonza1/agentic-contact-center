@@ -582,6 +582,20 @@ function nextEvidenceAction(evidenceStatus, validationCommand) {
   };
 }
 
+function blockingSummary(targetMode, evidenceSummary) {
+  const endpointBlockers = targetMode.blockers;
+  const evidenceBlockers = evidenceSummary.handoffBlockers;
+  return {
+    endpointBlockers,
+    evidenceBlockers,
+    firstBlocker: endpointBlockers[0] ?? evidenceBlockers[0] ?? null,
+    blockerCount: endpointBlockers.length + evidenceBlockers.length,
+    endpointReady: endpointBlockers.length === 0,
+    evidenceReady: evidenceBlockers.length === 0,
+    handoffReady: endpointBlockers.length === 0 && evidenceBlockers.length === 0,
+  };
+}
+
 const endpointRequirements = {
   caeApi: { label: "ConversationAgentEvals API", envVar: "CAE_API_URL", configured: Boolean(optionalEndpoints.caeApi), ready: endpointReady.caeApi },
   caeWeb: { label: "ConversationAgentEvals web", envVar: "CAE_WEB_URL", configured: Boolean(optionalEndpoints.caeWeb), ready: endpointReady.caeWeb },
@@ -900,6 +914,7 @@ function selectedRunProfileForTargetMode(targetMode) {
 function labEntryPointForTargetMode(targetMode, runProfile, evidenceStatus) {
   if (!targetMode) return null;
   const summary = evidenceSummary(evidenceStatus);
+  const blockers = blockingSummary(targetMode, summary);
   return {
     id: `${targetMode.mode}_lab_entrypoint`,
     mode: targetMode.mode,
@@ -910,6 +925,7 @@ function labEntryPointForTargetMode(targetMode, runProfile, evidenceStatus) {
     requiredEndpointEnvVars: targetMode.requiredEndpointEnvVars,
     missingEndpointEnvVars: targetMode.missingEndpointEnvVars,
     blockers: targetMode.blockers,
+    blockingSummary: blockers,
     nextAction: targetMode.nextAction,
     evidenceSummary: summary,
     nextMissingEvidence: summary.nextMissingEvidence,

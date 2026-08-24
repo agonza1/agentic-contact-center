@@ -202,6 +202,11 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.labEntryPoint.mode, "fixture");
   assert.equal(payload.labEntryPoint.runProfile, "local_fixture");
   assert.equal(payload.labEntryPoint.workState, "active");
+  assert.deepEqual(payload.labEntryPoint.blockingSummary.endpointBlockers, []);
+  assert.equal(payload.labEntryPoint.blockingSummary.blockerCount, payload.labEntryPoint.blockingSummary.evidenceBlockers.length);
+  assert.equal(payload.labEntryPoint.blockingSummary.endpointReady, true);
+  assert.equal(payload.labEntryPoint.blockingSummary.evidenceReady, payload.labEntryPoint.evidenceSummary.handoffReady);
+  assert.equal(payload.labEntryPoint.blockingSummary.handoffReady, payload.labEntryPoint.evidenceSummary.handoffReady);
   assert.deepEqual(
     payload.labEntryPoint.commands.map((command: { step: string; command: string }) => [command.step, command.command]),
     [
@@ -701,6 +706,10 @@ test("reliability entrypoint command returns only selected lab entry point", asy
   assert.equal(payload.workState, "blocked");
   assert.deepEqual(payload.requiredEndpointEnvVars, ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"]);
   assert.deepEqual(payload.missingEndpointEnvVars, ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"]);
+  assert.equal(payload.blockingSummary.endpointReady, false);
+  assert.equal(payload.blockingSummary.evidenceReady, payload.evidenceSummary.handoffReady);
+  assert.equal(payload.blockingSummary.firstBlocker, "rtc-asr endpoint is not configured (RTC_ASR_BASE_URL).");
+  assert.equal(payload.blockingSummary.blockerCount, payload.blockingSummary.endpointBlockers.length + payload.blockingSummary.evidenceBlockers.length);
   assert.equal(payload.evidenceSummary.total, 3);
   assert.equal(payload.evidenceSummary.present + payload.evidenceSummary.missing, 3);
   assert.equal(typeof payload.evidenceSummary.handoffReady, "boolean");

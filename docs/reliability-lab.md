@@ -132,6 +132,8 @@ For automation that needs only the selected entry point, run:
 npm run reliability:entrypoint
 ```
 
+The entry point payload includes `blockingSummary` with separate endpoint and evidence blockers, a `firstBlocker`, and a combined `handoffReady` flag so orchestrators can decide whether to configure endpoints, refresh artifacts, or hand off to CAE without parsing prose.
+
 Rules for Phase 2:
 
 - Do not use git submodules.
