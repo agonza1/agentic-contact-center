@@ -1314,15 +1314,6 @@ function nextReliabilityEvidenceAction(
   evidenceStatus: ReturnType<typeof reliabilityEvidenceStatus>,
   validationCommand: string,
 ) {
-  const missing = nextMissingReliabilityEvidence(evidenceStatus);
-  if (missing) {
-    return {
-      step: "capture_missing_evidence",
-      command: missing.command,
-      evidence: missing.artifact,
-      detail: "Generate the next missing selected evidence artifact before CAE/ASSERT handoff.",
-    };
-  }
   const stale = evidenceStatus.find((item) => item.exists && item.freshForHandoff === false);
   if (stale) {
     return {
@@ -1330,6 +1321,15 @@ function nextReliabilityEvidenceAction(
       command: stale.producerCommand,
       evidence: stale.artifact,
       detail: "Refresh stale selected evidence before CAE/ASSERT handoff.",
+    };
+  }
+  const missing = nextMissingReliabilityEvidence(evidenceStatus);
+  if (missing) {
+    return {
+      step: "capture_missing_evidence",
+      command: missing.command,
+      evidence: missing.artifact,
+      detail: "Generate the next missing selected evidence artifact before CAE/ASSERT handoff.",
     };
   }
 

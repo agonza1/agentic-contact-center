@@ -271,8 +271,16 @@ test("reliability lab status reports explicit blockers without starting sidecars
   );
   if (payload.selectedTargetMode.nextMissingEvidence) {
     assert.ok(["controlled_candidate_proof", "cae_assert_request"].includes(payload.selectedTargetMode.nextMissingEvidence.id));
-    assert.equal(payload.selectedTargetMode.nextEvidenceAction.step, "capture_missing_evidence");
-    assert.equal(payload.selectedTargetMode.nextEvidenceAction.evidence, payload.selectedTargetMode.nextMissingEvidence.artifact);
+    const staleSelectedEvidence = payload.selectedTargetMode.evidenceStatus.find(
+      (item: { exists: boolean; freshForHandoff: boolean }) => item.exists && item.freshForHandoff === false,
+    );
+    if (staleSelectedEvidence) {
+      assert.equal(payload.selectedTargetMode.nextEvidenceAction.step, "refresh_stale_evidence");
+      assert.equal(payload.selectedTargetMode.nextEvidenceAction.evidence, staleSelectedEvidence.artifact);
+    } else {
+      assert.equal(payload.selectedTargetMode.nextEvidenceAction.step, "capture_missing_evidence");
+      assert.equal(payload.selectedTargetMode.nextEvidenceAction.evidence, payload.selectedTargetMode.nextMissingEvidence.artifact);
+    }
   } else {
     assert.ok(["refresh_stale_evidence", "validate_existing_evidence"].includes(payload.selectedTargetMode.nextEvidenceAction.step));
   }
