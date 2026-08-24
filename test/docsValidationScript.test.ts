@@ -17,6 +17,7 @@ test("documentation validation catches Markdown drift against documented package
   assert.match(result.stdout, /runtime command references/);
   assert.match(result.stdout, /runnable mode rows/);
   assert.match(result.stdout, /Compose profiles/);
+  assert.match(result.stdout, /documented Docker profiles/);
   assert.match(result.stdout, /documented Compose profile references/);
   assert.match(result.stdout, /Compose services/);
   assert.match(result.stdout, /package Docker service references/);
