@@ -2119,6 +2119,13 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         handoffCommand: string;
         evidence: string[];
       }>;
+      labEntryPoint: {
+        id: string;
+        mode: string;
+        runProfile: string | null;
+        workState: string;
+        commands: Array<{ step: string; command: string }>;
+      } | null;
       selectedRunProfile: {
         id: string | null;
         status: string;
@@ -2167,6 +2174,13 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           evidence: string;
           detail: string;
         };
+        labEntryPoint?: {
+          id: string;
+          mode: string;
+          runProfile: string | null;
+          workState: string;
+          commands: Array<{ step: string; command: string }>;
+        } | null;
         validModes?: string[];
       };
       readinessRoutes: Record<string, string>;
@@ -2259,6 +2273,19 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.deepEqual(payload.targetModes[0]?.missingEndpointEnvVars, []);
     assert.deepEqual(payload.targetModes[0]?.optionalEndpointEnvVars, []);
     assert.equal(payload.targetModes[0]?.detail, "Sidecar-free cancellation-rescue proof for the controlled candidate.");
+    assert.equal(payload.labEntryPoint?.id, "fixture_lab_entrypoint");
+    assert.equal(payload.labEntryPoint?.runProfile, "local_fixture");
+    assert.equal(payload.labEntryPoint?.workState, "active");
+    assert.deepEqual(payload.selectedTargetMode.labEntryPoint, payload.labEntryPoint);
+    assert.deepEqual(
+      payload.labEntryPoint?.commands.map((command) => [command.step, command.command]),
+      [
+        ["start_or_connect_stack", "npm run proof"],
+        ["validate_readiness", "npm run proof"],
+        ["capture_evidence", "npm run proof:bundle"],
+        ["generate_handoff_request", "npm run cae:assert:handoff"],
+      ],
+    );
     assert.deepEqual(
       payload.runProfiles.map((profile) => [profile.id, profile.status, profile.startCommand, profile.validationCommand, profile.handoffCommand]),
       [
@@ -2347,8 +2374,16 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     }
     if (payload.selectedTargetMode.nextMissingEvidence) {
       assert.ok(["controlled_candidate_proof", "cae_assert_request"].includes(payload.selectedTargetMode.nextMissingEvidence.id));
-      assert.equal(payload.selectedTargetMode.nextEvidenceAction?.step, "capture_missing_evidence");
-      assert.equal(payload.selectedTargetMode.nextEvidenceAction?.evidence, payload.selectedTargetMode.nextMissingEvidence.artifact);
+      const staleSelectedEvidence = payload.selectedTargetMode.evidenceStatus?.find(
+        (item) => item.exists && item.freshForHandoff === false,
+      );
+      if (staleSelectedEvidence) {
+        assert.equal(payload.selectedTargetMode.nextEvidenceAction?.step, "refresh_stale_evidence");
+        assert.equal(payload.selectedTargetMode.nextEvidenceAction?.evidence, staleSelectedEvidence.artifact);
+      } else {
+        assert.equal(payload.selectedTargetMode.nextEvidenceAction?.step, "capture_missing_evidence");
+        assert.equal(payload.selectedTargetMode.nextEvidenceAction?.evidence, payload.selectedTargetMode.nextMissingEvidence.artifact);
+      }
     } else {
       assert.ok(["refresh_stale_evidence", "validate_existing_evidence"].includes(payload.selectedTargetMode.nextEvidenceAction?.step ?? ""));
     }

@@ -897,8 +897,47 @@ function selectedRunProfileForTargetMode(targetMode) {
   return runProfiles.find((profile) => profile.targetModes.includes(targetMode)) ?? null;
 }
 
+function labEntryPointForTargetMode(targetMode, runProfile) {
+  if (!targetMode) return null;
+  return {
+    id: `${targetMode.mode}_lab_entrypoint`,
+    mode: targetMode.mode,
+    runProfile: runProfile?.id ?? null,
+    workState: targetMode.status === "ready" || targetMode.status === "configured" ? "active" : "blocked",
+    readinessRoute: targetMode.readinessRoute,
+    requiredComponents: targetMode.requiredComponents,
+    requiredEndpointEnvVars: targetMode.requiredEndpointEnvVars,
+    missingEndpointEnvVars: targetMode.missingEndpointEnvVars,
+    blockers: targetMode.blockers,
+    nextAction: targetMode.nextAction,
+    commands: [
+      {
+        step: "start_or_connect_stack",
+        command: targetMode.startCommand,
+        purpose: "Start local services or connect to the selected external endpoints for this target mode.",
+      },
+      {
+        step: "validate_readiness",
+        command: targetMode.validationCommand,
+        purpose: "Run the fastest bounded readiness or proof gate for this selected mode.",
+      },
+      {
+        step: "capture_evidence",
+        command: targetMode.evidenceCommand,
+        purpose: "Write the selected target mode artifact needed for CAE/ASSERT handoff.",
+      },
+      {
+        step: "generate_handoff_request",
+        command: targetMode.caeHandoffCommand,
+        purpose: "Generate the CAE-compatible AssertRunCreateRequest with selected-mode provenance.",
+      },
+    ],
+  };
+}
+
 const selectedTargetMode = targetModes.find((mode) => mode.mode === requestedTargetMode) ?? null;
 const selectedRunProfile = selectedRunProfileForTargetMode(selectedTargetMode?.mode ?? null);
+const selectedLabEntryPoint = labEntryPointForTargetMode(selectedTargetMode, selectedRunProfile);
 const selectedEvidenceInventory = selectedTargetMode ? selectedModeEvidenceInventory(selectedTargetMode.mode) : [];
 const selectedEvidenceStatus = evidenceStatusForInventory(selectedEvidenceInventory);
 const selectedRunProfileEvidenceStatus = selectedRunProfile ? evidenceStatusForArtifacts(selectedRunProfile.evidence) : [];
@@ -1040,6 +1079,7 @@ const report = {
         handoffReady: handoffEvidenceBlockers(selectedEvidenceStatus).length === 0,
         handoffBlockers: handoffEvidenceBlockers(selectedEvidenceStatus),
         nextEvidenceAction: nextEvidenceAction(selectedEvidenceStatus, selectedTargetMode.validationCommand),
+        labEntryPoint: selectedLabEntryPoint,
       }
     : {
         mode: requestedTargetMode,
@@ -1056,6 +1096,7 @@ const report = {
   provenanceContract,
   evidenceInventory,
   handoffChecklist,
+  labEntryPoint: selectedLabEntryPoint,
   targetModes,
   runProfiles,
   selectedRunProfile: selectedRunProfile
@@ -1114,4 +1155,4 @@ const report = {
       : "Use the ready scripted demo now; wire the listed external endpoints/profiles in the Phase 2 reliability-lab slice.",
 };
 
-console.log(JSON.stringify(report, null, 2));
+console.log(JSON.stringify(process.argv.includes("--entrypoint") ? selectedLabEntryPoint : report, null, 2));

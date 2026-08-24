@@ -198,6 +198,20 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.selectedTargetMode.mode, "fixture");
   assert.equal(payload.selectedTargetMode.requestedVia, "default");
   assert.equal(payload.selectedTargetMode.validationCommand, "npm run proof");
+  assert.equal(payload.labEntryPoint.id, "fixture_lab_entrypoint");
+  assert.equal(payload.labEntryPoint.mode, "fixture");
+  assert.equal(payload.labEntryPoint.runProfile, "local_fixture");
+  assert.equal(payload.labEntryPoint.workState, "active");
+  assert.deepEqual(
+    payload.labEntryPoint.commands.map((command: { step: string; command: string }) => [command.step, command.command]),
+    [
+      ["start_or_connect_stack", "npm run proof"],
+      ["validate_readiness", "npm run proof"],
+      ["capture_evidence", "npm run proof:bundle"],
+      ["generate_handoff_request", "npm run cae:assert:handoff"],
+    ],
+  );
+  assert.deepEqual(payload.selectedTargetMode.labEntryPoint, payload.labEntryPoint);
   assert.equal(payload.selectedRunProfile.id, "local_fixture");
   assert.equal(payload.selectedRunProfile.requestedForTargetMode, "fixture");
   assert.deepEqual(
@@ -667,6 +681,35 @@ test("reliability lab status reports explicitly configured live media endpoints"
   ]);
   assert.deepEqual(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").blockers, []);
   assert.deepEqual(payload.targetModes.find((mode: { mode: string }) => mode.mode === "browser_webrtc").missingEndpointEnvVars, []);
+});
+
+test("reliability entrypoint command returns only selected lab entry point", async () => {
+  const result = await execFileAsync(process.execPath, ["scripts/reliability-lab-status.mjs", "--entrypoint"], {
+    cwd: repoRoot,
+    env: {
+      ...withClearedLiveEndpointEnv(),
+      ACC_RELIABILITY_TARGET_MODE: "browser_webrtc",
+      CAE_API_URL: "",
+      CAE_WEB_URL: "",
+    },
+  });
+  const payload = JSON.parse(result.stdout);
+
+  assert.equal(payload.id, "browser_webrtc_lab_entrypoint");
+  assert.equal(payload.mode, "browser_webrtc");
+  assert.equal(payload.runProfile, "live_media_lab");
+  assert.equal(payload.workState, "blocked");
+  assert.deepEqual(payload.requiredEndpointEnvVars, ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"]);
+  assert.deepEqual(payload.missingEndpointEnvVars, ["RTC_ASR_BASE_URL", "KOKORO_BASE_URL", "BROWSER_WEBRTC_BRIDGE_URL"]);
+  assert.deepEqual(
+    payload.commands.map((command: { step: string; command: string }) => [command.step, command.command]),
+    [
+      ["start_or_connect_stack", "npm run docker:browser-webrtc"],
+      ["validate_readiness", "npm run browser-webrtc:check"],
+      ["capture_evidence", "npm run browser-webrtc:live-proof"],
+      ["generate_handoff_request", "npm run cae:assert:handoff"],
+    ],
+  );
 });
 
 test("reliability lab status narrows SignalWire PSTN env for IP-auth trunks", async () => {

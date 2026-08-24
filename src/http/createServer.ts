@@ -1431,6 +1431,47 @@ function selectedReliabilityRunProfile(
   return runProfiles.find((profile) => profile.targetModes.includes(targetMode)) ?? null;
 }
 
+function reliabilityLabEntryPoint(
+  targetMode: ReturnType<typeof buildReliabilityTargetModes>[number] | null,
+  runProfile: ReturnType<typeof buildReliabilityRunProfiles>[number] | null,
+) {
+  if (!targetMode) return null;
+  return {
+    id: `${targetMode.mode}_lab_entrypoint`,
+    mode: targetMode.mode,
+    runProfile: runProfile?.id ?? null,
+    workState: targetMode.status === "ready" || targetMode.status === "configured" ? "active" : "blocked",
+    readinessRoute: targetMode.readinessRoute,
+    requiredComponents: targetMode.requiredComponents,
+    requiredEndpointEnvVars: targetMode.requiredEndpointEnvVars,
+    missingEndpointEnvVars: targetMode.missingEndpointEnvVars,
+    blockers: targetMode.blockers,
+    nextAction: targetMode.nextAction,
+    commands: [
+      {
+        step: "start_or_connect_stack",
+        command: targetMode.startCommand,
+        purpose: "Start local services or connect to the selected external endpoints for this target mode.",
+      },
+      {
+        step: "validate_readiness",
+        command: targetMode.validationCommand,
+        purpose: "Run the fastest bounded readiness or proof gate for this selected mode.",
+      },
+      {
+        step: "capture_evidence",
+        command: targetMode.evidenceCommand,
+        purpose: "Write the selected target mode artifact needed for CAE/ASSERT handoff.",
+      },
+      {
+        step: "generate_handoff_request",
+        command: targetMode.caeHandoffCommand,
+        purpose: "Generate the CAE-compatible AssertRunCreateRequest with selected-mode provenance.",
+      },
+    ],
+  };
+}
+
 function buildReliabilityTargetModes() {
   const caeConfigured = Boolean(configuredEnvValue("CAE_API_URL") && configuredEnvValue("CAE_WEB_URL"));
   const browserLiveConfigured = Boolean(
@@ -1863,6 +1904,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
   const requestedTargetMode = configuredEnvValue("ACC_RELIABILITY_TARGET_MODE") ?? "fixture";
   const selectedTargetMode = targetModes.find((mode) => mode.mode === requestedTargetMode) ?? null;
   const selectedRunProfile = selectedReliabilityRunProfile(selectedTargetMode?.mode ?? null, runProfiles);
+  const selectedLabEntryPoint = reliabilityLabEntryPoint(selectedTargetMode, selectedRunProfile);
   const selectedEvidenceInventory = selectedTargetMode
     ? selectedReliabilityModeEvidenceInventory(selectedTargetMode.mode)
     : [];
@@ -1936,6 +1978,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
           handoffReady: reliabilityHandoffEvidenceBlockers(selectedEvidenceStatus).length === 0,
           handoffBlockers: reliabilityHandoffEvidenceBlockers(selectedEvidenceStatus),
           nextEvidenceAction: nextReliabilityEvidenceAction(selectedEvidenceStatus, selectedTargetMode.validationCommand),
+          labEntryPoint: selectedLabEntryPoint,
         }
       : {
           mode: requestedTargetMode,
@@ -1951,6 +1994,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
     },
     targetModes,
     runProfiles,
+    labEntryPoint: selectedLabEntryPoint,
     selectedRunProfile: selectedRunProfile
       ? {
           ...selectedRunProfile,
