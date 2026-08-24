@@ -897,8 +897,9 @@ function selectedRunProfileForTargetMode(targetMode) {
   return runProfiles.find((profile) => profile.targetModes.includes(targetMode)) ?? null;
 }
 
-function labEntryPointForTargetMode(targetMode, runProfile) {
+function labEntryPointForTargetMode(targetMode, runProfile, evidenceStatus) {
   if (!targetMode) return null;
+  const summary = evidenceSummary(evidenceStatus);
   return {
     id: `${targetMode.mode}_lab_entrypoint`,
     mode: targetMode.mode,
@@ -910,6 +911,9 @@ function labEntryPointForTargetMode(targetMode, runProfile) {
     missingEndpointEnvVars: targetMode.missingEndpointEnvVars,
     blockers: targetMode.blockers,
     nextAction: targetMode.nextAction,
+    evidenceSummary: summary,
+    nextMissingEvidence: summary.nextMissingEvidence,
+    nextEvidenceAction: nextEvidenceAction(evidenceStatus, targetMode.validationCommand),
     commands: [
       {
         step: "start_or_connect_stack",
@@ -937,9 +941,9 @@ function labEntryPointForTargetMode(targetMode, runProfile) {
 
 const selectedTargetMode = targetModes.find((mode) => mode.mode === requestedTargetMode) ?? null;
 const selectedRunProfile = selectedRunProfileForTargetMode(selectedTargetMode?.mode ?? null);
-const selectedLabEntryPoint = labEntryPointForTargetMode(selectedTargetMode, selectedRunProfile);
 const selectedEvidenceInventory = selectedTargetMode ? selectedModeEvidenceInventory(selectedTargetMode.mode) : [];
 const selectedEvidenceStatus = evidenceStatusForInventory(selectedEvidenceInventory);
+const selectedLabEntryPoint = labEntryPointForTargetMode(selectedTargetMode, selectedRunProfile, selectedEvidenceStatus);
 const selectedRunProfileEvidenceStatus = selectedRunProfile ? evidenceStatusForArtifacts(selectedRunProfile.evidence) : [];
 
 function optionalComponent({ component, configured, endpoint, envVar, probe, configuredDetail, defaultDetail }) {
