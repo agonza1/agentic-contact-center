@@ -137,7 +137,7 @@ async function main() {
       liveSipProofAcceptance: readiness.liveSipProofAcceptance,
       remainingWorkCount: readiness.remainingWork.length,
       validationCommands: readiness.validationCommands,
-      nextValidationCommand: readiness.flowManagerContract.parityHarnessCommand,
+      nextValidationCommand: readiness.nextUnblockedSlice.migrationStages[0]?.verificationCommand ?? readiness.validationCommands[0],
       requiredRuntimeEndpoints: readiness.liveSipProofAcceptance.requiredRuntimeEndpoints,
     },
     readiness,
