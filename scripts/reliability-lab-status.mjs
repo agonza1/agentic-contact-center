@@ -626,6 +626,13 @@ function entrypointRecommendedNextStep(targetMode, blockers, evidenceAction) {
   };
 }
 
+function labEntrypointWorkState(targetMode, blockers) {
+  if (!targetMode) return "blocked";
+  if (!blockers.endpointReady) return "blocked";
+  if (!blockers.handoffReady) return "active";
+  return "done";
+}
+
 const endpointRequirements = {
   caeApi: { label: "ConversationAgentEvals API", envVar: "CAE_API_URL", configured: Boolean(optionalEndpoints.caeApi), ready: endpointReady.caeApi },
   caeWeb: { label: "ConversationAgentEvals web", envVar: "CAE_WEB_URL", configured: Boolean(optionalEndpoints.caeWeb), ready: endpointReady.caeWeb },
@@ -946,11 +953,12 @@ function labEntryPointForTargetMode(targetMode, runProfile, evidenceStatus) {
   const summary = evidenceSummary(evidenceStatus);
   const blockers = blockingSummary(targetMode, summary);
   const evidenceAction = nextEvidenceAction(evidenceStatus, targetMode.validationCommand);
+  const workState = labEntrypointWorkState(targetMode, blockers);
   return {
     id: `${targetMode.mode}_lab_entrypoint`,
     mode: targetMode.mode,
     runProfile: runProfile?.id ?? null,
-    workState: targetMode.status === "ready" || targetMode.status === "configured" ? "active" : "blocked",
+    workState,
     readinessRoute: targetMode.readinessRoute,
     requiredComponents: targetMode.requiredComponents,
     requiredEndpointEnvVars: targetMode.requiredEndpointEnvVars,
@@ -1108,6 +1116,7 @@ const report = {
   ok: blockers.length === 0,
   mode: "reliability_lab_phase_1_status",
   status: blockers.length === 0 ? "configured" : "blocked",
+  workState: selectedLabEntryPoint?.workState ?? "blocked",
   defaultDemo: {
     status: "ready",
     notRequired: ["ConversationAgentEvals", "rtc-asr", "Kokoro", "FreeSWITCH", "ASSERT", "production credentials"],
