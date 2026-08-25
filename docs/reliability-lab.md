@@ -85,7 +85,7 @@ Configured endpoints are probed with a short timeout and reported as `ready` or 
 `fixture`, `reachable`, and `degraded` are reserved vocabulary terms for mode summaries and future endpoint probes, so generated status consumers do not have to infer them from prose.
 `ACC_RELIABILITY_TARGET_MODE` selects the machine-readable `selectedTargetMode` in both `npm run reliability:lab` and `/api/reliability`; when unset, the safe sidecar-free `fixture` mode is selected.
 
-`stack/versions.env` is the pinned local reference manifest. It names the ACC, rtc-asr, Kokoro, FreeSWITCH, browser bridge, ToolHive gateway, CAE, and ASSERT image/URL or version coordinates that Phase 2 should either start through Compose or connect to explicitly.
+`stack/versions.env` is the pinned local reference manifest. It names the ACC, rtc-asr, Kokoro, FreeSWITCH, browser bridge, ToolHive gateway, CAE, and ASSERT image/URL or version coordinates that Phase 2 should either start through Compose or connect to explicitly. The browser media bridge keeps `BROWSER_WEBRTC_BRIDGE_URL` as the runtime env var and `PIPECAT_BROWSER_BRIDGE_URL` as the named stack coordinate until downstream consumers finish migrating.
 
 ## Evidence inventory
 
