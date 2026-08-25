@@ -1392,6 +1392,16 @@ function reliabilityEntrypointRecommendedNextStep(
   };
 }
 
+function reliabilityEntrypointWorkState(
+  targetMode: ReturnType<typeof buildReliabilityTargetModes>[number] | null,
+  blockingSummary: ReturnType<typeof reliabilityBlockingSummary>,
+) {
+  if (!targetMode) return "blocked";
+  if (!blockingSummary.endpointReady) return "blocked";
+  if (!blockingSummary.handoffReady) return "active";
+  return "done";
+}
+
 const signalwirePstnCommonEnvVars = [
   "SIGNALWIRE_FROM_NUMBER",
   "FREESWITCH_PUBLIC_SIP_HOST",
@@ -1495,7 +1505,7 @@ function reliabilityLabEntryPoint(
     id: `${targetMode.mode}_lab_entrypoint`,
     mode: targetMode.mode,
     runProfile: runProfile?.id ?? null,
-    workState: targetMode.status === "ready" || targetMode.status === "configured" ? "active" : "blocked",
+    workState: reliabilityEntrypointWorkState(targetMode, blockers),
     readinessRoute: targetMode.readinessRoute,
     requiredComponents: targetMode.requiredComponents,
     requiredEndpointEnvVars: targetMode.requiredEndpointEnvVars,
