@@ -223,6 +223,9 @@ test("reliability lab status reports explicit blockers without starting sidecars
     ],
   );
   assert.deepEqual(payload.selectedTargetMode.labEntryPoint, payload.labEntryPoint);
+  assert.deepEqual(payload.recommendedNextStep, payload.labEntryPoint.recommendedNextStep);
+  assert.ok(["endpoint", "evidence", "handoff"].includes(payload.recommendedNextStep.category));
+  assert.equal(typeof payload.recommendedNextStep.command, "string");
   assert.equal(payload.selectedRunProfile.id, "local_fixture");
   assert.equal(payload.selectedRunProfile.requestedForTargetMode, "fixture");
   assert.deepEqual(
