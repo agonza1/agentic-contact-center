@@ -1385,10 +1385,10 @@ function reliabilityEntrypointRecommendedNextStep(
 
   return {
     category: "handoff",
-    step: "generate_handoff_request",
+    step: "ready_for_cae_import",
     command: targetMode.caeHandoffCommand,
     evidence: "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
-    detail: "Endpoint and evidence blockers are clear; generate or refresh the CAE/ASSERT handoff request.",
+    detail: "Endpoint and evidence blockers are clear; use the fresh CAE/ASSERT handoff request or rerun the command to refresh it.",
   };
 }
 

@@ -2282,7 +2282,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(payload.labEntryPoint?.recommendedNextStep.category, payload.labEntryPoint?.evidenceSummary.handoffReady ? "handoff" : "evidence");
     assert.equal(
       payload.labEntryPoint?.recommendedNextStep.step,
-      payload.labEntryPoint?.evidenceSummary.handoffReady ? "generate_handoff_request" : payload.labEntryPoint?.nextEvidenceAction.step,
+      payload.labEntryPoint?.evidenceSummary.handoffReady ? "ready_for_cae_import" : payload.labEntryPoint?.nextEvidenceAction.step,
     );
     assert.deepEqual(payload.selectedTargetMode.labEntryPoint, payload.labEntryPoint);
     assert.deepEqual(
