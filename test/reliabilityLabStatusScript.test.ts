@@ -97,6 +97,7 @@ test("reliability lab status reports explicit blockers without starting sidecars
 
   assert.equal(payload.mode, "reliability_lab_phase_1_status");
   assert.equal(payload.status, "blocked");
+  assert.equal(payload.workState, "active");
   assert.equal(payload.defaultDemo.status, "ready");
   assert.ok(payload.defaultDemo.notRequired.includes("ConversationAgentEvals"));
   assert.ok(payload.defaultDemo.notRequired.includes("rtc-asr"));
@@ -523,6 +524,7 @@ test("reliability lab status exposes requested target mode selection", async () 
   const payload = JSON.parse(result.stdout);
 
   assert.equal(payload.status, "blocked");
+  assert.equal(payload.workState, "blocked");
   assert.equal(payload.selectedTargetMode.mode, "browser_webrtc");
   assert.equal(payload.selectedTargetMode.requestedVia, "ACC_RELIABILITY_TARGET_MODE");
   assert.equal(payload.selectedTargetMode.validationCommand, "npm run browser-webrtc:check");
