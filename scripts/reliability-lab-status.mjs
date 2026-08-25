@@ -620,10 +620,10 @@ function entrypointRecommendedNextStep(targetMode, blockers, evidenceAction) {
 
   return {
     category: "handoff",
-    step: "generate_handoff_request",
+    step: "ready_for_cae_import",
     command: targetMode.caeHandoffCommand,
     evidence: "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
-    detail: "Endpoint and evidence blockers are clear; generate or refresh the CAE/ASSERT handoff request.",
+    detail: "Endpoint and evidence blockers are clear; use the fresh CAE/ASSERT handoff request or rerun the command to refresh it.",
   };
 }
 
@@ -1113,11 +1113,18 @@ if (!selectedTargetMode) {
   blockers.push(`ACC_RELIABILITY_TARGET_MODE must be one of: ${targetModes.map((mode) => mode.mode).join(", ")}.`);
 }
 
+function reportWorkState() {
+  if (!selectedLabEntryPoint) return "blocked";
+  if (selectedLabEntryPoint.workState === "blocked") return "blocked";
+  if (blockers.length > 0) return "active";
+  return selectedLabEntryPoint.workState;
+}
+
 const report = {
   ok: blockers.length === 0,
   mode: "reliability_lab_phase_1_status",
   status: blockers.length === 0 ? "configured" : "blocked",
-  workState: selectedLabEntryPoint?.workState ?? "blocked",
+  workState: reportWorkState(),
   defaultDemo: {
     status: "ready",
     notRequired: ["ConversationAgentEvals", "rtc-asr", "Kokoro", "FreeSWITCH", "ASSERT", "production credentials"],

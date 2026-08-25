@@ -211,7 +211,7 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.labEntryPoint.recommendedNextStep.category, payload.labEntryPoint.evidenceSummary.handoffReady ? "handoff" : "evidence");
   assert.equal(
     payload.labEntryPoint.recommendedNextStep.step,
-    payload.labEntryPoint.evidenceSummary.handoffReady ? "generate_handoff_request" : payload.labEntryPoint.nextEvidenceAction.step,
+    payload.labEntryPoint.evidenceSummary.handoffReady ? "ready_for_cae_import" : payload.labEntryPoint.nextEvidenceAction.step,
   );
   assert.deepEqual(
     payload.labEntryPoint.commands.map((command: { step: string; command: string }) => [command.step, command.command]),
