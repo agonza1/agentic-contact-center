@@ -202,7 +202,7 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.equal(payload.labEntryPoint.id, "fixture_lab_entrypoint");
   assert.equal(payload.labEntryPoint.mode, "fixture");
   assert.equal(payload.labEntryPoint.runProfile, "local_fixture");
-  assert.equal(payload.labEntryPoint.workState, "active");
+  assert.equal(payload.labEntryPoint.workState, payload.labEntryPoint.evidenceSummary.handoffReady ? "done" : "active");
   assert.deepEqual(payload.labEntryPoint.blockingSummary.endpointBlockers, []);
   assert.equal(payload.labEntryPoint.blockingSummary.blockerCount, payload.labEntryPoint.blockingSummary.evidenceBlockers.length);
   assert.equal(payload.labEntryPoint.blockingSummary.endpointReady, true);

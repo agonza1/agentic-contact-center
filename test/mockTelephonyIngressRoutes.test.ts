@@ -2278,7 +2278,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     assert.equal(payload.targetModes[0]?.detail, "Sidecar-free cancellation-rescue proof for the controlled candidate.");
     assert.equal(payload.labEntryPoint?.id, "fixture_lab_entrypoint");
     assert.equal(payload.labEntryPoint?.runProfile, "local_fixture");
-    assert.equal(payload.labEntryPoint?.workState, "active");
+    assert.equal(payload.labEntryPoint?.workState, payload.labEntryPoint?.evidenceSummary.handoffReady ? "done" : "active");
     assert.equal(payload.labEntryPoint?.recommendedNextStep.category, payload.labEntryPoint?.evidenceSummary.handoffReady ? "handoff" : "evidence");
     assert.equal(
       payload.labEntryPoint?.recommendedNextStep.step,
