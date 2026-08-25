@@ -2065,6 +2065,13 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
     targetModes,
     runProfiles,
     labEntryPoint: selectedLabEntryPoint,
+    recommendedNextStep: selectedLabEntryPoint?.recommendedNextStep ?? {
+      category: "target_mode",
+      step: "select_valid_target_mode",
+      command: "Set ACC_RELIABILITY_TARGET_MODE to one of targetModes[].mode",
+      evidence: "/api/reliability",
+      detail: "No lab entry point can be selected until the target mode is valid.",
+    },
     selectedRunProfile: selectedRunProfile
       ? {
           ...selectedRunProfile,
