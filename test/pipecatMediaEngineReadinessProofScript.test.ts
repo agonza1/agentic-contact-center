@@ -32,7 +32,8 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
     assert.match(stdout, /Review blockers: 0/);
     assert.match(stdout, /Acceptance criteria: 11\/11/);
     assert.match(stdout, /Failing criteria: none/);
-    assert.match(stdout, /Next slice: flow_manager_runtime_qa/);
+    assert.match(stdout, /Next slice: browser_webrtc_live_media_proof/);
+    assert.match(stdout, /Next validation: npm run browser-webrtc:check -- --url http:\/\/127\.0\.0\.1:\$\{PORT:-8026\}\/health/);
     assert.match(stdout, /Runtime prerequisites: acc_http, freeswitch_sip, freeswitch_esl, freeswitch_verto, pipecat_verto_bridge, rtc_asr_ws, tts_http/);
 
     const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
@@ -85,14 +86,14 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
       implementedAdapters: ["browser_webrtc", "sip_freeswitch_verto", "sip_freeswitch_rtp_legacy", "fixture_audio_injection"],
       blockedAdapters: ["signalwire_sip_trunk"],
       nextUnblockedSlice: {
-        id: "flow_manager_runtime_qa",
-        title: "Validate the Pipecat FlowManager runtime cutover",
-        adapter: "pipecat.flows",
-        entryPoint: "scripts/acc_pipecat_flow_manager.py",
+        id: "browser_webrtc_live_media_proof",
+        title: "Capture live browser media proof",
+        adapter: "browser_webrtc",
+        entryPoint: "scripts/browser-webrtc-live-proof.mjs",
         migrationStages: [
-          { id: "sidecar_free_contract_lock", verificationCommand: "npm run pipecat:flows:contract" },
-          { id: "flowmanager_node_handlers", verificationCommand: "npm run pipecat:flows:contract" },
-          { id: "acc_runtime_adapter_cutover", verificationCommand: "npm run pipecat:flows:runtime" },
+          { id: "sidecar_contract_ready", verificationCommand: "npm run browser-webrtc:check -- --url http://127.0.0.1:${PORT:-8026}/health" },
+          { id: "live_media_turn_capture", verificationCommand: "npm run browser-webrtc:live-proof -- --write-template artifacts/browser-webrtc-live-proof/proof.template.json" },
+          { id: "review_ready_manifest", verificationCommand: "npm run browser-webrtc:live-proof -- --evidence artifacts/browser-webrtc-live-proof/proof.json --require-review-ready" },
         ],
       },
       liveSipProofAcceptance: {
@@ -123,7 +124,7 @@ test("Pipecat media engine readiness proof runner writes route evidence", async 
         "npm test",
         "curl -fsS http://127.0.0.1:8026/api/pipecat-media-engine/readiness",
       ],
-      nextValidationCommand: "npm run pipecat:flows:contract",
+      nextValidationCommand: "npm run browser-webrtc:check -- --url http://127.0.0.1:${PORT:-8026}/health",
       requiredRuntimeEndpoints: [
         { id: "acc_http", defaultUrl: "http://127.0.0.1:8026", evidence: "ACC health/readiness routes are reachable while the SIP proof listener runs." },
         { id: "freeswitch_sip", defaultAddress: "127.0.0.1:5060", evidence: "A local softphone can place an accepted INVITE to extension 8600." },
