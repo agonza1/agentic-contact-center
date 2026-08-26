@@ -1402,6 +1402,47 @@ function reliabilityEntrypointWorkState(
   return "done";
 }
 
+function reliabilityEntrypointActionQueue(
+  targetMode: ReturnType<typeof buildReliabilityTargetModes>[number],
+  blockingSummary: ReturnType<typeof reliabilityBlockingSummary>,
+  evidenceAction: ReturnType<typeof nextReliabilityEvidenceAction>,
+) {
+  const endpointBlocker = blockingSummary.endpointBlockers[0] ?? null;
+  const evidenceBlocker = blockingSummary.evidenceBlockers[0] ?? null;
+
+  return [
+    {
+      step: "start_or_connect_stack",
+      command: targetMode.startCommand,
+      status: blockingSummary.endpointReady ? "complete" : "pending",
+      blockedBy: null,
+      purpose: "Start local services or connect to the selected external endpoints for this target mode.",
+    },
+    {
+      step: "validate_readiness",
+      command: targetMode.validationCommand,
+      status: blockingSummary.endpointReady ? "pending" : "blocked",
+      blockedBy: endpointBlocker,
+      purpose: "Run the fastest bounded readiness or proof gate for this selected mode.",
+    },
+    {
+      step: "capture_evidence",
+      command: evidenceAction.command,
+      status: blockingSummary.endpointReady ? (blockingSummary.evidenceReady ? "complete" : "pending") : "blocked",
+      blockedBy: endpointBlocker,
+      evidence: evidenceAction.evidence,
+      purpose: "Write the selected target mode artifact needed for CAE/ASSERT handoff.",
+    },
+    {
+      step: "generate_handoff_request",
+      command: targetMode.caeHandoffCommand,
+      status: blockingSummary.handoffReady ? "pending" : "blocked",
+      blockedBy: endpointBlocker ?? evidenceBlocker,
+      purpose: "Generate the CAE-compatible AssertRunCreateRequest with selected-mode provenance.",
+    },
+  ];
+}
+
 const signalwirePstnCommonEnvVars = [
   "SIGNALWIRE_FROM_NUMBER",
   "FREESWITCH_PUBLIC_SIP_HOST",
@@ -1517,6 +1558,7 @@ function reliabilityLabEntryPoint(
     nextMissingEvidence: summary.nextMissingEvidence,
     nextEvidenceAction: evidenceAction,
     recommendedNextStep: reliabilityEntrypointRecommendedNextStep(targetMode, blockers, evidenceAction),
+    actionQueue: reliabilityEntrypointActionQueue(targetMode, blockers, evidenceAction),
     commands: [
       {
         step: "start_or_connect_stack",

@@ -2124,9 +2124,10 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         mode: string;
         runProfile: string | null;
         workState: string;
-        evidenceSummary: { handoffReady: boolean };
+        evidenceSummary: { handoffReady: boolean; handoffBlockers: string[] };
         nextEvidenceAction: { step: string; command: string; evidence: string; detail: string };
         recommendedNextStep: { category: string; step: string; command: string; evidence: string; detail: string };
+        actionQueue: Array<{ step: string; command: string; status: string; blockedBy: string | null; evidence?: string }>;
         commands: Array<{ step: string; command: string }>;
       } | null;
       selectedRunProfile: {
@@ -2182,6 +2183,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           mode: string;
           runProfile: string | null;
           workState: string;
+          actionQueue: Array<{ step: string; command: string; status: string; blockedBy: string | null; evidence?: string }>;
           commands: Array<{ step: string; command: string }>;
         } | null;
         validModes?: string[];
@@ -2292,6 +2294,27 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         ["validate_readiness", "npm run proof"],
         ["capture_evidence", "npm run proof:bundle"],
         ["generate_handoff_request", "npm run cae:assert:handoff"],
+      ],
+    );
+    assert.deepEqual(
+      payload.labEntryPoint?.actionQueue.map((action) => [action.step, action.command, action.status, action.blockedBy]),
+      [
+        ["start_or_connect_stack", "npm run proof", "complete", null],
+        ["validate_readiness", "npm run proof", "pending", null],
+        [
+          "capture_evidence",
+          payload.labEntryPoint.nextEvidenceAction.command,
+          payload.labEntryPoint.evidenceSummary.handoffReady ? "complete" : "pending",
+          null,
+        ],
+        [
+          "generate_handoff_request",
+          "npm run cae:assert:handoff",
+          payload.labEntryPoint.evidenceSummary.handoffReady ? "pending" : "blocked",
+          payload.labEntryPoint.evidenceSummary.handoffReady
+            ? null
+            : payload.labEntryPoint.evidenceSummary.handoffBlockers[0],
+        ],
       ],
     );
     assert.deepEqual(
