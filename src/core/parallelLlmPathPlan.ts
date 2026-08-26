@@ -13,7 +13,9 @@ export interface ParallelLlmFailureMode {
 
 export interface ParallelLlmPathPlan {
   issue: "agonza1/agentic-contact-center#338";
-  status: "proposal_locked_pending_runtime_spike";
+  issueState: "closed";
+  closedAt: "2026-08-13T21:43:46Z";
+  status: "spike_recorded_no_active_runtime_lane";
   featureFlag: {
     env: "ACC_PARALLEL_LLM_PATH";
     state: ParallelLlmFeatureFlagState;
@@ -35,7 +37,9 @@ function resolveFeatureFlag(env: NodeJS.ProcessEnv): ParallelLlmFeatureFlagState
 export function buildParallelLlmPathPlan(env: NodeJS.ProcessEnv = process.env): ParallelLlmPathPlan {
   return {
     issue: "agonza1/agentic-contact-center#338",
-    status: "proposal_locked_pending_runtime_spike",
+    issueState: "closed",
+    closedAt: "2026-08-13T21:43:46Z",
+    status: "spike_recorded_no_active_runtime_lane",
     featureFlag: {
       env: "ACC_PARALLEL_LLM_PATH",
       state: resolveFeatureFlag(env),
