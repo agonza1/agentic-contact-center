@@ -485,6 +485,20 @@ test("reliability lab status reports explicit blockers without starting sidecars
   assert.ok(payload.repositoryContracts.packageScripts.includes("proof"));
   assert.ok(payload.repositoryContracts.composeProfiles.includes("browser-webrtc"));
   assert.deepEqual(payload.repositoryContracts.optionalEndpointEnvVars, expectedEndpointEnvVars);
+  assert.deepEqual(payload.readinessProbePolicy, {
+    timeoutEnvVar: "ACC_RELIABILITY_LAB_PROBE_TIMEOUT_MS",
+    defaultTimeoutMs: 750,
+    maxTimeoutMs: 5000,
+    timeoutMs: 750,
+    probesConfiguredEndpoints: true,
+    skippedWhenEnvMissing: true,
+    transports: ["http_get", "tcp_connect"],
+    routeOverrides: {
+      rtcAsr: "/ready",
+      kokoro: "/health",
+      browserWebRtcBridge: "/health",
+    },
+  });
   assert.equal(payload.repositoryContracts.stackManifest.path, "stack/versions.env");
   assert.equal(payload.repositoryContracts.stackManifest.exists, true);
   assert.equal(payload.repositoryContracts.stackManifest.values.ACC_APP_URL, "http://127.0.0.1:8026");
@@ -627,6 +641,7 @@ test("reliability lab status redacts configured endpoint secrets", async () => {
   assert.equal(payload.optionalEndpoints.caeApi, "https://example.com:8443");
   assert.equal(payload.optionalEndpoints.caeWeb, "https://example.com");
   assert.equal(payload.optionalEndpoints.browserWebRtcBridge, "https://example.com:9443");
+  assert.equal(payload.readinessProbePolicy.timeoutMs, 50);
   assert.doesNotMatch(serialized, /cae-secret|web-secret|bridge-secret|leaky-token|web-token|bridge-token/);
 });
 
