@@ -751,6 +751,15 @@ test("reliability entrypoint command returns only selected lab entry point", asy
       ],
     ],
   );
+  assert.deepEqual(payload.actionQueueSummary, {
+    total: 4,
+    completed: 0,
+    pending: 1,
+    blocked: 3,
+    activeStep: "start_or_connect_stack",
+    activeCommand: "npm run docker:browser-webrtc",
+    activeBlockedBy: null,
+  });
   assert.equal(payload.evidenceSummary.total, 3);
   assert.equal(payload.evidenceSummary.present + payload.evidenceSummary.missing, 3);
   assert.equal(typeof payload.evidenceSummary.handoffReady, "boolean");

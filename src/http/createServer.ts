@@ -1443,6 +1443,25 @@ function reliabilityEntrypointActionQueue(
   ];
 }
 
+function reliabilityEntrypointActionQueueSummary(
+  actionQueue: ReturnType<typeof reliabilityEntrypointActionQueue>,
+) {
+  const completed = actionQueue.filter((item) => item.status === "complete").length;
+  const pending = actionQueue.filter((item) => item.status === "pending").length;
+  const blocked = actionQueue.filter((item) => item.status === "blocked").length;
+  const activeAction = actionQueue.find((item) => item.status === "pending") ?? actionQueue.find((item) => item.status === "blocked") ?? null;
+
+  return {
+    total: actionQueue.length,
+    completed,
+    pending,
+    blocked,
+    activeStep: activeAction?.step ?? null,
+    activeCommand: activeAction?.command ?? null,
+    activeBlockedBy: activeAction?.blockedBy ?? null,
+  };
+}
+
 const signalwirePstnCommonEnvVars = [
   "SIGNALWIRE_FROM_NUMBER",
   "FREESWITCH_PUBLIC_SIP_HOST",
@@ -1542,6 +1561,7 @@ function reliabilityLabEntryPoint(
   const summary = reliabilityEvidenceSummary(evidenceStatus);
   const blockers = reliabilityBlockingSummary(targetMode, summary);
   const evidenceAction = nextReliabilityEvidenceAction(evidenceStatus, targetMode.validationCommand);
+  const actionQueue = reliabilityEntrypointActionQueue(targetMode, blockers, evidenceAction);
   return {
     id: `${targetMode.mode}_lab_entrypoint`,
     mode: targetMode.mode,
@@ -1558,7 +1578,8 @@ function reliabilityLabEntryPoint(
     nextMissingEvidence: summary.nextMissingEvidence,
     nextEvidenceAction: evidenceAction,
     recommendedNextStep: reliabilityEntrypointRecommendedNextStep(targetMode, blockers, evidenceAction),
-    actionQueue: reliabilityEntrypointActionQueue(targetMode, blockers, evidenceAction),
+    actionQueue,
+    actionQueueSummary: reliabilityEntrypointActionQueueSummary(actionQueue),
     commands: [
       {
         step: "start_or_connect_stack",
