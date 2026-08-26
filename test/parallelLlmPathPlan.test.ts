@@ -7,7 +7,9 @@ test("parallel LLM path plan is disabled by default and keeps current fallback b
   const plan = buildParallelLlmPathPlan({});
 
   assert.equal(plan.issue, "agonza1/agentic-contact-center#338");
-  assert.equal(plan.status, "proposal_locked_pending_runtime_spike");
+  assert.equal(plan.issueState, "closed");
+  assert.equal(plan.closedAt, "2026-08-13T21:43:46Z");
+  assert.equal(plan.status, "spike_recorded_no_active_runtime_lane");
   assert.deepEqual(plan.featureFlag, {
     env: "ACC_PARALLEL_LLM_PATH",
     state: "disabled",
