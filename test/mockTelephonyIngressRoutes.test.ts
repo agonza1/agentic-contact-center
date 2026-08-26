@@ -2128,6 +2128,15 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         nextEvidenceAction: { step: string; command: string; evidence: string; detail: string };
         recommendedNextStep: { category: string; step: string; command: string; evidence: string; detail: string };
         actionQueue: Array<{ step: string; command: string; status: string; blockedBy: string | null; evidence?: string }>;
+        actionQueueSummary: {
+          total: number;
+          completed: number;
+          pending: number;
+          blocked: number;
+          activeStep: string | null;
+          activeCommand: string | null;
+          activeBlockedBy: string | null;
+        };
         commands: Array<{ step: string; command: string }>;
       } | null;
       selectedRunProfile: {
@@ -2317,6 +2326,15 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         ],
       ],
     );
+    assert.deepEqual(payload.labEntryPoint?.actionQueueSummary, {
+      total: 4,
+      completed: 1 + (payload.labEntryPoint.evidenceSummary.handoffReady ? 1 : 0),
+      pending: payload.labEntryPoint.evidenceSummary.handoffReady ? 2 : 2,
+      blocked: payload.labEntryPoint.evidenceSummary.handoffReady ? 0 : 1,
+      activeStep: "validate_readiness",
+      activeCommand: "npm run proof",
+      activeBlockedBy: null,
+    });
     assert.deepEqual(
       payload.runProfiles.map((profile) => [profile.id, profile.status, profile.startCommand, profile.validationCommand, profile.handoffCommand]),
       [

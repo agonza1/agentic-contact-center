@@ -671,6 +671,23 @@ function entrypointActionQueue(targetMode, blockers, evidenceAction) {
   ];
 }
 
+function entrypointActionQueueSummary(actionQueue) {
+  const completed = actionQueue.filter((item) => item.status === "complete").length;
+  const pending = actionQueue.filter((item) => item.status === "pending").length;
+  const blocked = actionQueue.filter((item) => item.status === "blocked").length;
+  const activeAction = actionQueue.find((item) => item.status === "pending") ?? actionQueue.find((item) => item.status === "blocked") ?? null;
+
+  return {
+    total: actionQueue.length,
+    completed,
+    pending,
+    blocked,
+    activeStep: activeAction?.step ?? null,
+    activeCommand: activeAction?.command ?? null,
+    activeBlockedBy: activeAction?.blockedBy ?? null,
+  };
+}
+
 const endpointRequirements = {
   caeApi: { label: "ConversationAgentEvals API", envVar: "CAE_API_URL", configured: Boolean(optionalEndpoints.caeApi), ready: endpointReady.caeApi },
   caeWeb: { label: "ConversationAgentEvals web", envVar: "CAE_WEB_URL", configured: Boolean(optionalEndpoints.caeWeb), ready: endpointReady.caeWeb },
@@ -992,6 +1009,7 @@ function labEntryPointForTargetMode(targetMode, runProfile, evidenceStatus) {
   const blockers = blockingSummary(targetMode, summary);
   const evidenceAction = nextEvidenceAction(evidenceStatus, targetMode.validationCommand);
   const workState = labEntrypointWorkState(targetMode, blockers);
+  const actionQueue = entrypointActionQueue(targetMode, blockers, evidenceAction);
   return {
     id: `${targetMode.mode}_lab_entrypoint`,
     mode: targetMode.mode,
@@ -1008,7 +1026,8 @@ function labEntryPointForTargetMode(targetMode, runProfile, evidenceStatus) {
     nextMissingEvidence: summary.nextMissingEvidence,
     nextEvidenceAction: evidenceAction,
     recommendedNextStep: entrypointRecommendedNextStep(targetMode, blockers, evidenceAction),
-    actionQueue: entrypointActionQueue(targetMode, blockers, evidenceAction),
+    actionQueue,
+    actionQueueSummary: entrypointActionQueueSummary(actionQueue),
     commands: [
       {
         step: "start_or_connect_stack",
