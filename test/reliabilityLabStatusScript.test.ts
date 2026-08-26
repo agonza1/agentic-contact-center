@@ -727,6 +727,30 @@ test("reliability entrypoint command returns only selected lab entry point", asy
     evidence: "/api/browser-webrtc/readiness",
     detail: "Bring up rtc-asr, Kokoro, and the Pipecat browser bridge before capturing live browser evidence.",
   });
+  assert.deepEqual(
+    payload.actionQueue.map((item: { step: string; command: string; status: string; blockedBy: string | null }) => [
+      item.step,
+      item.command,
+      item.status,
+      item.blockedBy,
+    ]),
+    [
+      ["start_or_connect_stack", "npm run docker:browser-webrtc", "pending", null],
+      ["validate_readiness", "npm run browser-webrtc:check", "blocked", "rtc-asr endpoint is not configured (RTC_ASR_BASE_URL)."],
+      [
+        "capture_evidence",
+        payload.nextEvidenceAction.command,
+        "blocked",
+        "rtc-asr endpoint is not configured (RTC_ASR_BASE_URL).",
+      ],
+      [
+        "generate_handoff_request",
+        "npm run cae:assert:handoff",
+        "blocked",
+        "rtc-asr endpoint is not configured (RTC_ASR_BASE_URL).",
+      ],
+    ],
+  );
   assert.equal(payload.evidenceSummary.total, 3);
   assert.equal(payload.evidenceSummary.present + payload.evidenceSummary.missing, 3);
   assert.equal(typeof payload.evidenceSummary.handoffReady, "boolean");
