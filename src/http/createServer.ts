@@ -1867,6 +1867,21 @@ const reliabilityEvidenceLevelVocabulary = [
   "Redacted FreeSWITCH gateway/reachability proof",
 ];
 const reliabilityEvidenceFreshnessBudgetMs = 24 * 60 * 60 * 1000;
+const reliabilityReadinessProbePolicy = {
+  timeoutEnvVar: "ACC_RELIABILITY_LAB_PROBE_TIMEOUT_MS",
+  defaultTimeoutMs: 750,
+  maxTimeoutMs: 5000,
+  probesConfiguredEndpoints: false,
+  endpointStatusSource: "configured_environment",
+  statusCommand: "npm run reliability:lab",
+  skippedWhenEnvMissing: true,
+  transports: ["http_get", "tcp_connect"],
+  routeOverrides: {
+    rtcAsr: "/ready",
+    kokoro: "/health",
+    browserWebRtcBridge: "/health",
+  },
+};
 
 const reliabilityRequiredStackManifestKeys = [
   "ACC_APP_IMAGE",
@@ -2193,6 +2208,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
     },
     readinessVocabulary: reliabilityReadinessVocabulary,
     evidenceLevelVocabulary: reliabilityEvidenceLevelVocabulary,
+    readinessProbePolicy: reliabilityReadinessProbePolicy,
     repositoryContracts: {
       optionalEndpointEnvVars: reliabilityOptionalEndpointEnvVars,
       statusCommand: "npm run reliability:lab",

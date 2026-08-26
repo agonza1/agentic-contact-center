@@ -171,6 +171,20 @@ const liveEndpointConfigured = {
 
 const probeTimeoutMs = Number.parseInt(process.env.ACC_RELIABILITY_LAB_PROBE_TIMEOUT_MS ?? "750", 10);
 const boundedProbeTimeoutMs = Number.isFinite(probeTimeoutMs) && probeTimeoutMs > 0 ? Math.min(probeTimeoutMs, 5000) : 750;
+const readinessProbePolicy = {
+  timeoutEnvVar: "ACC_RELIABILITY_LAB_PROBE_TIMEOUT_MS",
+  defaultTimeoutMs: 750,
+  maxTimeoutMs: 5000,
+  timeoutMs: boundedProbeTimeoutMs,
+  probesConfiguredEndpoints: true,
+  skippedWhenEnvMissing: true,
+  transports: ["http_get", "tcp_connect"],
+  routeOverrides: {
+    rtcAsr: "/ready",
+    kokoro: "/health",
+    browserWebRtcBridge: "/health",
+  },
+};
 
 async function probeHttp(url, route = "/") {
   const target = new URL(url);
@@ -1261,6 +1275,7 @@ const report = {
       },
   optionalEndpoints: redactedOptionalEndpoints,
   endpointProbes: redactedEndpointProbes,
+  readinessProbePolicy,
   componentReadiness,
   readinessSummary: {
     selectedTargetMode: requestedTargetMode,

@@ -2249,6 +2249,17 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         configuredOptionalEndpoints: number;
       };
       readinessVocabulary: string[];
+      readinessProbePolicy: {
+        timeoutEnvVar: string;
+        defaultTimeoutMs: number;
+        maxTimeoutMs: number;
+        probesConfiguredEndpoints: boolean;
+        endpointStatusSource: string;
+        statusCommand: string;
+        skippedWhenEnvMissing: boolean;
+        transports: string[];
+        routeOverrides: Record<string, string>;
+      };
       repositoryContracts: {
         optionalEndpointEnvVars: string[];
         statusCommand: string;
@@ -2567,6 +2578,21 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       "BROWSER_WEBRTC_BRIDGE_URL",
       "FREESWITCH_VERTO_URL",
     ]);
+    assert.deepEqual(payload.readinessProbePolicy, {
+      timeoutEnvVar: "ACC_RELIABILITY_LAB_PROBE_TIMEOUT_MS",
+      defaultTimeoutMs: 750,
+      maxTimeoutMs: 5000,
+      probesConfiguredEndpoints: false,
+      endpointStatusSource: "configured_environment",
+      statusCommand: "npm run reliability:lab",
+      skippedWhenEnvMissing: true,
+      transports: ["http_get", "tcp_connect"],
+      routeOverrides: {
+        rtcAsr: "/ready",
+        kokoro: "/health",
+        browserWebRtcBridge: "/health",
+      },
+    });
     assert.equal(payload.repositoryContracts.statusCommand, "npm run reliability:lab");
     assert.equal(payload.repositoryContracts.stackManifest.path, "stack/versions.env");
     assert.equal(payload.repositoryContracts.stackManifest.exists, true);

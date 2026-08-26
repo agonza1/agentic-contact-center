@@ -54,6 +54,7 @@ The command prints a JSON status report and does not start long-running services
 - the selected run profile artifact status, including artifact age in milliseconds, in `selectedRunProfile.evidenceStatus` and `selectedRunProfile.evidenceSummary`, so an orchestrator can see whether the profile's required artifacts already exist.
 - the current work-state model in `workState` and `labEntryPoint.workState`: `blocked` for missing endpoints, `active` while evidence or handoff artifacts need work, and `done` once endpoint and evidence blockers are clear.
 - the selected `labEntryPoint`, also available through `npm run reliability:entrypoint`, with ordered start/connect, readiness, evidence, and CAE handoff commands for the chosen target mode.
+- the bounded endpoint probe contract in `readinessProbePolicy`, including timeout defaults, route overrides, and whether the current surface actively probes configured endpoints.
 
 Environment variables recognized by the status command:
 
@@ -82,6 +83,7 @@ Readiness vocabulary:
 Missing optional endpoints are reported as `not_configured` or `blocked`, not silently treated as ready.
 Per-mode `endpointStatus[]` entries use `missing` for an individual endpoint environment variable that has not been supplied yet.
 Configured endpoints are probed with a short timeout and reported as `ready` or `unreachable`; set `ACC_RELIABILITY_LAB_PROBE_TIMEOUT_MS` to tune the bounded probe during local diagnostics.
+`readinessProbePolicy` exposes that timeout and the probe routes; the CLI status command actively probes configured endpoints, while `/api/reliability` reports configured environment state and points consumers back to `npm run reliability:lab` for bounded reachability probes.
 `fixture`, `reachable`, and `degraded` are reserved vocabulary terms for mode summaries and future endpoint probes, so generated status consumers do not have to infer them from prose.
 `ACC_RELIABILITY_TARGET_MODE` selects the machine-readable `selectedTargetMode` in both `npm run reliability:lab` and `/api/reliability`; when unset, the safe sidecar-free `fixture` mode is selected.
 
