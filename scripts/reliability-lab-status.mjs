@@ -634,6 +634,43 @@ function labEntrypointWorkState(targetMode, blockers) {
   return "done";
 }
 
+function entrypointActionQueue(targetMode, blockers, evidenceAction) {
+  const endpointBlocker = blockers.endpointBlockers[0] ?? null;
+  const evidenceBlocker = blockers.evidenceBlockers[0] ?? null;
+
+  return [
+    {
+      step: "start_or_connect_stack",
+      command: targetMode.startCommand,
+      status: blockers.endpointReady ? "complete" : "pending",
+      blockedBy: null,
+      purpose: "Start local services or connect to the selected external endpoints for this target mode.",
+    },
+    {
+      step: "validate_readiness",
+      command: targetMode.validationCommand,
+      status: blockers.endpointReady ? "pending" : "blocked",
+      blockedBy: endpointBlocker,
+      purpose: "Run the fastest bounded readiness or proof gate for this selected mode.",
+    },
+    {
+      step: "capture_evidence",
+      command: evidenceAction.command,
+      status: blockers.endpointReady ? (blockers.evidenceReady ? "complete" : "pending") : "blocked",
+      blockedBy: endpointBlocker,
+      evidence: evidenceAction.evidence,
+      purpose: "Write the selected target mode artifact needed for CAE/ASSERT handoff.",
+    },
+    {
+      step: "generate_handoff_request",
+      command: targetMode.caeHandoffCommand,
+      status: blockers.handoffReady ? "pending" : "blocked",
+      blockedBy: endpointBlocker ?? evidenceBlocker,
+      purpose: "Generate the CAE-compatible AssertRunCreateRequest with selected-mode provenance.",
+    },
+  ];
+}
+
 const endpointRequirements = {
   caeApi: { label: "ConversationAgentEvals API", envVar: "CAE_API_URL", configured: Boolean(optionalEndpoints.caeApi), ready: endpointReady.caeApi },
   caeWeb: { label: "ConversationAgentEvals web", envVar: "CAE_WEB_URL", configured: Boolean(optionalEndpoints.caeWeb), ready: endpointReady.caeWeb },
@@ -971,6 +1008,7 @@ function labEntryPointForTargetMode(targetMode, runProfile, evidenceStatus) {
     nextMissingEvidence: summary.nextMissingEvidence,
     nextEvidenceAction: evidenceAction,
     recommendedNextStep: entrypointRecommendedNextStep(targetMode, blockers, evidenceAction),
+    actionQueue: entrypointActionQueue(targetMode, blockers, evidenceAction),
     commands: [
       {
         step: "start_or_connect_stack",
