@@ -1459,6 +1459,7 @@ function reliabilityEntrypointActionQueueSummary(
     blocked,
     activeOrdinal: activeIndex >= 0 ? activeIndex + 1 : null,
     remaining: pending + blocked,
+    remainingAfterActive: Math.max(0, pending + blocked - (activeAction ? 1 : 0)),
     activeStep: activeAction?.step ?? null,
     activeStatus: activeAction?.status ?? null,
     activeCommand: activeAction?.command ?? null,
