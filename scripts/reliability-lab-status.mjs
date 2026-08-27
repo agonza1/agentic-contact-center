@@ -697,6 +697,7 @@ function entrypointActionQueueSummary(actionQueue) {
     pending,
     blocked,
     activeStep: activeAction?.step ?? null,
+    activeStatus: activeAction?.status ?? null,
     activeCommand: activeAction?.command ?? null,
     activeBlockedBy: activeAction?.blockedBy ?? null,
   };

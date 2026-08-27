@@ -2134,6 +2134,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           pending: number;
           blocked: number;
           activeStep: string | null;
+          activeStatus: string | null;
           activeCommand: string | null;
           activeBlockedBy: string | null;
         };
@@ -2343,6 +2344,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       pending: payload.labEntryPoint.evidenceSummary.handoffReady ? 2 : 2,
       blocked: payload.labEntryPoint.evidenceSummary.handoffReady ? 0 : 1,
       activeStep: "validate_readiness",
+      activeStatus: "pending",
       activeCommand: "npm run proof",
       activeBlockedBy: null,
     });

@@ -772,6 +772,7 @@ test("reliability entrypoint command returns only selected lab entry point", asy
     pending: 1,
     blocked: 3,
     activeStep: "start_or_connect_stack",
+    activeStatus: "pending",
     activeCommand: "npm run docker:browser-webrtc",
     activeBlockedBy: null,
   });
