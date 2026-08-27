@@ -1450,12 +1450,15 @@ function reliabilityEntrypointActionQueueSummary(
   const pending = actionQueue.filter((item) => item.status === "pending").length;
   const blocked = actionQueue.filter((item) => item.status === "blocked").length;
   const activeAction = actionQueue.find((item) => item.status === "pending") ?? actionQueue.find((item) => item.status === "blocked") ?? null;
+  const activeIndex = activeAction ? actionQueue.indexOf(activeAction) : -1;
 
   return {
     total: actionQueue.length,
     completed,
     pending,
     blocked,
+    activeOrdinal: activeIndex >= 0 ? activeIndex + 1 : null,
+    remaining: pending + blocked,
     activeStep: activeAction?.step ?? null,
     activeStatus: activeAction?.status ?? null,
     activeCommand: activeAction?.command ?? null,

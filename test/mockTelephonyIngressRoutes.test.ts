@@ -2133,6 +2133,8 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           completed: number;
           pending: number;
           blocked: number;
+          activeOrdinal: number | null;
+          remaining: number;
           activeStep: string | null;
           activeStatus: string | null;
           activeCommand: string | null;
@@ -2345,6 +2347,8 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       completed: 1 + (payload.labEntryPoint.evidenceSummary.handoffReady ? 1 : 0),
       pending: payload.labEntryPoint.evidenceSummary.handoffReady ? 2 : 2,
       blocked: payload.labEntryPoint.evidenceSummary.handoffReady ? 0 : 1,
+      activeOrdinal: 2,
+      remaining: payload.labEntryPoint.evidenceSummary.handoffReady ? 2 : 3,
       activeStep: "validate_readiness",
       activeStatus: "pending",
       activeCommand: "npm run proof",
