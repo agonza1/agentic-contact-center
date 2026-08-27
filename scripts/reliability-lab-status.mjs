@@ -700,6 +700,7 @@ function entrypointActionQueueSummary(actionQueue) {
     activeStatus: activeAction?.status ?? null,
     activeCommand: activeAction?.command ?? null,
     activePurpose: activeAction?.purpose ?? null,
+    activeEvidence: activeAction?.evidence ?? null,
     activeBlockedBy: activeAction?.blockedBy ?? null,
   };
 }

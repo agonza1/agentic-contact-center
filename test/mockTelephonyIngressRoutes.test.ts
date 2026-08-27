@@ -2137,6 +2137,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           activeStatus: string | null;
           activeCommand: string | null;
           activePurpose: string | null;
+          activeEvidence: string | null;
           activeBlockedBy: string | null;
         };
         commands: Array<{ step: string; command: string }>;
@@ -2348,6 +2349,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       activeStatus: "pending",
       activeCommand: "npm run proof",
       activePurpose: "Run the fastest bounded readiness or proof gate for this selected mode.",
+      activeEvidence: null,
       activeBlockedBy: null,
     });
     assert.deepEqual(
