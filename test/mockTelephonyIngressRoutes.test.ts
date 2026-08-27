@@ -2348,7 +2348,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       pending: payload.labEntryPoint.evidenceSummary.handoffReady ? 2 : 2,
       blocked: payload.labEntryPoint.evidenceSummary.handoffReady ? 0 : 1,
       activeOrdinal: 2,
-      remaining: 3,
+      remaining: payload.labEntryPoint.evidenceSummary.handoffReady ? 2 : 3,
       activeStep: "validate_readiness",
       activeStatus: "pending",
       activeCommand: "npm run proof",
