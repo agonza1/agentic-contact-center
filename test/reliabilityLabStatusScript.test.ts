@@ -233,9 +233,12 @@ test("reliability lab status reports explicit blockers without starting sidecars
       item.artifact,
       typeof item.exists,
     ]),
-    [["artifacts/demo-proof-latest.json", "boolean"]],
+    [
+      ["artifacts/demo-proof-latest.json", "boolean"],
+      ["artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json", "boolean"],
+    ],
   );
-  assert.equal(payload.selectedRunProfile.evidenceSummary.total, 1);
+  assert.equal(payload.selectedRunProfile.evidenceSummary.total, 2);
   assert.equal(typeof payload.selectedRunProfile.evidenceSummary.complete, "boolean");
   assert.equal(typeof payload.selectedRunProfile.evidenceSummary.freshForHandoff, "boolean");
   assert.equal(typeof payload.selectedRunProfile.evidenceSummary.handoffReady, "boolean");

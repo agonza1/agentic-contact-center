@@ -1089,7 +1089,6 @@ const selectedRunProfile = selectedRunProfileForTargetMode(selectedTargetMode?.m
 const selectedEvidenceInventory = selectedTargetMode ? selectedModeEvidenceInventory(selectedTargetMode.mode) : [];
 const selectedEvidenceStatus = evidenceStatusForInventory(selectedEvidenceInventory);
 const selectedLabEntryPoint = labEntryPointForTargetMode(selectedTargetMode, selectedRunProfile, selectedEvidenceStatus);
-const selectedRunProfileEvidenceStatus = selectedRunProfile ? evidenceStatusForArtifacts(selectedRunProfile.evidence) : [];
 
 function optionalComponent({ component, configured, endpoint, envVar, probe, configuredDetail, defaultDetail }) {
   const status = configured ? (probe?.ready ? "ready" : "unreachable") : "not_required";
@@ -1233,8 +1232,11 @@ const report = {
         evidenceStatus: selectedEvidenceStatus,
         nextMissingEvidence: nextMissingEvidence(selectedEvidenceStatus),
         evidenceSummary: evidenceSummary(selectedEvidenceStatus),
-        handoffReady: handoffEvidenceBlockers(selectedEvidenceStatus).length === 0,
-        handoffBlockers: handoffEvidenceBlockers(selectedEvidenceStatus),
+        handoffReady: selectedLabEntryPoint.blockingSummary.handoffReady,
+        handoffBlockers: [
+          ...selectedLabEntryPoint.blockingSummary.endpointBlockers,
+          ...selectedLabEntryPoint.blockingSummary.evidenceBlockers,
+        ],
         nextEvidenceAction: nextEvidenceAction(selectedEvidenceStatus, selectedTargetMode.validationCommand),
         labEntryPoint: selectedLabEntryPoint,
       }
@@ -1267,11 +1269,14 @@ const report = {
     ? {
         ...selectedRunProfile,
         requestedForTargetMode: selectedTargetMode?.mode,
-        evidenceStatus: selectedRunProfileEvidenceStatus,
-        evidenceSummary: evidenceSummary(selectedRunProfileEvidenceStatus),
-        handoffReady: handoffEvidenceBlockers(selectedRunProfileEvidenceStatus).length === 0,
-        handoffBlockers: handoffEvidenceBlockers(selectedRunProfileEvidenceStatus),
-        nextEvidenceAction: nextEvidenceAction(selectedRunProfileEvidenceStatus, selectedRunProfile.validationCommand),
+        evidenceStatus: selectedEvidenceStatus,
+        evidenceSummary: evidenceSummary(selectedEvidenceStatus),
+        handoffReady: selectedLabEntryPoint.blockingSummary.handoffReady,
+        handoffBlockers: [
+          ...selectedLabEntryPoint.blockingSummary.endpointBlockers,
+          ...selectedLabEntryPoint.blockingSummary.evidenceBlockers,
+        ],
+        nextEvidenceAction: nextEvidenceAction(selectedEvidenceStatus, selectedRunProfile.validationCommand),
         nextAction: {
           step: selectedRunProfile.status === "ready" || selectedRunProfile.status === "configured" ? "run_profile_validation" : "unblock_run_profile",
           command: selectedRunProfile.validationCommand,

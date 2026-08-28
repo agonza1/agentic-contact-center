@@ -2074,16 +2074,6 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
     : [];
   const selectedEvidenceStatus = reliabilityEvidenceStatus(selectedEvidenceInventory);
   const selectedLabEntryPoint = reliabilityLabEntryPoint(selectedTargetMode, selectedRunProfile, selectedEvidenceStatus);
-  const selectedRunProfileEvidenceInventory = selectedRunProfile
-    ? selectedRunProfile.evidence.map((artifact) => ({
-        id: artifact,
-        requiredFor: selectedRunProfile.targetModes,
-        artifact,
-        producerCommand: selectedRunProfile.validationCommand,
-        validates: [],
-      }))
-    : [];
-  const selectedRunProfileEvidenceStatus = reliabilityEvidenceStatus(selectedRunProfileEvidenceInventory);
 
   return {
     ok: true,
@@ -2174,15 +2164,15 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
       ? {
           ...selectedRunProfile,
           requestedForTargetMode: selectedTargetMode?.mode,
-          evidenceStatus: selectedRunProfileEvidenceStatus,
-          evidenceSummary: reliabilityEvidenceSummary(selectedRunProfileEvidenceStatus),
+          evidenceStatus: selectedEvidenceStatus,
+          evidenceSummary: reliabilityEvidenceSummary(selectedEvidenceStatus),
           handoffReady: selectedLabEntryPoint!.blockingSummary.handoffReady,
           handoffBlockers: [
             ...selectedLabEntryPoint!.blockingSummary.endpointBlockers,
             ...selectedLabEntryPoint!.blockingSummary.evidenceBlockers,
           ],
           nextEvidenceAction: nextReliabilityEvidenceAction(
-            selectedRunProfileEvidenceStatus,
+            selectedEvidenceStatus,
             selectedRunProfile.validationCommand,
           ),
           nextAction: {
