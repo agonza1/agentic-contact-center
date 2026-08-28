@@ -1416,6 +1416,7 @@ function reliabilityEntrypointActionQueue(
   // live endpoints. Only the local fixture can be considered validated here.
   const readinessValidated = targetMode.mode === "fixture";
   const readinessBlocker = endpointBlocker ?? "Configured endpoints have not passed the bounded readiness validation gate.";
+  const handoffBlocker = readinessValidated ? evidenceBlocker : readinessBlocker;
 
   return [
     {
@@ -1444,7 +1445,7 @@ function reliabilityEntrypointActionQueue(
       step: "generate_handoff_request",
       command: targetMode.caeHandoffCommand,
       status: blockingSummary.handoffReady ? "complete" : "blocked",
-      blockedBy: endpointBlocker ?? evidenceBlocker,
+      blockedBy: handoffBlocker,
       purpose: "Generate the CAE-compatible AssertRunCreateRequest with selected-mode provenance.",
     },
   ];
