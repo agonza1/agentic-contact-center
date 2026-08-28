@@ -1398,6 +1398,9 @@ function reliabilityEntrypointWorkState(
 ) {
   if (!targetMode) return "blocked";
   if (!blockingSummary.endpointReady) return "blocked";
+  // Unlike the CLI status command, this route never probes live endpoints.
+  // Fresh artifacts therefore cannot prove that a live readiness gate passed.
+  if (targetMode.mode !== "fixture") return "active";
   if (!blockingSummary.handoffReady) return "active";
   return "done";
 }
@@ -1409,6 +1412,10 @@ function reliabilityEntrypointActionQueue(
 ) {
   const endpointBlocker = blockingSummary.endpointBlockers[0] ?? null;
   const evidenceBlocker = blockingSummary.evidenceBlockers[0] ?? null;
+  // The HTTP status route only inspects configured environment; it does not probe
+  // live endpoints. Only the local fixture can be considered validated here.
+  const readinessValidated = targetMode.mode === "fixture";
+  const readinessBlocker = endpointBlocker ?? "Configured endpoints have not passed the bounded readiness validation gate.";
 
   return [
     {
@@ -1421,22 +1428,22 @@ function reliabilityEntrypointActionQueue(
     {
       step: "validate_readiness",
       command: targetMode.validationCommand,
-      status: blockingSummary.endpointReady ? "pending" : "blocked",
-      blockedBy: endpointBlocker,
+      status: readinessValidated ? "complete" : blockingSummary.endpointReady ? "pending" : "blocked",
+      blockedBy: blockingSummary.endpointReady ? null : endpointBlocker,
       purpose: "Run the fastest bounded readiness or proof gate for this selected mode.",
     },
     {
       step: "capture_evidence",
       command: evidenceAction.command,
-      status: blockingSummary.endpointReady ? (blockingSummary.evidenceReady ? "complete" : "pending") : "blocked",
-      blockedBy: endpointBlocker,
+      status: blockingSummary.handoffReady ? "complete" : readinessValidated ? "pending" : "blocked",
+      blockedBy: readinessValidated ? null : readinessBlocker,
       evidence: evidenceAction.evidence,
       purpose: "Write the selected target mode artifact needed for CAE/ASSERT handoff.",
     },
     {
       step: "generate_handoff_request",
       command: targetMode.caeHandoffCommand,
-      status: blockingSummary.handoffReady ? "pending" : "blocked",
+      status: blockingSummary.handoffReady ? "complete" : "blocked",
       blockedBy: endpointBlocker ?? evidenceBlocker,
       purpose: "Generate the CAE-compatible AssertRunCreateRequest with selected-mode provenance.",
     },
@@ -1457,6 +1464,7 @@ function reliabilityEntrypointActionQueueSummary(
     completed,
     pending,
     blocked,
+    progressPct: actionQueue.length > 0 ? Math.round((completed / actionQueue.length) * 100) : 100,
     activeOrdinal: activeIndex >= 0 ? activeIndex + 1 : null,
     remaining: pending + blocked,
     remainingAfterActive: Math.max(0, pending + blocked - (activeAction ? 1 : 0)),

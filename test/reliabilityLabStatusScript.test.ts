@@ -771,6 +771,7 @@ test("reliability entrypoint command returns only selected lab entry point", asy
     completed: 0,
     pending: 1,
     blocked: 3,
+    progressPct: 0,
     activeOrdinal: 1,
     remaining: 4,
     remainingAfterActive: 3,
