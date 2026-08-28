@@ -1398,6 +1398,9 @@ function reliabilityEntrypointWorkState(
 ) {
   if (!targetMode) return "blocked";
   if (!blockingSummary.endpointReady) return "blocked";
+  // Unlike the CLI status command, this route never probes live endpoints.
+  // Fresh artifacts therefore cannot prove that a live readiness gate passed.
+  if (targetMode.mode !== "fixture") return "active";
   if (!blockingSummary.handoffReady) return "active";
   return "done";
 }
@@ -1410,9 +1413,8 @@ function reliabilityEntrypointActionQueue(
   const endpointBlocker = blockingSummary.endpointBlockers[0] ?? null;
   const evidenceBlocker = blockingSummary.evidenceBlockers[0] ?? null;
   // The HTTP status route only inspects configured environment; it does not probe
-  // live endpoints. Keep readiness active until the bounded validation gate has
-  // produced a terminal handoff, while the fixture can validate locally.
-  const readinessValidated = targetMode.mode === "fixture" || blockingSummary.handoffReady;
+  // live endpoints. Only the local fixture can be considered validated here.
+  const readinessValidated = targetMode.mode === "fixture";
   const readinessBlocker = endpointBlocker ?? "Configured endpoints have not passed the bounded readiness validation gate.";
 
   return [
