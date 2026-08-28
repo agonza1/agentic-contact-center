@@ -2140,8 +2140,11 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
           evidenceStatus: selectedEvidenceStatus,
           nextMissingEvidence: nextMissingReliabilityEvidence(selectedEvidenceStatus),
           evidenceSummary: reliabilityEvidenceSummary(selectedEvidenceStatus),
-          handoffReady: reliabilityHandoffEvidenceBlockers(selectedEvidenceStatus).length === 0,
-          handoffBlockers: reliabilityHandoffEvidenceBlockers(selectedEvidenceStatus),
+          handoffReady: selectedLabEntryPoint!.blockingSummary.handoffReady,
+          handoffBlockers: [
+            ...selectedLabEntryPoint!.blockingSummary.endpointBlockers,
+            ...selectedLabEntryPoint!.blockingSummary.evidenceBlockers,
+          ],
           nextEvidenceAction: nextReliabilityEvidenceAction(selectedEvidenceStatus, selectedTargetMode.validationCommand),
           labEntryPoint: selectedLabEntryPoint,
         }
@@ -2173,8 +2176,11 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
           requestedForTargetMode: selectedTargetMode?.mode,
           evidenceStatus: selectedRunProfileEvidenceStatus,
           evidenceSummary: reliabilityEvidenceSummary(selectedRunProfileEvidenceStatus),
-          handoffReady: reliabilityHandoffEvidenceBlockers(selectedRunProfileEvidenceStatus).length === 0,
-          handoffBlockers: reliabilityHandoffEvidenceBlockers(selectedRunProfileEvidenceStatus),
+          handoffReady: selectedLabEntryPoint!.blockingSummary.handoffReady,
+          handoffBlockers: [
+            ...selectedLabEntryPoint!.blockingSummary.endpointBlockers,
+            ...selectedLabEntryPoint!.blockingSummary.evidenceBlockers,
+          ],
           nextEvidenceAction: nextReliabilityEvidenceAction(
             selectedRunProfileEvidenceStatus,
             selectedRunProfile.validationCommand,

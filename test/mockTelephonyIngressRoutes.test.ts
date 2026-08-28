@@ -2920,6 +2920,13 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
           nextAction: { step: string };
           nextEvidenceAction?: { step: string };
         };
+        labEntryPoint: {
+          blockingSummary: {
+            handoffReady: boolean;
+            endpointBlockers: string[];
+            evidenceBlockers: string[];
+          };
+        };
       };
 
       assert.equal(payload.selectedTargetMode.mode, "sip_verto");
@@ -2930,8 +2937,12 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
       assert.equal(payload.selectedRunProfile.requestedForTargetMode, "sip_verto");
       assert.equal(payload.selectedRunProfile.nextAction.step, "unblock_run_profile");
       assert.ok(["capture_missing_evidence", "refresh_stale_evidence", "validate_existing_evidence"].includes(payload.selectedRunProfile.nextEvidenceAction?.step ?? ""));
-      assert.deepEqual(payload.selectedRunProfile.handoffBlockers, payload.selectedRunProfile.evidenceSummary?.handoffBlockers);
-      assert.equal(payload.selectedRunProfile.handoffReady, payload.selectedRunProfile.evidenceSummary?.handoffReady);
+      const combinedBlockers = [
+        ...payload.labEntryPoint.blockingSummary.endpointBlockers,
+        ...payload.labEntryPoint.blockingSummary.evidenceBlockers,
+      ];
+      assert.deepEqual(payload.selectedRunProfile.handoffBlockers, combinedBlockers);
+      assert.equal(payload.selectedRunProfile.handoffReady, payload.labEntryPoint.blockingSummary.handoffReady);
       assert.deepEqual(
         payload.selectedTargetMode.handoffChecklist?.map((step) => step.id),
         ["select_target_mode", "capture_controlled_candidate", "capture_selected_media_proof", "generate_cae_assert_request"],
@@ -2940,8 +2951,8 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
         payload.selectedTargetMode.evidenceInventory?.map((item) => item.id),
         ["controlled_candidate_proof", "cae_assert_request", "sip_verto_live_manifest"],
       );
-      assert.deepEqual(payload.selectedTargetMode.handoffBlockers, payload.selectedTargetMode.evidenceSummary?.handoffBlockers);
-      assert.equal(payload.selectedTargetMode.handoffReady, payload.selectedTargetMode.evidenceSummary?.handoffReady);
+      assert.deepEqual(payload.selectedTargetMode.handoffBlockers, combinedBlockers);
+      assert.equal(payload.selectedTargetMode.handoffReady, payload.labEntryPoint.blockingSummary.handoffReady);
       assert.deepEqual(payload.selectedTargetMode.nextAction, {
         step: "configure_sip_verto_endpoints",
         command: "npm run docker:sip-verto",
