@@ -652,6 +652,15 @@ function entrypointActionQueue(targetMode, blockers, evidenceAction) {
   const endpointBlocker = blockers.endpointBlockers[0] ?? null;
   const evidenceBlocker = blockers.evidenceBlockers[0] ?? null;
 
+  if (blockers.handoffReady) {
+    return [
+      { step: "start_or_connect_stack", command: targetMode.startCommand, purpose: "Start local services or connect to the selected external endpoints for this target mode." },
+      { step: "validate_readiness", command: targetMode.validationCommand, purpose: "Run the fastest bounded readiness or proof gate for this selected mode." },
+      { step: "capture_evidence", command: evidenceAction.command, evidence: evidenceAction.evidence, purpose: "Write the selected target mode artifact needed for CAE/ASSERT handoff." },
+      { step: "generate_handoff_request", command: targetMode.caeHandoffCommand, purpose: "Generate the CAE-compatible AssertRunCreateRequest with selected-mode provenance." },
+    ].map((action) => ({ ...action, status: "complete", blockedBy: null }));
+  }
+
   return [
     {
       step: "start_or_connect_stack",

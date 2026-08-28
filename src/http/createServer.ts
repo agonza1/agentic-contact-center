@@ -1409,6 +1409,11 @@ function reliabilityEntrypointActionQueue(
 ) {
   const endpointBlocker = blockingSummary.endpointBlockers[0] ?? null;
   const evidenceBlocker = blockingSummary.evidenceBlockers[0] ?? null;
+  // The HTTP status route only inspects configured environment; it does not probe
+  // live endpoints. Keep readiness active until the bounded validation gate has
+  // produced a terminal handoff, while the fixture can validate locally.
+  const readinessValidated = targetMode.mode === "fixture" || blockingSummary.handoffReady;
+  const readinessBlocker = endpointBlocker ?? "Configured endpoints have not passed the bounded readiness validation gate.";
 
   return [
     {
@@ -1421,15 +1426,15 @@ function reliabilityEntrypointActionQueue(
     {
       step: "validate_readiness",
       command: targetMode.validationCommand,
-      status: blockingSummary.endpointReady ? "complete" : "blocked",
-      blockedBy: endpointBlocker,
+      status: readinessValidated ? "complete" : blockingSummary.endpointReady ? "pending" : "blocked",
+      blockedBy: blockingSummary.endpointReady ? null : endpointBlocker,
       purpose: "Run the fastest bounded readiness or proof gate for this selected mode.",
     },
     {
       step: "capture_evidence",
       command: evidenceAction.command,
-      status: blockingSummary.endpointReady ? (blockingSummary.evidenceReady ? "complete" : "pending") : "blocked",
-      blockedBy: endpointBlocker,
+      status: blockingSummary.handoffReady ? "complete" : readinessValidated ? "pending" : "blocked",
+      blockedBy: readinessValidated ? null : readinessBlocker,
       evidence: evidenceAction.evidence,
       purpose: "Write the selected target mode artifact needed for CAE/ASSERT handoff.",
     },
