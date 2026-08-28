@@ -1444,7 +1444,7 @@ function reliabilityEntrypointActionQueue(
     {
       step: "generate_handoff_request",
       command: targetMode.caeHandoffCommand,
-      status: blockingSummary.handoffReady ? "complete" : "blocked",
+      status: readinessValidated && blockingSummary.handoffReady ? "complete" : "blocked",
       blockedBy: handoffBlocker,
       purpose: "Generate the CAE-compatible AssertRunCreateRequest with selected-mode provenance.",
     },

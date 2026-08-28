@@ -2787,6 +2787,7 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
   process.env.KOKORO_BASE_URL = "http://127.0.0.1:8880";
   process.env.BROWSER_WEBRTC_BRIDGE_URL = "http://127.0.0.1:8766";
   process.env.FREESWITCH_VERTO_URL = "ws://127.0.0.1:8081";
+  process.env.ACC_RELIABILITY_TARGET_MODE = "browser_webrtc";
 
   try {
     await withServer(async (port) => {
@@ -2803,7 +2804,15 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
           endpointStatus: Array<{ key: string; configured: boolean; status: string }>;
         }>;
         runProfiles: Array<{ id: string; status: string }>;
-        selectedTargetMode: { mode: string; status: string; requestedVia: string; validationCommand?: string };
+        selectedTargetMode: {
+          mode: string;
+          status: string;
+          requestedVia: string;
+          validationCommand?: string;
+          labEntryPoint?: {
+            actionQueue: Array<{ step: string; status: string; blockedBy: string | null }>;
+          } | null;
+        };
         selectedRunProfile: { id: string | null; status: string; requestedForTargetMode: string; nextAction: { step: string } };
       };
       const statuses = Object.fromEntries(payload.targetModes.map((mode) => [mode.mode, mode.status]));
@@ -2856,9 +2865,14 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
           ["browserWebRtcBridge", true, "configured"],
         ],
       );
-      assert.equal(payload.selectedTargetMode.mode, "fixture");
-      assert.equal(payload.selectedTargetMode.requestedVia, "default");
-      assert.equal(payload.selectedRunProfile.id, "local_fixture");
+      assert.equal(payload.selectedTargetMode.mode, "browser_webrtc");
+      assert.equal(payload.selectedTargetMode.requestedVia, "ACC_RELIABILITY_TARGET_MODE");
+      const liveHandoffAction = payload.selectedTargetMode.labEntryPoint?.actionQueue.find(
+        (item) => item.step === "generate_handoff_request",
+      );
+      assert.equal(liveHandoffAction?.status, "blocked");
+      assert.equal(liveHandoffAction?.blockedBy, "Configured endpoints have not passed the bounded readiness validation gate.");
+      assert.equal(payload.selectedRunProfile.id, "live_media_lab");
       assert.equal(payload.selectedRunProfile.nextAction.step, "run_profile_validation");
     });
   } finally {
