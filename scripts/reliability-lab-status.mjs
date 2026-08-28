@@ -663,7 +663,7 @@ function entrypointActionQueue(targetMode, blockers, evidenceAction) {
     {
       step: "validate_readiness",
       command: targetMode.validationCommand,
-      status: blockers.endpointReady ? "pending" : "blocked",
+      status: blockers.endpointReady ? "complete" : "blocked",
       blockedBy: endpointBlocker,
       purpose: "Run the fastest bounded readiness or proof gate for this selected mode.",
     },
@@ -678,7 +678,7 @@ function entrypointActionQueue(targetMode, blockers, evidenceAction) {
     {
       step: "generate_handoff_request",
       command: targetMode.caeHandoffCommand,
-      status: blockers.handoffReady ? "pending" : "blocked",
+      status: blockers.handoffReady ? "complete" : "blocked",
       blockedBy: endpointBlocker ?? evidenceBlocker,
       purpose: "Generate the CAE-compatible AssertRunCreateRequest with selected-mode provenance.",
     },

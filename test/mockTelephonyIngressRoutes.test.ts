@@ -2327,7 +2327,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       payload.labEntryPoint?.actionQueue.map((action) => [action.step, action.command, action.status, action.blockedBy]),
       [
         ["start_or_connect_stack", "npm run proof", "complete", null],
-        ["validate_readiness", "npm run proof", "pending", null],
+        ["validate_readiness", "npm run proof", "complete", null],
         [
           "capture_evidence",
           payload.labEntryPoint.nextEvidenceAction.command,
@@ -2337,7 +2337,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         [
           "generate_handoff_request",
           "npm run cae:assert:handoff",
-          payload.labEntryPoint.evidenceSummary.handoffReady ? "pending" : "blocked",
+          payload.labEntryPoint.evidenceSummary.handoffReady ? "complete" : "blocked",
           payload.labEntryPoint.evidenceSummary.handoffReady
             ? null
             : payload.labEntryPoint.evidenceSummary.handoffBlockers[0],
@@ -2346,18 +2346,22 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
     );
     assert.deepEqual(payload.labEntryPoint?.actionQueueSummary, {
       total: 4,
-      completed: 1 + (payload.labEntryPoint.evidenceSummary.handoffReady ? 1 : 0),
-      pending: payload.labEntryPoint.evidenceSummary.handoffReady ? 2 : 2,
+      completed: 2 + (payload.labEntryPoint.evidenceSummary.handoffReady ? 2 : 0),
+      pending: payload.labEntryPoint.evidenceSummary.handoffReady ? 0 : 1,
       blocked: payload.labEntryPoint.evidenceSummary.handoffReady ? 0 : 1,
-      progressPct: payload.labEntryPoint.evidenceSummary.handoffReady ? 50 : 25,
-      activeOrdinal: 2,
-      remaining: payload.labEntryPoint.evidenceSummary.handoffReady ? 2 : 3,
-      remainingAfterActive: payload.labEntryPoint.evidenceSummary.handoffReady ? 1 : 2,
-      activeStep: "validate_readiness",
-      activeStatus: "pending",
-      activeCommand: "npm run proof",
-      activePurpose: "Run the fastest bounded readiness or proof gate for this selected mode.",
-      activeEvidence: null,
+      progressPct: payload.labEntryPoint.evidenceSummary.handoffReady ? 100 : 50,
+      activeOrdinal: payload.labEntryPoint.evidenceSummary.handoffReady ? null : 3,
+      remaining: payload.labEntryPoint.evidenceSummary.handoffReady ? 0 : 2,
+      remainingAfterActive: payload.labEntryPoint.evidenceSummary.handoffReady ? 0 : 1,
+      activeStep: payload.labEntryPoint.evidenceSummary.handoffReady ? null : "capture_evidence",
+      activeStatus: payload.labEntryPoint.evidenceSummary.handoffReady ? null : "pending",
+      activeCommand: payload.labEntryPoint.evidenceSummary.handoffReady ? null : payload.labEntryPoint.nextEvidenceAction.command,
+      activePurpose: payload.labEntryPoint.evidenceSummary.handoffReady
+        ? null
+        : "Write the selected target mode artifact needed for CAE/ASSERT handoff.",
+      activeEvidence: payload.labEntryPoint.evidenceSummary.handoffReady
+        ? null
+        : payload.labEntryPoint.nextEvidenceAction.evidence,
       activeBlockedBy: null,
     });
     assert.deepEqual(

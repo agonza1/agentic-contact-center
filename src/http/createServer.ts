@@ -1421,7 +1421,7 @@ function reliabilityEntrypointActionQueue(
     {
       step: "validate_readiness",
       command: targetMode.validationCommand,
-      status: blockingSummary.endpointReady ? "pending" : "blocked",
+      status: blockingSummary.endpointReady ? "complete" : "blocked",
       blockedBy: endpointBlocker,
       purpose: "Run the fastest bounded readiness or proof gate for this selected mode.",
     },
@@ -1436,7 +1436,7 @@ function reliabilityEntrypointActionQueue(
     {
       step: "generate_handoff_request",
       command: targetMode.caeHandoffCommand,
-      status: blockingSummary.handoffReady ? "pending" : "blocked",
+      status: blockingSummary.handoffReady ? "complete" : "blocked",
       blockedBy: endpointBlocker ?? evidenceBlocker,
       purpose: "Generate the CAE-compatible AssertRunCreateRequest with selected-mode provenance.",
     },
