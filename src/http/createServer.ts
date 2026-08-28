@@ -1457,6 +1457,7 @@ function reliabilityEntrypointActionQueueSummary(
     completed,
     pending,
     blocked,
+    progressPct: actionQueue.length > 0 ? Math.round((completed / actionQueue.length) * 100) : 100,
     activeOrdinal: activeIndex >= 0 ? activeIndex + 1 : null,
     remaining: pending + blocked,
     remainingAfterActive: Math.max(0, pending + blocked - (activeAction ? 1 : 0)),
