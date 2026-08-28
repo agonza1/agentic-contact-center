@@ -1269,8 +1269,16 @@ const report = {
     ? {
         ...selectedRunProfile,
         requestedForTargetMode: selectedTargetMode?.mode,
+        evidence: selectedEvidenceStatus.map((item) => item.artifact),
         evidenceStatus: selectedEvidenceStatus,
-        evidenceSummary: evidenceSummary(selectedEvidenceStatus),
+        evidenceSummary: {
+          ...evidenceSummary(selectedEvidenceStatus),
+          handoffReady: selectedLabEntryPoint.blockingSummary.handoffReady,
+          handoffBlockers: [
+            ...selectedLabEntryPoint.blockingSummary.endpointBlockers,
+            ...selectedLabEntryPoint.blockingSummary.evidenceBlockers,
+          ],
+        },
         handoffReady: selectedLabEntryPoint.blockingSummary.handoffReady,
         handoffBlockers: [
           ...selectedLabEntryPoint.blockingSummary.endpointBlockers,

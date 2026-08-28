@@ -2164,8 +2164,16 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
       ? {
           ...selectedRunProfile,
           requestedForTargetMode: selectedTargetMode?.mode,
+          evidence: selectedEvidenceStatus.map((item) => item.artifact),
           evidenceStatus: selectedEvidenceStatus,
-          evidenceSummary: reliabilityEvidenceSummary(selectedEvidenceStatus),
+          evidenceSummary: {
+            ...reliabilityEvidenceSummary(selectedEvidenceStatus),
+            handoffReady: selectedLabEntryPoint!.blockingSummary.handoffReady,
+            handoffBlockers: [
+              ...selectedLabEntryPoint!.blockingSummary.endpointBlockers,
+              ...selectedLabEntryPoint!.blockingSummary.evidenceBlockers,
+            ],
+          },
           handoffReady: selectedLabEntryPoint!.blockingSummary.handoffReady,
           handoffBlockers: [
             ...selectedLabEntryPoint!.blockingSummary.endpointBlockers,
