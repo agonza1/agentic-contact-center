@@ -559,6 +559,10 @@ test("reliability lab status exposes requested target mode selection", async () 
     "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
     "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
   ]);
+  assert.equal(
+    payload.selectedRunProfile.nextAction.evidence,
+    "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+  );
   assert.deepEqual(payload.selectedRunProfile.handoffBlockers, payload.selectedRunProfile.evidenceSummary.handoffBlockers);
   assert.equal(payload.selectedRunProfile.handoffReady, payload.selectedRunProfile.evidenceSummary.handoffReady);
   assert.deepEqual(

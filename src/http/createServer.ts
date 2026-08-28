@@ -2186,7 +2186,7 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
           nextAction: {
             step: selectedRunProfile.status === "ready" || selectedRunProfile.status === "configured" ? "run_profile_validation" : "unblock_run_profile",
             command: selectedRunProfile.validationCommand,
-            evidence: selectedRunProfile.evidence[0] ?? "/api/reliability",
+            evidence: selectedTargetMode?.validationGate.evidenceArtifact ?? "/api/reliability",
             detail: selectedRunProfile.detail,
           },
         }

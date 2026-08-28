@@ -2800,7 +2800,7 @@ test("GET /api/reliability reflects configured target mode endpoints", async () 
           blockers: string[];
           missingEndpointEnvVars: string[];
           missingSignalwireEnvVars?: string[];
-          nextAction: { step: string };
+          nextAction: { step: string; evidence: string };
           endpointStatus: Array<{ key: string; configured: boolean; status: string }>;
         }>;
         runProfiles: Array<{ id: string; status: string }>;
@@ -2917,7 +2917,7 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
           evidenceSummary?: { handoffReady: boolean; handoffBlockers: string[] };
           handoffReady?: boolean;
           handoffBlockers?: string[];
-          nextAction: { step: string };
+          nextAction: { step: string; evidence: string };
           nextEvidenceAction?: { step: string };
         };
         labEntryPoint: {
@@ -2936,6 +2936,7 @@ test("GET /api/reliability exposes requested target mode selection", async () =>
       assert.equal(payload.selectedRunProfile.id, "live_media_lab");
       assert.equal(payload.selectedRunProfile.requestedForTargetMode, "sip_verto");
       assert.equal(payload.selectedRunProfile.nextAction.step, "unblock_run_profile");
+      assert.equal(payload.selectedRunProfile.nextAction.evidence, "artifacts/verto-sip-live-proof/manifest.json");
       assert.ok(["capture_missing_evidence", "refresh_stale_evidence", "validate_existing_evidence"].includes(payload.selectedRunProfile.nextEvidenceAction?.step ?? ""));
       const combinedBlockers = [
         ...payload.labEntryPoint.blockingSummary.endpointBlockers,
