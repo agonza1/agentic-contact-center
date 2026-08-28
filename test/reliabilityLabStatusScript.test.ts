@@ -233,9 +233,12 @@ test("reliability lab status reports explicit blockers without starting sidecars
       item.artifact,
       typeof item.exists,
     ]),
-    [["artifacts/demo-proof-latest.json", "boolean"]],
+    [
+      ["artifacts/demo-proof-latest.json", "boolean"],
+      ["artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json", "boolean"],
+    ],
   );
-  assert.equal(payload.selectedRunProfile.evidenceSummary.total, 1);
+  assert.equal(payload.selectedRunProfile.evidenceSummary.total, 2);
   assert.equal(typeof payload.selectedRunProfile.evidenceSummary.complete, "boolean");
   assert.equal(typeof payload.selectedRunProfile.evidenceSummary.freshForHandoff, "boolean");
   assert.equal(typeof payload.selectedRunProfile.evidenceSummary.handoffReady, "boolean");
@@ -552,10 +555,16 @@ test("reliability lab status exposes requested target mode selection", async () 
   assert.equal(payload.selectedRunProfile.nextAction.step, "unblock_run_profile");
   assert.ok(["capture_missing_evidence", "refresh_stale_evidence", "validate_existing_evidence"].includes(payload.selectedRunProfile.nextEvidenceAction.step));
   assert.deepEqual(payload.selectedRunProfile.evidence, [
+    "artifacts/demo-proof-latest.json",
+    "artifacts/cae-assert-handoff/conversation-agent-evals-assert-request.json",
     "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
-    "artifacts/verto-sip-live-proof/manifest.json",
-    "artifacts/signalwire-freeswitch-readiness/readiness.json",
   ]);
+  assert.equal(
+    payload.selectedRunProfile.nextAction.evidence,
+    "artifacts/browser-webrtc-live-proof/browser-webrtc-live-proof-manifest.json",
+  );
+  assert.deepEqual(payload.selectedRunProfile.handoffBlockers, payload.selectedRunProfile.evidenceSummary.handoffBlockers);
+  assert.equal(payload.selectedRunProfile.handoffReady, payload.selectedRunProfile.evidenceSummary.handoffReady);
   assert.deepEqual(
     payload.selectedTargetMode.handoffChecklist.map((step: { id: string }) => step.id),
     ["select_target_mode", "capture_controlled_candidate", "capture_selected_media_proof", "generate_cae_assert_request"],

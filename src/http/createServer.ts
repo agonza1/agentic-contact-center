@@ -2074,16 +2074,6 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
     : [];
   const selectedEvidenceStatus = reliabilityEvidenceStatus(selectedEvidenceInventory);
   const selectedLabEntryPoint = reliabilityLabEntryPoint(selectedTargetMode, selectedRunProfile, selectedEvidenceStatus);
-  const selectedRunProfileEvidenceInventory = selectedRunProfile
-    ? selectedRunProfile.evidence.map((artifact) => ({
-        id: artifact,
-        requiredFor: selectedRunProfile.targetModes,
-        artifact,
-        producerCommand: selectedRunProfile.validationCommand,
-        validates: [],
-      }))
-    : [];
-  const selectedRunProfileEvidenceStatus = reliabilityEvidenceStatus(selectedRunProfileEvidenceInventory);
 
   return {
     ok: true,
@@ -2140,8 +2130,11 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
           evidenceStatus: selectedEvidenceStatus,
           nextMissingEvidence: nextMissingReliabilityEvidence(selectedEvidenceStatus),
           evidenceSummary: reliabilityEvidenceSummary(selectedEvidenceStatus),
-          handoffReady: reliabilityHandoffEvidenceBlockers(selectedEvidenceStatus).length === 0,
-          handoffBlockers: reliabilityHandoffEvidenceBlockers(selectedEvidenceStatus),
+          handoffReady: selectedLabEntryPoint!.blockingSummary.handoffReady,
+          handoffBlockers: [
+            ...selectedLabEntryPoint!.blockingSummary.endpointBlockers,
+            ...selectedLabEntryPoint!.blockingSummary.evidenceBlockers,
+          ],
           nextEvidenceAction: nextReliabilityEvidenceAction(selectedEvidenceStatus, selectedTargetMode.validationCommand),
           labEntryPoint: selectedLabEntryPoint,
         }
@@ -2171,18 +2164,29 @@ function buildReliabilityGuidePayload(config: PocConfig): object {
       ? {
           ...selectedRunProfile,
           requestedForTargetMode: selectedTargetMode?.mode,
-          evidenceStatus: selectedRunProfileEvidenceStatus,
-          evidenceSummary: reliabilityEvidenceSummary(selectedRunProfileEvidenceStatus),
-          handoffReady: reliabilityHandoffEvidenceBlockers(selectedRunProfileEvidenceStatus).length === 0,
-          handoffBlockers: reliabilityHandoffEvidenceBlockers(selectedRunProfileEvidenceStatus),
+          evidence: selectedEvidenceStatus.map((item) => item.artifact),
+          evidenceStatus: selectedEvidenceStatus,
+          evidenceSummary: {
+            ...reliabilityEvidenceSummary(selectedEvidenceStatus),
+            handoffReady: selectedLabEntryPoint!.blockingSummary.handoffReady,
+            handoffBlockers: [
+              ...selectedLabEntryPoint!.blockingSummary.endpointBlockers,
+              ...selectedLabEntryPoint!.blockingSummary.evidenceBlockers,
+            ],
+          },
+          handoffReady: selectedLabEntryPoint!.blockingSummary.handoffReady,
+          handoffBlockers: [
+            ...selectedLabEntryPoint!.blockingSummary.endpointBlockers,
+            ...selectedLabEntryPoint!.blockingSummary.evidenceBlockers,
+          ],
           nextEvidenceAction: nextReliabilityEvidenceAction(
-            selectedRunProfileEvidenceStatus,
+            selectedEvidenceStatus,
             selectedRunProfile.validationCommand,
           ),
           nextAction: {
             step: selectedRunProfile.status === "ready" || selectedRunProfile.status === "configured" ? "run_profile_validation" : "unblock_run_profile",
             command: selectedRunProfile.validationCommand,
-            evidence: selectedRunProfile.evidence[0] ?? "/api/reliability",
+            evidence: selectedTargetMode?.validationGate.evidenceArtifact ?? "/api/reliability",
             detail: selectedRunProfile.detail,
           },
         }
