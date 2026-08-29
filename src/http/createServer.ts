@@ -1461,6 +1461,7 @@ function reliabilityEntrypointActionQueueSummary(
   const activeIndex = activeAction ? actionQueue.indexOf(activeAction) : -1;
 
   return {
+    state: completed === actionQueue.length ? "done" : pending > 0 ? "active" : "blocked",
     total: actionQueue.length,
     completed,
     pending,

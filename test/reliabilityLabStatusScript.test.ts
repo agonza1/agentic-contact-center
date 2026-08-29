@@ -776,6 +776,7 @@ test("reliability entrypoint command returns only selected lab entry point", asy
     ],
   );
   assert.deepEqual(payload.actionQueueSummary, {
+    state: "active",
     total: 4,
     completed: 0,
     pending: 1,
