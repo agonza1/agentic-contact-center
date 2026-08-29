@@ -103,7 +103,7 @@ The status API and command expose the same `evidenceInventory` records. Keep thi
 
 ## Phase 2 reliability-lab plan
 
-The next implementation slice should add one explicit lab entry point that starts or connects:
+The explicit lab entry point starts or connects the selected reliability path in this order:
 
 1. ACC application.
 2. Selected target media mode: fixture, browser WebRTC, SIP/Verto, or SignalWire PSTN.
