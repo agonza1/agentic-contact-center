@@ -187,7 +187,18 @@ const readinessProbePolicy = {
 };
 
 async function probeHttp(url, route = "/") {
-  const target = new URL(url);
+  let target;
+  try {
+    target = new URL(url);
+  } catch {
+    return {
+      reachable: false,
+      ready: false,
+      status: "unreachable",
+      error: "InvalidURL",
+      detail: "Probe endpoint URL is invalid.",
+    };
+  }
   if (target.pathname === "/" && route !== "/") target.pathname = route;
   const safeTarget = redactedConfiguredEndpoint(target.toString());
   const controller = new AbortController();
@@ -215,7 +226,18 @@ async function probeHttp(url, route = "/") {
 }
 
 async function probeTcp(url) {
-  const target = new URL(url);
+  let target;
+  try {
+    target = new URL(url);
+  } catch {
+    return {
+      reachable: false,
+      ready: false,
+      status: "unreachable",
+      error: "InvalidURL",
+      detail: "TCP probe endpoint URL is invalid.",
+    };
+  }
   const port = target.port ? Number.parseInt(target.port, 10) : target.protocol === "wss:" ? 443 : 80;
   return await new Promise((resolve) => {
     const socket = net.connect({ host: target.hostname, port });
