@@ -1474,6 +1474,7 @@ function reliabilityEntrypointActionQueueSummary(
     activeStep: activeAction?.step ?? null,
     activeStatus: activeAction?.status ?? null,
     activeRunnable: activeAction?.status === "pending",
+    activeBlocked: activeAction?.status === "blocked",
     activeCommand: activeAction?.command ?? null,
     activePurpose: activeAction?.purpose ?? null,
     activeEvidence: activeAction?.evidence ?? null,
