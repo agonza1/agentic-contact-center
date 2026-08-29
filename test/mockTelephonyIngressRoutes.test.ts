@@ -2349,6 +2349,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       completed: 2 + (payload.labEntryPoint.evidenceSummary.handoffReady ? 2 : 0),
       pending: payload.labEntryPoint.evidenceSummary.handoffReady ? 0 : 1,
       blocked: payload.labEntryPoint.evidenceSummary.handoffReady ? 0 : 1,
+      complete: payload.labEntryPoint.evidenceSummary.handoffReady,
       progressPct: payload.labEntryPoint.evidenceSummary.handoffReady ? 100 : 50,
       activeOrdinal: payload.labEntryPoint.evidenceSummary.handoffReady ? null : 3,
       remaining: payload.labEntryPoint.evidenceSummary.handoffReady ? 0 : 2,
