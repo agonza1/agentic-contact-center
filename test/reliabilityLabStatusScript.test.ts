@@ -860,3 +860,29 @@ test("reliability lab status distinguishes configured but unreachable endpoints"
   assert.equal(cae.reachable, false);
   assert.ok(payload.blockers.some((blocker: string) => blocker.includes("configured but unreachable")));
 });
+
+test("reliability lab status reports malformed configured endpoints without crashing", async () => {
+  const result = await execFileAsync(process.execPath, ["scripts/reliability-lab-status.mjs"], {
+    cwd: repoRoot,
+    env: {
+      ...withClearedLiveEndpointEnv(),
+      CAE_API_URL: "not-a-url",
+      CAE_WEB_URL: "also-not-a-url",
+      FREESWITCH_VERTO_URL: "invalid-verto-url",
+    },
+  });
+  const payload = JSON.parse(result.stdout);
+  const cae = payload.componentReadiness.find(
+    (component: { component: string }) => component.component === "ConversationAgentEvals",
+  );
+  const verto = payload.componentReadiness.find(
+    (component: { component: string }) => component.component === "FreeSWITCH/Verto",
+  );
+
+  assert.equal(cae.status, "unreachable");
+  assert.equal(cae.probes.api.error, "InvalidURL");
+  assert.equal(cae.probes.web.error, "InvalidURL");
+  assert.equal(verto.status, "unreachable");
+  assert.equal(verto.probe.error, "InvalidURL");
+  assert.ok(payload.blockers.some((blocker: string) => blocker.includes("configured but unreachable")));
+});
