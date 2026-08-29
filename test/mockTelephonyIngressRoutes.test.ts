@@ -2129,6 +2129,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         recommendedNextStep: { category: string; step: string; command: string; evidence: string; detail: string };
         actionQueue: Array<{ step: string; command: string; status: string; blockedBy: string | null; evidence?: string }>;
         actionQueueSummary: {
+          state: "active" | "blocked" | "done";
           total: number;
           completed: number;
           pending: number;
@@ -2345,6 +2346,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       ],
     );
     assert.deepEqual(payload.labEntryPoint?.actionQueueSummary, {
+      state: payload.labEntryPoint.evidenceSummary.handoffReady ? "done" : "active",
       total: 4,
       completed: 2 + (payload.labEntryPoint.evidenceSummary.handoffReady ? 2 : 0),
       pending: payload.labEntryPoint.evidenceSummary.handoffReady ? 0 : 1,
