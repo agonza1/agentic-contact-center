@@ -794,6 +794,7 @@ test("reliability entrypoint command returns only selected lab entry point", asy
     activeCommand: "npm run docker:browser-webrtc",
     activePurpose: "Start local services or connect to the selected external endpoints for this target mode.",
     activeEvidence: null,
+    activeRequiresEvidence: false,
     activeBlockedBy: null,
   });
   assert.equal(payload.evidenceSummary.total, 3);
