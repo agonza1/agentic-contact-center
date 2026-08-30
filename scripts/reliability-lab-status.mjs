@@ -733,6 +733,7 @@ function entrypointActionQueueSummary(actionQueue) {
     progressPct: actionQueue.length > 0 ? Math.round((completed / actionQueue.length) * 100) : 100,
     activeOrdinal: activeIndex >= 0 ? activeIndex + 1 : null,
     remaining: pending + blocked,
+    hasRemaining: pending + blocked > 0,
     remainingAfterActive: Math.max(0, pending + blocked - (activeAction ? 1 : 0)),
     activeStep: activeAction?.step ?? null,
     activeStatus: activeAction?.status ?? null,

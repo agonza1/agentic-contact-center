@@ -2142,6 +2142,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           activeStatus: string | null;
           activeRunnable: boolean;
           activeBlocked: boolean;
+          hasRemaining: boolean;
           activeCommand: string | null;
           activePurpose: string | null;
           activeEvidence: string | null;
@@ -2357,6 +2358,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       progressPct: payload.labEntryPoint.evidenceSummary.handoffReady ? 100 : 50,
       activeOrdinal: payload.labEntryPoint.evidenceSummary.handoffReady ? null : 3,
       remaining: payload.labEntryPoint.evidenceSummary.handoffReady ? 0 : 2,
+      hasRemaining: !payload.labEntryPoint.evidenceSummary.handoffReady,
       remainingAfterActive: payload.labEntryPoint.evidenceSummary.handoffReady ? 0 : 1,
       activeStep: payload.labEntryPoint.evidenceSummary.handoffReady ? null : "capture_evidence",
       activeStatus: payload.labEntryPoint.evidenceSummary.handoffReady ? null : "pending",
