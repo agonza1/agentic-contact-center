@@ -1479,6 +1479,7 @@ function reliabilityEntrypointActionQueueSummary(
     activeCommand: activeAction?.command ?? null,
     activePurpose: activeAction?.purpose ?? null,
     activeEvidence: activeAction?.evidence ?? null,
+    activeRequiresEvidence: Boolean(activeAction?.evidence),
     activeBlockedBy: activeAction?.blockedBy ?? null,
   };
 }
