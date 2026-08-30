@@ -2147,6 +2147,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           activePurpose: string | null;
           activeEvidence: string | null;
           activeRequiresEvidence: boolean;
+          activeIsFinal: boolean;
           activeBlockedBy: string | null;
         };
         commands: Array<{ step: string; command: string }>;
@@ -2373,6 +2374,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
         ? null
         : payload.labEntryPoint.nextEvidenceAction.evidence,
       activeRequiresEvidence: !payload.labEntryPoint.evidenceSummary.handoffReady,
+      activeIsFinal: payload.labEntryPoint.evidenceSummary.handoffReady,
       activeBlockedBy: null,
     });
     assert.deepEqual(
