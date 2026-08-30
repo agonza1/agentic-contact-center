@@ -2149,6 +2149,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           activeRequiresEvidence: boolean;
           activeIsFinal: boolean;
           followUpStep: string | null;
+          followUpCommand: string | null;
           activeBlockedBy: string | null;
         };
         commands: Array<{ step: string; command: string }>;
@@ -2377,6 +2378,9 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       activeRequiresEvidence: !payload.labEntryPoint.evidenceSummary.handoffReady,
       activeIsFinal: payload.labEntryPoint.evidenceSummary.handoffReady,
       followUpStep: payload.labEntryPoint.evidenceSummary.handoffReady ? null : "generate_handoff_request",
+      followUpCommand: payload.labEntryPoint.evidenceSummary.handoffReady
+        ? null
+        : "npm run cae:assert:handoff",
       activeBlockedBy: null,
     });
     assert.deepEqual(
