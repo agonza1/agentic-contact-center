@@ -735,6 +735,7 @@ function entrypointActionQueueSummary(actionQueue) {
     remaining: pending + blocked,
     hasRemaining: pending + blocked > 0,
     remainingAfterActive: Math.max(0, pending + blocked - (activeAction ? 1 : 0)),
+    activeIsFinal: activeAction !== null && pending + blocked === 1,
     activeStep: activeAction?.step ?? null,
     activeStatus: activeAction?.status ?? null,
     activeRunnable: activeAction?.status === "pending",

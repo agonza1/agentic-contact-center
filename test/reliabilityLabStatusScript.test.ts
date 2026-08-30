@@ -787,6 +787,7 @@ test("reliability entrypoint command returns only selected lab entry point", asy
     remaining: 4,
     hasRemaining: true,
     remainingAfterActive: 3,
+    activeIsFinal: false,
     activeStep: "start_or_connect_stack",
     activeStatus: "pending",
     activeRunnable: true,
