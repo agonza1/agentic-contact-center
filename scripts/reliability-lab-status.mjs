@@ -740,6 +740,7 @@ function entrypointActionQueueSummary(actionQueue) {
     activeIsFinal: activeAction !== null && pending + blocked === 1,
     followUpOrdinal: followUpIndex >= 0 ? followUpIndex + 1 : null,
     followUpStep: followUpAction?.step ?? null,
+    followUpStatus: followUpAction?.status ?? null,
     followUpCommand: followUpAction?.command ?? null,
     activeStep: activeAction?.step ?? null,
     activeStatus: activeAction?.status ?? null,
