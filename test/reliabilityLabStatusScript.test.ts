@@ -790,6 +790,7 @@ test("reliability entrypoint command returns only selected lab entry point", asy
     activeIsFinal: false,
     followUpOrdinal: 2,
     followUpStep: "validate_readiness",
+    followUpStatus: "blocked",
     followUpCommand: "npm run browser-webrtc:check",
     activeStep: "start_or_connect_stack",
     activeStatus: "pending",

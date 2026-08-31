@@ -2149,6 +2149,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           activeRequiresEvidence: boolean;
           activeIsFinal: boolean;
           followUpStep: string | null;
+          followUpStatus: "pending" | "blocked" | null;
           followUpCommand: string | null;
           followUpOrdinal: number | null;
           activeBlockedBy: string | null;
@@ -2379,6 +2380,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       activeRequiresEvidence: !payload.labEntryPoint.evidenceSummary.handoffReady,
       activeIsFinal: payload.labEntryPoint.evidenceSummary.handoffReady,
       followUpStep: payload.labEntryPoint.evidenceSummary.handoffReady ? null : "generate_handoff_request",
+      followUpStatus: payload.labEntryPoint.evidenceSummary.handoffReady ? null : "blocked",
       followUpCommand: payload.labEntryPoint.evidenceSummary.handoffReady
         ? null
         : "npm run cae:assert:handoff",
