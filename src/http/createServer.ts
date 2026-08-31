@@ -1480,6 +1480,7 @@ function reliabilityEntrypointActionQueueSummary(
     followUpStatus: followUpAction?.status ?? null,
     followUpCommand: followUpAction?.command ?? null,
     followUpPurpose: followUpAction?.purpose ?? null,
+    followUpEvidence: followUpAction?.evidence ?? null,
     activeStep: activeAction?.step ?? null,
     activeStatus: activeAction?.status ?? null,
     activeRunnable: activeAction?.status === "pending",
