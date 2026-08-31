@@ -2151,6 +2151,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           followUpStep: string | null;
           followUpStatus: "pending" | "blocked" | null;
           followUpCommand: string | null;
+          followUpPurpose: string | null;
           followUpOrdinal: number | null;
           activeBlockedBy: string | null;
         };
@@ -2384,6 +2385,9 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       followUpCommand: payload.labEntryPoint.evidenceSummary.handoffReady
         ? null
         : "npm run cae:assert:handoff",
+      followUpPurpose: payload.labEntryPoint.evidenceSummary.handoffReady
+        ? null
+        : "Generate the CAE-compatible AssertRunCreateRequest with selected-mode provenance.",
       followUpOrdinal: payload.labEntryPoint.evidenceSummary.handoffReady ? null : 4,
       activeBlockedBy: null,
     });

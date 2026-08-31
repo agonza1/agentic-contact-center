@@ -742,6 +742,7 @@ function entrypointActionQueueSummary(actionQueue) {
     followUpStep: followUpAction?.step ?? null,
     followUpStatus: followUpAction?.status ?? null,
     followUpCommand: followUpAction?.command ?? null,
+    followUpPurpose: followUpAction?.purpose ?? null,
     activeStep: activeAction?.step ?? null,
     activeStatus: activeAction?.status ?? null,
     activeRunnable: activeAction?.status === "pending",
