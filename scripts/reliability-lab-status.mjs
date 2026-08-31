@@ -723,6 +723,7 @@ function entrypointActionQueueSummary(actionQueue) {
   const activeAction = actionQueue.find((item) => item.status === "pending") ?? actionQueue.find((item) => item.status === "blocked") ?? null;
   const activeIndex = activeAction ? actionQueue.indexOf(activeAction) : -1;
   const followUpAction = activeIndex >= 0 ? actionQueue.slice(activeIndex + 1).find((item) => item.status !== "complete") ?? null : null;
+  const followUpIndex = followUpAction ? actionQueue.indexOf(followUpAction) : -1;
 
   return {
     state: completed === actionQueue.length ? "done" : pending > 0 ? "active" : "blocked",
@@ -737,6 +738,7 @@ function entrypointActionQueueSummary(actionQueue) {
     hasRemaining: pending + blocked > 0,
     remainingAfterActive: Math.max(0, pending + blocked - (activeAction ? 1 : 0)),
     activeIsFinal: activeAction !== null && pending + blocked === 1,
+    followUpOrdinal: followUpIndex >= 0 ? followUpIndex + 1 : null,
     followUpStep: followUpAction?.step ?? null,
     followUpCommand: followUpAction?.command ?? null,
     activeStep: activeAction?.step ?? null,
