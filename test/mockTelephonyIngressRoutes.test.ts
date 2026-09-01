@@ -2384,6 +2384,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       activeIsFinal: payload.labEntryPoint.evidenceSummary.handoffReady,
       followUpStep: payload.labEntryPoint.evidenceSummary.handoffReady ? null : "generate_handoff_request",
       followUpStatus: payload.labEntryPoint.evidenceSummary.handoffReady ? null : "blocked",
+      followUpRunnable: false,
       followUpCommand: payload.labEntryPoint.evidenceSummary.handoffReady
         ? null
         : "npm run cae:assert:handoff",
