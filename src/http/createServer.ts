@@ -1482,6 +1482,9 @@ function reliabilityEntrypointActionQueueSummary(
     followUpPurpose: followUpAction?.purpose ?? null,
     followUpEvidence: followUpAction?.evidence ?? null,
     followUpBlockedBy: followUpAction?.blockedBy ?? null,
+    followUpRequiresEvidence: Boolean(
+      followUpAction?.evidence || followUpAction?.blockedBy?.startsWith("missing evidence artifact:"),
+    ),
     activeStep: activeAction?.step ?? null,
     activeStatus: activeAction?.status ?? null,
     activeRunnable: activeAction?.status === "pending",
