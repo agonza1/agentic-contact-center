@@ -793,6 +793,7 @@ test("reliability entrypoint command returns only selected lab entry point", asy
     followUpStatus: "blocked",
     followUpRunnable: false,
     followUpBlocked: true,
+    followUpComplete: false,
     followUpCommand: "npm run browser-webrtc:check",
     followUpPurpose: "Run the fastest bounded readiness or proof gate for this selected mode.",
     followUpEvidence: null,
