@@ -2154,6 +2154,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
           followUpPurpose: string | null;
           followUpEvidence: string | null;
           followUpBlockedBy: string | null;
+          followUpRequiresEvidence: boolean;
           followUpOrdinal: number | null;
           activeBlockedBy: string | null;
         };
@@ -2394,6 +2395,7 @@ test("GET /reliability serves the guided reliability-lab workflow", async () => 
       followUpBlockedBy: payload.labEntryPoint.evidenceSummary.handoffReady
         ? null
         : `missing evidence artifact: ${payload.labEntryPoint.nextEvidenceAction.evidence}`,
+      followUpRequiresEvidence: !payload.labEntryPoint.evidenceSummary.handoffReady,
       followUpOrdinal: payload.labEntryPoint.evidenceSummary.handoffReady ? null : 4,
       activeBlockedBy: null,
     });
